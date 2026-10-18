@@ -10,6 +10,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::is_cell;
 use crate::render::is_blank;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
 pub(crate) struct CellGeometry<'a> {
     pub(crate) cell: &'a Element,
@@ -77,10 +78,10 @@ pub(crate) fn row_geometry<'a>(
             if span <= 1 {
                 continue;
             }
-            let expandable = spacing.abs() < 0.01
-                && out[i + 1..i + span]
-                    .iter()
-                    .all(|r| r.height <= 0.01 && r.cells.iter().all(|c| c.shape.height <= 0.01));
+            let expandable = spacing.abs() < COORD_EPS
+                && out[i + 1..i + span].iter().all(|r| {
+                    r.height <= COORD_EPS && r.cells.iter().all(|c| c.shape.height <= COORD_EPS)
+                });
             out[i].cells[j].expandable = expandable;
             if expandable {
                 out[i].height = out[i].height.max(out[i].cells[j].shape.height);
@@ -93,7 +94,7 @@ pub(crate) fn row_geometry<'a>(
         for cell in &row.cells {
             let span_height = out[i..i + cell.span].iter().map(|r| r.height).sum::<f32>()
                 + spacing * (cell.span - 1) as f32;
-            if cell.shape.height > span_height + 0.01 {
+            if cell.shape.height > span_height + COORD_EPS {
                 return None;
             }
         }

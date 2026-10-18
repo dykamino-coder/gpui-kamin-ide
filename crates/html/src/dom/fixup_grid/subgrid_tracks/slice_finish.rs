@@ -3,7 +3,7 @@
 use super::subgrid_gap_slice;
 use crate::dom::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(crate) fn finish_slice(
     child: &mut Element,
@@ -15,10 +15,7 @@ pub(crate) fn finish_slice(
     _tracks: &[crate::style::computed::TrackSize],
     slice: Vec<crate::style::computed::TrackSize>,
 ) {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let bs = child.style.borders();
     let (lead, trail) = if row_dir {
         (

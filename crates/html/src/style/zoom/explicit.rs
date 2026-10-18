@@ -1,6 +1,7 @@
 //! Явно заданные (не унаследованные) длины под zoom: что масштабировать у элемента и что запомнить для потомков.
 
 use super::*;
+use crate::style::values::value::px_strict;
 
 /// Явное `inherit` на ненаследуемых размерах и краях (`explicit-inherit/*`).
 /// Родитель здесь — его СОБСТВЕННЫЙ стиль; для ненаследуемых свойств он и
@@ -109,10 +110,7 @@ pub(super) fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
 /// не в точках СБРАСЫВАЕТ запомненное: потомок унаследует не точки, и
 /// домножать нечего (число `line-height`, `em` — считаются от его кегля).
 pub(super) fn remember(c: &Computed, k: &mut Carried) {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let keep = |slot: &mut Option<f32>, l: Option<Len>| {
         if l.is_some() {
             *slot = px(l);

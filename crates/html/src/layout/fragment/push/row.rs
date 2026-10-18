@@ -3,17 +3,18 @@
 use super::pushed_box_at;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flex_lines::row_geometry::{collect_rows, px, row_container};
+use crate::layout::fragment::flex_lines::row_geometry::{collect_rows, row_container};
 use crate::layout::fragment::flex_lines::row_main_size;
 use crate::style::values::value::Len;
+use crate::style::values::value::px_auto_zero;
 
 pub(super) fn pushed_row_at(c: &Element, at: f32, depth: u8) -> Option<Option<u64>> {
     if !row_container(c) {
         return None;
     }
     let rows = collect_rows(c, row_main_size(c)?, depth, ShapeCx::COLUMNS)?;
-    let top = px(c.style.padding.top)? + px(c.style.borders().top)?;
-    let gap = px(c.style.gap.and_then(|g| g.0))?.max(0.0);
+    let top = px_auto_zero(c.style.padding.top)? + px_auto_zero(c.style.borders().top)?;
+    let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut y = top;
     for (ri, row) in rows.iter().enumerate() {
         if ri > 0 {
@@ -45,8 +46,11 @@ pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32) -> bool {
     else {
         return false;
     };
-    let top = px(c.style.padding.top).unwrap_or(0.0) + px(c.style.borders().top).unwrap_or(0.0);
-    let gap = px(c.style.gap.and_then(|g| g.0)).unwrap_or(0.0).max(0.0);
+    let top = px_auto_zero(c.style.padding.top).unwrap_or(0.0)
+        + px_auto_zero(c.style.borders().top).unwrap_or(0.0);
+    let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))
+        .unwrap_or(0.0)
+        .max(0.0);
     let mut y = top;
     for (ri, row) in rows.iter().enumerate() {
         if ri > 0 && gap_cut(at, y, gap) {
@@ -59,7 +63,9 @@ pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32) -> bool {
                 let Some(Node::Element(k)) = c.children.get_mut(item.source) else {
                     return false;
                 };
-                k.style.margin.top = Some(Len::Px(px(k.style.margin.top).unwrap_or(0.0) + grow));
+                k.style.margin.top = Some(Len::Px(
+                    px_auto_zero(k.style.margin.top).unwrap_or(0.0) + grow,
+                ));
             }
             if let Some(Len::Px(h)) = c.style.height {
                 c.style.height = Some(Len::Px(h + grow));

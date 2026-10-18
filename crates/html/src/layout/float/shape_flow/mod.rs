@@ -22,7 +22,10 @@ use host::{atoms_flow, band_host_flow, shape_host_div};
 /// формы считается от выбранной опорной коробки (по умолчанию margin-box),
 /// затем переводится в координаты margin-box (позиция флоата).
 pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    if e.attr("bands") == Some("m") {
+    if e.marks
+        .shape_flow
+        .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Measured))
+    {
         return band_flow_host(e, inherited, opts);
     }
     let px_of = |l: &Option<Len>| match l {
@@ -60,12 +63,12 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     let mut bands = crate::layout::float::bands::FloatBands::new(wall);
     let mut floats: Vec<AnyElement> = Vec::new();
     let mut rest: Vec<Node> = Vec::new();
-    let host_side: i32 = if e.attr("side") == Some("right") {
+    let host_side: i32 = if e.marks.shape_flow.is_some_and(|h| h.right) {
         1
     } else {
         -1
     };
-    let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
+    let count: usize = e.marks.shape_flow.map_or(0, |h| h.count);
     for (idx, n) in e.children.iter().enumerate() {
         let Node::Element(f) = n else {
             rest.push(n.clone());
@@ -117,7 +120,10 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     //
     // Вертикальное письмо сюда не пускается: дальняя стенка полос там
     // недостижимая (`NO_WALL`, `:4845-4850`), и окна не сузятся.
-    let band_host = e.attr("bands") == Some("1");
+    let band_host = e
+        .marks
+        .shape_flow
+        .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Static));
     let host = match band_host_flow(e, inherited, opts, vert_lr, bands, &rest, host, band_host) {
         Ok(value) => return value,
         Err(host) => host,

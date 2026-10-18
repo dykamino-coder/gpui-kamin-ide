@@ -135,7 +135,7 @@ pub(super) fn grow(kids: &mut [(Element, Shape)], h: f32, count: usize, copies: 
     for (c, s) in kids {
         let own = measure_fragment_and_own_height(c).map_or(s.height, |(_, own)| own);
         let start = cursor + previous.max(s.margin_top);
-        if c.attr(crate::layout::fragment::paginate::MARK).is_none()
+        if !c.marks.paginate
             && grow_positioned_descendants(c, start, h, count, copies)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS)
         {
@@ -162,6 +162,7 @@ mod tests {
     fn element(style: Computed, children: Vec<Node>) -> Element {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(10_000);
         Element {
+            marks: Default::default(),
             node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             tag: "div".into(),
             style,

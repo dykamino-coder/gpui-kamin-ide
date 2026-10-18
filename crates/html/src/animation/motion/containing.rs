@@ -3,7 +3,7 @@
 use super::{Cb, apply_offset_transform};
 use crate::dom::Node;
 use crate::style::computed::{Computed, Position};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// `parent` — геометрия родителя и признак «родитель сам устанавливает
 /// содержащий блок для абсолютов» (нужен, чтобы не приписать абсолюту чужую
@@ -61,10 +61,7 @@ pub(super) fn cb_is_parent(c: &Computed, parent_establishes: bool) -> bool {
 /// требуют раскладки, а её на этом шаге нет. Без размера возвращается `None`,
 /// и путь строится ровно теми ветками, которым содержащий блок не нужен.
 pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let (w, h) = match (p.width, p.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w, h),
         _ => return None,
@@ -127,10 +124,7 @@ pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
 /// стоит ещё один блок; там результат так и останется неверным, пока место в
 /// потоке не будет прокинуто с раскладки.
 pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let abs = matches!(c.position, Some(Position::Absolute));
     // Вставки абсолюта считаются от PADDING-коробки блока (§10.1 п.4), сдвиг
     // относительного — от статической позиции в content-коробке (§9.4.3).

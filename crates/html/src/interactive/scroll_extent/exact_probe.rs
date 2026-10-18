@@ -1,9 +1,8 @@
 //! Scrollbar decisions use layout geometry before device snapping (CSS Overflow 3 §2.2).
 //! Independent rounding of a 10px child and a 25px scrollport can fabricate overflow.
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Styled, Window, px,
-};
+
+use crate::hooks::Hooks;
+use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, px};
 
 thread_local! {
     static STICKY_SHIFT: std::cell::Cell<gpui::Point<Pixels>> = const { std::cell::Cell::new(gpui::point(px(0.0), px(0.0))) };
@@ -42,40 +41,22 @@ impl ExactProbe {
         }
     }
 }
-impl IntoElement for ExactProbe {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
-}
-impl Element for ExactProbe {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+impl Hooks for ExactProbe {
+    type Layout = LayoutId;
+    type Prepaint = ();
+
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let id = self.child.request_layout(window, cx);
         (id, id)
     }
+
     fn prepaint(
         &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        id: &mut LayoutId,
+        id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let exact = Bounds {
             origin: window.layout_origin_unrounded(*id),
             size: window.layout_size_unrounded(*id),
@@ -98,13 +79,12 @@ impl Element for ExactProbe {
         (self.measure)(normal, bounds);
         self.child.prepaint(window, cx);
     }
+
     fn paint(
         &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
         _: Bounds<Pixels>,
-        _: &mut LayoutId,
-        _: &mut (),
+        _: &mut Self::Layout,
+        _: &mut Self::Prepaint,
         _: &mut Window,
         _: &mut App,
     ) {

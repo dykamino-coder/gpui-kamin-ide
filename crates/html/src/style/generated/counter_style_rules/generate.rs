@@ -152,7 +152,7 @@ fn generate(
 /// Представление значения стилем, заданным правилом документа; `None` —
 /// такого правила нет (решает предопределённый путь).
 pub fn custom_repr(v: i64, name: &str, context: Context) -> Option<String> {
-    let guard = RULES.lock().unwrap();
+    let guard = registry(&RULES);
     let empty = HashMap::new();
     let rules = guard.as_ref().unwrap_or(&empty);
     (rules.contains_key(name) || anonymous(name).is_some())
@@ -215,7 +215,7 @@ pub fn valid_symbols_fn(text: &str) -> bool {
 /// Префикс и суффикс берутся у самого стиля, даже если значение ушло в
 /// резервный.
 pub fn custom_marker(v: i64, name: &str, context: Context) -> Option<String> {
-    let guard = RULES.lock().unwrap();
+    let guard = registry(&RULES);
     let empty = HashMap::new();
     let rules = guard.as_ref().unwrap_or(&empty);
     let r = resolve_counter_style(rules, name, 0)?;

@@ -5,6 +5,7 @@ use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn caption_slots_shape(
@@ -114,8 +115,8 @@ pub(crate) fn caption_slots_shape(
         wfirst = false;
     }
     let h = wy;
-    wcuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
-    wforced.retain(|&f| f > 0.01 && f < h - 0.01);
+    wcuts.retain(|&(need, _)| need > COORD_EPS && need < h - COORD_EPS);
+    wforced.retain(|&f| f > COORD_EPS && f < h - COORD_EPS);
     Some(crate::layout::fragment::Shape {
         height: h,
         margin_top: mt.max(through),

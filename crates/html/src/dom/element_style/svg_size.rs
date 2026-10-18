@@ -9,6 +9,7 @@
 //! the box in pixels, so the keywords become lengths here, as `canvas_size`
 //! does for `<canvas>`.
 
+use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};
 
 /// `viewBox="x y w h"` as `(w, h)` when both are positive.
@@ -49,10 +50,7 @@ pub(crate) fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)
             .and_then(|(_, v)| v.trim().trim_end_matches("px").parse::<f32>().ok())
             .filter(|v| v.is_finite() && *v >= 0.0)
     };
-    let px = |v| match v {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = |v| px_strict(v);
     let (nat_w, nat_h) = (attr("width"), attr("height"));
     let natural_ratio = attrs
         .iter()

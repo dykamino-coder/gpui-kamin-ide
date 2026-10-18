@@ -1,5 +1,6 @@
 //! Font-dependent MathML constants, resolved once when constructing a context.
-use super::{fraction, limits, parameters::px_value, scripts};
+use super::{fraction, limits, scripts};
+use crate::style::values::value::px_strict;
 use crate::text::{fonts::math, inline::strut_font, metrics::math_metrics};
 use crate::{dom::Element, render::RenderOpts, style::computed::Computed};
 
@@ -12,7 +13,7 @@ pub(super) struct FontParameters {
 impl FontParameters {
     pub fn new(e: &Element, style: &Computed, opts: &RenderOpts) -> Self {
         let font = strut_font(style, &opts.text);
-        let size = px_value(style.font_size).unwrap_or(opts.base_size());
+        let size = px_strict(style.font_size).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size);
         let constants = math::for_family(&font.family);
         let c = |index: usize, fallback| {

@@ -95,7 +95,7 @@ pub(crate) fn grow_pushed(
         let mut changed = false;
         for (kid, at, grow, forced) in grows {
             let c = &mut kids[kid].0;
-            if c.attr(crate::layout::fragment::paginate::MARK).is_some() {
+            if c.marks.paginate {
                 continue;
             }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.

@@ -1,7 +1,7 @@
 //! Расстановка детей потока по полосам занятости: обход последовательности (place_seq).
 
 use super::kid::{Kid, Kind};
-use super::{EPS, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe};
+use super::{COORD_EPS, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe};
 use crate::layout::float::bands::FloatBands;
 use gpui::{App, Window};
 use std::ops::ControlFlow;
@@ -86,7 +86,7 @@ pub(super) fn place_seq(
                     let bw = bw.max(floor);
                     let x = edge.origin(bw, rtl);
                     let (l2, r2) = bands.available(top, bh);
-                    if (l2 - l).abs() < EPS && (r2 - r).abs() < EPS {
+                    if (l2 - l).abs() < COORD_EPS && (r2 - r).abs() < COORD_EPS {
                         return edge.fits(l, r, x, bw).then_some((x, avail));
                     }
                     let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
@@ -95,7 +95,7 @@ pub(super) fn place_seq(
                     let bw2 = bw2.max(floor);
                     let x2 = edge2.origin(bw2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
-                    (l3 <= l2 + EPS && r3 >= r2 - EPS && edge2.fits(l2, r2, x2, bw2))
+                    (l3 <= l2 + COORD_EPS && r3 >= r2 - COORD_EPS && edge2.fits(l2, r2, x2, bw2))
                         .then_some((x2, avail2))
                 };
                 // Примыкающие флоаты (Blink `block_layout_algorithm.cc`
@@ -109,7 +109,7 @@ pub(super) fn place_seq(
                 // флоате 200 из 200 — коробка на низе флоата; ассерт теста:
                 // «will need to separate its margin from the float, so that it
                 // doesn't affect the float»). Влезает — поле действует как есть.
-                let adjoining = adjoining0 && (y - y0).abs() < EPS && mt > 0.0;
+                let adjoining = adjoining0 && (y - y0).abs() < COORD_EPS && mt > 0.0;
                 let mt_eff = if adjoining && try_at(y, window, cx).is_none() {
                     0.0
                 } else {

@@ -2,7 +2,7 @@
 use crate::dom::Element;
 use crate::render::styled_div_with;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
@@ -134,10 +134,7 @@ pub(crate) fn svg_replaced(
     if !boxed {
         return raster;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let (w, h) = crate::svg::size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
     if raster.is_none() && w > 0.0 && h > 0.0 {

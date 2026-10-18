@@ -1,6 +1,7 @@
 //! Computed::apply_transform_individual, хвост цепочки: backface-visibility, perspective, perspective-origin, transform-style, transform-box, vector-effect. Ветви в исходном порядке.
 
 use super::*;
+use crate::style::values::value::px_strict;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -49,12 +50,7 @@ impl Computed {
                         },
                     }
                 };
-                let px_axis = |t: &str| -> Option<f32> {
-                    match Len::parse(t) {
-                        Some(Len::Px(v)) => Some(v),
-                        _ => None,
-                    }
-                };
+                let px_axis = |t: &str| -> Option<f32> { px_strict(Len::parse(t)) };
                 let mut xs: Option<&str> = None;
                 let mut ys: Option<&str> = None;
                 let mut free: Vec<&str> = vec![];

@@ -61,6 +61,7 @@ pub(crate) fn wrap_misparented_ruby(
     let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
         if !run.is_empty() {
             out.push(Node::Element(Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,

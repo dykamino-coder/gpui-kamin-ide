@@ -12,7 +12,7 @@ use crate::style::generated::counter_style::{
     Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
 };
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 mod generate;
 mod math;
@@ -54,8 +54,14 @@ struct Raw {
 
 static RULES: Mutex<Option<HashMap<String, Raw>>> = Mutex::new(None);
 
+fn registry<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
+    value
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub fn reset() {
-    RULES.lock().unwrap().take();
+    registry(&RULES).take();
 }
 
 #[cfg(test)]
@@ -63,6 +69,17 @@ mod tests {
     //! Тесты правил @counter-style: разбор дескрипторов, системы, запасные стили.
 
     use super::*;
+
+    #[test]
+    fn poisoned_registry_can_be_reused() {
+        let local = Mutex::new(vec![1]);
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = local.lock().unwrap();
+            panic!("poison local registry");
+        });
+        registry(&local).push(2);
+        assert_eq!(*registry(&local), [1, 2]);
+    }
 
     fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
         reset();

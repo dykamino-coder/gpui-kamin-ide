@@ -1,8 +1,9 @@
 //! Трансформы.
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 /// css-transforms-2 §grouping-property-values: «групповые» свойства делают
 /// из элемента группу, и ИСПОЛЬЗУЕМОЕ значение `transform-style` у него —
@@ -135,7 +136,7 @@ pub(crate) fn transformed_with(
     wrapper.backface_hidden = c.backface_hidden == Some(true);
     wrapper.fragment_clip_ancestor = c.fragment_clip_ancestor;
     let Some(t) = c.transform else {
-        return wrapper.into_any_element();
+        return wrapper.hooked();
     };
     // Отдельные `rotate`/`scale` — ПЕРЕД списком `transform` (css-transforms-2
     // §ctm п.4-5 и п.7; Blink `ComputedStyle::ApplyTransform`,
@@ -174,5 +175,5 @@ pub(crate) fn transformed_with(
     }
     wrapper.origin_px = c.transform_origin_px;
     wrapper.origin_z = c.transform_origin_z;
-    wrapper.into_any_element()
+    wrapper.hooked()
 }

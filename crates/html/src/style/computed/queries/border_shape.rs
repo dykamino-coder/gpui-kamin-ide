@@ -1,6 +1,7 @@
 //! Запросы border-shape к Computed: обводка формы, выносы геометрических коробок, контур, обрезка.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 impl Computed {
     /// Обводка `border-shape` по «relevant side» (css-borders-4
@@ -31,10 +32,7 @@ impl Computed {
             .find(|i| self.border_visible[*i] == Some(true))
             .unwrap_or(block_start);
         let w = self.borders();
-        let width = match [w.top, w.right, w.bottom, w.left][side] {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
         let colour = self.border_colors[side]
             .or(self.border_color)
             .or(self.color)
@@ -52,10 +50,7 @@ impl Computed {
     /// рамку, content-box — на рамку и отбивку, half-border-box — на половину
     /// рамки (Blink `GeometryBoxUtils::ReferenceBoxBorderBoxOutsets`).
     pub fn geometry_outsets(&self, kind: u8) -> [f32; 4] {
-        let px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px = px_lossy_zero;
         let b = self.borders();
         let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
         let pd = [

@@ -1,5 +1,7 @@
 //! Choose raster interpolation when gradient colors require final gamut mapping.
 
+use crate::style::computed::BgListProp;
+
 impl super::Computed {
     /// Градиент, которому нужна МЕХАНИКА ПЛИТКИ (размер, повтор, позиция,
     /// свой край): сплошная заливка её не умеет, рисует слой-картинка.
@@ -10,7 +12,7 @@ impl super::Computed {
             && self
                 .bg_lists
                 .iter()
-                .any(|(k, _)| k == "background" || k == "background-image")
+                .any(|(k, _)| matches!(k, BgListProp::Shorthand | BgListProp::Image))
         {
             return true;
         }

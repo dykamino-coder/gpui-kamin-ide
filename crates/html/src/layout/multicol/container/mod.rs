@@ -2,6 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::paint::gap_rules::painter::GapRulePainter;
@@ -9,7 +10,7 @@ use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement};
+use gpui::{AnyElement, ParentElement};
 mod kids;
 mod parallel;
 use kids::{column_kids, stack_children};
@@ -169,7 +170,7 @@ pub(crate) fn multicol_column_stack(
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec.clone());
-    let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).into_any_element()));
+    let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).hooked()));
     let mut d = column_stack_div(
         d,
         e,

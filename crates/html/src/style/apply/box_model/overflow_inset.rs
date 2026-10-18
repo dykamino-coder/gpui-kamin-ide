@@ -1,6 +1,7 @@
 //! apply_box, хвостовые этапы: обрезка overflow, полосы прокрутки, ранний выход для непозиционированных; края inset, избыточные края и translate.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 fn box_inset(mut d: Div, c: &Computed) -> Div {
     // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
@@ -160,10 +161,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
         .clip_margin
         .filter(|_| !(scroller && (c.clip_margin_box == Some(2) || c.contain_paint == Some(true))))
     {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let border = c.borders();
         let b = [
             side(border.top),

@@ -1,11 +1,8 @@
 //! Resolved MathML length attributes and formatting-context parameters.
 use super::{geometry::Metrics, padded};
 use crate::style::cascade::inherit::inherit;
-use crate::{
-    dom::Element,
-    render::RenderOpts,
-    style::{computed::Computed, values::value::Len},
-};
+use crate::style::values::value::px_strict;
+use crate::{dom::Element, render::RenderOpts, style::computed::Computed};
 
 #[derive(Clone, Copy)]
 pub(super) enum Kind {
@@ -31,13 +28,13 @@ pub(super) fn kind(e: &Element, style: &Computed, opts: &RenderOpts) -> Kind {
     let attr = |name| e.attr(name).and_then(|v| length_px(v, style, opts));
     if e.tag == "mpadded" {
         Kind::Padded(padded::Parameters {
-            width: px_value(style.width),
+            width: px_strict(style.width),
             ascent: attr("height"),
             descent: attr("depth"),
             lspace: attr("lspace").unwrap_or(0.0),
             voffset: attr("voffset").unwrap_or(0.0),
-            css_width: px_value(style.width),
-            css_height: px_value(style.height),
+            css_width: px_strict(style.width),
+            css_height: px_strict(style.height),
             rtl: style.rtl == Some(true),
         })
     } else {
@@ -96,14 +93,6 @@ pub(super) fn kind(e: &Element, style: &Computed, opts: &RenderOpts) -> Kind {
     }
 }
 
-pub(super) fn px_value(value: Option<Len>) -> Option<f32> {
-    if let Some(Len::Px(v)) = value {
-        Some(v)
-    } else {
-        None
-    }
-}
-
 pub(super) fn length_px(raw: &str, style: &Computed, opts: &RenderOpts) -> Option<f32> {
     let value = crate::dom::mathml::parse_mathml_length(raw)?;
     let own = Computed {
@@ -112,5 +101,5 @@ pub(super) fn length_px(raw: &str, style: &Computed, opts: &RenderOpts) -> Optio
     };
     let mut resolved = inherit(style, &own);
     resolved.resolve_viewport(opts.viewport);
-    px_value(resolved.width)
+    px_strict(resolved.width)
 }

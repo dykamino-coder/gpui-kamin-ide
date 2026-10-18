@@ -33,6 +33,7 @@ pub(super) fn hidden_element(
     // without a root box. Keep its style for canvas propagation.
     if me.tag == "html" {
         out.push(Node::Element(Element {
+            marks: Default::default(),
             tag: "html".to_string(),
             inline: false,
             node_id: 0,
@@ -78,6 +79,7 @@ pub(super) fn hidden_element(
     counters.leave();
     *counter += 1;
     out.push(Node::Element(Element {
+        marks: Default::default(),
         list_item: None,
         node_id: *counter,
         anim: None,

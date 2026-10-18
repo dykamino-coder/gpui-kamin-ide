@@ -102,12 +102,12 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     // с неё начинается (`text-box-trim-multicol-001…012`).
     let tt = trim_amount(&inh, size, lh, true);
     let tb = trim_amount(&inh, size, lh, false);
-    let shift = if c.style.text_box_trim_start || c.attr("kamin-host-trim-start").is_some() {
+    let shift = if c.style.text_box_trim_start || c.marks.host_trim_start {
         tt
     } else {
         0.0
     };
-    let tail = if c.style.text_box_trim_end || c.attr("kamin-host-trim-end").is_some() {
+    let tail = if c.style.text_box_trim_end || c.marks.host_trim_end {
         tb
     } else {
         0.0

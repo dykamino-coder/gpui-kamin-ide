@@ -28,7 +28,7 @@ pub(super) fn emit_initial_letter(
     // измеряемый хост ставит её `FloatBands::add_initial_letter` (шаг F11);
     // прогон с руби хост по-прежнему не берёт (`initial-letter-*-ruby`).
     if let Node::Element(e) = &mut letter {
-        e.attrs.push(("initial-letter".into(), "1".into()));
+        e.marks.initial_letter = true;
     }
     out.push(letter);
     for _ in 0..shift {

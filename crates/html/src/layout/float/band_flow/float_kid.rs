@@ -2,7 +2,7 @@
 
 use super::kid::{Kid, Kind};
 use super::place::place_seq;
-use super::{Build, EPS, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
+use super::{Build, COORD_EPS, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
 use crate::layout::float::band_flow::VERT;
 use crate::layout::float::bands::FloatBands;
 use gpui::{App, Window};
@@ -78,7 +78,7 @@ pub(super) fn place_float(
     if let Some(lead) = kid.lead.as_ref() {
         let lw = intrinsic_of(lead, window, cx).1;
         let (l, r) = bands.available(ceil, 0.0);
-        if lw > EPS && lw + ml + bw + mr > r - l + EPS {
+        if lw > COORD_EPS && lw + ml + bw + mr > r - l + COORD_EPS {
             ceil += height_of(lead, bands, window, cx);
         }
     }
@@ -128,7 +128,7 @@ pub(super) fn place_nest(
         kid.clear,
         *y,
         mt,
-        kid.start_open && adjoining0 && (*y - y0).abs() < EPS,
+        kid.start_open && adjoining0 && (*y - y0).abs() < COORD_EPS,
     );
     let (bx0, bx1) = (x0 + ml, x1 - mr);
     let (ix0, ix1) = match nest.width {
@@ -137,7 +137,7 @@ pub(super) fn place_nest(
     };
     let walls = bands.set_walls(ix0, ix1);
     let inner_top = top + it;
-    let adjoining = adjoining0 && (*y - y0).abs() < EPS && it == 0.0;
+    let adjoining = adjoining0 && (*y - y0).abs() < COORD_EPS && it == 0.0;
     let (kids_slots, inner_end) = place_seq(
         &nest.kids, ix0, ix1, inner_top, adjoining, root, bands, window, cx,
     );

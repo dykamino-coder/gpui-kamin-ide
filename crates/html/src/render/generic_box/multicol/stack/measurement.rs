@@ -124,10 +124,7 @@ pub(crate) fn measure_children(
                     _ => None,
                 };
                 let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
-                c.attrs.push((
-                    crate::layout::fragment::paginate::MARK.into(),
-                    String::new(),
-                ));
+                c.marks.paginate = true;
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
                     c,
@@ -164,10 +161,10 @@ pub(crate) fn measure_children(
                 // (`text-box-trim-multicol-005`).
                 if inline_content(&c) {
                     if merged.text_box_trim_start && first_flow == Some(n as *const Node) {
-                        c.attrs.push(("kamin-host-trim-start".into(), "1".into()));
+                        c.marks.host_trim_start = true;
                     }
                     if merged.text_box_trim_end && last_flow == Some(n as *const Node) {
-                        c.attrs.push(("kamin-host-trim-end".into(), "1".into()));
+                        c.marks.host_trim_end = true;
                     }
                 }
                 let c = &c;
