@@ -70,3 +70,34 @@ fn viewport_units_survive_parsing() {
     assert_eq!(Len::parse("50vw"), Some(Len::Vw(0.5)));
     assert_eq!(Len::parse("100vh"), Some(Len::Vh(1.0)));
 }
+
+#[test]
+fn pure_percentage_calculation_handles_variadic_and_typed_functions() {
+    assert_eq!(
+        calc_pct_px("calc(min(30%, 20%, 10%, 40%) + hypot(3px, 4px, 12px))"),
+        Some((0.1, 13.0))
+    );
+    assert_eq!(
+        calc_pct_px("calc(clamp(5px, 2px, 3px) + round(up, 1%, 2%))"),
+        Some((0.02, 5.0))
+    );
+    assert_eq!(
+        calc_pct_px("calc(1cap - 1cap + 1svw - 1svw + 6px)"),
+        Some((0.0, 6.0))
+    );
+    assert_eq!(calc_pct_px("calc(2cap + 50%)"), None);
+    assert_eq!(calc_pct_px("calc(min(0px, 100%))"), Some((0.0, 0.0)));
+    assert_eq!(calc_pct_px("calc(min(0, 100%))"), None);
+    assert_eq!(
+        calc_pct_px("calc(1rcap)"),
+        Len::parse("1rcap").and_then(|l| match l {
+            Len::Px(px) => Some((0.0, px)),
+            _ => None,
+        })
+    );
+    assert_eq!(Len::parse("min(0em, 2em)"), Some(Len::Px(0.0)));
+    assert_eq!(Len::parse("round(3em, 2em)"), Some(Len::Em(4.0)));
+    assert_eq!(number("hypot(3, 4, 12)"), Some(13.0));
+    assert_eq!(number("sin(90DEG)"), Some(1.0));
+    assert_eq!(Len::parse("1e2PX"), Some(Len::Px(100.0)));
+}

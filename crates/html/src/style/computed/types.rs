@@ -4,7 +4,9 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod background;
+mod bg_layer;
 mod bg_lists;
+mod blend;
 mod boxes;
 mod decor;
 mod image;
@@ -12,6 +14,7 @@ mod layout;
 mod text;
 pub use background::{BgClip, BgPos, BgRepeat, BgSize, Tiling, parse_pos_words};
 pub use bg_lists::{BgListProp, BgLists};
+pub use blend::BlendMode;
 pub use boxes::{
     BorderShape, Logical, Outline, Overflow, Position, PositionAnchor, SideSeq, TextEdge,
 };

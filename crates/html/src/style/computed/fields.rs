@@ -594,7 +594,7 @@ pub struct Computed {
     /// Authored currentColor expression, independent of background tiling.
     pub(crate) gradient_current: Option<String>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
-    pub(crate) background_blend: Option<String>,
+    pub(crate) background_blend: Option<BlendMode>,
     /// Resolved opaque, constant background stacks retain their clip regions.
     pub(crate) flat_text_background: Option<Color>,
     pub(crate) flat_border_background: Option<Color>,

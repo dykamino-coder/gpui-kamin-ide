@@ -1,10 +1,4 @@
-//! Списки слоёв фона (css-backgrounds-3 §2.1) по свойствам: типизированный
-//! ключ вместо строкового имени свойства. Запись каждого списка остаётся
-//! сырой до `Computed::bg_layers` — слой разбирается тем же путём, что и
-//! одиночное объявление, иначе два разбора разошлись бы.
-
-#[cfg(test)]
-use super::background_layers;
+//! Типизированные списки фоновых компонентов и циклическое повторение слоёв.
 
 /// Фоновое свойство, значение которого — список слоёв через запятую.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,59 +59,60 @@ impl BgListProp {
     }
 }
 
-/// Сырые списки слоёв по свойствам. Поля `bg_*` стиля несут верхний слой;
-/// список хранится, только когда в записи больше одного слоя.
+/// Списки вычисленных фоновых компонентов в порядке объявлений.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BgLists {
-    lists: Vec<(BgListProp, String)>,
+    lists: Vec<(BgListProp, Vec<super::bg_layer::BgLayer>)>,
 }
 
 impl BgLists {
     pub fn is_empty(&self) -> bool {
         self.lists.is_empty()
     }
-
     pub fn clear(&mut self) {
         self.lists.clear();
     }
-
-    pub fn get(&self, prop: BgListProp) -> Option<&str> {
+    pub(crate) fn get(&self, prop: BgListProp) -> Option<&[super::bg_layer::BgLayer]> {
         self.lists
             .iter()
             .find(|(k, _)| *k == prop)
-            .map(|(_, v)| v.as_str())
+            .map(|(_, v)| v.as_slice())
     }
-
-    /// Положить список свойства, заменив прежний.
+    /// Разбор списка выполняется в каскаде тем же диспетчером, что и одного слоя.
     pub fn set(&mut self, prop: BgListProp, raw: String) {
-        self.remove(prop);
-        self.lists.push((prop, raw));
+        let layers = super::background_layers(&raw)
+            .into_iter()
+            .map(|v| super::bg_layer::BgLayer::parse(prop, v, None))
+            .collect();
+        self.set_layers(prop, layers);
     }
-
+    pub(crate) fn set_layers(&mut self, prop: BgListProp, layers: Vec<super::bg_layer::BgLayer>) {
+        self.remove(prop);
+        self.lists.push((prop, layers));
+    }
     pub fn remove(&mut self, prop: BgListProp) {
         self.lists.retain(|(k, _)| *k != prop);
     }
-
-    /// Оставить только списки, для которых `keep` истинно.
     pub fn retain(&mut self, mut keep: impl FnMut(BgListProp) -> bool) {
         self.lists.retain(|(k, _)| keep(*k));
     }
-
-    pub fn iter(&self) -> impl Iterator<Item = (BgListProp, &str)> {
-        self.lists.iter().map(|(k, v)| (*k, v.as_str()))
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (BgListProp, &[super::bg_layer::BgLayer])> {
+        self.lists.iter().map(|(k, v)| (*k, v.as_slice()))
     }
-
-    /// Слои списка свойства (`background_layers`), если список задан.
-    #[cfg(test)]
-    pub fn layers(&self, prop: BgListProp) -> Option<Vec<&str>> {
-        self.get(prop).map(background_layers)
+    pub(crate) fn resolve_font(&mut self, font: f32, ex: f32, ch: f32) {
+        for (prop, layers) in &mut self.lists {
+            for layer in layers {
+                if let Some(raw) = layer.pending.take() {
+                    *layer = super::bg_layer::BgLayer::parse(*prop, &raw, Some((font, ex, ch)));
+                }
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn keys_round_trip() {
         for p in BgListProp::ALL {
@@ -125,13 +120,16 @@ mod tests {
         }
         assert_eq!(BgListProp::from_key("background-color"), None);
     }
-
     #[test]
-    fn set_replaces_and_layers_split() {
+    fn replacement_keeps_only_new_typed_layers() {
         let mut l = BgLists::default();
-        l.set(BgListProp::Image, "url(a), url(b)".into());
-        l.set(BgListProp::Image, "none, url(c)".into());
-        assert_eq!(l.layers(BgListProp::Image), Some(vec!["none", "url(c)"]));
+        l.set(BgListProp::Clip, "border-box, padding-box".into());
+        l.set(BgListProp::Clip, "text, content-box".into());
+        let mut c = super::super::Computed::default();
+        let layers = l.get(BgListProp::Clip).unwrap();
+        assert_eq!(layers.len(), 2);
+        layers[1].apply(BgListProp::Clip, &mut c);
+        assert_eq!(c.bg_clip, Some(super::super::BgClip::ContentBox));
         l.retain(|p| p == BgListProp::BlendMode);
         assert!(l.is_empty());
     }

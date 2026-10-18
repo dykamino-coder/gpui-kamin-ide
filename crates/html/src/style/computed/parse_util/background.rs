@@ -86,27 +86,9 @@ pub(crate) fn background_blend_valid(raw: &str) -> bool {
     ) {
         return true;
     }
-    background_layers(raw).iter().all(|value| {
-        matches!(
-            value.trim(),
-            "normal"
-                | "multiply"
-                | "screen"
-                | "darken"
-                | "lighten"
-                | "overlay"
-                | "color-dodge"
-                | "color-burn"
-                | "hard-light"
-                | "soft-light"
-                | "difference"
-                | "exclusion"
-                | "hue"
-                | "saturation"
-                | "color"
-                | "luminosity"
-        )
-    })
+    background_layers(raw)
+        .iter()
+        .all(|value| BlendMode::parse(value.trim()).is_some_and(|mode| mode != BlendMode::Inherit))
 }
 
 /// Слои фона: значение режется по запятым ВНЕ скобок.

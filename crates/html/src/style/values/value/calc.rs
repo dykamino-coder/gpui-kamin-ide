@@ -17,6 +17,19 @@ pub(super) struct Calc<'a> {
 }
 
 impl<'a> Calc<'a> {
+    pub(super) fn new(rest: &'a str) -> Self {
+        Self { rest }
+    }
+
+    pub(super) fn arguments(&mut self, mut accept: impl FnMut(Val) -> Option<()>) -> Option<()> {
+        accept(self.expr()?)?;
+        while self.eat(&[',']).is_some() {
+            accept(self.expr()?)?;
+        }
+        self.eat(&[')'])?;
+        Some(())
+    }
+
     pub(super) fn eat(&mut self, want: &[char]) -> Option<char> {
         self.rest = self.rest.trim_start();
         let c = self.rest.chars().next()?;
@@ -85,13 +98,10 @@ impl<'a> Calc<'a> {
                 let mut sub = Calc {
                     rest: &rest[name.len()..],
                 };
-                let mut args = vec![sub.expr()?];
-                while sub.eat(&[',']).is_some() {
-                    args.push(sub.expr()?);
-                }
-                sub.eat(&[')'])?;
+                let mut compare = super::calc_arguments::Comparison::new(kind);
+                sub.arguments(|value| compare.push(value))?;
                 self.rest = sub.rest;
-                return compare(kind, &args);
+                return compare.finish();
             }
         }
         let inner = self
@@ -112,8 +122,7 @@ impl<'a> Calc<'a> {
             self.rest = sub.rest;
             return Some(val);
         }
-        // Одиночный операнд: знак, число, единица. Разбор единицы отдан
-        // `Len::parse`, чтобы правила были ровно одни и те же.
+        // Numeric atoms share the canonical unit parser without arena storage.
         let end = self
             .rest
             .char_indices()
@@ -135,49 +144,26 @@ impl<'a> Calc<'a> {
         if let Some(v) = super::calc_math::constant_or_angle(head) {
             return Some(v);
         }
-        Sum::from_len(Len::parse(head)?).map(Val::Len)
+        super::atom::Atom::parse(head).map(|atom| Val::Len(atom.sum()))
     }
-}
-
-/// `min()` (0), `max()` (1), `clamp()` (2) над разобранными доводами.
-///
-/// Сворачивается только однородное (css-values-4 §10.10, упрощение
-/// функций сравнения): все доводы — числа, либо все — длины ОДНОЙ природы.
-/// Тогда ответ — сам один из доводов, и природа доживает как у `calc()`.
-/// Смесь природ (`min(50%, 100px)`) решается только раскладкой — запись, как
-/// и смешанный `calc()`, отбрасывается. Число вместе с длиной — несовместимые
-/// типы: `min(0, 100%)` недействительно (`max-unitless-zero-invalid`).
-fn compare(kind: u8, args: &[Val]) -> Option<Val> {
-    if args.is_empty() || (kind == 2 && args.len() != 3) {
-        return None;
-    }
-    let (nature, keys) = super::calc_math::same(args)?;
-    // NaN в любом доводе делает ответ NaN (§10.9 «Argument ranges»).
-    if keys.iter().any(|k| k.is_nan()) {
-        return Some(super::calc_math::rebuild(nature, f32::NAN));
-    }
-    let want = match kind {
-        0 => keys.iter().copied().fold(f32::INFINITY, f32::min),
-        1 => keys.iter().copied().fold(f32::NEG_INFINITY, f32::max),
-        // `clamp(MIN, VAL, MAX)` = `max(MIN, min(VAL, MAX))`: при MIN > MAX
-        // побеждает MIN (§10.2).
-        _ => keys[1].min(keys[2]).max(keys[0]),
-    };
-    let at = keys.iter().position(|k| *k == want)?;
-    Some(args[at])
 }
 
 pub(super) fn eval_calc(inner: &str) -> Option<Sum> {
-    let mut calc = Calc { rest: inner };
-    let val = calc.expr()?;
-    if !calc.rest.trim().is_empty() {
-        return None;
-    }
-    match val {
-        // Верхний уровень: NaN -> 0, ±∞ -> предел (css-values-4 §10.13).
-        Val::Len(sum) => Some(sum.censored()),
-        // Голое число длиной не станет: `calc(2 * 3)` — не длина.
-        Val::Num(_) | Val::Ang(_) => None,
+    Calc::new(inner).sum()
+}
+
+impl Calc<'_> {
+    pub(super) fn sum(mut self) -> Option<Sum> {
+        let val = self.expr()?;
+        if !self.rest.trim().is_empty() {
+            return None;
+        }
+        match val {
+            // Верхний уровень: NaN -> 0, ±∞ -> предел (css-values-4 §10.13).
+            Val::Len(sum) => Some(sum.censored()),
+            // Голое число длиной не станет: `calc(2 * 3)` — не длина.
+            Val::Num(_) | Val::Ang(_) => None,
+        }
     }
 }
 

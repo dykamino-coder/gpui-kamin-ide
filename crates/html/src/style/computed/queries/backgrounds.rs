@@ -1,22 +1,10 @@
-//! Запросы фона к Computed: цвет под background-clip: text и разложение списка слоёв фона.
+//! Запросы вычисленных слоёв фона и области цвета под нижним слоем.
 
 use super::*;
 
 impl Computed {
-    /// Слои фона СВЕРХУ ВНИЗ, когда их больше одного: каждый — копия стиля с
-    /// одним слоем (картинка, размер, положение, повтор, область) и без
-    /// цвета фона — цвет лежит под всеми слоями и красится коробкой
-    /// (css-backgrounds-3 §3.1, §2.1: значения списков, которых меньше
-    /// слоёв, повторяются по кругу). Градиент слоя уходит в растровую плитку
-    /// (`bg_image` с сырой записью), чтобы все слои шли одним путём и в
-    /// своём порядке. `None` — слой один.
-    /// `background-clip` of the background COLOR: css-backgrounds-3 §3.2,
-    /// «the background color is clipped according to the background-clip
-    /// value associated with the bottom-most background image layer». The
-    /// number of layers comes from `background-image` (§2.1); a shorter
-    /// `background-clip` list repeats, a longer one is truncated
-    /// (`background-color-clip`: two `none` layers, clip list
-    /// `border-box, content-box, border-box` → `content-box`).
+    /// CSS Backgrounds 3 §3.2: цвет использует clip нижнего слоя изображения;
+    /// короткие списки повторяются по кругу, длинные обрезаются (§2.1).
     pub(crate) fn color_clip(&self) -> Option<BgClip> {
         let Some(clips) = self.bg_lists.get(BgListProp::Clip) else {
             return self.bg_clip;
@@ -24,111 +12,89 @@ impl Computed {
         let Some(images) = self.bg_lists.get(BgListProp::Image) else {
             return self.bg_clip;
         };
-        let n = background_layers(images).len();
-        let clips = background_layers(clips);
-        if n < 2 || clips.is_empty() {
+        if images.len() < 2 || clips.is_empty() {
             return self.bg_clip;
         }
         let mut probe = Computed::default();
-        probe.apply_one("background-clip", clips[(n - 1) % clips.len()]);
+        clips[(images.len() - 1) % clips.len()].apply(BgListProp::Clip, &mut probe);
         probe.bg_clip
     }
 
+    /// Слои сверху вниз. Цвет лежит под всей стопкой; градиенты слоёв идут
+    /// общим путём растровых плиток. Разбор CSS завершён каскадом.
     pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
-        let short = self.bg_lists.get(BgListProp::Shorthand).map(str::to_string);
-        let image = self.bg_lists.get(BgListProp::Image).map(str::to_string);
-        let images: Vec<String> = match (&image, &short) {
-            (Some(v), _) | (None, Some(v)) => background_layers(v)
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-            _ => return None,
-        };
+        let images = self
+            .bg_lists
+            .get(BgListProp::Image)
+            .or_else(|| self.bg_lists.get(BgListProp::Shorthand))?;
         if images.len() < 2 {
             return None;
         }
-        // Длины слоёв в единицах шрифта (`1ch 0 / 4ch 1ch`): слой разбирается
-        // заново из сырой записи уже ПОСЛЕ `resolve_em`, и `ch` в положении и
-        // размере оставался нерешённым — слой выходил нулевым
-        // (`hanging-whitespace-001..004`). Решаем по своему кеглю.
-        let font_px = match self.font_size {
-            Some(Len::Px(v)) => v,
-            _ => 16.0,
-        };
-        let family = self.font_family.clone().unwrap_or_else(|| {
-            if self.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(self.lang.as_deref()).to_string()
-            } else {
-                String::new()
-            }
-        });
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, font_px);
-        let px_of = |v: &str| -> String {
-            if has_font_units(v) {
-                font_lengths_to_px(v, font_px, 16.0, ex, ch)
-            } else {
-                v.to_string()
-            }
-        };
-        let mut out = vec![];
-        for (i, _) in images.iter().enumerate() {
+        let mut out = Vec::with_capacity(images.len());
+        for i in 0..images.len() {
             let mut c = self.clone();
             c.bg_lists.clear();
             c.background = None;
-            if let Some(v) = &short {
-                c.bg_image = None;
-                c.gradient = None;
-                c.gradient_raw = None;
-                c.bg_size = BgSize::Auto;
-                c.bg_pos = BgPos::default();
-                c.bg_position_math = [None, None];
-                c.bg_repeat = None;
-                c.bg_origin = None;
-                let layers = background_layers(v);
-                c.apply_one("background", &px_of(layers[i % layers.len()]));
-                c.background = None;
+            if let Some(layers) = self.bg_lists.get(BgListProp::Shorthand) {
+                layers[i % layers.len()].apply(BgListProp::Shorthand, &mut c);
             }
-            for (k, v) in self
+            for (prop, layers) in self
                 .bg_lists
                 .iter()
                 .filter(|(k, _)| *k != BgListProp::Shorthand)
             {
-                let layers = background_layers(v);
-                c.apply_one(k.key(), &px_of(layers[i % layers.len()]));
-            }
-            c.bg_lists.clear();
-            // Градиент слоя — плиткой: источником идёт сама функция
-            // градиента из записи слоя (в сокращении рядом с ней размер,
-            // положение и повтор).
-            if c.bg_image.is_none()
-                && c.gradient.is_some()
-                && let Some(r) = images.get(i)
-                && let Some(at) = r.find("gradient(")
-            {
-                let start = r[..at]
-                    .rfind(|ch: char| ch.is_whitespace() || ch == ',')
-                    .map_or(0, |p| p + 1);
-                let mut depth = 0i32;
-                let mut end = r.len();
-                for (j, ch) in r[at..].char_indices() {
-                    match ch {
-                        '(' => depth += 1,
-                        ')' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                end = at + j + 1;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                c.bg_image = Some(r[start..end].to_string());
+                layers[i % layers.len()].apply(prop, &mut c);
             }
             c.gradient = None;
             c.gradient_raw = None;
             out.push(c);
         }
         Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_lists_repeat_and_color_uses_the_bottom_clip() {
+        let mut c = Computed::default();
+        c.apply_one("background-image", "url(a), url(b), url(c)");
+        c.apply_one("background-clip", "content-box, padding-box");
+        c.apply_one("background-repeat", "no-repeat, repeat-x");
+        let layers = c.bg_layers().unwrap();
+        assert_eq!(layers.len(), 3);
+        assert_eq!(
+            layers[0].bg_repeat,
+            Some(BgRepeat::Axes(Tiling::None, Tiling::None))
+        );
+        assert_eq!(layers[1].bg_repeat, Some(BgRepeat::RepeatX));
+        assert_eq!(
+            layers[2].bg_repeat,
+            Some(BgRepeat::Axes(Tiling::None, Tiling::None))
+        );
+        assert_eq!(c.color_clip(), Some(BgClip::ContentBox));
+        assert!(layers.iter().all(|c| c.bg_lists.is_empty()));
+    }
+
+    #[test]
+    fn font_relative_layers_resolve_before_they_are_queried() {
+        let mut c = Computed {
+            font_size: Some(Len::Px(30.0)),
+            ..Computed::default()
+        };
+        c.apply_one("background-image", "url(a), url(b)");
+        c.apply_one("background-size", "1em 2em, 3em 4em");
+        c.resolve_em(16.0);
+        let layers = c.bg_layers().unwrap();
+        assert_eq!(
+            layers[0].bg_size,
+            BgSize::Fixed(Some(Len::Px(30.0)), Some(Len::Px(60.0)))
+        );
+        assert_eq!(
+            layers[1].bg_size,
+            BgSize::Fixed(Some(Len::Px(90.0)), Some(Len::Px(120.0)))
+        );
     }
 }

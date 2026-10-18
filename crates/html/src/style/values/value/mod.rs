@@ -15,7 +15,9 @@ mod calc_tests;
 mod units_tests;
 
 mod anchor;
+mod atom;
 mod calc;
+mod calc_arguments;
 mod calc_math;
 mod calc_pool;
 mod color;

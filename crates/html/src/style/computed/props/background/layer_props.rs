@@ -13,27 +13,8 @@ impl Computed {
     ) {
         match key {
             "background-blend-mode" => {
-                if matches!(
-                    v,
-                    "normal"
-                        | "multiply"
-                        | "screen"
-                        | "darken"
-                        | "lighten"
-                        | "overlay"
-                        | "color-dodge"
-                        | "color-burn"
-                        | "hard-light"
-                        | "soft-light"
-                        | "difference"
-                        | "exclusion"
-                        | "hue"
-                        | "saturation"
-                        | "color"
-                        | "luminosity"
-                        | "inherit"
-                ) {
-                    self.background_blend = accept_parsed!(self, Some(v.to_string()));
+                if let Some(mode) = BlendMode::parse(v) {
+                    self.background_blend = accept_parsed!(self, Some(mode));
                 } else if matches!(v, "initial" | "unset" | "revert" | "revert-layer") {
                     self.background_blend = None;
                 }

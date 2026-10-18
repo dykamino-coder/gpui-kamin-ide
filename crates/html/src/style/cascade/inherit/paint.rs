@@ -1,7 +1,7 @@
 //! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip: text, белые пробелы, курсор, таблицы, caret-color.
 
 use super::*;
-use crate::style::computed::BgListProp;
+use crate::style::computed::{BgListProp, BlendMode};
 
 mod gradient_filter;
 
@@ -11,11 +11,11 @@ pub(super) fn inherit_paint(
     c: &mut Computed,
     paint_filter: bool,
 ) {
-    if c.background_blend.as_deref() == Some("inherit") {
-        c.background_blend = parent.background_blend.clone();
+    if c.background_blend == Some(BlendMode::Inherit) {
+        c.background_blend = parent.background_blend;
         c.bg_lists.remove(BgListProp::BlendMode);
         if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
-            c.bg_lists.set(BgListProp::BlendMode, list.to_string());
+            c.bg_lists.set_layers(BgListProp::BlendMode, list.to_vec());
         }
     }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и

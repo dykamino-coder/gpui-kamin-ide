@@ -177,14 +177,20 @@ impl Sum {
 
     /// Return length-percentage terms, including an unresolved zero percentage.
     pub fn pct_px(self) -> Option<(f32, f32)> {
+        (self.has_percentage || self.pct != 0.0)
+            .then(|| self.length_percentage())
+            .flatten()
+    }
+
+    /// Project resolved length-percentage terms without allocating or storing a handle.
+    pub fn length_percentage(self) -> Option<(f32, f32)> {
         let rest = Sum {
             px: 0.0,
             pct: 0.0,
             has_percentage: false,
             ..self
         };
-        ((self.has_percentage || self.pct != 0.0) && rest == Sum::default())
-            .then_some((self.pct, self.px))
+        (rest == Sum::default()).then_some((self.pct, self.px))
     }
 
     /// Свёртка для межбуквенного и межсловного интервала: там и доля, и `em`

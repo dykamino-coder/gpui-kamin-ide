@@ -49,16 +49,14 @@ pub(super) fn rebuild(nature: u8, v: f32) -> Val {
 
 /// Общая природа доводов и их величины. Нулевая длина (`0px`, пустая сумма)
 /// совместима с любой длиной: `round(0em, 1em)` — однородная запись.
-pub(super) fn same(args: &[Val]) -> Option<(u8, Vec<f32>)> {
-    let keys: Vec<(u8, f32, bool)> = args
-        .iter()
-        .map(|a| key(a).map(|(n, v)| (n, v, matches!(a, Val::Len(_)) && n == 0 && v == 0.0)))
-        .collect::<Option<_>>()?;
-    let nature = keys.iter().find(|k| !k.2).or(keys.first()).map(|k| k.0)?;
-    let ok = keys
-        .iter()
-        .all(|k| k.0 == nature || (k.2 && nature < u8::MAX - 1));
-    ok.then(|| (nature, keys.iter().map(|k| k.1).collect()))
+fn same(args: &[Val]) -> Option<(u8, [f32; 2])> {
+    let mut common = super::calc_arguments::Homogeneous::default();
+    let mut values = [0.0; 2];
+    for (value, slot) in args.iter().zip(values.iter_mut()) {
+        *slot = common.push(*value)?;
+    }
+    let nature = common.nature()?;
+    Some((nature, values))
 }
 
 /// `round(<strategy>, A, B)` (§10.3, «Argument Ranges»).
@@ -131,10 +129,6 @@ fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
         ("exp", 1) => Val::Num(num(0)?.exp()),
         ("log", 1) => Val::Num(num(0)?.ln()),
         ("log", 2) => Val::Num(num(0)?.ln() / num(1)?.ln()),
-        ("hypot", 1..) => {
-            let (k, v) = same(args)?;
-            rebuild(k, v.iter().map(|x| x * x).sum::<f32>().sqrt())
-        }
         ("abs", 1) => {
             let (k, v) = key(&args[0])?;
             rebuild(k, v.abs())
@@ -187,27 +181,43 @@ impl Calc<'_> {
                 }
             }
         }
-        let mut args = vec![sub.expr()?];
-        while sub.eat(&[',']).is_some() {
-            args.push(sub.expr()?);
-        }
-        sub.eat(&[')'])?;
+        let result = if name == "hypot" {
+            let mut common = super::calc_arguments::Homogeneous::default();
+            let mut squares = 0.0;
+            sub.arguments(|value| {
+                let key = common.push(value)?;
+                squares += key * key;
+                Some(())
+            })?;
+            common.rebuild(squares.sqrt())
+        } else {
+            let mut args = [Val::Num(0.0); 2];
+            let mut count = 0;
+            sub.arguments(|value| {
+                *args.get_mut(count)? = value;
+                count += 1;
+                Some(())
+            })?;
+            apply(name, strategy, &args[..count])
+        };
         self.rest = sub.rest;
-        apply(name, strategy, &args)
+        result
     }
 }
 
 /// Константа или угол в одиночном операнде (§10.7.1, §7.1).
 pub(super) fn constant_or_angle(head: &str) -> Option<Val> {
-    let low = head.to_ascii_lowercase();
-    let c = match low.as_str() {
-        "e" => Some(E),
-        "pi" => Some(PI),
-        "infinity" | "+infinity" => Some(f32::INFINITY),
-        "-infinity" => Some(f32::NEG_INFINITY),
-        "nan" => Some(f32::NAN),
-        _ => None,
-    };
+    let c = [
+        ("e", E),
+        ("pi", PI),
+        ("infinity", f32::INFINITY),
+        ("+infinity", f32::INFINITY),
+        ("-infinity", f32::NEG_INFINITY),
+        ("nan", f32::NAN),
+    ]
+    .into_iter()
+    .find(|(name, _)| head.eq_ignore_ascii_case(name))
+    .map(|(_, value)| value);
     if let Some(c) = c {
         return Some(Val::Num(c));
     }
@@ -217,7 +227,11 @@ pub(super) fn constant_or_angle(head: &str) -> Option<Val> {
         ("rad", 1.0),
         ("turn", 2.0 * PI),
     ] {
-        if let Some(v) = low.strip_suffix(unit).and_then(super::css_number) {
+        if let Some(v) = head.len().checked_sub(unit.len()).and_then(|at| {
+            head.get(at..)
+                .filter(|suffix| suffix.eq_ignore_ascii_case(unit))?;
+            super::css_number(&head[..at])
+        }) {
             return Some(Val::Ang(v * k));
         }
     }
