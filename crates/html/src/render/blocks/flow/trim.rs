@@ -5,28 +5,19 @@ use crate::dom::Node;
 use crate::render::{RenderOpts, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
-use crate::text::line_trim::Trim;
+use crate::text::line_trim::{Trim, TrimRequest};
 use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
-/// Узлы-владельцы первой и последней строки, которым контейнер адресовал
-/// срез (`line_trim::request`) до раскладки детей.
-pub(super) struct Requests {
-    start: Option<u64>,
-    end: Option<u64>,
-}
-
-/// Записать запросы среза для абзацев, держащих первую/последнюю строку.
+/// Запросы среза для абзацев, держащих первую/последнюю строку: их узлы-
+/// владельцы получают запрос через контекст детей контейнера.
 pub(super) fn register(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
     ordered_context: bool,
-) -> Requests {
-    let mut req = Requests {
-        start: None,
-        end: None,
-    };
+) -> Vec<TrimRequest> {
+    let mut req = vec![];
     if ordered_context {
         return req;
     }
@@ -45,11 +36,8 @@ pub(super) fn register(
             } else {
                 0.0
             };
-            crate::text::line_trim::request(owner, start, over);
-            if start {
-                req.start = Some(owner);
-            } else {
-                req.end = Some(owner);
+            if owner != 0 {
+                req.push(TrimRequest { owner, start, over });
             }
         }
     }
@@ -101,16 +89,6 @@ fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
         _ => ascent + descent,
     };
     (line - (ascent + descent)) / 2.0 + ascent
-}
-
-/// Снять незабранные запросы (строка ушла путём без `blocks_flow`).
-pub(super) fn release(req: Requests) {
-    if let Some(o) = req.start {
-        crate::text::line_trim::cancel(o, true);
-    }
-    if let Some(o) = req.end {
-        crate::text::line_trim::cancel(o, false);
-    }
 }
 
 /// После `rest` строк больше нет: только пробелы, невидимые и вынесенные из

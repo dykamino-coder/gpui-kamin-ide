@@ -77,16 +77,14 @@ fn paragraph_routed(
             let for_build = first.clone();
             let depth = defer_depth();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
-            // среза строк (`text::line_trim`) едут с ним.
-            let (trim_owner, trim) = crate::text::line_trim::current();
+            // среза строк (`LayoutCx::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
                     let _depth = DepthScope::enter(depth);
                     let mut styled = base.clone();
                     styled.first_line = Some(for_build.clone());
-                    let mut para = crate::text::line_trim::scoped(trim_owner, trim, || {
-                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build)
-                    });
+                    let mut para =
+                        paragraph_pieces(&nodes_owned, &styled, &opts_owned, at, &for_build);
                     para = div().w(width).child(para).into_any_element();
                     para
                 });
