@@ -3,14 +3,13 @@
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
-use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::fragment_size::measure;
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::line_shape::{side_margin_wrap, slack_fill, transpose_tree};
 use crate::layout::fragment::probe::{plain_block_tree, stacked_flex_tree};
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
-use crate::layout::positioned::predicates::OOF_OWN;
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 
@@ -35,13 +34,13 @@ pub(super) fn copy_cuts_and_height(
     } else {
         None
     };
-    let (over, cuts, forced, solid) = line_cuts(
+    let (over, cuts, forced, solid, own) = line_cuts(
         h, cuts, forced, solid, opts, line_col_w, fixed, merged, copy, copy_m,
     );
     // Мера с дотягом внепоточных — поток, а не
-    // коробка (`OOF_OWN`): сосед встаёт под концом
-    // коробки, абсолют продолжается в колонках.
-    let (h, over) = match OOF_OWN.with(|m| m.borrow().get(&copy.node_id).copied()) {
+    // коробка (`Measure::own` меры копии): сосед встаёт
+    // под концом коробки, абсолют продолжается в колонках.
+    let (h, over) = match own {
         // Только когда за коробкой в стопке есть
         // сосед: последней коробке её дотяг —
         // мера колонок многоколоночника.
@@ -67,9 +66,15 @@ pub(super) fn line_cuts(
     merged: &Computed,
     copy: &Element,
     copy_m: Option<Element>,
-) -> (f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>) {
-    let (over, cuts, forced, solid) = match with_lines(merged, line_col_w, opts, || {
-        shape_full(
+) -> (
+    f32,
+    Vec<(f32, f32)>,
+    Vec<f32>,
+    Vec<(f32, f32)>,
+    Option<(f32, f32)>,
+) {
+    let measured = with_lines(merged, line_col_w, opts, || {
+        measure(
             copy_m.as_ref().unwrap_or(copy),
             4,
             ShapeCx {
@@ -77,40 +82,44 @@ pub(super) fn line_cuts(
                 ..ShapeCx::COLUMNS
             },
         )
-    })
-    .filter(|_| {
-        // Сетка-стопка с обычными блочными элементами
-        // меряется так же точно, как блок (`grid_stack`:
-        // ряд = элемент), а `overflow-x: clip` блочное
-        // переполнение не прячет (css-overflow-3:
-        // `clip` парой к `visible` не делает коробку
-        // прокручиваемой). `grid-container-
-        // fragmentation-006`: сетка 200 с содержимым
-        // 400 в четырёх колонках.
-        let plain = plain_block_tree(copy, 4)
-            || stacked_flex_tree(copy, 4)
-            || (grid_stack(copy)
-                && copy.children.iter().all(|n| match n {
-                    Node::Element(k) => k.inline || plain_block_tree(k, 3),
-                    _ => true,
-                }));
-        let ov = copy_m.as_ref().unwrap_or(copy);
-        let block_visible = matches!(
-            ov.style.overflow_y,
-            None | Some(crate::style::computed::Overflow::Visible)
-        ) && matches!(
-            ov.style.overflow_x,
-            None | Some(crate::style::computed::Overflow::Visible)
-                | Some(crate::style::computed::Overflow::Clip)
-        );
-        fixed.is_some() && plain && block_visible
-    })
-    .filter(|s| s.0 > h + 0.01)
+    });
+    // Собственный размер копии при мере с дотягом внепоточных (`Measure::own`).
+    let own = measured.as_ref().and_then(|m| m.own);
+    let (over, cuts, forced, solid) = match measured
+        .map(|m| m.shape)
+        .filter(|_| {
+            // Сетка-стопка с обычными блочными элементами
+            // меряется так же точно, как блок (`grid_stack`:
+            // ряд = элемент), а `overflow-x: clip` блочное
+            // переполнение не прячет (css-overflow-3:
+            // `clip` парой к `visible` не делает коробку
+            // прокручиваемой). `grid-container-
+            // fragmentation-006`: сетка 200 с содержимым
+            // 400 в четырёх колонках.
+            let plain = plain_block_tree(copy, 4)
+                || stacked_flex_tree(copy, 4)
+                || (grid_stack(copy)
+                    && copy.children.iter().all(|n| match n {
+                        Node::Element(k) => k.inline || plain_block_tree(k, 3),
+                        _ => true,
+                    }));
+            let ov = copy_m.as_ref().unwrap_or(copy);
+            let block_visible = matches!(
+                ov.style.overflow_y,
+                None | Some(crate::style::computed::Overflow::Visible)
+            ) && matches!(
+                ov.style.overflow_x,
+                None | Some(crate::style::computed::Overflow::Visible)
+                    | Some(crate::style::computed::Overflow::Clip)
+            );
+            fixed.is_some() && plain && block_visible
+        })
+        .filter(|s| s.0 > h + 0.01)
     {
         Some(s) => (s.0, s.3, s.4, s.5),
         None => (h, cuts, forced, solid),
     };
-    (over, cuts, forced, solid)
+    (over, cuts, forced, solid, own)
 }
 
 #[allow(clippy::too_many_arguments)]

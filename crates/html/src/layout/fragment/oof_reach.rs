@@ -4,9 +4,8 @@
 //! through intervening flow boxes. Neither advances the in-flow cursor.
 
 use crate::dom::Element;
-use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::page::paged::visible_overflow;
-use crate::layout::positioned::predicates::OOF_OWN;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Position;
 
@@ -28,6 +27,37 @@ impl Extent {
 
     fn end(self) -> f32 {
         self.anchored.unwrap_or(0.0).max(self.flow.unwrap_or(0.0))
+    }
+}
+
+/// Итог меры коробки для фрагментации (`fragment_size::measure`): форма,
+/// досягаемость внепоточных, которую коробка отдаёт содержащему блоку выше,
+/// и её собственный размер, когда меру дотянули внепоточные потомки. Blink
+/// несёт то же в результате раскладки (`LayoutResult`:
+/// `OutOfFlowPositionedDescendants`, собственный block-size фрагмента), а не
+/// в общем состоянии.
+pub(crate) struct Measure {
+    pub(crate) shape: Shape,
+    pub(crate) up: Reach,
+    /// `(свой размер, мера с дотягом)`; `None` — мера и есть свой размер.
+    pub(crate) own: Option<(f32, f32)>,
+}
+
+impl Measure {
+    /// Мера без внепоточной досягаемости.
+    pub(crate) fn plain(shape: Shape) -> Self {
+        Measure {
+            shape,
+            up: Reach::default(),
+            own: None,
+        }
+    }
+
+    /// Собственный размер коробки, чья мера — `full` (дотяг относится только
+    /// к той же мере).
+    pub(crate) fn own_size(own: Option<(f32, f32)>, full: f32) -> f32 {
+        own.filter(|&(_, measured)| (measured - full).abs() < 0.01)
+            .map_or(full, |(own, _)| own)
     }
 }
 
@@ -79,17 +109,20 @@ impl Reach {
         reach
     }
 
-    /// Поточный ребёнок `k` мерой `full`: его собственный размер и
-    /// досягаемость, которую его мера отдала наверх (`up`).
-    pub(crate) fn child(k: &Element, full: f32, cx: ShapeCx, up: Reach) -> (f32, Self) {
+    /// Поточный ребёнок `k` мерой `full`: его собственный размер (`own` из
+    /// его меры) и досягаемость, которую его мера отдала наверх (`up`).
+    pub(crate) fn child(
+        k: &Element,
+        full: f32,
+        cx: ShapeCx,
+        up: Reach,
+        own: Option<(f32, f32)>,
+    ) -> (f32, Self) {
         if cx.paged || cx.legacy_oof || !visible_overflow(&k.style) {
             return (full, Self::default());
         }
         let mut reach = up;
-        let own = OOF_OWN
-            .with(|m| m.borrow().get(&k.node_id).copied())
-            .filter(|&(_, measured)| (measured - full).abs() < 0.01)
-            .map_or(full, |(own, _)| own);
+        let own = Measure::own_size(own, full);
         if full > own + 0.01 {
             reach.overflow = Some(full);
         }

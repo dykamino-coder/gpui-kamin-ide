@@ -4,9 +4,9 @@
 use crate::dom::{Element, Node};
 use crate::layout::float::{float_only_box, has_float};
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
-use crate::layout::fragment::oof_reach::Reach;
+use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::table_bands::{table_box, table_shape};
-use crate::layout::fragment::{LineScope, Shape, ShapeCx};
+use crate::layout::fragment::{LineScope, ShapeCx};
 use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -34,10 +34,9 @@ use height::shaped_height;
 /// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
-/// Мера содержимого коробки и досягаемость внепоточных, которую коробка
-/// отдаёт содержащему блоку выше (`oof_reach::Reach`).
-pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<(Shape, Reach)> {
-    let none = |shape: Shape| (shape, Reach::default());
+/// Мера содержимого коробки с её внепоточной досягаемостью (`Measure`).
+pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Measure> {
+    let none = Measure::plain;
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {
@@ -127,10 +126,10 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<(Sha
     };
     let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
     let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
-    if let Some(shape) =
+    if let Some(measure) =
         crate::layout::fragment::flex_lines::measure_rows(c, depth, cx, unclamp, top, bot, mt, mb)
     {
-        return Some(none(shape));
+        return Some(measure);
     }
     // Строчное содержимое — по строкам, если ширина колонки известна.
     if !cx.paged

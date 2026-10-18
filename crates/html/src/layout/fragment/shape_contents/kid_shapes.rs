@@ -50,7 +50,7 @@ pub(super) fn kid_shapes(
                         .filter(|l| !matches!(l, Len::Auto))
                         .and_then(|_| px_or(&k.style.inset.top, false));
                     let (full, up) = measure(k, depth - 1, cx)
-                        .map_or((0.0, Reach::default()), |(s, up)| (s.0, up));
+                        .map_or((0.0, Reach::default()), |m| (m.shape.0, m.up));
                     let reach = Reach::positioned(k, full, top, cx, up);
                     Some((
                         0.0,
@@ -78,7 +78,8 @@ pub(super) fn kid_shapes(
                     // гибкость базу не меняет (§9.7).
                     let based = if flex_col { basis_sized(c, k) } else { None };
                     let k = based.as_ref().unwrap_or(k);
-                    measure(k, depth - 1, cx).map(|((h, mt, mb, cuts, forced, solid), up)| {
+                    measure(k, depth - 1, cx).map(|m| {
+                        let (h, mt, mb, cuts, forced, solid) = m.shape;
                         // Монолит-потомок — весь диапазон
                         // его высоты; иначе — его собственные
                         // монолиты.
@@ -101,7 +102,7 @@ pub(super) fn kid_shapes(
                         } else {
                             solid
                         };
-                        let (h, reach) = Reach::child(k, h, cx, up);
+                        let (h, reach) = Reach::child(k, h, cx, m.up, m.own);
                         (
                             h,
                             mt,
