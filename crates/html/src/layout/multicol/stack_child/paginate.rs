@@ -36,7 +36,6 @@ pub(super) fn paginate_of(
             let mut inner = crate::style::cascade::inherit::inherit(&merged, &c2.style);
             inner.fragment_clip_ancestor = false;
             watch::building(&ids, || {
-                let copy_ix = std::cell::Cell::new(0usize);
                 let b = |first: bool, part: usize| {
                     side_margin_wrap(
                         build_copy(
@@ -53,7 +52,6 @@ pub(super) fn paginate_of(
                             None,
                             0.0,
                             &inner,
-                            &copy_ix,
                             false,
                             first,
                             part,

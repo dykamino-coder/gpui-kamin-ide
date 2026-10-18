@@ -17,7 +17,7 @@ pub(crate) fn child_probes(
     is_clamp: bool,
     span: Option<crate::text::clamp::ClampSpan>,
 ) {
-    if let Some(key) = crate::paint::gap_rules::gap_context()
+    if let Some(items) = crate::paint::gap_rules::gap_context()
         && !matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)
@@ -37,7 +37,7 @@ pub(crate) fn child_probes(
         };
         let b = e.style.borders();
         kids.push(crate::paint::gap_rules::gap_item_probe(
-            crate::paint::gap_rules::gap_items_for(key),
+            items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
             [bw(merged.margin.right), bw(merged.margin.bottom)],
         ));

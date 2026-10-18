@@ -17,7 +17,7 @@ pub(super) fn frag_box_div(
     src: &Element,
     src_inner: &Computed,
     frag_gap_rules: Option<crate::paint::gap_rules::GapRuleSpec>,
-    frag_gap_key: Option<u64>,
+    frag_gap_items: Option<crate::paint::gap_rules::GapItems>,
     kids: Vec<Node>,
     body: &mut Vec<gpui::AnyElement>,
 ) -> gpui::Div {
@@ -112,7 +112,7 @@ pub(super) fn frag_box_div(
     {
         d = d.min_h(px(h));
     }
-    if let (Some(key), Some(spec)) = (frag_gap_key, frag_gap_rules) {
+    if let (Some(items), Some(spec)) = (frag_gap_items, frag_gap_rules) {
         // Копия кладётся `layout_as_root(Definite(col_w), …)`
         // (`flow.rs` `ColumnStack::prepaint`), а taffy у
         // flex/grid-КОРНЯ с `width: auto` берёт размер
@@ -130,11 +130,7 @@ pub(super) fn frag_box_div(
         // (css-gaps-1: «just above the border»).
         body.insert(
             0,
-            crate::paint::gap_rules::painter::GapRulePainter::new(
-                crate::paint::gap_rules::gap_items_for(key),
-                spec,
-            )
-            .hooked(),
+            crate::paint::gap_rules::painter::GapRulePainter::new(items, spec).hooked(),
         );
     }
     d

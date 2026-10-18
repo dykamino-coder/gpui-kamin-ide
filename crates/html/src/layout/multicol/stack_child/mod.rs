@@ -181,7 +181,6 @@ pub(super) fn multicol_stack_child(
     // раскладки копии, маска колонки (`flow.rs`,
     // `with_content_mask`) режет их вместе с
     // содержимым — вид `slice` css-break-3 §4.
-    let copy_ix = std::cell::Cell::new(0usize);
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let build = |first: bool, part: usize, band: bool| {
         build_copy(
@@ -198,7 +197,6 @@ pub(super) fn multicol_stack_child(
             nest_row,
             nest_phase_k,
             &inner,
-            &copy_ix,
             whole,
             first,
             part,
