@@ -95,7 +95,7 @@ impl Document {
         crate::text::fonts::load_faces_sheets(&sheets, effective_base.as_ref());
         crate::style::values::color_space::load_profiles_sheets(&sheets, effective_base.as_ref());
         crate::text::paragraph::forget_measures();
-        crate::layout::table::paint::forget_row_rects();
+        crate::text::clamp::forget_clamp_buffers();
         crate::text::vertical::forget_vt_measures();
         let (mut nodes, root) = viewport::prepare(Self::parse_nodes(html, theme_css, xml));
         if let Some(base) = &effective_base {

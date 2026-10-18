@@ -1,8 +1,7 @@
 //! Отрисовка полосы ряда/группы, обрезанной ячейками: тени, контур и слой фона (gpui Element).
 
-use super::{BAND_WAIT_FRAMES, CellsClipped};
+use super::CellsClipped;
 use crate::hooks::Hooks;
-use crate::layout::table::paint::BAND_RETRIES;
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 impl Hooks for CellsClipped {
@@ -34,29 +33,12 @@ impl Hooks for CellsClipped {
         _cx: &mut App,
     ) {
         // Пробы ячеек пишут в PREPAINT, а вся подготовка кадра идёт до
-        // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
-        // Пустота возможна только на самом первом кадре документа.
+        // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра. Пусто —
+        // у полосы нет ячеек (`<col>` без рядов, `<col>` за краем сетки).
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
         if rects.is_empty() {
-            // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
-            // окно не перерисуется, и фон не появится никогда. Но ждать
-            // бесконечно нельзя: у полосы может не быть ячеек вовсе.
-            let key = std::rc::Rc::as_ptr(&self.rects) as usize;
-            let waited = BAND_RETRIES.with(|m| {
-                let mut m = m.borrow_mut();
-                let n = m.entry(key).or_insert(0);
-                *n = n.saturating_add(1);
-                *n
-            });
-            if waited <= BAND_WAIT_FRAMES {
-                window.request_animation_frame();
-            }
             return;
         }
-        BAND_RETRIES.with(|m| {
-            m.borrow_mut()
-                .remove(&(std::rc::Rc::as_ptr(&self.rects) as usize));
-        });
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые
         // лежат и на чужих дорожках — они только маски.

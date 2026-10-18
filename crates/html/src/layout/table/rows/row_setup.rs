@@ -6,7 +6,7 @@ use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
-use crate::render::{RenderOpts, pseudo_line_layers};
+use crate::render::pseudo_line_layers;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -58,7 +58,7 @@ pub(super) fn cell_spans(
 }
 
 pub(super) fn row_band_probes(
-    opts: &RenderOpts,
+    group_bands: &mut std::collections::HashMap<u64, crate::layout::table::paint::RowRects>,
     under: &mut Vec<AnyElement>,
     group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
     row: &Element,
@@ -75,13 +75,13 @@ pub(super) fn row_band_probes(
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
-    // ячеек, снятыми пробами прошлого кадра.
+    // ячеек, снятыми пробами этого кадра (`RowRects`).
     let row_rects: Option<crate::layout::table::paint::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.3)
             && (row.style.bg_image.is_some()
                 || row.style.gradient_raw.is_some()
                 || !row.style.shadows.is_empty()))
-        .then(|| crate::layout::table::paint::row_rects_for(row.node_id ^ opts.doc_salt));
+        .then(crate::layout::table::paint::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
@@ -108,7 +108,7 @@ pub(super) fn row_band_probes(
                 || g.style.gradient_raw.is_some()
                 || !g.style.shadows.is_empty()
                 || g.style.outline.is_some()))
-        .then(|| crate::layout::table::paint::row_rects_for(g.node_id ^ opts.doc_salt))
+        .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.3)
         && group_of
