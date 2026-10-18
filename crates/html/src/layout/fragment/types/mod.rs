@@ -4,12 +4,9 @@
 use crate::layout::float::shapes::FloatShape;
 use gpui::AnyElement;
 mod scope;
+pub use scope::FragCx;
 pub use scope::StackAxis;
-pub use scope::StackScope;
 pub use scope::axis_box;
-pub use scope::in_stack;
-pub use scope::set_outer_row;
-pub use scope::take_outer_row;
 mod rows;
 pub(crate) use rows::Frag;
 pub use rows::Intrinsic;

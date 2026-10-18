@@ -93,8 +93,7 @@ pub(crate) fn multicol_box(
         None => e,
     };
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
-    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some())
-        && !crate::layout::fragment::types::in_stack();
+    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
     // Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
     // спаннером, и §column-fill («content in a multi-column line that
     // does not immediately precede a spanner») велит заполнять его

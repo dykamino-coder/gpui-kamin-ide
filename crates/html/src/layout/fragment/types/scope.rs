@@ -1,54 +1,57 @@
-//! Состояние обхода стопки (глубина вложенности, внешний ряд) и ось стопки.
+//! Контекст фрагментации сборки (`FragCx`: копия ребёнка стопки, ряд внешней колонки) и ось стопки.
 
 use gpui::{Bounds, Pixels, point, px, size};
 
-thread_local! {
-    /// Глубина построения копий детей стопки (`render.rs`, `StackChild`).
-    static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+use crate::render::RenderOpts;
+
+/// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
+/// приложение, а код, строящий фрагменты (Blink несёт то же в
+/// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FragCx {
+    /// Строится копия ребёнка стопки колонок (`multicol_stack_child`).
+    /// Многоколоночник со спаннером внутри другой стопки остаётся на
+    /// сегментном пути: единой стопке нужен перенос ряда/спаннера во ВНЕШНЮЮ
+    /// колонку (Blink `LayoutSpanner`: «The new row doesn't fit in the outer
+    /// fragmentainer»), которого нет (`column-height-029`).
+    pub(crate) in_stack_copy: bool,
+    /// Высота ряда и фаза вложенного многоколоночника, заданные ВНЕШНЕЙ
+    /// колонкой: копия строится рядами этой высоты (css-break-4 §2.1: «when a
+    /// multi-column container breaks across pages, it generates a new row of
+    /// columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
+    /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
+    /// Адресована одному элементу — тому, чей `element()` вызван с ней; его
+    /// дети её не видят (`RenderOpts::take_outer_row`).
+    pub(crate) outer_row: Option<(f32, f32)>,
 }
 
-/// Сторож «строится копия ребёнка стопки». Многоколоночник со спаннером
-/// внутри другой стопки остаётся на сегментном пути: единой стопке нужен
-/// перенос ряда/спаннера во ВНЕШНЮЮ колонку (Blink `LayoutSpanner`: «The new
-/// row doesn't fit in the outer fragmentainer»), которого нет
-/// (`column-height-029`, `target/scout-columnwrap-2026-09b.md` §2.3).
-pub struct StackScope;
-
-impl StackScope {
-    pub fn enter() -> Self {
-        STACK_DEPTH.with(|d| d.set(d.get() + 1));
-        StackScope
+impl RenderOpts {
+    /// Настройки для сборки копий детей стопки колонок.
+    pub(crate) fn in_stack_copy(&self) -> RenderOpts {
+        let mut opts = self.clone();
+        opts.frag.in_stack_copy = true;
+        opts
     }
-}
 
-impl Drop for StackScope {
-    fn drop(&mut self) {
-        STACK_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    /// Настройки для сборки вложенного многоколоночника рядами внешней колонки.
+    pub(crate) fn with_outer_row(&self, row: (f32, f32)) -> RenderOpts {
+        let mut opts = self.clone();
+        opts.frag.outer_row = Some(row);
+        opts
     }
-}
 
-thread_local! {
-    /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
-    /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
-    static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
-}
-
-/// Передать следующему `element()` высоту внешнего фрагментаинера: копия
-/// вложенного многоколоночника строится рядами этой высоты (css-break-4 §2.1:
-/// «when a multi-column container breaks across pages, it generates a new row
-/// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
-/// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
-pub fn set_outer_row(h: Option<(f32, f32)>) {
-    OUTER_ROW.with(|r| r.set(h));
-}
-
-/// Забрать переданную высоту (одноразово).
-pub fn take_outer_row() -> Option<(f32, f32)> {
-    OUTER_ROW.with(|r| r.take())
-}
-
-pub fn in_stack() -> bool {
-    STACK_DEPTH.with(|d| d.get() > 0)
+    /// Забрать высоту ряда, адресованную этому элементу: она сама и
+    /// настройки без неё для всего, что строится внутри.
+    pub(crate) fn take_outer_row(&self) -> (Option<(f32, f32)>, Option<RenderOpts>) {
+        match self.frag.outer_row {
+            None => (None, None),
+            Some(row) => {
+                let mut inner = self.clone();
+                inner.frag.outer_row = None;
+                (Some(row), Some(inner))
+            }
+        }
+    }
 }
 
 /// Ось стопки колонок. css-multicol-1 §2 (`Overview.bs:375-379`): «The
