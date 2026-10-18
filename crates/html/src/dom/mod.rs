@@ -6,6 +6,7 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+mod anonymous;
 mod direction;
 pub(crate) mod input;
 pub(crate) mod mathml;

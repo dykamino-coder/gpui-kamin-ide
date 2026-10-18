@@ -46,8 +46,12 @@ pub(super) fn band_host_m_tail(
                 None => (None, pre),
             };
             let probe = |children: Vec<Node>, base: bool| {
-                Node::Element(Element {
-                    marks: crate::dom::Marks {
+                Node::Element(Element::anonymous(
+                    "div",
+                    Computed::default(),
+                    children,
+                    false,
+                    crate::dom::Marks {
                         anon: true,
                         lead: Some(crate::dom::LeadProbe {
                             base,
@@ -56,18 +60,7 @@ pub(super) fn band_host_m_tail(
                         }),
                         ..Default::default()
                     },
-                    list_item: None,
-                    node_id: 0,
-                    anim: None,
-                    tag: "div".into(),
-                    style: Computed::default(),
-                    hover: None,
-                    first_letter: None,
-                    first_line: None,
-                    children,
-                    attrs: Vec::new(),
-                    inline: false,
-                })
+                ))
             };
             let mut v = vec![probe(line, false)];
             if let Some(base) = base {
@@ -111,11 +104,15 @@ pub(super) fn band_host_m_tail(
     if flows && host_floats_shaped(&nodes[i..j]) {
         return None;
     }
-    let mut host = Element {
-        // Высота и ширина содержащего блока (`BAND_CBH`/`BAND_CBW`):
-        // `shape-flow` своих нет. Путь `Measured`: `shape_flow` отдаёт хост
-        // `band_flow`.
-        marks: crate::dom::Marks {
+    // Высота и ширина содержащего блока (`BAND_CBH`/`BAND_CBW`):
+    // `shape-flow` своих нет. Путь `Measured`: `shape_flow` отдаёт хост
+    // `band_flow`.
+    let mut host = Element::anonymous(
+        "shape-flow",
+        Computed::default(),
+        Vec::new(),
+        false,
+        crate::dom::Marks {
             shape_flow: Some(crate::dom::ShapeFlow {
                 count: floaters.len(),
                 em: Some(em),
@@ -126,18 +123,7 @@ pub(super) fn band_host_m_tail(
             }),
             ..Default::default()
         },
-        list_item: None,
-        node_id: 0,
-        anim: None,
-        tag: "shape-flow".into(),
-        style: Computed::default(),
-        hover: None,
-        first_letter: None,
-        first_line: None,
-        children: Vec::new(),
-        attrs: Vec::new(),
-        inline: false,
-    };
+    );
     host.children = floaters.into_iter().map(Node::Element).collect();
     host.children.extend(rest);
     host.children.extend(probe_nodes);

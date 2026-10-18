@@ -56,8 +56,12 @@ pub(crate) fn band_host_nested(
     {
         return None;
     }
-    let mut host = Element {
-        marks: crate::dom::Marks {
+    let mut host = Element::anonymous(
+        "shape-flow",
+        Computed::default(),
+        Vec::new(),
+        false,
+        crate::dom::Marks {
             shape_flow: Some(crate::dom::ShapeFlow {
                 em: Some(em),
                 bands: Some(crate::dom::BandPath::Measured),
@@ -65,18 +69,7 @@ pub(crate) fn band_host_nested(
             }),
             ..Default::default()
         },
-        list_item: None,
-        node_id: 0,
-        anim: None,
-        tag: "shape-flow".into(),
-        style: Computed::default(),
-        hover: None,
-        first_letter: None,
-        first_line: None,
-        children: Vec::new(),
-        attrs: Vec::new(),
-        inline: false,
-    };
+    );
     host.children = vec![Node::Element(c.clone())];
     host.children.extend(rest);
     Some((host, j))
