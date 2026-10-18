@@ -125,13 +125,14 @@ pub(super) fn absolute_atom(
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
-    let inline_cb = crate::text::inline::take_atom_cb()
+    let offer = opts.cx.inline_cb.as_ref();
+    let inline_cb = offer.is_some_and(|o| o.take())
         && e.style.position == Some(crate::style::computed::Position::Absolute)
         && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
         && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
         && e.style.z_index.unwrap_or(0) >= 0;
-    if inline_cb {
-        crate::text::inline::note_abs_cb();
+    if inline_cb && let Some(o) = offer {
+        o.note_taken();
     }
     // ПРОБОВАЛИ И ОТКАТИЛИ: отдавать элемент без пустышки, чтобы `inset: 0`
     // считался от позиционированного ПРЕДКА. В раскладке под нами

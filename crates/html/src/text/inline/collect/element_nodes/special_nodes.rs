@@ -9,7 +9,7 @@ use crate::text::inline::*;
 pub(super) fn special_node(
     e: &Element,
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
     out: &mut Vec<Piece>,

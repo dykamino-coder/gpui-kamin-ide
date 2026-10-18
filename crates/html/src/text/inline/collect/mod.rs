@@ -22,12 +22,17 @@ use crate::text::inline::*;
 pub(crate) struct CollectCx {
     pub(super) case: text_case::Context,
     pub(super) layout: crate::layout::cx::LayoutCx,
+    /// Computed styles of the open inline ancestors (`atom_parent`): an atom
+    /// inherits from the nearest one.
+    pub(super) inline_parents: Vec<crate::style::computed::Computed>,
+    /// How many of them establish a containing block (positioned inlines).
+    pub(super) inline_cb_depth: usize,
 }
 
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {

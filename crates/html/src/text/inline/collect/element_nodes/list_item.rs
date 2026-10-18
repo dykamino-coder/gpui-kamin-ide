@@ -7,7 +7,7 @@ use crate::text::inline::collect::CollectCx;
 pub(super) fn children(
     e: &Element,
     merged: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
 ) -> Vec<Piece> {

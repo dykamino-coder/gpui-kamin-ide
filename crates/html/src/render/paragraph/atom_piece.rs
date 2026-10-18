@@ -28,25 +28,23 @@ pub(crate) fn atom_piece(
     inherited: &Computed,
     opts: &RenderOpts,
     flow_text: bool,
+    atom_cx: &inline::atom_parent::AtomCx,
 ) -> Option<inline::Piece> {
     // Атом внутри строчного предка наследует от НЕГО (`atom_parent`).
     // Пока только атомы В ПОТОКЕ: абсолют внутри `rtl`-спана, унаследовав
     // его направление, ставит статическую позицию от правого края, а наш
     // расчёт этого не умеет (`static-position/htb-ltr-rtl.tentative`
     // краснел) — внепоточным прежний путь.
-    let parent_style = inline::atom_parent::current().filter(|_| !out_of_flow(&e.style));
-    let inherited = parent_style.as_ref().unwrap_or(inherited);
-    let saved = inline::atom_parent::suspend();
-    let piece = {
+    let parent_style = atom_cx.parent.as_ref().filter(|_| !out_of_flow(&e.style));
+    let inherited = parent_style.unwrap_or(inherited);
+    {
         let _nest = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true) {
             crate::text::clamp::ParaNest::reset()
         } else {
             crate::text::clamp::ParaNest::enter()
         };
-        atom_piece_in(e, inherited, opts, flow_text)
-    };
-    inline::atom_parent::resume(saved);
-    piece
+        atom_piece_in(e, inherited, opts, flow_text, atom_cx.in_inline_cb)
+    }
 }
 
 fn atom_piece_in(
@@ -54,8 +52,8 @@ fn atom_piece_in(
     inherited: &Computed,
     opts: &RenderOpts,
     flow_text: bool,
+    in_inline_cb: bool,
 ) -> Option<inline::Piece> {
-    let in_inline_cb = crate::text::inline::take_atom_cb();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized =
@@ -232,19 +230,24 @@ fn atom_piece_in(
     };
     // Внепоточный атом может стать распоркой статической позиции в строке:
     // строчную коробку ей передаёт абзац (`LineBoxSlot`).
+    // Позиционированный строчный предок предлагается атому содержащим
+    // блоком (`InlineCbOffer`); предложение — только этому атому.
     let line_box = out_of_flow(&e.style)
         .then(crate::layout::positioned::containing_block::LineBoxSlot::default);
-    let line_opts;
-    let opts = match &line_box {
-        Some(slot) => {
-            line_opts = opts.inner(|cx| cx.line_box = Some(slot.clone()));
-            &*line_opts
-        }
-        None => opts,
+    let offer = in_inline_cb.then(crate::text::inline::InlineCbOffer::offered);
+    let atom_opts;
+    let opts = if line_box.is_some() || offer.is_some() || opts.cx.inline_cb.is_some() {
+        atom_opts = opts.inner(|cx| {
+            if let Some(slot) = &line_box {
+                cx.line_box = Some(slot.clone());
+            }
+            cx.inline_cb = offer.clone();
+        });
+        &*atom_opts
+    } else {
+        opts
     };
-    crate::text::inline::set_atom_cb(in_inline_cb);
     let built = atom_element(e, inherited, opts);
-    crate::text::inline::set_atom_cb(false);
-    let abs_cb = crate::text::inline::take_abs_cb();
+    let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
     built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box))
 }

@@ -43,6 +43,9 @@ pub struct LayoutCx {
     /// built inside (`ShiftLink`): its scroll-extent probes subtract their
     /// paint-time shifts.
     pub(crate) sticky: Option<crate::interactive::scroll_extent::StickyShift>,
+    /// Offer of a positioned inline ancestor as the containing block of the
+    /// inline atom being built (`InlineCbOffer`).
+    pub(crate) inline_cb: Option<std::rc::Rc<crate::text::inline::InlineCbOffer>>,
 }
 
 impl RenderOpts {

@@ -28,13 +28,10 @@ pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
 pub use crate::text::inline::collapse::collapse_across_pieces;
+pub(crate) use crate::text::inline::containing_block::InlineCbOffer;
 pub(crate) use crate::text::inline::containing_block::backdrop_root;
 pub(crate) use crate::text::inline::containing_block::establishes_cb;
 use crate::text::inline::containing_block::mark_inline_cb;
-pub(crate) use crate::text::inline::containing_block::note_abs_cb;
-pub(crate) use crate::text::inline::containing_block::set_atom_cb;
-pub(crate) use crate::text::inline::containing_block::take_abs_cb;
-pub(crate) use crate::text::inline::containing_block::take_atom_cb;
 pub use crate::text::inline::first_line::style_first_line;
 
 mod emphasis;
@@ -167,7 +164,7 @@ pub struct InlineCb {
 pub fn collect(
     children: &[Node],
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {
     collect_with_empty_metrics(
@@ -178,10 +175,8 @@ pub fn collect(
         &mut collect::CollectCx {
             case: text_case::Context::default(),
             layout: cx.clone(),
+            inline_parents: Vec::new(),
+            inline_cb_depth: 0,
         },
     )
 }
-
-use crate::text::inline::containing_block::INLINE_CB_DEPTH;
-
-use crate::text::inline::containing_block::ATOM_CB;

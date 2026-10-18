@@ -22,7 +22,7 @@ use crate::text::inline::*;
 pub(super) fn collect_element(
     e: &Element,
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
     cx: &mut CollectCx,
     out: &mut Vec<Piece>,
@@ -32,13 +32,16 @@ pub(super) fn collect_element(
     if special_node(e, inherited, atom, has_text, cx, out) {
         return;
     }
-    // Атому сообщают, лежит ли он в позиционированном строчном
-    // (`take_atom_cb`); его собственное содержимое — уже вне его.
-    let depth = INLINE_CB_DEPTH.with(|d| d.replace(0));
-    ATOM_CB.with(|c| c.set(depth > 0));
-    let built = atom(e);
-    ATOM_CB.with(|c| c.set(false));
-    INLINE_CB_DEPTH.with(|d| d.set(depth));
+    // Атому сообщают стиль ближайшего строчного предка и лежит ли он в
+    // позиционированном строчном (`AtomCx`); его собственное содержимое —
+    // уже вне их: вложенный сбор кусков начинает свой контекст.
+    let built = atom(
+        e,
+        &crate::text::inline::atom_parent::AtomCx {
+            parent: cx.inline_parents.last().cloned(),
+            in_inline_cb: cx.inline_cb_depth > 0,
+        },
+    );
     if let Some(piece) = built {
         // CSS Ruby box fixup suppresses the break that an empty block would
         // introduce. Its inlinified zero-size box must not create a soft
@@ -194,13 +197,13 @@ pub(super) fn collect_element(
     // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
     let cb_here = establishes_cb(&e.style);
     if cb_here {
-        INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
+        cx.inline_cb_depth += 1;
     }
-    crate::text::inline::atom_parent::open(&e.style, inherited);
+    crate::text::inline::atom_parent::open(&mut cx.inline_parents, &e.style, inherited);
     let kids = list_item::children(e, &merged, atom, has_text, cx);
-    crate::text::inline::atom_parent::close();
+    cx.inline_parents.pop();
     let kids = if cb_here {
-        INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        cx.inline_cb_depth = cx.inline_cb_depth.saturating_sub(1);
         mark_inline_cb(kids, e)
     } else {
         kids
