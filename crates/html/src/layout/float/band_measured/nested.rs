@@ -1,6 +1,6 @@
 //! Вложенный хост полос и его допуски: ruby, формы флоатов.
 
-use super::{band_piece_m, has_flow_float};
+use super::{band_piece_m, has_flow_float, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::zero_len;
@@ -9,7 +9,6 @@ use crate::layout::float::band_flow_host::{band_flow_block, band_flow_rest};
 use crate::layout::float::band_host::band_em;
 use crate::layout::float::band_nest::{band_nest_block, band_seq};
 use crate::render::is_blank;
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
 
 /// Измеряемый хост, начатый блоком потока с флоатами внутри (шаг F7): сам
@@ -58,30 +57,16 @@ pub(crate) fn band_host_nested(
     {
         return None;
     }
-    let mut host = Element {
-        marks: crate::dom::Marks {
-            shape_flow: Some(crate::dom::ShapeFlow {
-                em: Some(em),
-                wm,
-                bands: Some(crate::dom::BandPath::Measured),
-                ..Default::default()
-            }),
+    let mut children = vec![Node::Element(c.clone())];
+    children.extend(rest);
+    let host = measured_host(
+        crate::dom::ShapeFlow {
+            em: Some(em),
+            wm,
             ..Default::default()
         },
-        list_item: None,
-        node_id: 0,
-        anim: None,
-        tag: "shape-flow".into(),
-        style: Computed::default(),
-        hover: None,
-        first_letter: None,
-        first_line: None,
-        children: Vec::new(),
-        attrs: Vec::new(),
-        inline: false,
-    };
-    host.children = vec![Node::Element(c.clone())];
-    host.children.extend(rest);
+        children,
+    );
     Some((host, j))
 }
 

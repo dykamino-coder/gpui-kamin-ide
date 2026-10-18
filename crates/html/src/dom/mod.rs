@@ -118,6 +118,25 @@ pub struct Element {
 }
 
 impl Element {
+    /// A box layout inserts into the tree (anonymous block, float host, row):
+    /// no markup node, attributes or pseudo-element layers of its own.
+    pub(crate) fn synthetic(tag: &str, style: Computed, marks: Marks, children: Vec<Node>) -> Self {
+        Element {
+            list_item: None,
+            node_id: 0,
+            anim: None,
+            tag: tag.into(),
+            style,
+            hover: None,
+            first_letter: None,
+            first_line: None,
+            children,
+            attrs: Vec::new(),
+            inline: false,
+            marks,
+        }
+    }
+
     pub fn attr(&self, name: &str) -> Option<&str> {
         self.attrs
             .iter()

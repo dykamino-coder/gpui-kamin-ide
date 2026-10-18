@@ -127,25 +127,17 @@ pub(crate) fn band_flow_rest_lift(
             if run.iter().any(has_ruby) {
                 bad = true;
             }
-            out.push(Node::Element(Element {
-                marks: crate::dom::Marks {
+            out.push(Node::Element(Element::synthetic(
+                "div",
+                Computed::default(),
+                crate::dom::Marks {
                     anon: true,
                     atoms,
                     cont,
                     ..Default::default()
                 },
-                list_item: None,
-                node_id: 0,
-                anim: None,
-                tag: "div".into(),
-                style: Computed::default(),
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: std::mem::take(run),
-                attrs: Vec::new(),
-                inline: false,
-            }));
+                std::mem::take(run),
+            )));
         } else {
             run.clear();
         }
