@@ -119,7 +119,6 @@ pub(crate) fn grouped_wrapper(
             .outline
             .as_ref()
             .is_some_and(|o| o.style == Some(crate::style::computed::OUTLINE_DOUBLE));
-        let values = values.clone();
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
             let vcx = values.vcx();
             crate::paint::background::border_shape_outline_scene(
