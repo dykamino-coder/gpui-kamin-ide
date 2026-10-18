@@ -16,11 +16,12 @@ use crate::style::computed::Computed;
 use crate::text::inline::*;
 
 /// What the piece collection carries across the inline boxes it descends:
-/// the text-transform word state (CSS Text 3 §2.1) and the paragraph block's
-/// available width — the containing block of inline-box percentages.
+/// the text-transform word state (CSS Text 3 §2.1) and the layout context of
+/// the paragraph block (`LayoutCx`; its available width is the containing
+/// block of inline-box percentages).
 pub(crate) struct CollectCx {
     pub(super) case: text_case::Context,
-    pub(super) cb: Option<f32>,
+    pub(super) layout: crate::layout::cx::LayoutCx,
 }
 
 pub(super) fn collect_with_empty_metrics(

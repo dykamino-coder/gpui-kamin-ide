@@ -90,7 +90,7 @@ pub(crate) fn empty_iframe(
         copy.attrs.retain(|(name, _)| name != "src");
         return crate::layout::replaced::image::image(&copy, &opts.cx);
     }
-    crate::render::styled_div(&copy)
+    crate::render::styled_div(&copy, &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -156,7 +156,7 @@ pub(crate) fn svg_replaced(
         + px_of(merged.padding.top)
         + px_of(merged.padding.bottom);
     Some(
-        styled_div_with(e, merged)
+        styled_div_with(e, merged, &opts.cx)
             .w(px(bw))
             .h(px(bh))
             .flex_shrink_0()

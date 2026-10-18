@@ -2,24 +2,21 @@
 
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
+use crate::layout::positioned::containing_block::Positioning;
 use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, point, px};
-use std::{cell::RefCell, collections::HashMap};
+use std::rc::Rc;
 
-thread_local! {
-    static FLEX: RefCell<HashMap<u64, Bounds<Pixels>>> = RefCell::new(HashMap::new());
-}
-pub(crate) fn reset() {
-    FLEX.with(|map| map.borrow_mut().clear());
-}
-
-pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
+/// Probe of a flex container's content box; it records into the build
+/// pass's `Positioning`, where the child's `Plan` reads it.
+pub(crate) fn probe(style: &Computed, positioning: &Rc<Positioning>) -> Option<AnyElement> {
     if !matches!(style.display, Some(Display::Flex | Display::InlineFlex)) || style.self_node == 0 {
         return None;
     }
     let id = style.self_node;
     let padding = style.padding;
+    let positioning = positioning.clone();
     Some(
         gpui::canvas(
             move |bounds: Bounds<Pixels>, window, _: &mut App| {
@@ -36,7 +33,7 @@ pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
                         (bounds.size.height - top - side(padding.bottom)).max(px(0.0)),
                     ),
                 );
-                FLEX.with(|map| map.borrow_mut().insert(id, content));
+                positioning.note_flex_content(id, content);
             },
             |_, _, _, _| {},
         )
@@ -50,6 +47,8 @@ pub(crate) fn probe(style: &Computed) -> Option<AnyElement> {
 
 pub(crate) struct Plan {
     flex: u64,
+    /// The build pass the flex parent's probe records into.
+    positioning: Rc<Positioning>,
     cb: u64,
     horizontal: bool,
     from_end: bool,
@@ -57,7 +56,11 @@ pub(crate) struct Plan {
     margin: [Option<Len>; 2],
 }
 impl Plan {
-    pub(crate) fn new(own: &Computed, parent: &Computed) -> Option<Self> {
+    pub(crate) fn new(
+        own: &Computed,
+        parent: &Computed,
+        positioning: &Rc<Positioning>,
+    ) -> Option<Self> {
         if own.position != Some(Position::Absolute)
             || !matches!(parent.display, Some(Display::Flex | Display::InlineFlex))
             || parent.self_node == 0
@@ -118,6 +121,7 @@ impl Plan {
         };
         Some(Self {
             flex: parent.self_node,
+            positioning: positioning.clone(),
             cb: own.cb_node,
             horizontal,
             from_end,
@@ -136,7 +140,7 @@ impl Plan {
         SafePlace { child, plan: self }.hooked()
     }
     fn shift(&self, bounds: Bounds<Pixels>, window: &Window) -> gpui::Point<Pixels> {
-        let Some(flex) = FLEX.with(|map| map.borrow().get(&self.flex).copied()) else {
+        let Some(flex) = self.positioning.flex_content(self.flex) else {
             return point(px(0.0), px(0.0));
         };
         let cb = if self.cb == 0 {

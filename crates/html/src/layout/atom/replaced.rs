@@ -127,7 +127,11 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     })
 }
 
-pub(super) fn canvas_atom(inherited: &Computed, e: &Element) -> Option<AnyElement> {
+pub(super) fn canvas_atom(
+    inherited: &Computed,
+    e: &Element,
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<AnyElement> {
     // Доля высоты холста — в точки от содержащего блока, ровно как у
     // строчной картинки (`pct_height_to_px`): держатель стоит в
     // анонимном ряду строки с `height: auto`, и доля от ряда
@@ -137,7 +141,7 @@ pub(super) fn canvas_atom(inherited: &Computed, e: &Element) -> Option<AnyElemen
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
     let merged = inherit(inherited, &e.style);
-    let d = styled_div_with(e, &merged).flex_shrink_0();
+    let d = styled_div_with(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

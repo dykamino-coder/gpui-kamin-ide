@@ -47,7 +47,7 @@ pub(crate) fn static_overlay(
         // Тот же буфер группы, что и у картинки: маска, обрезка и
         // фильтр иначе не доходят до коробки на статической позиции.
         grouped(
-            styled_div_with(e, &merged)
+            styled_div_with(e, &merged, &opts.cx)
                 .children(blocks(&e.children, &merged, opts))
                 .into_any_element(),
             &e.style,

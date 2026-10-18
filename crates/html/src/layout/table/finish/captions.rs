@@ -27,7 +27,7 @@ pub(super) fn collect_captions(
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
             let inside = blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
-            let built = styled_div_with(cap, &cm)
+            let built = styled_div_with(cap, &cm, &opts.cx)
                 .flex()
                 .flex_col()
                 .children(inside)

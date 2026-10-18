@@ -225,7 +225,7 @@ pub(super) fn atom_element_raw(
         // в «красное видно». На заданный размер холста опираются
         // `flex-basis: content`, `contain: size` и спаннер многоколоночника;
         // возвращать вместе с ними.
-        "canvas" => canvas_atom(inherited, e),
+        "canvas" => canvas_atom(inherited, e, &opts.cx),
         _ => None,
     };
     // CSS Borders 4 shapes replaced content together with its CSS box.

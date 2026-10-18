@@ -57,7 +57,7 @@ pub(super) fn static_position_atom(
         }
         _ => None,
     };
-    let inner = styled_div_with(e, &merged).children(blocks(&e.children, &merged, opts));
+    let inner = styled_div_with(e, &merged, &opts.cx).children(blocks(&e.children, &merged, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
     // ниже своей строки, а не на её месте (видно на `static-position`:
@@ -165,7 +165,7 @@ pub(super) fn absolute_atom(
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = crate::layout::positioned::anchor::place::place(
-        styled_div_with(e, &merged)
+        styled_div_with(e, &merged, &opts.cx)
             .children(blocks(&e.children, &merged, opts))
             .into_any_element(),
         &merged,

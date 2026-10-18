@@ -64,7 +64,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
-        styled_div(e)
+        styled_div(e, &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

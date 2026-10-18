@@ -220,7 +220,7 @@ pub(super) fn push_float_holder(
         )
     } else {
         grouped(
-            styled_div_with(&copy, &merged)
+            styled_div_with(&copy, &merged, &opts.cx)
                 .children(blocks(&copy.children, &merged, opts))
                 .into_any_element(),
             &copy.style,

@@ -188,7 +188,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         {
-            let mut frame = styled_div(e).w(px(outer_w));
+            let mut frame = styled_div(e, &opts.cx).w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.
             frame.style().baseline_unavailable = Some(true);

@@ -20,6 +20,7 @@ pub(super) fn table_outer_box(
     fixed_floor: Option<f32>,
     inherited: &Computed,
     needs_clone: bool,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     let host_style;
 
@@ -78,9 +79,9 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        styled_div_with(e, &host_style).flex().flex_col()
+        styled_div_with(e, &host_style, cx).flex().flex_col()
     } else {
-        styled_div_with(e, inherited).flex().flex_col()
+        styled_div_with(e, inherited, cx).flex().flex_col()
     }
 }
 

@@ -147,6 +147,7 @@ pub(super) fn table_finish(
         fixed_floor,
         inherited,
         needs_clone,
+        &opts.cx,
     );
     // Таблица без заданной ширины СЖИМАЕТСЯ по содержимому, а не растягивается
     // на родителя (CSS 2.1 §17.5.2, shrink-to-fit). Пока она растягивалась,

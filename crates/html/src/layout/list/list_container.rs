@@ -23,7 +23,7 @@ pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> An
         }
     }
     rows.extend(blocks(&pending, inherited, opts));
-    styled_div_with(e, inherited)
+    styled_div_with(e, inherited, &opts.cx)
         .flex()
         .flex_col()
         .children(rows)

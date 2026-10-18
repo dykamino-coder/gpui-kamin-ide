@@ -193,7 +193,7 @@ pub(super) fn build_band_kid(
             grouped(image(&copy, &opts.cx), &copy.style)
         } else {
             grouped(
-                styled_div_with(&copy, &merged)
+                styled_div_with(&copy, &merged, &opts.cx)
                     .children(blocks(&copy.children, &merged, opts))
                     .into_any_element(),
                 &copy.style,

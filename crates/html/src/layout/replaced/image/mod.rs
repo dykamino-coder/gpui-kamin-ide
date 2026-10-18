@@ -137,7 +137,11 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
 /// иначе из выреза — с соотношением выреза для одной заданной стороны.
 /// Только растр (`background::Source::Raster`); иначе — прежний путь.
-fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
+fn view_boxed(
+    e: &Element,
+    vb: (u8, [Len; 4]),
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<AnyElement> {
     let src = e.attr("src")?;
     let local = src
         .strip_prefix("file:///")
@@ -219,7 +223,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
         .overflow_hidden()
         .child(picture);
     Some(
-        styled_div(&boxed)
+        styled_div(&boxed, cx)
             .flex_shrink_0()
             .child(window)
             .into_any_element(),

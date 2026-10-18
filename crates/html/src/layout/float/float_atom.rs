@@ -37,7 +37,7 @@ pub(super) fn band_atom(
             &opts.cx,
         )
     } else {
-        styled_div_with(&inner, &merged)
+        styled_div_with(&inner, &merged, &opts.cx)
             .children(blocks(&inner.children, &merged, opts))
             .into_any_element()
     };

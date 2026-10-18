@@ -134,7 +134,7 @@ pub(super) fn band_host_flow(
             inner.style.margin = crate::style::computed::Sides::default();
             let mut merged = inherit(inherited, &c.style);
             merged.self_node = c.node_id;
-            let built = styled_div_with(&inner, &merged)
+            let built = styled_div_with(&inner, &merged, &opts.cx)
                 .children(blocks(&inner.children, &merged, opts))
                 .into_any_element();
             host = host.child(div().absolute().left(px(l + ml)).top(px(top)).child(built));

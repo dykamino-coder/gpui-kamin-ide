@@ -21,11 +21,16 @@ use gpui::{ParentElement, Styled, div, px};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
-pub(crate) fn styled_div(e: &Element) -> gpui::Div {
-    styled_div_with(e, &e.style)
+/// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
+pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    styled_div_with(e, &e.style, cx)
 }
 
-pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
+pub(crate) fn styled_div_with(
+    e: &Element,
+    style: &Computed,
+    cx: &crate::layout::cx::LayoutCx,
+) -> gpui::Div {
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).
@@ -90,7 +95,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.positioning) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой

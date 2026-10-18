@@ -21,6 +21,7 @@ pub(super) fn cell_box_div(
     shift: (f32, f32),
     cm: &Computed,
     cell: &Element,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     // Коробке ячейки нужен СЛИТЫЙ стиль: у сырого `cell.style`
     // шрифтовые единицы не разрешены, и `apply` считает их от жёстких
@@ -87,7 +88,7 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.background = None;
     }
-    let mut d = styled_div_with(cell, &box_style);
+    let mut d = styled_div_with(cell, &box_style, cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }

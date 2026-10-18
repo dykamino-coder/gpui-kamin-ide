@@ -45,9 +45,24 @@ pub struct Positioning {
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
     late: RefCell<Vec<Taken>>,
+    /// Content boxes of flex containers measured in this pass's prepaint
+    /// (`absolute_overflow`): an abspos child with safe self-alignment is
+    /// placed against its flex parent's content box and its containing block
+    /// once both exist. Keyed by the container's node id.
+    flex_content: RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>,
 }
 
 impl Positioning {
+    /// Record the content box of flex container `id` (prepaint).
+    pub(crate) fn note_flex_content(&self, id: u64, content: gpui::Bounds<gpui::Pixels>) {
+        self.flex_content.borrow_mut().insert(id, content);
+    }
+
+    /// The content box of flex container `id`, once its prepaint ran.
+    pub(crate) fn flex_content(&self, id: u64) -> Option<gpui::Bounds<gpui::Pixels>> {
+        self.flex_content.borrow().get(&id).copied()
+    }
+
     /// Open a containing-block layer around the children of a positioned
     /// box; `fixed_cb` — the box also contains `position: fixed` (transform,
     /// `contain: layout|paint`, css-transforms-1 §transform-rendering). Such a

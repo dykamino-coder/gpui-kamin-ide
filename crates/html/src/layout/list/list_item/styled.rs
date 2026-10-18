@@ -34,7 +34,7 @@ pub(crate) fn render_with_style(
             ));
         }
         kids.extend(li.children.iter().cloned());
-        return shrink0(styled_div_with(li, merged), li, inherited)
+        return shrink0(styled_div_with(li, merged, &opts.cx), li, inherited)
             .flex()
             .flex_col()
             .children(blocks(&kids, merged, opts))
@@ -68,7 +68,7 @@ pub(crate) fn render_with_style(
     // Внешний маркер (css-lists-3 §list-style-position `outside`) висит
     // СНАРУЖИ коробки пункта, концом к началу содержимого, и текст пункта
     // не двигает. Text transforms apply to its own text (§3.1.1).
-    shrink0(styled_div_with(li, merged), li, inherited)
+    shrink0(styled_div_with(li, merged, &opts.cx), li, inherited)
         .relative()
         .flex()
         .flex_col()

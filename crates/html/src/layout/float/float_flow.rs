@@ -38,7 +38,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
         row_layout.rtl = Some(false);
     }
     let plain_row = |nodes: &[Node]| -> AnyElement {
-        styled_div_with(row, &row_layout)
+        styled_div_with(row, &row_layout, &opts.cx)
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };

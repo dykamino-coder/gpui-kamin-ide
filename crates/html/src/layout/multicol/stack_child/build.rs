@@ -219,6 +219,7 @@ pub(super) fn build_copy(
         frag_gap_key,
         kids,
         &mut body,
+        &opts.cx,
     );
     let el = transformed(d.children(body).into_any_element(), inner, merged);
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and

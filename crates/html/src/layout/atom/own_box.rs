@@ -26,7 +26,7 @@ pub(super) fn own_box_atom(
     if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
         pseudo_line_layers::install(e, &mut merged);
     }
-    let mut box_ = styled_div_with(e, &merged);
+    let mut box_ = styled_div_with(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.

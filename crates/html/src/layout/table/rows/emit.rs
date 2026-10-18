@@ -64,7 +64,16 @@ pub(super) fn emit_cell(
     )>,
     cell: &Element,
 ) {
-    let d = cell_box_div(paint_layers, cell_bgs, row, carry, shift, &cm, cell);
+    let d = cell_box_div(
+        paint_layers,
+        cell_bgs,
+        row,
+        carry,
+        shift,
+        &cm,
+        cell,
+        &opts.cx,
+    );
     let mut d = ortho_cell_box(e, row, &cm, cell, d);
     d = place_cell_in_grid(
         row_ix,

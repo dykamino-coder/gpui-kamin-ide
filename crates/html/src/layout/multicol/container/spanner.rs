@@ -170,7 +170,7 @@ pub(crate) fn multicol_spanner_segments(
             // пути (`d.flex().flex_col()` при пустом `display`), где
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
-            let shell = styled_div_with(sp, &inner);
+            let shell = styled_div_with(sp, &inner, &opts.cx);
             let shell = if matches!(inner.display, None | Some(Display::Block))
                 && inner.vertical != Some(true)
             {

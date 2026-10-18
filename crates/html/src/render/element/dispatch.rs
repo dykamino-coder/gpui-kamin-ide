@@ -45,7 +45,7 @@ pub(crate) fn dispatch_element(
         // блочная картинка под `body { image-orientation: none }` всё равно
         // разворачивалась по метке EXIF.
         "canvas" if merged.parent_grid != 0 => {
-            crate::layout::replaced::canvas_grid::render(e, &merged, inherited)
+            crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx)
                 .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_row))
         }
         "img" => {
@@ -124,7 +124,9 @@ pub(crate) fn dispatch_element(
                 copy.style.height = Some(Len::Px(150.0));
             }
             copy.style.cb_height_def = merged.cb_height_def;
-            styled_div(&copy).flex_shrink_0().into_any_element()
+            styled_div(&copy, &opts.cx)
+                .flex_shrink_0()
+                .into_any_element()
         }
         "object" if e.attr("data").is_some() && !object_is_document(e) => {
             let mut copy = e.clone();
@@ -159,7 +161,7 @@ pub(crate) fn dispatch_element(
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
             svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
                 || {
-                    styled_div_with(e, &merged)
+                    styled_div_with(e, &merged, &opts.cx)
                         .child(SharedString::from("[рисунок]"))
                         .into_any_element()
                 },
@@ -171,7 +173,7 @@ pub(crate) fn dispatch_element(
         // (`horizontal-rule-vlr-003`), а строчную ось (высоту) растягивает сам
         // ряд блочного потока.
         "hr" => {
-            let d = styled_div_with(e, &merged);
+            let d = styled_div_with(e, &merged, &opts.cx);
             // A `width` (CSS or the §15.3.11 hint) keeps its own size.
             if inherited.vertical == Some(true) || merged.width.is_some() {
                 d.into_any_element()

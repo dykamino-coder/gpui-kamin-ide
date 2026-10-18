@@ -152,7 +152,7 @@ fn atom_piece_in(
                 _ => opts.base_size(),
             },
         };
-        let inner = styled_div_with(e, &merged)
+        let inner = styled_div_with(e, &merged, &opts.cx)
             .children(blocks(&e.children, &merged, opts))
             .into_any_element();
         return Some(inline::Piece::Atom(

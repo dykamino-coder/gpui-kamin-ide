@@ -33,11 +33,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         e
     };
     if let Some(vb) = e.style.object_view_box
-        && let Some(el) = view_boxed(e, vb)
+        && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
     }
-    let d = styled_div(e);
+    let d = styled_div(e, cx);
     // Замещаемый элемент в СТРОКЕ не сжимается: браузер даёт строке
     // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер
     // wm-propagation-body-040: картинка 340px ужималась на 6-7%). А вот
