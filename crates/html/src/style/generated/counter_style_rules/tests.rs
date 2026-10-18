@@ -2,19 +2,9 @@
 
 use super::*;
 
-#[test]
-fn poisoned_registry_can_be_reused() {
-    let local = Mutex::new(vec![1]);
-    let _ = std::panic::catch_unwind(|| {
-        let _guard = local.lock().unwrap();
-        panic!("poison local registry");
-    });
-    registry(&local).push(2);
-    assert_eq!(*registry(&local), [1, 2]);
-}
-
 fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
-    reset();
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let _scope = doc.enter();
     for (name, descs) in css {
         let d: Vec<(String, Vec<String>)> = descs
             .iter()
@@ -23,7 +13,6 @@ fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
         register(name, &d);
     }
     f();
-    reset();
 }
 
 #[test]

@@ -11,16 +11,20 @@ impl Computed {
     pub(crate) fn apply_position(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         match key {
             "position" => {
-                self.position = match v {
-                    "absolute" => Some(Position::Absolute),
-                    "relative" => Some(Position::Relative),
-                    "static" => Some(Position::Static),
-                    // `fixed` отсчитывается от окна: своей системы отсчёта у
-                    // него нет, и сборщик дерева ставит его отдельным слоем.
-                    "fixed" => Some(Position::Fixed),
-                    "sticky" | "-webkit-sticky" => Some(Position::Sticky),
-                    _ => self.position,
-                }
+                self.position = record_parsed!(
+                    self,
+                    match v {
+                        "absolute" => Some(Position::Absolute),
+                        "relative" => Some(Position::Relative),
+                        "static" => Some(Position::Static),
+                        // `fixed` отсчитывается от окна: своей системы отсчёта у
+                        // него нет, и сборщик дерева ставит его отдельным слоем.
+                        "fixed" => Some(Position::Fixed),
+                        "sticky" | "-webkit-sticky" => Some(Position::Sticky),
+                        _ => None,
+                    }
+                )
+                .or(self.position)
             }
             // css-anchor-position-1 §anchor-name: `none | <dashed-ident>#`.
             "anchor-name" => {
@@ -32,32 +36,44 @@ impl Computed {
                             .collect::<Vec<_>>()
                     })
                     .filter(|names| !names.is_empty());
+                if self.anchor_name.is_some() || v == "none" {
+                    self.accept_declaration();
+                }
             }
             // §position-anchor: значение хранится как есть, решается при
             // сборке (`anchor::AnchorPlan::of`) и в `anchor::settle_static`.
             "position-anchor" => {
-                self.position_anchor = Some(match v {
-                    "normal" => PositionAnchor::Normal,
-                    "none" => PositionAnchor::None,
-                    "auto" => PositionAnchor::Auto,
-                    "match-parent" => PositionAnchor::MatchParent,
-                    name if name.starts_with("--") => PositionAnchor::Named(name.to_string()),
-                    _ => return,
-                });
+                self.position_anchor = accept_parsed!(
+                    self,
+                    Some(match v {
+                        "normal" => PositionAnchor::Normal,
+                        "none" => PositionAnchor::None,
+                        "auto" => PositionAnchor::Auto,
+                        "match-parent" => PositionAnchor::MatchParent,
+                        name if name.starts_with("--") => PositionAnchor::Named(name.to_string()),
+                        _ => return,
+                    })
+                );
             }
             // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
             // и физическое разрешение — в `anchor`.
             "position-area" => {
-                self.position_area = parse_area(v);
+                self.position_area = record_parsed!(self, parse_area(v));
+                if v == "none" {
+                    self.accept_declaration();
+                }
             }
             // §position-try-fallbacks: список вариантов, разбор — в `anchor`.
             "position-try-fallbacks" => {
                 self.position_try_fallbacks = parse_try_fallbacks(v);
+                if !self.position_try_fallbacks.is_empty() || v == "none" {
+                    self.accept_declaration();
+                }
             }
             // §position-try-order-property.
             "position-try-order" => {
                 if let Some(o) = parse_try_order(v.trim()) {
-                    self.position_try_order = o;
+                    self.position_try_order = accept_parsed!(self, o);
                 }
             }
             // Сокращение `position-try: <order>? <fallbacks>` (§position-try-prop):
@@ -75,13 +91,17 @@ impl Computed {
                 };
                 self.position_try_order = order;
                 self.position_try_fallbacks = parse_try_fallbacks(rest);
+                if !self.position_try_fallbacks.is_empty() || rest == "none" {
+                    self.accept_declaration();
+                }
             }
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                self.position_visibility = parse_visibility(v);
+                self.position_visibility = accept_parsed!(self, parse_visibility(v));
             }
             "top" | "right" | "bottom" | "left" => {
+                let parsed = record_parsed!(self, Len::parse(v).or_else(|| Len::parse_mixed(v)));
                 let (side, slot) = match key {
                     "top" => (0, &mut self.inset.top),
                     "right" => (1, &mut self.inset.right),
@@ -90,11 +110,18 @@ impl Computed {
                 };
                 self.inset_inherit[side] = v == "inherit";
                 // Keep anchor arithmetic; preserve mixed percentages until layout (§10.9).
-                *slot = Len::parse(v).or_else(|| Len::parse_mixed(v));
+                *slot = parsed;
                 self.side_seq.inset[side] = self.decl_seq;
             }
             "inset" => {
                 self.inset = Sides::shorthand(v);
+                if self.inset.top.is_some()
+                    && self.inset.right.is_some()
+                    && self.inset.bottom.is_some()
+                    && self.inset.left.is_some()
+                {
+                    self.accept_declaration();
+                }
                 self.side_seq.inset = [self.decl_seq; 4];
             }
             "overflow" => {
@@ -107,18 +134,18 @@ impl Computed {
                     v.split_whitespace().next() == Some("scroll"),
                     v.split_whitespace().nth(1).or(v.split_whitespace().next()) == Some("scroll"),
                 ];
-                self.overflow_x = x;
+                self.overflow_x = record_parsed!(self, x);
                 self.overflow_y = y;
             }
             "overflow-x" => {
-                self.overflow_x = parse_overflow(v);
+                self.overflow_x = record_parsed!(self, parse_overflow(v));
                 self.scroll.forced[0] = v == "scroll";
             }
             "overflow-y" => {
-                self.overflow_y = parse_overflow(v);
+                self.overflow_y = record_parsed!(self, parse_overflow(v));
                 self.scroll.forced[1] = v == "scroll";
             }
-            "opacity" => self.opacity = v.parse().ok(),
+            "opacity" => self.opacity = record_parsed!(self, v.parse().ok()),
             // Поле обрезки: край, по которому режется вылезшее содержимое,
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
@@ -153,12 +180,12 @@ impl Computed {
                     }
                 }
                 if margin.is_some() || bx.is_some() {
-                    self.clip_margin = Some(margin.unwrap_or(0.0));
+                    self.clip_margin = accept_parsed!(self, Some(margin.unwrap_or(0.0)));
                     self.clip_margin_box = bx;
                 }
             }
             "visibility" => {
-                self.hidden = Some(v == "hidden" || v == "collapse");
+                self.hidden = accept_parsed!(self, Some(v == "hidden" || v == "collapse"));
                 self.collapsed = Some(v == "collapse");
             }
             "z-index" => {
@@ -168,34 +195,42 @@ impl Computed {
                 }
                 // Целое за пределами i32 КЛАМПИТСЯ, а не падает в auto
                 // (z-index-001: -2147483649 обязан остаться меньше -100).
-                self.z_index = v
-                    .parse::<i64>()
-                    .ok()
-                    .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
-                    // `<integer>` from a math function (css-values-4 §10.9):
-                    // rounded to the nearest integer, halves toward +∞
-                    // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
-                    .or_else(|| {
-                        (!v.trim_start()
-                            .starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
-                        .then(|| crate::style::values::value::number(v))
-                        .flatten()
-                        .map(|x| {
-                            let r = if x.is_nan() {
-                                0.0
-                            } else {
-                                (x as f64 + 0.5).floor()
-                            };
-                            r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
+                self.z_index = record_parsed!(
+                    self,
+                    v.parse::<i64>()
+                        .ok()
+                        .map(|n| n.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+                        // `<integer>` from a math function (css-values-4 §10.9):
+                        // rounded to the nearest integer, halves toward +∞
+                        // (`calc-positive-fraction-001`: `calc(3 / 2)` → 2).
+                        .or_else(|| {
+                            (!v.trim_start()
+                                .starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+'))
+                            .then(|| crate::style::values::value::number(v))
+                            .flatten()
+                            .map(|x| {
+                                let r = if x.is_nan() {
+                                    0.0
+                                } else {
+                                    (x as f64 + 0.5).floor()
+                                };
+                                r.clamp(i32::MIN as f64, i32::MAX as f64) as i32
+                            })
                         })
-                    });
+                );
+                if v == "auto" {
+                    self.accept_declaration();
+                }
             }
             "float" => {
-                self.float = match v {
-                    "left" => Some(-1),
-                    "right" => Some(1),
-                    _ => Some(0),
-                }
+                self.float = accept_parsed!(
+                    self,
+                    match v {
+                        "left" => Some(-1),
+                        "right" => Some(1),
+                        _ => Some(0),
+                    }
+                )
             }
             "clear" => {
                 self.clear_inherit = v == "inherit";
@@ -204,6 +239,9 @@ impl Computed {
                     "right" => Some(1),
                     "both" => Some(0),
                     _ => None,
+                };
+                if self.clear.is_some() || v == "none" {
+                    self.accept_declaration();
                 }
             }
             _ => *hit = false,

@@ -6,6 +6,8 @@ use crate::layout::page::margin_boxes::layout_margin_boxes;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
+    // Margin boxes use page geometry and the current GPUI layout states.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn prepaint_margins(
         &mut self,
         bounds: Bounds<Pixels>,

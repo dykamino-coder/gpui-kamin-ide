@@ -57,7 +57,7 @@ pub(super) fn prepare(
             html.tag = "div".into();
             html.attrs.clear();
             html.marks = Default::default();
-            html.style = merged;
+            html.style = merged.into();
             html.style.width = Some(Len::Px(w));
             html.style.height = Some(Len::Px(h));
             html.style.display = Some(Display::Block);

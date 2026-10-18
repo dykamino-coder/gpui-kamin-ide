@@ -6,6 +6,7 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
     let Some(value) = normalized(value, key == "counter-reset") else {
         return;
     };
+    style.accept_declaration();
     let slot = match key {
         "counter-reset" => &mut style.counter_reset,
         "counter-increment" => &mut style.counter_increment,

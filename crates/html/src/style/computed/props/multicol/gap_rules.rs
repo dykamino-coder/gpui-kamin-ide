@@ -64,6 +64,8 @@ pub(super) fn gap_inset(t: &str) -> Option<GapInset> {
 
 /// `<gap-rule> = <line-width> || <line-style> || <color>`: любой порядок,
 /// каждая часть не более одного раза; лишний токен — недействительно.
+// The shorthand independently omits width, style and color; color also has currentColor.
+#[allow(clippy::type_complexity)]
 pub(super) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
     let (mut w, mut s, mut c) = (None, None, None);
     for token in split_outside_parens(entry) {
@@ -181,6 +183,7 @@ impl Computed {
         let Some(list) = gap_list(v, gap_rule) else {
             return;
         };
+        self.accept_declaration();
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());

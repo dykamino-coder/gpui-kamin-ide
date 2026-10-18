@@ -78,6 +78,7 @@ impl Computed {
                 if list.is_empty() || list.len() > 4 || list.iter().any(Option::is_none) {
                     return;
                 }
+                self.accept_declaration();
                 let at = |i: usize| -> Option<Len> {
                     let pick = match (list.len(), i) {
                         (1, _) => 0,
@@ -97,8 +98,8 @@ impl Computed {
                     left: at(3),
                 };
             }
-            "border-collapse" => self.border_collapse = Some(v == "collapse"),
-            "empty-cells" => self.empty_cells_hide = Some(v.trim() == "hide"),
+            "border-collapse" => self.border_collapse = accept_parsed!(self, Some(v == "collapse")),
+            "empty-cells" => self.empty_cells_hide = accept_parsed!(self, Some(v.trim() == "hide")),
             "border-color" => {
                 // От одного до четырёх значений, как у всякого сокращения по
                 // сторонам (§8.5.2). Прежде строка разбиралась целиком, и
@@ -119,6 +120,7 @@ impl Computed {
                 if colors.iter().any(Option::is_none) {
                     return;
                 }
+                self.accept_declaration();
                 let at = |i: usize| -> Option<Color> {
                     let pick = match (colors.len(), i) {
                         (2, 0 | 2) => 0,

@@ -11,6 +11,8 @@ use crate::paint::background::*;
 /// шире внешнего отступа, чёрная — внутреннего, чёрная заливка — нутро;
 /// `double` — две полосы по трети толщины (`:313-328`). Холст и border-box —
 /// как у `border_shape_ring_svg`.
+// Outline geometry retains the contour, reference box and authored outline inputs.
+#[allow(clippy::too_many_arguments)]
 pub fn border_shape_outline_svg(
     outer: (&str, [f32; 4]),
     single: bool,

@@ -148,8 +148,10 @@ mod tests {
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
-            let mut wrapper = gpui::StyleRefinement::default();
-            wrapper.align_self = Some(gpui::AlignItems::End);
+            let mut wrapper = gpui::StyleRefinement {
+                align_self: Some(gpui::AlignItems::End),
+                ..Default::default()
+            };
             project_wrapper(&mut wrapper, &effective);
             assert_eq!(wrapper.baseline_x_flags, Some(flags));
             assert_eq!(wrapper.align_self, Some(gpui::AlignItems::End));

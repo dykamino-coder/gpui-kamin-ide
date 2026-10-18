@@ -143,6 +143,7 @@ mod tests {
         use gpui::{PaintGroup, PaintSurface};
         let surface = |group: u32| PaintSurface {
             order: 0,
+            fragment: 0,
             bounds: rect(8.0, 8.0, 500.0, 300.0),
             content_mask: ContentMask {
                 bounds: rect(0.0, 0.0, W as f32, H as f32),

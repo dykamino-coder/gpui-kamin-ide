@@ -21,6 +21,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
     ) {
         return;
     }
+    style.accept_declaration();
     style.nowrap = Some(matches!(value.as_str(), "nowrap" | "pre"));
     style.keep_spaces = Some(matches!(
         value.as_str(),

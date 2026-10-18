@@ -17,6 +17,8 @@ pub fn rounded_float(
 }
 
 /// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
+// Rounded rectangles pair their bounds with the four corner radii.
+#[allow(clippy::type_complexity)]
 pub(super) fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
     let len_px = |t: &str, base: f32| -> f32 {
         match crate::style::values::value::Len::parse(t) {

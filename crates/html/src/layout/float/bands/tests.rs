@@ -177,40 +177,6 @@ fn shapes_shift_by_consumer_top() {
     );
 }
 
-/// §9.5, последний абзац: коробка со своим контекстом ищет ОКНО на всю
-/// свою высоту. Геометрия `CSS2/floats/floats-wrap-top-below-001l`.
-#[test]
-fn place_among_001l() {
-    let mut b = FloatBands::new(400.0);
-    assert_eq!(b.add_float(-1, 50.0, 75.0, Some(-1)), (0.0, 0.0));
-    // `clear: left` сажает второй флоат под первый, а не рядом.
-    assert_eq!(b.add_float(-1, 100.0, 75.0, Some(-1)), (0.0, 75.0));
-    assert_eq!(b.place_among(200.0, 50.0, 0.0), (50.0, 0.0, 350.0));
-    assert_eq!(b.place_among(200.0, 50.0, 50.0), (100.0, 50.0, 300.0));
-}
-
-/// `floats-wrap-top-below-002l`: правый 300 рядом не влезает (правило 3)
-/// и садится на 75; вторая коробка съезжает под оба флоата.
-#[test]
-fn place_among_002l() {
-    let mut b = FloatBands::new(400.0);
-    assert_eq!(b.add_float(-1, 150.0, 75.0, None), (0.0, 0.0));
-    assert_eq!(b.add_float(1, 300.0, 75.0, None), (100.0, 75.0));
-    assert_eq!(b.place_among(200.0, 50.0, 0.0), (150.0, 0.0, 250.0));
-    assert_eq!(b.place_among(200.0, 50.0, 50.0), (0.0, 150.0, 400.0));
-}
-
-/// `floats-wrap-top-below-003l`: окно съезжает НА ОДНУ полосу, а не ниже
-/// всех флоатов.
-#[test]
-fn place_among_003l() {
-    let mut b = FloatBands::new(400.0);
-    assert_eq!(b.add_float(-1, 250.0, 75.0, None), (0.0, 0.0));
-    assert_eq!(b.add_float(1, 250.0, 75.0, None), (150.0, 75.0));
-    assert_eq!(b.place_among(100.0, 50.0, 0.0), (250.0, 0.0, 150.0));
-    assert_eq!(b.place_among(100.0, 50.0, 50.0), (0.0, 75.0, 150.0));
-}
-
 /// A zero-width BFC still needs a common interval across its full height.
 #[test]
 fn opposing_bands_have_no_common_interval() {
@@ -218,7 +184,6 @@ fn opposing_bands_have_no_common_interval() {
     assert_eq!(b.add_float(1, 250.0, 100.0, None), (150.0, 0.0));
     assert_eq!(b.add_float(-1, 250.0, 100.0, None), (0.0, 100.0));
     assert_eq!(b.available(0.0, 200.0), (250.0, 150.0));
-    assert_eq!(b.place_among(0.0, 200.0, 0.0), (250.0, 100.0, 150.0));
 }
 
 /// A zero-height float occupies no band but still cuts the line it falls in

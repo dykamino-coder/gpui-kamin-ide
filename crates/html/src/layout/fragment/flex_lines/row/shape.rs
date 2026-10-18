@@ -6,6 +6,8 @@ use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::style::values::value::Len;
 
+// The shape result pairs each line with its height and break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn shape_flex_lines(
     row_gap: f32,
     side: impl Fn(&Option<Len>) -> Option<f32>,

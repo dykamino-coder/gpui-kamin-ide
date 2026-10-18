@@ -109,6 +109,8 @@ pub(super) fn cut_band_sides(run: &mut TextRun, left: bool, right: bool) {
     }
 }
 
+// Band slices retain each run's optional background and border decorations.
+#[allow(clippy::type_complexity)]
 pub(super) fn slice_runs_banded(runs: &[TextRun], range: &std::ops::Range<usize>) -> Vec<TextRun> {
     let mut out = slice_runs(runs, range);
     let band_at = |at: usize| -> Option<(Option<Hsla>, Option<(Hsla, [Pixels; 4])>)> {

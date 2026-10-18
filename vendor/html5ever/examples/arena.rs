@@ -168,7 +168,7 @@ impl<'arena> Sink<'arena> {
                 self.new_node(NodeData::Text {
                     contents: RefCell::new(text),
                 })
-            }
+            },
             NodeOrText::AppendNode(node) => node,
         };
 
@@ -370,7 +370,7 @@ fn print_node<'arena>(node: &Node<'arena>, depth: usize) {
             if !text.trim().is_empty() {
                 println!("{}\"{}\"", indent, text.trim());
             }
-        }
+        },
         NodeData::Comment { contents } => println!("{}<!-- {} -->", indent, contents),
         NodeData::Element { name, .. } => println!("{}<{}>", indent, name.local),
         NodeData::ProcessingInstruction { target, .. } => println!("{}<?{}>", indent, target),

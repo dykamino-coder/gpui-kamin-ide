@@ -2,6 +2,39 @@
 
 use super::{AttrSel, unescape};
 
+/// Identifier lists preserve the whitespace consumed by hexadecimal escapes.
+pub(super) fn ident_list(raw: &str) -> Option<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut start = 0;
+    let mut at = 0;
+    while at < raw.len() {
+        let ch = raw[at..].chars().next()?;
+        if ch == '\\' {
+            at = super::variable_tokens::escape_end(raw, at);
+            continue;
+        }
+        if matches!(ch, ' ' | '\t' | '\n' | '\r' | '\u{c}') {
+            if start < at {
+                let token = &raw[start..at];
+                if !ident(token) {
+                    return None;
+                }
+                tokens.push(unescape(token));
+            }
+            start = at + ch.len_utf8();
+        }
+        at += ch.len_utf8();
+    }
+    if start < at {
+        let token = &raw[start..at];
+        if !ident(token) {
+            return None;
+        }
+        tokens.push(unescape(token));
+    }
+    Some(tokens)
+}
+
 /// CSS Syntax §4.3.9: digits may continue an identifier, but cannot start it.
 /// Escapes count as name-start characters regardless of the decoded character.
 pub(crate) fn ident(raw: &str) -> bool {

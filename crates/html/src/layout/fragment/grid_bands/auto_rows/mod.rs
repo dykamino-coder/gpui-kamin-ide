@@ -42,6 +42,8 @@ pub(super) use pass::grid_pass;
 /// на каждой границе ряда увела бы разрез у зелёных
 /// `grid-item-oof-002/003` (ряды `50px 150px`, край колонки на 100 внутри
 /// второго ряда) с края на 50 и потеряла бы половину колонки.
+// Grid bands retain row heights and fragmentation flags together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn grid_auto_row_bands(
     c: &Element,
     depth: u8,

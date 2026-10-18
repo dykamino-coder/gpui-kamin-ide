@@ -24,20 +24,7 @@ impl Computed {
         {
             return;
         }
-        let font = match self.font_size {
-            Some(Len::Px(v)) => v,
-            _ => 16.0,
-        };
-        let family = self.font_family.as_deref().unwrap_or("");
-        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font);
-        let line = match self.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
-            _ => {
-                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font);
-                ascent + descent
-            }
-        };
+        let (font, ex, ch, line) = self.image_font_metrics();
         for raw in [
             &mut self.bg_image,
             &mut self.gradient_raw,
@@ -56,6 +43,35 @@ impl Computed {
         for raw in self.bg_position_math.iter_mut().flatten() {
             *raw = lengths(raw, font, root_font_px(), ex, ch, line);
         }
+    }
+
+    /// Resolve one paint-time mask without copying unrelated style properties.
+    pub(crate) fn resolve_mask_image(&self, raw: String) -> String {
+        if !raw.contains("gradient(")
+            || !(raw.contains("lh") || crate::style::computed::has_font_units(&raw))
+        {
+            return raw;
+        }
+        let (font, ex, ch, line) = self.image_font_metrics();
+        lengths(&raw, font, root_font_px(), ex, ch, line)
+    }
+
+    fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
+        let font = match self.font_size {
+            Some(Len::Px(v)) => v,
+            _ => 16.0,
+        };
+        let family = self.font_family.as_deref().unwrap_or("");
+        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font);
+        let line = match self.line_height {
+            Some(Len::Px(v)) => v,
+            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
+            _ => {
+                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font);
+                ascent + descent
+            }
+        };
+        (font, ex, ch, line)
     }
 }
 

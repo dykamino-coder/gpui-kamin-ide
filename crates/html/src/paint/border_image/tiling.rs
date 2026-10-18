@@ -48,6 +48,8 @@ pub(super) fn pieces(
 }
 
 /// Копии вдоль ОДНОЙ оси: смещение и длина каждой.
+// max/min also bound NaN to a finite count; f32::clamp would propagate it.
+#[allow(clippy::manual_clamp)]
 pub(super) fn along(mode: Tiling, span: f32, piece: f32) -> Vec<(f32, f32)> {
     // Потолок на число копий: битый срез иначе просит миллионы.
     const MAX: f32 = 512.0;

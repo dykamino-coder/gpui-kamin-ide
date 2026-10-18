@@ -73,7 +73,8 @@ impl AnchorPlan {
         self.margin.swap(k1, k2);
         for k in [k1, k2] {
             if let Some(sp) = self.sides[k].as_mut() {
-                sp.f.side = mirror_side(sp.f.side, y);
+                let f = std::rc::Rc::make_mut(&mut sp.f);
+                f.side = mirror_side(f.side, y);
             }
         }
         if let Some((tx, ty)) = self.area.as_mut() {
@@ -105,7 +106,8 @@ impl AnchorPlan {
         self.margin.swap(0, 3);
         self.margin.swap(2, 1);
         for sp in self.sides.iter_mut().flatten() {
-            sp.f.side = transpose_side(sp.f.side);
+            let f = std::rc::Rc::make_mut(&mut sp.f);
+            f.side = transpose_side(f.side);
         }
         if let Some((tx, ty)) = self.area.as_mut() {
             std::mem::swap(tx, ty);
