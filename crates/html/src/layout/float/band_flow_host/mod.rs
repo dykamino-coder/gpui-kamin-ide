@@ -11,6 +11,7 @@ use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
+mod inline_run;
 mod lift;
 pub(super) use lift::band_flow_rest_lift;
 use lift::flow_interior_plain;

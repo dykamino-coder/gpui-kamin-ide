@@ -1,14 +1,11 @@
 //! Подъём хвоста потока в полосы: внутренний поток без полос, прижатые абсолюты.
 
-use super::{band_flow_block, subtree_has_text};
+use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
-use crate::layout::float::band_host::{BandPiece, band_piece};
 use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
-use crate::render::{
-    block_level_in_flow, inline_level, is_blank, out_of_flow, own_context, replaced_tag,
-};
+use crate::render::{block_level_in_flow, inline_level, is_blank, out_of_flow, own_context};
+use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
-use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 /// Внутри блока потока нет ни флоатов, ни блоков своего контекста — на
@@ -118,46 +115,8 @@ pub(crate) fn band_flow_rest_lift(
     };
     let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool, clear: Option<i8>| {
         if run.iter().any(|n| !is_blank(n)) {
-            // `<br>` — строка, пусть и пустая: прогон `[<br>]` после разреза
-            // по `<br>` — строчный, а не «пустой» (иначе хост отменялся).
-            // Строчный элемент с текстом внутри (`<span>Inline box</span>`)
-            // — тоже строки: прогон без ГОЛОГО текста отменял хост, и флоат
-            // за таким прогоном уходил на следующую строку вместе с блоком
-            // (`box-generation-002`: флоат обязан встать на строку прогона
-            // слева от неё, §9.5.1 правило 6).
-            let text = run.iter().any(|n| match n {
-                Node::Text(t) => !t.trim().is_empty(),
-                Node::Element(c) => {
-                    inline_level(c)
-                        && band_piece(n) != Some(BandPiece::Atom)
-                        && !replaced_tag(c)
-                        && subtree_has_text(c)
-                }
-            }) || run
-                .iter()
-                .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
-            let atoms = !text
-                && run
-                    .iter()
-                    .all(|n| is_blank(n) || band_piece(n) == Some(BandPiece::Atom));
-            // Empty atomic inline boxes of unknown size (an empty `<button>`,
-            // an empty inline-block) and `<br>`: the paragraph sizes them.
-            let empty_boxes = run.iter().all(|n| match n {
-                Node::Text(_) => is_blank(n),
-                Node::Element(c) => {
-                    c.tag == "br"
-                        || band_piece(n) == Some(BandPiece::Atom)
-                        || (!replaced_tag(c)
-                            && c.children.iter().all(is_blank)
-                            && matches!(
-                                c.style.display,
-                                Some(Display::InlineBlock)
-                                    | Some(Display::InlineFlex)
-                                    | Some(Display::InlineGrid)
-                            ))
-                }
-            });
-            if !text && !atoms && !empty_boxes {
+            let (atoms, hostable) = inline_run::classify(run);
+            if !hostable {
                 bad = true;
             }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
