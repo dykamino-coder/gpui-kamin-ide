@@ -7,8 +7,8 @@ use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
 use crate::render::{
     block_level_in_flow, inline_level, is_blank, out_of_flow, own_context, replaced_tag,
 };
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
+use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 /// Внутри блока потока нет ни флоатов, ни блоков своего контекста — на
@@ -90,8 +90,9 @@ pub(crate) fn band_flow_rest_lift(
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
     // A run of atoms of known size only is laid out by `FlowRow`, a run with
-    // text is a paragraph; any other run (replaced elements of unknown size,
-    // empty inline boxes) keeps the floats off the host.
+    // text or empty atomic boxes is a paragraph; any other run (replaced
+    // elements of unknown size, inline boxes without text) keeps the floats
+    // off the host.
     let mut bad = false;
     // Прогон после `<br>` — продолжение того же абзаца (`cont`): без отступа
     // первой строки (`band_kids`).
@@ -139,7 +140,24 @@ pub(crate) fn band_flow_rest_lift(
                 && run
                     .iter()
                     .all(|n| is_blank(n) || band_piece(n) == Some(BandPiece::Atom));
-            if !text && !atoms {
+            // Empty atomic inline boxes of unknown size (an empty `<button>`,
+            // an empty inline-block) and `<br>`: the paragraph sizes them.
+            let empty_boxes = run.iter().all(|n| match n {
+                Node::Text(_) => is_blank(n),
+                Node::Element(c) => {
+                    c.tag == "br"
+                        || band_piece(n) == Some(BandPiece::Atom)
+                        || (!replaced_tag(c)
+                            && c.children.iter().all(is_blank)
+                            && matches!(
+                                c.style.display,
+                                Some(Display::InlineBlock)
+                                    | Some(Display::InlineFlex)
+                                    | Some(Display::InlineGrid)
+                            ))
+                }
+            });
+            if !text && !atoms && !empty_boxes {
                 bad = true;
             }
             if atoms && wm.vertical {
