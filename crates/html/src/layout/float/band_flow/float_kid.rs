@@ -2,11 +2,8 @@
 
 use super::kid::{Kid, Kind};
 use super::place::place_seq;
-use super::{Build, COORD_EPS, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
-use crate::layout::float::band_flow::VERT;
+use super::{Build, COORD_EPS, Probe, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
 use crate::layout::float::bands::FloatBands;
-use gpui::{App, Window};
-use std::cell::Cell;
 use std::ops::ControlFlow;
 
 #[allow(clippy::too_many_arguments)]
@@ -14,8 +11,7 @@ pub(super) fn place_float(
     x0: f32,
     x1: f32,
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
     cbw: f32,
     slots: &mut [Slot],
     y: f32,
@@ -39,8 +35,8 @@ pub(super) fn place_float(
     // is 0-width, so the float is min-content sized»). Пол — ширина
     // каркаса не уже min-content.
     if shrink {
-        let (mn, mx) = intrinsic(kid, window, cx);
-        avail = if VERT.with(Cell::get).is_some() {
+        let (mn, mx) = intrinsic(kid, p);
+        avail = if p.vert {
             // В вертикальном письме каркас — ряд, и поперечная ось
             // ряда (высота) у вертикального блока растягивается
             // до окна и при `align-items: flex-start`: строчный
@@ -51,7 +47,7 @@ pub(super) fn place_float(
             avail.max(mn)
         };
     }
-    let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
+    let (bw, bh) = probe(kid, cbw, avail, None, p);
     // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
     // потока (Servo `set_ceiling_from_non_floats`,
     // `flow/float.rs:371`). У пробега хоста `y` — ноль.
@@ -63,23 +59,23 @@ pub(super) fn place_float(
     let mut ceil = y + kid.margin_offset;
     // Высота набранного — с вырезами уже поставленных флоатов:
     // строки рядом с ними у́же и их больше.
-    let height_of = |b: &Build, bands: &mut FloatBands, window: &mut Window, cx: &mut App| {
+    let height_of = |b: &Build, bands: &mut FloatBands, p: &mut Probe| {
         let walls = bands.set_walls(x0, x1);
         let shapes = bands.shapes(y);
         bands.set_walls(walls.0, walls.1);
-        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), window, cx).1
+        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), p).1
     };
     // Строка флоата начинается под набранным до последнего
     // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и
     // флоат на второй строке рядом с первым флоатом).
     if let Some(base) = kid.lead_base.as_ref() {
-        ceil = y + height_of(base, bands, window, cx);
+        ceil = y + height_of(base, bands, p);
     }
     if let Some(lead) = kid.lead.as_ref() {
-        let lw = intrinsic_of(lead, window, cx).1;
+        let lw = intrinsic_of(lead, p).1;
         let (l, r) = bands.available(ceil, 0.0);
         if lw > COORD_EPS && lw + ml + bw + mr > r - l + COORD_EPS {
-            ceil += height_of(lead, bands, window, cx);
+            ceil += height_of(lead, bands, p);
         }
     }
     bands.set_flow_ceiling(ceil);
@@ -107,8 +103,7 @@ pub(super) fn place_nest(
     adjoining0: bool,
     root: (f32, f32),
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
     cbw: f32,
     slots: &mut [Slot],
     y: &mut f32,
@@ -138,9 +133,8 @@ pub(super) fn place_nest(
     let walls = bands.set_walls(ix0, ix1);
     let inner_top = top + it;
     let adjoining = adjoining0 && (*y - y0).abs() < COORD_EPS && it == 0.0;
-    let (kids_slots, inner_end) = place_seq(
-        &nest.kids, ix0, ix1, inner_top, adjoining, root, bands, window, cx,
-    );
+    let (kids_slots, inner_end) =
+        place_seq(&nest.kids, ix0, ix1, inner_top, adjoining, root, bands, p);
     bands.set_walls(walls.0, walls.1);
     let h = nest.height.unwrap_or((inner_end - inner_top).max(0.0));
     slots[k] = Slot {

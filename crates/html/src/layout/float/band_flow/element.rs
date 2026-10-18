@@ -2,7 +2,7 @@
 
 use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Plan, Slot, flatten, frame, plan, with_vert};
+use super::{COORD_EPS, Plan, Probe, Slot, flatten, frame, plan};
 use crate::hooks::Hooks;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
@@ -15,7 +15,7 @@ pub struct BandFlow {
     pub(super) kids: Rc<Vec<Kid>>,
     pub(super) plan: Rc<RefCell<Option<Plan>>>,
     pub(super) built: Vec<AnyElement>,
-    /// Письмо хоста (см. `VERT`).
+    /// Письмо хоста: `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr`.
     pub(super) vert: Option<bool>,
     pub(super) contain_floats: bool,
 }
@@ -56,7 +56,8 @@ impl Hooks for BandFlow {
         style.flex_shrink = 0.0;
         let (vert, contain_floats) = (self.vert, self.contain_floats);
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
-            with_vert(vert, || {
+            {
+                let v = vert.is_some();
                 // Строчная ось — ширина в горизонтальном письме, высота в
                 // вертикальном; блочный размер плана уходит в другую ось.
                 let (known_inline, avail_inline) = if vert.is_some() {
@@ -76,16 +77,26 @@ impl Hooks for BandFlow {
                     (None, AvailableSpace::Definite(w)) => {
                         let w = f32::from(w);
                         let (mn, mx) = window.with_nested_layout(|window| {
+                            let p = &mut Probe {
+                                window,
+                                cx,
+                                vert: v,
+                            };
                             (
-                                intrinsic_width(&kids, false, window, cx),
-                                intrinsic_width(&kids, true, window, cx),
+                                intrinsic_width(&kids, false, p),
+                                intrinsic_width(&kids, true, p),
                             )
                         });
                         // §10.3.5: `min(max(min-content, available), max-content)`.
                         mx.max(mn).min(mn.max(w))
                     }
                     (None, a) => window.with_nested_layout(|window| {
-                        intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), window, cx)
+                        let p = &mut Probe {
+                            window,
+                            cx,
+                            vert: v,
+                        };
+                        intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
                     }),
                 };
                 if let Some(p) = cache.borrow().as_ref()
@@ -93,12 +104,22 @@ impl Hooks for BandFlow {
                 {
                     return phys(cb, p.height);
                 }
-                let p =
-                    window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx));
+                let p = window.with_nested_layout(|window| {
+                    plan(
+                        &kids,
+                        cb,
+                        contain_floats,
+                        &mut Probe {
+                            window,
+                            cx,
+                            vert: v,
+                        },
+                    )
+                });
                 let h = p.height;
                 *cache.borrow_mut() = Some(p);
                 phys(cb, h)
-            })
+            }
         });
         (id, id)
     }
@@ -132,8 +153,13 @@ impl Hooks for BandFlow {
             Some(p) => p,
             None => {
                 let kids = self.kids.clone();
-                with_vert(vert, || {
-                    window.with_nested_layout(|window| plan(&kids, cb, contain_floats, window, cx))
+                window.with_nested_layout(|window| {
+                    let p = &mut Probe {
+                        window,
+                        cx,
+                        vert: vert.is_some(),
+                    };
+                    plan(&kids, cb, contain_floats, p)
                 })
             }
         };
@@ -164,14 +190,13 @@ impl Hooks for BandFlow {
                 continue;
             }
             let tap = Rc::new(Cell::new(None));
-            let el = with_vert(vert, || {
-                frame(
-                    kid.kind,
-                    s.avail,
-                    (kid.build)(cb, s.avail, s.shapes.clone(), s.h),
-                    tap,
-                )
-            });
+            let el = frame(
+                kid.kind,
+                s.avail,
+                (kid.build)(cb, s.avail, s.shapes.clone(), s.h),
+                tap,
+                vert.is_some(),
+            );
             // Логическое место → физическое (Blink
             // `writing_mode_converter.cc:80-102`): строчный сдвиг — вниз,
             // блочный — от правого края у `vertical-rl`, от левого у `-lr`.

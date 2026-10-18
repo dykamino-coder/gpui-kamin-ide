@@ -91,23 +91,17 @@ struct Slot {
     b: f32,
 }
 
-thread_local! {
-    /// Письмо хоста на время плана и сборки: `None` — горизонтальное,
-    /// `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr` (шаг F10).
-    /// Полосы и весь план считают в ЛОГИЧЕСКИХ осях (inline = вертикаль,
-    /// block = горизонталь) — как Blink: `BfcOffset` строчно-относителен
-    /// (`geometry/bfc_offset.h:26-38`), в физику переводится один раз
-    /// (`geometry/writing_mode_converter.cc:80-102`). Каркас пробы и
-    /// держатели в `prepaint` — в физике, по этому признаку.
-    static VERT: Cell<Option<bool>> = const { Cell::new(None) };
-}
-
-/// Поставить письмо хоста на время `f`.
-fn with_vert<R>(v: Option<bool>, f: impl FnOnce() -> R) -> R {
-    let prev = VERT.with(|c| c.replace(v));
-    let r = f();
-    VERT.with(|c| c.set(prev));
-    r
+/// One plan's probe context: the window whose nested layout engine lays the
+/// probes out, and the host's axis. `vert`: the host is vertical (`vertical-rl`
+/// or `vertical-lr`), so the inline axis is the physical height. The plan and
+/// the bands work in LOGICAL axes like Blink, whose `BfcOffset` is
+/// line-relative (`geometry/bfc_offset.h:26-38`) and is converted to physical
+/// coordinates once (`geometry/writing_mode_converter.cc:80-102`); only the
+/// probe frames and the holders at `prepaint` are physical.
+pub(super) struct Probe<'a> {
+    pub(super) window: &'a mut Window,
+    pub(super) cx: &'a mut App,
+    pub(super) vert: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -126,11 +120,17 @@ pub(super) use crate::tolerance::COORD_EPS;
 /// элемента — fit-content = `min(max-content, max(min-content, доступно))`,
 /// то есть ровно shrink-to-fit §10.3.5. Кусок — в колонке с растяжением:
 /// `width: auto` у блока со своим контекстом заполняет окно (§10.3.3).
-fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>) -> AnyElement {
+fn frame(
+    kind: Kind,
+    avail: f32,
+    el: AnyElement,
+    tap: Rc<Cell<Option<LayoutId>>>,
+    vert: bool,
+) -> AnyElement {
     // Вертикальное письмо: строчная ось — физическая высота, каркас — ряд
     // высотой в окно, поперечная ось ряда и есть строчная (css-writing-modes-4
     // §7.1: shrink-to-fit §10.3.5 считается по строчной оси).
-    let col = if VERT.with(Cell::get).is_some() {
+    let col = if vert {
         div().flex().flex_row().h(px(avail.max(0.0)))
     } else {
         div().flex().flex_col().w(px(avail.max(0.0)))
@@ -153,9 +153,9 @@ fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>
 }
 
 /// План раскладки при ширине контекста `cb`: позиции всех детей и высота.
-fn plan(kids: &[Kid], cb: f32, contain_floats: bool, window: &mut Window, cx: &mut App) -> Plan {
+fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
     let mut bands = FloatBands::new(cb);
-    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, window, cx);
+    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, p);
     Plan {
         width: cb,
         // §§10.6.3, 10.6.7: only a formatting-context root contains floats.

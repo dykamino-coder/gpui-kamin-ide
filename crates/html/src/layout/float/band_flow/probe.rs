@@ -2,10 +2,9 @@
 
 use super::kid::{Kid, Kind};
 use super::tap::Tap;
-use super::{Build, Shapes, frame};
+use super::{Build, Probe, Shapes, frame};
 use crate::hooks::IntoHooked;
-use crate::layout::float::band_flow::VERT;
-use gpui::{App, AvailableSpace, LayoutId, Window, px, size};
+use gpui::{AvailableSpace, LayoutId, Window, px, size};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -15,10 +14,9 @@ pub(super) fn probe(
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
 ) -> (f32, f32) {
-    probe_of(kid.kind, &kid.build, cb, avail, shapes, window, cx)
+    probe_of(kid.kind, &kid.build, cb, avail, shapes, p)
 }
 
 /// `probe` для любого построителя: каркас по виду `kind`.
@@ -28,21 +26,26 @@ pub(super) fn probe_of(
     cb: f32,
     avail: f32,
     shapes: Option<Shapes>,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
 ) -> (f32, f32) {
     let tap = Rc::new(Cell::new(None));
-    let mut el = frame(kind, avail, build(cb, avail, shapes, None), tap.clone());
-    let vert = VERT.with(Cell::get).is_some();
+    let vert = p.vert;
+    let mut el = frame(
+        kind,
+        avail,
+        build(cb, avail, shapes, None),
+        tap.clone(),
+        vert,
+    );
     let room = AvailableSpace::Definite(px(avail.max(0.0)));
     let space = if vert {
         size(AvailableSpace::MaxContent, room)
     } else {
         size(room, AvailableSpace::MaxContent)
     };
-    el.layout_as_root(space, window, cx);
+    el.layout_as_root(space, p.window, p.cx);
     // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
-    let (w, h) = unrounded(&tap, window);
+    let (w, h) = unrounded(&tap, p.window);
     if vert { (h, w) } else { (w, h) }
 }
 
@@ -60,37 +63,37 @@ pub(super) fn unrounded(tap: &Rc<Cell<Option<LayoutId>>>, window: &mut Window) -
 }
 
 /// Внутренние ширины ребёнка (min-content, max-content) border-box.
-pub(super) fn intrinsic(kid: &Kid, window: &mut Window, cx: &mut App) -> (f32, f32) {
-    intrinsic_of(&kid.build, window, cx)
+pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
+    intrinsic_of(&kid.build, p)
 }
 
 /// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
-pub(super) fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> (f32, f32) {
+pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
     let tap = Rc::new(Cell::new(None));
     let mut el = Tap {
         inner: build(0.0, 0.0, None, None),
         id: tap.clone(),
     }
     .hooked();
-    let vert = VERT.with(Cell::get).is_some();
-    let mut w = |a: AvailableSpace, window: &mut Window| {
+    let vert = p.vert;
+    let mut w = |a: AvailableSpace, p: &mut Probe| {
         if vert {
             // Повёрнутый текст свою длину высотой не заявляет (растягивается
             // окном) — берём её у самого текста через сборщик
             // `VT_INLINE_MAX`; коробка без текста отвечает раскладкой.
             let prev = crate::text::vertical::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
-            el.layout_as_root(size(AvailableSpace::MaxContent, a), window, cx);
+            el.layout_as_root(size(AvailableSpace::MaxContent, a), p.window, p.cx);
             let text = crate::text::vertical::VT_INLINE_MAX
                 .with(|c| c.replace(prev))
                 .unwrap_or(0.0);
-            let laid = unrounded(&tap, window).1;
+            let laid = unrounded(&tap, p.window).1;
             if text > 0.0 { text.min(laid) } else { laid }
         } else {
-            el.layout_as_root(size(a, AvailableSpace::MaxContent), window, cx);
-            unrounded(&tap, window).0
+            el.layout_as_root(size(a, AvailableSpace::MaxContent), p.window, p.cx);
+            unrounded(&tap, p.window).0
         }
     };
-    let mn = w(AvailableSpace::MinContent, window);
-    let mx = w(AvailableSpace::MaxContent, window);
+    let mn = w(AvailableSpace::MinContent, p);
+    let mx = w(AvailableSpace::MaxContent, p);
     (mn, mx.max(mn))
 }
