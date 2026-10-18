@@ -1,9 +1,10 @@
 //! Apply color filters after sampling a single gradient, preserving its geometry.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Filter};
 
-pub(super) fn apply(c: &mut Computed, own: &Computed, f: Filter) {
-    if own.gradient.is_none() || c.bg_layers().is_some() || f.color_matrix().is_none() {
+pub(super) fn apply(c: &mut Computed, own: &Computed, f: Filter, vcx: ValueCx<'_>) {
+    if own.gradient.is_none() || c.bg_layers(vcx).is_some() || f.color_matrix().is_none() {
         return;
     }
     let Some(raw) = c.gradient_raw.as_deref() else {

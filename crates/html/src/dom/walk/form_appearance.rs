@@ -71,6 +71,8 @@ mod tests {
 
     #[test]
     fn basic_defaults_stay_below_author_css() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let base = rule(
             "input",
             &[],
@@ -88,10 +90,11 @@ mod tests {
             layer: vec![u32::MAX],
         };
         let mut rules = vec![&author, &base];
-        let style = Computed::resolve_with_vars(&mut rules, &parse_decls(""), &parse_decls(""));
+        let style =
+            Computed::resolve_with_vars(&mut rules, &parse_decls(""), &parse_decls(""), vcx);
         assert_eq!(
             style.color,
-            crate::style::values::value::Color::parse("red")
+            crate::style::values::value::Color::parse("red", vcx)
         );
         assert_eq!(
             style.padding.left,

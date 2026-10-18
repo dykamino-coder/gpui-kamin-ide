@@ -140,6 +140,7 @@ mod tests {
             normal_line_height: 1.2,
             doc_salt: 0,
             frag: Default::default(),
+            cx: Default::default(),
         }
     }
 

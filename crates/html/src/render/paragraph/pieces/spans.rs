@@ -111,6 +111,7 @@ pub(crate) fn paragraph_spans(
             crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
             (inherited.wm().turned() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
+            opts.cx.ruby_layers.as_ref(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
@@ -120,4 +121,25 @@ pub(crate) fn paragraph_spans(
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).
 fn rotated_central(inherited: &Computed) -> bool {
     inherited.wm().turned() && !inherited.wm().alphabetic_baseline()
+}
+
+/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
+/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
+/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
+/// sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way.
+// Rotation preserves each span's text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
+pub(super) fn rotate_rel_spans(
+    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
+    inherited: &crate::style::computed::Computed,
+) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
+    if !inherited.wm().turned() {
+        return spans;
+    }
+    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
+    spans
+        .into_iter()
+        .map(|(r, d, b)| (r, turn(d), turn(b)))
+        .collect()
 }

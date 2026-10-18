@@ -1,5 +1,6 @@
 //! Корень постраничного режима: поля и имя первой страницы, группы строчных прогонов.
 
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::render::is_blank;
 use crate::style::cascade::inherit::inherit;
@@ -24,6 +25,7 @@ pub(super) fn resolve_root_page(
     right: &mut f32,
     top: &mut f32,
     root_page: &mut String,
+    vcx: ValueCx<'_>,
 ) {
     loop {
         let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
@@ -90,7 +92,7 @@ pub(super) fn resolve_root_page(
         if let Some(p) = &e.style.page {
             *root_page = p.clone();
         }
-        *root = inherit(&*root, &e.style);
+        *root = inherit(&*root, &e.style, vcx);
         *nodes = e.children;
     }
 }

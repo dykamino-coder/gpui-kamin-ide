@@ -19,6 +19,7 @@ pub(super) fn replaced_abs_atom(
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let mut copy = e.clone();
     copy.style.image_orient_none = merged.image_orient_none;
     copy.style.position = None;
@@ -30,17 +31,19 @@ pub(super) fn replaced_abs_atom(
         copy.style.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        image(&copy)
+        image(&copy, &opts.cx)
     };
-    let holder = styled_div_with(e, merged).child(built).into_any_element();
+    let holder = styled_div_with(e, merged, &opts.cx)
+        .child(built)
+        .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped_replaced(holder, merged)
+        crate::paint::effects::grouped::grouped_replaced(holder, merged, vcx)
     } else {
         holder
     };
@@ -63,12 +66,17 @@ pub(super) fn replaced_abs_atom(
             ),
             ..Default::default()
         });
-        let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+        let probe = crate::layout::positioned::containing_block::spot_probe(
+            spot.clone(),
+            false,
+            opts.cx.line_box.clone(),
+        );
         return match inline_replaced_position::push(
             spot,
-            inline_abs_paint_last(e, holder),
+            inline_abs_paint_last(e, holder, &opts.cx),
             &e.style,
             inherited,
+            &opts.cx.positioning,
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -113,13 +121,15 @@ pub(super) fn replaced_abs_atom(
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
         let pushed = if positioned_cb {
-            crate::layout::positioned::containing_block::cb_push(
+            opts.cx.positioning.cb_push(
                 spot,
                 holder.into_any_element(),
                 crate::layout::positioned::containing_block::nearest_cb_index(inherited),
             )
         } else {
-            crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
+            opts.cx
+                .positioning
+                .icb_push(spot, holder.into_any_element())
         };
         match pushed {
             None => {

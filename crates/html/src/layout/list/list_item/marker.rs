@@ -1,5 +1,7 @@
 //! Shared marker resolution for block and inline list items.
+
 use super::tabular_marker;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::anon_element;
 use crate::style::cascade::inherit::inherit;
@@ -10,7 +12,12 @@ pub(crate) struct Marker {
     pub style: Option<Computed>,
 }
 
-pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> Option<Marker> {
+pub(crate) fn resolve(
+    li: &Element,
+    inherited: &Computed,
+    merged: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<Marker> {
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
@@ -48,6 +55,7 @@ pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> 
             idx,
             &name,
             crate::style::generated::counter_style::Context::new(merged, Default::default()),
+            vcx,
         )
     };
     // `list-style: none` — на списках верстают навигацию и наборы чипов,
@@ -64,7 +72,11 @@ pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> 
     // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
     let no_marker = li.style.no_marker.or(inherited.no_marker) == Some(true)
         || !matches!(li.style.display, None | Some(Display::ListItem));
-    let mut style = li.style.marker_layer.as_deref().map(|m| inherit(merged, m));
+    let mut style = li
+        .style
+        .marker_layer
+        .as_deref()
+        .map(|m| inherit(merged, m, vcx));
     // CSS Lists 3 marker-properties: an outside generated symbol has no
     // tracking advance (Blink list_marker.cc:391,407, InlineMarginsForOutside).
     // Preserve text markers and the inside-marker text flow from #355.
@@ -78,8 +90,13 @@ pub(crate) fn resolve(li: &Element, inherited: &Computed, merged: &Computed) -> 
     })
 }
 
-pub(crate) fn inline_marker(li: &Element, inherited: &Computed, merged: &Computed) -> Option<Node> {
-    Some(node(li, merged, resolve(li, inherited, merged)?))
+pub(crate) fn inline_marker(
+    li: &Element,
+    inherited: &Computed,
+    merged: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<Node> {
+    Some(node(li, merged, resolve(li, inherited, merged, vcx)?))
 }
 
 pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {

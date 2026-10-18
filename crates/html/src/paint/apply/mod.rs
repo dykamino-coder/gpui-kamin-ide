@@ -6,6 +6,7 @@
 //! поддержка и стоит дороже честного пропуска: расхождение всплывает у
 //! пользователя, а не в тесте.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Gradient};
 use crate::style::values::value::Len;
 use gpui::{Div, InteractiveElement, Styled, px, relative};
@@ -29,7 +30,7 @@ pub use crate::paint::apply::text::*;
 use crate::style::computed::FontCx;
 
 /// Ширина/высота/отступ: доля родителя или пиксели.
-pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
+pub(crate) fn len_to_gpui(l: Len, vcx: ValueCx<'_>) -> gpui::DefiniteLength {
     match l {
         Len::Px(v) => px(v).into(),
         Len::Pct(v) => relative(v),
@@ -41,7 +42,7 @@ pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         | Len::Ic(_)
         | Len::Ex(_)
         | Len::Lh(_)
-        | Len::LhPx(..)) => px(l.to_px(None, FontCx::FALLBACK).unwrap_or(0.0)).into(),
+        | Len::LhPx(..)) => px(l.to_px(None, FontCx::FALLBACK, vcx).unwrap_or(0.0)).into(),
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.
         Len::Vw(k) | Len::Vh(k) => relative(k),
@@ -49,7 +50,7 @@ pub(crate) fn len_to_gpui(l: Len) -> gpui::DefiniteLength {
         // taffy-calc (фаза 2); пока — процентная часть, при её отсутствии
         // точечная (ближе, чем прежний сброс всего объявления).
         Len::Calc(i) => {
-            let s = crate::style::values::value::calc_get(i);
+            let s = crate::style::values::value::calc_get(i, vcx);
             match s.pct_px() {
                 // Доля с точками — настоящий calc раскладки (css-values-4
                 // §10.9): KaminIDE patch `DefiniteLength::Calc` + решатель в
@@ -167,9 +168,9 @@ mod alignment_axes;
 mod grid_content_baseline;
 pub(crate) mod item_metadata;
 
-pub fn apply(d: Div, c: &Computed) -> Div {
+pub fn apply(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let mut d = d;
-    d = apply_layout(d, c);
+    d = apply_layout(d, c, vcx);
     // CSS 2.1 §10.8.1: an inline-block's baseline is that of its last in-flow
     // line box. A float is out of flow, so it never gives the enclosing
     // inline-block its baseline (Blink `PropagateBaselineFromBlockChild`
@@ -180,9 +181,9 @@ pub fn apply(d: Div, c: &Computed) -> Div {
     if c.baseline_orthogonal {
         d.style().baseline_unavailable = Some(true);
     }
-    d = apply_box(d, c);
-    d = apply_paint(d, c);
-    apply_text(d, c)
+    d = apply_box(d, c, vcx);
+    d = apply_paint(d, c, vcx);
+    apply_text(d, c, vcx)
 }
 
 #[cfg(test)]

@@ -25,16 +25,18 @@ mod tests {
 
     #[test]
     fn content_preference_survives_parsing_inheritance_and_reset() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut parent = Computed::default();
-        parent.apply_one("align-content", "first baseline");
+        parent.apply_one("align-content", "first baseline", vcx);
         assert_eq!(parent.align_content_baseline, Some(false));
         let mut own = Computed::default();
-        own.apply_one("align-content", "inherit");
-        let inherited = crate::style::cascade::inherit::inherit(&parent, &own);
+        own.apply_one("align-content", "inherit", vcx);
+        let inherited = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         assert_eq!(inherited.align_content_baseline, Some(false));
-        parent.apply_one("align-content", "last baseline");
+        parent.apply_one("align-content", "last baseline", vcx);
         assert_eq!(parent.align_content_baseline, Some(true));
-        parent.apply_one("align-content", "normal");
+        parent.apply_one("align-content", "normal", vcx);
         assert_eq!(parent.align_content_baseline, None);
     }
 

@@ -129,8 +129,8 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
-    band_flow_rest_lift(rest, em, None)
+pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32, cb: Option<f32>) -> Option<Vec<Node>> {
+    band_flow_rest_lift(rest, em, None, cb)
 }
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который

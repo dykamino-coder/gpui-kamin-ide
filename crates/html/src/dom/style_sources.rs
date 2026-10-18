@@ -1,6 +1,6 @@
 //! Collect resource stylesheets from parsed HTML/XML, excluding inert template contents.
 
-use markup5ever_rcdom::NodeData;
+use markup5ever_rcdom::{Handle, NodeData};
 
 pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
     let dom = if xml {
@@ -46,6 +46,40 @@ pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
         pending.extend(node.children.borrow().iter().rev().cloned());
     }
     sheets
+}
+
+/// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
+/// html5ever кладёт его текстом внутрь.
+/// Ссылки на знаки (`&gt;`, `&amp;`) в `<style>` XHTML-документа остаются
+/// нераскрытыми: построитель HTML держит `<style>` сырым текстом, хотя по
+/// разбору XML их следует раскрыть. Известное ограничение: раскрытые правила
+/// вскрывают ошибки раскладки ниже (`text-indent-intrinsic-001/003`), а
+/// раскрытая `&quot;` закрывает строку CSS раньше времени (`content-177`).
+pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
+    if let NodeData::Element { name, .. } = &handle.data
+        && &*name.local == "style"
+    {
+        let mut sheet = String::new();
+        for child in handle.children.borrow().iter() {
+            if let NodeData::Text { contents } = &child.data {
+                // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
+                // она прячет стиль от разбора XML. Разбору CSS она мусор, и
+                // правила до первой закрывающей скобки пропадали вместе с ней.
+                let text = contents.borrow();
+                let trimmed = text.trim();
+                let body = trimmed
+                    .strip_prefix("<![CDATA[")
+                    .and_then(|rest| rest.strip_suffix("]]>"))
+                    .unwrap_or(&text);
+                // Preserve child text content: an invented LF makes EOF strings invalid.
+                sheet.push_str(body);
+            }
+        }
+        out.push(sheet);
+    }
+    for child in handle.children.borrow().iter() {
+        collect_style_tags(child, out);
+    }
 }
 
 #[cfg(test)]

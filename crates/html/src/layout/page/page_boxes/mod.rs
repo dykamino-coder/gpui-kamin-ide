@@ -46,14 +46,15 @@ fn page_margin_boxes(
     opts: &RenderOpts,
     counters: &mut page_counters::PageCounters,
 ) -> Vec<crate::layout::page::page_stack::MarginBox> {
+    let vcx = opts.cx.vcx();
     let (ctx, boxes) = decls;
     let mut ctx_own = Computed::default();
     for (k, v) in ctx {
-        ctx_own.apply_one(k, v);
+        ctx_own.apply_one(k, v, vcx);
     }
     page_counters::resolve(&mut ctx_own, root);
     counters.begin(page, pages, &ctx_own);
-    let ctx_style = inherit(root, &ctx_own);
+    let ctx_style = inherit(root, &ctx_own, vcx);
     let mut out = Vec::new();
     for (slot, list) in boxes {
         let Some(place) = crate::layout::page::margin_layout::place(slot) else {
@@ -71,34 +72,34 @@ fn page_margin_boxes(
         if content == "none" || content == "normal" {
             continue;
         }
-        let Some(items) = crate::style::computed::parse_content(&content)
-            .and_then(|items| crate::dom::resolve_content_attributes(&items, &[], false))
+        let Some(items) = crate::style::computed::parse_content(&content, vcx)
+            .and_then(|items| crate::dom::resolve_content_attributes(&items, &[], false, vcx))
         else {
             continue;
         };
         let (ta, va) = crate::layout::page::margin_layout::defaults(slot);
         let va = last("vertical-align").unwrap_or_else(|| va.to_string());
         let mut own = Computed::default();
-        own.apply_one("text-align", ta);
+        own.apply_one("text-align", ta, vcx);
         for (k, v) in list {
             if k != "content" && k != "vertical-align" {
-                own.apply_one(k, v);
+                own.apply_one(k, v, vcx);
             }
         }
         page_counters::resolve(&mut own, &ctx_own);
-        let resolved = inherit(&ctx_style, &own);
+        let resolved = inherit(&ctx_style, &own, vcx);
         // CSS Logical 1 §4: generated margin boxes also map logical properties
         // through their own computed writing mode, after page-context inheritance.
         own.writing_mode = resolved.writing_mode;
         own.flat_mode = resolved.flat_mode;
         own.rtl = resolved.rtl;
-        own.resolve_logical(own.wm(), ctx_style.wm().vertical(), false);
+        own.resolve_logical(own.wm(), ctx_style.wm().vertical(), false, vcx);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
         let mut content_counters = counters.for_margin(&own);
-        let children = content_nodes(&items, &resolved, &mut content_counters);
+        let children = content_nodes(&items, &resolved, &mut content_counters, vcx);
         let cb = crate::layout::page::margin_layout::containing_block(place, g.size, g.margin);
         // Длина по базе: `auto` — `None`; проценты — от содержащего блока по
         // СВОЕЙ оси (Blink `kContainingBlockSize`).
@@ -143,6 +144,7 @@ fn page_margin_boxes(
         let intrinsic = [own.width, own.height];
         let vertical = resolved.wm().vertical();
         let build = move |size: Option<(f32, f32)>, inline: Option<Len>| -> AnyElement {
+            let vcx = opts.cx.vcx();
             let mut st = own.clone();
             for (k, v) in [
                 ("padding-top", format!("{}px", pad[0])),
@@ -150,7 +152,7 @@ fn page_margin_boxes(
                 ("padding-bottom", format!("{}px", pad[2])),
                 ("padding-left", format!("{}px", pad[3])),
             ] {
-                st.apply_one(k, &v);
+                st.apply_one(k, &v, vcx);
             }
             let (sw, sh) = match size {
                 Some((w, h)) => (format!("{w}px"), format!("{h}px")),
@@ -176,7 +178,7 @@ fn page_margin_boxes(
                     },
                 ),
             ] {
-                st.apply_one(k, v);
+                st.apply_one(k, v, vcx);
             }
             let inner = Element {
                 marks: Default::default(),

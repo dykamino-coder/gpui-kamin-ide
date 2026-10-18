@@ -1,12 +1,14 @@
 //! apply_layout, этап выравнивания: align-items/self, flex-basis, justify-content, align-content.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 pub(super) fn layout_alignment(
     mut d: Div,
     c: &Computed,
     dir: Option<FlexDir>,
     rtl_row: bool,
+    vcx: ValueCx<'_>,
 ) -> Div {
     match c.align_items {
         Some(Align::Center) => d = d.items_center(),
@@ -53,7 +55,7 @@ pub(super) fn layout_alignment(
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.
     if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
-        d = d.flex_basis(len_to_gpui(b));
+        d = d.flex_basis(len_to_gpui(b, vcx));
     }
     if let Some(j) = c.justify_content {
         // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как

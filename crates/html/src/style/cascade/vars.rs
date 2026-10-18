@@ -1,4 +1,6 @@
 //! `var()`, `attr()`, `sibling-index()`.
+
+use crate::document::state::ValueCx;
 // owner: B
 
 use crate::style::computed::top_level_comma;
@@ -27,49 +29,40 @@ fn balanced_close(after_open: &str) -> Option<usize> {
     None
 }
 
-thread_local! {
-    /// Атрибуты элемента, чей стиль сейчас собирается, — источник для
-    /// типизированного `attr()` (css-values-5 §7.7). Ставит `dom::walk` на
-    /// время `resolve_with_vars` и сразу снимает: у стилей вне этого окна
-    /// (наведение, кадры анимации, псевдоэлементы) хозяина нет, и там берётся
-    /// запасное значение.
-    static CURRENT_ATTRS: std::cell::RefCell<Vec<(String, String)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
+/// The element whose style is being cascaded, as far as substitution
+/// functions need it: its attributes for typed `attr()` (css-values-5 §7.7)
+/// and its place among siblings for `sibling-index()`/`sibling-count()`
+/// (css-values-5 §tree-counting). The style walk passes it for the element's
+/// own cascade; styles without an owner element (hover layers, animation
+/// frames, pseudo-elements) use [`CascadeCx::NONE`] and take the fallback.
+#[derive(Clone, Copy)]
+pub struct CascadeCx<'a> {
+    pub attrs: &'a [(String, String)],
+    /// `(index, count)`, index from 1.
+    pub sibling: Option<(usize, usize)>,
 }
 
-thread_local! {
-    /// Номер элемента среди братьев и их число — для `sibling-index()` и
-    /// `sibling-count()` (css-values-5 §tree-counting). Ставит `dom::walk`
-    /// на время каскада элемента, как и атрибуты.
-    static CURRENT_SIBLING: std::cell::Cell<Option<(usize, usize)>> = const { std::cell::Cell::new(None) };
-}
-
-pub fn set_current_sibling(at: Option<(usize, usize)>) {
-    CURRENT_SIBLING.with(|c| c.set(at));
+impl CascadeCx<'_> {
+    pub const NONE: CascadeCx<'static> = CascadeCx {
+        attrs: &[],
+        sibling: None,
+    };
 }
 
 /// `sibling-index()` / `sibling-count()` — целым числом (css-values-5
 /// §tree-counting: «sibling-index() … returns an <integer> … the index of the
 /// element among its inclusive siblings, starting at 1»). Без хозяина
 /// (вне каскада элемента) запись остаётся как есть и роняет объявление.
-pub(super) fn resolve_sibling(value: String) -> String {
+pub(super) fn resolve_sibling(value: String, cx: CascadeCx) -> String {
     if !value.contains("sibling-") {
         return value;
     }
-    match CURRENT_SIBLING.with(|c| c.get()) {
+    match cx.sibling {
         Some((i, n)) => value
             .replace("sibling-index()", &i.to_string())
             .replace("sibling-count()", &n.to_string()),
         None => value,
     }
-}
-
-pub fn set_current_attrs(attrs: &[(String, String)]) {
-    CURRENT_ATTRS.with(|a| *a.borrow_mut() = attrs.to_vec());
-}
-
-pub fn clear_current_attrs() {
-    CURRENT_ATTRS.with(|a| a.borrow_mut().clear());
 }
 
 /// Значение атрибута по имени из `attr()`.
@@ -81,22 +74,20 @@ pub fn clear_current_attrs() {
 /// ASCII-регистронезависимое: HTML-парсер опускает в нижний регистр только
 /// ASCII, и запрос опускается так же, а не-ASCII знаки сравниваются как есть
 /// (`html-attr-case-insensitivity`).
-fn attr_value(name: &str) -> Option<String> {
+fn attr_value(name: &str, attrs: &[(String, String)]) -> Option<String> {
     let local = match name.split_once('|') {
         Some(("", local)) => local,
         Some(_) => return None,
         None => name,
     };
-    CURRENT_ATTRS.with(|a| {
-        a.borrow()
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(local))
-            .map(|(_, v)| v.clone())
-    })
+    attrs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(local))
+        .map(|(_, v)| v.clone())
 }
 
 /// Значение атрибута под типом `attr()`; `None` — не разбирается этим типом.
-fn attr_cast(value: &str, ty: &str) -> Option<String> {
+fn attr_cast(value: &str, ty: &str, vcx: ValueCx<'_>) -> Option<String> {
     let v = value.trim();
     let ty: String = ty
         .chars()
@@ -105,7 +96,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
         .to_ascii_lowercase();
     // `<length>`: голое число длиной не бывает, кроме нуля (css-values-4
     // §6.1); `Len::parse` принимает его точками — отсекаем здесь.
-    let length = |v: &str| match Len::parse(v) {
+    let length = |v: &str| match Len::parse(v, vcx) {
         Some(Len::Px(n)) if v.parse::<f32>().is_ok() => (n == 0.0).then(|| v.to_string()),
         Some(
             Len::Pct(_)
@@ -133,7 +124,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
         "type(<length-percentage>)" => length(v).or_else(|| percentage(v)),
         "type(<number>)" | "number" => v.parse::<f32>().ok().map(|_| v.to_string()),
         "type(<integer>)" => v.parse::<i64>().ok().map(|_| v.to_string()),
-        "type(<color>)" => Color::parse(v).map(|_| v.to_string()),
+        "type(<color>)" => Color::parse(v, vcx).map(|_| v.to_string()),
         // `attr(x px)` — число из атрибута с единицей из записи.
         unit if !unit.is_empty()
             && (unit == "%" || unit.chars().all(|c| c.is_ascii_alphabetic())) =>
@@ -149,7 +140,7 @@ fn attr_cast(value: &str, ty: &str) -> Option<String> {
 /// (`attr(x)` — строка) остаётся как есть: её разбирают `content` и счётчики.
 /// Негодный атрибут без запаса делает объявление недействительным на
 /// вычислении — значение становится `unset`.
-pub(super) fn resolve_attrs(key: &str, value: &str) -> String {
+pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx, vcx: ValueCx<'_>) -> String {
     if key == "content"
         || !value
             .as_bytes()
@@ -187,7 +178,10 @@ pub(super) fn resolve_attrs(key: &str, value: &str) -> String {
         if ty.is_empty() {
             out.push_str(&rest[at..at + 5 + close + 1]);
         } else {
-            match (attr_value(name).and_then(|v| attr_cast(&v, ty)), fallback) {
+            match (
+                attr_value(name, cx.attrs).and_then(|v| attr_cast(&v, ty, vcx)),
+                fallback,
+            ) {
                 (Some(v), _) => out.push_str(&v),
                 (None, Some(f)) => out.push_str(f),
                 (None, None) => return "unset".to_string(),

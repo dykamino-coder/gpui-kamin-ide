@@ -3,42 +3,27 @@
 //! Resolve the original containing-block position before inserting fragmentation
 //! space. Growing an auto-sized abspos must not resolve its bottom inset again.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::push::grow_pushed;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::layout::multicol::spanner::multicol_container;
 use crate::render::out_of_flow;
-use crate::style::computed::{Display, Position};
+use crate::style::computed::Position;
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
 
-fn measure_fragment_and_own_height(c: &Element) -> Option<(Shape, f32)> {
-    let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS)?;
+mod block;
+use block::{block, zero};
+
+fn measure_fragment_and_own_height(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
+    let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS, vcx)?;
     let own = Measure::own_size(m.own, m.shape.height);
     Some((m.shape, own))
 }
 
-fn zero(v: Option<Len>) -> bool {
-    matches!(v, None | Some(Len::Px(0.0)))
-}
-
-// Other formatting contexts own their block offsets. They need a positioning
-// adapter before their descendants can participate in this block-flow pass.
-fn block(c: &Element) -> bool {
-    let border = c.style.borders();
-    !c.inline
-        && matches!(c.style.display, None | Some(Display::Block))
-        && !multicol_container(&c.style)
-        && !c.style.bdb_clone
-        && c.style.float.unwrap_or(0) == 0
-        && zero(c.style.padding.top)
-        && zero(c.style.padding.bottom)
-        && zero(border.top)
-        && zero(border.bottom)
-}
-
+#[allow(clippy::too_many_arguments)]
 fn positioned(
     c: &mut Element,
     cb_height: f32,
@@ -47,6 +32,7 @@ fn positioned(
     h: f32,
     count: usize,
     copies: usize,
+    vcx: ValueCx<'_>,
 ) -> bool {
     if c.style.position != Some(Position::Absolute)
         || !block(c)
@@ -56,7 +42,7 @@ fn positioned(
     {
         return false;
     }
-    let Some((s, _)) = measure_fragment_and_own_height(c) else {
+    let Some((s, _)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
     if s.cuts.is_empty() || (s.forced.is_empty() && s.solid.is_empty()) {
@@ -78,7 +64,15 @@ fn positioned(
     let mut shape = s.clone();
     shape.margin_top = phase;
     let planned = copies.max(((phase + s.height) / h).ceil() as usize + count);
-    let mut grown = grow_pushed(vec![(probe, shape)], count, Some(h), None, planned, &[]);
+    let mut grown = grow_pushed(
+        vec![(probe, shape)],
+        count,
+        Some(h),
+        None,
+        planned,
+        &[],
+        vcx,
+    );
     let (mut probe, after) = grown.remove(0);
     if after.height <= s.height + 0.01 {
         return false;
@@ -96,11 +90,12 @@ fn grow_positioned_descendants(
     h: f32,
     count: usize,
     copies: usize,
+    vcx: ValueCx<'_>,
 ) -> bool {
     if !block(c) {
         return false;
     }
-    let Some((_, own)) = measure_fragment_and_own_height(c) else {
+    let Some((_, own)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
     let cb = establishes_cb(&c.style);
@@ -110,29 +105,35 @@ fn grow_positioned_descendants(
         let Node::Element(k) = n else { continue };
         if out_of_flow(&k.style) {
             if cb {
-                changed |= positioned(k, own, cursor, origin, h, count, copies);
+                changed |= positioned(k, own, cursor, origin, h, count, copies, vcx);
             }
             continue;
         }
-        let Some((s, height)) = measure_fragment_and_own_height(k) else {
+        let Some((s, height)) = measure_fragment_and_own_height(k, vcx) else {
             continue;
         };
         let start = cursor + previous.max(s.margin_top);
-        changed |= grow_positioned_descendants(k, origin + start, h, count, copies);
+        changed |= grow_positioned_descendants(k, origin + start, h, count, copies, vcx);
         cursor = start + height;
         previous = s.margin_bottom;
     }
     changed
 }
 
-pub(super) fn grow(kids: &mut [(Element, Shape)], h: f32, count: usize, copies: usize) {
+pub(super) fn grow(
+    kids: &mut [(Element, Shape)],
+    h: f32,
+    count: usize,
+    copies: usize,
+    vcx: ValueCx<'_>,
+) {
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     for (c, s) in kids {
-        let own = measure_fragment_and_own_height(c).map_or(s.height, |(_, own)| own);
+        let own = measure_fragment_and_own_height(c, vcx).map_or(s.height, |(_, own)| own);
         let start = cursor + previous.max(s.margin_top);
         if !c.marks.paginate
-            && grow_positioned_descendants(c, start, h, count, copies)
-            && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS)
+            && grow_positioned_descendants(c, start, h, count, copies, vcx)
+            && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS, vcx)
         {
             *s = crate::layout::fragment::Shape {
                 margin_top: s.margin_top,
@@ -206,33 +207,37 @@ mod tests {
 
     #[test]
     fn bottom_position_is_resolved_before_auto_height_grows() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut cb = containing_block();
-        assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4));
+        assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4, vcx));
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
         assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
         assert_eq!(
-            measure_fragment_and_own_height(abs).unwrap().0.height,
+            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
             200.0
         );
-        let (shape, own) = measure_fragment_and_own_height(&cb).unwrap();
+        let (shape, own) = measure_fragment_and_own_height(&cb, vcx).unwrap();
         assert_eq!(shape.height, 200.0);
         assert_eq!(own, 190.0);
     }
 
     #[test]
     fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut cb = containing_block();
-        assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4));
+        assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4, vcx));
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
         assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
         assert_eq!(
-            measure_fragment_and_own_height(abs).unwrap().0.height,
+            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
             220.0
         );
-        assert_eq!(measure_fragment_and_own_height(&cb).unwrap().1, 190.0);
+        assert_eq!(measure_fragment_and_own_height(&cb, vcx).unwrap().1, 190.0);
     }
 }

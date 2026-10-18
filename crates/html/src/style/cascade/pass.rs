@@ -1,11 +1,51 @@
 //! Computed::apply_pass: один проход объявлений (обычные или !important) с подстановкой var()/attr(), all, порядком логических и физических свойств.
 
 use super::*;
+use crate::document::state::ValueCx;
 mod all_reset;
 
 impl Computed {
+    pub fn apply_decls(&mut self, d: &Decls, vcx: ValueCx<'_>) {
+        for (k, v) in d {
+            if k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
+                continue;
+            }
+            for part in v.split(crate::style::css::DECL_SEP) {
+                self.apply_one(k, part, vcx);
+            }
+        }
+    }
+
+    /// То же, но со словарём переменных: `var(--x)` подставляется значением.
+    ///
+    /// Без этого современные темы не работают вовсе — они целиком построены на
+    /// переменных, и каждое такое объявление молча терялось.
+    pub fn apply_decls_with_vars(&mut self, d: &Decls, vars: &Decls, vcx: ValueCx<'_>) {
+        // Два прохода: сначала обычные объявления, затем помеченные
+        // `!important`. Так важное перекрывает любое обычное независимо от
+        // порядка правил — раньше пометка просто срезалась, и объявление
+        // конкурировало на общих основаниях.
+        // Порядок объявлений внутри правила: сперва СОКРАЩЁННЫЕ, потом
+        // отдельные. `border: solid gray; border-width: 1px 2px 3px 4px`
+        // обязано дать 1/2/3/4, а не 3px от сокращения; словарь объявлений
+        // исходного порядка не помнит, и без сортировки исход зависел от
+        // случайного обхода хеш-таблицы — от запуска к запуску РАЗНОГО
+        // (`abs-pos-border-offset-001`). Общность меряется числом дефисов:
+        // `border` < `border-width` < `border-top-width`.
+        for important in [false, true] {
+            self.apply_pass(d, vars, important, CascadeCx::NONE, vcx);
+        }
+    }
+
     /// Один проход: только обычные объявления либо только важные.
-    pub(crate) fn apply_pass<'a>(&mut self, d: &'a Decls, vars: &Decls, important: bool) {
+    pub(crate) fn apply_pass<'a>(
+        &mut self,
+        d: &'a Decls,
+        vars: &Decls,
+        important: bool,
+        cx: CascadeCx,
+        vcx: ValueCx<'_>,
+    ) {
         // Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ и его длинным
         // свойством (`background` и `background-color`, `border` и
         // `border-width`): там он и виден — `background-color: red;
@@ -129,7 +169,7 @@ impl Computed {
         });
         let all_at = all_at.map(|(at, _)| at);
         if let Some((_, initial)) = all_reset {
-            self.reset_for_all(initial);
+            self.reset_for_all(initial, vcx);
         }
         for k in &ordered {
             let Some(v) = d.get(*k) else { continue };
@@ -168,23 +208,28 @@ impl Computed {
                 // Типизированный `attr()` подставляется тем же шагом, что и
                 // `var()` (css-values-5 §7.7): после него значение разбирается
                 // как обычное.
-                let resolved = resolve_sibling(resolve_attrs(
-                    k.as_str(),
-                    &resolve_vars(strip_important(part), vars),
-                ));
+                let resolved = resolve_sibling(
+                    resolve_attrs(
+                        k.as_str(),
+                        &resolve_vars(strip_important(part), vars),
+                        cx,
+                        vcx,
+                    ),
+                    cx,
+                );
                 // CSS Variables §3: invalid after substitution means unset;
                 // a preceding specified color cannot survive the computed value.
                 if k.as_str() == "color"
                     && crate::style::css::variable_values::has_var(strip_important(part))
-                    && Color::parse(&resolved).is_none()
+                    && Color::parse(&resolved, vcx).is_none()
                     && !matches!(
                         resolved.trim().to_ascii_lowercase().as_str(),
                         "inherit" | "initial" | "unset" | "revert" | "revert-layer"
                     )
                 {
-                    self.apply_one(k, "unset");
+                    self.apply_one(k, "unset", vcx);
                 } else {
-                    self.apply_one(k, &resolved);
+                    self.apply_one(k, &resolved, vcx);
                 }
             }
         }

@@ -1,6 +1,7 @@
 //! Generated content resolves attributes using the originating element language.
 //! CSS 2.1 section 12.2 and CSS Values 5 #attr-notation use host-language matching.
 
+use crate::document::state::ValueCx;
 use std::cell::Cell;
 
 /// CSS2 sections 6.2.1 and 12.2: explicit inheritance follows the DOM,
@@ -67,8 +68,9 @@ pub(crate) fn html_attributes(namespace: &str) -> bool {
 pub(crate) fn host_content(
     style: &crate::style::computed::Computed,
     host: &crate::style::select::Ancestor,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
-    resolve_content_attributes(style.content.as_ref()?, &host.attrs, host.html_attrs)
+    resolve_content_attributes(style.content.as_ref()?, &host.attrs, host.html_attrs, vcx)
 }
 
 /// CSS Values 5 §8.7.1 substitutes attributes before checking content's
@@ -78,8 +80,9 @@ pub(crate) fn resolve_content_attributes(
     items: &[crate::style::computed::ContentItem],
     attrs: &[(String, String)],
     html_attrs: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
-    let out = substitute_attributes(items, attrs, html_attrs)?;
+    let out = substitute_attributes(items, attrs, html_attrs, vcx)?;
     (!out.is_empty()).then_some(out)
 }
 
@@ -87,6 +90,7 @@ fn substitute_attributes(
     items: &[crate::style::computed::ContentItem],
     attrs: &[(String, String)],
     html_attrs: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<crate::style::computed::ContentItem>> {
     use crate::style::computed::ContentItem;
     let mut out = Vec::new();
@@ -102,8 +106,8 @@ fn substitute_attributes(
                 if fallback.is_empty() {
                     continue;
                 }
-                let parsed = crate::style::computed::parse_content(fallback)?;
-                let resolved = substitute_attributes(&parsed, attrs, html_attrs)?;
+                let parsed = crate::style::computed::parse_content(fallback, vcx)?;
+                let resolved = substitute_attributes(&parsed, attrs, html_attrs, vcx)?;
                 // §8.7.2: attr-tainted values cannot be used as URLs.
                 if resolved
                     .iter()
@@ -133,8 +137,9 @@ pub(crate) fn content_text(
     own_quotes: Option<&Option<Vec<(String, String)>>>,
     html_attrs: bool,
     context: crate::style::generated::counter_style::Context,
+    vcx: ValueCx<'_>,
 ) -> String {
-    let Some(items) = resolve_content_attributes(items, attrs, html_attrs) else {
+    let Some(items) = resolve_content_attributes(items, attrs, html_attrs, vcx) else {
         return String::new();
     };
     let mut text = String::new();
@@ -148,7 +153,7 @@ pub(crate) fn content_text(
             crate::style::computed::ContentItem::Counter(name, style_name) => {
                 let value = counters.value_of(name);
                 text.push_str(&crate::style::generated::counter_style::repr_in(
-                    value, style_name, context,
+                    value, style_name, context, vcx,
                 ));
             }
             crate::style::computed::ContentItem::Counters(name, sep, style_name) => {
@@ -158,7 +163,7 @@ pub(crate) fn content_text(
                     .chain_of(name)
                     .into_iter()
                     .map(|v| {
-                        crate::style::generated::counter_style::repr_in(v, style_name, context)
+                        crate::style::generated::counter_style::repr_in(v, style_name, context, vcx)
                     })
                     .collect();
                 text.push_str(&chain.join(sep));

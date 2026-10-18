@@ -1,4 +1,6 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::hooks::IntoHooked;
@@ -7,7 +9,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
 
-pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
     // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
@@ -22,7 +24,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         if sh.blur > 0.0
             || sh.color.a == 0.0
             || c.border_shape.is_some()
-            || super::shaped_outset::shapes_shadows(c)
+            || super::shaped_outset::shapes_shadows(c, vcx)
         {
             continue;
         }
@@ -132,7 +134,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     }
 }
 
-pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ ВНУТРЕННЯЯ тень (без размытия). §7.1: «An inner box-shadow casts
     // a shadow as if everything outside the padding edge were opaque» — тень =
     // padding-box МИНУС фигура, сжатая на разлёт и сдвинутая на смещение.
@@ -212,11 +214,11 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         ring.style().css_border_snap = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
-        if !c.radius_masked() && c.border_shape.is_none() {
+        if !c.radius_masked(vcx) && c.border_shape.is_none() {
             let bw = c.borders();
             let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
-                (crate::paint::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b)))
+                (crate::paint::apply::radius_px(c, r, vcx).unwrap_or(0.0) - side(a).max(side(b)))
                     .max(0.0)
             };
             ring = ring

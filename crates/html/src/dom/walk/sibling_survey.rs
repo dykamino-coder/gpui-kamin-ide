@@ -1,6 +1,7 @@
 //! Survey sibling positions and walk children with their ancestor stack.
 
 use super::build_dom_node;
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::css::{Decls, Keyframes, Rule};
 use crate::style::select::{Ancestor, Sibs, census_of};
@@ -12,6 +13,7 @@ use std::rc::Rc;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn walk_children(
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
@@ -25,7 +27,7 @@ pub(crate) fn walk_children(
     // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
     // и на последующих, поэтому паспорта всех детей-элементов собираются
     // заранее, а каждый узел получает свою позицию в общем списке.
-    let (spots, all) = census_of(&children);
+    let (spots, all) = census_of(&children, tree);
     let all = Rc::new(all);
     let mut pos = 0usize;
     for (idx, (child, spot)) in children.iter().zip(&spots).enumerate() {
@@ -37,8 +39,8 @@ pub(crate) fn walk_children(
             rc: Some(&all),
         };
         build_dom_node(
-            child, rules, vars, frames, counter, counters, path, *spot, preserve, sibs, &children,
-            &spots, idx, out,
+            child, tree, rules, vars, frames, counter, counters, path, *spot, preserve, sibs,
+            &children, &spots, idx, out,
         );
         pos += usize::from(is_elem);
     }

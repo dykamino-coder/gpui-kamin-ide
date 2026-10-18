@@ -1,13 +1,20 @@
 //! Признаки медиазапроса: значение признака, булев признак, числа и ключевые слова среды; комбинаторы трёхзначной логики.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Media {
     /// `<mf-plain>` и разложенные диапазоны. `min-`/`max-` — те же `>=`/`<=`
     /// (§2.4.1); отрицательные пределы разрешены и просто дают ложь или
     /// истину, а НЕ ошибку (§2.4.1 «false in the negative range»,
     /// `mq-negative-range-001/002`).
-    pub(crate) fn mq_feature(&self, name: &str, value: &str, cmp: MqCmp) -> SupTri {
+    pub(crate) fn mq_feature(
+        &self,
+        name: &str,
+        value: &str,
+        cmp: MqCmp,
+        vcx: ValueCx<'_>,
+    ) -> SupTri {
         let name = name.trim();
         let (base, cmp) = if let Some(b) = name.strip_prefix("min-") {
             (b, MqCmp::Ge)
@@ -29,7 +36,7 @@ impl Media {
         let Some((num, den)) = self.mq_numeric(base) else {
             return SupTri::Unknown;
         };
-        let Some((a, b)) = mq_operand(value) else {
+        let Some((a, b)) = mq_operand(value, vcx) else {
             return SupTri::Unknown;
         };
         // Перекрёстное умножение вместо деления: вырожденное `0/0` иначе

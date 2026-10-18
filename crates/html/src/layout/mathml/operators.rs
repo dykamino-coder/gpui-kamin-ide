@@ -39,7 +39,8 @@ pub(super) fn text(e: &Element) -> String {
         .to_string()
 }
 pub(super) fn core(e: &Element, parent: &Computed, opts: &RenderOpts) -> Option<Operator> {
-    let style = crate::style::cascade::inherit::inherit(parent, &e.style);
+    let vcx = opts.cx.vcx();
+    let style = crate::style::cascade::inherit::inherit(parent, &e.style, vcx);
     if e.tag == "mo" {
         return Some(operator(e, &style, opts));
     }

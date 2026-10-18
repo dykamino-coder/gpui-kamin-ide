@@ -1,8 +1,14 @@
 //! inherit_stage, этап содержащего блока: bidi-управление, признаки cb_* (многоколонность, подложка, трансформ, письмо), растяжение и определённость высоты.
 
 use super::*;
+use crate::document::state::ValueCx;
 
-pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_containing(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    vcx: ValueCx<'_>,
+) {
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
     bidi_controls::resolve(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
@@ -192,7 +198,7 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
                 // `calc(100% - 16px)` is a length-percentage: definite exactly when its
                 // percentage basis is (css-values-4 §10.9, CSS 2.1 §10.5).
                 Some(crate::style::values::value::Len::Calc(i))
-                    if crate::style::values::value::calc_get(i)
+                    if crate::style::values::value::calc_get(i, vcx)
                         .pct_px()
                         .is_some_and(|(pct, _)| pct == 0.0) =>
                 {

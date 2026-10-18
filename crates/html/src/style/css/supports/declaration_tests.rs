@@ -4,6 +4,8 @@ use crate::style::computed::{Computed, ParseResult};
 
 #[test]
 fn declaration_outcomes_include_values_equal_to_the_initial_state() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for (property, value) in [
         ("column-count", "auto"),
         ("column-width", "auto"),
@@ -45,20 +47,23 @@ fn declaration_outcomes_include_values_equal_to_the_initial_state() {
         ("d", "none"),
     ] {
         assert_eq!(
-            Computed::declaration_result(property, value),
+            Computed::declaration_result(property, value, vcx),
             ParseResult::Accepted,
             "{property}: {value}"
         );
-        assert!(crate::style::css::supports(&format!(
-            "({property}: {value})"
-        )));
+        assert!(crate::style::css::supports(
+            &format!("({property}: {value})"),
+            vcx
+        ));
     }
 }
 
 #[test]
 fn invalid_values_and_unsupported_names_have_distinct_results() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     assert_eq!(
-        Computed::declaration_result("definitely-not-a-property", "initial"),
+        Computed::declaration_result("definitely-not-a-property", "initial", vcx),
         ParseResult::Unsupported
     );
     for (property, value) in [
@@ -70,29 +75,32 @@ fn invalid_values_and_unsupported_names_have_distinct_results() {
         ("container-type", "anchored"),
     ] {
         assert_eq!(
-            Computed::declaration_result(property, value),
+            Computed::declaration_result(property, value, vcx),
             ParseResult::Invalid,
             "{property}: {value}"
         );
-        assert!(!crate::style::css::supports(&format!(
-            "({property}: {value})"
-        )));
+        assert!(!crate::style::css::supports(
+            &format!("({property}: {value})"),
+            vcx
+        ));
     }
 }
 
 #[test]
 fn cascade_bookkeeping_does_not_accept_an_invalid_declaration() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let mut parser = Computed {
         declaration_parse: ParseResult::Invalid,
         decl_seq: 42,
         ..Computed::default()
     };
-    parser.apply_one("color", "rainbow");
+    parser.apply_one("color", "rainbow", vcx);
     assert_eq!(parser.declaration_parse, ParseResult::Invalid);
     assert_eq!(parser.decl_seq, 43);
     for value in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         assert_eq!(
-            Computed::declaration_result("color", value),
+            Computed::declaration_result("color", value, vcx),
             ParseResult::Accepted
         );
     }

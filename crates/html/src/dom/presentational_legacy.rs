@@ -6,6 +6,8 @@
 //! here every hint is computed from the element's own attributes (and, for
 //! table cells, the owning table) and lands in the presentational-hint origin
 //! through [`super::presentational_hints::hint`], below all author rules.
+
+use crate::document::state::ValueCx;
 use crate::style::css::Rule;
 use crate::style::select::Ancestor;
 
@@ -44,7 +46,7 @@ fn image_border(attrs: &[(String, String)], css: &mut String) {
 // float row of grid containers and past a float fragmented across columns
 // (`grid-template-rows-fit-content-001`, `floats-clear-multicol-001`).
 
-fn table(attrs: &[(String, String)], css: &mut String) {
+fn table(attrs: &[(String, String)], css: &mut String, vcx: ValueCx<'_>) {
     match lower(attrs, "align").as_deref() {
         Some("left") => css.push_str("float: left;"),
         Some("right") => css.push_str("float: right;"),
@@ -62,7 +64,9 @@ fn table(attrs: &[(String, String)], css: &mut String) {
     if let Some(v) = dim(attrs, "vspace", false) {
         css.push_str(&format!("margin-top: {v}; margin-bottom: {v};"));
     }
-    if let Some(c) = attr(attrs, "bordercolor").and_then(super::presentational_hr::legacy_color) {
+    if let Some(c) =
+        attr(attrs, "bordercolor").and_then(|c| super::presentational_hr::legacy_color(c, vcx))
+    {
         css.push_str(&format!("border-color: {c};"));
     }
 }
@@ -134,7 +138,12 @@ fn text_align(tag: &str, attrs: &[(String, String)], css: &mut String) {
 }
 
 /// The hint declarations of one element, as one declaration block.
-pub(super) fn hints(tag: &str, attrs: &[(String, String)], _path: &[Ancestor]) -> String {
+pub(super) fn hints(
+    tag: &str,
+    attrs: &[(String, String)],
+    _path: &[Ancestor],
+    vcx: ValueCx<'_>,
+) -> String {
     let mut css = String::new();
     if matches!(
         tag,
@@ -156,7 +165,7 @@ pub(super) fn hints(tag: &str, attrs: &[(String, String)], _path: &[Ancestor]) -
         text_align(tag, attrs, &mut css);
     }
     match tag {
-        "table" => table(attrs, &mut css),
+        "table" => table(attrs, &mut css, vcx),
         "td" | "th" => {
             // §15.3.8: cell `width` ignores zero, cell and row `height` do not.
             if let Some(w) = dim(attrs, "width", true) {
@@ -192,8 +201,13 @@ pub(super) fn hints(tag: &str, attrs: &[(String, String)], _path: &[Ancestor]) -
     css
 }
 
-pub(super) fn rule(tag: &str, attrs: &[(String, String)], path: &[Ancestor]) -> Option<Rule> {
-    let css = hints(tag, attrs, path);
+pub(super) fn rule(
+    tag: &str,
+    attrs: &[(String, String)],
+    path: &[Ancestor],
+    vcx: ValueCx<'_>,
+) -> Option<Rule> {
+    let css = hints(tag, attrs, path, vcx);
     if css.is_empty() {
         return None;
     }

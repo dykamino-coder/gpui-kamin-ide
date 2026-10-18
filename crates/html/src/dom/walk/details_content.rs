@@ -9,6 +9,8 @@
 //! host's own `::before`/`::after` boxes) goes into the slot. Its UA style is
 //! `display: block` and, while closed, `content-visibility: hidden`; author
 //! `details::details-content` rules cascade over that.
+
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Rule, Selector, parse_decls};
@@ -27,6 +29,7 @@ fn ua_rule() -> Option<Rule> {
 }
 
 /// Rebuild the children of a `<details>` box: summary, then the slot box.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn wrap(
     children: Vec<Node>,
     attrs: &[(String, String)],
@@ -35,6 +38,7 @@ pub(super) fn wrap(
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     let open = attrs.iter().any(|(k, _)| k == "open");
     let Some(ua) = ua_rule() else {
@@ -53,9 +57,9 @@ pub(super) fn wrap(
     let authored = matched
         .iter()
         .any(|r| r.decls.contains_key("content-visibility"));
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
     if !open && !authored {
-        style.apply_one("content-visibility", "hidden");
+        style.apply_one("content-visibility", "hidden", vcx);
     }
     // An in-flow block slot is an ordinary block box for fragmentation
     // (`style_normalization`): a forced break on its first child propagates.

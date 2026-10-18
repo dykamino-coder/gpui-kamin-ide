@@ -1,6 +1,7 @@
 //! Фрагменты охватчика: видимость, доля высоты, части многоколоночника.
 
 use super::spanner_edge;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
@@ -84,7 +85,11 @@ pub(super) fn spanner_fragment(
 /// `None` — правило не берётся (высота не в точках, фрагмент один, виден
 /// один и не после пустых, мера не вышла), и действует прежний `keep_size`.
 /// В векторе: `Some(v)` — высота фрагмента, `None` — своя, по содержимому.
-pub(super) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<Vec<Option<f32>>> {
+pub(super) fn spanner_height_share(
+    c: &Element,
+    bodies: &[Vec<Node>],
+    vcx: ValueCx<'_>,
+) -> Option<Vec<Option<f32>>> {
     let Some(Len::Px(total)) = c.style.height else {
         return None;
     };
@@ -120,7 +125,7 @@ pub(super) fn spanner_height_share(c: &Element, bodies: &[Vec<Node>]) -> Option<
             continue;
         }
         let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
-        let h = shape_full(&f, 4, ShapeCx::COLUMNS)?.height;
+        let h = shape_full(&f, 4, ShapeCx::COLUMNS, vcx)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);
         out.push((own > left + 0.01).then_some(take));

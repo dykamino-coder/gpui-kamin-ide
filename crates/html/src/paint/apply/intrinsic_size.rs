@@ -69,6 +69,8 @@ mod tests {
     use gpui::{Styled, div, px};
     #[test]
     fn functional_fit_uses_one_box_model_for_keywords_and_numeric_axes() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed {
             width: Some(Len::FitContent),
             height: Some(Len::Px(60.0)),
@@ -80,7 +82,7 @@ mod tests {
         for argument in [Len::Px(394.0), Len::Pct(0.5)] {
             c.fit_arg[0] = Some(argument);
             assert!(native_content_box(&c));
-            let mut d = super::super::apply(div(), &c);
+            let mut d = super::super::apply(div(), &c, vcx);
             assert_eq!(d.style().content_box, Some(true));
             assert_eq!(d.style().size.height, Some(px(60.0).into()));
         }

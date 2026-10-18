@@ -1,6 +1,7 @@
 //! Replaced flex/grid items retain intrinsic measurement until their used size is known.
 //! CSS Flexbox 1 §9.2/§9.8 and Grid 2 #algo-overview supply definite dimensions.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
@@ -15,6 +16,7 @@ pub(super) fn measured(
     element: &Element,
     source: &str,
     holder: &mut gpui::Div,
+    vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
     let style = &element.style;
     // Keep the existing growing-image path: exposing its natural ratio on a
@@ -61,7 +63,8 @@ pub(super) fn measured(
     {
         return None;
     }
-    let source = crate::paint::background::source(&crate::paint::background::key(source, style))?;
+    let source =
+        crate::paint::background::source(&crate::paint::background::key(source, style, vcx), vcx)?;
     let natural = source.intrinsic();
     // Decorated vectors still need concrete-size rasterization in the existing
     // holder pipeline: the measured leaf does not transfer their content-box
@@ -86,7 +89,7 @@ pub(super) fn measured(
     // Vector images have the same intrinsic sizing contract as raster images.
     // Keep their preferred dimensions automatic until flex layout supplies its
     // definite percentage bases, rather than freezing the natural size early.
-    let ready = source.raster((natural.w?, natural.h?))?;
+    let ready = source.raster((natural.w?, natural.h?), vcx)?;
     let ratio = style
         .aspect_ratio
         .or(natural.ratio)

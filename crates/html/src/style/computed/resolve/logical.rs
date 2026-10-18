@@ -9,6 +9,7 @@
 //! mapping it here too would turn it twice. `contain-intrinsic-*` always maps by the own mode.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::computed::writing_mode::WritingMode;
 
 impl Computed {
@@ -20,7 +21,13 @@ impl Computed {
 
     /// Map the stored logical values with `wm`, the box's inherited writing mode;
     /// `parent_vertical` is the parent's (for the table-cell exception above).
-    pub fn resolve_logical(&mut self, wm: WritingMode, parent_vertical: bool, is_cell: bool) {
+    pub fn resolve_logical(
+        &mut self,
+        wm: WritingMode,
+        parent_vertical: bool,
+        is_cell: bool,
+        vcx: ValueCx<'_>,
+    ) {
         let Some(logical) = self.logical.take() else {
             return;
         };
@@ -101,13 +108,13 @@ impl Computed {
             (&borders[3], is),
         ] {
             if let Some(v) = raw {
-                self.apply_border_shorthand(v, Some(side as usize));
+                self.apply_border_shorthand(v, Some(side as usize), vcx);
             }
         }
         let phys = [bs, ie, be, is];
         for (side, prop, v) in &logical.border_long {
             let name = ["top", "right", "bottom", "left"][phys[*side as usize] as usize];
-            self.apply_one(&format!("border-{name}-{prop}"), v);
+            self.apply_one(&format!("border-{name}-{prop}"), v, vcx);
         }
     }
 }

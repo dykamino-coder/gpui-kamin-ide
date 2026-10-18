@@ -8,8 +8,13 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
 /// Нулевая распорка на месте элемента: занимает его место в потоке и
 /// запоминает, где это место оказалось. `full` — распорка в потоке блоков (во
-/// всю ширину), иначе — внутри строки.
-pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
+/// всю ширину), иначе — внутри строки. `line` — передача строчной коробки от
+/// абзаца, который ставит распорку куском своей строки (`LineBoxSlot`).
+pub fn spot_probe(
+    spot: SpotCell,
+    full: bool,
+    line: Option<super::super::LineBoxSlot>,
+) -> AnyElement {
     let mut probe = gpui::div().h_0().flex_shrink_0();
     if full && spot.get().vertical {
         // Вертикальное письмо: блочный поток горизонтален (контейнер — ряд),
@@ -33,7 +38,7 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
     // §10.8.1; an inline-block holding only an abspos aligns by its bottom
     // margin edge — `align-self-static-position-001-ref`).
     probe.style().no_inline_block_baseline = Some(true);
-    spot_geometry::probe(spot, full, probe.into_any_element())
+    spot_geometry::probe(spot, full, line, probe.into_any_element())
 }
 
 /// Заместитель в конце списка: рисуется последним, но встаёт туда, где стояла

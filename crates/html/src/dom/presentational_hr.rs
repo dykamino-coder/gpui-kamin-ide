@@ -4,6 +4,8 @@
 //! hints next door (Servo `presentational-hints.css`: `hr[color],
 //! hr[noshade] { border-style: solid }`, `hr[align=…]` margins; the
 //! `size`/`width`/`color` mappings follow the spec text).
+
+use crate::document::state::ValueCx;
 use crate::style::css::Rule;
 
 fn attr<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
@@ -34,12 +36,12 @@ pub(super) fn non_negative_integer(raw: &str) -> Option<u32> {
 
 /// HTML §2.3.6 legacy colour value: the empty string and `transparent` fail;
 /// CSS colour names and `#rrggbb` pass, bare hex digits get the missing `#`.
-pub(super) fn legacy_color(raw: &str) -> Option<String> {
+pub(super) fn legacy_color(raw: &str, vcx: ValueCx<'_>) -> Option<String> {
     let v = raw.trim_matches(['\t', '\n', '\u{c}', '\r', ' ']);
     if v.is_empty() || v.eq_ignore_ascii_case("transparent") {
         return None;
     }
-    if crate::style::values::value::Color::parse(v).is_some() {
+    if crate::style::values::value::Color::parse(v, vcx).is_some() {
         return Some(v.to_string());
     }
     let hex = v.len() == 6 || v.len() == 3;
@@ -47,11 +49,11 @@ pub(super) fn legacy_color(raw: &str) -> Option<String> {
 }
 
 /// The hint declarations of one `<hr>`.
-pub(super) fn hints(attrs: &[(String, String)]) -> String {
+pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> String {
     let mut css = String::new();
     let color = attr(attrs, "color");
     let noshade = attr(attrs, "noshade").is_some();
-    if let Some(c) = color.and_then(legacy_color) {
+    if let Some(c) = color.and_then(|c| legacy_color(c, vcx)) {
         css.push_str(&format!("color: {c};"));
     }
     // UA sheet: `hr[color], hr[noshade] { border-style: solid }` — presence only.
@@ -81,11 +83,11 @@ pub(super) fn hints(attrs: &[(String, String)]) -> String {
     css
 }
 
-pub(super) fn rule(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+pub(super) fn rule(tag: &str, attrs: &[(String, String)], vcx: ValueCx<'_>) -> Option<Rule> {
     if tag != "hr" {
         return None;
     }
-    let css = hints(attrs);
+    let css = hints(attrs, vcx);
     if css.is_empty() {
         return None;
     }

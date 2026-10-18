@@ -1,4 +1,6 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Element;
@@ -137,7 +139,7 @@ impl Drop for LineContextScope {
 struct LineScope(pub(crate) bool);
 
 impl LineScope {
-    pub(crate) fn enter(c: &Element) -> Self {
+    pub(crate) fn enter(c: &Element, vcx: ValueCx<'_>) -> Self {
         LINE_CX.with(|l| {
             let mut g = l.borrow_mut();
             let Some(cx) = g.as_mut() else {
@@ -146,7 +148,7 @@ impl LineScope {
             let Some(top) = cx.frames.last() else {
                 return LineScope(false);
             };
-            let inh = crate::style::cascade::inherit::inherit(&top.inh, &c.style);
+            let inh = crate::style::cascade::inherit::inherit(&top.inh, &c.style, vcx);
             let w = top.w.and_then(|pw| match top.items {
                 // Элемент flex/сетки шириной по раскладке: известна лишь
                 // заданная в точках.
@@ -192,6 +194,7 @@ mod tests {
             normal_line_height: 1.2,
             doc_salt: 0,
             frag: Default::default(),
+            cx: Default::default(),
         };
         let base = Computed::default();
         assert!(LINE_CX.with(|l| l.borrow().is_none()));

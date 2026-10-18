@@ -75,6 +75,7 @@ pub(super) fn table_rows(
     have_rows: bool,
     px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Буфер полосы группы рядов — общий для всех её рядов (`RowRects`).
     let mut group_bands = std::collections::HashMap::new();
     for (row, carry) in rows {
@@ -84,7 +85,7 @@ pub(super) fn table_rows(
             *slot = slot.saturating_sub(1);
         }
         let (row_rects, grp_band) =
-            row_band_probes(&mut group_bands, &mut under, &group_of, row, carry);
+            row_band_probes(&mut group_bands, &mut under, &group_of, row, carry, vcx);
         let shift = (carry.0, carry.1);
         // Письмо к строкам НЕ ПРИМЕНЯЕТСЯ (раскладку ряда ведёт таблица,
         // CSS Writing Modes §3.1) — но ВЫЧИСЛЕННОЕ значение наследуется в
@@ -97,7 +98,7 @@ pub(super) fn table_rows(
         let group_layer;
         let inherited = match carry.3 {
             Some(g) => {
-                group_layer = inherit(inherited, &g.style);
+                group_layer = inherit(inherited, &g.style, vcx);
                 &group_layer
             }
             None => inherited,
@@ -117,7 +118,7 @@ pub(super) fn table_rows(
         // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
-        let row_style = inherit(inherited, &own);
+        let row_style = inherit(inherited, &own, vcx);
         push_empty_row_track(row_ix, &occupied, e, cols, &mut cells, row);
         let mut col_ix = 0usize;
         for child in &row.children {

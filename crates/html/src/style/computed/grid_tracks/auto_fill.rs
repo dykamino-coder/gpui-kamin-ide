@@ -1,6 +1,7 @@
 //! repeat(auto-fill | auto-fit, …): тело повтора, пределы дорожек, число повторов от размера контейнера.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Тело авто-повтора СПИСКОМ дорожек: `repeat(auto-fill, max-content
 /// min-content)` → `[Single(MaxContent), Single(MinContent)]`.
@@ -9,8 +10,11 @@ use super::*;
 /// её собственной функции (css-grid-3 §7.2.1). `parse_tracks` уже знает и
 /// `minmax()`, и `fit-content(N)` (последний как `MinMax(Auto, hi)`), поэтому
 /// своего разбора здесь нет.
-pub(in crate::style::computed) fn auto_fill_body_tracks(v: &str) -> Option<Vec<TrackSize>> {
-    parse_tracks(v).as_deref().and_then(|l| {
+pub(in crate::style::computed) fn auto_fill_body_tracks(
+    v: &str,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<TrackSize>> {
+    parse_tracks(v, vcx).as_deref().and_then(|l| {
         l.iter().find_map(|t| match t {
             TrackSize::AutoRepeat { tracks, .. } => Some(tracks.clone()),
             _ => None,
@@ -19,8 +23,8 @@ pub(in crate::style::computed) fn auto_fill_body_tracks(v: &str) -> Option<Vec<T
 }
 
 /// Длина тела авто-повтора в дорожках (1, если тело не разобралось).
-pub(in crate::style::computed) fn auto_fill_body(v: &str) -> usize {
-    parse_tracks(v)
+pub(in crate::style::computed) fn auto_fill_body(v: &str, vcx: ValueCx<'_>) -> usize {
+    parse_tracks(v, vcx)
         .as_deref()
         .and_then(|l| {
             l.iter().find_map(|t| match t {
@@ -64,7 +68,7 @@ pub(in crate::style::computed) fn auto_fill_max(v: &str) -> (bool, Option<f32>) 
 ///
 /// Пусто, если тело из одной дорожки или хоть один кусок не разобрался: такой
 /// случай ведёт прежняя ветка по `auto_fill_min`.
-pub(in crate::style::computed) fn auto_fill_tracks(v: &str) -> Vec<f32> {
+pub(in crate::style::computed) fn auto_fill_tracks(v: &str, vcx: ValueCx<'_>) -> Vec<f32> {
     if v.contains("minmax(") || v.contains("fit-content(") {
         return Vec::new();
     }
@@ -94,7 +98,7 @@ pub(in crate::style::computed) fn auto_fill_tracks(v: &str) -> Vec<f32> {
     }
     let mut out = Vec::with_capacity(parts.len());
     for t in parts {
-        match Len::parse(t) {
+        match Len::parse(t, vcx) {
             Some(Len::Px(px)) => out.push(px),
             _ => return Vec::new(),
         }
@@ -102,8 +106,8 @@ pub(in crate::style::computed) fn auto_fill_tracks(v: &str) -> Vec<f32> {
     out
 }
 
-pub(in crate::style::computed) fn auto_fill_min(v: &str) -> Option<f32> {
-    let px_of = |t: &str| match Len::parse(t.trim()) {
+pub(in crate::style::computed) fn auto_fill_min(v: &str, vcx: ValueCx<'_>) -> Option<f32> {
+    let px_of = |t: &str| match Len::parse(t.trim(), vcx) {
         Some(Len::Px(px)) => Some(px),
         _ => None,
     };
@@ -130,10 +134,10 @@ pub(in crate::style::computed) fn auto_fill_min(v: &str) -> Option<f32> {
 }
 
 /// Потолок `fit-content(N)` в авто-повторе: дорожка не шире N.
-pub(in crate::style::computed) fn auto_fill_fit_px(v: &str) -> Option<f32> {
+pub(in crate::style::computed) fn auto_fill_fit_px(v: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let rest = v.split("fit-content(").nth(1)?;
     let inner = &rest[..rest.find(')')?];
-    match Len::parse(inner.trim()) {
+    match Len::parse(inner.trim(), vcx) {
         Some(Len::Px(px)) => Some(px),
         _ => None,
     }
@@ -169,7 +173,7 @@ pub(in crate::style::computed) fn auto_repeat_outside_intrinsic(v: &str) -> bool
 
 /// Дорожка повтора задана ПО СОДЕРЖИМОМУ: `repeat(auto-fill, max-content)`
 /// и родня. Точечного размера у неё нет — повторы считают сами элементы.
-pub(in crate::style::computed) fn auto_fill_intrinsic(v: &str) -> bool {
+pub(in crate::style::computed) fn auto_fill_intrinsic(v: &str, vcx: ValueCx<'_>) -> bool {
     let Some(rest) = v.split("repeat(").nth(1) else {
         return false;
     };
@@ -182,16 +186,16 @@ pub(in crate::style::computed) fn auto_fill_intrinsic(v: &str) -> bool {
     ["max-content", "min-content", "fit-content"]
         .iter()
         .any(|k| inner.contains(k))
-        && auto_fill_min(v).is_none()
-        && auto_fill_pct(v).is_none()
+        && auto_fill_min(v, vcx).is_none()
+        && auto_fill_pct(v, vcx).is_none()
 }
 
 /// Доля контейнера в `repeat(auto-fill | auto-fit, N%)`.
 ///
 /// Считается там же, где и точечный размер, но остаётся долей: в точки её
 /// переводит раскладка, когда ширина контейнера уже решена.
-pub(in crate::style::computed) fn auto_fill_pct(v: &str) -> Option<f32> {
-    let pct_of = |t: &str| match Len::parse(t.trim()) {
+pub(in crate::style::computed) fn auto_fill_pct(v: &str, vcx: ValueCx<'_>) -> Option<f32> {
+    let pct_of = |t: &str| match Len::parse(t.trim(), vcx) {
         Some(Len::Pct(k)) => Some(k),
         _ => None,
     };

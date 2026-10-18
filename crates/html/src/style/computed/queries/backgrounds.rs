@@ -1,6 +1,7 @@
 //! Запросы фона к Computed: цвет под background-clip: text и разложение списка слоёв фона.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     /// Слои фона СВЕРХУ ВНИЗ, когда их больше одного: каждый — копия стиля с
@@ -17,7 +18,7 @@ impl Computed {
     /// `background-clip` list repeats, a longer one is truncated
     /// (`background-color-clip`: two `none` layers, clip list
     /// `border-box, content-box, border-box` → `content-box`).
-    pub(crate) fn color_clip(&self) -> Option<BgClip> {
+    pub(crate) fn color_clip(&self, vcx: ValueCx<'_>) -> Option<BgClip> {
         let Some(clips) = self.bg_lists.get(BgListProp::Clip) else {
             return self.bg_clip;
         };
@@ -30,11 +31,11 @@ impl Computed {
             return self.bg_clip;
         }
         let mut probe = Computed::default();
-        probe.apply_one("background-clip", clips[(n - 1) % clips.len()]);
+        probe.apply_one("background-clip", clips[(n - 1) % clips.len()], vcx);
         probe.bg_clip
     }
 
-    pub(crate) fn bg_layers(&self) -> Option<Vec<Computed>> {
+    pub(crate) fn bg_layers(&self, vcx: ValueCx<'_>) -> Option<Vec<Computed>> {
         let short = self.bg_lists.get(BgListProp::Shorthand).map(str::to_string);
         let image = self.bg_lists.get(BgListProp::Image).map(str::to_string);
         let images: Vec<String> = match (&image, &short) {
@@ -85,7 +86,7 @@ impl Computed {
                 c.bg_repeat = None;
                 c.bg_origin = None;
                 let layers = background_layers(v);
-                c.apply_one("background", &px_of(layers[i % layers.len()]));
+                c.apply_one("background", &px_of(layers[i % layers.len()]), vcx);
                 c.background = None;
             }
             for (k, v) in self
@@ -94,7 +95,7 @@ impl Computed {
                 .filter(|(k, _)| *k != BgListProp::Shorthand)
             {
                 let layers = background_layers(v);
-                c.apply_one(k.key(), &px_of(layers[i % layers.len()]));
+                c.apply_one(k.key(), &px_of(layers[i % layers.len()]), vcx);
             }
             c.bg_lists.clear();
             // Градиент слоя — плиткой: источником идёт сама функция

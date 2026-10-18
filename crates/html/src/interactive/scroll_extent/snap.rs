@@ -1,7 +1,9 @@
 //! Initial snapping after measured layout (CSS Scroll Snap 1 §4.1.3, §6.2).
 //! Like Blink FragmentBuilder::ResolveSnapArea, the nearest scroll container
 //! owns descendant snap areas and resolves their logical alignment axes.
+
 use super::geometry::{Rect, sides};
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Sides, snap::SnapStyle};
 use crate::style::values::value::{Len, calc_get};
 use gpui::{ScrollHandle, point, px};
@@ -14,14 +16,14 @@ pub(super) struct Area {
     pub reverse: [bool; 2],
 }
 
-fn snap_sides(s: Sides, view: [f32; 2]) -> [f32; 4] {
+fn snap_sides(s: Sides, view: [f32; 2], vcx: ValueCx<'_>) -> [f32; 4] {
     let mut values = [0.0; 4];
     for (i, v) in [s.left, s.top, s.right, s.bottom].into_iter().enumerate() {
         values[i] = match v {
             Some(Len::Px(n)) => n,
             Some(Len::Pct(n)) => n * view[i % 2],
             Some(Len::Calc(index)) => {
-                let sum = calc_get(index);
+                let sum = calc_get(index, vcx);
                 sum.px + sum.pct * view[i % 2]
             }
             _ => 0.0,
@@ -37,6 +39,7 @@ pub(super) fn initial(
     bounds: gpui::Bounds<gpui::Pixels>,
     insets: [f32; 4],
     maximum: [f32; 2],
+    vcx: ValueCx<'_>,
 ) -> bool {
     let border = sides(c.borders(), 0.0);
     let origin = [
@@ -47,7 +50,7 @@ pub(super) fn initial(
         f32::from(bounds.size.width) - border[0] - border[2] - insets[0] - insets[2],
         f32::from(bounds.size.height) - border[1] - border[3] - insets[1] - insets[3],
     ];
-    let padding = snap_sides(c.snap.padding, view);
+    let padding = snap_sides(c.snap.padding, view, vcx);
     let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
     let active = match c.snap.axis {
@@ -62,7 +65,7 @@ pub(super) fn initial(
     let current = [-f32::from(offset.x), -f32::from(offset.y)];
     let mut choices = [Vec::new(), Vec::new()];
     for area in areas {
-        let margin = snap_sides(area.snap.margin, view);
+        let margin = snap_sides(area.snap.margin, view, vcx);
         let rect = [
             area.rect[0] - margin[0],
             area.rect[1] - margin[1],

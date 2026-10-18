@@ -42,6 +42,8 @@ mod tests {
 
     #[test]
     fn at_keyword_is_one_token_and_ascii_case_insensitive() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for condition in [
             "at-rule(@supports)",
             "AT-RULE(@SuPpOrTs)",
@@ -50,7 +52,7 @@ mod tests {
             "at-rule(@top-left)",
             "at-rule(@styleset)",
         ] {
-            assert!(supports(condition), "{condition}");
+            assert!(supports(condition, vcx), "{condition}");
         }
         for args in [
             "",
@@ -67,7 +69,7 @@ mod tests {
             "@unknown",
         ] {
             assert!(!supported(args), "{args}");
-            assert!(supports(&format!("not at-rule({args})")), "{args}");
+            assert!(supports(&format!("not at-rule({args})"), vcx), "{args}");
         }
     }
 }

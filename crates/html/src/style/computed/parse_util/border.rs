@@ -1,6 +1,7 @@
 //! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, ширина outline, скругление.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 pub(in crate::style::computed) fn parse_overflow(v: &str) -> Option<Overflow> {
     match v {
@@ -153,12 +154,12 @@ pub(in crate::style::computed) fn four<T: Copy>(
 }
 
 /// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
-pub(in crate::style::computed) fn outline_width_of(v: &str) -> Option<Len> {
+pub(in crate::style::computed) fn outline_width_of(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
     match v {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
         "thick" => Some(Len::Px(5.0)),
-        _ => Len::parse(v).filter(|l| !matches!(l, Len::Pct(_))),
+        _ => Len::parse(v, vcx).filter(|l| !matches!(l, Len::Pct(_))),
     }
 }
 
@@ -167,10 +168,11 @@ pub(in crate::style::computed) fn outline_width_of(v: &str) -> Option<Len> {
 /// §basic-shape-rect): one radius for all corners and both axes — every
 /// listed value, before and after `/`, equal. `20px / 20px` is that radius;
 /// unequal corners are not representable here and stay unrounded.
-pub(in crate::style::computed) fn uniform_round(r: &str) -> Option<Len> {
+pub(in crate::style::computed) fn uniform_round(r: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let mut it = r
         .split(|c: char| c == '/' || c.is_whitespace())
         .filter(|t| !t.is_empty());
-    let first = Len::parse(it.next()?)?;
-    it.all(|t| Len::parse(t) == Some(first)).then_some(first)
+    let first = Len::parse(it.next()?, vcx)?;
+    it.all(|t| Len::parse(t, vcx) == Some(first))
+        .then_some(first)
 }

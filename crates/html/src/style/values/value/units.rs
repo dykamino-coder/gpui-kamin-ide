@@ -10,6 +10,7 @@
 //! equivalent»). Поэтому `svh`/`lvh`/`dvh` — тот же `vh`.
 
 use super::{Len, Sum, calc_store, css_number};
+use crate::document::state::ValueCx;
 
 /// Номер единицы в `Sum::ext`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,7 +35,7 @@ pub const EXT_N: usize = 10;
 const LIMIT: f32 = 33_554_428.0;
 
 /// `<число><единица окна или контейнера>`; `None` — это не такая единица.
-pub(super) fn parse_unit(s: &str) -> Option<Len> {
+pub(super) fn parse_unit(s: &str, vcx: ValueCx<'_>) -> Option<Len> {
     const VIEW: [(&str, Option<Ext>, bool); 6] = [
         ("vmin", Some(Ext::Vmin), false),
         ("vmax", Some(Ext::Vmax), false),
@@ -54,7 +55,7 @@ pub(super) fn parse_unit(s: &str) -> Option<Len> {
             };
             let k = num / 100.0;
             return Some(match ext {
-                Some(e) => ext_len(e, k),
+                Some(e) => ext_len(e, k, vcx),
                 None if high => Len::Vh(k),
                 None => Len::Vw(k),
             });
@@ -69,16 +70,16 @@ pub(super) fn parse_unit(s: &str) -> Option<Len> {
         ("cqb", Ext::Cqb),
     ] {
         if let Some(num) = s.strip_suffix(unit).and_then(css_number) {
-            return Some(ext_len(e, num / 100.0));
+            return Some(ext_len(e, num / 100.0, vcx));
         }
     }
     None
 }
 
-fn ext_len(e: Ext, k: f32) -> Len {
+fn ext_len(e: Ext, k: f32, vcx: ValueCx<'_>) -> Len {
     let mut s = Sum::default();
     s.ext[e as usize] = k;
-    Len::Calc(calc_store(s))
+    Len::Calc(calc_store(s, vcx))
 }
 
 impl Sum {
@@ -187,7 +188,7 @@ impl Len {
     /// `Computed::resolve_viewport`. Потребители на отрисовке (позиция и
     /// радиусы градиента) базы не знают — для них такая длина как прежде
     /// не разобрана, а не молча равна нулю.
-    pub fn needs_unit_context(self) -> bool {
-        matches!(self, Len::Calc(i) if super::calc_get(i).ext.iter().any(|v| *v != 0.0))
+    pub fn needs_unit_context(self, vcx: ValueCx<'_>) -> bool {
+        matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext.iter().any(|v| *v != 0.0))
     }
 }

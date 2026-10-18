@@ -33,6 +33,7 @@ pub(crate) fn generic_children(
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let makes_bfc = formatting_context::independent(&merged, &e.tag);
     let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
         Cow::Borrowed(children)
@@ -130,7 +131,10 @@ pub(crate) fn generic_children(
     // содержащим блоком не является, переезжает сюда.
     let cb_layer = crate::text::inline::establishes_cb(&merged);
     let cb_scope = cb_layer.then(|| {
-        crate::layout::positioned::layer_scope::LayerScope::cb(fixed_cb_layer_box(&merged))
+        crate::layout::positioned::layer_scope::LayerScope::cb(
+            &opts.cx.positioning,
+            fixed_cb_layer_box(&merged),
+        )
     });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
@@ -146,7 +150,8 @@ pub(crate) fn generic_children(
     // closes. Its padding box still owns the initial containing block
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
-    let viewport_scope = viewport.then(crate::layout::positioned::layer_scope::LayerScope::icb);
+    let viewport_scope = viewport
+        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
     kids.extend(decorated_children(e, &merged, opts, || {
         blocks(&children, &merged, opts)
     }));
@@ -202,8 +207,8 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child),
+        Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited)
+    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
 }

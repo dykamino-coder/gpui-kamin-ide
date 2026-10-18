@@ -1,38 +1,14 @@
-//! Selection for paint; split out to keep the owning module within 250 lines.
+//! Выделение абзаца: снимок раскладки и поиск символа под мышью.
 
-use super::Selection;
+use crate::interactive::selection::{selected_runs, track_selection};
 use crate::text::paragraph::*;
-use gpui::{
-    Bounds, GlobalElementId, Hitbox, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, TextRun, Window,
-};
+use gpui::{Bounds, GlobalElementId, Hitbox, Pixels, Point, TextRun, Window};
 
 impl Paragraph {
     /// Прогоны с подложкой на выделенном куске: прогон нельзя раскрасить
     /// наполовину, поэтому попавшие на границу режутся надвое.
     pub(crate) fn runs_with_selection(&self, from: usize, to: usize) -> Vec<TextRun> {
-        if from >= to {
-            return self.runs.clone();
-        }
-        let mut out = Vec::with_capacity(self.runs.len() + 2);
-        let mut at = 0usize;
-        for run in &self.runs {
-            let end = at + run.len;
-            let mut cut = |start: usize, stop: usize, selected: bool| {
-                if stop <= start {
-                    return;
-                }
-                let mut piece = run.clone();
-                piece.len = stop - start;
-                piece.background_color = selected.then_some(self.highlight);
-                out.push(piece);
-            };
-            cut(at, end.min(from), false);
-            cut(at.max(from), end.min(to), true);
-            cut(at.max(to), end, false);
-            at = end;
-        }
-        out
+        selected_runs(&self.runs, self.highlight, from, to)
     }
 }
 
@@ -133,59 +109,13 @@ impl Paragraph {
             overlay_hidden: Vec::new(),
         };
         let segs = segs.to_vec();
-        window.with_element_state::<Selection, _>(global, |state, window| {
-            let st = std::rc::Rc::new(std::cell::Cell::new(state.unwrap_or_default()));
-            let index_at = {
-                let probe = std::rc::Rc::new(probe);
-                let segs = std::rc::Rc::new(segs);
-                move |p: Point<Pixels>| probe.index_at(&segs, bounds, p)
-            };
-
-            let down = st.clone();
-            let at_down = index_at.clone();
-            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _cx| {
-                if !phase.bubble() || e.button != MouseButton::Left || !inside {
-                    return;
-                }
-                let i = at_down(e.position);
-                down.set(Selection {
-                    anchor: i,
-                    head: i,
-                    dragging: true,
-                });
-                window.refresh();
-            });
-
-            let mv = st.clone();
-            let at_move = index_at.clone();
-            window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = mv.get();
-                if !s.dragging {
-                    return;
-                }
-                let i = at_move(e.position);
-                if s.head != i {
-                    s.head = i;
-                    mv.set(s);
-                    window.refresh();
-                }
-            });
-
-            let up = st.clone();
-            window.on_mouse_event(move |_e: &MouseUpEvent, phase, _window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = up.get();
-                if s.dragging {
-                    s.dragging = false;
-                    up.set(s);
-                }
-            });
-            ((), st.get())
-        });
+        let probe = std::rc::Rc::new(probe);
+        let segs = std::rc::Rc::new(segs);
+        track_selection(
+            global,
+            inside,
+            move |p: Point<Pixels>| Some(probe.index_at(&segs, bounds, p)),
+            window,
+        );
     }
 }

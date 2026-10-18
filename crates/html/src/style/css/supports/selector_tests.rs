@@ -4,6 +4,8 @@ use super::supports;
 
 #[test]
 fn selector_queries_use_the_stylesheet_pseudo_grammar() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for selector in [
         "input::-webkit-slider-runnable-track",
         "div::unknown-pseudo",
@@ -27,7 +29,10 @@ fn selector_queries_use_the_stylesheet_pseudo_grammar() {
         "details::details-content::before::after",
         "details::details-content::before > p",
     ] {
-        assert!(!supports(&format!("selector({selector})")), "{selector}");
+        assert!(
+            !supports(&format!("selector({selector})"), vcx),
+            "{selector}"
+        );
         assert!(
             crate::style::css::Selector::parse(selector).is_none(),
             "{selector}"
@@ -51,13 +56,16 @@ fn selector_queries_use_the_stylesheet_pseudo_grammar() {
         "details::details-content",
         ".x:hover",
     ] {
-        assert!(supports(&format!("selector({selector})")), "{selector}");
+        assert!(
+            supports(&format!("selector({selector})"), vcx),
+            "{selector}"
+        );
         let rules =
             crate::style::css::parse_stylesheet(&format!("{selector}, .control {{color: green}}"));
         assert_eq!(rules.len(), 2, "{selector}");
     }
-    assert!(supports("selector(&)"));
-    assert!(supports("selector(& > p)"));
+    assert!(supports("selector(&)", vcx));
+    assert!(supports("selector(& > p)", vcx));
 }
 
 #[test]
@@ -102,13 +110,18 @@ fn pseudo_rules_do_not_style_the_originating_element() {
 
 #[test]
 fn nesting_and_pseudo_names_inside_attribute_strings_are_preserved() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for selector in [
         r#"[data-value="&"]"#,
         r#"[data-value="::picker(select)"]"#,
         r#"[data-value="::-webkit-slider-thumb"]"#,
         r#"[data-value="::picker-icon"]"#,
     ] {
-        assert!(supports(&format!("selector({selector})")), "{selector}");
+        assert!(
+            supports(&format!("selector({selector})"), vcx),
+            "{selector}"
+        );
     }
-    assert!(!supports("selector(div, span)"));
+    assert!(!supports("selector(div, span)", vcx));
 }

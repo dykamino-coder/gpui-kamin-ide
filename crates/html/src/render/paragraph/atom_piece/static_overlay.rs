@@ -2,6 +2,7 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::positioned::anchor;
 use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::render::*;
@@ -18,8 +19,9 @@ pub(crate) fn static_overlay(
     opts: &RenderOpts,
     rot_block: bool,
 ) -> Option<inline::Piece> {
-    let mut merged = inherit(inherited, &e.style);
-    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
     merged.position = None;
@@ -34,7 +36,7 @@ pub(crate) fn static_overlay(
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;
         copy.style.position = None;
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;
@@ -42,15 +44,16 @@ pub(crate) fn static_overlay(
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
-        grouped(image(&copy), &e.style)
+        grouped(image(&copy, &opts.cx), &e.style, vcx)
     } else {
         // Тот же буфер группы, что и у картинки: маска, обрезка и
         // фильтр иначе не доходят до коробки на статической позиции.
         grouped(
-            styled_div_with(e, &merged)
+            styled_div_with(e, &merged, &opts.cx)
                 .children(blocks(&e.children, &merged, opts))
                 .into_any_element(),
             &e.style,
+            vcx,
         )
     };
     // Сторона, которой коробка вешается на статическую точку. При
@@ -71,7 +74,7 @@ pub(crate) fn static_overlay(
     // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
     // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
     // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
-    let inner = crate::layout::positioned::anchor::place::place(inner, &positioned, inherited);
+    let inner = anchor::place::place(inner, &positioned, inherited, vcx);
     let rotated_rtl = inherited.wm().rtl() && inherited.wm().turned();
     let inner = if inherited.wm().rtl() && !rot_block && !rotated_rtl {
         crate::layout::positioned::containing_block::InlineStartHang::new(inner).hooked()

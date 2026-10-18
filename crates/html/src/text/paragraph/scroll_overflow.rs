@@ -2,8 +2,12 @@
 use super::*;
 use gpui::{Bounds, LayoutId, Pixels, Window, point, px, size};
 impl Paragraph {
-    pub(crate) fn scroll_owner(mut self, id: u64) -> Self {
-        self.scroll_owner = Some(id);
+    pub(crate) fn scroll_owner(
+        mut self,
+        id: u64,
+        sticky: Option<crate::interactive::scroll_extent::StickyShift>,
+    ) -> Self {
+        self.scroll_owner = Some((id, sticky));
         self
     }
     pub(super) fn publish_scroll_overflow(
@@ -12,7 +16,7 @@ impl Paragraph {
         id: LayoutId,
         window: &mut Window,
     ) {
-        let Some(owner) = self.scroll_owner else {
+        let Some((owner, sticky)) = &self.scroll_owner else {
             return;
         };
         if !crate::interactive::scroll_extent::text_active()
@@ -66,7 +70,7 @@ impl Paragraph {
                     size(thickness, line.width),
                 )
             };
-            crate::interactive::scroll_extent::record_text(owner, rect);
+            crate::interactive::scroll_extent::record_text(*owner, rect, sticky.as_ref());
             block += thickness;
         }
     }

@@ -1,13 +1,14 @@
 //! Элементы выбора формы: select, checkbox и radio.
 
 use super::{SystemColor, field_box, native_color};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 /// Список выбора: показываем выбранный вариант либо первый.
-pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
+pub(super) fn select(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let options = super::options::Options::from_element(e);
     let text = options.selected_label().to_owned();
     let label = if text.is_empty() {
@@ -23,7 +24,7 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
     // `<select style="width:100px; contain:size">` растягивался по самому
     // длинному `option`.
     if style.contains_width() {
-        return field_box(style)
+        return field_box(style, vcx)
             .relative()
             .justify_between()
             .child(
@@ -44,11 +45,11 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
     // `appearance: none` drops the drop-down arrow, the native part of the
     // menulist (css-ui-4 §7.2); the label stays as the box's content.
     if style.appearance_none() {
-        return field_box(style)
+        return field_box(style, vcx)
             .child(SharedString::from(label.clone()))
             .into_any_element();
     }
-    let mut b = field_box(style);
+    let mut b = field_box(style, vcx);
     // Пол `min_h(24)` у поля — для ПУСТОГО списка. С подписью он лишь
     // подменял автоминимум элемента гибкого контейнера (css-flexbox-1 §4.5:
     // `min-height: auto` = высота содержимого) явным 24, и в колонке высоты 0
@@ -85,7 +86,7 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
 }
 
 /// Флажок и переключатель отличаются только скруглением и отметкой.
-pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
+pub(super) fn toggle(e: &Element, style: &Computed, round: bool, vcx: ValueCx<'_>) -> AnyElement {
     let on = e.attr("checked").is_some();
     // `accent-color` красит именно отметку флажка и переключателя — это
     // единственное, на что оно влияет.
@@ -130,6 +131,8 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
     }
     // Native paint does not add CSS layout borders: a zero-sized control
     // remains empty, and authored dimensions replace only the UA defaults.
-    let paint = apply(div().relative(), style).overflow_hidden().child(mark);
-    super::intrinsic::control(paint, natural)
+    let paint = apply(div().relative(), style, vcx)
+        .overflow_hidden()
+        .child(mark);
+    super::control(paint, natural)
 }

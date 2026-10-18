@@ -1,4 +1,6 @@
 //! Имена страниц (`page`).
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -95,7 +97,7 @@ fn renames_inside(e: &Element) -> bool {
 /// `None`), и разрыв внутри такого ребёнка стопки иначе терялся
 /// (`page-name-propagated-002-print-ref`: `break-before: page` у второго
 /// ребёнка обёртки).
-fn breaks_inside(e: &Element) -> bool {
+fn breaks_inside(e: &Element, vcx: ValueCx<'_>) -> bool {
     // Только блочный поток: внутри таблицы разрыв режет ряды и группы
     // (`rowgroup-page-break-inside-avoid-5-print-ref`: `thead { break-after }`
     // — таблица не обёртка, снимать её нельзя).
@@ -119,9 +121,9 @@ fn breaks_inside(e: &Element) -> bool {
         // A forced break on a nested first/last child reaches the sibling
         // edge through `edge_break` (css-break-4 §break-propagation):
         // `<div><div>A</div><div><p break-before>` breaks before the inner div.
-        (i > 0 && crate::layout::fragment::breaks::edge_break(k, false))
-            || (i + 1 < n && crate::layout::fragment::breaks::edge_break(k, true))
-            || breaks_inside(k)
+        (i > 0 && crate::layout::fragment::breaks::edge_break(k, false, vcx))
+            || (i + 1 < n && crate::layout::fragment::breaks::edge_break(k, true, vcx))
+            || breaks_inside(k, vcx)
     })
 }
 
@@ -185,14 +187,14 @@ fn plain_wrapper(e: &Element) -> bool {
 /// §using-named-pages п. 4) ставится между ними, как между детьми корня.
 /// Мера фрагментации (`shape_full`) у коробок с текстом неизвестна, и
 /// разрыв внутри такого ребёнка стопки иначе не ставится вовсе.
-pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>) {
+pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>, vcx: ValueCx<'_>) {
     loop {
         let mut changed = false;
         let mut out = Vec::with_capacity(nodes.len());
         for n in std::mem::take(nodes) {
             match n {
                 Node::Element(e)
-                    if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e)) =>
+                    if plain_wrapper(&e) && (renames_inside(&e) || breaks_inside(&e, vcx)) =>
                 {
                     changed = true;
                     out.extend(e.children);

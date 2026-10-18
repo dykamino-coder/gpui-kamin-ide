@@ -1,5 +1,6 @@
 //! Проход размещения элементов сетки по рядам авто-полос.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
@@ -22,6 +23,7 @@ pub(crate) fn grid_pass(
     spots: &mut Vec<(usize, usize, f32, crate::layout::fragment::Shape, bool)>,
     fill: &mut Vec<f32>,
     pass: u8,
+    vcx: ValueCx<'_>,
 ) -> Option<()> {
     let mut cur_row = 0usize;
     let mut cur_col = 0usize;
@@ -84,7 +86,7 @@ pub(crate) fn grid_pass(
         if (pass == 0) != line.is_some() {
             continue;
         }
-        let ks = shape_full(k, depth - 1, cx)?;
+        let ks = shape_full(k, depth - 1, cx, vcx)?;
         let h = ks.height + ks.margin_top + ks.margin_bottom;
         let busy = |used: &Vec<Vec<bool>>, r: usize, c0: usize| {
             used.get(r)

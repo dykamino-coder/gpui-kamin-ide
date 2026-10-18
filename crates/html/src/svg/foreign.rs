@@ -13,6 +13,8 @@ pub(super) fn contains(e: &Element) -> bool {
 }
 
 pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
+    let values = vcx.keep();
     let (w, h) = super::size::size_of(e);
     if w <= 0.0 || h <= 0.0 {
         return None;
@@ -45,6 +47,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                     (tree, layers)
                 },
                 move |mut bounds, (mut tree, layers), window, cx| {
+                    let vcx = values.vcx();
                     for mut layer in layers {
                         let uri = match layer.cached.take() {
                             Some(uri) => Some(uri),
@@ -61,7 +64,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                             layer::set_image(&mut tree, layer.node_id, uri);
                         }
                     }
-                    let markup = super::serialize::serialize_sized(&tree, w, h, 0.0, 0.0);
+                    let markup = super::serialize::serialize_sized(&tree, w, h, 0.0, 0.0, vcx);
                     if let Some(image) = super::raster::rasterize(&markup, w, h) {
                         bounds.size = gpui::size(px(w), px(h));
                         super::device_image::paint(window, bounds, image);
@@ -76,5 +79,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         blend,
         ..Default::default()
     };
-    Some(crate::paint::effects::grouped::grouped(element, &style))
+    Some(crate::paint::effects::grouped::grouped(
+        element, &style, vcx,
+    ))
 }

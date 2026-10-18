@@ -2,6 +2,7 @@
 //! Blink adjusts its inner contour by reference-box offsets and overflow-clip-margin;
 //! keeping decorations separate also preserves their paint outside an inset overflow clip.
 
+use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -18,7 +19,7 @@ fn side(v: Option<Len>) -> f32 {
 
 /// Signed offsets from the border contour; scrolling boxes keep their own clip.
 /// Explicit masks and background-clip continue through their existing compositors.
-pub(crate) fn insets(c: &Computed) -> Option<[f32; 4]> {
+pub(crate) fn insets(c: &Computed, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     if !c.corner_shaped()
         || c.border_shape.is_some()
         || c.overflow_x != Some(Overflow::Clip)
@@ -26,7 +27,7 @@ pub(crate) fn insets(c: &Computed) -> Option<[f32; 4]> {
         || c.mask_image.is_some()
         || c.clip_shape.is_some()
         || c.clip_polygon.is_some()
-        || c.color_clip().is_some()
+        || c.color_clip(vcx).is_some()
     {
         return None;
     }
@@ -46,8 +47,8 @@ pub(crate) fn insets(c: &Computed) -> Option<[f32; 4]> {
     }))
 }
 
-pub(crate) fn new(c: &Computed, mask: Option<&str>) -> Option<CornerClip> {
-    let insets = insets(c)?;
+pub(crate) fn new(c: &Computed, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<CornerClip> {
+    let insets = insets(c, vcx)?;
     let mask = mask?;
     if !mask.starts_with("shape:rrect(") {
         return None;
@@ -63,9 +64,9 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>) -> Option<CornerClip> {
         .border_r(px(side(b.right)))
         .border_b(px(side(b.bottom)))
         .border_l(px(side(b.left)));
-    let layer = crate::paint::apply::apply_paint(layer, &own)
-        .children(crate::paint::decorations::decorations(&own, false));
-    let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element());
+    let layer = crate::paint::apply::apply_paint(layer, &own, vcx)
+        .children(crate::paint::decorations::decorations(&own, false, vcx));
+    let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element(), vcx);
     decoration.mask = Some(mask.to_string());
     Some(CornerClip {
         insets,

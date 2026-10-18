@@ -1,23 +1,24 @@
 //! Разбор теней box-shadow/text-shadow: валидность и список теней.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
 /// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного
 /// `inset`). `none` внутри списка делает декларацию негодной.
-pub(in crate::style::computed) fn box_shadow_valid(v: &str) -> bool {
+pub(in crate::style::computed) fn box_shadow_valid(v: &str, vcx: ValueCx<'_>) -> bool {
     if v.trim().eq_ignore_ascii_case("none") {
         return true;
     }
     crate::style::css::split_args(v).iter().all(|s| {
         let (mut lens, mut colours, mut insets) = (0, 0, 0);
         for token in tokenize_shadow(s) {
-            match Len::parse(&token) {
+            match Len::parse(&token, vcx) {
                 Some(Len::Pct(_)) => return false,
                 Some(_) => lens += 1,
                 None if token.eq_ignore_ascii_case("inset") => insets += 1,
                 None if token.eq_ignore_ascii_case("currentcolor")
-                    || Color::parse(&token).is_some() =>
+                    || Color::parse(&token, vcx).is_some() =>
                 {
                     colours += 1
                 }
@@ -28,7 +29,7 @@ pub(in crate::style::computed) fn box_shadow_valid(v: &str) -> bool {
     })
 }
 
-pub(in crate::style::computed) fn parse_shadows(v: &str) -> Vec<Shadow> {
+pub(in crate::style::computed) fn parse_shadows(v: &str, vcx: ValueCx<'_>) -> Vec<Shadow> {
     let mut out = vec![];
     for s in crate::style::css::split_args(v) {
         // Внутренние тени не рисуются — но синтаксис их проверяется: одна
@@ -37,12 +38,12 @@ pub(in crate::style::computed) fn parse_shadows(v: &str) -> Vec<Shadow> {
         let mut lens = vec![];
         let mut color = None;
         for token in tokenize_shadow(s) {
-            match Len::parse(&token) {
+            match Len::parse(&token, vcx) {
                 Some(Len::Px(px)) => lens.push(Some(px)),
                 // calc() из абсолютных единиц уже свёрнут в px; примесь
                 // процентов невалидна для тени.
                 Some(Len::Calc(id)) => {
-                    let sum = crate::style::values::value::calc_get(id);
+                    let sum = crate::style::values::value::calc_get(id, vcx);
                     if sum.pct != 0.0 {
                         return vec![];
                     }
@@ -61,7 +62,7 @@ pub(in crate::style::computed) fn parse_shadows(v: &str) -> Vec<Shadow> {
                 // em/vh и прочее — валидно, но контекста тут нет.
                 Some(_) => lens.push(None),
                 None => {
-                    if let Some(c) = Color::parse(&token) {
+                    if let Some(c) = Color::parse(&token, vcx) {
                         color = Some(c);
                     } else if token == "currentcolor" {
                         // Явный `currentColor` = как отсутствие цвета:

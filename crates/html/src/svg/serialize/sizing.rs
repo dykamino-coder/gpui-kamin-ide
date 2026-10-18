@@ -1,6 +1,7 @@
 //! Сериализация SVG с заданным размером области просмотра.
 
 use super::{escape_attr, escape_text, write_in};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::svg::serialize::filters::subtree_has;
 use crate::svg::serialize::filters::untaint_filters;
@@ -9,7 +10,14 @@ use crate::svg::{IN_CLIP, VIEW_BOX};
 
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
-pub(crate) fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> String {
+pub(crate) fn serialize_sized(
+    e: &Element,
+    w: f32,
+    h: f32,
+    nx: f32,
+    ny: f32,
+    vcx: ValueCx<'_>,
+) -> String {
     let cleaned;
     let e = if subtree_has(e, "fedisplacementmap") {
         let mut copy = e.clone();
@@ -97,7 +105,7 @@ pub(crate) fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32) -> 
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, &mut out),
-            Node::Element(el) => write_in(el, &mut out, &ids),
+            Node::Element(el) => write_in(el, &mut out, &ids, vcx),
         }
     }
     out.push_str("</svg>");

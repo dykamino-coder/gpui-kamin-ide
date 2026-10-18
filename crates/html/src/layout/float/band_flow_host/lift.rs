@@ -79,6 +79,7 @@ pub(crate) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
+    cb: Option<f32>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
@@ -126,25 +127,18 @@ pub(crate) fn band_flow_rest_lift(
             if run.iter().any(has_ruby) {
                 bad = true;
             }
-            out.push(Node::Element(Element {
-                marks: crate::dom::Marks {
+            out.push(Node::Element(Element::anonymous(
+                "div",
+                Computed::default(),
+                std::mem::take(run),
+                false,
+                crate::dom::Marks {
                     anon: true,
                     atoms,
                     cont,
                     ..Default::default()
                 },
-                list_item: None,
-                node_id: 0,
-                anim: None,
-                tag: "div".into(),
-                style: Computed::default().into(),
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: std::mem::take(run),
-                attrs: Vec::new(),
-                inline: false,
-            }));
+            )));
         } else {
             run.clear();
         }
@@ -197,7 +191,10 @@ pub(crate) fn band_flow_rest_lift(
                 }
                 flush(&mut run, &mut out, cont);
                 cont = false;
-                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) || band_nest_ok(c, em) {
+                if band_piece_m(&n, em).is_some()
+                    || band_flow_block(c, em)
+                    || band_nest_ok(c, em, cb)
+                {
                     out.push(n);
                 } else {
                     return None;

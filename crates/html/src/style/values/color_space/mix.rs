@@ -1,6 +1,7 @@
 //! color-mix(): смешение в прямоугольных и полярных пространствах, интерполяция оттенка.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `color-mix(in <пространство> [<дуга> hue]?, <цвет> <доля>?, <цвет> <доля>?)`
 /// (css-color-5 §2).
@@ -8,17 +9,17 @@ use super::*;
 /// Смешение идёт В ЗАЯВЛЕННОМ пространстве и заявленной дугой тона — тем же
 /// `mix_in`, что считает точки градиента: смесь-стоп эталона и точка
 /// градиента теста сходятся по построению.
-pub(super) fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
-    color_mix_impl(body, true)
+pub(super) fn color_mix(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, true, vcx)
 }
 
-pub(super) fn color_mix_unmapped(body: &str) -> Option<(f32, f32, f32, f32)> {
-    color_mix_impl(body, false)
+pub(super) fn color_mix_unmapped(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, false, vcx)
 }
 
 // A color stop is an RGBA tuple paired with an optional percentage.
 #[allow(clippy::type_complexity)]
-fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
+fn color_mix_impl(body: &str, mapped: bool, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
     use crate::style::computed::GradSpace as S;
     let mut it = crate::style::css::split_args(body).into_iter();
     // css-color-5 §2.1: пара смешивается «as described in
@@ -79,7 +80,7 @@ fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
             }
             None => (raw, None),
         };
-        let c = interpolation_color(color)?;
+        let c = interpolation_color(color, vcx)?;
         Some(((c.r, c.g, c.b, c.a), share))
     };
     let (first, p1) = one(it.next()?)?;

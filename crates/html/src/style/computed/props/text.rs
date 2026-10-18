@@ -1,5 +1,6 @@
 //! Computed::apply_one: color, line-height, text-align/indent/transform/wrap, white-space, word-*, hyphens, vertical-align, line-clamp, text-box*, writing modes.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -10,8 +11,7 @@ mod text_box_values;
 mod vertical_clamp;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_text(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_text(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
@@ -21,7 +21,7 @@ impl Computed {
                 self.color = if v == "inherit" {
                     None
                 } else {
-                    record_parsed!(self, Color::parse(v)).or(self.color)
+                    record_parsed!(self, Color::parse(v, vcx)).or(self.color)
                 }
             }
             "line-height" => {
@@ -49,7 +49,7 @@ impl Computed {
                 }
                 let parsed = match v.parse::<f32>() {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
-                    _ => match Len::parse(v) {
+                    _ => match Len::parse(v, vcx) {
                         Some(Len::Pct(k)) if v.trim_end().ends_with('%') => Some(Len::Em(k)),
                         other => other,
                     },
@@ -151,8 +151,10 @@ impl Computed {
                     _ => self.text_align_last,
                 }
             }
-            "letter-spacing" => self.letter_spacing = record_parsed!(self, Len::parse_spacing(v)),
-            _ => self.apply_text_overflow_case(key, val, v, hit),
+            "letter-spacing" => {
+                self.letter_spacing = record_parsed!(self, Len::parse_spacing(v, vcx))
+            }
+            _ => self.apply_text_overflow_case(key, v, hit, vcx),
         }
     }
 }

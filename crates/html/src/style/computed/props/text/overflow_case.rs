@@ -1,15 +1,15 @@
 //! Computed::apply_text, продолжение цепочки: text-overflow, white-space(-collapse), word-spacing, text-transform. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_breaking.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_text_overflow_case(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             "text-overflow" => {
@@ -98,7 +98,7 @@ impl Computed {
                 _ => {}
             },
             "white-space" => white_space::apply(self, v),
-            "word-spacing" => self.word_spacing = record_parsed!(self, Len::parse_spacing(v)),
+            "word-spacing" => self.word_spacing = record_parsed!(self, Len::parse_spacing(v, vcx)),
             "text-transform" => {
                 // Свойство наследуемое: `inherit` очищает свой слот, иначе
                 // прежнее объявление того же правила его переживало.
@@ -133,7 +133,7 @@ impl Computed {
                     self.text_transform_flags = flags;
                 }
             }
-            _ => self.apply_text_breaking(key, val, v, hit),
+            _ => self.apply_text_breaking(key, v, hit, vcx),
         }
     }
 }

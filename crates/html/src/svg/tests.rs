@@ -21,12 +21,14 @@ fn find_svg(nodes: &[Node]) -> Option<&Element> {
 
 #[test]
 fn subtree_is_serialised_back_to_markup() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let nodes = parse(
         r##"<svg viewBox="0 0 10 10"><rect width="10" height="10" fill="#f00"/></svg>"##,
         "",
     );
     let svg = find_svg(&nodes).unwrap();
-    let out = serialize(svg);
+    let out = serialize(svg, vcx);
     assert!(out.starts_with("<svg"), "корень на месте: {out}");
     assert!(out.contains("<rect"), "потомок на месте: {out}");
     assert!(

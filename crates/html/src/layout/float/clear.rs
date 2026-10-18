@@ -2,7 +2,6 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::CB_WIDTH;
 use crate::layout::block::struts::top_edge_open;
 use crate::render::{in_flow, inline_marked_block, is_blank, own_context};
 use crate::style::computed::{Computed, Display};
@@ -70,11 +69,11 @@ pub(crate) fn without_inert_clear(nodes: &[Node]) -> Option<Vec<Node>> {
 /// заведомо нет места, — «implementations should clear the said element by
 /// placing it below any preceding floats». `float_min_w` — нижняя оценка
 /// ширины УЗЧАЙШЕГО флоата: на любой полосе с флоатом свободно не больше
-/// `cb − float_min_w`. Содержащий блок — `CB_WIDTH`, ближайший предок с
-/// шириной в точках: это верхняя оценка настоящей ширины, поэтому «не
-/// влезает» при ней не влезает и в настоящую.
-pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
-    let Some(cb) = CB_WIDTH.get() else {
+/// `cb − float_min_w`. Содержащий блок `cb` — ширина ближайшего предка в
+/// точках (`LayoutCx::cb_width`): это верхняя оценка настоящей ширины,
+/// поэтому «не влезает» при ней не влезает и в настоящую.
+pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool {
+    let Some(cb) = cb else {
         return false;
     };
     let Some(Len::Px(w)) = n.style.width else {

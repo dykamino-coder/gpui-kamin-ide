@@ -7,12 +7,13 @@
 //! `CSSPropertyID::kCx`… in svg_circle_element.cc, svg_ellipse_element.cc,
 //! svg_rect_element.cc:63-69, svg_path_element.cc and reads ComputedStyle).
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 /// Record a cascaded geometry declaration in attribute syntax.
-pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str) {
+pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str, vcx: ValueCx<'_>) {
     let name: &'static str = match key {
         "cx" => "cx",
         "cy" => "cy",
@@ -22,7 +23,7 @@ pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str) {
         "d" => "d",
         _ => return,
     };
-    let Some(value) = attribute_value(name, v) else {
+    let Some(value) = attribute_value(name, v, vcx) else {
         return;
     };
     c.accept_declaration();
@@ -33,7 +34,7 @@ pub(crate) fn geometry_property(c: &mut Computed, key: &str, v: &str) {
 /// `d: path("…")` carries the path data, `d: none` is an empty path; lengths
 /// are absolute px or percentages, `auto` stays a keyword the rasterizer
 /// treats as "not set" (rx/ry `auto` take the other radius).
-fn attribute_value(name: &str, v: &str) -> Option<String> {
+fn attribute_value(name: &str, v: &str, vcx: ValueCx<'_>) -> Option<String> {
     let v = v.trim();
     if name == "d" {
         if v.eq_ignore_ascii_case("none") {
@@ -49,7 +50,7 @@ fn attribute_value(name: &str, v: &str) -> Option<String> {
     if v.eq_ignore_ascii_case("auto") {
         return Some("auto".to_string());
     }
-    match Len::parse(v)? {
+    match Len::parse(v, vcx)? {
         Len::Px(px) => Some(format!("{px}")),
         Len::Pct(f) => Some(format!("{}%", f * 100.0)),
         _ => None,

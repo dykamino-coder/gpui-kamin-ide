@@ -1,8 +1,11 @@
 //! Элемент `Grouped`.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 mod lifecycle;
 mod mask_sources;
+mod painting;
 use mask_sources::{mask_layer_source, rasterize_mask_def, svg_fragment};
 
 use gpui::AnyElement;
@@ -129,6 +132,8 @@ pub struct Grouped {
     /// обрезается внутренним контуром (css-borders-4 §corner-shape-rendering),
     /// поэтому внутри content-box кольцо ложится поверх картинки.
     pub ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
+    /// Values of the document the group's mask and clip lengths come from.
+    pub(crate) values: crate::document::state::ValueDoc,
 }
 
 /// Слой заливок: записи `pathdef:` в точках слоя и их цвета.
@@ -147,8 +152,9 @@ pub(crate) type FillLayer = Box<
 >;
 
 impl Grouped {
-    pub fn new(child: AnyElement) -> Self {
+    pub fn new(child: AnyElement, vcx: ValueCx<'_>) -> Self {
         Grouped {
+            values: vcx.keep(),
             under: None,
             over: Vec::new(),
             deco_ext: [0.0; 4],

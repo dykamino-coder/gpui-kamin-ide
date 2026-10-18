@@ -1,6 +1,7 @@
 //! Статическое сведение `anchor()` до сборки дерева и якорь по умолчанию.
 
 use super::{CHOSEN, REFRAMES};
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
 use crate::style::values::value::{Len, anchor_get};
@@ -14,7 +15,7 @@ use std::collections::HashSet;
 /// щупы статической позиции выбираются при сборке дерева по `edge_set`.
 /// Без этого шага две пары, зелёные сейчас, уходили бы в красное
 /// (`position-anchor-none/normal-pseudo-element-implicit-002`).
-pub fn settle_static(nodes: &mut [Node]) {
+pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
@@ -24,7 +25,7 @@ pub fn settle_static(nodes: &mut [Node]) {
             names(&e.children, out);
         }
     }
-    fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent) {
+    fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
             if e.style.position_anchor == Some(PositionAnchor::MatchParent) {
@@ -46,7 +47,7 @@ pub fn settle_static(nodes: &mut [Node]) {
             };
             let s = &mut e.style.inset;
             for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                *slot = settle_len(*slot, has_default, known);
+                *slot = settle_len(*slot, has_default, known, vcx);
             }
             let abs = matches!(
                 e.style.position,
@@ -60,7 +61,7 @@ pub fn settle_static(nodes: &mut [Node]) {
                     e.style.implicit_anchor,
                 )
             });
-            settle(&mut e.children, known, &me);
+            settle(&mut e.children, known, &me, vcx);
         }
     }
     // Новый документ: выбор `position-try` прошлого документа с теми же
@@ -69,18 +70,23 @@ pub fn settle_static(nodes: &mut [Node]) {
     REFRAMES.with(|r| r.set(0));
     let mut known = HashSet::new();
     names(nodes, &mut known);
-    settle(nodes, &known, &None);
+    settle(nodes, &known, &None, vcx);
 }
 
 /// Одна вставка: цепочка запасных значений раскручивается, пока не
 /// найдётся разрешимая функция или обычная длина.
-fn settle_len(l: Option<Len>, has_default: bool, known: &HashSet<String>) -> Option<Len> {
+fn settle_len(
+    l: Option<Len>,
+    has_default: bool,
+    known: &HashSet<String>,
+    vcx: ValueCx<'_>,
+) -> Option<Len> {
     let mut cur = l;
     for _ in 0..4 {
         let Some(Len::Anchor(i)) = cur else {
             return cur;
         };
-        let f = anchor_get(i)?;
+        let f = anchor_get(i, vcx)?;
         // У `min()`/`max()` разрешимы должны быть ВСЕ доводы.
         let resolvable = std::iter::once(&*f)
             .chain(f.alts.iter())

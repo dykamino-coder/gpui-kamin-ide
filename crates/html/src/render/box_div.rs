@@ -21,11 +21,17 @@ use gpui::{ParentElement, Styled, div, px};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
-pub(crate) fn styled_div(e: &Element) -> gpui::Div {
-    styled_div_with(e, &e.style)
+/// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
+pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    styled_div_with(e, &e.style, cx)
 }
 
-pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
+pub(crate) fn styled_div_with(
+    e: &Element,
+    style: &Computed,
+    cx: &crate::layout::cx::LayoutCx,
+) -> gpui::Div {
+    let vcx = cx.vcx();
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).
@@ -69,12 +75,13 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         c
     };
     let auto_height = margin_height::used_style(e, paint);
-    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
+    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint), vcx);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
-    d = crate::interactive::scroll_target::attach(d, e, c);
-    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c) {
+    d = crate::interactive::scroll_target::attach(d, e, c, vcx);
+    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c, cx.sticky.as_ref())
+    {
         d = d.child(probe);
     }
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
@@ -90,7 +97,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.positioning, vcx) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
@@ -223,7 +230,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     } else {
         c
     };
-    for extra in decorations(c, empty) {
+    for extra in decorations(c, empty, vcx) {
         d = d.child(extra);
     }
     d

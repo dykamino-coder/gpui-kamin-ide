@@ -6,6 +6,7 @@
 //! sized by the image's concrete size; callers resolve and scale the input
 //! before applying the list here.
 
+use crate::document::state::ValueCx;
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -17,9 +18,10 @@ pub(super) fn apply(
     image: &Arc<RenderImage>,
     list: &str,
     scale: (f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     let mut style = crate::style::computed::Computed::default();
-    style.apply_one("filter", list);
+    style.apply_one("filter", list, vcx);
     let calls = list.matches('(').count();
     let size = image.size(0);
     let (w, h) = (size.width.0.max(0) as usize, size.height.0.max(0) as usize);
@@ -95,17 +97,19 @@ mod tests {
     }
 
     fn compare_samples(raw: &str) {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut own = Computed::default();
-        own.apply_one("background-image", raw);
-        own.apply_one("filter", "invert(1)");
-        let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
-        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap())
+        own.apply_one("background-image", raw, vcx);
+        own.apply_one("filter", "invert(1)", vcx);
+        let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap(), vcx)
             .unwrap()
-            .raster((7.0, 5.0))
+            .raster((7.0, 5.0), vcx)
             .unwrap();
-        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"))
+        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"), vcx)
             .unwrap()
-            .raster((7.0, 5.0))
+            .raster((7.0, 5.0), vcx)
             .unwrap();
         assert_eq!(image.as_bytes(0), expected.as_bytes(0));
         assert!(rendered.gradient.is_none());

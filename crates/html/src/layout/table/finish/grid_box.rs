@@ -1,5 +1,6 @@
 //! Сетка таблицы (ряды, высоты) и рамка таблицы в сросшейся модели.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
@@ -12,6 +13,7 @@ pub(super) fn table_grid_box(
     row_elements: Vec<&Element>,
     tracks: Vec<gpui::GridTrack>,
     table_tall: bool,
+    vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
         true if !e.style.wm().vertical() => Some(
@@ -95,7 +97,7 @@ pub(super) fn table_grid_box(
         }
         g
     };
-    grid.style().table_collapsed_tracks = collapsed_tracks(e);
+    grid.style().table_collapsed_tracks = collapsed_tracks(e, vcx);
     grid
 }
 
@@ -164,10 +166,10 @@ pub(super) fn paint_table_border(
     outer
 }
 
-fn collapsed_tracks(e: &Element) -> Option<(bool, Vec<u16>)> {
+fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
     // CSS 2.2 section 17.2.1: anonymous rows precede track indexing.
     // Keep the same normalization and header/footer order as table().
-    let fixed = crate::layout::table::anon::fixup_table_children(&e.children);
+    let fixed = crate::layout::table::anon::fixup_table_children(&e.children, vcx);
     let fixed = crate::layout::table::setup::table_rows_fixed(fixed);
     let mut logical_rows = Vec::new();
     crate::layout::table::anon::collect_rows(
@@ -198,6 +200,8 @@ mod tests {
 
     #[test]
     fn collapse_indices_follow_anonymous_rows_and_group_order() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
         let mut group = anon_element("tbody", vec![Node::Element(block)]);
         group.style.collapsed = Some(true);
@@ -205,14 +209,14 @@ mod tests {
         let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
         header.node_id = 2;
         let mut table = anon_element("table", vec![Node::Element(group)]);
-        assert_eq!(collapsed_tracks(&table), Some((false, vec![0])));
+        assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![0])));
         table.children.push(Node::Element(header));
-        assert_eq!(collapsed_tracks(&table), Some((false, vec![1])));
+        assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![1])));
         table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
             true,
             true,
             table.style.wm().sideways(),
         ));
-        assert_eq!(collapsed_tracks(&table), Some((true, vec![0])));
+        assert_eq!(collapsed_tracks(&table, vcx), Some((true, vec![0])));
     }
 }

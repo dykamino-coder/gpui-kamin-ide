@@ -25,13 +25,14 @@ pub(super) fn push_float_holder(
     fy: f32,
     off: f32,
 ) {
+    let vcx = opts.cx.vcx();
     let mut copy = f.clone();
     // у бандового хоста `float` доживает до сюда, а слитый стиль с
     // `float` заводит лишний контекст обрезки.
     copy.style.float = None;
     copy.style.floated_box = true;
     copy.style.clear = None;
-    let mut merged = inherit(inherited, &copy.style);
+    let mut merged = inherit(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
     // Поля кладёт держатель (позиция absolute от края) — на самой
     // коробке они сдвигали бы её обратно (float: right с margin-left
@@ -49,19 +50,21 @@ pub(super) fn push_float_holder(
     // поля уже сняты выше — их несёт держатель), как на пути замещаемых
     // и внепоточных (`:7718`, `:7722`).
     let built = if copy.tag == "img" {
-        grouped(image(&copy), &copy.style)
+        grouped(image(&copy, &opts.cx), &copy.style, vcx)
     } else if copy.style.display == Some(Display::ListItem) {
         // CSS Lists 3 §2: a floated list item keeps its marker.
         grouped(
             list_item::render_with_style(&copy, inherited, &merged, opts),
             &copy.style,
+            vcx,
         )
     } else {
         grouped(
-            styled_div_with(&copy, &merged)
+            styled_div_with(&copy, &merged, &opts.cx)
                 .children(blocks(&copy.children, &merged, opts))
                 .into_any_element(),
             &copy.style,
+            vcx,
         )
     };
     let holder = if inherited.wm().block_rl() || vert_lr {
