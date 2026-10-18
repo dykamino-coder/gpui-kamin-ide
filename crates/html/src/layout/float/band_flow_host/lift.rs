@@ -160,9 +160,6 @@ pub(crate) fn band_flow_rest_lift(
             if !text && !atoms && !empty_boxes {
                 bad = true;
             }
-            if atoms && wm.vertical {
-                bad = true;
-            }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
             // высоты `line_no × line-height`; руби поднимает строку на
             // аннотацию, и вырез уезжает с неё

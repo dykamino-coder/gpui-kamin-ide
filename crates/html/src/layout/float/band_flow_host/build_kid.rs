@@ -156,12 +156,24 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        return crate::layout::fragment::types::FlowRow::new(
+        let row = crate::layout::fragment::types::FlowRow::new(
             atoms,
             shapes,
             inherited.rtl == Some(true),
-        )
-        .hooked();
+        );
+        if !vertical {
+            return row.hooked();
+        }
+        // Vertical host: the atoms stack along the physical vertical (the
+        // inline axis) within the window's inline size, lines advancing from
+        // block-start — the right edge, or the left one in `vertical-lr`.
+        let row = row.vertical_rl().inline_limit(avail);
+        let row = if inherited.vertical_rl == Some(true) {
+            row
+        } else {
+            row.block_lr()
+        };
+        return row.hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со
