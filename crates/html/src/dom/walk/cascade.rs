@@ -85,7 +85,7 @@ pub(super) fn cascade_element(
     // и `.dark{--c:blue}` складывались в него подряд, и последнее
     // объявление красило ВЕСЬ документ — переключение темы классом
     // не работало в принципе.
-    let registered = crate::style::css::property_rules();
+    let registered = tree.doc.property_rules();
     let cascaded = crate::style::css::custom_properties::cascade(
         &matched,
         &inline_decls,
@@ -131,7 +131,7 @@ pub(super) fn cascade_element(
         attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
     };
-    let hints = presentational_hints::rules(&tag, &attrs, path);
+    let hints = presentational_hints::rules(&tag, &attrs, path, tree.doc.quirks());
     matched.extend(hints.iter());
     let math_hints = crate::dom::mathml::hints(handle, attrs);
     matched.extend(math_hints.iter());

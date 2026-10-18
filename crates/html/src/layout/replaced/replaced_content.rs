@@ -11,6 +11,7 @@ pub(crate) fn empty_iframe_size(
     e: &Element,
     inherited: &Computed,
     viewport: (f32, f32),
+    quirks: bool,
 ) -> Element {
     let mut copy = crate::layout::replaced::image::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
@@ -19,7 +20,7 @@ pub(crate) fn empty_iframe_size(
     copy.style.height = merged.height;
     copy.style.cb_height_def = merged.cb_height_def;
     copy.style.resolve_viewport(viewport);
-    if crate::style::select::quirks()
+    if quirks
         && !matches!(
             copy.style.position,
             Some(
@@ -85,7 +86,7 @@ pub(crate) fn empty_iframe(
     inherited: &Computed,
     opts: &crate::render::RenderOpts,
 ) -> AnyElement {
-    let mut copy = empty_iframe_size(e, inherited, opts.viewport);
+    let mut copy = empty_iframe_size(e, inherited, opts.viewport, opts.cx.doc().quirks());
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
         return crate::layout::replaced::image::image(&copy, &opts.cx);

@@ -37,9 +37,10 @@ pub(crate) fn parse_current_xml(
     markup: &str,
     extra_css: &str,
     media: crate::style::css::Media,
+    doc: &std::rc::Rc<crate::document::state::DocState>,
 ) -> Vec<super::Node> {
     XML.with(|x| x.set(true));
-    let nodes = super::parse_current(markup, extra_css, media);
+    let nodes = super::parse_current(markup, extra_css, media, doc);
     XML.with(|x| x.set(false));
     nodes
 }

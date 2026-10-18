@@ -45,7 +45,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
     // Вариант `position-try-fallbacks`, выбранный на прошлом кадре, — в стиль
     // ДО размеров и раскладки (§fallback: «the element keeps those styles»).
-    crate::layout::positioned::anchor::resolve::apply_chosen(&mut merged);
+    crate::layout::positioned::anchor::resolve::apply_chosen(&mut merged, &opts.cx.doc());
     crate::layout::positioned::anchor::resolve::resolve_sizes(&mut merged, inherited);
     // `dir="auto"` — сторона письма по ПЕРВОМУ СИЛЬНОМУ знаку содержимого.
     // Разбор двунаправленности выберет её сам при наборе, но выключка и

@@ -1,5 +1,6 @@
 //! Side tables of one document parse, keyed by DOM node: declarative shadow
-//! roots, slot assignments, `::slotted` rules and `:has()` marks.
+//! roots, slot assignments, `::slotted` rules and `:has()` marks — plus the
+//! document's state the walk reads and writes.
 //!
 //! html5ever's `RcDom` has no per-node rare data (where Blink keeps an
 //! element's ShadowRoot), so the parse builds these tables before the style
@@ -49,9 +50,19 @@ pub(crate) struct TreeIndex {
     pub(crate) slots: HashMap<NodeKey, Rc<SlotInfo>>,
     /// `::slotted()` rules that match a flattened assigned element.
     pub(crate) slotted: HashMap<NodeKey, Rc<Vec<Rule>>>,
+    /// The document being parsed: its quirks mode, `@property` registry and
+    /// root metrics, which the walk reads and writes.
+    pub(crate) doc: Rc<crate::document::state::DocState>,
 }
 
 impl TreeIndex {
+    pub(crate) fn new(doc: Rc<crate::document::state::DocState>) -> Self {
+        TreeIndex {
+            doc,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn has_marks_of(&self, handle: &Handle) -> Vec<u64> {
         self.has_marks
             .get(&NodeKey::of(handle))

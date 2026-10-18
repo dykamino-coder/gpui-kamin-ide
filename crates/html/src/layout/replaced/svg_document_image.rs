@@ -47,6 +47,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         &html,
         crate::BROWSER_CSS,
         (w, h),
+        opts.cx.doc().media().print,
         false,
         false,
         None,

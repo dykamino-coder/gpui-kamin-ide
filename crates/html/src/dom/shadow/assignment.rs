@@ -44,6 +44,7 @@ pub(super) fn shadow_scope(
     agent: &Scope,
     media: Media,
     layers: &mut LayerRegistry,
+    doc: &crate::document::state::DocState,
 ) -> (Rc<Scope>, Vec<HasArg>) {
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
@@ -51,7 +52,7 @@ pub(super) fn shadow_scope(
     collect_style_tags(root, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, layers)
+        for (i, r) in parse_document_sheet(css, media, layers, doc)
             .into_iter()
             .enumerate()
         {

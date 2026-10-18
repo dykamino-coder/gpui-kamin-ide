@@ -85,7 +85,7 @@ fn walk(
                 &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs,
             );
             let vars = &own_vars;
-            normalize_style(&mut style, &tag, &attrs, path);
+            normalize_style(&mut style, &tag, &attrs, path, &tree.doc);
             content::snapshot_generated(&mut me, &style, path.last());
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.

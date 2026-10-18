@@ -88,7 +88,8 @@ pub(super) fn attr_prefixes_declared(v: &str, cx: &SelectorCx) -> bool {
 /// себе — со своим реестром слоёв; таблицы документа делят его
 /// (`parse_document_sheet`).
 pub fn parse_stylesheet_media(css: &str, media: Media) -> Vec<Rule> {
-    parse_document_sheet(css, media, &mut LayerRegistry::default())
+    let doc = crate::document::state::current();
+    parse_document_sheet(css, media, &mut LayerRegistry::default(), &doc)
 }
 
 /// Таблица документа: слои — в общем реестре `layers`, пролог `@namespace`
@@ -98,9 +99,11 @@ pub(crate) fn parse_document_sheet(
     css: &str,
     media: Media,
     layers: &mut LayerRegistry,
+    doc: &crate::document::state::DocState,
 ) -> Vec<Rule> {
     let (prefixes, default_ns) = declared_prefixes(css);
     let mut cx = SheetCx {
+        doc,
         layers,
         layer_now: (String::new(), Vec::new()),
         selectors: SelectorCx {

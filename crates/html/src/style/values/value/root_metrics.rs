@@ -44,8 +44,8 @@ fn with_root<R>(f: impl FnOnce(&mut RootMetrics) -> R) -> R {
 }
 
 /// Записать кегль корня, заданный единицей окна (`None` — кегль в точках).
-pub fn set_root_font_view(view: Option<(bool, f32)>) {
-    with_root(|r| r.font_view = view);
+pub fn set_root_font_view(doc: &crate::document::state::DocState, view: Option<(bool, f32)>) {
+    doc.root.borrow_mut().font_view = view;
 }
 
 pub(super) fn root_font_view() -> Option<(bool, f32)> {
@@ -54,11 +54,10 @@ pub(super) fn root_font_view() -> Option<(bool, f32)> {
 
 /// Записать корневые метрики. Зовётся разбором дерева на элементе `html`
 /// (`dom::walk`).
-pub fn set_root_metrics(font_px: f32, line_px: f32) {
-    with_root(|r| {
-        r.font_px = if font_px > 0.0 { font_px } else { 16.0 };
-        r.line_px = if line_px > 0.0 { line_px } else { 19.2 };
-    });
+pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, line_px: f32) {
+    let mut r = doc.root.borrow_mut();
+    r.font_px = if font_px > 0.0 { font_px } else { 16.0 };
+    r.line_px = if line_px > 0.0 { line_px } else { 19.2 };
 }
 
 pub fn root_font_px() -> f32 {
@@ -70,8 +69,8 @@ pub fn root_line_px() -> f32 {
 }
 
 /// Записать семейство корня (пустое — шрифт документа).
-pub fn set_root_family(family: &str) {
-    with_root(|r| r.family = family.to_string());
+pub fn set_root_family(doc: &crate::document::state::DocState, family: &str) {
+    doc.root.borrow_mut().family = family.to_string();
 }
 
 /// Одна корневая шрифтовая единица в точках: `cap`, `ch`, `ex` или `ic`

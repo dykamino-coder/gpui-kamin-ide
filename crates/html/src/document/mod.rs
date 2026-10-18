@@ -208,11 +208,11 @@ fn parse_document(
     let mut sheets = vec![theme_css.to_string()];
     sheets.extend(crate::dom::style_sources::collect(html, xml));
     crate::text::fonts::load_faces_sheets(&sheets, base);
-    crate::style::values::color_space::load_profiles_sheets(&sheets, base);
+    crate::style::values::color_space::load_profiles_sheets(&state, &sheets, base);
     let (mut nodes, root) = viewport::prepare(if xml {
-        crate::dom::parse_current_xml(html, theme_css, media)
+        crate::dom::parse_current_xml(html, theme_css, media, &state)
     } else {
-        crate::dom::parse_current(html, theme_css, media)
+        crate::dom::parse_current(html, theme_css, media, &state)
     });
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false);

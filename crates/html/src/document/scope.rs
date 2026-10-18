@@ -21,7 +21,7 @@ impl Document {
     /// Собрать кадр всего документа (`render::render` в его области).
     pub fn render(&self, opts: &crate::RenderOpts) -> Vec<gpui::AnyElement> {
         let _scope = self.enter();
-        crate::render::render(&self.nodes, opts)
+        crate::render::render(&self.nodes, &self.opts(opts))
             .into_iter()
             .map(|e| self.scoped(e))
             .collect()
@@ -30,7 +30,14 @@ impl Document {
     /// Собрать один блок верхнего уровня (`render::render_block`).
     pub fn render_block(&self, index: usize, opts: &crate::RenderOpts) -> Option<gpui::AnyElement> {
         let _scope = self.enter();
-        crate::render::render_block(&self.nodes, index, opts).map(|e| self.scoped(e))
+        crate::render::render_block(&self.nodes, index, &self.opts(opts)).map(|e| self.scoped(e))
+    }
+
+    /// Опции сборки с этим документом в контексте раскладки.
+    fn opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
+        let mut opts = opts.clone();
+        opts.cx.doc = Some(self.state.clone());
+        opts
     }
 
     /// Правила `@page` документа — по ним хост строит листы

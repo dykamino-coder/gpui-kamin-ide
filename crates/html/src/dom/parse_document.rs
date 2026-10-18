@@ -14,7 +14,6 @@ use crate::dom::walk::*;
 use crate::dom::xhtml::*;
 use crate::style::css::{Decls, LayerRegistry, Media, Rule, parse_document_sheet, parse_keyframes};
 use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
-use crate::style::select::quirks;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -35,12 +34,17 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
     let doc = crate::document::state::detached_for_parse(media);
     let _scope = doc.enter();
-    parse_current(html, extra_css, media)
+    parse_current(html, extra_css, media, &doc)
 }
 
 /// Разобрать в СВЕЖЕЕ состояние текущего документа: область открыта
 /// вызывающим (`Document`, вложенный документ рамки).
-pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
+pub(crate) fn parse_current(
+    html: &str,
+    extra_css: &str,
+    mut media: Media,
+    doc: &Rc<crate::document::state::DocState>,
+) -> Vec<Node> {
     let _content_document = content::document(html);
     // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
     // разбора, `LayerRegistry` ниже).
@@ -65,7 +69,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
     // documents … always in no-quirks mode»), а мы разбираем и его HTML-
     // разборщиком, поэтому пространство имён корня его исключает.
-    crate::document::state::current().quirks.set(
+    doc.quirks.set(
         dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
             && !html.contains("http://www.w3.org/1999/xhtml"),
     );
@@ -73,9 +77,9 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
     let mut layers = LayerRegistry::default();
-    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers);
+    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers, doc);
     let base = rules.len();
-    for (i, r) in parse_document_sheet(extra_css, media, &mut layers)
+    for (i, r) in parse_document_sheet(extra_css, media, &mut layers, doc)
         .into_iter()
         .enumerate()
     {
@@ -87,9 +91,9 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     // Лист агента и тема — общие для ВСЕХ областей дерева: каждая тень
     // получает их копию, а правила документа в тень не попадают
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
-    if quirks() {
+    if doc.quirks() {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers)
+        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers, doc)
             .into_iter()
             .enumerate()
         {
@@ -107,7 +111,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     collect_style_tags(&dom.document, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_document_sheet(css, media, &mut layers)
+        for (i, r) in parse_document_sheet(css, media, &mut layers, doc)
             .into_iter()
             .enumerate()
         {
@@ -151,7 +155,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     // Тени (`<template shadowrootmode>`): области стилей и распределение
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
-    let mut tree = TreeIndex::default();
+    let mut tree = TreeIndex::new(doc.clone());
     let doc = Rc::new(Scope { rules, frames });
     if html.contains("shadowrootmode") {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
@@ -195,7 +199,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));
-    if quirks() {
+    if tree.doc.quirks() {
         super::quirks_color::resolve(&mut out);
     }
     resolve_rule_color_inherit(&mut out, &RuleColors::default());
@@ -216,7 +220,7 @@ pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Ve
     fold_run_ins(&mut out, None);
     orthogonal_inlines_become_flow_roots(&mut out, (false, false, false), None);
     float_tail::mark(&mut out);
-    if quirks() {
+    if tree.doc.quirks() {
         quirks_percent_heights(&mut out, None);
     }
     out

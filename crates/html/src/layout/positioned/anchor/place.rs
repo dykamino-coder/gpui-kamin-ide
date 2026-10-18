@@ -18,7 +18,12 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 /// одному на элемент списка: правило `@position-try` накладывается на копию
 /// базы, `<position-area>` подменяет область, тактика переворачивает
 /// готовый план. Правило без определения — «does nothing»: варианта нет.
-pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement {
+pub fn place(
+    el: AnyElement,
+    own: &Computed,
+    inherited: &Computed,
+    doc: &crate::document::state::DocState,
+) -> AnyElement {
     let base = own.try_base.as_deref().unwrap_or(own);
     let Some(first) = AnchorPlan::of(base, inherited) else {
         return el;
@@ -27,7 +32,7 @@ pub fn place(el: AnyElement, own: &Computed, inherited: &Computed) -> AnyElement
     for fb in &base.position_try_fallbacks {
         let mut c = base.clone();
         if let Some(n) = &fb.name {
-            let Some(decls) = crate::style::css::try_rule(n) else {
+            let Some(decls) = doc.try_rule(n) else {
                 continue;
             };
             c.apply_decls(&decls);

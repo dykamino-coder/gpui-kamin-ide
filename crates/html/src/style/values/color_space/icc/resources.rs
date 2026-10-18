@@ -8,11 +8,14 @@ fn load_profiles(css: &str) {
 
 #[cfg(test)]
 fn load_profiles_with_base(css: &str, base: Option<&url::Url>) {
-    load_profiles_sheets(&[css.to_string()], base);
+    load_profiles_sheets(&crate::document::state::current(), &[css.to_string()], base);
 }
 
-pub(crate) fn load_profiles_sheets(sheets: &[String], base: Option<&url::Url>) {
-    let doc = crate::document::state::current();
+pub(crate) fn load_profiles_sheets(
+    doc: &crate::document::state::DocState,
+    sheets: &[String],
+    base: Option<&url::Url>,
+) {
     doc.profiles.borrow_mut().clear();
     for css in sheets {
         for rule in crate::style::css::resource_rules::resources(css, doc.media()) {

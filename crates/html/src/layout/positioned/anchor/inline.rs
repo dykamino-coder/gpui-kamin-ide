@@ -41,10 +41,11 @@ pub fn prepare_inline_abs(
     merged: &mut crate::style::computed::Computed,
     e: &crate::dom::Element,
     inherited: &crate::style::computed::Computed,
+    doc: &crate::document::state::DocState,
 ) {
     merged.self_node = e.node_id;
     merged.anchor_seq = super::next_seq();
     merged.anchor_key = super::key_of(e);
-    super::resolve::apply_chosen(merged);
+    super::resolve::apply_chosen(merged, doc);
     super::resolve::resolve_sizes(merged, inherited);
 }

@@ -23,7 +23,8 @@ pub(crate) fn prepare(
     tree: &mut TreeIndex,
 ) -> Prepared {
     let mut scopes = HashMap::new();
-    collect(document, agent, media, layers, args, &mut scopes);
+    let doc = tree.doc.clone();
+    collect(document, agent, media, layers, &doc, args, &mut scopes);
     if !args.is_empty() {
         mark_has(document, args, &mut vec![], tree);
         for (root, _) in scopes.values() {
@@ -38,20 +39,21 @@ fn collect(
     agent: &Scope,
     media: Media,
     layers: &mut LayerRegistry,
+    doc: &crate::document::state::DocState,
     args: &mut Vec<HasArg>,
     scopes: &mut Prepared,
 ) {
     if let Some((_, root)) = declarative_shadow(node) {
-        let (scope, inner_args) = shadow_scope(&root, agent, media, layers);
+        let (scope, inner_args) = shadow_scope(&root, agent, media, layers, doc);
         for arg in inner_args {
             if !args.iter().any(|a| a.id == arg.id) {
                 args.push(arg);
             }
         }
         scopes.insert(NodeKey::of(node), (root.clone(), scope));
-        collect(&root, agent, media, layers, args, scopes);
+        collect(&root, agent, media, layers, doc, args, scopes);
     }
     for child in node.children.borrow().iter() {
-        collect(child, agent, media, layers, args, scopes);
+        collect(child, agent, media, layers, doc, args, scopes);
     }
 }

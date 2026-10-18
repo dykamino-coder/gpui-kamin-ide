@@ -36,19 +36,19 @@ pub struct Embedded {
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
 #[cfg(test)]
 pub(crate) fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> Embedded {
-    parse_embedded_sized(html, theme_css, viewport, false, true, None)
+    let print = crate::document::state::current().media().print;
+    parse_embedded_sized(html, theme_css, viewport, print, false, true, None)
 }
 
 pub(crate) fn parse_embedded_sized(
     html: &str,
     theme_css: &str,
     viewport: (f32, f32),
+    print: bool,
     responsive: bool,
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
 ) -> Embedded {
-    // Носитель у рамки — внешнего документа (печать печатает и рамку).
-    let print = crate::document::state::current().media().print;
     let mut media = crate::style::css::Media {
         width: viewport.0,
         height: viewport.1,
@@ -65,8 +65,8 @@ pub(crate) fn parse_embedded_sized(
     for css in &sheets {
         crate::text::fonts::load_faces_additive(css);
     }
-    crate::style::values::color_space::load_profiles_sheets(&sheets, None);
-    let parsed = crate::dom::parse_current(html, theme_css, media);
+    crate::style::values::color_space::load_profiles_sheets(&state, &sheets, None);
+    let parsed = crate::dom::parse_current(html, theme_css, media, &state);
     let mut nodes =
         super::viewport::prepare_embedded(parsed, responsive, scheme.map(|s| s.owner_dark));
     // HTML's embedding policy also applies when responsive sizing is declined.

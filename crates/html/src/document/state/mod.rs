@@ -117,6 +117,21 @@ impl DocState {
         }
     }
 
+    /// Режим quirks документа (HTML §13.2.6.4.1).
+    pub(crate) fn quirks(&self) -> bool {
+        self.quirks.get()
+    }
+
+    /// Объявления правила `@position-try` по имени (`--x`), копией.
+    pub(crate) fn try_rule(&self, name: &str) -> Option<crate::style::css::Decls> {
+        self.try_rules.borrow().get(name).cloned()
+    }
+
+    /// Копия реестра `@property` — его читает сборка переменных узла.
+    pub(crate) fn property_rules(&self) -> HashMap<String, Registered> {
+        self.property_rules.borrow().clone()
+    }
+
     /// Правила `@page` документа (копией — их читает хост на каждом кадре).
     pub fn page_rules(&self) -> Vec<PageRule> {
         self.page_rules.borrow().clone()

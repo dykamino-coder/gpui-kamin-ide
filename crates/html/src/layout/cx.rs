@@ -76,9 +76,20 @@ pub struct LayoutCx {
     /// (the line grows by them); `None` inside — collection closed.
     pub(crate) ruby_extents:
         Option<std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>>,
+    /// The document being built: its quirks mode, `@position-try` rules and
+    /// medium. Set by `Document::render` and for each nested document.
+    pub(crate) doc: Option<Rc<crate::document::state::DocState>>,
 }
 
 impl LayoutCx {
+    /// The document being built; a host that calls `render::render` without a
+    /// `Document` builds in the document its scope made current.
+    pub(crate) fn doc(&self) -> Rc<crate::document::state::DocState> {
+        self.doc
+            .clone()
+            .unwrap_or_else(crate::document::state::current)
+    }
+
     /// The next step-8 paint key: taken on entering an element, before its
     /// children are built.
     pub(crate) fn next_paint_key(&self) -> u64 {

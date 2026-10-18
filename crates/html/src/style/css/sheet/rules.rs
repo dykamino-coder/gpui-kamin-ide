@@ -150,12 +150,15 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
             // значение «13px\u{1}inherit», которое не разбиралось вовсе.
             let list = ordered_decls(&decls);
             if let Some(sels) = parse_page_selectors(&head[5..]) {
-                push_page_rule(PageRule {
-                    sels,
-                    decls: list,
-                    margins,
-                    layer: layer_of_rules(),
-                });
+                push_page_rule(
+                    cx.doc,
+                    PageRule {
+                        sels,
+                        decls: list,
+                        margins,
+                        layer: layer_of_rules(),
+                    },
+                );
             }
         }
         false
@@ -179,6 +182,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
             && (syntax == "*" || initial.is_some())
         {
             register_property(
+                cx.doc,
                 ident,
                 Registered {
                     syntax,
@@ -202,6 +206,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
             .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
             .collect();
         crate::style::generated::counter_style_rules::register(
+            cx.doc,
             &head["@counter-style".len()..],
             &descs,
         );
@@ -215,7 +220,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         if ident.starts_with("--") {
             let decls = parse_decls(body);
             if !decls.is_empty() {
-                insert_try_rule(ident, decls);
+                insert_try_rule(cx.doc, ident, decls);
             }
         }
         false

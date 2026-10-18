@@ -21,7 +21,12 @@ pub(super) fn static_position_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
-    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
+    crate::layout::positioned::anchor::prepare_inline_abs(
+        &mut merged,
+        e,
+        inherited,
+        &opts.cx.doc(),
+    );
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
@@ -98,7 +103,12 @@ pub(super) fn static_position_atom(
         Some(el) => el,
         None => inner.into_any_element(),
     };
-    let inner = crate::layout::positioned::anchor::place::place(inner, &positioned, inherited);
+    let inner = crate::layout::positioned::anchor::place::place(
+        inner,
+        &positioned,
+        inherited,
+        &opts.cx.doc(),
+    );
     let taken = if below {
         Some(inner)
     } else {
@@ -121,7 +131,12 @@ pub(super) fn absolute_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
-    crate::layout::positioned::anchor::prepare_inline_abs(&mut merged, e, inherited);
+    crate::layout::positioned::anchor::prepare_inline_abs(
+        &mut merged,
+        e,
+        inherited,
+        &opts.cx.doc(),
+    );
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
@@ -171,6 +186,7 @@ pub(super) fn absolute_atom(
             .into_any_element(),
         &merged,
         inherited,
+        &opts.cx.doc(),
     );
     // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой

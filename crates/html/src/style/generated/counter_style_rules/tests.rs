@@ -10,7 +10,7 @@ fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
             .iter()
             .map(|(k, v)| (k.to_string(), vec![v.to_string()]))
             .collect();
-        register(name, &d);
+        register(&doc, name, &d);
     }
     f();
 }

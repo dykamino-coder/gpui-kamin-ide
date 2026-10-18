@@ -7,12 +7,11 @@ use svg::foreign_object;
 
 /// HTML rendering §15.3.8: cell nowrap is a presentational hint, with a
 /// nonzero-length width exception in quirks mode. Author CSS takes precedence.
-pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+pub(super) fn nowrap(tag: &str, attrs: &[(String, String)], quirks: bool) -> Option<Rule> {
     if !matches!(tag, "td" | "th") || !attrs.iter().any(|(k, _)| k == "nowrap") {
         return None;
     }
-    let normal = crate::style::select::quirks()
-        && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
+    let normal = quirks && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
     hint(if normal {
         "white-space: normal"
     } else {
@@ -38,8 +37,9 @@ pub(super) fn rules(
     tag: &str,
     attrs: &[(String, String)],
     path: &[crate::style::select::Ancestor],
+    quirks: bool,
 ) -> Vec<Rule> {
-    nowrap(tag, attrs)
+    nowrap(tag, attrs, quirks)
         .into_iter()
         .chain(cell_padding(tag, path))
         .chain(table_height(tag, attrs))

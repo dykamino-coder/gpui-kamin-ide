@@ -12,6 +12,7 @@ pub(super) fn normalize_style(
     tag: &str,
     attrs: &[(String, String)],
     path: &[Ancestor],
+    doc: &crate::document::state::DocState,
 ) {
     // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
     // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
@@ -41,13 +42,16 @@ pub(super) fn normalize_style(
                 }
             }
         };
-        crate::style::values::value::set_root_metrics(font, line);
-        crate::style::values::value::set_root_family(&family);
-        crate::style::values::value::set_root_font_view(match style.font_size {
-            Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
-            Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
-            _ => None,
-        });
+        crate::style::values::value::set_root_metrics(doc, font, line);
+        crate::style::values::value::set_root_family(doc, &family);
+        crate::style::values::value::set_root_font_view(
+            doc,
+            match style.font_size {
+                Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
+                Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
+                _ => None,
+            },
+        );
     }
     apply_presentational_size(&mut style, &tag, &attrs);
     resolve_svg_keywords(&mut style, &tag, &attrs);

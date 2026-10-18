@@ -154,6 +154,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         &html,
         crate::BROWSER_CSS,
         (w, h),
+        opts.cx.doc().media().print,
         responsive,
         !e.attr("scrolling")
             .is_some_and(|v| v.eq_ignore_ascii_case("no")),
@@ -206,6 +207,7 @@ pub(crate) fn build_embedded(
     sub.doc_salt = embedded.salt;
     sub.cx.positioning = Default::default();
     sub.cx.frame_depth += 1;
+    sub.cx.doc = Some(embedded.state.clone());
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;

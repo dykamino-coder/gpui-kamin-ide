@@ -15,7 +15,7 @@ use insets::fill_anchor_pairs;
 /// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
 /// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
 /// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut Computed) {
+pub fn apply_chosen(c: &mut Computed, doc: &crate::document::state::DocState) {
     if c.position_try_fallbacks.is_empty()
         || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
     {
@@ -29,7 +29,7 @@ pub fn apply_chosen(c: &mut Computed) {
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
     {
         if let Some(n) = &fb.name
-            && let Some(decls) = crate::style::css::try_rule(n)
+            && let Some(decls) = doc.try_rule(n)
         {
             c.apply_decls(&decls);
         }

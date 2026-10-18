@@ -2,7 +2,7 @@
 //! документ и второй документ в том же потоке их не трогают.
 
 use crate::document::{Document, parse_embedded};
-use crate::style::css::{page_decls_in, try_rule};
+use crate::style::css::page_decls_in;
 use crate::style::values::value::root_font_px;
 
 const A: &str = "<!doctype html><style>html { font-size: 20px }
@@ -11,6 +11,11 @@ const A: &str = "<!doctype html><style>html { font-size: 20px }
 const B: &str = "<!doctype html><style>html { font-size: 10px }
     @position-try --b { top: 2px }
     @page { margin: 9px }</style><p>b</p>";
+
+/// `@position-try` rule of the document the scope made current.
+fn try_rule(name: &str) -> Option<crate::style::css::Decls> {
+    crate::document::state::current().try_rule(name)
+}
 
 fn margin(doc: &Document) -> Option<String> {
     page_decls_in(&doc.page_rules(), 0, "", false)

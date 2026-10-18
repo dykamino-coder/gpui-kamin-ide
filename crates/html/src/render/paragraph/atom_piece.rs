@@ -74,7 +74,9 @@ fn atom_piece_in(
                     | crate::style::computed::Position::Fixed
             )
         ))
-    .then(|| replaced_content::empty_iframe_size(e, inherited, opts.viewport));
+    .then(|| {
+        replaced_content::empty_iframe_size(e, inherited, opts.viewport, opts.cx.doc().quirks())
+    });
     let e = iframe_sized.as_ref().unwrap_or(e);
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
