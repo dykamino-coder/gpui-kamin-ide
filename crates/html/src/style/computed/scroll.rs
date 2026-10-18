@@ -28,7 +28,7 @@ impl ScrollStyle {
 }
 
 impl Computed {
-    pub(crate) fn apply_scroll(&mut self, key: &str, _: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_scroll(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "scrollbar-gutter" => {
                 let parts: Vec<_> = v.split_whitespace().collect();

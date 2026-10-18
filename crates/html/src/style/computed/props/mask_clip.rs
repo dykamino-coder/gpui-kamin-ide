@@ -8,8 +8,7 @@ mod clip_mask;
 mod mask_layers;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_mask_clip(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_mask_clip(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // `will-change` (css-will-change-1 §2.1) разбирается ОДНОЙ армой
             // рядом с `backdrop-filter`: вторая арма того же ключа в этом
@@ -100,7 +99,7 @@ impl Computed {
                         .collect(),
                 );
             }
-            _ => self.apply_mask_layers(key, val, v, hit),
+            _ => self.apply_mask_layers(key, v, hit),
         }
     }
 }

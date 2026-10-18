@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_grid_templates(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_grid_templates(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО: ИМЕНА ЛИНИЙ целиком (план — в
             // `target/scout-linenames.md`, шаги A1-A3). Написано и работало:
@@ -103,7 +102,7 @@ impl Computed {
             "grid-gap" => self.apply_one("gap", v),
             "grid-row-gap" => self.apply_one("row-gap", v),
             "grid-column-gap" => self.apply_one("column-gap", v),
-            _ => self.apply_grid_placement(key, val, v, hit),
+            _ => self.apply_grid_placement(key, v, hit),
         }
     }
 }

@@ -10,8 +10,7 @@ mod text_box_values;
 mod vertical_clamp;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_text(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_text(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
@@ -142,7 +141,7 @@ impl Computed {
                 }
             }
             "letter-spacing" => self.letter_spacing = Len::parse_spacing(v),
-            _ => self.apply_text_overflow_case(key, val, v, hit),
+            _ => self.apply_text_overflow_case(key, v, hit),
         }
     }
 }

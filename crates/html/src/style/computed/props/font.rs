@@ -7,8 +7,7 @@ mod features;
 mod metrics;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_font(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_font(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "math-style" => {
                 if matches!(v, "normal" | "compact") {
@@ -110,7 +109,7 @@ impl Computed {
             }
             "font-family" => font_family::apply(self, v),
 
-            _ => self.apply_font_features(key, val, v, hit),
+            _ => self.apply_font_features(key, v, hit),
         }
     }
 }

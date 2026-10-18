@@ -10,8 +10,7 @@ use functions::transform_function;
 use functions_3d::transform_function_3d;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_transform(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_transform(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
@@ -127,7 +126,7 @@ impl Computed {
                     self.transform = Some(t);
                 }
             }
-            _ => self.apply_transform_individual(key, val, v, hit),
+            _ => self.apply_transform_individual(key, v, hit),
         }
     }
 }

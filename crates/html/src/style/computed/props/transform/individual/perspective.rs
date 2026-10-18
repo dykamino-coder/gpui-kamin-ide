@@ -4,14 +4,7 @@ use super::*;
 use crate::style::values::value::px_strict;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_transform_perspective(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_transform_perspective(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // Трёхмерной сцены нет: без объёмных преобразований перспектива
             // ничего не меняет, поэтому разбирается и не делает ничего.

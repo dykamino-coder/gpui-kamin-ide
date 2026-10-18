@@ -206,16 +206,16 @@ impl Computed {
                 self.bg_lists.set(prop, v.to_string());
             }
         }
-        self.apply_property(key, val, v);
+        self.apply_property(key, v);
     }
 
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str) -> bool {
-        Self::default().apply_property(key, "", "")
+        Self::default().apply_property(key, "")
     }
 
-    fn apply_property(&mut self, key: &str, val: &str, v: &str) -> bool {
-        let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
+    fn apply_property(&mut self, key: &str, v: &str) -> bool {
+        let groups: [fn(&mut Self, &str, &str, &mut bool); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
             Self::apply_grid,
@@ -233,7 +233,7 @@ impl Computed {
         ];
         for group in groups {
             let mut hit = true;
-            group(self, key, val, v, &mut hit);
+            group(self, key, v, &mut hit);
             if hit {
                 return true;
             }

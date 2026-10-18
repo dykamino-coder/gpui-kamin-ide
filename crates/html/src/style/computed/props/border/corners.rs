@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_border_corners(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_border_corners(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // `border-shape` (css-borders-4 §border-shape): `none` либо одна-две
             // базовые фигуры, каждая с необязательной опорной коробкой ПОСЛЕ
@@ -166,7 +165,7 @@ impl Computed {
             | "border-bottom-right-radius"
             | "border-bottom-left-radius" => self.apply_radius_corner(key, v),
 
-            _ => self.apply_border_sides_outline(key, val, v, hit),
+            _ => self.apply_border_sides_outline(key, v, hit),
         }
     }
 }

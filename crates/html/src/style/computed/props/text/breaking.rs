@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_text_breaking(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_text_breaking(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // Отступ первой строки. Кроме длины значение несёт до двух
             // ключевых слов (css-text-3 §7.1): `each-line` повторяет отступ
@@ -203,7 +202,7 @@ impl Computed {
                 // не должна оставаться коротким огрызком.
                 self.balance_lines = Some(v == "balance");
             }
-            _ => self.apply_text_vertical_clamp(key, val, v, hit),
+            _ => self.apply_text_vertical_clamp(key, v, hit),
         }
     }
 }

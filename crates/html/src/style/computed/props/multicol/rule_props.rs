@@ -5,8 +5,7 @@ use super::*;
 mod rule_flags;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_multicol_rules(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_multicol_rules(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // Лонгхенды линеек промежутков (css-gaps-1 §color-style-width):
             // список через запятую с `repeat()`, `rule-*` ставит обе оси.
@@ -108,7 +107,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_multicol_rule_flags(key, val, v, hit),
+            _ => self.apply_multicol_rule_flags(key, v, hit),
         }
     }
 }

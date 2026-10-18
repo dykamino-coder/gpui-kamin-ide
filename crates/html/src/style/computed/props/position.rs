@@ -7,8 +7,7 @@ use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_position(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_position(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "position" => {
                 self.position = match v {

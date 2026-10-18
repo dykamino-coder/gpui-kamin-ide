@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_font_features(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_font_features(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
@@ -156,7 +155,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_font_metrics(key, val, v, hit),
+            _ => self.apply_font_metrics(key, v, hit),
         }
     }
 }

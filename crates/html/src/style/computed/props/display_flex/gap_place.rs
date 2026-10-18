@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_gap_place(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_gap_place(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "gap" => {
                 // Куски — по пробелам ВНЕ скобок: `calc(15% + 7px) calc(10px +

@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_flex_items(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_flex_items(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "flex-wrap" => {
                 // css-flexbox-2 §5.2: `nowrap | [ wrap | wrap-reverse ] || balance`;
@@ -200,7 +199,7 @@ impl Computed {
                 self.justify_content = parse_justify(v);
                 self.justify_content_safe = is_safe(v);
             }
-            _ => self.apply_gap_place(key, val, v, hit),
+            _ => self.apply_gap_place(key, v, hit),
         }
     }
 }

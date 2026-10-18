@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_clip_mask(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_clip_mask(&mut self, key: &str, v: &str) {
         if key == "mask" && mask_shorthand::apply(self, v) {
             return;
         }

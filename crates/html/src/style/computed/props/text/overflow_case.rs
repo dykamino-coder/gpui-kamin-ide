@@ -3,14 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_text_overflow_case(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_text_overflow_case(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "text-overflow" => {
                 self.text_overflow_inherit = v.trim().eq_ignore_ascii_case("inherit");
@@ -128,7 +121,7 @@ impl Computed {
                     self.text_transform_flags = flags;
                 }
             }
-            _ => self.apply_text_breaking(key, val, v, hit),
+            _ => self.apply_text_breaking(key, v, hit),
         }
     }
 }

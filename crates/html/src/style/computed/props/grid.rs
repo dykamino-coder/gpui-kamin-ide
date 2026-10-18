@@ -7,8 +7,7 @@ mod placement;
 mod templates;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_grid(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // `repeat(auto-fill | auto-fit, minmax(N, 1fr))` — «сколько
             // влезет»: число колонок известно только раскладке. Раньше запись
@@ -130,7 +129,7 @@ impl Computed {
                     max_fr,
                 });
             }
-            _ => self.apply_grid_templates(key, val, v, hit),
+            _ => self.apply_grid_templates(key, v, hit),
         }
     }
 }

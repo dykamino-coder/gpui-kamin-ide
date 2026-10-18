@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_box_model_sides(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_box_model_sides(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "padding-top" => {
                 // `inherit` разбором не выражается: слово копирует вычисленное
@@ -139,7 +138,7 @@ impl Computed {
                 self.side_seq.margin[3] = self.decl_seq;
             }
 
-            _ => self.apply_box_model_logical(key, val, v, hit),
+            _ => self.apply_box_model_logical(key, v, hit),
         }
     }
 }

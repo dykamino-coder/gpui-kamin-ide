@@ -5,14 +5,7 @@ use super::*;
 mod perspective;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_transform_individual(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_transform_individual(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
             // матрицы отрисовки отдельными полями (`rotate_prop`/`scale_prop`)
@@ -136,7 +129,7 @@ impl Computed {
                 // `10px 30px -10px`).
                 self.transform_origin_z = free.next().and_then(px_axis);
             }
-            _ => self.apply_transform_perspective(key, val, v, hit),
+            _ => self.apply_transform_perspective(key, v, hit),
         }
     }
 }

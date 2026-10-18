@@ -8,13 +8,12 @@ mod layer_props;
 mod shorthand;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_background(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_background(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
             // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
             // одно, и картинка терялась при заданном цвете.
-            "background" | "background-color" => self.apply_background_shorthand(key, val, v, hit),
+            "background" | "background-color" => self.apply_background_shorthand(key, v),
             "box-shadow" if has_font_units(v) => self.shadow_raw = Some(v.to_string()),
             "box-shadow" => {
                 self.shadow_raw = None;
@@ -53,7 +52,7 @@ impl Computed {
                 if let [light, dark] = args.as_slice() {
                     let dark_now = crate::style::values::value::dark_scheme();
                     let pick = if dark_now { dark.trim() } else { light.trim() };
-                    self.apply_background(key, pick, pick, hit);
+                    self.apply_background(key, pick, hit);
                 }
             }
             "background-image" => {
@@ -170,7 +169,7 @@ impl Computed {
                 }
             }
 
-            _ => self.apply_background_layers(key, val, v, hit),
+            _ => self.apply_background_layers(key, v, hit),
         }
     }
 }

@@ -6,8 +6,7 @@ mod containment;
 mod timing;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_effects(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_effects(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // `pre` сохраняет переводы строк — это не то же самое, что запрет
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
@@ -193,7 +192,7 @@ impl Computed {
                 }
             }
 
-            _ => self.apply_effects_timing(key, val, v, hit),
+            _ => self.apply_effects_timing(key, v, hit),
         }
     }
 }

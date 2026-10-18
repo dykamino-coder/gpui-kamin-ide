@@ -5,8 +5,7 @@ use crate::style::values::value::Color;
 mod emphasis_ruby;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_text_decor(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_text_decor(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
                 // css-text-decor-4 §2: сокращение — `<line> || <style> ||
@@ -147,7 +146,7 @@ impl Computed {
                 }
                 self.td_inset = Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]));
             }
-            _ => self.apply_text_decor_emphasis_ruby(key, val, v, hit),
+            _ => self.apply_text_decor_emphasis_ruby(key, v, hit),
         }
     }
 }

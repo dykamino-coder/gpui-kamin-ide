@@ -3,14 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_multicol_rule_flags(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_multicol_rule_flags(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // §visibility-items: 0 normal, 1 all, 2 around, 3 between.
             "rule-visibility-items"

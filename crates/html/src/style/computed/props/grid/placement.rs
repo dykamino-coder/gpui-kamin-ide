@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_grid_placement(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_grid_placement(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "grid-template-rows" => {
                 self.subgrid_rows = v.contains("subgrid");

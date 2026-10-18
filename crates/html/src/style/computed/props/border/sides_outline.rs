@@ -3,14 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_border_sides_outline(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_border_sides_outline(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // --- Рамки и обводка --------------------------------------------
             // Толщина словом (`thin`/`medium`/`thick`) — законное значение;

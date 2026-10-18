@@ -9,8 +9,7 @@ mod shorthand;
 mod sides_outline;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_border(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_border(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "border" => {
                 // `border: inherit` — рамка родителя целиком: слово копирует
@@ -137,7 +136,7 @@ impl Computed {
                 // знающие о сторонах.
                 self.border_color = at(0);
             }
-            _ => self.apply_border_corners(key, val, v, hit),
+            _ => self.apply_border_corners(key, v, hit),
         }
     }
 }

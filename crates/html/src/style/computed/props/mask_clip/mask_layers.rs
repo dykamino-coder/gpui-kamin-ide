@@ -3,8 +3,7 @@
 use super::*;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_mask_layers(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_mask_layers(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // SVG-коробки (css-masking-1 §7.10/7.11, `<geometry-box>`):
             // у элемента с CSS-коробкой fill-box = content-box, stroke-box и
@@ -128,7 +127,7 @@ impl Computed {
                 }
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
-            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, val, v, hit),
+            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, v),
             _ => *hit = false,
         }
     }

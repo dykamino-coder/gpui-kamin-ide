@@ -7,8 +7,7 @@ mod logical_layout;
 mod sides;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_box_model(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_box_model(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             "box-sizing" => self.border_box = Some(v == "border-box"),
 
@@ -100,7 +99,7 @@ impl Computed {
                 // Спор с логическими сторонами решает порядок объявлений.
                 self.side_seq.padding = [self.decl_seq; 4];
             }
-            _ => self.apply_box_model_sides(key, val, v, hit),
+            _ => self.apply_box_model_sides(key, v, hit),
         }
     }
 }

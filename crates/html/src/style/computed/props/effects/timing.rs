@@ -4,8 +4,7 @@ use super::*;
 mod animation_props;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_effects_timing(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_effects_timing(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
             // --- Время --------------------------------------------------------
             "animation"
@@ -143,7 +142,7 @@ impl Computed {
                 self.contain_paint = Some(bits.2);
                 self.contain_style = Some(bits.3);
             }
-            _ => self.apply_effects_containment(key, val, v, hit),
+            _ => self.apply_effects_containment(key, v, hit),
         }
     }
 }
