@@ -9,13 +9,12 @@
 //! rasterized. Images without `<foreignObject>` keep the raster path.
 
 use crate::dom::Element;
-use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::render::{RenderOpts, blocks, styled_div};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-    if !e.tag.eq_ignore_ascii_case("img") || IFRAME_DEPTH.with(|d| d.get()) >= 3 {
+    if !e.tag.eq_ignore_ascii_case("img") || opts.cx.frame_depth >= 3 {
         return None;
     }
     let src = e.attr("src")?;
@@ -57,11 +56,10 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     sub.viewport = (w, h);
     sub.doc_salt = salt;
     sub.cx.positioning = Default::default();
-    IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
+    sub.cx.frame_depth += 1;
     sub.cx.positioning.icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(sub.cx.positioning.icb_close());
-    IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         styled_div(e, &opts.cx)

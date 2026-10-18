@@ -15,7 +15,6 @@ use paint_order::unkeyed_positions;
 
 use crate::dom::Node;
 use crate::layout::float::clear::without_inert_clear;
-use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
@@ -109,9 +108,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     crate::text::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interactive::frame::frame_sanitize();
-    // Пойманная паника кадра внутри рамки оставляла счётчик глубины
-    // навсегда — три такие паники, и рамки исчезали до перезапуска.
-    IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
@@ -129,26 +125,19 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
     // и сбрасывает собиратели (пойманная паника кадра оставила бы их
     // открытыми); вложенный документ (рамка) собирает своё внутри.
-    let depth = RENDER_DEPTH.with(|d| {
-        d.set(d.get() + 1);
-        d.get()
-    });
-    if depth == 1 {
+    if !opts.cx.in_render {
         gpui::paint_collect_reset();
     }
-    let opts = &*opts.inner(|cx| cx.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes)));
+    let opts = &*opts.inner(|cx| {
+        cx.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
+        cx.in_render = true;
+    });
     let mut out = blocks(nodes, &root, opts);
     out.extend(opts.cx.positioning.icb_close());
-    RENDER_DEPTH.with(|d| d.set(d.get() - 1));
     let (open, close) = gpui::PaintCollect::pair();
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
     out
-}
-
-thread_local! {
-    /// Глубина вложенных `render` (документ в рамке собирается внутри).
-    static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
@@ -164,7 +153,6 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
     let node = nodes.get(index)?;
     crate::interactive::frame::frame_sanitize();
-    IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный

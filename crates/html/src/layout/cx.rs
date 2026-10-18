@@ -53,6 +53,12 @@ pub struct LayoutCx {
     /// Positions of the document's nodes in a forward walk and of the LAST
     /// positioned node that keeps no paint key (`unkeyed_positions`).
     pub(crate) unkeyed: Rc<crate::render::Unkeyed>,
+    /// How many documents (iframes, SVG document images) the box is nested
+    /// in: a guard against cyclic embedding.
+    pub(crate) frame_depth: u32,
+    /// Built inside a `render` call: an inner `render` must not reset the
+    /// step-8 paint collector of the outer one.
+    pub(crate) in_render: bool,
 }
 
 impl LayoutCx {

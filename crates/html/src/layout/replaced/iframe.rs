@@ -36,11 +36,6 @@ fn resolve_embedded_urls(html: &str, dir: &std::path::Path) -> String {
     out
 }
 
-thread_local! {
-    /// Глубина вложенных документов — от циклических iframe.
-    pub(crate) static IFRAME_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-}
-
 /// `<object>`, чей `data` — ДОКУМЕНТ, а не картинка (HTML §4.8.7: сначала
 /// атрибут `type`, иначе по расширению адреса). Гейт нарочно узкий: `.svg`,
 /// `image/*` и растры остаются на пути картинки (css-images
@@ -68,7 +63,8 @@ pub(crate) fn object_is_document(e: &Element) -> bool {
 }
 
 pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    if IFRAME_DEPTH.with(|d| d.get()) >= 3 {
+    // Глубина вложенных документов — от циклических рамок.
+    if opts.cx.frame_depth >= 3 {
         return None;
     }
     // HTML: the presence of srcdoc (even empty) takes precedence over src.
@@ -175,7 +171,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     sub.viewport = (w, h);
     sub.doc_salt = salt;
     sub.cx.positioning = Default::default();
-    IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
+    sub.cx.frame_depth += 1;
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
@@ -184,7 +180,6 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     sub.cx.positioning.icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(sub.cx.positioning.icb_close());
-    IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(
         {
