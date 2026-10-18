@@ -1,10 +1,8 @@
-//! Ruby boxes for fixup_tree; split out to keep the owning module within 250 lines.
+//! Ruby roles, anonymous ruby containers and containing-block classification.
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Position};
 
-/// Сумма двух длин. Складываются только точки: смешивать доли и кегли здесь
-/// не с чем — контейнера в этот момент нет.
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
 /// без авторского `display` (A.1). Зеркало `render::ruby_role`.
 pub(crate) fn ruby_box_role(
@@ -26,6 +24,17 @@ pub(crate) fn ruby_box_role(
         "rtc" => Some(RubyRole::TextContainer),
         _ => None,
     }
+}
+
+/// The inline ruby box has no authored identity; inheritance comes from its parent.
+pub(crate) fn anonymous_ruby(children: Vec<Node>) -> Node {
+    Node::Element(Element::anonymous(
+        "ruby",
+        Computed::default(),
+        children,
+        true,
+        Marks::default(),
+    ))
 }
 
 /// css-ruby-1 §2.2 п.2: подряд идущие базы, аннотации и их контейнеры ВНЕ
@@ -60,20 +69,7 @@ pub(crate) fn wrap_misparented_ruby(
     let mut pending: Vec<Node> = Vec::new();
     let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
         if !run.is_empty() {
-            out.push(Node::Element(Element {
-                marks: Default::default(),
-                list_item: None,
-                node_id: 0,
-                anim: None,
-                inline: true,
-                tag: "ruby".to_string(),
-                style: Computed::default(),
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: std::mem::take(run),
-                attrs: vec![],
-            }));
+            out.push(anonymous_ruby(std::mem::take(run)));
         }
     };
     for n in children {
@@ -103,3 +99,6 @@ pub(crate) fn own_containing_block(c: &Computed) -> bool {
             | Some(Position::Sticky)
     )
 }
+
+#[cfg(test)]
+mod tests;
