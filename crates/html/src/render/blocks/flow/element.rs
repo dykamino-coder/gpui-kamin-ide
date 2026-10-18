@@ -172,6 +172,9 @@ pub(crate) fn paint_element(
     // полями. Слой absolute от родителя-корня растягивается на всё
     // окно, с самой коробки краска снимается (иначе двойная альфа).
     let canvas_paint = e.style.canvas_bg;
+    // One measurement shared by this root instance and its canvas.
+    let root_area =
+        (canvas_paint && e.tag == "html").then(crate::paint::background::measure_root_box);
     // Тело под корнем-донором фона холста при `vertical-rl`: его
     // margin-box (плюс рамка/отбивка корня) — коробка корня по
     // содержимому; её левый край пишется на подготовке тела.
@@ -181,7 +184,7 @@ pub(crate) fn paint_element(
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
     let e = if canvas_paint {
-        canvas_layer(e, opts, out);
+        canvas_layer(e, opts, out, root_area.clone());
         let mut copy = e.clone();
         copy.style.background = None;
         copy.style.gradient = None;
@@ -216,5 +219,6 @@ pub(crate) fn paint_element(
         hoist_margins,
         placement,
         record_root,
+        root_area,
     )
 }

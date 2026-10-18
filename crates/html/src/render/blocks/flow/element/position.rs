@@ -31,6 +31,7 @@ pub(crate) fn position_element(
     hoist_margins: bool,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     record_root: bool,
+    root_area: Option<crate::paint::background::Measurement>,
 ) {
     let vcx = opts.cx.vcx();
     let kw_len = |l: Option<Len>| {
@@ -107,7 +108,7 @@ pub(crate) fn position_element(
         grouped(animated(e, inherited, opts), &e.style, vcx)
     };
     let built = if e.style.root_box && e.style.canvas_bg {
-        crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())
+        crate::paint::background::record_root_box(built, root_area, &e.style, opts.base_size())
     } else {
         built
     };

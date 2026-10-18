@@ -14,7 +14,7 @@ use crate::document::state::ValueCx;
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;
-pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
+pub(crate) use root_box::{Measurement, capture as measure_root_box, record as record_root_box};
 
 mod fills;
 use crate::hooks::IntoHooked;
