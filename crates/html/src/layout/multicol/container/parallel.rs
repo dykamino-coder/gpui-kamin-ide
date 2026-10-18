@@ -15,9 +15,9 @@ use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
 
-fn measure(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
+fn measure_fragment_and_own_height(c: &Element, vcx: ValueCx<'_>) -> Option<(Shape, f32)> {
     let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS, vcx)?;
-    let own = Measure::own_size(m.own, m.shape.0);
+    let own = Measure::own_size(m.own, m.shape.height);
     Some((m.shape, own))
 }
 
@@ -59,15 +59,15 @@ fn positioned(
     {
         return false;
     }
-    let Some((s, _)) = measure(c, vcx) else {
+    let Some((s, _)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
-    if s.3.is_empty() || (s.4.is_empty() && s.5.is_empty()) {
+    if s.cuts.is_empty() || (s.forced.is_empty() && s.solid.is_empty()) {
         return false;
     }
     let used = match (c.style.inset.top, c.style.inset.bottom) {
         (Some(Len::Px(top)), None | Some(Len::Auto)) => top,
-        (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.0,
+        (None | Some(Len::Auto), Some(Len::Px(bottom))) => cb_height - bottom - s.height,
         (None | Some(Len::Auto), None | Some(Len::Auto)) => static_y,
         _ => return false,
     };
@@ -79,8 +79,8 @@ fn positioned(
     probe.style.inset.bottom = None;
     probe.style.margin.top = Some(Len::Px(phase));
     let mut shape = s.clone();
-    shape.1 = phase;
-    let planned = copies.max(((phase + s.0) / h).ceil() as usize + count);
+    shape.margin_top = phase;
+    let planned = copies.max(((phase + s.height) / h).ceil() as usize + count);
     let mut grown = grow_pushed(
         vec![(probe, shape)],
         count,
@@ -91,7 +91,7 @@ fn positioned(
         vcx,
     );
     let (mut probe, after) = grown.remove(0);
-    if after.0 <= s.0 + 0.01 {
+    if after.height <= s.height + 0.01 {
         return false;
     }
     probe.style = original;
@@ -101,7 +101,7 @@ fn positioned(
     true
 }
 
-fn walk(
+fn grow_positioned_descendants(
     c: &mut Element,
     origin: f32,
     h: f32,
@@ -112,7 +112,7 @@ fn walk(
     if !block(c) {
         return false;
     }
-    let Some((_, own)) = measure(c, vcx) else {
+    let Some((_, own)) = measure_fragment_and_own_height(c, vcx) else {
         return false;
     };
     let cb = establishes_cb(&c.style);
@@ -126,13 +126,13 @@ fn walk(
             }
             continue;
         }
-        let Some((s, height)) = measure(k, vcx) else {
+        let Some((s, height)) = measure_fragment_and_own_height(k, vcx) else {
             continue;
         };
-        let start = cursor + previous.max(s.1);
-        changed |= walk(k, origin + start, h, count, copies, vcx);
+        let start = cursor + previous.max(s.margin_top);
+        changed |= grow_positioned_descendants(k, origin + start, h, count, copies, vcx);
         cursor = start + height;
-        previous = s.2;
+        previous = s.margin_bottom;
     }
     changed
 }
@@ -146,20 +146,115 @@ pub(super) fn grow(
 ) {
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     for (c, s) in kids {
-        let own = measure(c, vcx).map_or(s.0, |(_, own)| own);
-        let start = cursor + previous.max(s.1);
+        let own = measure_fragment_and_own_height(c, vcx).map_or(s.height, |(_, own)| own);
+        let start = cursor + previous.max(s.margin_top);
         if !c.marks.paginate
-            && walk(c, start, h, count, copies, vcx)
+            && grow_positioned_descendants(c, start, h, count, copies, vcx)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS, vcx)
         {
-            *s = (next.0, s.1, s.2, next.3, next.4, next.5);
+            *s = crate::layout::fragment::Shape {
+                margin_top: s.margin_top,
+                margin_bottom: s.margin_bottom,
+                ..next
+            };
         }
         if !out_of_flow(&c.style) {
             cursor = start + own;
-            previous = s.2;
+            previous = s.margin_bottom;
         }
     }
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Fragment growth preserves the original CB position and its normal-flow size.
+
+    use super::*;
+    use crate::style::computed::Computed;
+
+    fn element(style: Computed, children: Vec<Node>) -> Element {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(10_000);
+        Element {
+            marks: Default::default(),
+            node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            tag: "div".into(),
+            style: style.into(),
+            children,
+            attrs: Vec::new(),
+            inline: false,
+            list_item: None,
+            anim: None,
+            hover: None,
+            first_letter: None,
+            first_line: None,
+        }
+    }
+
+    fn containing_block() -> Element {
+        let children = [(90.0, false), (50.0, true), (50.0, false)]
+            .into_iter()
+            .map(|(h, avoid)| {
+                Node::Element(element(
+                    Computed {
+                        height: Some(Len::Px(h)),
+                        break_inside_avoid: avoid,
+                        ..Default::default()
+                    },
+                    Vec::new(),
+                ))
+            })
+            .collect();
+        let mut abs = element(
+            Computed {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+            children,
+        );
+        abs.style.inset.bottom = Some(Len::Px(0.0));
+        element(
+            Computed {
+                height: Some(Len::Px(190.0)),
+                position: Some(Position::Relative),
+                ..Default::default()
+            },
+            vec![Node::Element(abs)],
+        )
+    }
+
+    #[test]
+    fn bottom_position_is_resolved_before_auto_height_grows() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut cb = containing_block();
+        assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4, vcx));
+        let Node::Element(abs) = &cb.children[0] else {
+            panic!()
+        };
+        assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
+        assert_eq!(
+            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
+            200.0
+        );
+        let (shape, own) = measure_fragment_and_own_height(&cb, vcx).unwrap();
+        assert_eq!(shape.height, 200.0);
+        assert_eq!(own, 190.0);
+    }
+
+    #[test]
+    fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut cb = containing_block();
+        assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4, vcx));
+        let Node::Element(abs) = &cb.children[0] else {
+            panic!()
+        };
+        assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
+        assert_eq!(
+            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
+            220.0
+        );
+        assert_eq!(measure_fragment_and_own_height(&cb, vcx).unwrap().1, 190.0);
+    }
+}

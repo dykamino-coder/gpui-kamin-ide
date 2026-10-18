@@ -34,9 +34,9 @@ pub(super) fn pushed_row_at(
             y += gap;
         }
         for item in &row.items {
-            let start = y + item.shape.1;
+            let start = y + item.shape.margin_top;
             if at > start - 0.01
-                && at < start + item.shape.0 - 0.01
+                && at < start + item.shape.height - 0.01
                 && let Some(id) = pushed_box_at(&item.element, at - start, depth - 1, forced, vcx)
             {
                 return Some(Some(id));

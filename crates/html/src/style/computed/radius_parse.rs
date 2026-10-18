@@ -37,7 +37,7 @@ impl Computed {
     }
 
     pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str, vcx: ValueCx<'_>) {
-        let tokens = crate::paint::background::split_top(raw);
+        let tokens = crate::style::css::value_tokens::split_top(raw);
         let (x, y) = match tokens.as_slice() {
             [x] => (length(x, vcx), length(x, vcx)),
             [x, y] => (length(x, vcx), length(y, vcx)),
@@ -120,14 +120,14 @@ fn axes(raw: &str) -> Option<(&str, Option<&str>)> {
 }
 
 fn length(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
-    match super::size_range::parse(raw, vcx)? {
+    match super::size_range::parse_nonnegative_size(raw, vcx)? {
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
         length => Some(length),
     }
 }
 
 fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Option<Corners> {
-    let tokens = crate::paint::background::split_top(raw);
+    let tokens = crate::style::css::value_tokens::split_top(raw);
     let values: Vec<Len> = tokens
         .into_iter()
         .map(|s| length(s, vcx))

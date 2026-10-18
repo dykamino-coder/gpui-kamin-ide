@@ -1,6 +1,6 @@
 //! Collect rendered children, shadow content and generated scroll controls.
 
-use super::{walk, walk_children};
+use super::{build_dom_node, walk_children};
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
@@ -73,7 +73,7 @@ pub(super) fn collect_children(
                 is_elem: s.anc.is_some(),
                 rc: Some(&slot.light_all),
             };
-            walk(
+            build_dom_node(
                 &s.node,
                 tree,
                 &slot.outer.rules,

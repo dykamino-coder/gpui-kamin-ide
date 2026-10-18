@@ -98,7 +98,14 @@ pub(crate) fn measure_children(
                 let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
                 nested_whole.borrow_mut().push(c.node_id);
                 measured_kids.borrow_mut().push((c.node_id, w));
-                Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
+                Some((
+                    c,
+                    Shape {
+                        margin_top: mt,
+                        margin_bottom: mb,
+                        ..Shape::default()
+                    },
+                ))
             }
             // Pagination by the child's own layout (`fragment::paginate`):
             // break decisions on the laid-out copy, not on this estimate.
@@ -121,7 +128,14 @@ pub(crate) fn measure_children(
                 let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
                 c.marks.paginate = true;
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
-                Some((c, (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
+                Some((
+                    c,
+                    Shape {
+                        margin_top: mt,
+                        margin_bottom: mb,
+                        ..Shape::default()
+                    },
+                ))
             }
             // `position: relative` укладке не мешает — сдвиг
             // накладывается на месте (корень A1).
@@ -194,7 +208,11 @@ pub(crate) fn measure_children(
                             measured_kids.borrow_mut().push((c.node_id, w));
                             Some((
                                 (*c).clone(),
-                                (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new()),
+                                Shape {
+                                    margin_top: mt,
+                                    margin_bottom: mb,
+                                    ..Shape::default()
+                                },
                             ))
                         })
                 }
@@ -219,5 +237,12 @@ fn measured_nested(
     let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
     nested_whole.borrow_mut().push(c.node_id);
     measured_kids.borrow_mut().push((c.node_id, w));
-    Some((c.clone(), (0.0, mt, mb, Vec::new(), Vec::new(), Vec::new())))
+    Some((
+        c.clone(),
+        Shape {
+            margin_top: mt,
+            margin_bottom: mb,
+            ..Shape::default()
+        },
+    ))
 }

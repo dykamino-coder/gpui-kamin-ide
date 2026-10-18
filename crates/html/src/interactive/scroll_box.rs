@@ -116,7 +116,7 @@ pub(crate) fn scrollable(
                 return built;
             }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
-            let mut d = crate::style::apply::margins(div(), &outer_margin, vcx)
+            let mut d = crate::paint::apply::margins(div(), &outer_margin, vcx)
                 .id(gpui::ElementId::Integer(node.node_id + 1))
                 .track_scroll(handle)
                 .child(built);

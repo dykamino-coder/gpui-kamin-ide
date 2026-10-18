@@ -64,7 +64,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     if src.starts_with("data:")
         || src.starts_with("file:")
         || src.starts_with('/')
-        || crate::paint::background::filter_image::parse(src, vcx).is_some()
+        || crate::style::computed::filter_image::parse_filter_image(src, vcx).is_some()
     {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —

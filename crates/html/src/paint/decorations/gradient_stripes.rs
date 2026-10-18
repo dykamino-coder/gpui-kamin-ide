@@ -64,7 +64,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                 };
-                let layer = div().absolute().bg(crate::style::apply::fill(&band));
+                let layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 bands.push(
                     match (vertical, reverse) {
                         (true, false) => layer.left_0().right_0().top(px(p0)).h(px(p1 - p0)),
@@ -118,7 +118,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                 };
-                let mut layer = div().absolute().bg(crate::style::apply::fill(&band));
+                let mut layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:
                 // при обратном направлении список развёрнут.
                 let first_edge = if reverse { idx == last_band } else { idx == 0 };

@@ -1,6 +1,6 @@
 //! Survey sibling positions and walk children with their ancestor stack.
 
-use super::walk;
+use super::build_dom_node;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -38,7 +38,7 @@ pub(crate) fn walk_children(
             is_elem,
             rc: Some(&all),
         };
-        walk(
+        build_dom_node(
             child, tree, rules, vars, frames, counter, counters, path, *spot, preserve, sibs,
             &children, &spots, idx, out,
         );

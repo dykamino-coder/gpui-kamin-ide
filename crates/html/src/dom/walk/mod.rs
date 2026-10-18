@@ -39,7 +39,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
-fn walk(
+fn build_dom_node(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],

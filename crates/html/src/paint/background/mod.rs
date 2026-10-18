@@ -17,13 +17,10 @@ pub use root_area::RootArea;
 pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
 
 mod fills;
-mod flat_stack;
 use crate::hooks::IntoHooked;
 use fills::border_area_fill;
 pub(crate) use fills::border_paint;
 pub use fills::paint_area;
-pub(crate) use fills::text_clip_fill;
-pub(crate) use flat_stack::collapse as collapse_flat_stack;
 
 mod filtered_raster;
 mod source_types;
@@ -117,31 +114,7 @@ pub fn intrinsic_px(src: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     Some(default_size(source(src, vcx)?.intrinsic(), (300.0, 150.0)))
 }
 
-/// Разбить запись по пробелам ВЕРХНЕГО уровня: `calc(10px + 15%)` — один
-/// токен. Без скобок — ровно `split_whitespace`.
-pub(crate) fn split_top(s: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut depth = 0i32;
-    let mut start: Option<usize> = None;
-    for (i, ch) in s.char_indices() {
-        if ch.is_whitespace() && depth <= 0 {
-            if let Some(st) = start.take() {
-                out.push(&s[st..i]);
-            }
-            continue;
-        }
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            _ => {}
-        }
-        start.get_or_insert(i);
-    }
-    if let Some(st) = start {
-        out.push(&s[st..]);
-    }
-    out
-}
+pub(crate) use crate::style::css::value_tokens::split_top;
 
 /// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
 pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<AnyElement> {
@@ -210,23 +183,7 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
 // нуждается в маске для `background-clip: text | border-area`: области
 // краски хватает цвета глифа или рамки.
 
-/// Краска `top` поверх `base` (source-over), цвета без премультипликации.
-pub(crate) fn over(
-    top: crate::style::values::value::Color,
-    base: crate::style::values::value::Color,
-) -> crate::style::values::value::Color {
-    let a = top.a + base.a * (1.0 - top.a);
-    if a <= 0.0 {
-        return crate::style::values::value::Color::default();
-    }
-    let mix = |t: f32, b: f32| (t * top.a + b * base.a * (1.0 - top.a)) / a;
-    crate::style::values::value::Color {
-        r: mix(top.r, base.r),
-        g: mix(top.g, base.g),
-        b: mix(top.b, base.b),
-        a,
-    }
-}
+pub(crate) use crate::style::values::composite::over;
 
 #[cfg(test)]
 mod tests;

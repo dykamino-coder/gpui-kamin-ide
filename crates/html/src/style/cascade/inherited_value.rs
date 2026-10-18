@@ -28,7 +28,7 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) -
     false
 }
 
-pub(super) fn resolve(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
+pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vcx: ValueCx<'_>) {
     for property in std::mem::take(&mut c.explicit_inherit) {
         property.copy(parent, c, vcx);
     }
@@ -44,16 +44,16 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
             _ => false,
         })
     }
-    fn walk(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
+    fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed, vcx: ValueCx<'_>) {
         for node in nodes {
             let Node::Element(e) = node else { continue };
-            resolve(&mut e.style, parent, vcx);
+            apply_explicit_inheritance(&mut e.style, parent, vcx);
             let computed = super::inherit::inherit_unpainted(parent, &e.style, vcx);
-            walk(&mut e.children, &computed, vcx);
+            apply_inheritance_to_descendants(&mut e.children, &computed, vcx);
         }
     }
     if pending(nodes) {
-        walk(nodes, &Computed::default(), vcx);
+        apply_inheritance_to_descendants(nodes, &Computed::default(), vcx);
     }
 }
 
@@ -70,11 +70,11 @@ mod tests {
         parent.apply_one("column-width", "100px", vcx);
         let mut child = Computed::default();
         child.apply_one("column-width", "inherit", vcx);
-        resolve(&mut child, &parent, vcx);
+        apply_explicit_inheritance(&mut child, &parent, vcx);
         assert_eq!(child.column_width, Some(Len::Px(100.0)));
         child.apply_one("column-width", "inherit", vcx);
         child.apply_one("column-width", "auto", vcx);
-        resolve(&mut child, &parent, vcx);
+        apply_explicit_inheritance(&mut child, &parent, vcx);
         assert_eq!(child.column_width, None);
     }
 
@@ -87,7 +87,7 @@ mod tests {
         let mut child = Computed::default();
         child.apply_one("gap", "inherit", vcx);
         child.apply_one("row-gap", "30px", vcx);
-        resolve(&mut child, &parent, vcx);
+        apply_explicit_inheritance(&mut child, &parent, vcx);
         assert_eq!(child.gap, Some((Some(Len::Px(30.0)), Some(Len::Px(20.0)))));
     }
 

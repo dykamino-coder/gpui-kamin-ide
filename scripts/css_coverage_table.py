@@ -1,6 +1,6 @@
 """Таблица покрытия CSS в документацию — из реестра в коде.
 
-Единственный источник правды о покрытии — `crates/html/src/coverage.rs`:
+Единственный источник правды о покрытии — `crates/html/src/coverage/properties/`:
 там же его проверяет тест. Документация от него отстаёт молча, поэтому
 таблица в ней не пишется руками, а собирается этим скриптом.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
-REGISTRY = ROOT / "crates" / "html" / "src" / "coverage.rs"
+REGISTRY = ROOT / "crates" / "html" / "src" / "coverage" / "properties"
 DOC = ROOT / "docs" / "html-css-mapping.html"
 
 MARK_START = '<h2 class="sec" id="tablica">'
@@ -25,8 +25,13 @@ MARK_END = '<h2 class="sec" id="fon">'
 
 def parse() -> list[tuple[str, str, str, str]]:
     """Строки реестра: (раздел, свойство, вердикт, примечание)."""
-    text = REGISTRY.read_text(encoding="utf-8")
-    body = text[text.index("pub const PROPERTIES"): text.index("\n];")]
+    index = (REGISTRY / "mod.rs").read_text(encoding="utf-8")
+    groups = index[index.index("pub const PROPERTIES"):]
+    # Follow the Rust concatenation order, rather than filesystem order.
+    body = "\n".join(
+        (REGISTRY / f"{name}.rs").read_text(encoding="utf-8")
+        for name in re.findall(r"(\w+)::PROPERTIES", groups)
+    )
     section = ""
     out = []
     # Записи ищутся по всему тексту раздела, а не построчно: длинные rustfmt
@@ -47,6 +52,9 @@ def parse() -> list[tuple[str, str, str, str]]:
         for kind, name, arg, why in entry.findall(flat):
             note = why if kind == "part" and why else arg
             out.append((section, name, kind, note.replace('\\"', '"').replace("\\ ", " ")))
+    expected = int(re.search(r"concatenate::<(\d+)>", groups).group(1))
+    if len(out) != expected or len({row[1] for row in out}) != expected:
+        raise ValueError("Реестр разобран не полностью или содержит дубликаты")
     return out
 
 
@@ -76,7 +84,7 @@ def render(rows: list[tuple[str, str, str, str]]) -> str:
         MARK_START + "Полная таблица свойств</h2>",
         "<p><b>Что это.</b> Каждое свойство CSS, встречающееся в разметке "
         "интерфейсов, с вердиктом. Таблица собирается из реестра в коде "
-        "(<code>crates/html/src/coverage.rs</code>) скриптом "
+        "(<code>crates/html/src/coverage/properties/</code>) скриптом "
         "<code>scripts/css_coverage_table.py</code> — руками её не правят.</p>",
         "<p><b>Зачем именно так.</b> Список поддержанного в документации "
         "устаревает молча. Здесь же за каждой строкой стоит тест: пометка "

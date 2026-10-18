@@ -95,7 +95,7 @@ pub(super) fn kind(e: &Element, style: &Computed, opts: &RenderOpts) -> Kind {
 
 pub(super) fn length_px(raw: &str, style: &Computed, opts: &RenderOpts) -> Option<f32> {
     let vcx = opts.cx.vcx();
-    let value = crate::dom::mathml::length(raw, vcx)?;
+    let value = crate::dom::mathml::parse_mathml_length(raw, vcx)?;
     let own = Computed {
         width: Some(value),
         ..Computed::default()

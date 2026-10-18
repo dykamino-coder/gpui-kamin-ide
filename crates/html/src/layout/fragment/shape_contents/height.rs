@@ -26,7 +26,7 @@ pub(super) fn shaped_height(
     solid: &mut Vec<(f32, f32)>,
     stacked: Option<(f32, f32, f32)>,
     vcx: ValueCx<'_>,
-) -> Result<(f32, f32, f32), Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>> {
+) -> Result<(f32, f32, f32), Option<crate::layout::fragment::Shape>> {
     let (h, mt, mb) = match c
         .style
         .height
@@ -147,20 +147,20 @@ pub(super) fn shaped_height(
                                 && solid_box(k)
                             {
                                 let start = top + r0 + kmt;
-                                solid.push((start, start + s.0));
+                                solid.push((start, start + s.height));
                                 continue;
                             }
                             let (true, Some(&(r0, _))) = (*plain, b.get(*row)) else {
                                 continue;
                             };
                             let start = top + r0 + kmt;
-                            for (need, nf) in &s.3 {
+                            for (need, nf) in &s.cuts {
                                 cuts.push((start + need, start + nf));
                             }
-                            for f in &s.4 {
+                            for f in &s.forced {
                                 forced.push(start + f);
                             }
-                            for (a, e) in &s.5 {
+                            for (a, e) in &s.solid {
                                 solid.push((start + a, start + e));
                             }
                         }

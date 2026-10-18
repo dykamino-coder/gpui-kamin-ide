@@ -57,7 +57,7 @@ pub(crate) fn multicol_column_stack(
             let span = kids
                 .iter()
                 .filter(|(c, _)| c.style.column_span != Some(true))
-                .map(|(_, s)| (s.0 / per).ceil() as usize)
+                .map(|(_, s)| (s.height / per).ceil() as usize)
                 .max()
                 .unwrap_or(0);
             // A spanner can leave a short fragment in every column of the first row.
@@ -128,10 +128,9 @@ pub(crate) fn multicol_column_stack(
     // копии (CSS 2.1 §10.1 п.3, css-transforms-1 §transform-rendering;
     // Blink `fixedpos_containing_block`, out_of_flow_layout_part.cc).
     // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
-    let fixed_layer = fixed_cb_layer_box(&merged);
-    if fixed_layer {
-        opts.cx.positioning.cb_open_fixed_only();
-    }
+    let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.positioning)
+    });
     let children = stack_children(
         e,
         &merged,
@@ -197,8 +196,8 @@ pub(crate) fn multicol_column_stack(
         rule,
         children,
     );
-    if fixed_layer {
-        d = d.children(opts.cx.positioning.cb_close());
+    if let Some(layer) = fixed_layer {
+        d = d.children(layer.finish());
     }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {

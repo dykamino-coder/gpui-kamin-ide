@@ -8,6 +8,7 @@ mod current_color;
 mod direction;
 mod image_set;
 mod parse;
+pub(crate) mod stops;
 pub(crate) use current_color::{
     parse_gradient, parse_gradient_with_current, resolve_gradient_colors,
 };

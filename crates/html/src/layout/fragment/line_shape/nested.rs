@@ -119,23 +119,23 @@ pub(crate) fn nested_rows_shape(
                 {
                     let k = resolved_lengths(k, &m, vcx);
                     let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
-                    if !inline_content(&k) && sh.5.iter().any(|&(a, b)| b - a > hh + 0.01) {
+                    if !inline_content(&k) && sh.solid.iter().any(|&(a, b)| b - a > hh + 0.01) {
                         return None;
                     }
                     Some(crate::layout::fragment::types::Kid {
-                        h: sh.0,
-                        mt: sh.1,
-                        mb: sh.2,
-                        monolith: solid_box(&k) && (!inline_content(&k) || sh.3.is_empty()),
-                        cuts: sh.3,
+                        h: sh.height,
+                        mt: sh.margin_top,
+                        mb: sh.margin_bottom,
+                        monolith: solid_box(&k) && (!inline_content(&k) || sh.cuts.is_empty()),
+                        cuts: sh.cuts,
                         force_before: edge_break(&k, false, vcx),
                         force_after: edge_break(&k, true, vcx),
                         avoid_before: edge_avoid(&k, false, vcx),
                         avoid_after: edge_avoid(&k, true, vcx),
-                        forced: sh.4,
-                        solid: sh.5,
+                        forced: sh.forced,
+                        solid: sh.solid,
                         span: false,
-                        over: sh.0,
+                        over: sh.height,
                         clone_dec: None,
                         overflow_top: false,
                         repeat: Default::default(),
@@ -172,14 +172,14 @@ pub(crate) fn nested_rows_shape(
     } else {
         Vec::new()
     };
-    Some((
-        h,
-        0.0,
-        px(&c.style.margin.bottom)?,
-        Vec::new(),
-        Vec::new(),
+    Some(crate::layout::fragment::Shape {
+        height: h,
+        margin_top: 0.0,
+        margin_bottom: px(&c.style.margin.bottom)?,
+        cuts: Vec::new(),
+        forced: Vec::new(),
         solid,
-    ))
+    })
 }
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.

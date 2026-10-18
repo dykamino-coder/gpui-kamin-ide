@@ -23,7 +23,7 @@ pub(super) fn sections(
         return None;
     }
     let folded_margin = if lead > 0.0 || e.style.float.unwrap_or(0) != 0 {
-        crate::layout::fragment::fragment_size::shape_full(e, 4, cx, vcx)?.1
+        crate::layout::fragment::fragment_size::shape_full(e, 4, cx, vcx)?.margin_top
     } else {
         0.0
     };

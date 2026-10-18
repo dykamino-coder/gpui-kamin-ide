@@ -76,7 +76,7 @@ pub(crate) fn inset_holder_box(
         inner.style.margin.bottom = None;
     }
     inner.style.z_index = None;
-    crate::style::apply::apply(div(), &holder, vcx)
+    crate::paint::apply::apply(div(), &holder, vcx)
         .child(element(&inner, inherited, opts))
         .into_any_element()
 }

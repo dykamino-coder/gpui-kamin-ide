@@ -56,7 +56,7 @@ pub(crate) fn grouped_wrapper(
         let values = values.clone();
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
             let vcx = values.vcx();
-            crate::paint::background::border_shape_shadow_svg(
+            crate::paint::background::border_shape_shadow_scene(
                 (bs.outer.as_str(), outer_out),
                 inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                 stroke,
@@ -88,7 +88,7 @@ pub(crate) fn grouped_wrapper(
             let values = values.clone();
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
                 let vcx = values.vcx();
-                crate::paint::background::border_shape_ring_svg(
+                crate::paint::background::border_shape_ring_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                     stroke,
@@ -122,7 +122,7 @@ pub(crate) fn grouped_wrapper(
         let values = values.clone();
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
             let vcx = values.vcx();
-            crate::paint::background::border_shape_outline_svg(
+            crate::paint::background::border_shape_outline_scene(
                 (bs.outer.as_str(), outer_out),
                 single,
                 stroke,

@@ -1,7 +1,9 @@
 //! Расчёт offset transform и выбор геометрии пути.
 
 use super::ellipse_path;
-use super::{Cb, SVG_SHAPES, flatten, length, origin_shift, ray_css, rotation, sample, start_of};
+use super::{
+    Cb, SVG_SHAPES, flatten, origin_shift, polyline_length, ray_css, rotation, sample, start_of,
+};
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -168,7 +170,7 @@ pub(super) fn path_css(
     vcx: ValueCx<'_>,
 ) -> Option<String> {
     let poly = flatten(d)?;
-    let total = length(&poly.pts);
+    let total = polyline_length(&poly.pts);
     let want = match super::motion_style(c).offset_distance {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(p)) => p * total,

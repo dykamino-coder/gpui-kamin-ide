@@ -14,7 +14,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// `fixed` стоят тогда в НАЧАЛЬНОМ содержащем блоке (окне), размер которого
 /// знает только сборщик, поэтому их offset-трансформ откладывается до
 /// отрисовки (`apply_icb`, `Computed::offset_icb`).
-pub(super) fn walk(
+pub(super) fn apply_offset_transforms(
     nodes: &mut [Node],
     parent: Option<(Cb, bool)>,
     icb_open: bool,
@@ -40,7 +40,7 @@ pub(super) fn walk(
             let origin = svg_origin(e);
             apply_offset_transform(&mut e.style, cb.as_ref(), origin, vcx);
         }
-        walk(&mut e.children, mine, icb_open && !est, vcx);
+        apply_offset_transforms(&mut e.children, mine, icb_open && !est, vcx);
     }
 }
 

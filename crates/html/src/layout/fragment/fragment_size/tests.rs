@@ -42,7 +42,9 @@ fn positioned_descendants_keep_their_balancing_extent() {
         vec![Node::Element(child)],
     );
     assert_eq!(
-        shape_full(&parent, 4, ShapeCx::COLUMNS, vcx).unwrap().0,
+        shape_full(&parent, 4, ShapeCx::COLUMNS, vcx)
+            .unwrap()
+            .height,
         160.0
     );
 }
@@ -77,9 +79,9 @@ fn measured_box_and_parallel_flow_keep_distinct_sizes_and_break_ranges() {
         vcx,
     )
     .unwrap();
-    assert_eq!(used.0, 160.0);
-    assert_eq!(overflow.0, 206.0);
-    assert!(used.5.iter().all(|(_, end)| *end <= used.0));
+    assert_eq!(used.height, 160.0);
+    assert_eq!(overflow.height, 206.0);
+    assert!(used.solid.iter().all(|(_, end)| *end <= used.height));
 }
 
 #[test]
@@ -112,7 +114,7 @@ fn border_box_constraints_include_decoration_once() {
     let measure = |style: Computed| {
         shape_full(&element(style, Vec::new()), 4, ShapeCx::COLUMNS, vcx)
             .unwrap()
-            .0
+            .height
     };
     let mut style = Computed {
         height: Some(Len::Px(40.0)),

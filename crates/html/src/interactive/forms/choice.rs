@@ -3,7 +3,7 @@
 use super::{SystemColor, field_box, native_color};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
@@ -93,10 +93,10 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool, vcx: ValueCx<'_
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
         .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
-    let natural = super::metrics::size(if round {
-        super::metrics::ControlKind::Radio
+    let natural = crate::style::ua::forms::size(if round {
+        crate::style::ua::forms::ControlKind::Radio
     } else {
-        super::metrics::ControlKind::Checkbox
+        crate::style::ua::forms::ControlKind::Checkbox
     });
     let mut mark = div()
         .absolute()

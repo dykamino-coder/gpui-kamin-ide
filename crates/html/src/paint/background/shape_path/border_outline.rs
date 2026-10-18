@@ -1,20 +1,13 @@
-//! SVG-outline контура рамки, отдельно от заливок и теней.
+//! Border-shape outline bands built from ordered luminance coverage paths.
 
+use super::border_scene::Contour;
 use crate::document::state::ValueCx;
-use crate::paint::background::shape_path::border_geometry::miter_limit;
-use crate::paint::background::*;
+use crate::svg::path_scene::*;
 
-/// Разметка контура `outline` вокруг `border-shape` (Blink
-/// `BorderShapePainter::PaintOutline`, `border_shape_painter.cc:275-334`):
-/// полоса между внешним контуром, отодвинутым на `off + width`, и им же,
-/// отодвинутым на `off` (у одной фигуры — плюс половина обводки рамки,
-/// `OuterPathWithOffset`). Полоса собирается маской: белая обводка вдвое
-/// шире внешнего отступа, чёрная — внутреннего, чёрная заливка — нутро;
-/// `double` — две полосы по трети толщины (`:313-328`). Холст и border-box —
-/// как у `border_shape_ring_svg`.
-// Outline geometry retains the contour, reference box and authored outline inputs.
+/// Blink BorderShapePainter::PaintOutline: offset the outer path, then
+/// subtract its inner offset. Double outlines paint both bands in one mask.
 #[allow(clippy::too_many_arguments)]
-pub fn border_shape_outline_svg(
+pub(crate) fn border_shape_outline_scene(
     outer: (&str, [f32; 4]),
     single: bool,
     stroke: f32,
@@ -29,62 +22,30 @@ pub fn border_shape_outline_svg(
     cw: f32,
     ch: f32,
     vcx: ValueCx<'_>,
-) -> Option<String> {
+) -> Option<Scene> {
     if width <= 0.0 {
         return None;
     }
-    let (raw, [t, r, b, l]) = outer;
-    let (d, rule) = border_shape_path(raw, (bw + l + r).max(0.0), (bh + t + b).max(0.0), vcx)?;
-    if d.is_empty() {
+    let contour = Contour::place(outer, bw, bh, dx, dy, vcx)?;
+    if contour.is_empty() {
         return None;
     }
-    let tr = format!("translate({} {})", dx - l, dy - t);
-    let ml = miter_limit(raw);
     let half = if single { stroke / 2.0 } else { 0.0 };
-    // Полоса [r_in, r_out] от контура наружу: отрицательный внутренний
-    // радиус (контур вжат внутрь) — чёрная заливка уже съедает нутро,
-    // обводка внутрь не нужна.
-    let band = |r_in: f32, r_out: f32| -> String {
-        let outer_s = if r_out > 0.0 {
-            format!(
-                r##"<path d="{d}" fill="#ffffff" fill-rule="{rule}" stroke="#ffffff" stroke-width="{}" stroke-miterlimit="{ml}"/>"##,
-                r_out * 2.0
-            )
-        } else {
-            format!(r##"<path d="{d}" fill="#ffffff" fill-rule="{rule}"/>"##)
-        };
-        let inner_s = if r_in > 0.0 {
-            format!(
-                r##"<path d="{d}" fill="#000000" fill-rule="{rule}" stroke="#000000" stroke-width="{}" stroke-miterlimit="{ml}"/>"##,
-                r_in * 2.0
-            )
-        } else if r_in < 0.0 {
-            // Контур внутри фигуры: нутро до него остаётся полосой.
-            format!(
-                r##"<path d="{d}" fill="#000000" fill-rule="{rule}"/><path d="{d}" fill="none" stroke="#ffffff" stroke-width="{}" stroke-miterlimit="{ml}"/>"##,
-                -r_in * 2.0
-            )
-        } else {
-            format!(r##"<path d="{d}" fill="#000000" fill-rule="{rule}"/>"##)
-        };
-        format!("{outer_s}{inner_s}")
-    };
-    let r_in = off + half;
-    let r_out = off + half + width;
-    let body = if double && (width / 3.0).round() >= 1.0 {
-        let third = (width / 3.0).round();
-        format!("{}{}", band(r_out - third, r_out), band(r_in, r_in + third))
+    let (inside, outside) = (off + half, off + half + width);
+    let third = (width / 3.0).round();
+    let bands = if double && third >= 1.0 {
+        vec![(outside - third, outside), (inside, inside + third)]
     } else {
-        band(r_in, r_out)
+        vec![(inside, outside)]
     };
-    // Полоса `double` внешняя и внутренняя лежат в одной маске: внутренняя
-    // чёрная заливка второй полосы не задевает первую — она не выходит за
-    // r_in + third < r_out − third.
-    Some(format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}"><mask id="ol" maskUnits="userSpaceOnUse" x="0" y="0" width="{cw}" height="{ch}"><g transform="{tr}">{body}</g></mask><rect width="{cw}" height="{ch}" fill="rgb({},{},{})" fill-opacity="{}" mask="url(#ol)"/></svg>"##,
-        (colour.r * 255.0).round(),
-        (colour.g * 255.0).round(),
-        (colour.b * 255.0).round(),
-        colour.a
+    let mut children = Vec::new();
+    for (a, b) in bands {
+        children.push(element(contour.offset(true, b.max(0.0))));
+        children.push(element(contour.offset(false, a)));
+    }
+    Some(Scene::new(
+        cw,
+        ch,
+        masked(cw, ch, paint(colour), group(children))?,
     ))
 }

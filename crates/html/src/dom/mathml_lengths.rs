@@ -9,7 +9,7 @@ pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> Decls {
         attrs
             .iter()
             .find(|(k, _)| k == name)
-            .and_then(|(_, v)| length(v, vcx).map(|_| v.as_str()))
+            .and_then(|(_, v)| parse_mathml_length(v, vcx).map(|_| v.as_str()))
     };
     let mut hints = parse_decls("");
     if let Some(width) = attr("width") {
@@ -24,7 +24,7 @@ pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> Decls {
     hints
 }
 
-pub(crate) fn length(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
+pub(crate) fn parse_mathml_length(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let raw = raw.trim();
     if raw.parse::<f32>().is_ok_and(|v| v != 0.0) {
         return None;
@@ -75,9 +75,9 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         for raw in ["20%", "20", "auto", "stretch", "min-content"] {
-            assert!(length(raw, vcx).is_none(), "{raw}");
+            assert!(parse_mathml_length(raw, vcx).is_none(), "{raw}");
         }
-        assert_eq!(length("-2em", vcx), Some(Len::Em(-2.0)));
-        assert_eq!(length("0", vcx), Some(Len::Px(0.0)));
+        assert_eq!(parse_mathml_length("-2em", vcx), Some(Len::Em(-2.0)));
+        assert_eq!(parse_mathml_length("0", vcx), Some(Len::Px(0.0)));
     }
 }

@@ -73,7 +73,7 @@ pub(crate) fn decorate_atom(
     };
     let el = match self_align {
         Some(a) => {
-            let mut w = crate::style::apply::margins(div().flex_shrink_0(), &original_margin, vcx);
+            let mut w = crate::paint::apply::margins(div().flex_shrink_0(), &original_margin, vcx);
             w.style().align_self = Some(a);
             // Доля куска считается от его КОНТЕЙНЕРА, а обёртка встаёт
             // между ним и рядом: без своей ширины она сжимается по

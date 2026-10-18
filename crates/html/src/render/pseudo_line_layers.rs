@@ -23,10 +23,10 @@ pub(crate) fn install_first_letter(element: &Element, merged: &mut Computed) {
     merged.first_letter = element
         .first_letter
         .as_ref()
-        .map(|l| resolve(l, merged.font_size));
+        .map(|l| resolve_first_letter_font_size(l, merged.font_size));
 }
 
-fn resolve(layer: &Computed, base: Option<Len>) -> Box<Computed> {
+fn resolve_first_letter_font_size(layer: &Computed, base: Option<Len>) -> Box<Computed> {
     let mut layer = layer.clone();
     if let (Some(Len::Px(base)), Some(Len::Pct(factor))) = (base, layer.font_size) {
         layer.font_size = Some(Len::Px(base * factor));

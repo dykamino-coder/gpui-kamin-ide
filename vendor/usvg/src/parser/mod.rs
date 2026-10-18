@@ -23,6 +23,8 @@ mod text;
 pub(crate) use converter::Cache;
 pub use image::{ImageHrefDataResolverFn, ImageHrefResolver, ImageHrefStringResolverFn};
 pub use options::Options;
+// KaminIDE patch: share SVG path simplification with typed geometry callers.
+pub use shapes::parse_path;
 #[cfg(feature = "writer")]
 pub(crate) use svgtree::{AId, EId};
 

@@ -108,8 +108,8 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
 pub(super) fn position(mut image: gpui::Img, style: &Computed, vcx: ValueCx<'_>) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(
-            crate::style::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
-            crate::style::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),
+            crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
+            crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),
         ));
     }
     image

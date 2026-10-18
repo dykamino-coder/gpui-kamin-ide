@@ -1,5 +1,8 @@
 //! Реестр покрытия CSS: одна таблица, по которой считается процент.
 //!
+//! Только для `cargo test --lib`: библиотека для приложения его не включает.
+//! Таблицу документации обновляет `python scripts/css_coverage_table.py`.
+//!
 //! Зачем отдельный файл, а не список в документации: список в документации
 //! устаревает молча. Здесь каждое свойство обязано быть классифицировано, а
 //! тест проверяет, что помеченное `Mapped` действительно меняет разрешённый
@@ -16,10 +19,60 @@ use crate::document::state::ValueCx;
 mod field_audit;
 mod properties;
 #[cfg(test)]
-mod report;
+mod report {
+    //! CSS coverage report checks.
+
+    use super::*;
+
+    #[test]
+    fn coverage_percentage_is_finite_and_bounded() {
+        assert!(!PROPERTIES.is_empty());
+        assert!(mapped_pct().is_finite());
+        assert!((0.0..=100.0).contains(&mapped_pct()));
+    }
+}
 mod sources;
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! CSS coverage tests checks.
+
+    use super::*;
+
+    #[test]
+    fn no_field_is_written_and_never_read() {
+        let dead = dead_fields();
+        assert!(
+            dead.is_empty(),
+            "поля разрешённого стиля никто не читает — свойство числится              поддержанным, но на картинке его нет: {dead:?}"
+        );
+    }
+
+    #[test]
+    fn every_mapped_property_reaches_the_style() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let broken = broken_promises(vcx);
+        assert!(
+            broken.is_empty(),
+            "помечены перенесёнными, но разбор ничего не меняет: {broken:?}"
+        );
+    }
+
+    #[test]
+    fn the_registry_has_no_duplicates() {
+        let mut names: Vec<&str> = PROPERTIES.iter().map(|p| p.name).collect();
+        names.sort_unstable();
+        let before = names.len();
+        names.dedup();
+        assert_eq!(before, names.len(), "свойство перечислено дважды");
+    }
+
+    #[test]
+    fn coverage_does_not_regress() {
+        let pct = mapped_pct();
+        assert!(pct >= 80.0, "покрытие упало до {pct:.1}%");
+    }
+}
 pub use field_audit::dead_fields;
 pub use properties::PROPERTIES;
 

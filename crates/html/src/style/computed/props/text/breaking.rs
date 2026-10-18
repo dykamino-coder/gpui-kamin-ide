@@ -164,7 +164,7 @@ impl Computed {
                 }
             }
             "hyphenate-limit-chars" => {
-                if let Some(limits) = super::hyphen_limits::parse(v) {
+                if let Some(limits) = super::hyphen_limits::parse_hyphenate_limit_chars(v) {
                     self.accept_declaration();
                     self.hyphen_limit_chars = Some(limits);
                 }

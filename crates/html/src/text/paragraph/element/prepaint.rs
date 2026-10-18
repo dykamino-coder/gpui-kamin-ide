@@ -233,8 +233,9 @@ impl Paragraph {
                         None => (self.line_height, bounds.origin.x),
                     };
                     let line = (origin.y, lh, start);
-                    slot.set(Some(line));
-                    el.prepaint_at(origin, window, _cx);
+                    crate::layout::positioned::containing_block::with_line_box(slot, line, || {
+                        el.prepaint_at(origin, window, _cx);
+                    });
                 } else {
                     el.prepaint_at(origin, window, _cx);
                 }

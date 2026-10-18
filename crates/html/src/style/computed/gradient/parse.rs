@@ -182,7 +182,7 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
     // без позиции — поровну между соседями С позициями (а не по номеру в
     // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let stops: Vec<(Color, f32)> = crate::paint::background::place_stops(raw.clone());
+    let stops: Vec<(Color, f32)> = crate::style::computed::place_stops(raw.clone());
     // TODO(gradient): `in hsl longer hue` — дуга тона синтетическими стопами
     // (css-images-4 §3.4.1.1) была за отладочным флагом HSL_ARC, замерена в
     // минус (−13/+2) и удалена; вернуться с точной математикой полос.

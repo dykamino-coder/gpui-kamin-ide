@@ -131,7 +131,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    opts.cx.positioning.icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
     // после потока корневого контекста в порядке разметки — собиратель
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
@@ -145,7 +145,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.in_render = true;
     });
     let mut out = blocks(nodes, &root, opts);
-    out.extend(opts.cx.positioning.icb_close());
+    out.extend(icb_layer.finish());
     let (open, close) = gpui::PaintCollect::pair();
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
@@ -174,9 +174,9 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
         cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.positioning = Default::default();
     });
-    opts.cx.positioning.icb_open();
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     let out = blocks(std::slice::from_ref(node), &root, opts);
-    let layer = opts.cx.positioning.icb_close();
+    let layer = icb_layer.finish();
     let first = out.into_iter().next()?;
     if layer.is_empty() {
         return Some(first);

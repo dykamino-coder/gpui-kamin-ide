@@ -61,7 +61,7 @@ pub(crate) fn paint_rect_minus(
 /// прямо пишут «no red» про залитый прямоугольник).
 pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if crate::paint::background::single_corner::eligible(c) {
+    if crate::style::computed::single_corner::eligible(c) {
         return None;
     }
     let clip = c.color_clip(vcx)?;
@@ -98,7 +98,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
         .bottom(px(pad(c.padding.bottom)))
         .left(px(pad(c.padding.left)));
     layer = match (&c.gradient, c.background) {
-        (Some(g), _) => layer.bg(crate::style::apply::fill(g)),
+        (Some(g), _) => layer.bg(crate::paint::apply::fill(g)),
         (None, Some(bg)) => layer.bg(gpui::Background::from(bg.to_hsla())),
         _ => return None,
     };

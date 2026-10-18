@@ -54,7 +54,7 @@ fn inherit_stage(
         own
     } else {
         resolved = own.clone();
-        super::inherited_value::resolve(&mut resolved, parent, vcx);
+        super::inherited_value::apply_explicit_inheritance(&mut resolved, parent, vcx);
         &resolved
     };
     let mut c = own.clone();

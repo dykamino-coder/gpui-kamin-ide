@@ -2,7 +2,7 @@
 
 use super::ShapeBox;
 use crate::document::state::ValueCx;
-use crate::paint::background::*;
+use crate::svg::path_commands::{Command, Sink};
 
 /// Контур для SVG-растеризатора: polygon / path / shape.
 pub(crate) fn svg_path_of(
@@ -10,6 +10,17 @@ pub(crate) fn svg_path_of(
     b: &ShapeBox,
     vcx: ValueCx<'_>,
 ) -> Option<(String, &'static str)> {
+    let mut d = String::new();
+    let rule = path_commands(raw, b, &mut d, vcx)?;
+    Some((d.trim_end().to_string(), rule))
+}
+
+pub(crate) fn path_commands(
+    raw: &str,
+    b: &ShapeBox,
+    d: &mut impl Sink,
+    vcx: ValueCx<'_>,
+) -> Option<&'static str> {
     let raw = raw.trim();
     // Функция может идти ПОСЛЕ слова-коробки: `padding-box polygon(...)`.
     if let Some(at) = raw.find("polygon(") {
@@ -33,26 +44,21 @@ pub(crate) fn svg_path_of(
                     _ => 0.0,
                 }
             };
-            let mut d = String::new();
             for (i, pair) in pts_src.split(',').enumerate() {
                 let mut it = pair.split_whitespace();
                 let x = b.rx + len_px(it.next()?, b.rw);
                 let y = b.ry + len_px(it.next()?, b.rh);
-                d.push_str(if i == 0 { "M" } else { "L" });
-                d.push_str(&format!("{x} {y} "));
+                d.command(
+                    false,
+                    if i == 0 {
+                        Command::Move([x, y])
+                    } else {
+                        Command::Line([x, y])
+                    },
+                );
             }
-            if d.is_empty() {
-                return None;
-            }
-            d.push('Z');
-            return Some((
-                d,
-                if rule == "evenodd" {
-                    "evenodd"
-                } else {
-                    "nonzero"
-                },
-            ));
+            d.command(false, Command::Close);
+            return Some(rule);
         }
     }
     if let Some(at) = raw.find("path(") {
@@ -73,11 +79,12 @@ pub(crate) fn svg_path_of(
             } else if let Some(rest) = body.strip_prefix("nonzero") {
                 body = rest.trim_start().trim_start_matches(',').trim_start();
             }
-            let d = body.trim_matches('"').trim_matches('\'').to_string();
-            if d.is_empty() {
+            let body_path = body.trim_matches('"').trim_matches('\'').to_string();
+            if body_path.is_empty() {
                 return None;
             }
-            return Some((d, rule));
+            d.raw(&body_path);
+            return Some(rule);
         }
     }
     if let Some(at) = raw.find("shape(") {
@@ -86,8 +93,8 @@ pub(crate) fn svg_path_of(
             .map(|(a, _)| a)
             .unwrap_or(&raw[at + 6..]);
         {
-            let d = shape_to_path(&inner.replace(',', ";"), b.rw, b.rh, vcx)?;
-            return Some((d, "nonzero"));
+            super::super::shape_path::shape_commands(&inner.replace(',', ";"), b.rw, b.rh, d, vcx)?;
+            return Some("nonzero");
         }
     }
     None

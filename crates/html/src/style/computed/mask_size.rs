@@ -10,7 +10,7 @@ pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
         "cover" => (None, 2),
         "auto" | "auto auto" => (None, 0),
         value => {
-            let words = crate::paint::background::split_top(value);
+            let words = crate::style::css::value_tokens::split_top(value);
             if !(1..=2).contains(&words.len()) {
                 return;
             }

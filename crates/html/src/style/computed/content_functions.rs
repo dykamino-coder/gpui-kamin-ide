@@ -116,8 +116,11 @@ pub(crate) fn parse_content(raw: &str, vcx: ValueCx<'_>) -> Option<Vec<ContentIt
             // CSS Content 3 §2: a single image replaces the element. Keep
             // filter() intact so its result enters the replaced-image path.
             "filter"
-                if crate::paint::background::filter_image::parse(&raw[at..=close], vcx)
-                    .is_some() =>
+                if crate::style::computed::filter_image::parse_filter_image(
+                    &raw[at..=close],
+                    vcx,
+                )
+                .is_some() =>
             {
                 out.push(ContentItem::Image(raw[at..=close].to_string()));
             }

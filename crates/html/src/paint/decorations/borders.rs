@@ -7,7 +7,7 @@ use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
-    if let Some((colour, [t, r, b, l])) = crate::style::apply::border_layer(c, vcx) {
+    if let Some((colour, [t, r, b, l])) = crate::paint::apply::border_layer(c, vcx) {
         let mut layer = div()
             .absolute()
             .top(px(-t))
@@ -32,7 +32,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
         if !c.radius_masked(vcx) && c.border_shape.is_none() {
-            let rad = |l: Option<Len>| crate::style::apply::radius_px(c, l, vcx).unwrap_or(0.0);
+            let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
                 .rounded_tl(px(rad(c.radius.tl)))
                 .rounded_tr(px(rad(c.radius.tr)))
@@ -46,7 +46,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
     // трети толщины, зазор — остаток (Blink
     // `BorderEdge::GetDoubleBorderStripeWidths`: 50 → 17/16/17, 5 → 2/1/2).
     // Квад и слой рамки её не красят (`apply::double_border`).
-    if let Some((colour, [t, r, b, l])) = crate::style::apply::double_border(c, vcx) {
+    if let Some((colour, [t, r, b, l])) = crate::paint::apply::double_border(c, vcx) {
         let third = |w: f32| (w / 3.0).round();
         let (o_t, o_r, o_b, o_l) = (third(t), third(r), third(b), third(l));
         let mut outer = div()
@@ -73,7 +73,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
             .border_l(px(o_l))
             .border_color(colour.to_hsla());
         if !c.radius_masked(vcx) {
-            let rad = |x: Option<Len>| crate::style::apply::radius_px(c, x, vcx).unwrap_or(0.0);
+            let rad = |x: Option<Len>| crate::paint::apply::radius_px(c, x, vcx).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer
                 .rounded_tl(px(rad(c.radius.tl)))
@@ -136,7 +136,7 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: Val
     // При `border-shape` рамка — один слой цветом relevant side (спека:
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
     // A one-colour `double` border is painted whole by its rings.
-    let rings = crate::style::apply::double_border(c, vcx).is_some();
+    let rings = crate::paint::apply::double_border(c, vcx).is_some();
     if !sides.is_empty() && !uniform && !rings && c.border_shape.is_none() {
         let side_px = px_lossy_zero;
         let bw = c.borders();

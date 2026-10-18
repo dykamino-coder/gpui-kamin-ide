@@ -115,8 +115,8 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed, vcx: ValueCx<'_>) 
     let Some((handle, horizontal, vertical, margin)) = target else {
         return div;
     };
-    div = crate::style::apply::margins(div, &margin, vcx);
-    div.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
+    div = crate::paint::apply::margins(div, &margin, vcx);
+    div.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     div.interactivity().element_id = Some(ElementId::Integer(e.node_id + 1));
     let mut stateful = NativeScrollBox(div).track_scroll(&handle);
     if horizontal {

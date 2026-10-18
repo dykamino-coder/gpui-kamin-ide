@@ -16,6 +16,9 @@ use crate::hooks::IntoHooked;
 use gpui::AnyElement;
 use std::cell::RefCell;
 
+mod scope;
+pub(crate) use scope::LayerScope;
+
 type Taken = Vec<(SpotCell, AnyElement)>;
 
 /// Which boxes a nearest-containing-block layer takes.

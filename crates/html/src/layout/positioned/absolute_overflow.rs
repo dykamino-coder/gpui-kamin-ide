@@ -28,7 +28,7 @@ pub(crate) fn probe(
             move |bounds: Bounds<Pixels>, window, _: &mut App| {
                 let vcx = values.vcx();
                 let side = |length: Option<Len>| {
-                    crate::style::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
+                    crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
                         .to_pixels(bounds.size.width.into(), window.rem_size())
                 };
                 let left = side(padding.left);
@@ -139,7 +139,7 @@ impl Plan {
     pub(crate) fn prepare(&self, style: &mut gpui::StyleRefinement) {
         // Native layout supplies the requested static-position alignment; safety
         // is applied once both geometries are available during prepaint.
-        style.align_self = Some(crate::style::apply::self_align(self.align, false));
+        style.align_self = Some(crate::paint::apply::self_align(self.align, false));
         let (items, _, content, justify) = style.safe_alignment.unwrap_or_default();
         style.safe_alignment = Some((items, false, content, justify));
     }
@@ -180,7 +180,7 @@ impl Plan {
         let (cb_start, cb_size) = axis(cb);
         let margin = self.margin.map(|length| {
             f32::from(
-                crate::style::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
+                crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
                     .to_pixels(cb.size.width.into(), window.rem_size()),
             )
         });

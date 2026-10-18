@@ -25,6 +25,8 @@ pub(crate) use clip::ClipIds;
 mod device_image;
 mod foreign;
 mod masks;
+pub(crate) mod path_commands;
+pub(crate) mod path_scene;
 pub(crate) mod raster;
 pub mod serialize;
 pub(crate) use serialize::geometry_property;

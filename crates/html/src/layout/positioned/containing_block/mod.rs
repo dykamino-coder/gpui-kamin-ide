@@ -1,7 +1,6 @@
 //! Содержащий блок абсолютных коробок (поздняя расстановка).
 // owner: A
 
-use gpui::Pixels;
 mod spot;
 pub use spot::Spot;
 mod late;
@@ -13,13 +12,11 @@ pub use hang::InlineStartHang;
 mod source_paint;
 pub(crate) use source_paint::split as split_source_paint;
 mod layers;
+pub(crate) use layers::LayerScope;
 pub use layers::Positioning;
 
-/// Hand-off of a text line's box `(top, height, start x)` from the paragraph
-/// that places a static-position probe as an overlay in that line to the
-/// probe: the paragraph fills it right before the probe's prepaint, the probe
-/// takes it (`OverlayAt::line_probe`, `LayoutCx::line_box`).
-pub type LineBoxSlot = std::rc::Rc<std::cell::Cell<Option<(Pixels, Pixels, Pixels)>>>;
+mod line_box;
+pub use line_box::{LineBoxSlot, with_line_box};
 
 pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
 

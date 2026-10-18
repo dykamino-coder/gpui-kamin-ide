@@ -1,44 +1,25 @@
 //! Заливки по пути под и над буфером группы (резкие тени и контур
-//! `corner-shape`): квад цвета через маску `pathdef:` — тот же путь, что у
+//! `corner-shape`): квад цвета через растровую маску контура — тот же путь, что у
 //! `div` с фоном и `clip-path: path()`, так что край совпадает с
 //! эквивалентной обрезкой до единицы канала.
 
-use super::masks::resolve_mask;
-use crate::document::state::ValueCx;
-use crate::paint::effects::grouped_element::Grouped;
 use crate::style::values::value::Color;
-use gpui::{Bounds, IntoElement, Pixels, Window};
+use crate::svg::path_scene::{Scene, device_mask};
+use gpui::{Bounds, Pixels, Window};
 
-/// Запись маски `pathdef:правило:d` в точках слоя и цвет заливки.
-type Fill = (String, Color);
+/// Сцена покрытия в точках слоя и цвет заливки.
+type Fill = (Scene, Color);
 
 /// Рисует заливки снизу вверх в области `layer_at`.
-pub(super) fn paint_fills(
-    fills: &[Fill],
-    layer_at: Bounds<Pixels>,
-    window: &mut Window,
-    vcx: ValueCx<'_>,
-) {
+pub(super) fn paint_fills(fills: &[Fill], layer_at: Bounds<Pixels>, window: &mut Window) {
     if fills.is_empty() {
         return;
     }
-    // Маска разрешается как у группы без своих настроек маски.
-    let probe = Grouped::new(gpui::div().into_any_element(), vcx);
-    for (src, colour) in fills {
-        let Some(mask) = resolve_mask(
-            src,
-            &probe,
-            layer_at,
-            &(layer_at, layer_at),
-            window,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            vcx,
-        ) else {
+    for (scene, colour) in fills {
+        let Some(image) = device_mask(scene, window.scale_factor()) else {
             continue;
         };
+        let mask = (image, layer_at, 3);
         let quad = gpui::fill(layer_at, colour.to_hsla());
         window.paint_group(
             layer_at,

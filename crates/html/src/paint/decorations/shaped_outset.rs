@@ -8,14 +8,15 @@
 //! (`shadows`, `outline`) у такой коробки не ставятся.
 
 use crate::document::state::ValueCx;
-use crate::paint::background::contour::{Path, Seg};
 use crate::paint::background::{contour_offset, rrect_spec};
 use crate::paint::effects::grouped_element::FillLayer;
 use crate::style::computed::{Computed, OUTLINE_DOUBLE};
-use crate::style::values::value::Color;
+use crate::svg::path_commands::{Command, Geometry, Sink};
+use crate::svg::path_scene::*;
 
-/// Слой SVG по размеру коробки (bw, bh), выносу (l, t) и холсту (aw, ah).
-pub(crate) type Layer = Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<String>>;
+/// Сцена контуров по размеру коробки (bw, bh), выносу (l, t) и холсту (aw, ah).
+pub(crate) type Layer =
+    Box<dyn Fn(f32, f32, f32, f32, f32, f32) -> Option<crate::svg::path_scene::Scene>>;
 
 /// Аргументы `rrect(...)` коробки с фигурными углами; None — углы круглые
 /// или форму задаёт `border-shape`.
@@ -41,33 +42,6 @@ pub(crate) fn shapes_outline(c: &Computed, vcx: ValueCx<'_>) -> bool {
             .as_ref()
             .is_some_and(|o| matches!(o.style, Some(1) | Some(OUTLINE_DOUBLE)))
         && c.contour_outline_params().is_some()
-}
-
-/// Запись `d` пути со сдвигом на (dx, dy).
-pub(crate) fn moved(p: &Path, dx: f32, dy: f32) -> String {
-    let m = |(x, y): (f32, f32)| format!("{} {}", x + dx, y + dy);
-    let mut d = format!("M{}", m(p.start));
-    for s in &p.segs {
-        match *s {
-            Seg::Line(a) => d.push_str(&format!(" L{}", m(a))),
-            Seg::Cubic(a, b, c) => d.push_str(&format!(" C{} {} {}", m(a), m(b), m(c))),
-        }
-    }
-    d.push_str(" Z");
-    d
-}
-
-fn rgb(c: Color) -> String {
-    format!(
-        "rgb({},{},{})",
-        (c.r * 255.0).round(),
-        (c.g * 255.0).round(),
-        (c.b * 255.0).round()
-    )
-}
-
-fn svg(aw: f32, ah: f32, body: &str) -> String {
-    format!(r##"<svg xmlns="http://www.w3.org/2000/svg" width="{aw}" height="{ah}">{body}</svg>"##)
 }
 
 /// Вынос слоёв за border-box (l t r b): разлёт со смещением теней и
@@ -111,25 +85,38 @@ pub(crate) fn shadow_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<Layer> {
         return None;
     }
     Some(Box::new(move |bw, bh, sl, st, aw, ah| {
-        let mut body = String::new();
-        // css-backgrounds-3 §7.1: первая тень сверху — рисуем снизу вверх.
+        let mut children = Vec::new();
         for (sh, col) in shadows.iter().rev() {
-            let p = contour_offset(&args, bw, bh, [-sh.spread; 4])?;
-            body.push_str(&format!(
-                r#"<path fill="{}" fill-opacity="{}" d="{}"/>"#,
-                rgb(*col),
-                col.a,
-                moved(&p, sl + sh.x, st + sh.y)
+            let contour = contour_offset(&args, bw, bh, [-sh.spread; 4])?;
+            let mut d = Geometry::default();
+            contour.commands(&mut d, sl + sh.x, st + sh.y);
+            children.push(shape(
+                d.finish()?,
+                FillRule::NonZero,
+                Some(paint(*col)),
+                None,
             ));
         }
-        {
-            let border = contour_offset(&args, bw, bh, [0.0; 4])?;
-            body = format!(
-                r#"<defs><clipPath id="o"><path clip-rule="evenodd" d="M0 0 H{aw} V{ah} H0 Z {}"/></clipPath></defs><g clip-path="url(#o)">{body}</g>"#,
-                moved(&border, sl, st)
-            );
+        let border = contour_offset(&args, bw, bh, [0.0; 4])?;
+        let mut d = Geometry::default();
+        for command in [
+            Command::Move([0.0, 0.0]),
+            Command::Horizontal(aw),
+            Command::Vertical(ah),
+            Command::Horizontal(0.0),
+            Command::Close,
+        ] {
+            d.command(false, command);
         }
-        Some(svg(aw, ah, &body))
+        border.commands(&mut d, sl, st);
+        let mut root = group(children);
+        root.clip = Some(PathShape {
+            data: d.finish()?,
+            fill: Some(gray(false)),
+            rule: FillRule::EvenOdd,
+            stroke: None,
+        });
+        Some(Scene::new(aw, ah, root))
     }))
 }
 
@@ -150,16 +137,15 @@ pub(crate) fn shadow_fills(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer> 
     if shadows.is_empty() || !opaque_background(c) {
         return None;
     }
-    Some(Box::new(move |bw, bh, sl, st, _aw, _ah| {
+    Some(Box::new(move |bw, bh, sl, st, aw, ah| {
         shadows
             .iter()
             .rev()
             .filter_map(|(sh, col)| {
                 let p = contour_offset(&args, bw, bh, [-sh.spread; 4])?;
-                Some((
-                    format!("pathdef:nonzero:{}", moved(&p, sl + sh.x, st + sh.y)),
-                    *col,
-                ))
+                let mut d = Geometry::default();
+                p.commands(&mut d, sl + sh.x, st + sh.y);
+                Some((coverage(aw, ah, Some(d.finish()?), FillRule::NonZero), *col))
             })
             .collect()
     }))
@@ -183,8 +169,8 @@ pub(crate) fn outline_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer>
     } else {
         vec![(off + w, off)]
     };
-    Some(Box::new(move |bw, bh, sl, st, _aw, _ah| {
-        let mut d = String::new();
+    Some(Box::new(move |bw, bh, sl, st, aw, ah| {
+        let mut d = Geometry::default();
         for (outer, inner) in &bands {
             let (Some(o), Some(i)) = (
                 contour_offset(&args, bw, bh, [-outer; 4]),
@@ -192,8 +178,11 @@ pub(crate) fn outline_layer(c: &Computed, vcx: ValueCx<'_>) -> Option<FillLayer>
             ) else {
                 return Vec::new();
             };
-            d.push_str(&format!("{} {} ", moved(&o, sl, st), moved(&i, sl, st)));
+            o.commands(&mut d, sl, st);
+            i.commands(&mut d, sl, st);
         }
-        vec![(format!("pathdef:evenodd:{}", d.trim_end()), colour)]
+        d.finish()
+            .map(|data| vec![(coverage(aw, ah, Some(data), FillRule::EvenOdd), colour)])
+            .unwrap_or_default()
     }))
 }

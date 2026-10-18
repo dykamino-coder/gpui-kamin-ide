@@ -1,8 +1,8 @@
-//! Automatic for painting; split out to keep the owning module within 250 lines.
+//! Automatic clamp points at fitting lines and fragmentable ancestor edges.
 
-use super::ClampCut;
+use super::geometry::ClampGeometry;
 
-impl ClampCut {
+impl ClampGeometry {
     pub(crate) fn automatic_cut(
         &self,
         mut cut: Option<f32>,

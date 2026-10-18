@@ -43,7 +43,7 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str, vcx: ValueCx<'_>) -> boo
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
 pub(crate) fn content_image_src(src: &str, vcx: ValueCx<'_>) -> Option<String> {
-    if let Some((image, _)) = crate::paint::background::filter_image::parse(src, vcx) {
+    if let Some((image, _)) = crate::style::computed::filter_image::parse_filter_image(src, vcx) {
         content_image_src(&image, vcx)?;
         return Some(src.to_string());
     }

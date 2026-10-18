@@ -47,7 +47,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
                         let (cw, ch) =
                             (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::paint::background::border_shape_shadow_svg(
+                        let markup = crate::paint::background::border_shape_shadow_scene(
                             (bs.outer.as_str(), outer_out),
                             inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                             stroke,
@@ -62,7 +62,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
                             vcx,
                         );
                         if let Some(markup) = markup
-                            && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
+                            && let Some(img) = markup.rasterize()
                         {
                             let _ = window.paint_image_with_sampling(
                                 bounds,
@@ -95,7 +95,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
                         let (cw, ch) =
                             (f32::from(bounds.size.width), f32::from(bounds.size.height));
                         let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-                        let markup = crate::paint::background::border_shape_ring_svg(
+                        let markup = crate::paint::background::border_shape_ring_scene(
                             (bs.outer.as_str(), outer_out),
                             inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                             stroke,
@@ -109,7 +109,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
                             vcx,
                         );
                         if let Some(markup) = markup
-                            && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
+                            && let Some(img) = markup.rasterize()
                         {
                             let _ = window.paint_image_with_sampling(
                                 bounds,

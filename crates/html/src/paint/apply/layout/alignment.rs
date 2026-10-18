@@ -1,0 +1,102 @@
+//! apply_layout, этап выравнивания: align-items/self, flex-basis, justify-content, align-content.
+
+use super::*;
+use crate::document::state::ValueCx;
+
+pub(super) fn layout_alignment(
+    mut d: Div,
+    c: &Computed,
+    dir: Option<FlexDir>,
+    rtl_row: bool,
+    vcx: ValueCx<'_>,
+) -> Div {
+    match c.align_items {
+        Some(Align::Center) => d = d.items_center(),
+        Some(Align::Start) => d = d.items_start(),
+        Some(Align::End) => d = d.items_end(),
+        // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
+        // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
+        // лунки целиком.
+        Some(Align::Baseline)
+            if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes =>
+        {
+            d.style().align_items = Some(gpui::AlignItems::LastBaseline);
+        }
+        Some(Align::Baseline) => d = d.items_baseline(),
+        // `anchor-center` у `align-items` спекой не предусмотрен — как не задано.
+        Some(Align::Stretch) | Some(Align::AnchorCenter) | None => {}
+    }
+    // Приставка `safe` (css-align-3 §4.4): при переполнении области
+    // выравнивание падает к началу, иначе содержимое уезжает за край и
+    // становится недоступным. Раскладка читает это из стиля
+    // (`flexbox-safe-overflow-position-*`).
+    // Лунки решают `safe` сами: раздача не ставится, когда лунка переполнена.
+    if c.display != Some(Display::GridLanes)
+        && (c.align_items_safe
+            || c.align_self_safe
+            || c.align_content_safe
+            || c.justify_content_safe
+            || c.justify_items_safe
+            || c.justify_self_safe)
+    {
+        d.style().safe_alignment = Some((
+            c.align_items_safe,
+            c.align_self_safe,
+            c.align_content_safe,
+            c.justify_content_safe,
+        ));
+        d.style().safe_justify_alignment = Some((c.justify_items_safe, c.justify_self_safe));
+    }
+    // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
+    // писались в одно поле, и элемент выравнивал содержимое вместо себя.
+    if let Some(a) = c.align_self {
+        d.style().align_self = Some(self_align(a, c.align_self_last));
+    }
+    // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
+    // без отсева `flex: none` растягивал кнопку на всю строку.
+    if let Some(b) = c.flex_basis.filter(|b| *b != Len::Auto) {
+        d = d.flex_basis(len_to_gpui(b, vcx));
+    }
+    if let Some(j) = c.justify_content {
+        // `left`/`right` (css-align-3 §5.2): вдоль строчной оси — как
+        // `start`/`end` письма (в ряду); «if the property's axis is not
+        // parallel with the inline axis, this value behaves as start» —
+        // в КОЛОНКЕ это `flex-start` (`flexbox_justifycontent-right-002`).
+        // Только горизонтальное письмо: в вертикальном оси уже переставлены
+        // поворотом, и `left/right` там держит прежний путь.
+        let main_vertical = c.writing_mode.is_none()
+            && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+        let j = match j {
+            // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
+            // `column-reverse` они смотрят в разные стороны, а спека требует
+            // именно начало письма (`flexbox_justifycontent-left-002`:
+            // «boxes … in the top left corner … top-to-bottom order»).
+            Justify::Left | Justify::Right if main_vertical => Justify::WmStart,
+            Justify::Left => Justify::WmStart,
+            Justify::Right => Justify::WmEnd,
+            other => other,
+        };
+        // `start`/`end` — начало и конец ОСИ ПИСЬМА (css-align-3 §4), а
+        // `AlignContent::Start`/`End` у раскладки физические: смещение всегда
+        // считается от `padding_border.main_start`, разворот выражен только
+        // обратным обходом. Ось выше уже переведена в физическую (`rtl_row`
+        // разворачивает ряд), поэтому при письме справа налево начало и конец
+        // надо поменять местами (`flexbox_justifycontent-start-rtl`).
+        let j = if rtl_row {
+            match j {
+                Justify::WmStart => Justify::WmEnd,
+                Justify::WmEnd => Justify::WmStart,
+                other => other,
+            }
+        } else {
+            j
+        };
+        d.style().justify_content = Some(to_content(j));
+    }
+    // `align-content` — распределение СТРОК, когда их несколько: без него
+    // перенесённые строки прижимались к началу вместо заданного распределения.
+    if let Some(a) = c.align_content {
+        d.style().align_content = Some(to_content(a));
+    }
+    d
+}

@@ -1,4 +1,4 @@
-//! Tests of `containing`.
+//! Containing-block inheritance and transformed fixed-background tests.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

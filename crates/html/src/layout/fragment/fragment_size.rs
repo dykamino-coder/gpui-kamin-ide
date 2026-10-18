@@ -56,25 +56,25 @@ pub(crate) fn measure(
         + resolve(border.top, false)
         + resolve(border.bottom, false);
     let height = constrain(
-        shape.0,
+        shape.height,
         &element.style,
         decoration,
         cx.viewport,
         cx.unclamped,
     );
-    if height < shape.0 {
+    if height < shape.height {
         shape
-            .3
+            .cuts
             .retain(|&(need, _)| need > 0.01 && need < height - 0.01);
         shape
-            .4
+            .forced
             .retain(|&forced| forced > 0.01 && forced < height - 0.01);
-        shape.5.retain(|&(start, _)| start < height - 0.01);
-        for (_, end) in &mut shape.5 {
+        shape.solid.retain(|&(start, _)| start < height - 0.01);
+        for (_, end) in &mut shape.solid {
             *end = end.min(height);
         }
     }
-    shape.0 = height;
+    shape.height = height;
     Some(m)
 }
 

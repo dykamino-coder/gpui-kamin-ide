@@ -218,7 +218,7 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
             let bw = c.borders();
             let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
-                (crate::style::apply::radius_px(c, r, vcx).unwrap_or(0.0) - side(a).max(side(b)))
+                (crate::paint::apply::radius_px(c, r, vcx).unwrap_or(0.0) - side(a).max(side(b)))
                     .max(0.0)
             };
             ring = ring

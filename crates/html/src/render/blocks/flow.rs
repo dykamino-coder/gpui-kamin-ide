@@ -48,6 +48,8 @@ pub(super) fn blocks_flow(
         child_opts = opts.inner(|cx| cx.trim_requests = std::rc::Rc::new(requests));
         &*child_opts
     };
+    let mut late_layer =
+        crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.positioning);
     let mut first_para = true;
     let mut below = BelowRun {
         start: below_run_start,
@@ -102,8 +104,9 @@ pub(super) fn blocks_flow(
                     | Some(crate::style::computed::Position::Sticky)
             )
         {
-            out.extend(opts.cx.positioning.late_close());
-            opts.cx.positioning.late_open();
+            out.extend(late_layer.finish());
+            late_layer =
+                crate::layout::positioned::layer_scope::LayerScope::late(&opts.cx.positioning);
         }
         if let Node::Element(e) = n {
             // Отложенный offset-трансформ абсолюта в начальном содержащем
@@ -150,7 +153,7 @@ pub(super) fn blocks_flow(
     }
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
-    out.extend(opts.cx.positioning.late_close());
+    out.extend(late_layer.finish());
     containment_paint::collect(out, inherited)
 }
 

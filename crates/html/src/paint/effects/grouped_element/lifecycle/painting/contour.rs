@@ -2,9 +2,11 @@
 //! §corner-shape-rendering: фон и содержимое режет внешний контур). Контур
 //! строит `paint::background::contour_outline`; здесь он становится либо
 //! многоугольником шейдера (до восьми вершин, как `clip-path: polygon()`),
-//! либо маской `pathdef:` (как `clip-path: path()`).
+//! либо растром покрытия контура tiny-skia.
 
 use crate::paint::effects::grouped_element::Grouped;
+use crate::svg::path_commands::Geometry;
+use crate::svg::path_scene::{FillRule, Scene, coverage};
 use gpui::{Bounds, Pixels, Point, point, px};
 
 /// Многоугольник обрезки, замена маски и признак «своя маска группы
@@ -13,7 +15,7 @@ pub(super) fn outer(
     group: &Grouped,
     shape_box: Bounds<Pixels>,
     polygon: Vec<Point<Pixels>>,
-) -> (Vec<Point<Pixels>>, Option<String>, bool) {
+) -> (Vec<Point<Pixels>>, Option<Scene>, bool) {
     if !polygon.is_empty() {
         return (polygon, None, true);
     }
@@ -45,20 +47,21 @@ pub(super) fn outer(
                 .collect();
             (pts, None, false)
         }
-        _ => (
-            Vec::new(),
-            Some(if let Some(clip) = &group.corner_clip {
+        _ => {
+            let mut d = Geometry::default();
+            let (dx, dy) = group.corner_clip.as_ref().map_or((0.0, 0.0), |clip| {
                 let [t, _, _, l] = clip.insets;
-                let d = crate::paint::decorations::shaped_outset::moved(
-                    &path,
-                    (-l).max(0.0) + 1.0,
-                    (-t).max(0.0) + 1.0,
-                );
-                format!("pathdef:nonzero:{d}")
-            } else {
-                format!("pathdef:nonzero:{}", path.svg_d())
-            }),
-            false,
-        ),
+                ((-l).max(0.0) + 1.0, (-t).max(0.0) + 1.0)
+            });
+            path.commands(&mut d, dx, dy);
+            let mask_box = crate::paint::effects::corner_clip::mask_box(group, shape_box);
+            let scene = Some(coverage(
+                f32::from(mask_box.size.width),
+                f32::from(mask_box.size.height),
+                d.finish(),
+                FillRule::NonZero,
+            ));
+            (Vec::new(), scene, false)
+        }
     }
 }
