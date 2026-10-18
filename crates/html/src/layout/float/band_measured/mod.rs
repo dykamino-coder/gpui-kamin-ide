@@ -130,11 +130,13 @@ pub(super) fn band_host_m(
             // 7.02 с атомами в щупе).
             let inline_only = rest.iter().all(|n| match n {
                 Node::Text(_) => true,
+                // A `<br clear>` moves what follows below the floats: a
+                // float after it starts a run of its own.
+                Node::Element(c) if c.tag == "br" => c.style.clear.is_none(),
                 Node::Element(c) => {
-                    (c.tag == "br" && c.style.clear.is_none())
-                        || (!block_level_in_flow(c)
-                            && !out_of_flow(&c.style)
-                            && band_piece(n) != Some(BandPiece::Atom))
+                    !block_level_in_flow(c)
+                        && !out_of_flow(&c.style)
+                        && band_piece(n) != Some(BandPiece::Atom)
                 }
             });
             if next.style.float.is_some_and(|f| f != 0)

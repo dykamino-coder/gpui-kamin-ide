@@ -109,41 +109,6 @@ pub(super) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     ))
 }
 
-/// `px_margin_box`, но `em` решается по кеглю: своему, если он задан
-/// точками, иначе по кеглю содержащего блока `em`. Нужен гейту наложения
-/// (`covered_flow_tail`): `floats-135` пишет флоат и соседа в `5em`, и
-/// арифметика наложения известна так же точно, как в точках.
-pub(super) fn px_margin_box_em(c: &Computed, em: f32) -> Option<(f32, f32)> {
-    let own = match c.font_size {
-        None => em,
-        Some(Len::Px(v)) => v,
-        _ => return None,
-    };
-    let len = |l: &Option<Len>| match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        Some(Len::Em(k)) => Some(*k * own),
-        _ => None,
-    };
-    let b = c.borders();
-    Some((
-        len(&c.width)?
-            + len(&c.padding.left)?
-            + len(&c.padding.right)?
-            + len(&b.left)?
-            + len(&b.right)?
-            + len(&c.margin.left)?
-            + len(&c.margin.right)?,
-        len(&c.height)?
-            + len(&c.padding.top)?
-            + len(&c.padding.bottom)?
-            + len(&b.top)?
-            + len(&b.bottom)?
-            + len(&c.margin.top)?
-            + len(&c.margin.bottom)?,
-    ))
-}
-
 /// Чем сосед флоатов может быть в бандовом хосте; `None` — не может ничем,
 /// и весь хост отменяется.
 ///

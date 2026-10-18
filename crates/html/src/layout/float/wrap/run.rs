@@ -29,7 +29,7 @@ pub(super) fn strut_for_next(
     j: usize,
     separates: impl Fn(&Element) -> bool,
     rest: &mut Vec<Node>,
-) -> bool {
+) {
     let laid_out = out
         .iter()
         .rev()
@@ -47,16 +47,6 @@ pub(super) fn strut_for_next(
     // `-142` 2.47 → «красное видно». Значит распорка держит положение, и
     // чинить надо не её удаление, а канал «поле участвует в схлопывании,
     // не двигая коробку».
-    // Распорка — ПРОТЕЗ §9.5.2, а не коробка разметки: она ничего не
-    // красит, и накрывать её флоатом (`covered_flow_tail` ниже) нечего.
-    // Зато наложение снимает с флоата плавающую природу, и очищающая
-    // коробка, ради которой распорка и поставлена, теряет тот нижний
-    // край флоата, от которого считает зазор. Флаг гасит наложение
-    // ровно на этом случае (проба §2.2: `margin-collapse-clear-003`,
-    // `-009` и `nested-clearance-new-formatting-context` — все три
-    // потери держит распорка `0 × остаток поля`, прошедшая гейт
-    // `covered_flow_tail`, потому что ширины у неё нет, а
-    // `px_missing_zero(None) = 0`).
     let mut clearance_strut = false;
     clearance_before_next(
         cb_top_open,
@@ -68,7 +58,6 @@ pub(super) fn strut_for_next(
         laid_out,
         &mut clearance_strut,
     );
-    clearance_strut
 }
 
 pub(super) fn split_rest(

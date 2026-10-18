@@ -80,7 +80,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/float/initial_letter/letter.rs"),
     include_str!("../../layout/float/initial_letter/leading.rs"),
     include_str!("../../layout/float/wrap/mod.rs"),
-    include_str!("../../layout/float/wrap/covered.rs"),
     include_str!("../../layout/float/wrap/lone.rs"),
     include_str!("../../layout/float/wrap/prepare.rs"),
     include_str!("../../layout/float/wrap/row.rs"),

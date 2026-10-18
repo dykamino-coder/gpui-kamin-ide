@@ -6,7 +6,9 @@ use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_dimensions;
-use crate::layout::float::band_flow_host::{band_flow_rest, band_kids, band_orthogonal};
+use crate::layout::float::band_flow_host::{
+    band_flow_rest, band_kids, band_orthogonal, trimmed_clear,
+};
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::band_float_m;
 use crate::render::{
@@ -42,6 +44,7 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         // independent formatting context (css-writing-modes-4 §3.2): the
         // host's floats do not reach into it.
         && !band_orthogonal(&c.style, wm)
+        && !c.children.iter().any(|k| matches!(k, Node::Element(k) if trimmed_clear(c, k)))
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)

@@ -8,7 +8,6 @@ use crate::layout::float::FloatCb;
 use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
-mod covered;
 mod float_run;
 mod lone;
 mod row;
