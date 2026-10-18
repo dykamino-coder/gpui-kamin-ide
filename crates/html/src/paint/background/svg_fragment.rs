@@ -2,7 +2,7 @@
 
 mod view;
 
-pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
+pub(super) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return bytes;
     };

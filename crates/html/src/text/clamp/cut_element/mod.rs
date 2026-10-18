@@ -1,4 +1,4 @@
-//! Cut element for clamp; split out to keep the owning module within 250 lines.
+//! Clamp probe element and its layout, prepaint, and plan application lifecycle.
 
 mod layout;
 mod painting;

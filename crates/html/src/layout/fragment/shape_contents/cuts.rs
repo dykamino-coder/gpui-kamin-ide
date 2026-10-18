@@ -102,7 +102,14 @@ pub(crate) fn finish_shape_cuts(
     }
     bottom_edge_cuts(bot, &mut solid, stacked, h);
     Some(Measure {
-        shape: (h, mt, mb, cuts, forced, solid),
+        shape: crate::layout::fragment::Shape {
+            height: h,
+            margin_top: mt,
+            margin_bottom: mb,
+            cuts,
+            forced,
+            solid,
+        },
         up,
         own,
     })

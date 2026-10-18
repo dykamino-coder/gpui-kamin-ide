@@ -8,14 +8,20 @@
 
 | Каталог | Чистая база патча |
 | --- | --- |
-| `gpui` | crates.io `gpui-pre` 0.3.8, снимок zed `279fe07` |
+| `gpui` | crates.io `gpui-pre` 0.3.8, снимок zed `279fe070bb389b79652e52065b2f001edcc0b11b` |
 | `gpui-windows` | crates.io `gpui-pre-windows` 0.3.8, тот же снимок |
-| `gpui-base` | crates.io `gpui-base` 0.7.1 |
-| `gpui-component` | crates.io `gpui-component` 0.7.1 |
-| `taffy` | crates.io `taffy` 0.14.0 |
+| `gpui-base` | crates.io `gpui-base` 0.7.1, longbridge/gpui-kit `87d10ae5e1299d1be18670a37570c5402f952e34`, `crates/base` |
+| `gpui-component` | crates.io `gpui-component` 0.7.1, тот же commit, `crates/component` |
+| `taffy` | `cargo package` из DioxusLabs/taffy `2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f` (manifest version 0.14.0) |
 | `html5ever` | crates.io `html5ever` 0.40.1 |
 | `markup5ever_rcdom` | crates.io `markup5ever_rcdom` 0.39.0+unofficial |
 | `resvg`, `usvg` | crates.io 0.48.1 с заменой `src/` из linebender/resvg commit `77b12f4951a7b75d759c42e8c9497cff7c839c3c` |
+
+Taffy с версией manifest 0.14.0 уже содержит изменения upstream после релиза.
+Релизный архив 0.14.0 не является базой этого форка. Для подготовки базы
+checkout указанного commit, затем `cargo package --allow-dirty --no-verify`;
+распаковать полученный `.crate`, проверить `git.sha1` в `.cargo_vcs_info.json`.
+Не запускать обновление зависимостей при подготовке базы.
 
 Архив `.crate` нужен целиком: нормализованный Cargo manifest, lockfile и
 упаковка отличаются от Git checkout. Для SVG сначала распаковать оба
@@ -101,14 +107,18 @@ theirs в ours. Так Git видит исходную базу, удалени�
 ```sh
 python vendor/regenerate-patch.py gpui /tmp/upstream/gpui-pre-0.3.8
 python vendor/regenerate-patch.py gpui /tmp/upstream/gpui-pre-0.3.8 --check
+python vendor/regenerate-patch.py taffy /tmp/upstream/taffy-2d936b7
 ```
 
 Повторить для каждого изменённого крейта. `--scratch` задаёт внешний каталог
 для временного дерева проверки. Генератор нормализует CRLF в LF, учитывает
 все tracked и неигнорируемые новые файлы крейта, проверяет применение патча
 к копии upstream и побайтовое совпадение результата после нормализации.
-Он не изменяет upstream. Бинарные изменения записываются как Git binary patch; round-trip также
-проверяет точные байты этих ресурсов.
+Он не изменяет upstream. Для Taffy и gpui-kit генератор также проверяет
+commit из `.cargo_vcs_info.json` и отвергает другой snapshot. Бинарные изменения записываются как Git binary patch; round-trip также
+проверяет точные байты этих ресурсов. Текстовые файлы с trailing whitespace
+в любой стороне также сохраняются как binary patch: это сохраняет upstream
+байты, не внося trailing whitespace в сам патч.
 
 Патчи имеют нулевой контекст, чтобы пустые строки контекста не создавали
 trailing whitespace. Применять из корня дерева с подготовленным vendor:

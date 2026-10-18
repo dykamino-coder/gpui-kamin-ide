@@ -73,6 +73,7 @@ mod line_baselines;
 mod css_text_background;
 mod css_fill_transform;
 mod plane3d;
+mod render_context;
 pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
@@ -986,6 +987,8 @@ pub(crate) struct DeferredDraw {
     parent_node: DispatchNodeId,
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
+    render_contexts: render_context::Snapshot,
     content_mask: Option<ContentMask<Pixels>>,
     rem_size: Pixels,
     element: Option<AnyElement>,
@@ -1195,6 +1198,8 @@ pub struct Window {
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: typed host context belongs to this window and traversal.
+    render_contexts: render_context::RenderContexts,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
     /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
@@ -1567,6 +1572,8 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 pub(crate) struct PaintCtx {
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
+    render_contexts: render_context::Snapshot,
     rendered_entity_stack: Vec<EntityId>,
     element_offset_stack: Vec<Point<Pixels>>,
     exact_element_offset_depth: u32,
@@ -2160,6 +2167,7 @@ impl Window {
             root: None,
             element_id_stack: SmallVec::default(),
             text_style_stack: Vec::new(),
+            render_contexts: Default::default(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             exact_element_offset_depth: 0,
@@ -4005,6 +4013,9 @@ impl Window {
             traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
+                let _render_scope = self.render_contexts.enter_snapshot(
+                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
+                );
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
@@ -4059,6 +4070,8 @@ impl Window {
         let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
         for deferred_draw_ix in traversal_order {
             let mut deferred_draw = &mut deferred_draws[deferred_draw_ix];
+            let _render_scope = self.render_contexts
+                .enter_snapshot(deferred_draw.render_contexts.clone());
             self.element_id_stack
                 .clone_from(&deferred_draw.element_id_stack);
             self.next_frame
@@ -4143,6 +4156,7 @@ impl Window {
                     parent_node: reused_subtree.refresh_node_id(deferred_draw.parent_node),
                     element_id_stack: deferred_draw.element_id_stack.clone(),
                     text_style_stack: deferred_draw.text_style_stack.clone(),
+                    render_contexts: deferred_draw.render_contexts.clone(),
                     content_mask: deferred_draw.content_mask,
                     rem_size: deferred_draw.rem_size,
                     priority: deferred_draw.priority,
@@ -4212,6 +4226,25 @@ impl Window {
             range.start.scene_index..range.end.scene_index,
             &self.rendered_frame.scene,
         );
+    }
+
+    /// KaminIDE patch: read the host context of type `T` for this traversal.
+    /// Values belong to this window; callers retain ownership through `Rc`.
+    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
+        self.render_contexts.get()
+    }
+
+    /// KaminIDE patch: run descendants with a typed host context.
+    /// `None` hides this type's outer value. Nested scopes restore it on return
+    /// or unwind. Paint/deferred snapshots clone each `Rc`; interior mutations
+    /// remain shared with the original value.
+    pub fn with_render_context<T: 'static, R>(
+        &mut self,
+        context: Option<Rc<T>>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let _scope = self.render_contexts.enter(context);
+        f(self)
     }
 
     /// Push a text style onto the stack, and call a function with that style active.
@@ -4304,6 +4337,7 @@ impl Window {
         PaintCtx {
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
+            render_contexts: self.render_contexts.snapshot(),
             rendered_entity_stack: self.rendered_entity_stack.clone(),
             element_offset_stack: self.element_offset_stack.clone(),
             exact_element_offset_depth: self.exact_element_offset_depth,
@@ -4339,6 +4373,8 @@ impl Window {
             std::mem::swap(&mut w.content_mask_stack, &mut c.content_mask_stack);
             std::mem::swap(&mut w.image_cache_stack, &mut c.image_cache_stack);
         }
+        let _render_scope = self.render_contexts
+            .enter_snapshot(std::mem::take(&mut ctx.render_contexts));
         swap_all(self, &mut ctx);
         let r = f(self);
         swap_all(self, &mut ctx);
@@ -4933,6 +4969,7 @@ impl Window {
             parent_node,
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
+            render_contexts: self.render_contexts.snapshot(),
             content_mask,
             rem_size: self.rem_size(),
             priority,

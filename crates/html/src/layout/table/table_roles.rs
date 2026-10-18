@@ -1,6 +1,7 @@
 //! Authored display overrides the default table-cell role of td and th.
 //! Inline runs become anonymous cells before their whitespace is discarded.
-use crate::dom::{Element, Node};
+use crate::dom::Node;
+#[cfg(test)]
 use crate::style::computed::Display;
 
 /// CSS 2 section 17.2.1 removes only a whitespace-only anonymous inline
@@ -14,13 +15,7 @@ pub(super) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
     }
 }
 
-pub(super) fn is_cell(element: &Element) -> bool {
-    match element.style.display {
-        Some(Display::TableCell) => true,
-        None => matches!(element.tag.as_str(), "td" | "th"),
-        _ => false,
-    }
-}
+pub(super) use crate::dom::table_boxes::is_cell;
 
 #[cfg(test)]
 mod tests {

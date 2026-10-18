@@ -9,24 +9,7 @@
 use gpui::RenderImage;
 use std::sync::Arc;
 
-/// Splits `filter(url(x), list)` into the decoded url and the filter list.
-pub(crate) fn parse(src: &str) -> Option<(String, String)> {
-    let rest = src.trim().strip_prefix("filter(")?;
-    let inner = &rest[..rest.rfind(')')?];
-    let parts = crate::style::css::split_args(inner);
-    let image = parts.first()?.trim();
-    if parts.len() < 2 {
-        return None;
-    }
-    let input = if image.to_ascii_lowercase().starts_with("url(") {
-        crate::style::computed::parse_url(image)?
-    } else if crate::style::computed::parse_gradient(image).is_some() {
-        image.to_string()
-    } else {
-        return None;
-    };
-    Some((input, parts[1..].join(" ")))
-}
+pub(crate) use crate::style::computed::filter_image::parse_filter_image;
 
 /// Applies the filter list to a straight-BGRA raster. Unsupported lists
 /// (blurs, a drop shadow mixed with other functions) yield `None`.
@@ -95,4 +78,36 @@ pub(super) fn apply(
         }
     }
     gpui::bgra_bytes_to_image(w as u32, h as u32, out)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::style::computed::Computed;
+
+    #[test]
+    fn element_filter_reaches_radial_samples() {
+        compare_samples("radial-gradient(red, orange)");
+    }
+
+    #[test]
+    fn element_filter_reaches_linear_samples() {
+        compare_samples("linear-gradient(red, orange)");
+    }
+
+    fn compare_samples(raw: &str) {
+        let mut own = Computed::default();
+        own.apply_one("background-image", raw);
+        own.apply_one("filter", "invert(1)");
+        let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
+        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap())
+            .unwrap()
+            .raster((7.0, 5.0))
+            .unwrap();
+        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"))
+            .unwrap()
+            .raster((7.0, 5.0))
+            .unwrap();
+        assert_eq!(image.as_bytes(0), expected.as_bytes(0));
+        assert!(rendered.gradient.is_none());
+    }
 }

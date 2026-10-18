@@ -2,7 +2,7 @@
 
 use super::{SystemColor, native_color};
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -38,10 +38,10 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
                     .bg(accent),
             ),
     );
-    paint.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(style));
+    paint.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(style));
     super::intrinsic::control(
         paint,
-        super::metrics::size(super::metrics::ControlKind::Range),
+        crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Range),
     )
 }
 
@@ -57,7 +57,10 @@ pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
     if let Some(c) = color {
         d = d.bg(c);
     }
-    super::intrinsic::control(d, super::metrics::size(super::metrics::ControlKind::Color))
+    super::intrinsic::control(
+        d,
+        crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Color),
+    )
 }
 
 /// Полоса выполнения: `<progress value max>`.

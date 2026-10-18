@@ -1,13 +1,13 @@
 //! Составление полотна многослойной маски на сетке устройства.
 
-use super::mask_layer;
+use super::{MaskInput, mask_layer};
 use crate::paint::effects::grouped_element::Grouped;
 use gpui::{Bounds, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn composite_mask(
     group: &Grouped,
-    layers: &[String],
+    layers: &[MaskInput<'_>],
     bounds: Bounds<Pixels>,
     bw: f32,
     bh: f32,
@@ -59,7 +59,7 @@ pub(crate) fn composite_mask(
     let built: Vec<crate::paint::background::MaskLayer> = layers
         .iter()
         .enumerate()
-        .filter_map(|(i, l)| mask_layer(i, l, group, bw, bh, sf, &pos_of, &repeat_of))
+        .filter_map(|(i, l)| mask_layer(i, *l, group, bw, bh, sf, &pos_of, &repeat_of))
         .collect();
     // Snapped tiles need a canvas on the device grid: its origin
     // rounds, and the tiles keep their exact device positions.

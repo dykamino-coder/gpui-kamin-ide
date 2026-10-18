@@ -1,9 +1,9 @@
 //! Regression checks for SVG initial views and Media Fragments error handling.
 
-use super::super::resolve;
+use super::super::rewrite_svg_fragment;
 
 fn resolved(markup: &str, fragment: &str) -> String {
-    String::from_utf8(resolve(markup.as_bytes().to_vec(), fragment)).unwrap()
+    String::from_utf8(rewrite_svg_fragment(markup.as_bytes().to_vec(), fragment)).unwrap()
 }
 
 fn root_attr(markup: &str, name: &str) -> Option<String> {

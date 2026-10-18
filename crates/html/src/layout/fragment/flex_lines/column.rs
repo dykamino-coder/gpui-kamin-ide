@@ -152,7 +152,7 @@ pub(super) fn flex_lines_of(
     let mut lines: Vec<Vec<(Element, Shape, Option<f32>)>> = Vec::new();
     let mut used = 0.0f32;
     for (k, sh, w) in measured {
-        let outer = sh.0 + sh.1 + sh.2;
+        let outer = sh.height + sh.margin_top + sh.margin_bottom;
         match lines.last_mut() {
             Some(line) if used + row_gap + outer <= main + 0.01 => {
                 used += row_gap + outer;
@@ -189,7 +189,7 @@ pub(super) fn flex_lines_of(
             // он пропадает вместе с полем (Blink
             // `UpdateOffsetAdjustmentForSuppressedRowGap`, :2486-2500).
             if i > 0 {
-                sh.1 += row_gap;
+                sh.margin_top += row_gap;
             }
             items.push((k, sh));
         }

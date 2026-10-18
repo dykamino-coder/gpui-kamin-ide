@@ -1,22 +1,23 @@
 //! Контуры фигур: shape_to_path, border-shape (путь, маска, кольцо, тень, обводка), rrect.
 
 mod border_outline;
-pub use border_outline::border_shape_outline_svg;
+mod border_scene;
+pub(crate) use border_outline::border_shape_outline_scene;
 
 mod border_shadow;
-pub use border_shadow::border_shape_shadow_svg;
+pub(crate) use border_shadow::border_shape_shadow_scene;
 
 mod border_masks;
-pub use border_masks::border_shape_mask_svg;
-pub use border_masks::border_shape_ring_svg;
+pub(crate) use border_masks::border_shape_mask_scene;
+pub(crate) use border_masks::border_shape_ring_scene;
 
 mod border_geometry;
-pub use border_geometry::border_shape_path;
 pub use border_geometry::motion_shape_d;
 pub use border_geometry::rrect_spec;
 
 use crate::paint::background::*;
 use crate::style::computed::FontCx;
+use crate::svg::path_commands::{Command, Sink};
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///
@@ -25,6 +26,11 @@ use crate::style::computed::FontCx;
 /// x — от ширины коробки, y — от высоты.
 pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
     let mut d = String::new();
+    shape_commands(args, bw, bh, &mut d)?;
+    (!d.is_empty()).then(|| d.trim_end().to_string())
+}
+
+pub(crate) fn shape_commands(args: &str, bw: f32, bh: f32, d: &mut impl Sink) -> Option<()> {
     let val = |t: &str, side: f32| -> Option<f32> {
         // Края коробки словами (hline to right; §2.4.3).
         match t {
@@ -90,26 +96,26 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let base = if toks[0] == "from" { 1 } else { 2 };
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(base)?, toks.get(base + 1)?)?;
-                d.push_str(&format!("{}{} {} ", if rel { 'm' } else { 'M' }, x, y));
+                d.command(rel, Command::Move([x, y]));
                 cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
                 sub = cur;
             }
             "line" => {
                 let rel = toks.get(1) == Some(&"by");
                 let (x, y) = pair(toks.get(2)?, toks.get(3)?)?;
-                d.push_str(&format!("{}{} {} ", if rel { 'l' } else { 'L' }, x, y));
+                d.command(rel, Command::Line([x, y]));
                 cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
             }
             "hline" => {
                 let rel = toks.get(1) == Some(&"by");
                 let x = val(toks.get(2)?, bw)?;
-                d.push_str(&format!("{}{} ", if rel { 'h' } else { 'H' }, x));
+                d.command(rel, Command::Horizontal(x));
                 cur.0 = if rel { cur.0 + x } else { x };
             }
             "vline" => {
                 let rel = toks.get(1) == Some(&"by");
                 let y = val(toks.get(2)?, bh)?;
-                d.push_str(&format!("{}{} ", if rel { 'v' } else { 'V' }, y));
+                d.command(rel, Command::Vertical(y));
                 cur.1 = if rel { cur.1 + y } else { y };
             }
             "curve" => {
@@ -128,25 +134,22 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let slash = toks.iter().position(|t| *t == "/");
                 if let Some(sl) = slash {
                     let c2 = ctl(&toks[..], sl + 1, rel, cur, end)?;
-                    d.push_str(&format!(
-                        "{}{} {} {} {} {} {} ",
-                        if rel { 'c' } else { 'C' },
-                        c1.0 - base.0,
-                        c1.1 - base.1,
-                        c2.0 - base.0,
-                        c2.1 - base.1,
-                        x,
-                        y
-                    ));
+                    d.command(
+                        rel,
+                        Command::Cubic([
+                            c1.0 - base.0,
+                            c1.1 - base.1,
+                            c2.0 - base.0,
+                            c2.1 - base.1,
+                            x,
+                            y,
+                        ]),
+                    );
                 } else {
-                    d.push_str(&format!(
-                        "{}{} {} {} {} ",
-                        if rel { 'q' } else { 'Q' },
-                        c1.0 - base.0,
-                        c1.1 - base.1,
-                        x,
-                        y
-                    ));
+                    d.command(
+                        rel,
+                        Command::Quadratic([c1.0 - base.0, c1.1 - base.1, x, y]),
+                    );
                 }
                 cur = end;
             }
@@ -159,16 +162,12 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                 let base = if rel { cur } else { (0.0, 0.0) };
                 if let Some(with_at) = toks.iter().position(|t| *t == "with") {
                     let c = ctl(&toks[..], with_at + 1, rel, cur, end)?;
-                    d.push_str(&format!(
-                        "{}{} {} {} {} ",
-                        if rel { 's' } else { 'S' },
-                        c.0 - base.0,
-                        c.1 - base.1,
-                        x,
-                        y
-                    ));
+                    d.command(
+                        rel,
+                        Command::SmoothCubic([c.0 - base.0, c.1 - base.1, x, y]),
+                    );
                 } else {
-                    d.push_str(&format!("{}{} {} ", if rel { 't' } else { 'T' }, x, y));
+                    d.command(rel, Command::SmoothQuadratic([x, y]));
                 }
                 cur = end;
             }
@@ -198,46 +197,22 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
                     .and_then(|i| toks.get(i + 1))
                     .and_then(|t| t.trim_end_matches("deg").parse::<f32>().ok())
                     .unwrap_or(0.0);
-                d.push_str(&format!(
-                    "{}{} {} {} {} {} {} {} ",
-                    if rel { 'a' } else { 'A' },
-                    rx,
-                    ry,
-                    rot,
-                    large,
-                    sweep,
-                    x,
-                    y
-                ));
+                d.command(
+                    rel,
+                    Command::Arc([rx, ry, rot, large as f32, sweep as f32, x, y]),
+                );
                 cur = if rel { (cur.0 + x, cur.1 + y) } else { (x, y) };
             }
             // `close` возвращает перо в начало подконтура — следующий
             // сегмент считает свой якорь `start` уже оттуда.
             "close" => {
-                d.push_str("Z ");
+                d.command(false, Command::Close);
                 cur = sub;
             }
             _ => return None,
         }
     }
-    (!d.is_empty()).then(|| d.trim_end().to_string())
+    Some(())
 }
 
-/// Контур `border-shape` состоит только из прямых (polygon, `path()`/`shape()`
-/// без кривых)? У таких Blink держит предел митры 1e10 — острые углы уходят
-/// шипами; у кривых — 4.0 по умолчанию (`border_shape_painter.cc`).
-pub fn shape_is_linear(raw: &str) -> bool {
-    let raw = raw.trim();
-    if raw.starts_with("polygon(") {
-        return true;
-    }
-    if let Some(d) = raw.strip_prefix("path(") {
-        return !d.contains(|c: char| {
-            matches!(c, 'C' | 'c' | 'S' | 's' | 'Q' | 'q' | 'T' | 't' | 'A' | 'a')
-        });
-    }
-    if raw.starts_with("shape(") {
-        return !(raw.contains("arc") || raw.contains("curve") || raw.contains("smooth"));
-    }
-    false
-}
+pub use crate::style::computed::shape_kind::shape_is_linear;

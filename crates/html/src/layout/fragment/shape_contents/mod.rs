@@ -64,14 +64,14 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
         } else {
             Vec::new()
         };
-        return Some(none((
-            top + tall + bot,
-            mt,
-            mb,
-            Vec::new(),
-            Vec::new(),
+        return Some(none(crate::layout::fragment::Shape {
+            height: top + tall + bot,
+            margin_top: mt,
+            margin_bottom: mb,
+            cuts: Vec::new(),
+            forced: Vec::new(),
             solid,
-        )));
+        }));
     }
     if has_float(c, 3) {
         return None;

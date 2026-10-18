@@ -45,12 +45,12 @@ pub(crate) fn grow_pushed(
             .iter()
             .enumerate()
             .map(|(i, (c, s))| crate::layout::fragment::types::Kid {
-                h: s.0,
-                mt: s.1,
-                mb: s.2,
+                h: s.height,
+                mt: s.margin_top,
+                mb: s.margin_bottom,
                 // Тот же предикат, что у `StackChild` в сборке стопки.
                 monolith: solid_box(c),
-                cuts: s.3.clone(),
+                cuts: s.cuts.clone(),
                 // Щуп обязан видеть ровно то же, что стопка (Х6), иначе
                 // распорки лягут по другому плану, чем укладка.
                 force_before: edge_break(c, false),
@@ -60,8 +60,8 @@ pub(crate) fn grow_pushed(
                 // чем укладка после отступа.
                 avoid_before: edge_avoid(c, false),
                 avoid_after: edge_avoid(c, true),
-                forced: s.4.clone(),
-                solid: s.5.clone(),
+                forced: s.forced.clone(),
+                solid: s.solid.clone(),
                 span: c.style.column_span == Some(true) && !c.inline,
                 // Щуп роста параллельного потока не знает: распорка
                 // (`spacer_before`) — про в-поточную высоту, а поток высоты
@@ -163,7 +163,11 @@ pub(crate) fn keep_par_margins(
     par: Option<&crate::layout::fragment::types::Par>,
 ) -> Shape {
     if par.is_some_and(|p| p.group != 0) {
-        (s.0, old.1, old.2, s.3, s.4, s.5)
+        Shape {
+            margin_top: old.margin_top,
+            margin_bottom: old.margin_bottom,
+            ..s
+        }
     } else {
         s
     }

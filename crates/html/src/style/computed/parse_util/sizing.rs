@@ -129,7 +129,7 @@ pub(in crate::style::computed) fn assign_size(slot: &mut Option<Len>, v: &str) {
     // Смесь «доля ± точки» доживает индексом (`parse_mixed`): раскладка
     // складывает её сама (`DefiniteLength::Calc`, css-values-4 §10.9).
     // Прежде `calc(50% - 3px)` роняло объявление (`calc-width-block-1`).
-    let parsed = size_range::parse(v);
+    let parsed = size_range::parse_nonnegative_size(v);
     // `none` снимает предел (§10.4) — слот гаснет по праву. Прочая
     // неразборная запись объявление роняет: слот сохраняет прежнее значение,
     // а не гаснет (§4.2).

@@ -124,7 +124,7 @@ pub(crate) fn paint_element(
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::style::apply::grid_item_placement(&e.style);
+    let placement = crate::paint::apply::grid_item_placement(&e.style);
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());

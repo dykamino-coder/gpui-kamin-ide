@@ -63,7 +63,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     if src.starts_with("data:")
         || src.starts_with("file:")
         || src.starts_with('/')
-        || crate::paint::background::filter_image::parse(src).is_some()
+        || crate::paint::background::filter_image::parse_filter_image(src).is_some()
     {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —

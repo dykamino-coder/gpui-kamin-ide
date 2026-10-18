@@ -7,7 +7,7 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     bidi_controls::resolve(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
-    c.sc_ancestor = crate::paint::stacking::nested_context(parent);
+    c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
     c.icb_scroll_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
     c.viewport_unit_insets = own.viewport_unit_insets.or(parent.viewport_unit_insets);
     c.cb_scroll_insets = if establishes_cb(parent) {
@@ -227,22 +227,4 @@ fn transformed(s: &Computed) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::style::computed::Computed;
-    use crate::style::values::value::Len;
-
-    #[test]
-    fn fixed_background_scrolls_under_a_transform() {
-        let parent = Computed {
-            translate: Some((Len::Px(1.0), Len::Px(0.0))),
-            ..Default::default()
-        };
-        let own = Computed {
-            bg_fixed: Some(true),
-            ..Default::default()
-        };
-        assert_eq!(super::super::inherit(&parent, &own).bg_fixed, Some(false));
-        let plain = super::super::inherit(&Computed::default(), &own);
-        assert_eq!(plain.bg_fixed, Some(true));
-    }
-}
+mod tests;

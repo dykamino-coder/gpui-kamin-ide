@@ -2,8 +2,7 @@
 //! внутренний — кольцо рамки (css-borders-4 §corner-shape-rendering: рамка
 //! лежит между внешним и внутренним контуром, фон и содержимое режет
 //! внешний). Прямолинейный контур до восьми вершин уходит многоугольником в
-//! шейдер `clip-path: polygon()`, прочие — SVG-путём в растр `clip-path:
-//! path()`: так край фигурного угла совпадает с эквивалентной обрезкой.
+//! шейдер `clip-path: polygon()`, прочие — tiny-skia-путём в растр маски: так край фигурного угла совпадает с эквивалентной обрезкой.
 //! Углы только с выемками и прямыми (оси координат) остаются у
 //! `linear_corners` — их покрытие на сетке пикселей двоичное.
 
@@ -11,6 +10,8 @@ use super::contour::{self, Inner, P, Shaped};
 use super::{Rrect, linear_corners, parse_rrect};
 use crate::paint::background::{MaskLayer, compose_mask_layers};
 use crate::style::values::value::Color;
+use crate::svg::path_commands::Geometry;
+use crate::svg::path_scene::*;
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -72,35 +73,34 @@ pub fn contour_ring(args: &str, pw: u32, ph: u32, sf: f32, colour: Color) -> Opt
     let (bw, bh) = (pw as f32 / sf, ph as f32 / sf);
     let (s, r) = shaped(args, bw, bh)?;
     let [t, rr, b, l] = r.ring?;
-    let body = match contour::inner(&s, [t, rr, b, l]) {
-        Inner::Polygon(p) if p.len() < 3 => String::new(),
+    let root = match contour::inner(&s, [t, rr, b, l]) {
+        Inner::Polygon(p) if p.len() < 3 => group(Vec::new()),
         Inner::Polygon(p) if p.len() <= 8 => return Some(Ring::Outside(p)),
         Inner::Polygon(p) => {
-            let d = contour::Path {
+            let path = contour::Path {
                 start: p[0],
                 segs: p[1..].iter().map(|q| contour::Seg::Line(*q)).collect(),
             };
-            format!(r##"<path fill="#ffffff" d="{}"/>"##, d.svg_d())
+            let mut d = Geometry::default();
+            path.commands(&mut d, 0.0, 0.0);
+            coverage(bw, bh, d.finish(), FillRule::NonZero).root
         }
-        // Прямоугольник минус вырезы углов (Blink: `Op(kDifference)`):
-        // белый прямоугольник и чёрные вырезы в маске-светимости, ею гасится
-        // заливка всего холста — край прямоугольника сглажен один раз.
+        // Luminance overdraw subtracts corner cutouts before masking the canvas.
         Inner::Clipped { rect, clips } => {
-            let d: Vec<String> = clips.iter().map(|c| c.svg_d()).collect();
-            format!(
-                r##"<defs><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="{bw}" height="{bh}"><rect x="{}" y="{}" width="{}" height="{}" fill="#ffffff"/><path fill="#000000" d="{}"/></mask></defs><rect width="{bw}" height="{bh}" fill="#ffffff" mask="url(#m)"/>"##,
-                rect.0,
-                rect.1,
-                rect.2,
-                rect.3,
-                d.join(" ")
-            )
+            let mut d = Geometry::default();
+            for clip in clips {
+                clip.commands(&mut d, 0.0, 0.0);
+            }
+            let mut children: Vec<_> = rectangle(rect.0, rect.1, rect.2, rect.3, gray(true))
+                .into_iter()
+                .collect();
+            if let Some(data) = d.finish() {
+                children.push(shape(data, FillRule::NonZero, Some(gray(false)), None));
+            }
+            masked(bw, bh, gray(true), group(children))?
         }
     };
-    let markup = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{body}</svg>"##
-    );
-    let image = crate::svg::raster::rasterize(&markup, bw, bh)?;
+    let image = Scene::new(bw, bh, root).rasterize()?;
     let mask = compose_mask_layers(
         &[MaskLayer {
             image,

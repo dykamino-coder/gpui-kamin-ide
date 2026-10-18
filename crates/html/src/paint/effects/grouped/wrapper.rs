@@ -51,7 +51,7 @@ pub(crate) fn grouped_wrapper(
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let shadows = c.resolved_shadows(false);
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
-            crate::paint::background::border_shape_shadow_svg(
+            crate::paint::background::border_shape_shadow_scene(
                 (bs.outer.as_str(), outer_out),
                 inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                 stroke,
@@ -80,7 +80,7 @@ pub(crate) fn grouped_wrapper(
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-                crate::paint::background::border_shape_ring_svg(
+                crate::paint::background::border_shape_ring_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                     stroke,
@@ -111,7 +111,7 @@ pub(crate) fn grouped_wrapper(
             .as_ref()
             .is_some_and(|o| o.style == Some(crate::style::computed::OUTLINE_DOUBLE));
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
-            crate::paint::background::border_shape_outline_svg(
+            crate::paint::background::border_shape_outline_scene(
                 (bs.outer.as_str(), outer_out),
                 single,
                 stroke,

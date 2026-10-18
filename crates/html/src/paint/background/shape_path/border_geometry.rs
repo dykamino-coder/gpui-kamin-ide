@@ -3,6 +3,7 @@
 use super::shape_is_linear;
 use crate::paint::background::*;
 use crate::style::computed::Computed;
+use crate::svg::path_commands::{Command, Sink};
 
 /// Предел митры обводки `border-shape`: у прямолинейного контура 1000 (эталоны
 /// WPT ставят ровно столько; Blink — 1e10), у кривых — 4 по умолчанию SVG.
@@ -14,8 +15,18 @@ pub(super) fn miter_limit(raw: &str) -> f32 {
 /// множителем (css-backgrounds-3 §5.5), как в `rrect_mask`. Вырожденный
 /// прямоугольник — пустой контур.
 pub(super) fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 4]) -> String {
+    let mut d = String::new();
+    rrect_commands((x0, y0, w, h), radii, &mut d);
+    d.trim_end().to_string()
+}
+
+pub(super) fn rrect_commands(
+    (x0, y0, w, h): (f32, f32, f32, f32),
+    radii: [(f32, f32); 4],
+    d: &mut impl Sink,
+) {
     if w <= 0.0 || h <= 0.0 {
-        return String::new();
+        return;
     }
     let sum = |a: f32, c: f32, side: f32| {
         if a + c > side && a + c > 0.0 {
@@ -31,23 +42,27 @@ pub(super) fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 
         .min(sum(radii[1].1, radii[2].1, h));
     let r: Vec<(f32, f32)> = radii.iter().map(|(a, c)| (a * k, c * k)).collect();
     let (x1, y1) = (x0 + w, y0 + h);
-    let arc = |rx: f32, ry: f32, x: f32, y: f32| {
+    d.command(false, Command::Move([x0 + r[0].0, y0]));
+    d.command(false, Command::Line([x1 - r[1].0, y0]));
+    corner(d, r[1], x1, y0 + r[1].1);
+    d.command(false, Command::Line([x1, y1 - r[2].1]));
+    corner(d, r[2], x1 - r[2].0, y1);
+    d.command(false, Command::Line([x0 + r[3].0, y1]));
+    corner(d, r[3], x0, y1 - r[3].1);
+    d.command(false, Command::Line([x0, y0 + r[0].1]));
+    corner(d, r[0], x0 + r[0].0, y0);
+    d.command(false, Command::Close);
+}
+
+fn corner(d: &mut impl Sink, (rx, ry): (f32, f32), x: f32, y: f32) {
+    d.command(
+        false,
         if rx > 0.0 && ry > 0.0 {
-            format!("A{rx} {ry} 0 0 1 {x} {y} ")
+            Command::Arc([rx, ry, 0.0, 0.0, 1.0, x, y])
         } else {
-            format!("L{x} {y} ")
-        }
-    };
-    let mut d = format!("M{} {} L{} {} ", x0 + r[0].0, y0, x1 - r[1].0, y0);
-    d.push_str(&arc(r[1].0, r[1].1, x1, y0 + r[1].1));
-    d.push_str(&format!("L{} {} ", x1, y1 - r[2].1));
-    d.push_str(&arc(r[2].0, r[2].1, x1 - r[2].0, y1));
-    d.push_str(&format!("L{} {} ", x0 + r[3].0, y1));
-    d.push_str(&arc(r[3].0, r[3].1, x0, y1 - r[3].1));
-    d.push_str(&format!("L{} {} ", x0, y0 + r[0].1));
-    d.push_str(&arc(r[0].0, r[0].1, x0 + r[0].0, y0));
-    d.push('Z');
-    d
+            Command::Line([x, y])
+        },
+    );
 }
 
 /// Контур `<basic-shape>` для ОФСЕТ-ПУТИ (motion-1 §«Equivalent Paths For
@@ -57,7 +72,7 @@ pub(super) fn rrect_d((x0, y0, w, h): (f32, f32, f32, f32), radii: [(f32, f32); 
 /// (inset/rect/xywh и голое слово-коробка вместе с её радиусами) и
 /// `svg_path_of` (polygon, `path()`, `shape()`), — а вот круг и эллипс
 /// строит сам вызывающий: у офсет-пути своё начало обхода (самая правая
-/// точка) и своё направление (по часовой), а `border_shape_path` пишет их
+/// точка) и своё направление (по часовой), а `border_commands` задаёт их
 /// от левой точки против часовой. Прямоугольникам менять нечего:
 /// `rrect_d` уже начинает с левого конца верхней стороны и идёт по часовой —
 /// ровно как требует §paths.
@@ -83,31 +98,29 @@ pub fn motion_shape_d(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Opt
 }
 
 /// Контур базовой фигуры `border-shape` в системе ОПОРНОЙ коробки (начало в
-/// её углу, размер rw×rh): `d` для SVG и правило намотки. Circle/ellipse —
+/// её углу, размер rw×rh): команды контура и правило намотки. Circle/ellipse —
 /// через `shape_params` (все ключи extent), inset/rect/xywh — `rrect_of`,
 /// polygon/path/shape — `svg_path_of` (те же функции, что у `shape-outside`).
 /// Пустой `d` — вырожденная фигура (`circle(0%)`, `inset(100px)` шире
 /// коробки): не видно ничего, как в Blink
 /// (border-shape-collapsed-shape-clips-background).
-pub fn border_shape_path(raw: &str, rw: f32, rh: f32) -> Option<(String, &'static str)> {
+pub(super) fn border_commands(
+    raw: &str,
+    rw: f32,
+    rh: f32,
+    d: &mut impl Sink,
+) -> Option<&'static str> {
     let raw = raw.trim();
     if raw.starts_with("circle(") || raw.starts_with("ellipse(") {
         let (cx, cy, rx, ry) = shape_params(raw, rw, rh, 1.0)?;
         if rx <= 0.0 || ry <= 0.0 {
-            return Some((String::new(), "nonzero"));
+            return Some("nonzero");
         }
-        return Some((
-            format!(
-                "M{} {} A{rx} {ry} 0 1 0 {} {} A{rx} {ry} 0 1 0 {} {} Z",
-                cx - rx,
-                cy,
-                cx + rx,
-                cy,
-                cx - rx,
-                cy
-            ),
-            "nonzero",
-        ));
+        d.command(false, Command::Move([cx - rx, cy]));
+        d.command(false, Command::Arc([rx, ry, 0.0, 1.0, 0.0, cx + rx, cy]));
+        d.command(false, Command::Arc([rx, ry, 0.0, 1.0, 0.0, cx - rx, cy]));
+        d.command(false, Command::Close);
+        return Some("nonzero");
     }
     let b = ShapeBox {
         mw: rw,
@@ -124,9 +137,10 @@ pub fn border_shape_path(raw: &str, rw: f32, rh: f32) -> Option<(String, &'stati
         threshold: 0.0,
     };
     if let Some((rect, radii)) = rrect_of(raw, &b) {
-        return Some((rrect_d(rect, radii), "nonzero"));
+        rrect_commands(rect, radii, d);
+        return Some("nonzero");
     }
-    svg_path_of(raw, &b)
+    super::super::shape_profile::svg_path::path_commands(raw, &b, d)
 }
 
 /// Альфа-маска базовой формы `clip-path` (css-shapes-1 §3.1).

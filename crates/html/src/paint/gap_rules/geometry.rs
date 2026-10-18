@@ -2,7 +2,33 @@
 mod assignment;
 mod multicol;
 #[cfg(test)]
-mod span_tests;
+mod span_tests {
+    //! Zero-sized gutters distinguish touching items from actual spanners.
+    use super::GapItem;
+    use gpui::{Bounds, point, px, size};
+
+    #[test]
+    fn touching_a_zero_gap_does_not_span_it() {
+        let item = |start: f32, end: f32| {
+            GapItem::from_bounds(
+                &Bounds {
+                    origin: point(px(start), px(0.)),
+                    size: size(px(end - start), px(1.)),
+                },
+                true,
+            )
+        };
+        let left = item(0., 100.);
+        let right = item(100., 200.);
+        let spanner = item(0., 200.);
+        assert!(!left.spans_a(100., 100.));
+        assert!(!right.spans_a(100., 100.));
+        assert!(spanner.spans_a(100., 100.));
+        assert!(left.spans_a(80., 100.));
+        assert!(spanner.spans_a(100., 120.));
+        assert!(!left.spans_a(100., 120.));
+    }
+}
 pub(super) use multicol::multicol_runs;
 mod flex_lines;
 mod lane_visibility;
@@ -152,4 +178,37 @@ pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
 }
 
 #[cfg(test)]
-mod endpoints_tests;
+mod endpoints_tests {
+    //! Crossing size is independent of the inset property selected at an endpoint.
+
+    use super::{Crossing, GapRun};
+
+    #[test]
+    fn interior_caps_keep_the_geometric_crossing_width() {
+        let mut run = GapRun {
+            g0: 10.,
+            g1: 30.,
+            r0: 0.,
+            r1: 220.,
+            crossings: vec![Crossing {
+                lo: 100.,
+                hi: 120.,
+                breaks: true,
+                joins: false,
+                cross_w: 3.,
+            }],
+            blocked: vec![],
+            hidden: vec![],
+            start_edge: None,
+            end_edge: None,
+            index: 0,
+            count: 1,
+        };
+        assert_eq!(run.edge(100., false), (100., 20., false, 3.));
+        assert_eq!(run.edge(120., true), (120., 20., false, 3.));
+        assert_eq!(run.edge(0., true), (0., 0., false, 0.));
+        assert_eq!(run.edge(220., false), (220., 0., false, 0.));
+        run.crossings[0].joins = true;
+        assert_eq!(run.edge(100., false), (100., 20., true, 3.));
+    }
+}

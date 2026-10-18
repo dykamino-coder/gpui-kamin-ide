@@ -111,7 +111,7 @@ pub(super) fn grouped_with(
         // Обрезка переполнения — ВНУТРЕННИМ контуром (css-borders-4
         // §border-shape-overflow-interaction; Blink `InnerPath`): у двух фигур
         // внутренняя, у одной — внешняя минус обводка (отрицательная обводка
-        // в записи, `background::border_shape_mask_svg`). Кольцо при этом
+        // в записи, `background::border_shape_mask_scene`). Кольцо при этом
         // ложится НАД буфером (`Grouped::over`, ниже).
         let (shape, kind, stroke) = match &bs.inner {
             Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => {

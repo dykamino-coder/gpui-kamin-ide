@@ -164,7 +164,7 @@ pub(crate) fn paint_gradient(
         gpui::point(edge(bounds.left()), edge(bounds.top())),
         gpui::point(edge(bounds.right()), edge(bounds.bottom())),
     );
-    let mut quad = gpui::fill(bounds, crate::style::apply::fill(&gradient));
+    let mut quad = gpui::fill(bounds, crate::paint::apply::fill(&gradient));
     quad.corner_radii = corners;
     window.paint_quad(quad);
     true
