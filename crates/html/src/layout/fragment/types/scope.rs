@@ -7,7 +7,7 @@ use crate::render::RenderOpts;
 /// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
 /// приложение, а код, строящий фрагменты (Blink несёт то же в
 /// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default)]
 pub struct FragCx {
     /// Строится копия ребёнка стопки колонок (`multicol_stack_child`).
     /// Многоколоночник со спаннером внутри другой стопки остаётся на
@@ -23,6 +23,10 @@ pub struct FragCx {
     /// Адресована одному элементу — тому, чей `element()` вызван с ней; его
     /// дети её не видят (`RenderOpts::take_outer_row`).
     pub(crate) outer_row: Option<(f32, f32)>,
+    /// Строится копия ребёнка, разбиваемого на фрагменты собственной
+    /// раскладкой (`fragment::paginate`): `render::element` оборачивает её
+    /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
+    pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
 }
 
 impl RenderOpts {

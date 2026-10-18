@@ -20,7 +20,11 @@ use gpui::AnyElement;
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    crate::layout::fragment::paginate::watch::wrap(e.node_id, element_inner(e, inherited, opts))
+    crate::layout::fragment::paginate::watch::wrap(
+        e.node_id,
+        element_inner(e, inherited, opts),
+        opts,
+    )
 }
 
 fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
