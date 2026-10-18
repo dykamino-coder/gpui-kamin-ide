@@ -117,9 +117,7 @@ pub(crate) fn col_element_widths(
                         // сходится с эталоном. Лежачий `ch` (sideways) оставлен
                         // авто-колонке: явный глиф-замер уводил ширину
                         // (ch-units-vrl-007/008 были зелёными на авто).
-                        Some(Len::Ch(k))
-                            if el.style.upright == Some(true) && el.style.wm().vertical() =>
-                        {
+                        Some(Len::Ch(k)) if el.style.wm().upright() && el.style.wm().vertical() => {
                             let base = match el.style.font_size {
                                 Some(Len::Px(v)) => v,
                                 _ => base_font,

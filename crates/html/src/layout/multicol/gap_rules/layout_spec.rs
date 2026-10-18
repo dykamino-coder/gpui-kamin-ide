@@ -96,7 +96,7 @@ pub(super) fn gap_rule_layout(
     // `*-rl`, колонки (y) — снизу вверх при `sideways-lr`, и `rtl` это
     // переворачивает (эталоны `grid-gap-decorations-multi-value-writing-mode`).
     let rtl = merged.wm().rtl();
-    let sideways_lr = vertical && merged.wm().sideways() && !merged.wm().block_rl();
+    let sideways_lr = vertical && merged.wm().sideways_lr();
     let (mut rev_x, mut rev_y) = if vertical {
         (merged.wm().block_rl(), sideways_lr != rtl)
     } else {

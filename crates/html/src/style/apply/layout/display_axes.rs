@@ -45,7 +45,7 @@ pub(super) fn layout_flex_axes(
         // `sideways-lr` — единственное письмо, где строчная ось идёт СНИЗУ
         // ВВЕРХ (css-writing-modes-4 §3.1), поэтому поперечная ось колонки
         // разворачивается им так же, как `direction: rtl`.
-        let inline_reversed = (c.wm().rtl()) != (c.wm().sideways() && !c.wm().block_rl());
+        let inline_reversed = (c.wm().rtl()) != c.wm().sideways_lr();
         let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
             inline_reversed
         } else {

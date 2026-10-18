@@ -1,4 +1,4 @@
-//! The `writing-mode` keyword (css-writing-modes-4 §3.1; Blink `WritingMode` enum,
+//! The `writing-mode` (css-writing-modes-4 §3.1) and `text-orientation` (§5.1) keywords ( Blink `WritingMode` enum,
 //! `platform/text/writing_mode.h`): the stored value of the property.
 
 /// A `writing-mode` value.
@@ -47,5 +47,26 @@ impl WritingModeKw {
 
     pub(crate) fn is_sideways(self) -> bool {
         matches!(self, Self::SidewaysRl | Self::SidewaysLr)
+    }
+}
+
+/// A `text-orientation` value.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) enum TextOrientation {
+    #[default]
+    Mixed,
+    Upright,
+    /// `sideways` and its legacy alias `sideways-right`.
+    Sideways,
+}
+
+impl TextOrientation {
+    /// Unknown values count as `mixed`, as the property parser always did.
+    pub(crate) fn parse(value: &str) -> Self {
+        match value {
+            "upright" => Self::Upright,
+            "sideways" | "sideways-right" => Self::Sideways,
+            _ => Self::Mixed,
+        }
     }
 }

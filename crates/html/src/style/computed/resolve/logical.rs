@@ -9,17 +9,7 @@
 //! mapping it here too would turn it twice. `contain-intrinsic-*` always maps by the own mode.
 
 use super::*;
-use crate::style::computed::writing_mode::{Side, WritingMode};
-
-/// Physical side index of `Sides`-like arrays: top, right, bottom, left.
-fn index(side: Side) -> u8 {
-    match side {
-        Side::Top => 0,
-        Side::Right => 1,
-        Side::Bottom => 2,
-        Side::Left => 3,
-    }
-}
+use crate::style::computed::writing_mode::WritingMode;
 
 impl Computed {
     /// Место под логические значения — заводится по первому обращению: у
@@ -73,7 +63,7 @@ impl Computed {
         }
         let (b_start, i_start) = (wm.block_start(), wm.inline_start());
         let [bs, ie, be, is] =
-            [b_start, i_start.opposite(), b_start.opposite(), i_start].map(index);
+            [b_start, i_start.opposite(), b_start.opposite(), i_start].map(|s| s.index() as u8);
         let phys_seq = self.side_seq;
         for (which, from, pseq) in [
             (0, &logical.padding, phys_seq.padding),

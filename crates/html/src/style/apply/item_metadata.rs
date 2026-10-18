@@ -21,7 +21,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         if !c.parent_flex_grid {
             return None;
         }
-        let central = c.cb_wm.vertical() && !c.cb_wm.sideways() && c.text_sideways != Some(true);
+        let central = c.cb_wm.vertical() && !c.cb_wm.sideways() && !c.wm().text_sideways();
         if c.wm().vertical() {
             return Some(4 | u8::from(c.wm().block_rl()) | if central { 2 } else { 0 });
         }
@@ -47,7 +47,7 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         parent == 3
     };
     let mut bits = u8::from(rl);
-    if parent >= 2 && !c.cb_wm.sideways() && c.text_sideways != Some(true) {
+    if parent >= 2 && !c.cb_wm.sideways() && !c.wm().text_sideways() {
         bits |= 2;
     }
     if vertical {
@@ -126,7 +126,9 @@ mod tests {
                 writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
                     false, false, false,
                 )),
-                text_sideways: Some(false),
+                text_orientation: Some(
+                    crate::style::computed::writing_mode::TextOrientation::Mixed,
+                ),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own);

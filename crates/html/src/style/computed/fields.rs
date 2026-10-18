@@ -936,16 +936,6 @@ pub struct Computed {
     /// `rel_shift` на элементе, чьи подложка и рамка (`inline_bg`,
     /// `inline_border`) у куска: коробка предка едет только его сдвигом.
     pub box_shift: Option<(f32, f32)>,
-    /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
-    /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
-    /// вертикальном письме вертикальна, то есть равна кеглю.
-    pub upright: Option<bool>,
-    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
-    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
-    /// «In vertical typographic mode, the central baseline is used as the
-    /// dominant baseline when text-orientation is mixed or upright»).
-    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
-    pub text_sideways: Option<bool>,
     /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
     /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
     /// переставляются оси выравнивания вертикальной сетки и пишутся биты
@@ -1597,4 +1587,8 @@ pub struct Computed {
     /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
     /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
     pub(crate) cb_wm: super::writing_mode::WritingMode,
+    /// `text-orientation` (css-writing-modes-4 §5.1); `None` = not declared. `upright` also
+    /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
+    /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
+    pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
 }

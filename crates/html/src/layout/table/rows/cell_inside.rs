@@ -47,8 +47,8 @@ pub(super) fn place_cell_in_grid(
         // ФОРСИРУЕТ ltr (§5.1 — upright задаёт направление ltr), а у
         // `sideways-lr` базовое направление само снизу вверх —
         // разворот инвертируется.
-        let rtl_line = e.style.wm().rtl() && e.style.upright != Some(true);
-        let base_up = e.style.wm().sideways() && !e.style.wm().block_rl();
+        let rtl_line = e.style.wm().rtl() && !e.style.wm().upright();
+        let base_up = e.style.wm().sideways_lr();
         let gr = if rtl_line != base_up {
             cols as i16 - col_ix as i16 - span_cols as i16 + 1
         } else {

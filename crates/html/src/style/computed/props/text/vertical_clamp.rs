@@ -204,8 +204,8 @@ impl Computed {
                 }
             }
             "text-orientation" => {
-                self.upright = Some(v == "upright");
-                self.text_sideways = Some(v == "sideways" || v == "sideways-right");
+                self.text_orientation =
+                    Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
             }
             "writing-mode" => {
                 self.writing_mode = Some(

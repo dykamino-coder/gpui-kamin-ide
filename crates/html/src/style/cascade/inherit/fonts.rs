@@ -61,7 +61,8 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     let wm = crate::style::computed::writing_mode::WritingProps::of(own).inherit(
         crate::style::computed::writing_mode::WritingProps::of(parent),
     );
-    (c.writing_mode, c.flat_mode) = (wm.writing_mode, wm.flat_mode);
+    (c.writing_mode, c.flat_mode, c.text_orientation) =
+        (wm.writing_mode, wm.flat_mode, wm.text_orientation);
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
     c.turned_line = own.turned_line || parent.turned_line;
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
@@ -95,8 +96,6 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => own.vertical_align_base,
     };
-    c.upright = own.upright.or(parent.upright);
-    c.text_sideways = own.text_sideways.or(parent.text_sideways);
     // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
     // элемента переставляются (`apply.rs`), а по оси x идут группы базовых.
     c.parent_grid = match parent.display {

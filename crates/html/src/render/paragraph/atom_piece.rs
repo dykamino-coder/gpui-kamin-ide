@@ -136,7 +136,7 @@ fn atom_piece_in(
         // Measured against Chrome for alphabetic (sideways) lines only; a
         // central-baseline line keeps the tcy emulation below
         // (text-combine-upright-compression-007 moved its CJK glyphs).
-        let alphabetic = inherited.wm().sideways() || inherited.text_sideways == Some(true);
+        let alphabetic = inherited.wm().alphabetic_baseline();
         if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
             return Some(inline::Piece::Atom(physical));
         }

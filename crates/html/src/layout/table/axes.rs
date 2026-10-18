@@ -9,21 +9,9 @@ pub(super) struct Axes([usize; 4]);
 impl Axes {
     /// Block start, inline end, block end, inline start, in physical side indices.
     pub(super) fn new(style: &Computed) -> Self {
-        let mut sides = if style.wm().vertical() {
-            if style.wm().block_rl() {
-                [1, 2, 3, 0]
-            } else {
-                [3, 2, 1, 0]
-            }
-        } else {
-            [0, 1, 2, 3]
-        };
-        let upwards = style.wm().vertical() && style.wm().sideways() && !style.wm().block_rl();
-        if (style.wm().rtl() && (!style.wm().vertical() || style.upright != Some(true))) != upwards
-        {
-            sides.swap(1, 3);
-        }
-        Self(sides)
+        let wm = style.wm().used_direction();
+        let (block, inline) = (wm.block_start(), wm.inline_start());
+        Self([block, inline.opposite(), block.opposite(), inline].map(|side| side.index()))
     }
 
     pub(super) fn logical<T: Copy>(self, physical: [T; 4]) -> [T; 4] {
@@ -52,12 +40,12 @@ pub(super) fn inherited(e: &Element, parent: &Computed) -> Option<Element> {
         e.style.writing_mode,
         e.style.flat_mode,
         e.style.rtl,
-        e.style.upright,
+        e.style.text_orientation,
     ) == (
         style.writing_mode,
         style.flat_mode,
         style.rtl,
-        style.upright,
+        style.text_orientation,
     ) {
         return None;
     }
@@ -65,7 +53,7 @@ pub(super) fn inherited(e: &Element, parent: &Computed) -> Option<Element> {
     copy.style.writing_mode = style.writing_mode;
     copy.style.flat_mode = style.flat_mode;
     copy.style.rtl = style.rtl;
-    copy.style.upright = style.upright;
+    copy.style.text_orientation = style.text_orientation;
     Some(copy)
 }
 

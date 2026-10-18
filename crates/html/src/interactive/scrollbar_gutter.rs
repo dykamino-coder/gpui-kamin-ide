@@ -127,14 +127,7 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
 
 /// Physical axes whose CSS scroll origin is at their far edge.
 pub(crate) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.wm().vertical();
-    let sideways = c.wm().sideways();
-    let rtl = c.wm().rtl() && !(vertical && !sideways && c.upright == Some(true));
-    if vertical {
-        [c.wm().block_rl(), rtl != (sideways && !c.wm().block_rl())]
-    } else {
-        [rtl, false]
-    }
+    c.wm().reversed_axes()
 }
 
 /// Blink ComputedStyle::ShouldPlaceBlockDirectionScrollbarOnLogicalLeft.

@@ -30,11 +30,11 @@ pub(crate) fn vertical_paragraph(
     // стопка обязана строиться так же, как при флаге на контейнере.
     let kids_upright = !nodes.is_empty()
         && nodes.iter().all(|n| match n {
-            Node::Element(e) => e.style.upright == Some(true),
+            Node::Element(e) => e.style.wm().upright(),
             Node::Text(t) => t.trim().is_empty(),
         });
-    let upright = (inherited.upright == Some(true) || kids_upright)
-        && !upright::only_mixed_text(nodes, inherited);
+    let upright =
+        (inherited.wm().upright() || kids_upright) && !upright::only_mixed_text(nodes, inherited);
     if upright && !inherited.wm().sideways() {
         return upright_paragraph(nodes, inherited, opts);
     }
@@ -168,7 +168,7 @@ pub(crate) fn vertical_paragraph(
         Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(px(k * em)),
         _ => None,
     };
-    let central = !inherited.wm().sideways() && inherited.text_sideways != Some(true);
+    let central = !inherited.wm().alphabetic_baseline();
     let vt = crate::text::vertical::VerticalText::new(inner)
         .counter_clockwise(ccw_line)
         .lines_left_first(wm.lines_reversed())

@@ -75,7 +75,7 @@ pub(crate) fn physical(
         child.style.inset = Default::default();
     }
     let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
-    let central = !flow.wm().sideways() && flow.text_sideways != Some(true);
+    let central = !flow.wm().alphabetic_baseline();
     let ccw = flow.wm().line().line_turn()
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = crate::render::element(&child, &context, opts);

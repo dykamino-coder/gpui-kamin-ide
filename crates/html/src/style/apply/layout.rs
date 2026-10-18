@@ -78,7 +78,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed) -> Div {
     // §block-flow) — вертикальные результаты перевода осей разворачиваются.
     // Горизонтальные (из `column`) не трогаются: ось блока у slr обычная,
     // слева направо.
-    let dir = if c.wm().vertical() && c.wm().sideways() && !c.wm().block_rl() {
+    let dir = if c.wm().vertical() && c.wm().sideways_lr() {
         dir.map(|d| match d {
             FlexDir::Col => FlexDir::ColReverse,
             FlexDir::ColReverse => FlexDir::Col,

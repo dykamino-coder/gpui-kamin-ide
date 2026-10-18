@@ -63,7 +63,7 @@ pub(crate) fn line_box_spans(
     // Sideways lines use the same alphabetic metrics and per-run half-leading
     // as horizontal lines (Blink inline_box_state.cc:110-150). Only the physical
     // projection differs. Central baseline runs need their own metric table.
-    let alphabetic = inherited.wm().sideways() || inherited.text_sideways == Some(true);
+    let alphabetic = inherited.wm().alphabetic_baseline();
     if (vertical && !alphabetic)
         || crate::render::paragraph::paragraph_style(inherited)
             .text_fit

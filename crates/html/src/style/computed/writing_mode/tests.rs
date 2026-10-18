@@ -78,3 +78,35 @@ fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
     };
     assert!(child.wm().is_orthogonal_to(child.cb_wm));
 }
+
+#[test]
+fn upright_sets_used_direction_ltr_only_in_vertical_typographic_mode() {
+    let upright = |wm: WritingMode| WritingMode {
+        rtl: true,
+        orientation: TextOrientation::Upright,
+        ..wm
+    };
+    assert!(!upright(mode(true, true, false)).used_direction().rtl());
+    assert!(upright(mode(true, true, true)).used_direction().rtl());
+    assert!(upright(mode(false, false, false)).used_direction().rtl());
+}
+
+#[test]
+fn reversed_axes_follow_block_and_inline_start() {
+    // (mode, rtl, [x reversed, y reversed])
+    let rows = [
+        (mode(false, false, false), false, [false, false]),
+        (mode(false, false, false), true, [true, false]),
+        (mode(true, true, false), false, [true, false]),
+        (mode(true, false, false), true, [false, true]),
+        (mode(true, false, true), false, [false, true]),
+        (mode(true, false, true), true, [false, false]),
+    ];
+    for (m, rtl, axes) in rows {
+        assert_eq!(
+            WritingMode { rtl, ..m }.reversed_axes(),
+            axes,
+            "{m:?} rtl={rtl}"
+        );
+    }
+}

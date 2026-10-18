@@ -96,6 +96,15 @@ pub enum StackAxis {
 }
 
 impl StackAxis {
+    /// The block-flow axis of a writing mode (§3.1): `sideways-lr` stacks like `vertical-lr`.
+    pub(crate) fn of(wm: crate::style::computed::writing_mode::WritingMode) -> Self {
+        match (wm.vertical(), wm.block_rl()) {
+            (false, _) => StackAxis::Horizontal,
+            (true, true) => StackAxis::VerticalRl,
+            (true, false) => StackAxis::VerticalLr,
+        }
+    }
+
     pub fn is_vertical(self) -> bool {
         !matches!(self, StackAxis::Horizontal)
     }

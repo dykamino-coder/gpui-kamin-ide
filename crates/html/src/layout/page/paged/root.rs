@@ -135,12 +135,6 @@ pub(super) fn group_runs(
 /// Block axis of the root writing mode (css-writing-modes-4 §3.1): the
 /// direction the page stack fragments in; `None` — horizontal.
 pub(super) fn root_axis(root: &Computed) -> Option<crate::layout::fragment::types::StackAxis> {
-    use crate::layout::fragment::types::StackAxis;
-    (root.wm().vertical()).then(|| {
-        if root.wm().block_rl() {
-            StackAxis::VerticalRl
-        } else {
-            StackAxis::VerticalLr
-        }
-    })
+    let axis = crate::layout::fragment::types::StackAxis::of(root.wm());
+    axis.is_vertical().then_some(axis)
 }

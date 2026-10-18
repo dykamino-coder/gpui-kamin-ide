@@ -2,15 +2,7 @@
 use crate::style::computed::Computed;
 
 pub(super) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.wm().vertical();
-    let sideways = c.wm().sideways();
-    // Upright vertical text forces the used direction to LTR; sideways writing ignores orientation.
-    let rtl = c.wm().rtl() && !(vertical && !sideways && c.upright == Some(true));
-    if vertical {
-        [c.wm().block_rl(), rtl != (sideways && !c.wm().block_rl())]
-    } else {
-        [rtl, false]
-    }
+    c.wm().reversed_axes()
 }
 
 pub(super) fn block(c: &Computed) -> [bool; 3] {
@@ -62,7 +54,7 @@ mod tests {
                 true, false, false,
             )),
             rtl: Some(true),
-            upright: Some(true),
+            text_orientation: Some(crate::style::computed::writing_mode::TextOrientation::Upright),
             ..Computed::default()
         };
         assert_eq!(reversed(&c), [false, false]);

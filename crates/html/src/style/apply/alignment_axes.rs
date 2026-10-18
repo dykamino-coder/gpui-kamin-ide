@@ -101,7 +101,7 @@ pub(super) fn grid_self(style: &mut gpui::StyleRefinement, c: &crate::style::com
     }
     if let Some(right) = c.justify_self_physical {
         let end = if vertical {
-            right != (c.cb_wm.sideways() && !c.cb_wm.block_rl())
+            right != c.cb_wm.sideways_lr()
         } else {
             right != parent_x_end
         };

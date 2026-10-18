@@ -50,7 +50,7 @@ fn box_inset(mut d: Div, c: &Computed) -> Div {
         && (c.position == Some(Position::Relative) || set(c.height))
         && set(c.inset.top)
         && set(c.inset.bottom)
-        && c.cb_wm.rtl() != (c.cb_wm.sideways() && !c.cb_wm.block_rl());
+        && c.cb_wm.rtl() != c.cb_wm.sideways_lr();
     for (val, f) in [
         (if drop_top { None } else { c.inset.top }, 0u8),
         (c.inset.right, 1),

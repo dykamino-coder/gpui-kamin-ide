@@ -1,5 +1,5 @@
 //! The writing mode of a box as ONE value, and the one logical↔physical side mapping
-//! (css-writing-modes-4 §3.1 `writing-mode`, §2.1 `direction`, §6.4 Abstract-Physical Mapping).
+//! (css-writing-modes-4 §3.1 `writing-mode`, §2.1 `direction`, §5.1 `text-orientation`, §6.4 Abstract-Physical Mapping).
 //!
 //! Every reader asks `Computed::wm()`; nothing else decodes the stored properties. The combined
 //! value follows Blink's `ComputedStyle::GetWritingDirection()` (`core/style/computed_style.h`)
@@ -17,7 +17,7 @@ use super::Computed;
 
 mod keyword;
 mod props;
-pub(crate) use keyword::WritingModeKw;
+pub(crate) use keyword::{TextOrientation, WritingModeKw};
 pub(crate) use props::WritingProps;
 
 /// How a horizontally typeset line is turned to become the vertical line.
@@ -40,6 +40,16 @@ pub(crate) enum Side {
 }
 
 impl Side {
+    /// Index in physical `[top, right, bottom, left]` arrays.
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Side::Top => 0,
+            Side::Right => 1,
+            Side::Bottom => 2,
+            Side::Left => 3,
+        }
+    }
+
     pub(crate) fn opposite(self) -> Self {
         match self {
             Side::Top => Side::Bottom,
@@ -61,6 +71,7 @@ pub struct WritingMode {
     /// Inside the horizontal clone of a turned vertical paragraph.
     turned: bool,
     rtl: bool,
+    orientation: TextOrientation,
 }
 
 impl WritingMode {
@@ -73,6 +84,7 @@ impl WritingMode {
             sideways: vertical && sideways,
             turned: false,
             rtl,
+            orientation: TextOrientation::Mixed,
         }
     }
 
@@ -104,9 +116,30 @@ impl WritingMode {
         self.turned
     }
 
+    /// `sideways-lr` (also laid flat): the one mode whose line runs bottom-to-top (§3.1).
+    pub(crate) fn sideways_lr(self) -> bool {
+        self.sideways && !self.rl
+    }
+
     /// `direction: rtl`.
     pub fn rtl(self) -> bool {
         self.rtl
+    }
+
+    /// `text-orientation: upright`.
+    pub(crate) fn upright(self) -> bool {
+        self.orientation == TextOrientation::Upright
+    }
+
+    /// `text-orientation: sideways`: the alphabetic baseline is dominant (§4.2).
+    pub(crate) fn text_sideways(self) -> bool {
+        self.orientation == TextOrientation::Sideways
+    }
+
+    /// §4.2: the alphabetic baseline is dominant in sideways modes and with
+    /// `text-orientation: sideways`; otherwise vertical text uses the central one.
+    pub(crate) fn alphabetic_baseline(self) -> bool {
+        self.sideways || self.text_sideways()
     }
 
     /// The writing mode of the LINE the box sits in: a turned line is vertical even though
@@ -126,7 +159,7 @@ impl WritingMode {
 
     /// The rotation of the turned-paragraph pipeline (§6.4 line-left / line-over).
     pub(crate) fn line_turn(self) -> Turn {
-        match (self.vertical, self.sideways && !self.rl) {
+        match (self.vertical, self.sideways_lr()) {
             (false, _) => Turn::None,
             (true, false) => Turn::Clockwise,
             (true, true) => Turn::CounterClockwise,
@@ -154,6 +187,26 @@ impl WritingMode {
     pub(crate) fn inline_start(self) -> Side {
         let left = self.line_left();
         if self.rtl { left.opposite() } else { left }
+    }
+
+    /// §5.1: `text-orientation: upright` makes the used `direction` ltr in vertical
+    /// typographic mode; `sideways-*` is horizontal typographic mode, where it does nothing.
+    pub(crate) fn used_direction(self) -> Self {
+        Self {
+            rtl: self.rtl && !(self.vertical && !self.sideways && self.upright()),
+            ..self
+        }
+    }
+
+    /// Physical axes `[x, y]` that start at their far edge (right, bottom) — the scroll
+    /// origin and grid flow (§6.4 with the used direction).
+    pub(crate) fn reversed_axes(self) -> [bool; 2] {
+        let wm = self.used_direction();
+        let starts = [wm.block_start(), wm.inline_start()];
+        [
+            starts.contains(&Side::Right),
+            starts.contains(&Side::Bottom),
+        ]
     }
 
     /// Block-start (§6.4): top in horizontal modes, right for `*-rl`, left for `*-lr`.

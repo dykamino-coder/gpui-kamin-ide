@@ -15,7 +15,7 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed) -> bool {
         nodes.iter().all(|node| match node {
             Node::Text(text) if !text.trim().is_empty() => {
                 *seen = true;
-                style.upright != Some(true)
+                !style.wm().upright()
             }
             Node::Element(element)
                 if crate::render::real_inline(element)

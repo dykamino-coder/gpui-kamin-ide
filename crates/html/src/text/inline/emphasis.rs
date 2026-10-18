@@ -59,7 +59,7 @@ pub fn emphasis_spans(
                 mark: if style.emphasis_auto_shape
                     && rotated.is_some()
                     && !style.wm().sideways()
-                    && style.text_sideways != Some(true)
+                    && !style.wm().text_sideways()
                 {
                     if mark == "\u{25CB}" {
                         "\u{FE46}"

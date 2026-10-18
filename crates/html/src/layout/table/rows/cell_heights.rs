@@ -22,7 +22,8 @@ pub(super) fn resolve_cell_heights(
         // где эталон меряет лежачим нулём (ch-units-vrl-007/008 —
         // расхождение путей резолва div-эмуляции, вернуться при
         // унификации resolve_em).
-        let upright = row.style.upright.or(inherited.upright) == Some(true);
+        let upright = row.style.text_orientation.or(inherited.text_orientation)
+            == Some(crate::style::computed::writing_mode::TextOrientation::Upright);
         let vertical = row.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
@@ -82,7 +83,8 @@ pub(super) fn resolve_cell_heights(
         && cell.style.min_width.is_none()
         && cell.style.width.is_none()
     {
-        let upright = row.style.upright.or(inherited.upright) == Some(true);
+        let upright = row.style.text_orientation.or(inherited.text_orientation)
+            == Some(crate::style::computed::writing_mode::TextOrientation::Upright);
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
