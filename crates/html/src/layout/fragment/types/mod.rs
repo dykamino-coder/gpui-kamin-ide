@@ -14,6 +14,7 @@ pub use rows::Kid;
 pub use rows::Par;
 pub use rows::Rows;
 mod repeat_bands;
+pub(crate) use repeat_bands::frag_copy;
 mod stack_child;
 use crate::tolerance::COORD_EPS;
 pub use stack_child::Repeat;
