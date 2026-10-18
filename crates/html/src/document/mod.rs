@@ -29,9 +29,11 @@ use crate::document::canvas_background::any_containment;
 use crate::document::canvas_background::any_side;
 use crate::document::canvas_background::mark_canvas_background;
 use crate::document::canvas_background::viewport_overflow;
+pub use crate::document::embedded::Embedded;
 use crate::document::embedded::hash_of;
+#[cfg(test)]
+pub(crate) use crate::document::embedded::parse_embedded;
 use crate::document::embedded::unwrap_document;
-pub use crate::document::embedded::{Embedded, parse_embedded};
 pub(crate) use crate::document::embedded::{EmbeddingScheme, parse_embedded_sized};
 use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;
