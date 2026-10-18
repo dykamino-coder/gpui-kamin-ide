@@ -3,7 +3,7 @@
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
-use crate::style::css::{Media, Rule, parse_stylesheet_media};
+use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
 use crate::style::select::has::{HasArg, collect_has_args, parse_has_arg};
 use crate::style::select::{Ancestor, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -39,14 +39,22 @@ pub(in crate::dom) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handl
 /// Таблицы тени: копия листа агента + каждый `<style>` тени отдельной
 /// таблицей происхождения документа. Возвращает область и аргументы её
 /// `:has()` — отметки для них ставятся по дереву тени.
-pub(super) fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<HasArg>) {
+pub(super) fn shadow_scope(
+    root: &Handle,
+    agent: &Scope,
+    media: Media,
+    layers: &mut LayerRegistry,
+) -> (Rc<Scope>, Vec<HasArg>) {
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
     let mut sheets: Vec<String> = vec![];
     collect_style_tags(root, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_stylesheet_media(css, media).into_iter().enumerate() {
+        for (i, r) in parse_document_sheet(css, media, layers)
+            .into_iter()
+            .enumerate()
+        {
             rules.push(Rule {
                 order: base + i,
                 origin: 1,

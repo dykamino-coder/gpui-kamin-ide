@@ -10,7 +10,7 @@ use super::*;
 /// (`::details-content`, `::picker(select)`, `::picker-icon`,
 /// `::-webkit-slider-thumb`), для ПРОВЕРКИ снимаются; в `known_pseudo` их не
 /// вносим — иначе правила с ними начали бы применяться к самой коробке.
-fn supports_selector(args: &str) -> bool {
+fn supports_selector(args: &str, cx: &SelectorCx) -> bool {
     let s = args.trim();
     if split_top_level(s, ',').len() > 1 {
         return false;
@@ -35,12 +35,12 @@ fn supports_selector(args: &str) -> bool {
     if s.trim().is_empty() || s.ends_with(|ch: char| ch.is_whitespace() || "+>~".contains(ch)) {
         s.push('*');
     }
-    selector_strict(&s)
+    selector_strict(&s, cx)
 }
 
 /// Селектор годен, и годна КАЖДАЯ часть списков внутри `:is()` и родни.
-fn selector_strict(s: &str) -> bool {
-    if Selector::parse(s).is_none() {
+fn selector_strict(s: &str, cx: &SelectorCx) -> bool {
+    if Selector::parse_in(s, cx).is_none() {
         return false;
     }
     for f in [":is(", ":where(", ":has(", ":not(", ":matches(", ":any("] {
@@ -69,7 +69,7 @@ fn selector_strict(s: &str) -> bool {
                 if f == ":has(" {
                     p = p.trim_start_matches(['>', '+', '~']).trim_start();
                 }
-                if p.is_empty() || !selector_strict(p) {
+                if p.is_empty() || !selector_strict(p, cx) {
                     return false;
                 }
             }
@@ -79,7 +79,7 @@ fn selector_strict(s: &str) -> bool {
     true
 }
 
-pub(super) fn supports_eval_term(term: &str) -> SupTri {
+pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx) -> SupTri {
     let term = term.trim();
     // Функция `имя(...)`.
     if !term.starts_with('(') {
@@ -90,7 +90,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         let args = &term[open + 1..term.len().saturating_sub(1)];
         return match name.as_str() {
             "selector" => {
-                if supports_selector(args) {
+                if supports_selector(args, cx) {
                     SupTri::True
                 } else {
                     SupTri::False
@@ -143,7 +143,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
     }
     let inner = &term[1..term.len() - 1];
     // Скобки вокруг условия.
-    if let Some(t) = supports_condition(inner) {
+    if let Some(t) = supports_condition(inner, cx) {
         return t;
     }
     // Точка с запятой внутри скобок: `<declaration>` её не содержит
@@ -174,7 +174,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         if colons.len() > 2 {
             return SupTri::False;
         }
-        if !attr_prefixes_declared(colons[1]) {
+        if !attr_prefixes_declared(colons[1], cx) {
             return SupTri::False;
         }
         // CSS Conditional 3 §6.1: substitution cannot add an unknown property.

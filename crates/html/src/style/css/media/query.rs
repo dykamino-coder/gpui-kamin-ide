@@ -5,7 +5,7 @@ use super::*;
 impl Media {
     /// Один `<media-query>`: `[not | only]? <media-type> [and <cond>]?`
     /// либо голое `<media-condition>`.
-    pub(crate) fn mq_query(&self, raw: &str) -> SupTri {
+    pub(crate) fn mq_query(&self, raw: &str, custom: CustomMedia) -> SupTri {
         let s = raw.trim().to_ascii_lowercase();
         if s.is_empty() {
             return SupTri::False;
@@ -13,7 +13,7 @@ impl Media {
         // Голое условие узнаётся по скобке: `<media-condition>` всегда
         // начинается со скобки либо с `not (`.
         if s.starts_with('(') || s.starts_with("not (") {
-            return self.mq_condition(&s);
+            return self.mq_condition(&s, custom);
         }
         let (negate, rest) = if let Some(r) = s.strip_prefix("not ") {
             (true, r.trim())
@@ -49,7 +49,7 @@ impl Media {
         // одному типу, поэтому склейка идёт первой.
         let full = match tail {
             None => hit,
-            Some(cond) => mq_and(hit, self.mq_condition(cond)),
+            Some(cond) => mq_and(hit, self.mq_condition(cond, custom)),
         };
         if negate { sup_not(full) } else { full }
     }
@@ -57,7 +57,7 @@ impl Media {
     /// `<media-condition>`: `not <in-parens>` | `<in-parens> (and ..)*` |
     /// `<in-parens> (or ..)*`. Смешивать `and` и `or` без скобок нельзя
     /// (§3.1), такой запрос негоден целиком.
-    pub(crate) fn mq_condition(&self, raw: &str) -> SupTri {
+    pub(crate) fn mq_condition(&self, raw: &str, custom: CustomMedia) -> SupTri {
         let s = raw.trim();
         if let Some(rest) = s.strip_prefix("not ") {
             let Some((term, tail)) = take_parens(rest.trim()) else {
@@ -66,12 +66,12 @@ impl Media {
             if !tail.trim().is_empty() {
                 return SupTri::False;
             }
-            return sup_not(self.mq_in_parens(term));
+            return sup_not(self.mq_in_parens(term, custom));
         }
         let Some((term, mut rest)) = take_parens(s) else {
             return SupTri::False;
         };
-        let mut acc = self.mq_in_parens(term);
+        let mut acc = self.mq_in_parens(term, custom);
         let mut op: Option<&str> = None;
         loop {
             let r = rest.trim_start();
@@ -93,7 +93,7 @@ impl Media {
             let Some((term, tail)) = take_parens(rest.trim_start()) else {
                 return SupTri::False;
             };
-            let v = self.mq_in_parens(term);
+            let v = self.mq_in_parens(term, custom);
             acc = if word == "and" {
                 mq_and(acc, v)
             } else {
@@ -105,10 +105,10 @@ impl Media {
 
     /// `<media-in-parens>` без внешних скобок: вложенное условие, фича или
     /// `<general-enclosed>`.
-    pub(crate) fn mq_in_parens(&self, inner: &str) -> SupTri {
+    pub(crate) fn mq_in_parens(&self, inner: &str, custom: CustomMedia) -> SupTri {
         let s = inner.trim();
         if s.starts_with('(') || s.starts_with("not ") {
-            return self.mq_condition(s);
+            return self.mq_condition(s, custom);
         }
         // Диапазонная запись §3.3: `(width > 100px)`, `(100px <= width)`,
         // `(100px < width < 200px)`. Двусторонняя форма — это И двух
@@ -121,7 +121,7 @@ impl Media {
         }
         // `(--имя)` — ссылка на `@custom-media` (mediaqueries-5 §5.1).
         if s.starts_with("--") {
-            return custom::eval_custom(self, s);
+            return custom::eval_custom(self, s, custom);
         }
         // Булева форма `<mf-boolean>`: голое имя истинно, когда значение
         // фичи не «ноль/none» (§2.4.2).

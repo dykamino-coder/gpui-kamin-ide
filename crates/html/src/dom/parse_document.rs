@@ -9,7 +9,7 @@ use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
 use crate::dom::xhtml::*;
-use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
+use crate::style::css::{Decls, LayerRegistry, Media, Rule, parse_document_sheet, parse_keyframes};
 use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::{QUIRKS, quirks};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -34,7 +34,8 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     let _ = crate::style::css::take_try_rules();
     let _ = crate::style::css::take_property_rules();
     crate::style::generated::counter_style_rules::reset();
-    crate::style::css::reset_layers();
+    // `@font-feature-values` — тоже от прошлого документа.
+    crate::text::fonts::alternates::reset();
     // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
     // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
     // весь разбор. Пишет их `walk` ниже, на элементе `html`.
@@ -67,9 +68,11 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     });
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
-    let mut rules = parse_stylesheet_media(user_agent_css(), media);
+    // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
+    let mut layers = LayerRegistry::default();
+    let mut rules = parse_document_sheet(user_agent_css(), media, &mut layers);
     let base = rules.len();
-    for (i, r) in parse_stylesheet_media(extra_css, media)
+    for (i, r) in parse_document_sheet(extra_css, media, &mut layers)
         .into_iter()
         .enumerate()
     {
@@ -83,7 +86,7 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     // (css-shadow-1 §3.2: селекторы сопоставляются в своей области).
     if quirks() {
         let base = rules.len();
-        for (i, r) in parse_stylesheet_media(super::ua_style::QUIRKS_CSS, media)
+        for (i, r) in parse_document_sheet(super::ua_style::QUIRKS_CSS, media, &mut layers)
             .into_iter()
             .enumerate()
         {
@@ -101,7 +104,10 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     collect_style_tags(&dom.document, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_stylesheet_media(css, media).into_iter().enumerate() {
+        for (i, r) in parse_document_sheet(css, media, &mut layers)
+            .into_iter()
+            .enumerate()
+        {
             rules.push(Rule {
                 order: base + i,
                 // Таблица ДОКУМЕНТА: её происхождение старше нашего умолчания и
@@ -147,7 +153,14 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     if html.contains("shadowrootmode") {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
-        let prepared = prepare(&dom.document, &agent, media, &mut has_args, &mut tree);
+        let prepared = prepare(
+            &dom.document,
+            &agent,
+            media,
+            &mut layers,
+            &mut has_args,
+            &mut tree,
+        );
         scan_shadows(
             &top,
             &mut vec![],

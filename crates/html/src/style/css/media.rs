@@ -4,7 +4,7 @@ use crate::style::css::*;
 
 mod calc;
 mod custom;
-pub(crate) use custom::scan_custom_media;
+pub(crate) use custom::custom_media_of;
 mod features;
 mod query;
 use features::{mq_and, mq_base, mq_or};
@@ -234,6 +234,11 @@ impl Media {
     /// прежний двухзначный разбор переворачивал ложь в истину и применял
     /// правило (`at-media-002`, `negation-001`, `mq-gamut-003`).
     pub fn matches(&self, query: &str) -> bool {
+        self.matches_in(query, CustomMedia::NONE)
+    }
+
+    /// `matches` with the `@custom-media` aliases of the sheet being parsed.
+    pub(crate) fn matches_in(&self, query: &str, custom: CustomMedia) -> bool {
         let q = query.trim();
         let q = q.strip_prefix("@media").unwrap_or(q).trim();
         // Любой пробельный знак — тот же пробел (css-syntax-3 §4.2
@@ -253,6 +258,6 @@ impl Media {
         // часть считается сама по себе.
         split_top_level(q, ',')
             .into_iter()
-            .any(|alt| self.mq_query(alt) == SupTri::True)
+            .any(|alt| self.mq_query(alt, custom) == SupTri::True)
     }
 }

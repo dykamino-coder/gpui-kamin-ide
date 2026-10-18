@@ -3,7 +3,7 @@
 use super::*;
 
 impl Selector {
-    pub(crate) fn parse_compound(raw: &str) -> Option<Selector> {
+    pub(crate) fn parse_compound(raw: &str, cx: &SelectorCx) -> Option<Selector> {
         let s = raw.trim();
         if s.is_empty() || s == "*" || s == "*|*" {
             return Some(Selector {
@@ -75,13 +75,13 @@ impl Selector {
             // (`at-media-003`, `at-supports-045`, `at-supports-namespace-001/002`).
             let name = match name.rsplit_once('|') {
                 Some((ns, t)) => {
-                    if !ns_declared(ns) {
+                    if !cx.ns_declared(ns) {
                         return None;
                     }
                     t.to_string()
                 }
                 None if name == "*" => name,
-                None => crate::style::css::default_ns::mark_tag(name),
+                None => crate::style::css::default_ns::mark_tag(name, cx),
             };
             sel.universal = name == "*";
             if !name.is_empty() && name != "*" {
@@ -160,7 +160,7 @@ impl Selector {
                     {
                         sel.also.push(prev);
                     }
-                    sel.pseudo = Some(pseudo_name(name.trim_start_matches(':')))
+                    sel.pseudo = Some(pseudo_name(name.trim_start_matches(':'), cx))
                 }
                 _ => return None,
             }
@@ -172,11 +172,14 @@ impl Selector {
 
 /// Имя псевдокласса в нижнем регистре. У `:is()`/`:where()` аргумент —
 /// список селекторов, и его регистр (имена классов) сохраняется как есть.
-fn pseudo_name(raw: &str) -> String {
+fn pseudo_name(raw: &str, cx: &SelectorCx) -> String {
     if let Some((head, arg)) = raw.split_once('(') {
         let head = head.to_ascii_lowercase();
         if matches!(head.as_str(), "is" | "where" | "matches" | "any") {
-            return format!("{head}({}", crate::style::css::default_ns::mark_arg(arg));
+            return format!(
+                "{head}({}",
+                crate::style::css::default_ns::mark_arg(arg, cx)
+            );
         }
         if matches!(head.as_str(), "host" | "host-context" | "slotted" | "has") {
             return format!("{head}({arg}");
