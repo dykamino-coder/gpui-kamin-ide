@@ -5,7 +5,7 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
-    parent.vertical != Some(true)
+    !parent.wm().vertical()
         && matches!(parent.display, None | Some(Display::Block))
         && matches!(child.display, None | Some(Display::Block))
 }
@@ -15,7 +15,7 @@ pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
     // size even while the parent's block size is being probed intrinsically.
     // Inline-blocks and table-cell flow roots also establish this containing
     // block; a wrapping fallback alone must not become a definite size.
-    if parent.vertical == Some(true)
+    if parent.wm().vertical()
         && matches!(
             parent.display,
             None | Some(
@@ -170,14 +170,18 @@ mod tests {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut container = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::InlineBlock),
             height: Some(Len::Px(160.0)),
             ortho_limit: Some(160.0),
             ..Computed::default()
         };
         let mut child = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::Block),
             ..bordered()
         };
@@ -199,14 +203,18 @@ mod tests {
         use crate::layout::writing_mode::native_vertical;
         use crate::layout::writing_mode::orthogonal_inline::resolve;
         let mut cell = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             display: Some(Display::TableCell),
             height: Some(Len::Px(180.0)),
             ortho_limit: Some(180.0),
             ..Computed::default()
         };
         let mut child = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..bordered()
         };
         resolve(&mut child, &cell, (800.0, 600.0), false);

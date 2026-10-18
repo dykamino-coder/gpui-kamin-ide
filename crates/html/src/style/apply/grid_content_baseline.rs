@@ -7,7 +7,7 @@ pub(super) fn apply(style: &mut gpui::StyleRefinement, c: &Computed) {
     // Only the physical-y, first-baseline contract is currently implemented.
     // Other preferences keep their existing fallback rather than moving the box.
     if c.parent_grid == 1
-        && c.vertical != Some(true)
+        && !c.wm().vertical()
         && c.align_content_baseline == Some(false)
         && matches!(
             c.align_self.or(c.parent_grid_align_items),

@@ -90,14 +90,14 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
         // Логические края — по НАПРАВЛЕНИЮ ПИСЬМА: `end` при rtl — левый
         // край (text-align-end-001: текст уходил вправо).
         Some(TextAlign::Start) => {
-            d = if c.rtl == Some(true) {
+            d = if c.wm().rtl() {
                 d.text_right()
             } else {
                 d.text_left()
             }
         }
         Some(TextAlign::End) => {
-            d = if c.rtl == Some(true) {
+            d = if c.wm().rtl() {
                 d.text_left()
             } else {
                 d.text_right()

@@ -22,7 +22,7 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
         // (та же перестановка, что у дорожек сетки ниже, `flip`).
         // ★ ЗАМЕРЕНО: `vertical-rl` как `fill-reverse` колоночных лунок —
         // лунки вертикального письма (116 пар) +1/−1, не взято.
-        let vertical = c.vertical == Some(true);
+        let vertical = c.wm().vertical();
         let logical_rows = crate::dom::lanes_row_dir(c);
         d.style().grid_lanes = Some(gpui::GridLanesFlow {
             rows: logical_rows != vertical,

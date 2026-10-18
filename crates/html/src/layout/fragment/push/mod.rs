@@ -25,21 +25,17 @@ pub(crate) use spacer::grow_pushed;
 // спуска, как там; таблица по тегу — рядами `table_shape`
 // (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
 // отказ от спуска, и здесь тоже.
-thread_local! {
-    /// Щуп `pushed_box_at` ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
-    static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+// `forced` — щуп ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
+fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool) -> Option<u64> {
     if depth == 0 {
         return None;
     }
     let _frame = crate::layout::fragment::LineScope::enter(c);
-    if let Some(found) = row::pushed_row_at(c, a, depth) {
+    if let Some(found) = row::pushed_row_at(c, a, depth, forced) {
         return found;
     }
     if table_box(c) {
-        return pushed_cell_at(c, a, depth);
+        return pushed_cell_at(c, a, depth, forced);
     }
     // Сетка-стопка спускается ровно как в `shape_full` — иначе распорка
     // роста (`705fd58`) до ряда сетки не добирается, отдаёт `None`, и фон
@@ -88,7 +84,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             let start = top + r0 + kmt;
             if a > start - 0.01
                 && a < start + s.0 - 0.01
-                && let Some(id) = pushed_box_at(k, a - start, depth - 1)
+                && let Some(id) = pushed_box_at(k, a - start, depth - 1, forced)
             {
                 return Some(id);
             }
@@ -124,7 +120,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     let wrap_flex = is_flex
         && c.style.flex_wrap == Some(true)
         && matches!(c.style.height, Some(Len::Px(_)))
-        && !PUSH_FORCED.with(|f| f.get());
+        && !forced;
     // Та же гибкая стопка, что в `shape_full` (`flex_items`): поля не
     // схлопываются, между элементами `row-gap`, порядок визуальный,
     // внепоточные — не элементы.
@@ -134,7 +130,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     ) && c.style.webkit_box != Some(true)
         && !row_nowrap;
     let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
         _ => 0.0,
     };
     let mut items: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
@@ -176,7 +172,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             if !oof
                 && a > top + 0.01
                 && a < top + h - 0.01
-                && let Some(id) = pushed_box_at(k, a - top, depth - 1)
+                && let Some(id) = pushed_box_at(k, a - top, depth - 1, forced)
             {
                 return Some(id);
             }
@@ -203,7 +199,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             return (!wrap_flex).then_some(k.node_id);
         }
         if !oof && start < a && a < start + h - 0.01 {
-            return pushed_box_at(k, a - start, depth - 1);
+            return pushed_box_at(k, a - start, depth - 1, forced);
         }
         y = start + h;
         prev_mb = kmb;

@@ -19,13 +19,6 @@ pub(crate) use own_box::has_own_box;
 // `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
 // 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
 // колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
-thread_local! {
-    /// Коробки, чью меру фрагментации дотянули внепоточные потомки
-    /// (`shape_full`): `node_id -> (свой размер, мера с дотягом)`.
-    pub(crate) static OOF_OWN: std::cell::RefCell<std::collections::HashMap<u64, (f32, f32)>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
 pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
     fn walk(c: &Element, depth: u8, fixed_cb: bool) -> bool {
         depth > 0

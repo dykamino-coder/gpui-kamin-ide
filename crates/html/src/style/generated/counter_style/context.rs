@@ -13,8 +13,8 @@ impl Context {
     pub(crate) fn new(style: &Computed, parent: Self) -> Self {
         Self {
             rtl: style.rtl.unwrap_or(parent.rtl),
-            vertical: style.vertical.unwrap_or(parent.vertical),
-            vertical_rl: style.vertical_rl.unwrap_or(parent.vertical_rl),
+            vertical: style.vertical_decl().unwrap_or(parent.vertical),
+            vertical_rl: style.rl_decl().unwrap_or(parent.vertical_rl),
         }
     }
 

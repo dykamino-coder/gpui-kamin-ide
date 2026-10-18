@@ -75,13 +75,16 @@ pub(super) fn table_rows(
     have_rows: bool,
     px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
+    // Буфер полосы группы рядов — общий для всех её рядов (`RowRects`).
+    let mut group_bands = std::collections::HashMap::new();
     for (row, carry) in rows {
         row_ix += 1;
         let row_ref: crate::paint::effects::transformed_element::RefBox = Default::default();
         for slot in occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
-        let (row_rects, grp_band) = row_band_probes(opts, &mut under, &group_of, row, carry);
+        let (row_rects, grp_band) =
+            row_band_probes(&mut group_bands, &mut under, &group_of, row, carry);
         let shift = (carry.0, carry.1);
         // Письмо к строкам НЕ ПРИМЕНЯЕТСЯ (раскладку ряда ведёт таблица,
         // CSS Writing Modes §3.1) — но ВЫЧИСЛЕННОЕ значение наследуется в

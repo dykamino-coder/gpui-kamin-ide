@@ -76,9 +76,9 @@ pub(super) fn static_position_atom(
     spot.set(crate::layout::positioned::containing_block::Spot {
         hole: None,
         next_line: (!inline_level).then(|| line_height_px(inherited, opts)),
-        rtl: inherited.rtl == Some(true),
-        vertical: inherited.vertical == Some(true),
-        vertical_rl: inherited.vertical_rl == Some(true),
+        rtl: inherited.wm().rtl(),
+        vertical: inherited.wm().vertical(),
+        vertical_rl: inherited.wm().block_rl(),
         self_align: if inline_level {
             None
         } else {
@@ -179,9 +179,9 @@ pub(super) fn absolute_atom(
         // the inline parent's static-position rectangle, as the all-auto
         // branch above (horizontal ltr; `align-self-static-position-003/007`).
         let block_level = !hypothetical_inline_level(e)
-            && inherited.vertical != Some(true)
-            && inherited.rotated_line != Some(true)
-            && inherited.rtl != Some(true);
+            && !inherited.wm().vertical()
+            && !inherited.wm().turned()
+            && !inherited.wm().rtl();
         spot.set(crate::layout::positioned::containing_block::Spot {
             hole: None,
             next_line: block_level.then(|| line_height_px(inherited, opts)),
@@ -193,10 +193,10 @@ pub(super) fn absolute_atom(
             line_rect: true,
             fixed_axes: (x_set, y_set),
             line_thickness: line_height_px(inherited, opts),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);

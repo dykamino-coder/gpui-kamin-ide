@@ -27,19 +27,8 @@ use root::root_axis;
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
 const PAGE_COPIES: usize = 12;
 
-thread_local! {
-    /// Строится стопка страниц. Абсолют корня БЕЗ заданных сторон тоже уходит
-    /// в слой ICB: на месте он остаётся внутри обёртки кида и режется маской
-    /// её фрагмента (`monolithic-overflow-013`: четыре пустых листа). Экрану
-    /// это не нужно — там статическая позиция и есть место в потоке.
-    pub(crate) static PAGED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// Слой `position: fixed` текущей сборки кида — по копии на лист без
-    /// сдвига (`flow::PageStack::fixed`). В слой ICB ему нельзя: тот
-    /// поднимается на `p` page area и показывает фиксированный только на
-    /// первом листе (`fixedpos-007..009`).
-    pub(crate) static FIXED_LAYER: std::cell::RefCell<Vec<AnyElement>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
+mod build;
+pub(crate) use build::PagedBuild;
 
 /// Постраничная отрисовка (css-page-3): блоки верхнего уровня документа —
 /// дети стопки страниц, page area каждой страницы — фрагментаинер.
@@ -93,7 +82,7 @@ pub fn render_paged_select(
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
     // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
-    if root.vertical != Some(true) {
+    if !root.wm().vertical() {
         hoist_named_wrappers(&mut nodes);
     }
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
@@ -127,7 +116,13 @@ pub fn render_paged_select(
     let mut kids: Vec<crate::layout::page::page_stack::PageKid> = Vec::new();
     let prev_end: Option<String> = None;
     let first = true;
-    PAGED.with(|p| p.set(true));
+    // Сборка детей стопки страниц (`FragCx::paged`) — до конца этой функции.
+    let paged = PagedBuild::begin();
+    let paged_opts = {
+        let mut o = opts.clone();
+        o.frag.paged = Some(paged.clone());
+        o
+    };
     // Слой — коробка размером с page area: `layout_as_root` кладёт корень в
     // `(0, 0)` (taffy `compute_root_layout`, `location: Point::ZERO`), и
     // `top`/`bottom` абсолюта без обёртки пропадали (эталоны `fixedpos-*`:
@@ -196,7 +191,7 @@ pub fn render_paged_select(
         }
     }
     page_kids_from_groups(
-        opts,
+        &paged_opts,
         &root,
         left,
         right,
@@ -215,7 +210,7 @@ pub fn render_paged_select(
         groups,
         root_axis(&root).map(|a| a == StackAxis::VerticalRl),
     );
-    PAGED.with(|p| p.set(false));
+    paged.end();
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
     let margin_for =

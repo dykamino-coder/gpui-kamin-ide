@@ -1,7 +1,7 @@
 //! Fragmentainer frame of a paginated child and its measuring layout.
 
 use crate::layout::fragment::paginate::solve::Geom;
-use crate::layout::fragment::paginate::{Paginate, Struts, watch};
+use crate::layout::fragment::paginate::{Paginate, Struts};
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, AvailableSpace, Window, px, size};
 
@@ -50,7 +50,7 @@ impl ColumnStack {
         let c = &mut self.children[i];
         c.el = el;
         c.frags = frags;
-        watch::reset();
+        p.watched.reset();
         let (sz, content) = c.el.layout_as_root_with_content(
             size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
             window,
@@ -60,7 +60,7 @@ impl ColumnStack {
         c.over = c.h.max(f32::from(content.height));
         let mut geoms = Vec::with_capacity(p.cands.len());
         for &(id, cand) in &p.cands {
-            let lid = watch::seen(id)?;
+            let lid = p.watched.seen(id)?;
             let o = window.layout_origin_unrounded(lid);
             let s = window.layout_size_unrounded(lid);
             geoms.push(Geom {

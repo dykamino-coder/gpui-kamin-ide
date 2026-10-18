@@ -87,7 +87,7 @@ impl AnchorPlan {
             justify_self: own.justify_self,
             safe_align: own.align_self_safe,
             safe_justify: own.justify_self_safe,
-            cb_vertical: inherited.vertical == Some(true),
+            cb_vertical: inherited.wm().vertical(),
             cb_node: own.cb_node,
             fixed: own.position == Some(Position::Fixed)
                 && !(inherited.transform_ancestor

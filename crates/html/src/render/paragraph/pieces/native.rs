@@ -100,14 +100,14 @@ pub(crate) fn native_paragraph(
         .ruby_justify(
             inherited.ruby_justify == Some(true),
             inherited.ruby_unit,
-            inherited.rotated_line == Some(true),
+            inherited.wm().turned(),
             line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
         .justify_chars(inherited.justify_chars.unwrap_or(1))
         .align_last(
             inherited
                 .text_align_last
-                .map(|a| a.physical(inherited.rtl == Some(true)))
+                .map(|a| a.physical(inherited.wm().rtl()))
                 .map(crate::text::paragraph::align_of_value)
                 // `text-justify: none` forbids justification of the last
                 // line too: it aligns as `start` (css-text-3 §7.3,
@@ -116,7 +116,7 @@ pub(crate) fn native_paragraph(
                     crate::text::paragraph::Align::Justify
                         if inherited.no_justify == Some(true) =>
                     {
-                        if inherited.rtl == Some(true) {
+                        if inherited.wm().rtl() {
                             crate::text::paragraph::Align::Right
                         } else {
                             crate::text::paragraph::Align::Left
@@ -237,7 +237,7 @@ fn rotate_rel_spans(
     spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
     inherited: &crate::style::computed::Computed,
 ) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
-    if inherited.rotated_line != Some(true) {
+    if !inherited.wm().turned() {
         return spans;
     }
     let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);

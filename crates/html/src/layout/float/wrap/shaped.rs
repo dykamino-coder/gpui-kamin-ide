@@ -91,7 +91,7 @@ pub(super) fn wrap_shaped_run(
                 // его ФИЗИЧЕСКАЯ высота (css-writing-modes-4 §6.1). Строкам
                 // ряда (`FlowRow::vertical_rl`) нужен её предел: сам
                 // ряд лежит в автовысотном хосте и иначе получает 0.
-                height: if parent.vertical == Some(true) {
+                height: if parent.wm().vertical() {
                     parent.height
                 } else {
                     None

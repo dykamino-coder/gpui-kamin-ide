@@ -22,7 +22,7 @@ pub(super) fn table_tracks(
     cols_collapsed: Vec<bool>,
     cols_pct: Vec<Option<f32>>,
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
-    let vertical = e.style.vertical == Some(true);
+    let vertical = e.style.wm().vertical();
     let inline_size = if vertical {
         e.style.height
     } else {
@@ -125,7 +125,7 @@ pub(super) fn first_row_widths_of(
     spacing: (f32, f32),
     cols: u16,
 ) -> Vec<Option<f32>> {
-    let vertical = e.style.vertical == Some(true);
+    let vertical = e.style.wm().vertical();
     let axes = super::super::axes::Axes::new(&e.style);
     let first_row_widths: Vec<Option<f32>> = row_elements
         .first()

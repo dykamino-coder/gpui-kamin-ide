@@ -96,12 +96,12 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                     }
                     _ => None,
                 },
-                from_right: e.style.vertical_rl == Some(true),
+                from_right: e.style.wm().block_rl(),
                 // Корень `vertical-rl` без заданной ширины — по
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                left_key: (e.style.vertical_rl == Some(true)).then_some(opts.doc_salt),
+                left_key: (e.style.wm().block_rl()).then_some(opts.doc_salt),
             };
             match &canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
@@ -156,7 +156,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             Some(Len::Px(w)) => {
                 let pad_w = w + side(e.style.padding.left) + side(e.style.padding.right);
                 let band = band.w(px(pad_w));
-                if e.style.vertical_rl == Some(true) {
+                if e.style.wm().block_rl() {
                     band.right(px(side(e.style.margin.right) + side(b.right)))
                 } else {
                     band.left(px(side(e.style.margin.left) + side(b.left)))
