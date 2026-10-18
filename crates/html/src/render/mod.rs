@@ -113,13 +113,17 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // навсегда — три такие паники, и рамки исчезали до перезапуска.
     IFRAME_DEPTH.with(|d| d.set(0));
     collect_mask_defs(nodes);
+    // Корень документа получает ширину области просмотра: от неё цепочка
+    // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
+    // Слои содержащих блоков — свои у каждой сборки документа.
+    let opts = &*opts.inner(|cx| {
+        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.positioning = Default::default();
+    });
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    crate::layout::positioned::containing_block::icb_open();
-    // Корень документа получает ширину области просмотра: от неё цепочка
-    // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
-    let opts = &*opts.inner(|cx| cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0));
+    opts.cx.positioning.icb_open();
     // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
     // после потока корневого контекста в порядке разметки — собиратель
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
@@ -134,7 +138,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     }
     let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
     let mut out = blocks(nodes, &root, opts);
-    out.extend(crate::layout::positioned::containing_block::icb_close());
+    out.extend(opts.cx.positioning.icb_close());
     UNKEYED.replace(unkeyed_prev);
     RENDER_DEPTH.with(|d| d.set(d.get() - 1));
     let (open, close) = gpui::PaintCollect::pair();
@@ -178,10 +182,13 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
-    crate::layout::positioned::containing_block::icb_open();
-    let opts = &*opts.inner(|cx| cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0));
+    let opts = &*opts.inner(|cx| {
+        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.positioning = Default::default();
+    });
+    opts.cx.positioning.icb_open();
     let out = blocks(std::slice::from_ref(node), &root, opts);
-    let layer = crate::layout::positioned::containing_block::icb_close();
+    let layer = opts.cx.positioning.icb_close();
     let first = out.into_iter().next()?;
     if layer.is_empty() {
         return Some(first);

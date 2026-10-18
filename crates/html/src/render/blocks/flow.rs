@@ -80,7 +80,7 @@ pub(super) fn blocks_flow(
         // их заместителей уже известны. Отрицательный `z-index` не трогаем:
         // у него своя сортировка прогона (`below_run_*`).
         if let Node::Element(e) = n
-            && crate::layout::positioned::containing_block::late_pending()
+            && opts.cx.positioning.late_pending()
             && !e.style.z_index.is_some_and(|z| z < 0)
             && matches!(
                 e.style.position,
@@ -88,8 +88,8 @@ pub(super) fn blocks_flow(
                     | Some(crate::style::computed::Position::Sticky)
             )
         {
-            out.extend(crate::layout::positioned::containing_block::late_close());
-            crate::layout::positioned::containing_block::late_open();
+            out.extend(opts.cx.positioning.late_close());
+            opts.cx.positioning.late_open();
         }
         if let Node::Element(e) = n {
             // Отложенный offset-трансформ абсолюта в начальном содержащем
@@ -137,7 +137,7 @@ pub(super) fn blocks_flow(
     trim::release(trim_req);
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
-    out.extend(crate::layout::positioned::containing_block::late_close());
+    out.extend(opts.cx.positioning.late_close());
     containment_paint::collect(out, inherited)
 }
 

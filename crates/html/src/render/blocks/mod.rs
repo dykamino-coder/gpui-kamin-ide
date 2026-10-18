@@ -225,7 +225,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let pending: Vec<Node> = vec![];
     // Слой верхней отрисовки этого контейнера: позиционированные элементы
     // складывают сюда содержимое, а забирается оно последними детьми.
-    crate::layout::positioned::containing_block::late_open();
+    opts.cx.positioning.late_open();
     let nodes = collapsed.as_slice();
     blocks_flow(
         nodes,

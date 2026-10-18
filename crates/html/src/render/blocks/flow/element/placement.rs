@@ -40,6 +40,7 @@ pub(crate) fn place_element(
         geometry_layer_ok,
         nodes,
         idx,
+        &opts.cx.positioning,
     );
     let built = if to_icb || to_cb {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
@@ -81,12 +82,9 @@ pub(crate) fn place_element(
             // Стопка страниц: фиксированный — в свой слой, по копии
             // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
-            crate::layout::positioned::containing_block::icb_open();
-            let _ = crate::layout::positioned::containing_block::icb_push(spot.clone(), built);
-            FIXED_LAYER.with(|f| {
-                f.borrow_mut()
-                    .extend(crate::layout::positioned::containing_block::icb_close())
-            });
+            opts.cx.positioning.icb_open();
+            let _ = opts.cx.positioning.icb_push(spot.clone(), built);
+            FIXED_LAYER.with(|f| f.borrow_mut().extend(opts.cx.positioning.icb_close()));
             None
         } else {
             // Слой содержащего блока рисуется после его потока, но
@@ -138,11 +136,11 @@ pub(crate) fn place_element(
                     built
                 };
             if to_icb {
-                crate::layout::positioned::containing_block::icb_push(spot.clone(), built)
+                opts.cx.positioning.icb_push(spot.clone(), built)
             } else if far_fixed {
-                crate::layout::positioned::containing_block::cb_push_fixed(spot.clone(), built)
+                opts.cx.positioning.cb_push_fixed(spot.clone(), built)
             } else {
-                crate::layout::positioned::containing_block::cb_push(
+                opts.cx.positioning.cb_push(
                     spot.clone(),
                     built,
                     crate::layout::positioned::containing_block::nearest_cb_index(inherited),
@@ -156,7 +154,7 @@ pub(crate) fn place_element(
                 // не остаётся ничего.
                 if !(x_set && y_set) {
                     out.push(crate::layout::positioned::containing_block::spot_probe(
-                        spot, true,
+                        spot, true, None,
                     ));
                 }
                 if let Some(paint) = source_paint {
@@ -170,6 +168,7 @@ pub(crate) fn place_element(
                 out.push(crate::layout::positioned::containing_block::spot_probe(
                     spot.clone(),
                     true,
+                    None,
                 ));
                 crate::layout::positioned::containing_block::LatePlace { child: kept, spot }
                     .hooked()

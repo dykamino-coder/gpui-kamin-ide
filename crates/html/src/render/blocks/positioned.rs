@@ -26,6 +26,7 @@ pub(crate) fn static_position_layer(
     below_zs: &mut Vec<i32>,
     mut below_run_start: usize,
     mut below_run_end: usize,
+    positioning: &crate::layout::positioned::containing_block::Positioning,
 ) -> (usize, usize) {
     // Позиционированный элемент рисуется ПОВЕРХ обычного
     // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
@@ -69,7 +70,7 @@ pub(crate) fn static_position_layer(
         self_align: static_self_align(e, inherited),
         ..Default::default()
     });
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true);
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true, None);
     // Поля сдвигают абсолютный элемент ОТ статической позиции
     // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
     // под нами поля у absolute без краёв не считает — сдвиг
@@ -116,14 +117,14 @@ pub(crate) fn static_position_layer(
     let taken = if below {
         Some(built)
     } else if paint_last_ok(e, &nodes[idx + 1..]) {
-        crate::layout::positioned::containing_block::late_push(
+        positioning.late_push(
             spot,
             gpui::PaintLast::new(built)
                 .key(paint_key)
                 .into_any_element(),
         )
     } else {
-        crate::layout::positioned::containing_block::late_push(spot, built)
+        positioning.late_push(spot, built)
     };
     match taken {
         None => out.push(probe),

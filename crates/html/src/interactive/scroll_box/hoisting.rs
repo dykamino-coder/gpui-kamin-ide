@@ -26,7 +26,7 @@ use crate::style::computed::{Computed, Display};
 /// оси место сообщает щуп, а он остался бы в замыкании).
 pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     use crate::style::computed::Position;
-    if !crate::layout::positioned::containing_block::icb_active() || inside_deferred() {
+    if !opts.cx.positioning.icb_active() || inside_deferred() {
         return;
     }
     let merged = crate::style::cascade::inherit::inherit(inherited, &e.style);

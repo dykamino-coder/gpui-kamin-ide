@@ -71,6 +71,7 @@ pub(crate) fn finish_element(
             &mut below.zs,
             below.start,
             below.end,
+            &opts.cx.positioning,
         );
         return;
     }

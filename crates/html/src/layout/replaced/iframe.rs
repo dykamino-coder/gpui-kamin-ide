@@ -174,15 +174,16 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     let mut sub = opts.clone();
     sub.viewport = (w, h);
     sub.doc_salt = salt;
+    sub.cx.positioning = Default::default();
     IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра
     // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
-    crate::layout::positioned::containing_block::icb_open();
+    sub.cx.positioning.icb_open();
     let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(crate::layout::positioned::containing_block::icb_close());
+    kids.extend(sub.cx.positioning.icb_close());
     IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
     crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
     Some(

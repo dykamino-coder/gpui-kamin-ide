@@ -8,7 +8,9 @@
 //!
 //! [`RenderOpts::cx`]: crate::render::RenderOpts::cx
 
+use crate::layout::positioned::containing_block::Positioning;
 use crate::render::RenderOpts;
+use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
@@ -31,6 +33,12 @@ pub struct LayoutCx {
     /// The block list being built is a table cell's (or caption's) own
     /// content: a BFC root whose floats it contains (§10.6.7).
     pub(crate) cell_bfc: bool,
+    /// Containing-block layers of the current build pass (`Positioning`):
+    /// a new document (`render`, a nested document) starts its own.
+    pub(crate) positioning: Rc<Positioning>,
+    /// Line-box hand-off for the static-position probe of the inline atom
+    /// being built (`LineBoxSlot`); `None` outside such an atom.
+    pub(crate) line_box: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
 }
 
 impl RenderOpts {

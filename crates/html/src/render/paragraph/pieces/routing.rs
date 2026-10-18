@@ -162,5 +162,6 @@ pub(crate) fn route_pieces(
         &mut render_text,
         inherited.vertical != Some(true) && inherited.rotated_line != Some(true),
         (inherited.rotated_line == Some(true)).then_some(inherited.vertical_rl == Some(true)),
+        &opts.cx.positioning,
     )
 }

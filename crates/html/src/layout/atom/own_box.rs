@@ -144,16 +144,15 @@ pub(super) fn own_box_atom(
         && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
     if cb_layer {
-        crate::layout::positioned::containing_block::cb_open_strict(
-            &merged,
-            crate::paint::stacking::fixed_cb_layer_box(&merged),
-        );
+        opts.cx
+            .positioning
+            .cb_open_strict(&merged, crate::paint::stacking::fixed_cb_layer_box(&merged));
     }
     let mut kids = crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, || {
         blocks(&e.children, &merged, opts)
     });
     if cb_layer {
-        kids.extend(crate::layout::positioned::containing_block::cb_close());
+        kids.extend(opts.cx.positioning.cb_close());
     }
     Some(grouped(box_.children(kids).into_any_element(), &e.style))
 }

@@ -45,6 +45,9 @@ pub fn as_wrapped_row(
     // Block flow of a turned vertical line (`Some(vertical-rl)`): an
     // out-of-flow box's static position hangs from the block-start side.
     turned: Option<bool>,
+    // Слои содержащих блоков сборки (`LayoutCx::positioning`): куда уходят
+    // внепоточные куски строки.
+    positioning: &crate::layout::positioned::containing_block::Positioning,
 ) -> AnyElement {
     use crate::style::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
@@ -178,7 +181,7 @@ pub fn as_wrapped_row(
                     {
                         glued
                     }
-                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned)),
+                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned, positioning)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -194,7 +197,7 @@ pub fn as_wrapped_row(
                 Piece::Overlay(_, how) if how.cb_marker.is_some() || how.box_marker.is_some() => {
                     row
                 }
-                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned)),
+                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned, positioning)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {

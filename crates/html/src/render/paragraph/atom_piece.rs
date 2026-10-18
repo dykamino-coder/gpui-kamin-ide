@@ -230,9 +230,21 @@ fn atom_piece_in(
     } else {
         e
     };
+    // Внепоточный атом может стать распоркой статической позиции в строке:
+    // строчную коробку ей передаёт абзац (`LineBoxSlot`).
+    let line_box = out_of_flow(&e.style)
+        .then(crate::layout::positioned::containing_block::LineBoxSlot::default);
+    let line_opts;
+    let opts = match &line_box {
+        Some(slot) => {
+            line_opts = opts.inner(|cx| cx.line_box = Some(slot.clone()));
+            &*line_opts
+        }
+        None => opts,
+    };
     crate::text::inline::set_atom_cb(in_inline_cb);
     let built = atom_element(e, inherited, opts);
     crate::text::inline::set_atom_cb(false);
     let abs_cb = crate::text::inline::take_abs_cb();
-    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb))
+    built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box))
 }

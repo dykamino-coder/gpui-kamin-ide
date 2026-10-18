@@ -5,13 +5,27 @@ use crate::layout::positioned::containing_block::SpotCell;
 use crate::text::vertical::{VT_FRAME, vt_map};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
-pub(super) fn probe(spot: SpotCell, full: bool, child: AnyElement) -> AnyElement {
-    Probe { spot, full, child }.hooked()
+pub(super) fn probe(
+    spot: SpotCell,
+    full: bool,
+    line: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
+    child: AnyElement,
+) -> AnyElement {
+    Probe {
+        spot,
+        full,
+        line,
+        child,
+    }
+    .hooked()
 }
 
 struct Probe {
     spot: SpotCell,
     full: bool,
+    /// The line box of the text line this probe sits in, when a paragraph
+    /// places it (`LineBoxSlot`).
+    line: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
     child: AnyElement,
 }
 
@@ -39,7 +53,7 @@ impl Hooks for Probe {
         now.rotated = VT_FRAME.with(|frame| frame.get()).is_some();
         now.block_strut = self.full;
         if !self.full {
-            now.line_box = crate::layout::positioned::containing_block::take_line_box();
+            now.line_box = self.line.as_ref().and_then(|slot| slot.take());
         }
         let hole = vt_map(bounds, px(now.line_thickness));
         now.hole = Some(if now.viewport_static {

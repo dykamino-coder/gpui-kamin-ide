@@ -54,7 +54,7 @@ pub(super) fn page_kids_from_groups(
         let pad_top = if first { top } else { 0.0 };
         first = false;
         let build = |band: bool, slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
-            crate::layout::positioned::containing_block::icb_open();
+            opts.cx.positioning.icb_open();
             FIXED_LAYER.with(|f| f.borrow_mut().clear());
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
@@ -95,9 +95,7 @@ pub(super) fn page_kids_from_groups(
             };
             let source = if band { band_group.as_slice() } else { group };
             let el = wrap.children(blocks(source, root, opts)).into_any_element();
-            slot.extend(layer(
-                crate::layout::positioned::containing_block::icb_close(),
-            ));
+            slot.extend(layer(opts.cx.positioning.icb_close()));
             fixed_slot.extend(layer(
                 FIXED_LAYER.with(|f| std::mem::take(&mut *f.borrow_mut())),
             ));

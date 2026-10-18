@@ -88,7 +88,11 @@ pub(super) fn static_position_atom(
         line_rect: true,
         ..Default::default()
     });
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+    let probe = crate::layout::positioned::containing_block::spot_probe(
+        spot.clone(),
+        false,
+        opts.cx.line_box.clone(),
+    );
     let inner = match replaced {
         Some(el) if merged.corner_shaped() => crate::paint::effects::grouped::grouped(el, &merged),
         Some(el) => el,
@@ -98,7 +102,7 @@ pub(super) fn static_position_atom(
     let taken = if below {
         Some(inner)
     } else {
-        crate::layout::positioned::containing_block::late_push(spot, inner)
+        opts.cx.positioning.late_push(spot, inner)
     };
     return match taken {
         None => Some(probe),
@@ -200,11 +204,16 @@ pub(super) fn absolute_atom(
             own_vertical: e.style.vertical == Some(true),
             ..Default::default()
         });
-        let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
-        return match crate::layout::positioned::containing_block::late_push(
-            spot,
-            inline_abs_paint_last(e, inner),
-        ) {
+        let probe = crate::layout::positioned::containing_block::spot_probe(
+            spot.clone(),
+            false,
+            opts.cx.line_box.clone(),
+        );
+        return match opts
+            .cx
+            .positioning
+            .late_push(spot, inline_abs_paint_last(e, inner))
+        {
             None => Some(probe),
             Some(kept) => {
                 let mut hole = div().relative().w_0().h_0().flex_shrink_0();

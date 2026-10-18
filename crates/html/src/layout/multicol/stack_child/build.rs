@@ -201,11 +201,11 @@ pub(super) fn build_copy(
     };
     let frag_cb_layer = crate::text::inline::establishes_cb(inner);
     if frag_cb_layer {
-        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(inner));
+        opts.cx.positioning.cb_open_with(fixed_cb_layer_box(inner));
     }
     let mut body = blocks(&kids, src_inner, opts);
     if frag_cb_layer {
-        body.extend(crate::layout::positioned::containing_block::cb_close());
+        body.extend(opts.cx.positioning.cb_close());
     }
     drop(frag_gap_guard);
     let d = frag_box_div(

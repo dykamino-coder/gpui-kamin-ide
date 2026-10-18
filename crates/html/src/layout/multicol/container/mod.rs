@@ -125,7 +125,7 @@ pub(crate) fn multicol_column_stack(
     // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
     let fixed_layer = fixed_cb_layer_box(&merged);
     if fixed_layer {
-        crate::layout::positioned::containing_block::cb_open_fixed_only();
+        opts.cx.positioning.cb_open_fixed_only();
     }
     let children = stack_children(
         e,
@@ -193,7 +193,7 @@ pub(crate) fn multicol_column_stack(
         children,
     );
     if fixed_layer {
-        d = d.children(crate::layout::positioned::containing_block::cb_close());
+        d = d.children(opts.cx.positioning.cb_close());
     }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {

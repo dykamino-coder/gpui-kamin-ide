@@ -98,7 +98,7 @@ pub enum Piece {
 }
 
 /// Как кусок вне потока садится на своё место в тексте (`lines.rs`).
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct OverlayAt {
     /// Гипотетическая коробка БЛОЧНАЯ: место — начало следующей строки.
     pub next_line: bool,
@@ -138,8 +138,9 @@ pub struct OverlayAt {
     /// в таблице `inline_box`, края — относительно места куска.
     pub inline_box: Option<InlineCb>,
     /// The piece is a static-position probe of an absolute box with one
-    /// inset axis (`absolute_atom`): its prepaint gets the line box.
-    pub line_probe: bool,
+    /// inset axis (`absolute_atom`): its prepaint gets the line box through
+    /// this slot.
+    pub line_probe: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;

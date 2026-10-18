@@ -215,7 +215,7 @@ impl Paragraph {
                 } else {
                     origin
                 };
-                if how.line_probe && !rotated {
+                if let Some(slot) = how.line_probe.as_ref().filter(|_| !rotated) {
                     // The line box height over its inline boxes (CSS 2.1
                     // §10.8.1), not the paragraph's uniform pitch: an inline
                     // ancestor's taller `line-height` grows the line.
@@ -233,9 +233,8 @@ impl Paragraph {
                         None => (self.line_height, bounds.origin.x),
                     };
                     let line = (origin.y, lh, start);
-                    crate::layout::positioned::containing_block::with_line_box(line, || {
-                        el.prepaint_at(origin, window, _cx)
-                    });
+                    slot.set(Some(line));
+                    el.prepaint_at(origin, window, _cx);
                 } else {
                     el.prepaint_at(origin, window, _cx);
                 }

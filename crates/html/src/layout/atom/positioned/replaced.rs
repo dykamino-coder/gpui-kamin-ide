@@ -63,12 +63,17 @@ pub(super) fn replaced_abs_atom(
             ),
             ..Default::default()
         });
-        let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+        let probe = crate::layout::positioned::containing_block::spot_probe(
+            spot.clone(),
+            false,
+            opts.cx.line_box.clone(),
+        );
         return match inline_replaced_position::push(
             spot,
             inline_abs_paint_last(e, holder),
             &e.style,
             inherited,
+            &opts.cx.positioning,
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -113,13 +118,15 @@ pub(super) fn replaced_abs_atom(
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
         let pushed = if positioned_cb {
-            crate::layout::positioned::containing_block::cb_push(
+            opts.cx.positioning.cb_push(
                 spot,
                 holder.into_any_element(),
                 crate::layout::positioned::containing_block::nearest_cb_index(inherited),
             )
         } else {
-            crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
+            opts.cx
+                .positioning
+                .icb_push(spot, holder.into_any_element())
         };
         match pushed {
             None => {

@@ -125,7 +125,9 @@ pub(crate) fn generic_children(
     // содержащим блоком не является, переезжает сюда.
     let cb_layer = crate::text::inline::establishes_cb(&merged);
     if cb_layer {
-        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&merged));
+        opts.cx
+            .positioning
+            .cb_open_with(fixed_cb_layer_box(&merged));
     }
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
@@ -142,17 +144,17 @@ pub(crate) fn generic_children(
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
     if viewport {
-        crate::layout::positioned::containing_block::icb_open();
+        opts.cx.positioning.icb_open();
     }
     kids.extend(decorated_children(e, &merged, opts, || {
         blocks(&children, &merged, opts)
     }));
     if viewport {
-        kids.extend(crate::layout::positioned::containing_block::icb_close());
+        kids.extend(opts.cx.positioning.icb_close());
     }
     let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
     if cb_layer {
-        kids.extend(crate::layout::positioned::containing_block::cb_close());
+        kids.extend(opts.cx.positioning.cb_close());
     }
     if is_clamp {
         // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:
