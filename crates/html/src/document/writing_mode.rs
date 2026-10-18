@@ -1,4 +1,4 @@
-//! Writing mode for document; split out to keep the owning module within 250 lines.
+//! §8.2 principal writing mode: the root box takes the body's writing mode (used value only), and the vertical root fills the viewport along its inline axis.
 
 use super::any_containment;
 use crate::dom::Node;
