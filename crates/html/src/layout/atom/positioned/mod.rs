@@ -2,6 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
+use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
@@ -21,12 +22,8 @@ pub(super) fn static_position_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
-    crate::layout::positioned::anchor::prepare_inline_abs(
-        &mut merged,
-        e,
-        inherited,
-        &opts.cx.doc(),
-    );
+    let doc = opts.cx.doc();
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &doc);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
@@ -103,12 +100,7 @@ pub(super) fn static_position_atom(
         Some(el) => el,
         None => inner.into_any_element(),
     };
-    let inner = crate::layout::positioned::anchor::place::place(
-        inner,
-        &positioned,
-        inherited,
-        &opts.cx.doc(),
-    );
+    let inner = anchor::place::place(inner, &positioned, inherited, &doc);
     let taken = if below {
         Some(inner)
     } else {
@@ -131,12 +123,8 @@ pub(super) fn absolute_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let mut merged = inherit(inherited, &e.style);
-    crate::layout::positioned::anchor::prepare_inline_abs(
-        &mut merged,
-        e,
-        inherited,
-        &opts.cx.doc(),
-    );
+    let doc = opts.cx.doc();
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &doc);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
@@ -180,13 +168,13 @@ pub(super) fn absolute_atom(
     }
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
-    let inner = crate::layout::positioned::anchor::place::place(
+    let inner = anchor::place::place(
         styled_div_with(e, &merged, &opts.cx)
             .children(blocks(&e.children, &merged, opts))
             .into_any_element(),
         &merged,
         inherited,
-        &opts.cx.doc(),
+        &doc,
     );
     // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
