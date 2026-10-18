@@ -82,7 +82,8 @@ pub(crate) fn native_paragraph(
         line,
         crate::text::paragraph::align_for(inherited),
         wrap,
-    );
+    )
+    .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)
         .edge_spans(edges)
         .line_boxes(

@@ -8,11 +8,13 @@ use crate::style::values::value::Len;
 /// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
 /// на край строчной коробки куска (`line-height` куска, `normal` — доля
 /// `normal` шрифта абзаца).
-pub fn emphasis_spans(
+pub(crate) fn emphasis_spans(
     pieces: &[Piece],
     base_size: f32,
     normal: f32,
     rotated: Option<bool>,
+    // Слои аннотаций руби-базы, в которой абзац собирается (`LayoutCx::ruby_layers`).
+    ruby: Option<&std::rc::Rc<crate::text::ruby::layers::Layers>>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -34,7 +36,7 @@ pub fn emphasis_spans(
                 _ => crate::text::metrics::normal_px(normal, size),
             };
             out.push(crate::text::paragraph::EmphSpan {
-                ruby: crate::text::ruby::layers::current(),
+                ruby: ruby.cloned(),
                 range: at..end,
                 // Повёрнутый абзац вертикального письма (`rotated` — поворот
                 // против часовой, `sideways-lr`): «над» строкой после

@@ -23,13 +23,30 @@ use crate::text::ruby::ruby_transform;
 use crate::text::vertical::combined_text;
 use gpui::{IntoElement, ParentElement};
 
+/// Ruby collection of the atom being built: its annotation stacks
+/// (`LayoutCx::ruby_extents`, closed when the atom is built) and whether it is
+/// an independent inline context (atomic inline: no ruby base layers or sink).
+pub(crate) struct AtomRuby {
+    pub(crate) extents:
+        std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>,
+    pub(crate) independent: bool,
+}
+
 pub(crate) fn atom_piece(
     e: &Element,
     inherited: &Computed,
     opts: &RenderOpts,
     flow_text: bool,
     atom_cx: &inline::atom_parent::AtomCx,
+    ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
+    let opts = &*opts.inner(|cx| {
+        cx.ruby_extents = Some(ruby.extents.clone());
+        if ruby.independent {
+            cx.ruby_layers = None;
+            cx.ruby_base = None;
+        }
+    });
     // Атом внутри строчного предка наследует от НЕГО (`atom_parent`).
     // Пока только атомы В ПОТОКЕ: абсолют внутри `rtl`-спана, унаследовав
     // его направление, ставит статическую позицию от правого края, а наш

@@ -65,6 +65,17 @@ pub struct LayoutCx {
     pub(crate) trim_requests: Rc<Vec<crate::text::line_trim::TrimRequest>>,
     /// The block whose paragraph is being built and its trim flags.
     pub(crate) trim_para: Option<(u64, crate::text::line_trim::Trim)>,
+    /// Base-width sink of the ruby column being built: the first paragraph
+    /// built under it takes it and reports its max-content width (ruby
+    /// overhang, css-ruby-1 §4.4).
+    pub(crate) ruby_base: Option<crate::text::paragraph::RubyBaseOffer>,
+    /// Annotation layers of the ruby base being built: nested ruby
+    /// annotations stack on them.
+    pub(crate) ruby_layers: Option<Rc<crate::text::ruby::layers::Layers>>,
+    /// Collection of the annotation stacks of the inline atom being built
+    /// (the line grows by them); `None` inside — collection closed.
+    pub(crate) ruby_extents:
+        Option<std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>>,
 }
 
 impl LayoutCx {

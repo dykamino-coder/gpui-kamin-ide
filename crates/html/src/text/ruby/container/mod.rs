@@ -62,12 +62,17 @@ pub(crate) fn ruby_container_atom(
         };
         (line - (asc + desc)) / 2.0
     };
-    let extent = |d: gpui::Div,
-                  under: bool,
-                  layers: &[std::rc::Rc<crate::text::ruby::layers::Layers>]| {
-        let el = crate::text::paragraph::ruby_layer(d.into_any_element(), under, base_half, layers);
-        layer_offset::offset(el, layers, under)
-    };
+    let extent =
+        |d: gpui::Div, under: bool, layers: &[std::rc::Rc<crate::text::ruby::layers::Layers>]| {
+            let el = crate::text::paragraph::ruby_layer(
+                d.into_any_element(),
+                under,
+                base_half,
+                layers,
+                opts.cx.ruby_extents.as_ref(),
+            );
+            layer_offset::offset(el, layers, under)
+        };
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
         // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
@@ -116,7 +121,7 @@ pub(crate) fn ruby_container_atom(
                 } else {
                     nodes
                 };
-                let ann = crate::text::ruby::layers::without_base(|| unit_box(nodes, style, opts));
+                let ann = unit_box(nodes, style, &crate::text::ruby::layers::independent(opts));
                 if level_under(k) {
                     under.push(ann);
                 } else {
@@ -131,7 +136,8 @@ pub(crate) fn ruby_container_atom(
             // wider than the base may overhang the neighbours
             // (`lines::lay_atoms`, Blink `ruby_utils.cc` GetOverhang).
             let base_nodes = seg.bases.get(i).unwrap_or(&empty);
-            let base_el = crate::text::ruby::layers::with_base(layers.clone(), || {
+            let base_el = {
+                let opts = &*crate::text::ruby::layers::based(opts, layers.clone());
                 if segments.len() == 1 && columns == 1 && !seg.levels.is_empty() {
                     let base_font = match merged.font_size {
                         Some(Len::Px(v)) => v,
@@ -152,18 +158,19 @@ pub(crate) fn ruby_container_atom(
                         })
                         .unwrap_or(base_font * 0.5);
                     crate::text::paragraph::ruby_base_with_overhang(
+                        opts,
                         merged
                             .ruby_overhang
                             .unwrap_or(crate::style::computed::RubyOverhang::Auto),
                         ann_font / 2.0,
                         merged.ruby_align == Some(crate::style::computed::RubyAlign::Start),
                         base_font,
-                        || unit_box(base_nodes, &merged, opts),
+                        |opts| unit_box(base_nodes, &merged, opts),
                     )
                 } else {
                     unit_box(base_nodes, &merged, opts)
                 }
-            });
+            };
             let mut over = over_stack(base_el);
             if !over_anns.is_empty() || layers.mark_height(false) > 0.0 {
                 over = over.child(
@@ -209,11 +216,11 @@ pub(crate) fn ruby_container_atom(
                 };
                 seg_el = host
                     .child(level_wrap(level_under(k)).child(extent(
-                        div().flex().flex_col().flex_shrink_0().child(
-                            crate::text::ruby::layers::without_base(|| {
-                                unit_box(nodes, style, opts)
-                            }),
-                        ),
+                        div().flex().flex_col().flex_shrink_0().child(unit_box(
+                            nodes,
+                            style,
+                            &crate::text::ruby::layers::independent(opts),
+                        )),
                         level_under(k),
                         &contexts,
                     )))

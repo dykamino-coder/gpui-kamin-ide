@@ -36,74 +36,38 @@ pub struct RubyOverhangInfo {
     pub base_width: std::rc::Rc<std::cell::Cell<Option<f32>>>,
 }
 
-thread_local! {
-    /// Sink of the base paragraph that is being built for a ruby column
-    /// (`ruby_base_width_sink`): the paragraph records its max-content width
-    /// there when it is measured.
-    pub(super) static RUBY_BASE_SINK: std::cell::RefCell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>> =
-        const { std::cell::RefCell::new(None) };
-}
+/// Take-once offer of a ruby column's base-width sink (`LayoutCx::ruby_base`).
+pub(crate) type RubyBaseOffer =
+    std::rc::Rc<std::cell::Cell<Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>>>;
 
-/// Build the ruby BASE unit while a width sink is active: the paragraph
-/// created inside takes the sink (`Paragraph::new`) and reports its content
-/// width into it. Also registers the overhang info for the atom being
-/// collected (`collect_ruby_extents`).
+/// Build the ruby BASE unit with a width sink offered to it: the first
+/// paragraph built inside takes the sink (`Paragraph::ruby_context`) and
+/// reports its content width into it. Also registers the overhang info for
+/// the atom being collected (`LayoutCx::ruby_extents`).
 pub fn ruby_base_with_overhang<T>(
+    opts: &crate::render::RenderOpts,
     mode: crate::style::computed::RubyOverhang,
     half_annotation_font: f32,
     align_start: bool,
     base_font: f32,
-    build: impl FnOnce() -> T,
+    build: impl FnOnce(&crate::render::RenderOpts) -> T,
 ) -> T {
     let sink = std::rc::Rc::new(std::cell::Cell::new(None));
-    let saved = RUBY_BASE_SINK.with(|s| s.replace(Some(sink.clone())));
-    let out = build();
-    RUBY_BASE_SINK.with(|s| s.replace(saved));
-    RUBY_EXTENTS.with(|r| {
-        if let Some(v) = r.borrow_mut().as_mut()
-            && v.overhang.is_none()
-        {
-            v.overhang = Some(RubyOverhangInfo {
-                mode,
-                half_annotation_font,
-                align_start,
-                base_font,
-                base_width: sink,
-            });
-        }
-    });
+    let offer: RubyBaseOffer = std::rc::Rc::new(std::cell::Cell::new(Some(sink.clone())));
+    let out = build(&opts.inner(|cx| cx.ruby_base = Some(offer)));
+    if let Some(collect) = &opts.cx.ruby_extents
+        && let Some(v) = collect.borrow_mut().as_mut()
+        && v.overhang.is_none()
+    {
+        v.overhang = Some(RubyOverhangInfo {
+            mode,
+            half_annotation_font,
+            align_start,
+            base_font,
+            base_width: sink,
+        });
+    }
     out
-}
-
-/// Take the active base-width sink (for the first paragraph built under it).
-pub(crate) fn take_ruby_base_sink() -> Option<std::rc::Rc<std::cell::Cell<Option<f32>>>> {
-    RUBY_BASE_SINK.with(|s| s.borrow_mut().take())
-}
-
-/// Annotation and independent inline contexts cannot consume a base's sink.
-pub(crate) fn without_ruby_base_sink<T>(build: impl FnOnce() -> T) -> T {
-    let saved = RUBY_BASE_SINK.with(|s| s.replace(None));
-    let result = build();
-    RUBY_BASE_SINK.with(|s| s.replace(saved));
-    result
-}
-
-thread_local! {
-    /// Сбор узлов аннотаций для атома, который сейчас строится
-    /// (`collect_ruby_extents`). `None` — сбора нет: руби вне строки абзаца
-    /// своих аннотаций никому не отдаёт.
-    pub(super) static RUBY_EXTENTS: std::cell::RefCell<Option<RubyExtents>> =
-        const { std::cell::RefCell::new(None) };
-}
-
-/// Построить атом, собрав узлы аннотаций руби, которые он заведёт.
-/// Вложенный сбор (атом внутри атома) своё забирает сам: прежний список
-/// восстанавливается после вызова.
-pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
-    let saved = RUBY_EXTENTS.with(|r| r.replace(Some(RubyExtents::default())));
-    let out = build();
-    let mine = RUBY_EXTENTS.with(|r| r.replace(saved)).unwrap_or_default();
-    (out, mine)
 }
 
 /// Стопка аннотаций руби, чью высоту строка должна знать (css-ruby-1 §3.4):
@@ -112,7 +76,7 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
 /// чем аннотация выходит за её коробку (Blink `ruby_utils.cc`
 /// `ComputeAnnotationOverflow`). Без сбора — сам элемент как есть.
 pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
-    ruby_layer(el, under, inset, &[])
+    ruby_layer(el, under, inset, &[], None)
 }
 
 pub(crate) fn ruby_layer(
@@ -120,21 +84,21 @@ pub(crate) fn ruby_layer(
     under: bool,
     inset: f32,
     layers: &[std::rc::Rc<crate::text::ruby::layers::Layers>],
+    collect: Option<&std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>>,
 ) -> AnyElement {
     let slot = std::rc::Rc::new(std::cell::Cell::new(None));
     let attached: Vec<_> = layers
         .iter()
         .map(|layer| (layer.clone(), layer.add(under, slot.clone())))
         .collect();
-    let collecting = RUBY_EXTENTS.with(|r| {
-        r.borrow_mut()
-            .as_mut()
-            .map(|v| {
+    let collecting = collect
+        .and_then(|c| {
+            c.borrow_mut().as_mut().map(|v| {
                 v.levels.push((under, inset, slot.clone()));
                 v.nested.push(attached);
             })
-            .is_some()
-    });
+        })
+        .is_some();
     if !collecting && layers.is_empty() {
         return el;
     }

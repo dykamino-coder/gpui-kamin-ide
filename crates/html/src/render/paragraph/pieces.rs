@@ -55,8 +55,11 @@ pub(crate) fn paragraph_pieces_routed(
     // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
-    let atom = |e: &Element, atom_cx: &inline::atom_parent::AtomCx| -> Option<inline::Piece> {
-        atom_piece(e, inherited, opts, flow_text, atom_cx)
+    let atom = |e: &Element,
+                atom_cx: &inline::atom_parent::AtomCx,
+                ruby: &AtomRuby|
+     -> Option<inline::Piece> {
+        atom_piece(e, inherited, opts, flow_text, atom_cx, ruby)
     };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
@@ -71,21 +74,25 @@ pub(crate) fn paragraph_pieces_routed(
     > = Vec::new();
     let mut atom_noted =
         |e: &Element, atom_cx: &inline::atom_parent::AtomCx| -> Option<inline::Piece> {
-            let build = || crate::text::paragraph::collect_ruby_extents(|| atom(e, atom_cx));
-            let (piece, extents) = if replaced_tag(e)
-                || matches!(
-                    e.style.display,
-                    Some(
-                        crate::style::computed::Display::InlineBlock
-                            | crate::style::computed::Display::InlineFlex
-                            | crate::style::computed::Display::InlineGrid
-                            | crate::style::computed::Display::InlineTable
-                    )
-                ) {
-                crate::text::ruby::layers::without_base(build)
-            } else {
-                build()
+            // Атом собирает узлы аннотаций руби, которые заведёт; атомарный
+            // строчный — свой строчный контекст, без слоёв и стока базы.
+            let ruby = AtomRuby {
+                extents: std::rc::Rc::new(std::cell::RefCell::new(Some(
+                    crate::text::paragraph::RubyExtents::default(),
+                ))),
+                independent: replaced_tag(e)
+                    || matches!(
+                        e.style.display,
+                        Some(
+                            crate::style::computed::Display::InlineBlock
+                                | crate::style::computed::Display::InlineFlex
+                                | crate::style::computed::Display::InlineGrid
+                                | crate::style::computed::Display::InlineTable
+                        )
+                    ),
             };
+            let piece = atom(e, atom_cx, &ruby);
+            let extents = ruby.extents.borrow_mut().take().unwrap_or_default();
             if matches!(piece, Some(inline::Piece::Atom(_))) {
                 let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
                     extents

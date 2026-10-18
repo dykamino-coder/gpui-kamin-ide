@@ -35,7 +35,7 @@ use crate::text::inline::containing_block::mark_inline_cb;
 pub use crate::text::inline::first_line::style_first_line;
 
 mod emphasis;
-pub use crate::text::inline::emphasis::emphasis_spans;
+pub(crate) use crate::text::inline::emphasis::emphasis_spans;
 
 mod empty_inline;
 mod first_letter;

@@ -113,6 +113,7 @@ pub(crate) fn paragraph_spans(
             crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
             (inherited.rotated_line == Some(true) || inherited.vertical == Some(true))
                 .then(|| inherited.sideways == Some(true) && inherited.vertical_rl != Some(true)),
+            opts.cx.ruby_layers.as_ref(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
