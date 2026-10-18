@@ -30,6 +30,7 @@ use crate::dom::walk::pseudo_styles::pseudo_styles;
 use crate::dom::walk::style_normalization::normalize_style;
 
 use super::{content, initial_pseudos, language, presentational_hints};
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Display;
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -40,6 +41,7 @@ use std::collections::HashMap;
 #[allow(clippy::too_many_arguments)]
 fn walk(
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
@@ -90,9 +92,11 @@ fn walk(
                 content::html_attributes(&name.ns),
                 spot,
                 sibs,
+                tree,
             );
-            let (mut style, own_vars, _scheme, shadow) =
-                cascade_element(&mut me, &attrs, &tag, handle, rules, vars, path, spot, sibs);
+            let (mut style, own_vars, _scheme, shadow) = cascade_element(
+                &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs,
+            );
             let vars = &own_vars;
             normalize_style(&mut style, &tag, &attrs, path);
             content::snapshot_generated(&mut me, &style, path.last());
@@ -107,7 +111,7 @@ fn walk(
             let reversed_start =
                 |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
                     crate::style::generated::counters_scan::reversed_initial(
-                        rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
+                        tree, rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
                     )
                 };
 
@@ -118,6 +122,7 @@ fn walk(
                     attrs,
                     &me,
                     handle,
+                    tree,
                     rules,
                     vars,
                     frames,
@@ -198,8 +203,8 @@ fn walk(
             }
 
             let (mut children, scroll_pseudos) = collect_children(
-                handle, rules, vars, frames, counter, counters, &me, path, sibs, &style, &shadow,
-                preserve, &tag, &attrs,
+                handle, tree, rules, vars, frames, counter, counters, &me, path, sibs, &style,
+                &shadow, preserve, &tag, &attrs,
             );
             // CSS Lists §12.4.1: ordinary counters survive into following siblings.
             // Restore only the isolated subtree; remove_stale handles ordinary scopes.
@@ -242,7 +247,7 @@ fn walk(
             );
         }
         _ => walk_children(
-            handle, rules, vars, frames, counter, counters, path, preserve, out,
+            handle, tree, rules, vars, frames, counter, counters, path, preserve, out,
         ),
     }
 }

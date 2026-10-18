@@ -12,6 +12,7 @@
 mod values;
 use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
+use crate::dom::tree_index::TreeIndex;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Rule};
 use crate::style::select::matching::matches_ignoring_pseudo;
@@ -20,6 +21,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 
 /// Состояние обхода: набранная сумма и последний ненулевой шаг.
 struct Scan<'a> {
+    tree: &'a TreeIndex,
     rules: &'a [Rule],
     vars: &'a Decls,
     name: &'a str,
@@ -174,7 +176,7 @@ impl Scan<'_> {
         }
         {
             let children = h.children.borrow();
-            let (spots, all) = census_of(&children);
+            let (spots, all) = census_of(&children, self.tree);
             let mut inner_path: Vec<Ancestor> = path.to_vec();
             inner_path.push(me.clone());
             let mut pos = 0usize;
@@ -204,6 +206,7 @@ impl Scan<'_> {
 /// Начальное значение обратного счётчика, созданного на этом узле.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn reversed_initial(
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     name: &str,
@@ -216,6 +219,7 @@ pub(crate) fn reversed_initial(
     pos: usize,
 ) -> i64 {
     let mut scan = Scan {
+        tree,
         rules,
         vars,
         name,
@@ -234,7 +238,7 @@ pub(crate) fn reversed_initial(
                 continue;
             }
             idx += 1;
-            let Some(a) = ancestor_of(sib, *spot) else {
+            let Some(a) = ancestor_of(sib, *spot, tree) else {
                 continue;
             };
             scan.node(sib, &a, path, sibs.at(idx), false);

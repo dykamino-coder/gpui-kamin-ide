@@ -1,6 +1,7 @@
 //! Discover declarative shadow roots, build their stylesheet scopes and assign slots.
 
-use super::{Scope, SlotInfo, Slotted, attr_of, is_slot, node_key};
+use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{Media, Rule, parse_stylesheet_media};
 use crate::style::select::has::{HasArg, collect_has_args, parse_has_arg};
@@ -81,16 +82,17 @@ pub(super) fn assign_slots(
     light: &[Handle],
     outer: &Rc<Scope>,
     host_path: &Rc<Vec<Ancestor>>,
-    drafts: &mut HashMap<usize, SlotInfo>,
+    drafts: &mut HashMap<NodeKey, SlotInfo>,
+    tree: &TreeIndex,
 ) {
     let mut slots: Vec<Handle> = vec![];
     collect_slots(root, &mut slots);
     if slots.is_empty() {
         return;
     }
-    let (spots, all) = census_of(light);
+    let (spots, all) = census_of(light, tree);
     let light_all = Rc::new(all);
-    let mut assigned: HashMap<usize, Vec<Slotted>> = HashMap::new();
+    let mut assigned: HashMap<NodeKey, Vec<Slotted>> = HashMap::new();
     let mut pos = 0usize;
     for (idx, node) in light.iter().enumerate() {
         let (name, anc, elem_pos) = match &node.data {
@@ -114,21 +116,25 @@ pub(super) fn assign_slots(
         else {
             continue;
         };
-        assigned.entry(node_key(slot)).or_default().push(Slotted {
-            node: node.clone(),
-            light_idx: idx,
-            elem_pos,
-            anc,
-        });
+        assigned
+            .entry(NodeKey::of(slot))
+            .or_default()
+            .push(Slotted {
+                node: node.clone(),
+                light_idx: idx,
+                elem_pos,
+                anc,
+            });
     }
     for slot in slots {
-        let key = node_key(&slot);
+        let key = NodeKey::of(&slot);
+        let assigned = assigned.remove(&key).unwrap_or_default();
         drafts.insert(
             key,
             SlotInfo {
                 origin: None,
                 slot,
-                assigned: assigned.remove(&key).unwrap_or_default(),
+                assigned,
                 outer: outer.clone(),
                 host_path: host_path.clone(),
                 light: light.to_vec(),

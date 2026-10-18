@@ -6,3 +6,7 @@ disallowed-methods = [
     { path = "std::env::var_os", reason = "no environment reads in kamin-html (debug flags were removed)" },
     { path = "std::env::vars", reason = "no environment reads in kamin-html (debug flags were removed)" },
 ]
+
+# `NodeKey` hashes and compares a DOM node by identity (pointer), never by its
+# mutable content: its interior mutability cannot change a key.
+ignore-interior-mutability = ["kamin_html::dom::tree_index::NodeKey"]

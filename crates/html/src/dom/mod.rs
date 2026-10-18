@@ -17,6 +17,7 @@ mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
 pub(crate) mod style_sources;
+pub(crate) mod tree_index;
 pub(crate) mod xml;
 pub use xml::parse_xml;
 #[cfg(test)]

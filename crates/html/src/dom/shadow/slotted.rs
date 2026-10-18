@@ -1,10 +1,10 @@
 //! ::slotted aliases assigned elements; the slot prefix and argument use different trees.
 
-use super::{Ancestor, FlatCtx, SLOTS, Scope, node_key};
+use super::{Ancestor, FlatCtx, Scope};
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::{Rule, Selector};
 use crate::style::select::{Sibs, matching::matches};
-use markup5ever_rcdom::Handle;
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 struct SlottedRule {
     rule: Rule,
@@ -18,24 +18,6 @@ pub(super) struct SlotContext {
     pub(super) path: Vec<Ancestor>,
     pub(super) peers: Rc<Vec<Ancestor>>,
     pub(super) pos: usize,
-}
-
-thread_local! {
-    static RULES: RefCell<HashMap<usize, Rc<Vec<Rule>>>> = RefCell::default();
-}
-
-pub(crate) fn clear() {
-    RULES.with(|rules| rules.borrow_mut().clear());
-}
-
-pub(crate) fn rules_of(node: &Handle) -> Rc<Vec<Rule>> {
-    RULES.with(|rules| {
-        rules
-            .borrow()
-            .get(&node_key(node))
-            .cloned()
-            .unwrap_or_default()
-    })
 }
 
 /// Cache the originating slot match in the shadow scope. The argument is
@@ -70,8 +52,8 @@ fn candidates(scope: &Scope, slot: &Ancestor, path: &[Ancestor], sibs: Sibs) -> 
 
 /// Fallback children are not assigned to their own slot. A fallback expanded
 /// through a reprojected slot is included by `flatten_slot`, as required by DOM.
-pub(super) fn register_all() {
-    let slots: Vec<_> = SLOTS.with(|slots| slots.borrow().values().cloned().collect());
+pub(super) fn register_all(tree: &mut TreeIndex) {
+    let slots: Vec<_> = tree.slots.values().cloned().collect();
     for slot in slots {
         if slot.assigned.is_empty() {
             continue;
@@ -106,11 +88,8 @@ pub(super) fn register_all() {
                 .map(|r| r.rule.clone())
                 .collect();
             if !found.is_empty() {
-                RULES.with(|rules| {
-                    let mut rules = rules.borrow_mut();
-                    let entry = rules.entry(node_key(node)).or_default();
-                    Rc::make_mut(entry).extend(found);
-                });
+                let entry = tree.slotted.entry(NodeKey::of(node)).or_default();
+                Rc::make_mut(entry).extend(found);
             }
         }
     }

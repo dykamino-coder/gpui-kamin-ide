@@ -1,6 +1,7 @@
 //! Cascade for walk; split out to keep the owning module within 250 lines.
 
 use super::presentational_hints;
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Rule, parse_decls};
@@ -24,6 +25,7 @@ pub(super) fn cascade_element(
     attrs: &Vec<(String, String)>,
     tag: &String,
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     inherited_vars: &Decls,
     path: &[Ancestor],
@@ -61,12 +63,12 @@ pub(super) fn cascade_element(
         .collect();
     let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
     matched.extend(math_defaults.iter());
-    let slotted = crate::dom::shadow::slotted::rules_of(handle);
+    let slotted = tree.slotted_rules_of(handle);
     matched.extend(slotted.iter());
     // Правила `:host`/`:host(S)` из ТЕНИ хоста ложатся на сам хост
     // (css-shadow-1 §3.1; Blink `MatchHostRules`). Хост для них
     // безлик: совпадает только `:host`-компаунд без предков и братьев.
-    let shadow = shadow_of(handle);
+    let shadow = tree.shadow_of(handle);
     if let Some(shadow) = &shadow {
         matched.extend(
             shadow

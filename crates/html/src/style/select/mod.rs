@@ -1,8 +1,8 @@
 //! Сопоставление селекторов.
 // owner: B
 
-use crate::dom::{SlotInfo, content, local_name, slot_of};
-use crate::style::select::has::has_marks_of;
+use crate::dom::tree_index::TreeIndex;
+use crate::dom::{SlotInfo, content, local_name};
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -41,7 +41,7 @@ pub(crate) struct Ancestor {
     /// `:host`/`:host()`. `Some` несёт цепочку предков хоста в его СВЕТЛОМ
     /// контексте — ею проверяется аргумент `:host(S)`.
     pub(crate) featureless: Option<Rc<Vec<Ancestor>>>,
-    /// Слот дерева теней: его распределение (см. `SLOTS`).
+    /// Слот дерева теней: его распределение (см. `TreeIndex::slots`).
     pub(crate) slot: Option<Rc<SlotInfo>>,
     /// Братья-элементы узла и его место среди них — у предка в цепочке
     /// `path`: нужны компаунду предка с соседним комбинатором (`div + div
@@ -60,11 +60,6 @@ pub(crate) struct Ancestor {
     pub(crate) foreign: bool,
 }
 
-// Отметки `:has()` текущего документа: адрес узла - хеши аргументов.
-//
-// Поток разбирает документ целиком, поэтому склад потоко-локальный:
-// заполняется перед обходом, чистится по его окончании. Протаскивать его
-// параметром через всю цепочку обхода - шесть сигнатур ради одной ветки.
 thread_local! {
     /// Документ в режиме quirks (ставит `parse_media`; рамка сохраняет и
     /// возвращает признак внешнего документа сама — `render::iframe`).
@@ -135,7 +130,7 @@ impl<'a> Sibs<'a> {
 }
 
 /// Паспорт элемента для сопоставления селекторов.
-pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
+pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ancestor> {
     let NodeData::Element { name, attrs, .. } = &child.data else {
         return None;
     };
@@ -168,10 +163,10 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
             "ltr" => Some(false),
             _ => None,
         }),
-        has_marks: has_marks_of(child),
+        has_marks: tree.has_marks_of(child),
         shadow_has_marks: vec![],
         featureless: None,
-        slot: slot_of(child),
+        slot: tree.slot_of(child),
         peers: None,
         target_group: None,
         target_current: false,
@@ -181,7 +176,7 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot) -> Option<Ancestor> {
 }
 
 /// Перепись детей уровня: места и паспорта всех элементов.
-pub(crate) fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
+pub(crate) fn census_of(children: &[Handle], tree: &TreeIndex) -> (Vec<Spot>, Vec<Ancestor>) {
     let tags: Vec<Option<String>> = children
         .iter()
         .map(|c| match &c.data {
@@ -210,7 +205,7 @@ pub(crate) fn census_of(children: &[Handle]) -> (Vec<Spot>, Vec<Ancestor>) {
             None => Spot::default(),
         };
         spots.push(spot);
-        if let Some(a) = ancestor_of(child, spot) {
+        if let Some(a) = ancestor_of(child, spot, tree) {
             all.push(a);
         }
     }

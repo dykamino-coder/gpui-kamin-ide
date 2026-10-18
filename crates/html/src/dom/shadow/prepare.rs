@@ -3,14 +3,14 @@
 use super::{
     Scope,
     assignment::{declarative_shadow, shadow_scope},
-    node_key,
 };
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Media;
 use crate::style::select::has::{HasArg, mark_has};
 use markup5ever_rcdom::Handle;
 use std::{collections::HashMap, rc::Rc};
 
-pub(crate) type Prepared = HashMap<usize, (Handle, Rc<Scope>)>;
+pub(crate) type Prepared = HashMap<NodeKey, (Handle, Rc<Scope>)>;
 
 /// Arguments from a shadow sheet can inspect the host's ordinary DOM tree.
 /// Discover all sheets first, then mark all trees before census snapshots exist.
@@ -19,13 +19,14 @@ pub(crate) fn prepare(
     agent: &Scope,
     media: Media,
     args: &mut Vec<HasArg>,
+    tree: &mut TreeIndex,
 ) -> Prepared {
     let mut scopes = HashMap::new();
     collect(document, agent, media, args, &mut scopes);
     if !args.is_empty() {
-        mark_has(document, args, &mut vec![]);
+        mark_has(document, args, &mut vec![], tree);
         for (root, _) in scopes.values() {
-            mark_has(root, args, &mut vec![]);
+            mark_has(root, args, &mut vec![], tree);
         }
     }
     scopes
@@ -45,7 +46,7 @@ fn collect(
                 args.push(arg);
             }
         }
-        scopes.insert(node_key(node), (root.clone(), scope));
+        scopes.insert(NodeKey::of(node), (root.clone(), scope));
         collect(&root, agent, media, args, scopes);
     }
     for child in node.children.borrow().iter() {

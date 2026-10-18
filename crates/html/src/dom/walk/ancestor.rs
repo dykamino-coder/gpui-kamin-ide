@@ -1,7 +1,6 @@
 //! Element passports keep DOM selector metadata separate from recursive walking.
 
-use crate::dom::slot_of;
-use crate::style::select::has::has_marks_of;
+use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 
@@ -13,6 +12,7 @@ pub(super) fn element_ancestor(
     html_attrs: bool,
     spot: Spot,
     sibs: Sibs,
+    tree: &TreeIndex,
 ) -> Ancestor {
     let id = attrs
         .iter()
@@ -45,10 +45,10 @@ pub(super) fn element_ancestor(
                 _ => None,
             }
         }),
-        has_marks: has_marks_of(handle),
+        has_marks: tree.has_marks_of(handle),
         shadow_has_marks: vec![],
         featureless: None,
-        slot: slot_of(handle),
+        slot: tree.slot_of(handle),
         peers: sibs
             .is_elem
             .then_some(sibs.rc)

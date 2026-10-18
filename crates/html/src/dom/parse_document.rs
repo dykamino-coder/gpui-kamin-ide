@@ -6,10 +6,11 @@ use crate::dom::display_inheritance::resolve_display_inherit;
 use crate::dom::fixup_grid::*;
 use crate::dom::fixup_tree::*;
 use crate::dom::shadow::*;
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
 use crate::dom::xhtml::*;
 use crate::style::css::{Decls, Media, Rule, parse_keyframes, parse_stylesheet_media};
-use crate::style::select::has::{HAS_MARKS, HasArg, collect_has_args, mark_has, parse_has_arg};
+use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::{QUIRKS, quirks};
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
@@ -138,22 +139,27 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
         .iter()
         .filter_map(|a| parse_has_arg(a))
         .collect();
-    HAS_MARKS.with(|m| m.borrow_mut().clear());
     // Тени (`<template shadowrootmode>`): области стилей и распределение
-    // слотов считаются ДО обхода, как отметки `:has`; обход читает их по
-    // адресу узла. Документ без теней предпроход не платит.
-    SHADOWS.with(|m| m.borrow_mut().clear());
-    SLOTS.with(|m| m.borrow_mut().clear());
-    super::shadow::slotted::clear();
+    // слотов считаются ДО обхода, как отметки `:has`; обход получает их
+    // индексом по узлу. Документ без теней предпроход не платит.
+    let mut tree = TreeIndex::default();
     let doc = Rc::new(Scope { rules, frames });
     if html.contains("shadowrootmode") {
-        let mut drafts: HashMap<usize, SlotInfo> = HashMap::new();
+        let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
         let top: Vec<Handle> = dom.document.children.borrow().clone();
-        let prepared = prepare(&dom.document, &agent, media, &mut has_args);
-        scan_shadows(&top, &mut vec![], &doc, &prepared, &has_args, &mut drafts);
-        finish_slots(drafts);
+        let prepared = prepare(&dom.document, &agent, media, &mut has_args, &mut tree);
+        scan_shadows(
+            &top,
+            &mut vec![],
+            &doc,
+            &prepared,
+            &has_args,
+            &mut drafts,
+            &mut tree,
+        );
+        finish_slots(drafts, &mut tree);
     } else if !has_args.is_empty() {
-        mark_has(&dom.document, &has_args, &mut vec![]);
+        mark_has(&dom.document, &has_args, &mut vec![], &mut tree);
     }
     let mut counter = 0u64;
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
@@ -161,6 +167,7 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     let mut counters = crate::style::generated::counters::Counters::default();
     walk_children(
         &dom.document,
+        &tree,
         &doc.rules,
         &vars,
         &doc.frames,

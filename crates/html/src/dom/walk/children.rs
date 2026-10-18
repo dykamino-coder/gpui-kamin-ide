@@ -1,6 +1,7 @@
 //! Children for walk; split out to keep the owning module within 250 lines.
 
 use super::{walk, walk_children};
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -13,6 +14,7 @@ use std::rc::Rc;
 #[allow(clippy::needless_borrow)]
 pub(super) fn collect_children(
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
@@ -46,6 +48,7 @@ pub(super) fn collect_children(
         // попадут в вывод только через `<slot>`.
         walk_children(
             &shadow.root,
+            tree,
             &shadow.scope.rules,
             vars,
             &shadow.scope.frames,
@@ -55,7 +58,7 @@ pub(super) fn collect_children(
             keep,
             &mut children,
         );
-    } else if let Some(slot) = slot_of(handle).filter(|s| !s.assigned.is_empty()) {
+    } else if let Some(slot) = tree.slot_of(handle).filter(|s| !s.assigned.is_empty()) {
         // Слот показывает распределённые узлы, fallback — только без
         // них (HTML §4.12.4). Распределённый ребёнок стилизуется
         // таблицами ОБЛАСТИ ХОСТА и сопоставляется в светлом контексте
@@ -70,6 +73,7 @@ pub(super) fn collect_children(
             };
             walk(
                 &s.node,
+                tree,
                 &slot.outer.rules,
                 vars,
                 &slot.outer.frames,
@@ -88,6 +92,7 @@ pub(super) fn collect_children(
     } else {
         walk_children(
             handle,
+            tree,
             rules,
             vars,
             frames,
