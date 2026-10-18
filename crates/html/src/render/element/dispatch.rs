@@ -4,7 +4,7 @@ use super::element;
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
 use crate::layout::float::shape_flow::shape_flow;
-use crate::layout::list::{list_container, list_item};
+use crate::layout::list::{self, list_item};
 use crate::layout::replaced::iframe::object_is_document;
 use crate::layout::replaced::image::{image, image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
@@ -226,7 +226,7 @@ pub(crate) fn dispatch_element(
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list_container::render(e, &merged, opts),
+        "ul" | "ol" if e.style.display.is_none() => list::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.

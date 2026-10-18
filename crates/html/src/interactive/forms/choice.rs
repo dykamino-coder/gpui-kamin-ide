@@ -131,5 +131,5 @@ pub(super) fn toggle(e: &Element, style: &Computed, round: bool) -> AnyElement {
     // Native paint does not add CSS layout borders: a zero-sized control
     // remains empty, and authored dimensions replace only the UA defaults.
     let paint = apply(div().relative(), style).overflow_hidden().child(mark);
-    super::intrinsic::control(paint, natural)
+    super::control(paint, natural)
 }

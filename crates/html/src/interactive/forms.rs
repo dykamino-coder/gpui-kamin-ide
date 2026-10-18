@@ -10,7 +10,6 @@
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
 mod indicators;
-mod intrinsic;
 use indicators::color_swatch;
 use indicators::progress;
 use indicators::range;
@@ -29,6 +28,11 @@ use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 use crate::style::values::value::{SystemColor, system_color};
+
+/// Native controls share the replaced-content natural measurement mechanism.
+fn control(paint: gpui::Div, natural: [f32; 2]) -> AnyElement {
+    crate::layout::replaced::natural_control(paint, gpui::size(px(natural[0]), px(natural[1])))
+}
 
 fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
     system_color(role, style.dark_color_scheme).to_hsla()
