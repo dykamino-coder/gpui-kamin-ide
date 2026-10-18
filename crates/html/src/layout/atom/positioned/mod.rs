@@ -7,7 +7,7 @@ use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::render::{RenderOpts, blocks, inline_abs_paint_last, styled_div_with};
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -70,7 +70,7 @@ pub(super) fn static_position_atom(
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
     // текущей строки. Строчный остаётся точкой в самой строке.
-    let inline_level = hypothetical_inline_level(e);
+    let inline_level = crate::layout::positioned::static_position::hypothetical_inline_level(e);
     // Флаги направления нужны и СТРОЧНОМУ атому: в rtl-строке статическая
     // позиция — правый край, заместитель вешается правым краем на точку
     // распорки. Начало новой строки — только у блочного.
@@ -184,7 +184,7 @@ pub(super) fn absolute_atom(
         // axis (line start, next line after in-flow content) and aligns in
         // the inline parent's static-position rectangle, as the all-auto
         // branch above (horizontal ltr; `align-self-static-position-003/007`).
-        let block_level = !hypothetical_inline_level(e)
+        let block_level = !crate::layout::positioned::static_position::hypothetical_inline_level(e)
             && inherited.vertical != Some(true)
             && inherited.rotated_line != Some(true)
             && inherited.rtl != Some(true);
@@ -234,27 +234,4 @@ pub(super) fn absolute_atom(
             .child(inner)
             .into_any_element(),
     );
-}
-
-/// Whether the box's hypothetical static box (`position: static`) is
-/// inline-level: such a box stays a point in the line, a block-level one
-/// starts at the line's start (CSS 2.1 §10.3.7, §10.6.4).
-fn hypothetical_inline_level(e: &Element) -> bool {
-    // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
-    // hypothetical box (`dom` marks it `abs_inline_level`).
-    if e.style.abs_inline_level {
-        return true;
-    }
-    match e.style.display {
-        Some(Display::InlineBlock)
-        | Some(Display::InlineFlex)
-        | Some(Display::InlineGrid)
-        | Some(Display::InlineTable) => true,
-        Some(Display::GridLanes) => e.style.lanes_inline,
-        // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
-        // позиции остаётся строчным: гипотеза §10.3.7 считается без
-        // блокификации (htb-rtl-*).
-        Some(_) => e.style.inline_display == Some(true),
-        None => e.inline,
-    }
 }

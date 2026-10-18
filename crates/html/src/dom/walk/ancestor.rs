@@ -67,3 +67,21 @@ pub(super) fn element_ancestor(
 
     me
 }
+
+/// The element's attributes as `(name, value)`; `xml:base` keeps its prefix
+/// (the only namespaced attribute the engine reads).
+pub(super) fn element_attrs(attrs: &[html5ever::Attribute]) -> Vec<(String, String)> {
+    attrs
+        .iter()
+        .map(|a| {
+            let key = if &*a.name.local == "base"
+                && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+            {
+                "xml:base".to_owned()
+            } else {
+                a.name.local.to_string()
+            };
+            (key, a.value.to_string())
+        })
+        .collect()
+}

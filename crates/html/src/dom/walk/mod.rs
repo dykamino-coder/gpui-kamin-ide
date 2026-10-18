@@ -1,7 +1,7 @@
 //! Обход html5ever-дерева: каскад и сборка узлов (walk).
 
 mod ancestor;
-use ancestor::element_ancestor;
+use ancestor::{element_ancestor, element_attrs};
 
 mod sibling_survey;
 pub(super) use sibling_survey::walk_children;
@@ -71,20 +71,7 @@ fn walk(
             if DROP_TAGS.contains(&tag.as_str()) {
                 return;
             }
-            let attrs: Vec<(String, String)> = attrs
-                .borrow()
-                .iter()
-                .map(|a| {
-                    let key = if &*a.name.local == "base"
-                        && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
-                    {
-                        "xml:base".to_owned()
-                    } else {
-                        a.name.local.to_string()
-                    };
-                    (key, a.value.to_string())
-                })
-                .collect();
+            let attrs = element_attrs(&attrs.borrow());
             let mut me = element_ancestor(
                 handle,
                 &tag,
