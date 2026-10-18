@@ -29,6 +29,16 @@ pub(crate) struct CollectCx {
     pub(super) inline_cb_depth: usize,
 }
 
+impl CollectCx {
+    /// What an atom built at the current point learns from the collection.
+    pub(super) fn atom_cx(&self) -> crate::text::inline::atom_parent::AtomCx {
+        crate::text::inline::atom_parent::AtomCx {
+            parent: self.inline_parents.last().cloned(),
+            in_inline_cb: self.inline_cb_depth > 0,
+        }
+    }
+}
+
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
     inherited: &Computed,

@@ -12,7 +12,6 @@
 mod values;
 use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
-use crate::dom::tree_index::TreeIndex;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Rule};
 use crate::style::select::matching::matches_ignoring_pseudo;
@@ -21,7 +20,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 
 /// Состояние обхода: набранная сумма и последний ненулевой шаг.
 struct Scan<'a> {
-    tree: &'a TreeIndex,
+    tree: &'a crate::dom::tree_index::TreeIndex,
     rules: &'a [Rule],
     vars: &'a Decls,
     name: &'a str,
@@ -206,7 +205,7 @@ impl Scan<'_> {
 /// Начальное значение обратного счётчика, созданного на этом узле.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn reversed_initial(
-    tree: &TreeIndex,
+    tree: &crate::dom::tree_index::TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     name: &str,

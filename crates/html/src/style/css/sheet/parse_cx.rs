@@ -134,4 +134,10 @@ impl SheetCx<'_> {
     pub(super) fn layer_enter_path(&mut self, name: &str) -> (String, Vec<u32>) {
         self.layers.enter_path(&self.layer_now, name)
     }
+
+    /// Enter the `@layer` block `name`; returns the layer to restore.
+    pub(super) fn enter_layer(&mut self, name: &str) -> (String, Vec<u32>) {
+        let entered = self.layer_enter_path(name);
+        std::mem::replace(&mut self.layer_now, entered)
+    }
 }

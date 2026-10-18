@@ -5,6 +5,9 @@ pub(super) use static_overlay::static_overlay;
 mod decoration;
 pub(super) use decoration::decorate_atom;
 
+mod atom_cx;
+pub(crate) use atom_cx::AtomRuby;
+
 // owner: A
 
 use crate::animation::frames::bake_frozen;
@@ -23,15 +26,6 @@ use crate::text::ruby::ruby_transform;
 use crate::text::vertical::combined_text;
 use gpui::{IntoElement, ParentElement};
 
-/// Ruby collection of the atom being built: its annotation stacks
-/// (`LayoutCx::ruby_extents`, closed when the atom is built) and whether it is
-/// an independent inline context (atomic inline: no ruby base layers or sink).
-pub(crate) struct AtomRuby {
-    pub(crate) extents:
-        std::rc::Rc<std::cell::RefCell<Option<crate::text::paragraph::RubyExtents>>>,
-    pub(crate) independent: bool,
-}
-
 pub(crate) fn atom_piece(
     e: &Element,
     inherited: &Computed,
@@ -40,13 +34,6 @@ pub(crate) fn atom_piece(
     atom_cx: &inline::atom_parent::AtomCx,
     ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
-    let opts = &*opts.inner(|cx| {
-        cx.ruby_extents = Some(ruby.extents.clone());
-        if ruby.independent {
-            cx.ruby_layers = None;
-            cx.ruby_base = None;
-        }
-    });
     // Атом внутри строчного предка наследует от НЕГО (`atom_parent`).
     // Пока только атомы В ПОТОКЕ: абсолют внутри `rtl`-спана, унаследовав
     // его направление, ставит статическую позицию от правого края, а наш
@@ -60,7 +47,7 @@ pub(crate) fn atom_piece(
         } else {
             crate::text::clamp::ParaNest::enter()
         };
-        atom_piece_in(e, inherited, opts, flow_text, atom_cx.in_inline_cb)
+        atom_piece_in(e, inherited, opts, flow_text, atom_cx.in_inline_cb, ruby)
     }
 }
 
@@ -70,6 +57,7 @@ fn atom_piece_in(
     opts: &RenderOpts,
     flow_text: bool,
     in_inline_cb: bool,
+    ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
@@ -252,18 +240,7 @@ fn atom_piece_in(
     let line_box = out_of_flow(&e.style)
         .then(crate::layout::positioned::containing_block::LineBoxSlot::default);
     let offer = in_inline_cb.then(crate::text::inline::InlineCbOffer::offered);
-    let atom_opts;
-    let opts = if line_box.is_some() || offer.is_some() || opts.cx.inline_cb.is_some() {
-        atom_opts = opts.inner(|cx| {
-            if let Some(slot) = &line_box {
-                cx.line_box = Some(slot.clone());
-            }
-            cx.inline_cb = offer.clone();
-        });
-        &*atom_opts
-    } else {
-        opts
-    };
+    let opts = &*atom_cx::atom_opts(opts, ruby, &line_box, &offer);
     let built = atom_element(e, inherited, opts);
     let abs_cb = offer.as_ref().is_some_and(|o| o.taken());
     built.map(|el| decorate_atom(el, e, inherited, original_margin, abs_cb, line_box))

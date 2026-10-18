@@ -75,25 +75,10 @@ pub(crate) fn paragraph_pieces_routed(
     > = Vec::new();
     let mut atom_noted =
         |e: &Element, atom_cx: &inline::atom_parent::AtomCx| -> Option<inline::Piece> {
-            // Атом собирает узлы аннотаций руби, которые заведёт; атомарный
-            // строчный — свой строчный контекст, без слоёв и стока базы.
-            let ruby = AtomRuby {
-                extents: std::rc::Rc::new(std::cell::RefCell::new(Some(
-                    crate::text::paragraph::RubyExtents::default(),
-                ))),
-                independent: replaced_tag(e)
-                    || matches!(
-                        e.style.display,
-                        Some(
-                            crate::style::computed::Display::InlineBlock
-                                | crate::style::computed::Display::InlineFlex
-                                | crate::style::computed::Display::InlineGrid
-                                | crate::style::computed::Display::InlineTable
-                        )
-                    ),
-            };
+            // Атом собирает узлы аннотаций руби, которые заведёт (`AtomRuby`).
+            let ruby = AtomRuby::for_atom(e);
             let piece = atom(e, atom_cx, &ruby);
-            let extents = ruby.extents.borrow_mut().take().unwrap_or_default();
+            let extents = ruby.take_extents();
             if matches!(piece, Some(inline::Piece::Atom(_))) {
                 let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
                     extents

@@ -55,10 +55,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
             let inner = at_rule_inner(&name, head, body, &media, cx);
             // Блок `@layer имя { … }`: правила внутри — в своём слое.
             let layer_block = name.starts_with("@layer");
-            let saved_layer = layer_block.then(|| {
-                let entered = cx.layer_enter_path(head[6..].trim());
-                std::mem::replace(&mut cx.layer_now, entered)
-            });
+            let saved_layer = layer_block.then(|| cx.enter_layer(head[6..].trim()));
             let inner_rules = if inner {
                 sheet_rules(body, media, false, cx)
             } else {
@@ -92,10 +89,8 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
         // негодная часть просто выбрасывалась, и правило красило соседа
         // (`c25-pseudo-elmnt-000`).
         let parts = super::nesting::top_level_parts(&parts, &cx.selectors);
-        let sels: Option<Vec<Selector>> = parts
-            .iter()
-            .map(|one| Selector::parse_in(one, &cx.selectors))
-            .collect();
+        let parse = |one: &String| Selector::parse_in(one, &cx.selectors);
+        let sels: Option<Vec<Selector>> = parts.iter().map(parse).collect();
         let Some(sels) = sels else { continue };
         if super::nesting::rule(&parts, body, &media, cx, &mut out, &mut order) {
             continue;

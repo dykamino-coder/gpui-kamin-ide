@@ -35,13 +35,7 @@ pub(super) fn collect_element(
     // Атому сообщают стиль ближайшего строчного предка и лежит ли он в
     // позиционированном строчном (`AtomCx`); его собственное содержимое —
     // уже вне их: вложенный сбор кусков начинает свой контекст.
-    let built = atom(
-        e,
-        &crate::text::inline::atom_parent::AtomCx {
-            parent: cx.inline_parents.last().cloned(),
-            in_inline_cb: cx.inline_cb_depth > 0,
-        },
-    );
+    let built = atom(e, &cx.atom_cx());
     if let Some(piece) = built {
         // CSS Ruby box fixup suppresses the break that an empty block would
         // introduce. Its inlinified zero-size box must not create a soft

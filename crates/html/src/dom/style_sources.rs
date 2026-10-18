@@ -48,39 +48,13 @@ pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
     sheets
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn only_style_elements_and_active_shadow_templates_supply_css() {
-        let html = "<!-- <style>comment</style> --><script>\"<style>script</style>\"</script>\
-            <p>@font-face {not: css}</p><style>document</style>\
-            <template><style>inert</style></template>\
-            <div><template shadowrootmode='OPEN'><style>shadow</style></template>\
-            <template shadowrootmode='open'><style>second-inert</style></template></div>";
-        assert_eq!(collect(html, false), ["document", "shadow"]);
-    }
-
-    #[test]
-    fn xml_style_content_uses_the_xml_parser() {
-        let xml = "<svg xmlns='http://www.w3.org/2000/svg'>\
-            <style><![CDATA[p { content: '<&>'; }]]></style></svg>";
-        assert_eq!(collect(xml, true), ["p { content: '<&>'; }"]);
-    }
-}
-
 /// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
 /// html5ever кладёт его текстом внутрь.
-/// ПРОБОВАЛИ И ОТКАТИЛИ: раскрывать ссылки на знаки (`&gt;`, `&amp;`) в
-/// содержимом `<style>`, когда документ XHTML. По разбору XML это верно —
-/// построитель HTML держит `<style>` сырым текстом, и селектор `body &gt; div`
-/// не совпадает ни с чем; в наборе таких файлов 103. Замерено по всему CSS2:
-/// 5233 -> 5230, приобретено 0, потеряно 3. Раскрытые правила доезжают до
-/// раскладки и вскрывают ошибки НИЖЕ (`text-indent-intrinsic-001` 0.00 -> 1.10,
-/// `-003` 0.00 -> 0.68), а `content-177` 0.42 -> «красное видно»: раскрытая
-/// `&quot;` закрывает строку CSS раньше времени. Возвращаться сюда после
-/// разбора этих трёх корней.
+/// Ссылки на знаки (`&gt;`, `&amp;`) в `<style>` XHTML-документа остаются
+/// нераскрытыми: построитель HTML держит `<style>` сырым текстом, хотя по
+/// разбору XML их следует раскрыть. Известное ограничение: раскрытые правила
+/// вскрывают ошибки раскладки ниже (`text-indent-intrinsic-001/003`), а
+/// раскрытая `&quot;` закрывает строку CSS раньше времени (`content-177`).
 pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     if let NodeData::Element { name, .. } = &handle.data
         && &*name.local == "style"
@@ -105,5 +79,27 @@ pub(crate) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
     }
     for child in handle.children.borrow().iter() {
         collect_style_tags(child, out);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_style_elements_and_active_shadow_templates_supply_css() {
+        let html = "<!-- <style>comment</style> --><script>\"<style>script</style>\"</script>\
+            <p>@font-face {not: css}</p><style>document</style>\
+            <template><style>inert</style></template>\
+            <div><template shadowrootmode='OPEN'><style>shadow</style></template>\
+            <template shadowrootmode='open'><style>second-inert</style></template></div>";
+        assert_eq!(collect(html, false), ["document", "shadow"]);
+    }
+
+    #[test]
+    fn xml_style_content_uses_the_xml_parser() {
+        let xml = "<svg xmlns='http://www.w3.org/2000/svg'>\
+            <style><![CDATA[p { content: '<&>'; }]]></style></svg>";
+        assert_eq!(collect(xml, true), ["p { content: '<&>'; }"]);
     }
 }
