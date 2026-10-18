@@ -10,6 +10,7 @@ impl Frame {
         c: &Computed,
         handle: &ScrollHandle,
         bounds: Bounds<Pixels>,
+        sticky: Option<&super::exact_probe::StickyShift>,
     ) -> bool {
         if !self.marker.get() {
             return false;
@@ -18,7 +19,7 @@ impl Frame {
         // coordinate space for a nested scrollport's origin (Overflow 3 §2.2).
         let snap_bounds = bounds;
         let mut bounds = bounds;
-        bounds.origin -= super::exact_probe::sticky_shift();
+        bounds.origin -= super::exact_probe::sticky_shift(sticky);
         let boxes = self.boxes.borrow();
         let text_boxes = self.text_boxes.borrow();
         fn area(

@@ -38,8 +38,17 @@ pub(crate) fn scrollable(
     if !horizontal && !vertical {
         return None;
     }
-    let scroll_projection =
-        crate::interactive::scroll_extent::projection(inherited.self_node, Some(&scroll_style));
+    let scroll_projection = crate::interactive::scroll_extent::projection(
+        inherited.self_node,
+        Some(&scroll_style),
+        opts.cx.sticky.as_ref(),
+    );
+    // Лента и её содержимое — внутри проекции (`ShiftLink`).
+    let projected_opts = scroll_projection
+        .as_ref()
+        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+    let opts = projected_opts.as_deref().unwrap_or(opts);
+    let area_sticky = opts.cx.sticky.clone();
     let mut node = e.clone();
     node.style.overflow_x = scroll_style.overflow_x;
     node.style.overflow_y = scroll_style.overflow_y;
@@ -184,6 +193,7 @@ pub(crate) fn scrollable(
         )
         .with_style(scroll_style)
         .with_tree(e)
+        .with_sticky(area_sticky)
         .into_any_element(),
         scroll_projection,
     ))

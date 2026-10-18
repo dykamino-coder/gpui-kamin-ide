@@ -1,15 +1,31 @@
 //! CSS Overflow 3 §2.3: project negative-origin scrolling onto GPUI's negative offsets.
 //! Reverse axes move content toward the physical end; preserve normal overflow geometry.
 
-use super::{CURRENT, exact_probe::sticky_geometry};
+use super::{
+    CURRENT,
+    exact_probe::{ShiftLink, StickyShift},
+};
 use crate::hooks::{IntoHooked, Wrap};
 use crate::style::computed::{Computed, Position};
 use gpui::{AnyElement, App, Bounds, Pixels, ScrollHandle, Window, point, px};
 pub(crate) struct Projection {
     handle: ScrollHandle,
     reverse: [bool; 2],
+    /// The shift this projection applies to its subtree (`ShiftLink`).
+    link: StickyShift,
 }
-pub(crate) fn projection(parent: u64, c: Option<&Computed>) -> Option<Projection> {
+impl Projection {
+    /// The chain the projected subtree is built with (`LayoutCx::sticky`).
+    pub(crate) fn link(&self) -> &StickyShift {
+        &self.link
+    }
+}
+/// `outer` — the shift chain of the place where the projected box is built.
+pub(crate) fn projection(
+    parent: u64,
+    c: Option<&Computed>,
+    outer: Option<&StickyShift>,
+) -> Option<Projection> {
     let frame = CURRENT.with(|slot| slot.borrow().clone())?;
     if frame.root.get() != Some(parent) || frame.reverse.get() == [false; 2] {
         return None;
@@ -24,6 +40,7 @@ pub(crate) fn projection(parent: u64, c: Option<&Computed>) -> Option<Projection
     Some(Projection {
         handle,
         reverse: frame.reverse.get(),
+        link: ShiftLink::inside(outer),
     })
 }
 pub(crate) fn project(child: AnyElement, projection: Option<Projection>) -> AnyElement {
@@ -55,8 +72,9 @@ impl Wrap for Projected {
                 px(0.0)
             },
         );
-        sticky_geometry(shift, || {
-            window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx))
+        let child = &mut self.child;
+        self.projection.link.applied(shift, || {
+            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
         });
     }
 }
@@ -92,7 +110,7 @@ mod tests {
                     ..Computed::default()
                 },
             );
-            assert!(projection(7, Some(&absolute)).is_some());
+            assert!(projection(7, Some(&absolute), None).is_some());
             let fixed = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
@@ -100,8 +118,8 @@ mod tests {
                     ..Computed::default()
                 },
             );
-            assert!(projection(7, Some(&fixed)).is_none());
-            assert!(projection(8, None).is_none());
+            assert!(projection(7, Some(&fixed), None).is_none());
+            assert!(projection(8, None, None).is_none());
         });
     }
     #[test]
@@ -123,17 +141,20 @@ mod tests {
             classic::model(7, &c);
             frame.marker.set(true);
             // Original root x=80, child x=110; the ancestor adds 40px.
-            sticky_geometry(point(px(40.0), px(0.0)), || {
+            let link = ShiftLink::inside(None);
+            link.applied(point(px(40.0), px(0.0)), || {
                 frame.record_border_box(
                     8,
                     &Computed::default(),
                     Bounds::new(point(px(150.0), px(0.0)), size(px(20.0), px(20.0))),
+                    Some(&link),
                 );
                 frame.settle(
                     &root,
                     &c,
                     &handle,
                     Bounds::new(point(px(120.0), px(0.0)), size(px(50.0), px(50.0))),
+                    Some(&link),
                 );
             });
             assert_eq!(frame.range(), [0.0; 2]);

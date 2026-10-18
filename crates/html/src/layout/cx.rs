@@ -39,6 +39,10 @@ pub struct LayoutCx {
     /// Line-box hand-off for the static-position probe of the inline atom
     /// being built (`LineBoxSlot`); `None` outside such an atom.
     pub(crate) line_box: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
+    /// Chain of the sticky boxes and reversed scroll projections the box is
+    /// built inside (`ShiftLink`): its scroll-extent probes subtract their
+    /// paint-time shifts.
+    pub(crate) sticky: Option<crate::interactive::scroll_extent::StickyShift>,
 }
 
 impl RenderOpts {

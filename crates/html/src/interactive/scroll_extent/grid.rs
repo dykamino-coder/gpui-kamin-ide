@@ -1,19 +1,22 @@
 //! Measured grid track bounds contribute to scrollable overflow (CSS Grid §5.3).
 
-use super::{Frame, exact_probe::sticky_shift};
+use super::{
+    Frame,
+    exact_probe::{StickyShift, sticky_shift},
+};
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
-pub(super) fn probe(frame: Frame, c: &Computed) -> Option<AnyElement> {
+pub(super) fn probe(frame: Frame, c: &Computed, sticky: Option<StickyShift>) -> Option<AnyElement> {
     matches!(
         c.display,
         Some(Display::Grid | Display::InlineGrid | Display::GridLanes)
     )
-    .then(|| GridProbe(frame).hooked())
+    .then(|| GridProbe(frame, sticky).hooked())
 }
 
-struct GridProbe(Frame);
+struct GridProbe(Frame, Option<StickyShift>);
 impl Hooks for GridProbe {
     type Layout = LayoutId;
     type Prepaint = ();
@@ -37,7 +40,7 @@ impl Hooks for GridProbe {
         let Some((origin, cols, rows)) = window.parent_grid_tracks(*id) else {
             return;
         };
-        let origin = origin - sticky_shift();
+        let origin = origin - sticky_shift(self.1.as_ref());
         let span = |tracks: &[(f32, f32)], origin: Pixels| {
             let start = tracks.first().map_or(0.0, |t| t.0);
             let end = tracks.last().map_or(start, |t| t.1);

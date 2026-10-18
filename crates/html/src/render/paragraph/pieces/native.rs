@@ -218,9 +218,19 @@ pub(crate) fn native_paragraph(
     if native {
         native_request.unwrap().built.set(true);
     }
+    let projection = crate::interactive::scroll_extent::projection(
+        inherited.self_node,
+        None,
+        opts.cx.sticky.as_ref(),
+    );
+    let sticky = projection
+        .as_ref()
+        .map(|p| p.link().clone())
+        .or_else(|| opts.cx.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node).into_any_element(),
-        crate::interactive::scroll_extent::projection(inherited.self_node, None),
+        para.scroll_owner(inherited.self_node, sticky)
+            .into_any_element(),
+        projection,
     )
 }
 

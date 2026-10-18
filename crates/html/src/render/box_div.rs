@@ -79,7 +79,8 @@ pub(crate) fn styled_div_with(
         d.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
     }
     d = crate::interactive::scroll_target::attach(d, e, c);
-    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c) {
+    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c, cx.sticky.as_ref())
+    {
         d = d.child(probe);
     }
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока

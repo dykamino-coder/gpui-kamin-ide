@@ -11,7 +11,8 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 
 /// Абзац со своей раскладкой строк.
 pub struct Paragraph {
-    pub(super) scroll_owner: Option<u64>,
+    /// Scroll owner and the shift chain the paragraph is built in.
+    pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,

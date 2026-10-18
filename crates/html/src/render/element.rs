@@ -99,8 +99,16 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
-    let scroll_projection =
-        crate::interactive::scroll_extent::projection(inherited.self_node, Some(&merged));
+    let scroll_projection = crate::interactive::scroll_extent::projection(
+        inherited.self_node,
+        Some(&merged),
+        opts.cx.sticky.as_ref(),
+    );
+    // Проецируемое поддерево строится в цепочке сдвига проекции (`ShiftLink`).
+    let projected_opts = scroll_projection
+        .as_ref()
+        .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
+    let opts = projected_opts.as_deref().unwrap_or(opts);
     // Элементы форм рисуются своим набором: без него поле ввода — пустой
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
