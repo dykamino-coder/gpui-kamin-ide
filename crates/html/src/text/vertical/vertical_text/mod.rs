@@ -1,10 +1,10 @@
-//! Vertical text for vertical; split out to keep the owning module within 250 lines.
+//! Rotated atomic subtree with physical baseline and selection geometry.
 
 mod layout;
 mod painting;
 mod prepaint;
 
-use super::{VT_FRAME, VT_INLINE_MAX, VT_MEASURED};
+use super::{VT_FRAME, VT_INLINE_MAX};
 use crate::hooks::Wrap;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
@@ -19,7 +19,7 @@ pub struct VerticalText {
     pub(crate) natural: gpui::Size<Pixels>,
     /// Потолок заявляемой высоты (см. `claiming_height`).
     pub(crate) claim_cap: Option<Pixels>,
-    /// Ключ двухкадрового замера (текст абзаца + соль документа).
+    /// Ключ замера в текущем документе (текст абзаца и номер вхождения).
     pub(crate) key: Option<u64>,
     /// Предел строки от родителя: если строка УЖЕ помещается, высота
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и

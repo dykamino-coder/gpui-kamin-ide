@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::layout::positioned::containing_block::{CB, CB_FIXED, CB_STRICT, ICB, LATE};
-use crate::text::vertical::{VT_FRAME, VT_SEQ};
+use crate::text::vertical::VT_FRAME;
 
 pub fn frame_sanitize() {
     // Рамка повёрнутого абзаца не должна пережить страницу: сброс при смене
@@ -10,7 +10,9 @@ pub fn frame_sanitize() {
     // горизонтальных абсолютов считались повёрнутыми (`css-sizing/aspect-
     // ratio/abspos-014..021`: 0.00 в одиночку и 2.36 в пачке).
     VT_FRAME.with(|c| c.set(None));
-    VT_SEQ.with(|c| c.borrow_mut().clear());
+    crate::document::state::current()
+        .vertical_measures
+        .begin_frame();
     LATE.with(|s| s.borrow_mut().clear());
     // Слой начального содержащего блока — тот же расходник кадра: пойманная
     // паника оставила бы его открытым навсегда, и следующий документ клал бы

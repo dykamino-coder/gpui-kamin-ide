@@ -1,5 +1,6 @@
 //! Вертикальный текст.
 mod combined_upright;
+pub(crate) mod measurements;
 mod root_left;
 mod vertical_text;
 pub use crate::text::vertical::combined_upright::CombinedUpright;
@@ -15,44 +16,11 @@ pub(crate) mod combined_text;
 mod vertical_line_baseline;
 mod vertical_style;
 
-thread_local! {
-    /// Двухкадровый замер повёрнутого блока: ключ абзаца → фактическая
-    /// высота содержимого при РЕШЁННОЙ длине строки (см. `prepaint`).
-    /// Первый кадр заявляет ширину по свободному замеру, второй — по факту;
-    /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
-    static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Счётчик ВХОЖДЕНИЙ базового ключа за кадр: два вертикальных абзаца с
-    /// одинаковым текстом и числом узлов (повторяющиеся ячейки) делили один
-    /// ключ, и замер одного применялся к другому. Порядок обхода кадра
-    /// детерминирован — порядковый номер вхождения стабилен между кадрами.
-    pub(crate) static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-/// Санитария начала кадра (`render`/`render_block`): счётчик вхождений
-/// VT-ключей обнуляется, а НЕЗАКРЫТЫЕ слои позиционированных выбрасываются —
-/// пойманная паника прошлого кадра оставляла слой навсегда, и `late_close`
-/// следующей страницы отдавал чужие элементы.
-/// Забыть двухкадровые замеры вертикальных абзацев — при смене документа:
-/// ключи солятся документом, но мусор копился бы бесконечно.
-pub fn forget_vt_measures() {
-    VT_MEASURED.with(|c| c.borrow_mut().clear());
-    // Рамка повёрнутого абзаца живёт только на время его подготовки; если
-    // подготовка оборвалась паникой, `set(prev)` не выполнится, и рамка
-    // протекла бы в следующие страницы — щупы горизонтальных абсолютов
-    // считались бы повёрнутыми (`abspos-*` из CSS2 уходили в красное).
-    VT_FRAME.with(|c| c.set(None));
-}
-
-/// Ключ с порядковым номером вхождения базового ключа в этом кадре.
+/// Stable occurrence key within the current document's frame.
 pub fn vt_seq_key(base: u64) -> u64 {
-    VT_SEQ.with(|c| {
-        let mut m = c.borrow_mut();
-        let n = m.entry(base).or_insert(0);
-        *n += 1;
-        base ^ n.wrapping_mul(0x517C_C1B7_2722_0A95)
-    })
+    crate::document::state::current()
+        .vertical_measures
+        .next_key(base)
 }
 
 thread_local! {

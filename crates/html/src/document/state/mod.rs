@@ -64,6 +64,7 @@ pub struct DocState {
     /// Документ красился после последнего сброса области кадра.
     painted: Cell<bool>,
     this: Weak<DocState>,
+    pub(crate) vertical_measures: crate::text::vertical::measurements::VerticalMeasures,
 }
 
 thread_local! {
@@ -137,6 +138,7 @@ impl DocState {
     fn reset_parsed(&self, media: Media) {
         self.media.set(media);
         self.quirks.set(false);
+        self.vertical_measures.clear();
         *self.root.borrow_mut() = RootMetrics::default();
         self.page_rules.borrow_mut().clear();
         self.try_rules.borrow_mut().clear();

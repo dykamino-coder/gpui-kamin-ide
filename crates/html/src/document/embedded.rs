@@ -14,12 +14,11 @@ pub(crate) struct EmbeddingScheme {
     pub owner_dark: bool,
 }
 
-/// Разобранный вложенный документ: дерево, соль буферов проб и СВОЁ
+/// Разобранный вложенный документ: дерево и СВОЁ
 /// состояние (правила, метрики корня, quirks). Сборка его дерева идёт в
 /// области `state` (`state.enter()`), элементы — под `Scoped`.
 pub struct Embedded {
     pub nodes: Vec<Node>,
-    pub salt: u64,
     pub state: Rc<DocState>,
 }
 
@@ -81,11 +80,7 @@ pub(crate) fn parse_embedded_sized(
     // `<iframe>` потерял бы всё, что раньше работало.
     crate::animation::motion::settle(&mut nodes);
     drop(_scope);
-    Embedded {
-        nodes,
-        salt: hash_of(html, theme_css),
-        state,
-    }
+    Embedded { nodes, state }
 }
 
 /// Снять обёртки `<html>`/`<body>`, которые парсер добавляет всегда.

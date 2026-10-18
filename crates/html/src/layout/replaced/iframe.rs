@@ -207,7 +207,6 @@ pub(crate) fn build_embedded(
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;
-    sub.doc_salt = embedded.salt;
     IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра

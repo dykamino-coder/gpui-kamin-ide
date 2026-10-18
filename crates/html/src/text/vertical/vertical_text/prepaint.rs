@@ -1,7 +1,7 @@
-//! Prepaint for vertical_text; split out to keep the owning module within 250 lines.
+//! Resolve the rotated atomic subtree and record its document-owned measure.
 
+use super::VT_FRAME;
 use super::VerticalText;
-use super::{VT_FRAME, VT_MEASURED};
 use crate::text::vertical::{VT_CCW, VT_PHASE};
 use gpui::{App, Bounds, Pixels, Window, px};
 
@@ -35,13 +35,9 @@ impl VerticalText {
             if let Some(k) = self.key
                 && sized.height > gpui::px(0.)
             {
-                VT_MEASURED.with(|c| {
-                    let mut map = c.borrow_mut();
-                    if map.len() >= 256 {
-                        map.clear();
-                    }
-                    map.insert(k, sized.height);
-                });
+                crate::document::state::current()
+                    .vertical_measures
+                    .record(k, sized.height);
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение

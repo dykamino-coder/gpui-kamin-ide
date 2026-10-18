@@ -122,7 +122,6 @@ impl Document {
         };
         crate::text::paragraph::forget_measures();
         crate::text::clamp::forget_clamp_buffers();
-        crate::text::vertical::forget_vt_measures();
         let (state, nodes, root) =
             parse_document(html, theme_css, effective_base.as_ref(), xml, media);
         Document {
@@ -161,7 +160,7 @@ impl Document {
         self.state.media().print
     }
 
-    /// Хэш содержимого — соль для `RenderOpts::doc_salt`.
+    /// Хэш исходного содержимого, таблицы стилей и базового URL.
     pub fn salt(&self) -> u64 {
         self.key
     }

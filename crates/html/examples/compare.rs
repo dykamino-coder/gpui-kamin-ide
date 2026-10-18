@@ -35,7 +35,6 @@ impl Render for Page {
             text,
             // `line-height: normal` как в браузере, а не золотое сечение GPUI.
             normal_line_height: 1.31,
-            doc_salt: 0,
             frag: Default::default(),
         };
         div()
