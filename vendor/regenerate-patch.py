@@ -37,6 +37,7 @@ FIXES = {
         "Tests: retain bundled upstream fonts for SVG regression coverage and import the moved image-fit type explicitly.",
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
         "Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
+        "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
