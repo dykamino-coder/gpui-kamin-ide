@@ -2,13 +2,13 @@
 
 use super::{band_flow_block, subtree_has_text};
 use crate::dom::{Element, Node};
-use crate::layout::float::band_flow_host::BAND_WM;
 use crate::layout::float::band_host::{BandPiece, band_piece};
 use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
 use crate::render::{
     block_level_in_flow, inline_level, is_blank, out_of_flow, own_context, replaced_tag,
 };
 use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::Len;
 
 /// Внутри блока потока нет ни флоатов, ни блоков своего контекста — на
@@ -79,6 +79,7 @@ pub(crate) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
+    wm: WritingMode,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
@@ -116,7 +117,7 @@ pub(crate) fn band_flow_rest_lift(
             if !text && !atoms {
                 bad = true;
             }
-            if atoms && BAND_WM.with(std::cell::Cell::get) != 0 {
+            if atoms && wm.vertical {
                 bad = true;
             }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
@@ -183,7 +184,7 @@ pub(crate) fn band_flow_rest_lift(
                     // вставал ПОСЛЕ буквицы вместо обтекания
                     // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
                     // осадки сразу за буквицей).
-                    let only_breaks = BAND_WM.with(std::cell::Cell::get) != 0
+                    let only_breaks = wm.vertical
                         && run
                             .iter()
                             .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
@@ -197,7 +198,10 @@ pub(crate) fn band_flow_rest_lift(
                 }
                 flush(&mut run, &mut out, cont);
                 cont = false;
-                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) || band_nest_ok(c, em) {
+                if band_piece_m(&n, em, wm).is_some()
+                    || band_flow_block(c, em)
+                    || band_nest_ok(c, em, wm)
+                {
                     out.push(n);
                 } else {
                     return None;

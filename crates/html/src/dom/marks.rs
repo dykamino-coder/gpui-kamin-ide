@@ -66,10 +66,12 @@ pub(crate) struct ShapeFlow {
     pub(crate) count: usize,
     /// Font size for `em` margins of the measured host.
     pub(crate) em: Option<f32>,
-    /// Containing block height (`BAND_CBH`) of the measured host.
+    /// Containing block height in px of the measured host, when definite.
     pub(crate) cbh: Option<f32>,
-    /// Containing block width (`BAND_CBW`) of the measured host.
+    /// Containing block width in px of the measured host, when definite.
     pub(crate) cbw: Option<f32>,
+    /// Writing mode of the containing block the host was built for.
+    pub(crate) wm: crate::style::computed::writing_mode::WritingMode,
     /// Band layout path; `None` — the live `shape-outside` path.
     pub(crate) bands: Option<BandPath>,
 }

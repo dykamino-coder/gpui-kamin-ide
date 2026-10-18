@@ -4,6 +4,7 @@
 use std::ops::ControlFlow;
 
 use crate::dom::Node;
+use crate::layout::float::FloatCb;
 use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
@@ -37,13 +38,13 @@ pub(crate) fn wrap_floats(
     // those of an ordinary block (margin-collapse-121..125, 157, 158).
     cell_bfc: bool,
 ) -> Vec<Node> {
-    let cb_width = parent.width;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
+    let cb = FloatCb::of(parent);
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open);
-    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, &mut nodes) {
+    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, cb, &mut nodes) {
         return value;
     }
     let mut out: Vec<Node> = vec![];
@@ -66,7 +67,7 @@ pub(crate) fn wrap_floats(
             measured_ok,
             parent_bfc,
             cell_bfc,
-            cb_width,
+            cb,
             &mut nodes,
             &mut out,
             &mut i,

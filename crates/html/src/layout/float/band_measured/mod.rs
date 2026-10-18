@@ -2,11 +2,13 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::{band_orthogonal, subtree_has_text};
 use crate::layout::float::band_host::{BandPiece, band_margins, band_piece};
 use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
 use crate::style::computed::Display;
+use crate::style::computed::writing_mode::WritingMode;
 mod tail;
 use tail::band_host_m_tail;
 mod nested;
@@ -23,7 +25,7 @@ use nested::host_floats_shaped;
 /// нужны: ширину окна и высоту из содержимого даёт пробная раскладка
 /// (`band_flow::plan`). Атомы строки сюда НЕ пускаются: они делят строку, а
 /// здесь каждый кусок берёт своё окно.
-pub(super) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
+pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
     match band_piece(n) {
         Some(BandPiece::Strut) => return Some(false),
         Some(BandPiece::Atom) => return None,
@@ -49,7 +51,7 @@ pub(super) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
         || (c.inline && c.style.display.is_none())
-        || band_orthogonal(&c.style)
+        || band_orthogonal(&c.style, wm)
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
@@ -79,7 +81,9 @@ pub(super) fn band_host_m(
     i: usize,
     em: f32,
     lead: &[Node],
+    cb: FloatCb,
 ) -> Option<(Element, usize, Vec<Node>)> {
+    let wm = cb.wm;
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
     while j < nodes.len() {
@@ -93,7 +97,7 @@ pub(super) fn band_host_m(
         if !next.style.float.is_some_and(|f| f != 0) {
             break;
         }
-        band_float_m(next, em)?;
+        band_float_m(next, em, wm)?;
         floaters.push(next.clone());
         j += 1;
     }
@@ -137,7 +141,7 @@ pub(super) fn band_host_m(
             if next.style.float.is_some_and(|f| f != 0)
                 && inline_only
                 && rest.iter().any(|n| !is_blank(n))
-                && band_float_m(next, em).is_some()
+                && band_float_m(next, em, wm).is_some()
             {
                 let mut pre = lead.to_vec();
                 pre.extend(rest.iter().cloned());
@@ -158,21 +162,21 @@ pub(super) fn band_host_m(
         && rest.iter().all(is_blank)
         && floaters
             .iter()
-            .any(|f| band_orthogonal(&f.style) && subtree_has_text(f))
+            .any(|f| band_orthogonal(&f.style, wm) && subtree_has_text(f))
     {
         return None;
     }
-    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes)
+    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes, cb)
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
-pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
+pub(super) fn band_float_m(next: &Element, em: f32, wm: WritingMode) -> Option<()> {
     {
         // Вертикальный float меряется через собственный native element
         // (Writing Modes 4 §7.3), затем полосы размещают физическую коробку
         // в осях хоста. Горизонтальному ортогональному тексту ещё нужен
         // fallback доступного строчного размера, поэтому он остаётся в ряду.
-        if band_orthogonal(&next.style)
+        if band_orthogonal(&next.style, wm)
             && subtree_has_text(next)
             && next.style.vertical != Some(true)
         {

@@ -4,8 +4,9 @@
 use crate::dom::{Element, Node};
 use crate::layout::float::band_host::px_margin_box;
 use crate::render::is_blank;
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::blank_text;
 
 pub(super) mod band_clearance;
@@ -28,6 +29,27 @@ pub mod shape_flow;
 pub(crate) mod shapes;
 pub(crate) mod split_flow;
 pub mod wrap;
+
+/// The containing block whose children `wrap_floats` lowers into float
+/// hosts: its writing mode tells an orthogonal flow from the host's own, and
+/// its definite sizes resolve percentage sizes of the host's children
+/// (CSS 2.1 §10.2, §10.5).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FloatCb {
+    pub(crate) wm: WritingMode,
+    pub(crate) width: Option<f32>,
+    pub(crate) height: Option<f32>,
+}
+
+impl FloatCb {
+    pub(crate) fn of(cb: &Computed) -> Self {
+        FloatCb {
+            wm: WritingMode::of(cb),
+            width: px_strict(cb.width),
+            height: px_strict(cb.height),
+        }
+    }
+}
 
 pub(crate) fn block_like_float(c: &Computed) -> bool {
     c.float.unwrap_or(0) != 0 && matches!(c.width, Some(Len::Pct(p)) if p >= 0.9999)

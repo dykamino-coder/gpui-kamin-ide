@@ -8,6 +8,7 @@ use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
 mod parts;
 pub(super) use parts::band_kid_kind;
 
@@ -21,6 +22,7 @@ pub(crate) fn band_kids(
     opts: &RenderOpts,
     em: f32,
     start_open: bool,
+    wm: WritingMode,
 ) -> Vec<crate::layout::float::band_flow::Kid> {
     use crate::layout::float::band_flow::{Kid, Nest};
     let depth = defer_depth();
@@ -122,7 +124,7 @@ pub(crate) fn band_kids(
         };
         // Распорка держит физическую высоту — в вертикальном письме это не
         // блочный размер.
-        if vert.is_some() && band_piece_m(n, em) == Some(false) {
+        if vert.is_some() && band_piece_m(n, em, wm) == Some(false) {
             continue;
         }
         let float = idx < count || c.style.float.is_some_and(|f| f != 0);
@@ -133,7 +135,7 @@ pub(crate) fn band_kids(
         // (`below-float3`: `::first-line { font-size: 50px }` у `x` под
         // флоатом). Первый прогон получает слой хоста.
         let first_line = !float && !seen_inflow && c.marks.anon && !c.marks.cont;
-        if !float && band_piece_m(n, em) != Some(false) {
+        if !float && band_piece_m(n, em, wm) != Some(false) {
             seen_inflow = true;
         }
         let first_layer: Option<Computed> = if first_line {
@@ -142,7 +144,7 @@ pub(crate) fn band_kids(
             None
         };
         let mut nest: Option<Nest> = None;
-        let kind = match band_kid_kind(inherited, opts, em, vert, n, c, float, &mut nest) {
+        let kind = match band_kid_kind(inherited, opts, em, wm, vert, n, c, float, &mut nest) {
             Some(value) => value,
             None => continue,
         };

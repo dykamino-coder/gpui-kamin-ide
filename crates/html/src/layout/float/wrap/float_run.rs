@@ -7,6 +7,7 @@ use super::row::{push_float_row, wrap_beside_covered};
 use super::run::{gather_floaters, run_min_width, split_rest, strut_for_next};
 use super::shaped::{shaped_run_of, wrap_shaped_run};
 use crate::dom::{Element, Node};
+use crate::layout::float::FloatCb;
 use crate::layout::float::clear::{bfc_no_fit, clears_side, leading_clear};
 use crate::style::computed::Computed;
 use std::ops::ControlFlow;
@@ -19,13 +20,14 @@ pub(super) fn wrap_float_run(
     measured_ok: bool,
     parent_bfc: bool,
     cell_bfc: bool,
-    cb_width: Option<crate::style::values::value::Len>,
+    cb: FloatCb,
     nodes: &mut Vec<Node>,
     out: &mut Vec<Node>,
     i: &mut usize,
     side: i8,
 ) -> ControlFlow<()> {
-    let hosted = host_for_run(em, measured_ok, cb_width, &*nodes, &*out, *i);
+    let cb_width = parent.width;
+    let hosted = host_for_run(em, measured_ok, cb_width, cb, &*nodes, &*out, *i);
     if let ControlFlow::Break(_) = wrap_into_host(
         parent,
         cb_top_open,

@@ -6,13 +6,14 @@ use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_dimensions;
-use crate::layout::float::band_flow_host::{BAND_WM, band_flow_rest, band_kids};
+use crate::layout::float::band_flow_host::{band_flow_rest, band_kids};
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::band_float_m;
 use crate::render::{
     RenderOpts, block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag,
 };
 use crate::style::cascade::inherit::inherit;
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 
@@ -34,9 +35,9 @@ pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
 /// гейт, что у блока потока (`band_flow_block`), кроме чистоты содержимого,
 /// плюс то, что коробка рисуется отдельно от детей — значит ни сдвига, ни
 /// эффектов группы, ни ограничителей высоты; рамка и отступ разрешимы.
-pub(super) fn band_nest_block(c: &Element, em: f32) -> bool {
+pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
-    BAND_WM.with(std::cell::Cell::get) == 0
+    !wm.vertical
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
@@ -91,14 +92,15 @@ pub(super) fn band_nest(
     inherited: &Computed,
     opts: &RenderOpts,
     em: f32,
+    wm: WritingMode,
 ) -> Option<crate::layout::float::band_flow::Nest> {
-    if !band_nest_block(c, em) {
+    if !band_nest_block(c, em, wm) {
         return None;
     }
     let inner_em = band_em(&c.style, em)?;
-    let seq = band_seq(collapse_margins(&c.children, false), inner_em)?;
+    let seq = band_seq(collapse_margins(&c.children, false), inner_em, wm)?;
     let merged = inherit(inherited, &c.style);
-    let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c));
+    let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
     Some(crate::layout::float::band_flow::Nest {
         kids,
         inset: band_inset(c, em)?,
@@ -111,7 +113,7 @@ pub(super) fn band_nest(
 /// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
 /// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
 /// «верхом текущей строки») — не наш случай, отказ.
-pub(super) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
+pub(super) fn band_seq(nodes: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
     for n in nodes {
@@ -137,15 +139,15 @@ pub(super) fn band_seq(nodes: Vec<Node>, em: f32) -> Option<Vec<Node>> {
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
         if open_run
-            || (f.style.vertical == Some(true) && band_float_m(f, em).is_none())
+            || (f.style.vertical == Some(true) && band_float_m(f, em, wm).is_none())
             || f.style.shape_outside.is_some()
             || band_margins(&f.style, em).is_none()
         {
             return None;
         }
-        out.extend(band_flow_rest(std::mem::take(&mut chunk), em)?);
+        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm)?);
         out.push(n);
     }
-    out.extend(band_flow_rest(chunk, em)?);
+    out.extend(band_flow_rest(chunk, em, wm)?);
     Some(out)
 }

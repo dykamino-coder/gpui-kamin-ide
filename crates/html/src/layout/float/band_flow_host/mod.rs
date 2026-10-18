@@ -7,6 +7,7 @@ use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
 use crate::render::{RenderOpts, block_level_in_flow, own_context, replaced_tag};
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
@@ -18,80 +19,14 @@ pub(super) use kids::band_kids;
 mod build_kid;
 use build_kid::build_band_kid;
 
-thread_local! {
-    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
-    /// 0 — горизонтальное, 1 — `vertical-rl`, 2 — `vertical-lr`. Им гейты
-    /// измеряемого хоста отличают ортогональный поток от своего.
-    pub(crate) static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
-}
-
-thread_local! {
-    /// Высота содержащего блока хоста в точках, если задана: от неё доли
-    /// высоты детей (§10.5). Хост несёт её атрибутом `cbh`.
-    pub(crate) static BAND_CBH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-}
-
-thread_local! {
-    /// Слой `::first-line` содержащего блока (`inherited.first_line` в
-    /// `blocks()`): измеряемый хост — синтетический узел, своего слоя у него
-    /// нет, и `element` отдал бы детям `None`. Хост, с которого начинается
-    /// содержимое блока, несёт слой узлом (`wrap_floats`).
-    pub(crate) static BAND_FL: std::cell::RefCell<Option<Computed>> = const { std::cell::RefCell::new(None) };
-}
-
-/// Вернуть прежний слой первой строки по выходе из `blocks()`.
-pub(crate) struct BandFlGuard(pub(crate) Option<Computed>);
-
-impl Drop for BandFlGuard {
-    fn drop(&mut self) {
-        BAND_FL.with(|f| *f.borrow_mut() = self.0.take());
-    }
-}
-
-thread_local! {
-    /// Ширина содержащего блока хоста в точках, если задана. В вертикальном
-    /// письме это его БЛОЧНЫЙ размер: от неё доли `block-size` флоатов
-    /// (`width` после перевода логических свойств, §10.5 по блочной оси).
-    /// Хост несёт её атрибутом `cbw`.
-    pub(crate) static BAND_CBW: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-}
-
-/// Вернуть прежнюю ширину содержащего блока хоста по выходе из `blocks()`.
-pub(crate) struct BandCbwGuard(pub(crate) Option<f32>);
-
-impl Drop for BandCbwGuard {
-    fn drop(&mut self) {
-        BAND_CBW.with(|w| w.set(self.0));
-    }
-}
-
-/// Вернуть прежнюю высоту содержащего блока хоста по выходе из `blocks()`.
-pub(crate) struct BandCbhGuard(pub(crate) Option<f32>);
-
-impl Drop for BandCbhGuard {
-    fn drop(&mut self) {
-        BAND_CBH.with(|h| h.set(self.0));
-    }
-}
-
-/// Вернуть прежнее письмо хоста по выходе из `blocks()`.
-pub(crate) struct BandWmGuard(pub(crate) u8);
-
-impl Drop for BandWmGuard {
-    fn drop(&mut self) {
-        BAND_WM.with(|w| w.set(self.0));
-    }
-}
-
 /// Письмо коробки отличается от письма содержащего блока хоста —
 /// ортогональный поток (css-writing-modes-4 §7.3): shrink-to-fit и место по
 /// чужой оси каркас пробы не считает.
-pub(super) fn band_orthogonal(c: &Computed) -> bool {
+pub(super) fn band_orthogonal(c: &Computed, wm: WritingMode) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
-    let wm = BAND_WM.with(std::cell::Cell::get);
-    c.vertical.is_some_and(|v| v != (wm != 0))
-        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
+    c.vertical.is_some_and(|v| v != wm.vertical)
+        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != wm.rl))
 }
 
 /// Есть ли в поддереве непустой текст.
@@ -127,8 +62,8 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
-    band_flow_rest_lift(rest, em, None)
+pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec<Node>> {
+    band_flow_rest_lift(rest, em, None, wm)
 }
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
@@ -153,6 +88,7 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         opts,
         em,
         e.marks.adjoining_start,
+        host.wm,
     );
     let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
     if inherited.vertical == Some(true) {

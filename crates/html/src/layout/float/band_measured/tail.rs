@@ -3,8 +3,9 @@
 use super::{band_piece_m, host_floats_shaped};
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
+use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, band_flow_rest_lift};
+use crate::layout::float::band_flow_host::band_flow_rest_lift;
 use crate::render::is_blank;
 use crate::style::computed::Computed;
 
@@ -19,6 +20,7 @@ pub(super) fn band_host_m_tail(
     floaters: Vec<Element>,
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
+    cb: FloatCb,
 ) -> Option<(Element, usize, Vec<Node>)> {
     // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
     // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
@@ -83,7 +85,7 @@ pub(super) fn band_host_m_tail(
         r.extend(rest);
         r
     };
-    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted))?;
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm)?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
     if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {
@@ -92,7 +94,7 @@ pub(super) fn band_host_m_tail(
     // Блок потока или строчный прогон в хвосте (не кусок своего контекста).
     let flows = rest
         .iter()
-        .any(|n| matches!(n, Node::Element(_)) && band_piece_m(n, em).is_none());
+        .any(|n| matches!(n, Node::Element(_)) && band_piece_m(n, em, cb.wm).is_none());
     // За хвостом — очищающая коробка с верхним полем: её поле и clearance
     // (§9.5.2) решаются в паре с высотой хвоста, а хост их не видит —
     // остаётся распорке флекс-ряда (`adjoining-float-nested-forced-clearance-003`).
@@ -112,15 +114,16 @@ pub(super) fn band_host_m_tail(
         return None;
     }
     let mut host = Element {
-        // Высота и ширина содержащего блока (`BAND_CBH`/`BAND_CBW`):
-        // `shape-flow` своих нет. Путь `Measured`: `shape_flow` отдаёт хост
+        // Высота, ширина и письмо содержащего блока: у `shape-flow`
+        // своих нет. Путь `Measured`: `shape_flow` отдаёт хост
         // `band_flow`.
         marks: crate::dom::Marks {
             shape_flow: Some(crate::dom::ShapeFlow {
                 count: floaters.len(),
                 em: Some(em),
-                cbh: BAND_CBH.with(std::cell::Cell::get),
-                cbw: BAND_CBW.with(std::cell::Cell::get),
+                cbh: cb.height,
+                cbw: cb.width,
+                wm: cb.wm,
                 bands: Some(crate::dom::BandPath::Measured),
                 ..Default::default()
             }),

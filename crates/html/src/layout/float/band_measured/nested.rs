@@ -10,6 +10,7 @@ use crate::layout::float::band_host::band_em;
 use crate::layout::float::band_nest::{band_nest_block, band_seq};
 use crate::render::is_blank;
 use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
 
 /// Измеряемый хост, начатый блоком потока с флоатами внутри (шаг F7): сам
 /// блок — `Kind::Nest`, за ним — хвост как у `band_host_m` до флоата или
@@ -20,11 +21,12 @@ pub(crate) fn band_host_nested(
     i: usize,
     em: f32,
     parent_bfc: bool,
+    wm: WritingMode,
 ) -> Option<(Element, usize)> {
     let Node::Element(c) = &nodes[i] else {
         return None;
     };
-    if !has_flow_float(c) || !band_nest_ok(c, em) {
+    if !has_flow_float(c) || !band_nest_ok(c, em, wm) {
         return None;
     }
     let mut j = i + 1;
@@ -48,7 +50,7 @@ pub(crate) fn band_host_nested(
     if !rest.iter().any(|n| !is_blank(n)) && !parent_bfc {
         return None;
     }
-    let rest = band_flow_rest(rest, em)?;
+    let rest = band_flow_rest(rest, em, wm)?;
     if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
         && next.style.clear.is_some()
         && !band_clear_supported(next)
@@ -60,6 +62,7 @@ pub(crate) fn band_host_nested(
         marks: crate::dom::Marks {
             shape_flow: Some(crate::dom::ShapeFlow {
                 em: Some(em),
+                wm,
                 bands: Some(crate::dom::BandPath::Measured),
                 ..Default::default()
             }),
@@ -84,24 +87,24 @@ pub(crate) fn band_host_nested(
 
 /// Блок с флоатами или коробками своего контекста внутри годится в
 /// `Kind::Nest` целиком — со всеми потомками (шаг F7).
-pub(crate) fn band_nest_ok(c: &Element, em: f32) -> bool {
-    if !band_nest_block(c, em) {
+pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode) -> bool {
+    if !band_nest_block(c, em, wm) {
         return false;
     }
     let Some(inner_em) = band_em(&c.style, em) else {
         return false;
     };
-    let Some(seq) = band_seq(collapse_margins(&c.children, false), inner_em) else {
+    let Some(seq) = band_seq(collapse_margins(&c.children, false), inner_em, wm) else {
         return false;
     };
     seq.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
             k.style.float.is_some_and(|f| f != 0)
-                || band_piece_m(n, inner_em).is_some()
+                || band_piece_m(n, inner_em, wm).is_some()
                 || k.marks.anon
                 || band_flow_block(k, inner_em)
-                || band_nest_ok(k, inner_em)
+                || band_nest_ok(k, inner_em, wm)
         }
     })
 }

@@ -14,9 +14,6 @@ use crate::layout::block::available_width;
 use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
 use crate::layout::block::margins::CELL_BFC;
 use crate::layout::block::struts::zero_len;
-use crate::layout::float::band_flow_host::{
-    BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard,
-};
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::page::paged::PAGED;
@@ -24,7 +21,7 @@ use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::{Len, px_strict};
+use crate::style::values::value::Len;
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
@@ -120,17 +117,6 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
         && (inherited.vertical != Some(true) || vert_host)
         && (inherited.vertical_rl != Some(true) || vert_host)
         && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
-    let _fl_guard =
-        BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
-    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
-    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
-    let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
-        w.replace(match (inherited.vertical, inherited.vertical_rl) {
-            (Some(true), Some(true)) => 1,
-            (Some(true), _) => 2,
-            _ => 0,
-        })
-    }));
     let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
     let collapsed = by_layer(
         wrap_floats(

@@ -2,12 +2,11 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
-use crate::layout::float::band_flow_host::BAND_FL;
 use crate::layout::float::band_host::{BandPiece, band_host, band_piece};
 use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
-use crate::layout::float::{band_clearance, float_clear_scope, inline_floats};
+use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
 use crate::render::{inline_level, is_blank, out_of_flow, phantom_inline};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -18,6 +17,7 @@ pub(super) fn unfloated_flow(
     em: f32,
     measured_ok: bool,
     parent_bfc: bool,
+    cb: FloatCb,
     nodes: &mut Vec<Node>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
@@ -31,7 +31,7 @@ pub(super) fn unfloated_flow(
         // `floats-bfc-003`). Хост начинается с такого блока.
         if measured_ok {
             for i in 0..nodes.len() {
-                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc) {
+                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb.wm) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
                     band_clearance::mark_start(&mut host, cb_top_open, &out);
                     out.push(Node::Element(host));
@@ -123,6 +123,7 @@ pub(super) fn host_for_run(
     em: f32,
     measured_ok: bool,
     cb_width: Option<Len>,
+    cb: FloatCb,
     nodes: &[Node],
     out: &[Node],
     i: usize,
@@ -160,7 +161,7 @@ pub(super) fn host_for_run(
         .map(|(h, n, l)| (h, n, Some(lead_at), l))
         .or_else(|| {
             (measured_ok && text_lead)
-                .then(|| band_host_m(nodes, i, em, &out[text_at..]))
+                .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
                 .flatten()
                 .map(|(h, n, l)| (h, n, Some(text_at), l))
         })
@@ -171,7 +172,7 @@ pub(super) fn host_for_run(
         // (`band_flow.rs`, шаги F2/F3/F5).
         .or_else(|| {
             measured_ok
-                .then(|| band_host_m(nodes, i, em, &[]))
+                .then(|| band_host_m(nodes, i, em, &[], cb))
                 .flatten()
                 .map(|(h, n, l)| (h, n, None, l))
         })
@@ -221,7 +222,7 @@ pub(super) fn wrap_into_host(
                 .iter()
                 .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
         {
-            host.first_line = BAND_FL.with(|f| f.borrow().clone());
+            host.first_line = parent.first_line.as_deref().cloned();
         }
         band_clearance::mark_start(&mut host, cb_top_open, &*out);
         out.push(Node::Element(host));
