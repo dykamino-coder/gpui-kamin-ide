@@ -40,7 +40,7 @@ pub(crate) fn band_kid_kind(
     } else {
         match band_piece_m(n, em, wm) {
             Some(true) => Kind::Piece {
-                rtl: inherited.rtl == Some(true),
+                rtl: inherited.wm().rtl(),
                 table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
             },
             Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),

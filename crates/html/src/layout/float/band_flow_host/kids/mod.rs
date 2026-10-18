@@ -32,7 +32,7 @@ pub(crate) fn band_kids(
     // переводятся в (block-start, inline-end, block-end, inline-start)
     // по таблице css-writing-modes-4 :1877-1888 (`vertical-rl`: block-start
     // — право, inline-start — верх; `vertical-lr`: block-start — лево).
-    let vert = (inherited.vertical == Some(true)).then_some(inherited.vertical_rl == Some(true));
+    let vert = (inherited.wm().vertical()).then_some(inherited.wm().block_rl());
     // Был ли уже ребёнок потока со строками (не флоат и не распорка).
     let mut seen_inflow = false;
     // Строчное содержимое перед флоатами пробега (`lead-probe`,

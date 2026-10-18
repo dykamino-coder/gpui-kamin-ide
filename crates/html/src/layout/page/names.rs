@@ -171,7 +171,7 @@ fn plain_wrapper(e: &Element) -> bool {
         && st.outline.is_none()
         && st.column_count.is_none()
         && st.z_index.is_none()
-        && st.vertical != Some(true)
+        && !st.wm().vertical()
         && !st.break_before_force
         && !st.break_after_force
         && e.children

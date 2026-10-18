@@ -35,7 +35,7 @@ pub mod wrap;
 /// hosts: its writing mode tells an orthogonal flow from the host's own, and
 /// its definite sizes resolve percentage sizes of the host's children
 /// (CSS 2.1 §10.2, §10.5).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct FloatCb {
     pub(crate) wm: WritingMode,
     pub(crate) width: Option<f32>,
@@ -49,7 +49,7 @@ pub(crate) struct FloatCb {
 impl FloatCb {
     pub(crate) fn of(cb: &Computed) -> Self {
         FloatCb {
-            wm: WritingMode::of(cb),
+            wm: cb.wm(),
             width: px_strict(cb.width),
             height: px_strict(cb.height),
             icb: cb.icb,

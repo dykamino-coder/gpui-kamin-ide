@@ -23,10 +23,16 @@ pub(super) fn paginate_of(
     let cands = candidates(copy)?;
     let avoid_root = avoid_row(copy);
     let ids: Vec<u64> = cands.iter().map(|c| c.0).collect();
-    let (opts, merged, copy) = (opts.clone(), merged.clone(), copy.clone());
+    let watched = watch::Watched::new(&ids);
+    // Copies are built with the recorder: `render::element` wraps the
+    // candidates (`watch::wrap`).
+    let mut opts = opts.clone();
+    opts.frag.watch = Some(watched.clone());
+    let (merged, copy) = (merged.clone(), copy.clone());
     Some(Paginate {
         avoid_root,
         cands,
+        watched,
         rebuild: Box::new(move |struts, n| {
             let mut c2 = copy.clone();
             if !apply(&mut c2, struts) {
@@ -35,7 +41,7 @@ pub(super) fn paginate_of(
             // The root's own style may carry struts too (row gaps).
             let mut inner = crate::style::cascade::inherit::inherit(&merged, &c2.style);
             inner.fragment_clip_ancestor = false;
-            watch::building(&ids, || {
+            {
                 let b = |first: bool, part: usize| {
                     side_margin_wrap(
                         build_copy(
@@ -62,7 +68,7 @@ pub(super) fn paginate_of(
                     )
                 };
                 Some((b(true, 0), (1..n.max(1)).map(|i| b(false, i)).collect()))
-            })
+            }
         }),
     })
 }

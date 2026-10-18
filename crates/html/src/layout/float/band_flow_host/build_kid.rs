@@ -119,20 +119,17 @@ pub(super) fn build_band_kid(
     // CSS Writing Modes §3.2: changing writing-mode establishes an independent
     // formatting context. Blink block_layout_algorithm.cc:1545 clears its
     // exclusion space; parent bands use different axes and cannot cut its lines.
-    let child_vertical = copy.style.vertical.unwrap_or(vertical);
+    let child_vertical = copy.style.vertical_decl().unwrap_or(vertical);
     let same_writing_mode = child_vertical == vertical
         && (!vertical
-            || copy
-                .style
-                .vertical_rl
-                .unwrap_or(inherited.vertical_rl == Some(true))
-                == (inherited.vertical_rl == Some(true)))
+            || copy.style.rl_decl().unwrap_or(inherited.wm().block_rl())
+                == (inherited.wm().block_rl()))
         && (!vertical
             || copy
                 .style
-                .sideways
-                .unwrap_or(inherited.sideways == Some(true))
-                == (inherited.sideways == Some(true)));
+                .sideways_decl()
+                .unwrap_or(inherited.wm().sideways())
+                == (inherited.wm().sideways()));
     if shapes.is_some() && same_writing_mode {
         copy.style.flow_shapes = shapes;
     }
@@ -156,11 +153,7 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        let row = crate::layout::fragment::types::FlowRow::new(
-            atoms,
-            shapes,
-            inherited.rtl == Some(true),
-        );
+        let row = crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl());
         if !vertical {
             return row.hooked();
         }
@@ -168,7 +161,7 @@ pub(super) fn build_band_kid(
         // inline axis) within the window's inline size, lines advancing from
         // block-start — the right edge, or the left one in `vertical-lr`.
         let row = row.vertical_rl().inline_limit(avail);
-        let row = if inherited.vertical_rl == Some(true) {
+        let row = if inherited.wm().block_rl() {
             row
         } else {
             row.block_lr()
@@ -195,7 +188,7 @@ pub(super) fn build_band_kid(
     // Writing Modes 4 §7.3: the float's own formatting context determines its
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
-    let own_vertical = copy.style.vertical.or(inherited.vertical) == Some(true);
+    let own_vertical = copy.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
     if float && !vertical {
         super::fit_own_layout(&mut copy.style, inherited, avail, cb);
     }

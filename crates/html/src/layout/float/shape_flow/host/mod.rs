@@ -12,7 +12,7 @@ pub(super) fn shape_host_div(
     vert_lr: bool,
     bands: &super::super::bands::FloatBands,
 ) -> gpui::Div {
-    if inherited.vertical_rl == Some(true) || vert_lr {
+    if inherited.wm().block_rl() || vert_lr {
         div().relative()
     } else if !e.marks.inflow_height && bands.bottom(None) > 0.0 {
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка

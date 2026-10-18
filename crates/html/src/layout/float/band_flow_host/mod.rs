@@ -26,8 +26,10 @@ use build_kid::build_band_kid;
 pub(super) fn band_orthogonal(c: &Computed, wm: WritingMode) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
-    c.vertical.is_some_and(|v| v != wm.vertical)
-        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != wm.rl))
+    c.vertical_decl().is_some_and(|v| v != wm.vertical())
+        || (c.wm().vertical()
+            && c.rl_decl()
+                .is_some_and(|r| r != (wm.vertical() && wm.block_rl())))
 }
 
 /// A float that lays its content out as a flex or grid container: the
@@ -129,8 +131,8 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         host.wm,
     );
     let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
-    if inherited.vertical == Some(true) {
-        return flow.vertical(inherited.vertical_rl == Some(true)).hooked();
+    if inherited.wm().vertical() {
+        return flow.vertical(inherited.wm().block_rl()).hooked();
     }
     let flow = flow.hooked();
     if !host.icb {

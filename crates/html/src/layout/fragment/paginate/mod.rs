@@ -210,4 +210,6 @@ pub struct Paginate {
     pub(crate) avoid_root: bool,
     pub(crate) cands: Vec<(u64, Cand)>,
     pub(crate) rebuild: Box<Rebuild>,
+    /// Recorder of the candidates' layout nodes in the rebuilt copies.
+    pub(crate) watched: std::rc::Rc<watch::Watched>,
 }

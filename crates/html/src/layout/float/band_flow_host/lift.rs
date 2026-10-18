@@ -227,7 +227,7 @@ pub(crate) fn band_flow_rest_lift(
                     // вставал ПОСЛЕ буквицы вместо обтекания
                     // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
                     // осадки сразу за буквицей).
-                    let only_breaks = wm.vertical
+                    let only_breaks = wm.vertical()
                         && run
                             .iter()
                             .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));

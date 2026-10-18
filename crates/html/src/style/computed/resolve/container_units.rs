@@ -51,7 +51,7 @@ impl Computed {
         // строчную полосу не учла.
         let g = self.scroll.used;
         let stable = self.scroll.gutter.is_some_and(|v| v != 0)
-            && self.vertical != Some(true)
+            && !self.wm().vertical()
             && matches!(
                 self.overflow_y,
                 Some(crate::style::computed::Overflow::Scroll)
@@ -70,7 +70,7 @@ impl Computed {
         let w = w.map(|v| (v - g[0] - g[2] - gutter).max(0.0));
         let h = h.map(|v| (v - g[1] - g[3]).max(0.0));
         let both = self.contain_size == Some(true);
-        let vertical = self.vertical.unwrap_or(false);
+        let vertical = self.wm().vertical();
         let take_w = both || !vertical;
         let take_h = both || vertical;
         (

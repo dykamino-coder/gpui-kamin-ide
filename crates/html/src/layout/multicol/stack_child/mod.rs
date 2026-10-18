@@ -135,7 +135,7 @@ pub(super) fn multicol_stack_child(
     }
     // Вложенный многоколоночник с ВЕРХА внешней колонки
     // (первый ребёнок без поля) и заданной высотой —
-    // рядами во внешний фрагментаинер (`flow::OUTER_ROW`).
+    // рядами во внешний фрагментаинер (`FragCx::outer_row`).
     // С верха колонки граница k-го ряда — ровно k·H, и
     // внешняя стопка режет коробку краем колонки
     // (`fill_at`, не монолит) точно по рядам; мера
@@ -184,7 +184,7 @@ pub(super) fn multicol_stack_child(
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let build = |first: bool, part: usize, band: bool| {
         build_copy(
-            opts,
+            &opts.in_stack_copy(), // копии — «внутри стопки» (`FragCx`)
             col_vert,
             col_rl,
             line_col_w,
@@ -246,9 +246,9 @@ pub(super) fn multicol_stack_child(
     // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
     // левого края (Blink `ComputeMarginsFor` по стилю контейнера).
     child.par.rtl_root_in_ltr = !col_vert
-        && merged.rtl != Some(true)
-        && merged.vertical != Some(true)
-        && copy.style.rtl == Some(true)
-        && copy.style.vertical != Some(true);
+        && !merged.wm().rtl()
+        && !merged.wm().vertical()
+        && copy.style.wm().rtl()
+        && !copy.style.wm().vertical();
     child
 }

@@ -13,7 +13,7 @@ pub(crate) fn orthogonal_children(
     let inline_size = px_strict(container.height);
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || ch.style.vertical != Some(false) {
+        if ch.inline || ch.style.vertical_decl() != Some(false) {
             continue;
         }
         // Внепоточные не зажимаются: абсолютный элемент меряется от своего

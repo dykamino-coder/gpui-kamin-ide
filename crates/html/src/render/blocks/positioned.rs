@@ -51,16 +51,16 @@ pub(crate) fn static_position_layer(
     // In a vertical parent the flag means "inline-start is the bottom":
     // `direction: rtl` of `vertical-*`, `ltr` of `sideways-lr` (§6.4).
     let wm = inherited.wm();
-    let rtl = if wm.vertical {
+    let rtl = if wm.vertical() {
         wm.inline_start() == crate::style::computed::writing_mode::Side::Bottom
     } else {
-        wm.rtl
+        wm.rtl()
     };
     spot.set(crate::layout::positioned::containing_block::Spot {
         rtl,
-        vertical: inherited.vertical == Some(true),
-        vertical_rl: inherited.vertical_rl == Some(true),
-        own_vertical: e.style.vertical == Some(true),
+        vertical: wm.vertical(),
+        vertical_rl: wm.block_rl(),
+        own_vertical: e.style.wm().vertical(),
         replaced: matches!(
             e.tag.as_str(),
             "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -93,7 +93,7 @@ pub(crate) fn static_position_layer(
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
     let mr = margin_px(e.style.margin.right, &e.style).unwrap_or(0.0);
-    let stretch = inherited.rtl != Some(true) && inherited.vertical != Some(true);
+    let stretch = !inherited.wm().rtl() && !inherited.wm().vertical();
     let built = if (ml != 0.0 || mt != 0.0) && !below {
         let wrap = div().absolute().left(px(ml)).top(px(mt));
         let wrap = if stretch { wrap.right(px(mr)) } else { wrap };

@@ -47,7 +47,12 @@ mod tests {
         element.style.margin.right = Some(Len::Auto);
         element.style.min_width = Some(Len::Px(20.0));
         element.style.max_width = Some(Len::Px(100.0));
-        element.style.vertical = Some(true);
+        element.style.writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true,
+                element.style.wm().block_rl(),
+                element.style.wm().sideways(),
+            ));
         assert!(eligible(&element));
         assert!(!crate::render::content_sized_wraps(&element));
         element.style.intrinsic_wrapper_required = true;

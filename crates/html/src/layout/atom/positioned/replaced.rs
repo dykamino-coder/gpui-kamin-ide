@@ -53,10 +53,10 @@ pub(super) fn replaced_abs_atom(
             next_line: None,
             fixed_axes: (x_set, y_set),
             line_thickness: line_height_px(inherited, opts),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -100,10 +100,10 @@ pub(super) fn replaced_abs_atom(
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (true, true),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"

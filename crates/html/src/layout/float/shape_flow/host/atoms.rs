@@ -79,7 +79,7 @@ pub(crate) fn atoms_flow(
         }
     }
     if atoms_ok && !atoms.is_empty() {
-        let rtl = inherited.rtl == Some(true);
+        let rtl = inherited.wm().rtl();
         // Вертикальное письмо (`vertical-rl`, `sideways-rl`): формы уже
         // построены в осях письма (`background::shape_profile_block`) —
         // индекс равен расстоянию от блок-старта (правого края), значение —
@@ -99,7 +99,7 @@ pub(crate) fn atoms_flow(
         // разворачивает инлайн-ось, и коробки идут от НИЖНЕГО края — эталоны
         // семейства (`shape-outside-inset-023-ref` и родня) меряют свой
         // `inset-inline-start` именно снизу.
-        if inherited.vertical_rl == Some(true) || vert_lr {
+        if inherited.wm().block_rl() || vert_lr {
             let mut row =
                 crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl).vertical_rl();
             if vert_lr {

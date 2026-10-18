@@ -112,9 +112,9 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
 /// поворотом его мера не выражается, и многоколоночник остаётся на прежнем
 /// пути.
 pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
-    if c.style.vertical == Some(false)
-        || c.style.vertical_rl.is_some_and(|v| v != rl)
-        || c.style.rtl == Some(true)
+    if c.style.vertical_decl() == Some(false)
+        || c.style.rl_decl().is_some_and(|v| v != rl)
+        || c.style.wm().rtl()
     {
         return None;
     }
