@@ -12,7 +12,11 @@ impl Computed {
             .bg_position_math
             .iter()
             .flatten()
-            .any(|raw| raw.contains("lh") || crate::style::computed::has_font_units(raw));
+            .any(|value| value.needs_font_resolution())
+            || self
+                .bg_lists
+                .position_expressions()
+                .any(|value| value.needs_font_resolution());
         if !position_units
             && ![&self.bg_image, &self.gradient_raw, &self.mask_image]
                 .into_iter()
@@ -40,8 +44,13 @@ impl Computed {
         }
         // Relative units become computed lengths before position inheritance;
         // only the percentage basis must remain for concrete image geometry.
-        for raw in self.bg_position_math.iter_mut().flatten() {
-            *raw = lengths(raw, font, root_font_px(), ex, ch, line);
+        for expression in self
+            .bg_position_math
+            .iter_mut()
+            .flatten()
+            .chain(self.bg_lists.position_expressions())
+        {
+            expression.resolve_font(font, root_font_px(), ex, ch, line);
         }
     }
 

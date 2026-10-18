@@ -99,6 +99,15 @@ impl BgLists {
     pub(crate) fn iter(&self) -> impl Iterator<Item = (BgListProp, &[super::bg_layer::BgLayer])> {
         self.lists.iter().map(|(k, v)| (*k, v.as_slice()))
     }
+    pub(crate) fn position_expressions(
+        &mut self,
+    ) -> impl Iterator<Item = &mut super::super::background_position::PositionExpression> {
+        self.lists.iter_mut().flat_map(|(_, layers)| {
+            layers
+                .iter_mut()
+                .flat_map(|layer| layer.position_math.iter_mut().flatten())
+        })
+    }
     pub(crate) fn resolve_font(&mut self, font: f32, ex: f32, ch: f32) {
         for (prop, layers) in &mut self.lists {
             for layer in layers {

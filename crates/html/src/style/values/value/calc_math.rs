@@ -103,7 +103,7 @@ fn modulo(rem: bool, a: f32, b: f32) -> f32 {
     if rem { a % b } else { a - b * (a / b).floor() }
 }
 
-fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
+pub(super) fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
     let num = |i: usize| match args.get(i)? {
         Val::Num(n) => Some(*n),
         _ => None,
@@ -160,9 +160,7 @@ impl Calc<'_> {
     /// истинно). Доводы — полные выражения через запятую.
     pub(super) fn math_fn(&mut self) -> Option<Val> {
         let name = math_name(self.rest)?;
-        let mut sub = Calc {
-            rest: &self.rest[name.len() + 1..],
-        };
+        let mut sub = self.sub(&self.rest[name.len() + 1..]);
         let mut strategy = "nearest";
         if name == "round" {
             let head = sub.rest.trim_start();
@@ -181,27 +179,12 @@ impl Calc<'_> {
                 }
             }
         }
-        let result = if name == "hypot" {
-            let mut common = super::calc_arguments::Homogeneous::default();
-            let mut squares = 0.0;
-            sub.arguments(|value| {
-                let key = common.push(value)?;
-                squares += key * key;
-                Some(())
-            })?;
-            common.rebuild(squares.sqrt())
-        } else {
-            let mut args = [Val::Num(0.0); 2];
-            let mut count = 0;
-            sub.arguments(|value| {
-                *args.get_mut(count)? = value;
-                count += 1;
-                Some(())
-            })?;
-            apply(name, strategy, &args[..count])
-        };
-        self.rest = sub.rest;
-        result
+        let function = super::calc_function::Function::Math(name, strategy);
+        let mut arguments = super::calc_function::Arguments::new(function);
+        let count = sub.arguments(|value| arguments.push(value))?;
+        sub.record_call(function, count)?;
+        self.resume(sub);
+        arguments.finish()
     }
 }
 

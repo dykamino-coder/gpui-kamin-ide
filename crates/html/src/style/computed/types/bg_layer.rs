@@ -8,7 +8,7 @@ pub(crate) struct BgLayer {
     image: Option<String>,
     size: BgSize,
     position: BgPos,
-    position_math: [Option<String>; 2],
+    pub(super) position_math: [Option<super::super::background_position::PositionExpression>; 2],
     repeat: Option<BgRepeat>,
     origin: Option<BgClip>,
     clip: Option<BgClip>,

@@ -208,7 +208,7 @@ impl Computed {
             fix(&mut o.offset);
         }
         self.resolve_decor_inset_font(fix, &family, base);
-        self.resolve_image_lengths();
         self.bg_lists.resolve_font(used, ex, ch);
+        self.resolve_image_lengths();
     }
 }

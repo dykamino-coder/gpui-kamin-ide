@@ -13,21 +13,39 @@ pub(super) enum Val {
 
 /// `expr := term (('+'|'-') term)*`, `term := factor (('*'|'/') factor)*`.
 pub(super) struct Calc<'a> {
+    pub(super) recording: Option<Vec<super::calc_expression::Node>>,
     pub(super) rest: &'a str,
 }
 
 impl<'a> Calc<'a> {
     pub(super) fn new(rest: &'a str) -> Self {
-        Self { rest }
+        Self {
+            rest,
+            recording: None,
+        }
     }
 
-    pub(super) fn arguments(&mut self, mut accept: impl FnMut(Val) -> Option<()>) -> Option<()> {
+    pub(super) fn sub(&mut self, rest: &'a str) -> Self {
+        Self {
+            rest,
+            recording: self.recording.take(),
+        }
+    }
+
+    pub(super) fn resume(&mut self, sub: Self) {
+        self.rest = sub.rest;
+        self.recording = sub.recording;
+    }
+
+    pub(super) fn arguments(&mut self, mut accept: impl FnMut(Val) -> Option<()>) -> Option<usize> {
         accept(self.expr()?)?;
+        let mut count = 1;
         while self.eat(&[',']).is_some() {
             accept(self.expr()?)?;
+            count += 1;
         }
         self.eat(&[')'])?;
-        Some(())
+        Some(count)
     }
 
     pub(super) fn eat(&mut self, want: &[char]) -> Option<char> {
@@ -44,14 +62,8 @@ impl<'a> Calc<'a> {
         let mut acc = self.term()?;
         while let Some(op) = self.eat(&['+', '-']) {
             let rhs = self.term()?;
-            let sign = if op == '-' { -1.0 } else { 1.0 };
-            acc = match (acc, rhs) {
-                (Val::Num(a), Val::Num(b)) => Val::Num(a + sign * b),
-                (Val::Len(a), Val::Len(b)) => Val::Len(a.add(b, sign)),
-                (Val::Ang(a), Val::Ang(b)) => Val::Ang(a + sign * b),
-                // Число плюс длина — запись без смысла, значение теряется.
-                _ => return None,
-            };
+            acc = acc.binary(op, rhs)?;
+            self.record_binary(op)?;
         }
         Some(acc)
     }
@@ -60,23 +72,8 @@ impl<'a> Calc<'a> {
         let mut acc = self.factor()?;
         while let Some(op) = self.eat(&['*', '/']) {
             let rhs = self.factor()?;
-            acc = match (op, acc, rhs) {
-                ('*', Val::Len(a), Val::Num(k)) | ('*', Val::Num(k), Val::Len(a)) => {
-                    Val::Len(a.scaled(k))
-                }
-                ('*', Val::Ang(a), Val::Num(k)) | ('*', Val::Num(k), Val::Ang(a)) => {
-                    Val::Ang(a * k)
-                }
-                ('*', Val::Num(a), Val::Num(b)) => Val::Num(a * b),
-                // Деление на ноль даёт ±∞ или NaN (css-values-4 §10.9:
-                // «division by zero … produces +∞, −∞ or NaN»), а не отказ:
-                // `calc(1px / 0)` — бесконечная длина, зажатая потребителем.
-                ('/', Val::Len(a), Val::Num(k)) => Val::Len(a.scaled(1.0 / k)),
-                ('/', Val::Ang(a), Val::Num(k)) => Val::Ang(a / k),
-                ('/', Val::Num(a), Val::Num(k)) => Val::Num(a / k),
-                // Делить на длину и умножать длину на длину нечем.
-                _ => return None,
-            };
+            acc = acc.binary(op, rhs)?;
+            self.record_binary(op)?;
         }
         Some(acc)
     }
@@ -95,13 +92,13 @@ impl<'a> Calc<'a> {
                 .get(..name.len())
                 .is_some_and(|h| h.eq_ignore_ascii_case(name))
             {
-                let mut sub = Calc {
-                    rest: &rest[name.len()..],
-                };
-                let mut compare = super::calc_arguments::Comparison::new(kind);
-                sub.arguments(|value| compare.push(value))?;
-                self.rest = sub.rest;
-                return compare.finish();
+                let mut sub = self.sub(&rest[name.len()..]);
+                let function = super::calc_function::Function::Compare(kind);
+                let mut arguments = super::calc_function::Arguments::new(function);
+                let count = sub.arguments(|value| arguments.push(value))?;
+                sub.record_call(function, count)?;
+                self.resume(sub);
+                return arguments.finish();
             }
         }
         let inner = self
@@ -114,12 +111,12 @@ impl<'a> Calc<'a> {
                     .then(|| (&self.rest[5..], 5usize))
             });
         if let Some((body, open)) = inner {
-            let mut sub = Calc { rest: body };
+            let mut sub = self.sub(body);
             let val = sub.expr()?;
             sub.eat(&[')'])?;
             let used = self.rest.len() - sub.rest.len();
             debug_assert!(used >= open);
-            self.rest = sub.rest;
+            self.resume(sub);
             return Some(val);
         }
         // Numeric atoms share the canonical unit parser without arena storage.
@@ -139,12 +136,12 @@ impl<'a> Calc<'a> {
         self.rest = tail;
         // Число по грамматике CSS: `head.parse` брал бы и `inf`/`NaN` Rust.
         if let Some(n) = css_number(head) {
-            return Some(Val::Num(n));
+            return self.record_value(Val::Num(n));
         }
         if let Some(v) = super::calc_math::constant_or_angle(head) {
-            return Some(v);
+            return self.record_value(v);
         }
-        super::atom::Atom::parse(head).map(|atom| Val::Len(atom.sum()))
+        self.record_value(Val::Len(super::atom::Atom::parse(head)?.sum()))
     }
 }
 

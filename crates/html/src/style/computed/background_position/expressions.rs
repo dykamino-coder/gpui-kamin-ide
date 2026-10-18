@@ -1,23 +1,14 @@
-//! Retain comparison syntax and substitute percentages only at used-value time.
+//! Capture typed comparison expressions for background-position axes and edge offsets.
 
-use crate::style::computed::resolve::image_lengths::lengths;
+use super::PositionExpression;
 use crate::style::computed::split_outside_parens;
 use crate::style::values::value::Len;
 
-pub(super) fn math(raw: &str) -> Option<String> {
-    let low = raw.to_ascii_lowercase();
-    if !low.contains('%')
-        || !["min(", "max(", "clamp("]
-            .iter()
-            .any(|name| low.contains(name))
-    {
-        return None;
-    }
-    let typed = lengths(raw, 16.0, 16.0, 8.0, 8.0, 16.0);
-    resolve_position_math(&typed, 1.0).map(|_| raw.to_string())
+pub(super) fn math(raw: &str) -> Option<PositionExpression> {
+    PositionExpression::parse(raw)
 }
 
-pub(super) fn capture(raw: &str) -> [Option<String>; 2] {
+pub(super) fn capture(raw: &str) -> [Option<PositionExpression>; 2] {
     let first = crate::style::css::split_args(raw)
         .into_iter()
         .next()
@@ -44,7 +35,7 @@ pub(super) fn capture(raw: &str) -> [Option<String>; 2] {
                 {
                     let axis = usize::from(matches!(side, "top" | "bottom"));
                     result[axis] = Some(if matches!(side, "right" | "bottom") {
-                        format!("calc(100% - ({expression}))")
+                        expression.offset_from_end()
                     } else {
                         expression
                     });
@@ -66,50 +57,4 @@ pub(super) fn capture(raw: &str) -> [Option<String>; 2] {
         }
     }
     result
-}
-
-/// Resolve every percentage to a length BEFORE evaluating min/max/clamp.
-/// This keeps the existing arithmetic parser and dimensional type checks,
-/// without changing comparison simplification for other CSS properties.
-pub(super) fn resolve_position_math(raw: &str, basis: f32) -> Option<f32> {
-    let bytes = raw.as_bytes();
-    let mut normalized = String::with_capacity(raw.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i].is_ascii_digit() || bytes[i] == b'.' {
-            let start = i;
-            while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'.') {
-                i += 1;
-            }
-            if i < bytes.len() && matches!(bytes[i], b'e' | b'E') {
-                let exponent = i;
-                i += 1;
-                if i < bytes.len() && matches!(bytes[i], b'+' | b'-') {
-                    i += 1;
-                }
-                let digits = i;
-                while i < bytes.len() && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i == digits {
-                    i = exponent;
-                }
-            }
-            if bytes.get(i) == Some(&b'%') {
-                let value = (raw[start..i].parse::<f32>().ok()? / 100.0) * basis;
-                normalized.push_str(&format!("({value}px)"));
-                i += 1;
-            } else {
-                normalized.push_str(&raw[start..i]);
-            }
-        } else {
-            let ch = raw[i..].chars().next()?;
-            normalized.push(ch);
-            i += ch.len_utf8();
-        }
-    }
-    match Len::parse(&normalized)? {
-        Len::Px(value) if value.is_finite() => Some(value),
-        _ => None,
-    }
 }
