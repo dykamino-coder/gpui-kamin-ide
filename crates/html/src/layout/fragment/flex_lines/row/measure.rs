@@ -134,4 +134,5 @@ pub(crate) fn measure_rows(
         mt,
         mb,
     )
+    .map(|(shape, _)| shape)
 }

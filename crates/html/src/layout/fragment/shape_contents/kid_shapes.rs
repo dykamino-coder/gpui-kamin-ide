@@ -5,7 +5,7 @@ use crate::layout::float::block_like_float;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::clone::{monolith_box, solid_box};
-use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::fragment_size::measure;
 use crate::layout::fragment::line_shape::{basis_sized, inline_content};
 use crate::layout::fragment::oof_reach::Reach;
 use crate::render::out_of_flow;
@@ -49,8 +49,9 @@ pub(super) fn kid_shapes(
                         .as_ref()
                         .filter(|l| !matches!(l, Len::Auto))
                         .and_then(|_| px_or(&k.style.inset.top, false));
-                    let full = shape_full(k, depth - 1, cx).map(|s| s.0).unwrap_or(0.0);
-                    let reach = Reach::positioned(k, full, top, cx);
+                    let (full, up) = measure(k, depth - 1, cx)
+                        .map_or((0.0, Reach::default()), |(s, up)| (s.0, up));
+                    let reach = Reach::positioned(k, full, top, cx, up);
                     Some((
                         0.0,
                         0.0,
@@ -77,7 +78,7 @@ pub(super) fn kid_shapes(
                     // гибкость базу не меняет (§9.7).
                     let based = if flex_col { basis_sized(c, k) } else { None };
                     let k = based.as_ref().unwrap_or(k);
-                    shape_full(k, depth - 1, cx).map(|(h, mt, mb, cuts, forced, solid)| {
+                    measure(k, depth - 1, cx).map(|((h, mt, mb, cuts, forced, solid), up)| {
                         // Монолит-потомок — весь диапазон
                         // его высоты; иначе — его собственные
                         // монолиты.
@@ -100,7 +101,7 @@ pub(super) fn kid_shapes(
                         } else {
                             solid
                         };
-                        let (h, reach) = Reach::child(k, h, cx);
+                        let (h, reach) = Reach::child(k, h, cx, up);
                         (
                             h,
                             mt,

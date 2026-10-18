@@ -9,7 +9,6 @@ use crate::layout::page::paged::visible_overflow;
 use crate::layout::positioned::predicates::OOF_OWN;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Position;
-use std::cell::Cell;
 
 #[derive(Clone, Copy, Default)]
 struct Extent {
@@ -40,23 +39,16 @@ pub(crate) struct Reach {
     overflow: Option<f32>,
 }
 
-thread_local! {
-    static PENDING: Cell<Option<(u64, Reach)>> = const { Cell::new(None) };
-}
-
 impl Reach {
-    pub(crate) fn clear() {
-        PENDING.set(None);
-    }
-
-    fn take(id: u64) -> Self {
-        PENDING
-            .take()
-            .filter(|&(key, _)| key == id)
-            .map_or(Self::default(), |(_, reach)| reach)
-    }
-
-    pub(crate) fn positioned(k: &Element, full: f32, top: Option<f32>, cx: ShapeCx) -> Self {
+    /// Досягаемость внепоточного ребёнка `k`: его собственная протяжённость
+    /// плюс то, что его мера (`fragment_size::measure`) отдала наверх (`up`).
+    pub(crate) fn positioned(
+        k: &Element,
+        full: f32,
+        top: Option<f32>,
+        cx: ShapeCx,
+        up: Reach,
+    ) -> Self {
         if cx.paged || cx.legacy_oof {
             return Self {
                 legacy: if k.style.position == Some(Position::Absolute) {
@@ -67,7 +59,7 @@ impl Reach {
                 ..Self::default()
             };
         }
-        let mut reach = Self::take(k.node_id);
+        let mut reach = up;
         let extent = if let Some(top) = top {
             Extent {
                 anchored: Some(top + full),
@@ -87,11 +79,13 @@ impl Reach {
         reach
     }
 
-    pub(crate) fn child(k: &Element, full: f32, cx: ShapeCx) -> (f32, Self) {
+    /// Поточный ребёнок `k` мерой `full`: его собственный размер и
+    /// досягаемость, которую его мера отдала наверх (`up`).
+    pub(crate) fn child(k: &Element, full: f32, cx: ShapeCx, up: Reach) -> (f32, Self) {
         if cx.paged || cx.legacy_oof || !visible_overflow(&k.style) {
             return (full, Self::default());
         }
-        let mut reach = Self::take(k.node_id);
+        let mut reach = up;
         let own = OOF_OWN
             .with(|m| m.borrow().get(&k.node_id).copied())
             .filter(|&(_, measured)| (measured - full).abs() < 0.01)
@@ -111,13 +105,17 @@ impl Reach {
         }
     }
 
-    pub(crate) fn finish(mut self, c: &Element, cx: ShapeCx) -> f32 {
+    /// Закрыть досягаемость на коробке `c`: сколько из неё приходится на
+    /// саму `c` (она содержащий блок внепоточных) и что уходит выше — к
+    /// содержащему блоку предка (второе значение отдаёт `measure(c)`).
+    pub(crate) fn finish(mut self, c: &Element, cx: ShapeCx) -> (f32, Self) {
         if cx.paged || cx.legacy_oof {
-            return if crate::text::inline::establishes_cb(&c.style) {
+            let own = if crate::text::inline::establishes_cb(&c.style) {
                 self.legacy
             } else {
                 0.0
             };
+            return (own, Self::default());
         }
         let mut end = self.overflow.take().unwrap_or(0.0);
         if crate::text::inline::establishes_cb(&c.style) {
@@ -128,8 +126,7 @@ impl Reach {
             end = end.max(self.fixed.end());
             self.fixed = Extent::default();
         }
-        PENDING.set(Some((c.node_id, self)));
-        end
+        (end, self)
     }
 }
 

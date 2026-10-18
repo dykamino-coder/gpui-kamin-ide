@@ -115,3 +115,33 @@ fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
     );
     assert_eq!(shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().0, 200.0);
 }
+
+#[test]
+fn measure_hands_the_positioned_reach_up_as_a_value() {
+    use crate::layout::fragment::fragment_size::measure;
+    use crate::style::computed::Position;
+    let abs = element(
+        Computed {
+            height: Some(Len::Px(150.0)),
+            position: Some(Position::Absolute),
+            ..Default::default()
+        },
+        vec![],
+    );
+    // The wrapper is not a containing block: the reach travels up from it.
+    let wrapper = element(Computed::default(), vec![Node::Element(abs)]);
+    let (shape, up) = measure(&wrapper, 4, ShapeCx::COLUMNS).unwrap();
+    assert_eq!(shape.0, 0.0);
+    // Measuring an unrelated box in between cannot change a returned value
+    // (it used to be a slot keyed by node id).
+    let other = element(
+        Computed {
+            height: Some(Len::Px(10.0)),
+            ..Default::default()
+        },
+        vec![],
+    );
+    let (_, none) = measure(&other, 4, ShapeCx::COLUMNS).unwrap();
+    assert_eq!(none.absolute.end(), 0.0);
+    assert_eq!(up.absolute.end(), 150.0);
+}

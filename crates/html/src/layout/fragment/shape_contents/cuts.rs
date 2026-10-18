@@ -5,7 +5,7 @@ use crate::layout::fragment::grid_bands::{grid_row_forced, grid_row_gaps};
 use crate::layout::fragment::oof_reach::Reach;
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::table_bands::table_box;
-use crate::layout::fragment::{ShapeCx, fragment_size};
+use crate::layout::fragment::{Shape, ShapeCx, fragment_size};
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::predicates::OOF_OWN;
 use crate::render::{is_blank, out_of_flow};
@@ -27,9 +27,10 @@ pub(crate) fn finish_shape_cuts(
     h: f32,
     mt: f32,
     mb: f32,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
+) -> Option<(Shape, Reach)> {
     let own_h = h;
-    let h = h.max(oof_reach.finish(c, cx) + bot);
+    let (reach_end, up) = oof_reach.finish(c, cx);
+    let h = h.max(reach_end + bot);
     let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
     // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
     // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
@@ -108,7 +109,7 @@ pub(crate) fn finish_shape_cuts(
         r.1 = r.1.min(h);
     }
     bottom_edge_cuts(bot, &mut solid, stacked, h);
-    Some((h, mt, mb, cuts, forced, solid))
+    Some(((h, mt, mb, cuts, forced, solid), up))
 }
 
 pub(super) fn bottom_edge_cuts(

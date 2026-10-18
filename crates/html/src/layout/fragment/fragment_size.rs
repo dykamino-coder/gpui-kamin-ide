@@ -5,6 +5,7 @@
 //! distance to the following sibling. Min-height wins when min exceeds max.
 
 use crate::dom::Element;
+use crate::layout::fragment::oof_reach::Reach;
 use crate::layout::fragment::shape_contents::shape_contents;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{Shape, ShapeCx};
@@ -12,18 +13,25 @@ use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 
 pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+    measure(element, depth, cx).map(|(shape, _)| shape)
+}
+
+/// Мера фрагментации коробки (`shape_full`) и досягаемость её внепоточных
+/// потомков, которую она отдаёт содержащему блоку выше: Blink несёт то же в
+/// результате раскладки (`LayoutResult` → `OutOfFlowPositionedDescendants`),
+/// а не в общем состоянии.
+pub(crate) fn measure(element: &Element, depth: u8, cx: ShapeCx) -> Option<(Shape, Reach)> {
     let cx = ShapeCx {
         legacy_oof: cx.legacy_oof
             || element.style.bdb_clone
             || crate::layout::multicol::spanner::multicol_container(&element.style),
         ..cx
     };
-    super::oof_reach::Reach::clear();
-    let mut shape = shape_contents(element, depth, cx)?;
+    let (mut shape, up) = shape_contents(element, depth, cx)?;
     // Table height is a minimum of the row grid (CSS Tables 3), and its
     // specialised measurement already owns that sizing/distribution pass.
     if table_box(element) {
-        return Some(shape);
+        return Some((shape, up));
     }
     let resolve = |value: Option<Len>, padding: bool| match value {
         Some(Len::Px(1.0)) if padding && cx.cell_pad.is_some() => cx.cell_pad.unwrap(),
@@ -57,7 +65,7 @@ pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Sh
         }
     }
     shape.0 = height;
-    Some(shape)
+    Some((shape, up))
 }
 
 pub(super) fn border_size(value: f32, style: &Computed, decoration: f32) -> f32 {
