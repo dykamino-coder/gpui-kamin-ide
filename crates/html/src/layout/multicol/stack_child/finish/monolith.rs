@@ -33,14 +33,8 @@ pub(super) fn copy_monolith(
         matches!(n, Node::Element(k)
             if !k.inline || k.style.display == Some(Display::Block))
     };
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): `contain: size` как
-    // монолит (Blink `IsMonolithic`) — срез фрагментации
-    // 469 -> 467 (+1/−3): `single-line-column-flex-
-    // fragmentation-051/063` режутся у Blink иначе (рост
-    // элемента от фрагментации, корень R5 скаута).
-    // Рост лёг `705fd58`; `contain: size` — `size_monolith`,
-    // тот же предикат, что у `solid_box` в мере и пробе
-    // `grow_pushed` (`scout-break-2026-09e.md`).
+    // Size containment uses the same monolith predicate as fragment
+    // measurement and grow_pushed. Nested row copies remain fragmentable.
     let monolith = nest_row.is_none()
         && (size_monolith(copy)
         || copy.style.break_inside_avoid

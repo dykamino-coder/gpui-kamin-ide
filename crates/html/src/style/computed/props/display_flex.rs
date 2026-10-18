@@ -39,22 +39,6 @@ impl Computed {
                 // Роль руби живёт вместе со значением `display`: более
                 // важное `display: block` на `span.rt` снимает её.
                 self.ruby_role = None;
-                // Запись из ДВУХ слов (CSS Display 3): `inline grid-lanes`,
-                // `block flow` и родня — внешний вид и внутренний.
-                //
-                // ★ ЗАМЕРЕНО: разбирать её ЦЕЛИКОМ (внешний `inline` → свои
-                // строчные виды) — минус: css-grid 393 → 381. В наборе 233
-                // файла пишут `display: inline grid`, и наша строчная сетка
-                // им хуже блочной. Поэтому из двух слов берётся только то,
-                // чего иначе не выразить вовсе, — раскладка лунками.
-                // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разбор записи из ДВУХ слов
-                // (`display: inline grid-lanes`, CSS Display 3). Полный разбор
-                // (внешний `inline` → свои строчные виды) — css-grid 393 → 381:
-                // в наборе 233 файла пишут `display: inline grid`, и наша
-                // строчная сетка им хуже блочной. Разбор только ради лунок —
-                // 393 → 386, обтяжка содержимого у них же — 382. То есть наша
-                // раскладка лунками этим 188 файлам пока ХУЖЕ обычного блока;
-                // возвращать разбор — вместе с настоящей строчной коробкой.
                 self.display = record_parsed!(
                     self,
                     match v {
@@ -72,23 +56,8 @@ impl Computed {
                             self.lanes_inline = true;
                             Some(Display::GridLanes)
                         }
-                        // Двухсловная строчная сетка: прежний откат (393→381) был
-                        // БЕЗ обтяжки InlineGrid — теперь строчная сетка обнимает
-                        // Px-дорожки, и разбор снимается с полки (эталоны
-                        // subgrid-alignment-* пишут `display: inline grid`).
-                        // ★ ЗАМЕРЕНО И ОТКАЧЕНО: разбирать `display: inline
-                        // grid-lanes` и `inline masonry` (сейчас запись не
-                        // разбирается вовсе — `_ => self.display`, и 150 пар свода
-                        // получают обычный блок вместо лунок). Отдавали блочные
-                        // лунки, БЕЗ обтяжки `lanes_inline` (её прошлый замер:
-                        // grid-семья 573 → 558). Срез из этих 150 пар: 28 зелёных
-                        // → 18. Приобретено НОЛЬ, потеряно десять — все
-                        // подсеточные и по содержимому (`grid-lanes-subgrid-001b/
-                        // c/d` 0.09 → 11.10, `grid-lanes-subgrid-intrinsic-sizing`
-                        // 0.28 → 10.27, `column-subgrid-extra-margin-002/004`).
-                        // То есть этим 122 красным мешает не отсутствие лунок, а
-                        // подсетка и вклад содержимого: настоящий контейнер лунок
-                        // им пока ХУЖЕ блока. Возвращать вместе с подсеткой лунок.
+                        // CSS Display 3 separates the outer inline mode from
+                        // the inner grid or flex formatting context.
                         "inline grid" => Some(Display::InlineGrid),
                         "inline flex" => Some(Display::InlineFlex),
                         "none" => Some(Display::None),
@@ -206,9 +175,8 @@ impl Computed {
                             self.flow_root = Some(true);
                             Some(Display::ListItem)
                         }
-                        // Запись из ДВУХ слов: из неё берётся только внутренний
-                        // вид «лунки» — его иначе не выразить вовсе. Полный разбор
-                        // двух слов ЗАМЕРЕН и откачен (см. комментарий выше).
+                        // Grid-lanes and masonry share the inner layout;
+                        // retain inline when it is the outer display mode.
                         two if two
                             .split_whitespace()
                             .any(|w| w == "grid-lanes" || w == "masonry") =>
