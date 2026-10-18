@@ -18,6 +18,7 @@ impl Computed {
             },
             None => h,
         };
+        self.accept_declaration();
         self.radius = h;
         // CSS Backgrounds 3 §5.1: the slash supplies independent vertical radii.
         // Preserve the units; percentage bases are only available at paint time.
@@ -44,6 +45,7 @@ impl Computed {
         if x.is_none() || y.is_none() {
             return;
         }
+        self.accept_declaration();
         let slot = match key {
             "border-top-left-radius" => 0,
             "border-top-right-radius" => 1,

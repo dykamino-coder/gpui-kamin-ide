@@ -2,10 +2,13 @@
 
 use super::{PageGeom, PageStack};
 use crate::layout::fragment::types::{Frag, Kid};
+use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
     #[allow(clippy::too_many_arguments)]
+    // Page indices address both the plan and parallel per-page layout state.
+    #[allow(clippy::needless_range_loop)]
     pub(super) fn prepaint_pages(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -69,10 +72,10 @@ impl PageStack {
                         );
                     }
                 };
-                if let Some((src, _)) = r.head.filter(|_| f.head > 0.01 && f.copy > 0) {
+                if let Some((src, _)) = r.head.filter(|_| f.head > COORD_EPS && f.copy > 0) {
                     band(r.head_els.get_mut(f.copy - 1), -f.head - src);
                 }
-                if let Some((src, bh)) = r.foot.filter(|_| f.foot > 0.01) {
+                if let Some((src, bh)) = r.foot.filter(|_| f.foot > COORD_EPS) {
                     band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
                 }
             }

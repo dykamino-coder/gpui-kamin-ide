@@ -15,6 +15,7 @@
 //! Упаковки `woff` и `woff2` — это тот же sfnt: у первой сжаты таблицы, у
 //! второй сверх того перестроены глифы. Распаковку делает крейт `wuff`.
 
+mod face_rules;
 mod font_faces;
 mod loading;
 pub(crate) mod matching;
@@ -26,14 +27,13 @@ mod stretch;
 #[cfg(test)]
 mod tests;
 mod windows_names;
-use crate::text::fonts::font_faces::declaration;
-use crate::text::fonts::font_faces::faces;
+use crate::text::fonts::face_rules::{declaration, faces, source};
 use crate::text::fonts::font_faces::is_quote;
 use crate::text::fonts::font_faces::read_font;
-use crate::text::fonts::font_faces::source;
 pub use crate::text::fonts::loading::covers_space;
 pub use crate::text::fonts::loading::load_faces;
 pub use crate::text::fonts::loading::load_faces_additive;
+pub(crate) use crate::text::fonts::loading::load_faces_sheets;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
 use crate::text::fonts::sfnt_metrics::sfnt_romn_baseline;

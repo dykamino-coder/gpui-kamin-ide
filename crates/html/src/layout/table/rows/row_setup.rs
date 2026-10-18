@@ -2,6 +2,7 @@
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
@@ -84,13 +85,12 @@ pub(super) fn row_band_probes(
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
-        let mut band_style = row.style.clone();
+        let mut band_style = (*row.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
         );
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
@@ -115,7 +115,7 @@ pub(super) fn row_band_probes(
             .get(&row.node_id)
             .is_some_and(|(_, first, _)| *first)
     {
-        let mut band_style = g.style.clone();
+        let mut band_style = (*g.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
@@ -126,8 +126,7 @@ pub(super) fn row_band_probes(
             band_style.background = None;
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
         );
     }
     (row_rects, grp_band)

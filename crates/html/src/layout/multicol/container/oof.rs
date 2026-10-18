@@ -1,6 +1,7 @@
 //! Статические места позиционированных детей, div стопки колонок и его завершение.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::positioned::predicates::edge_set;
 use crate::render::{RenderOpts, element};
@@ -151,7 +152,8 @@ pub(super) fn column_stack_div(
                 Some(h)
             }
             _ => None,
-        }),
+        })
+        .into_hooked(),
     )
 }
 

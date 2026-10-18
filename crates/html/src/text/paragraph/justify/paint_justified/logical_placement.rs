@@ -5,6 +5,8 @@ use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};
 
 impl Paragraph {
+    // Logical placement combines bidi edges, word geometry and paint context.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn place_logical(
         &self,
         range: &std::ops::Range<usize>,

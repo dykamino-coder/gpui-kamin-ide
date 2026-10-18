@@ -12,13 +12,10 @@
 //! Сторона — `i8`, как в стиле: -1 слева, 1 справа (`computed.rs` `float`);
 //! `clear` — `Option<i8>`, где `Some(0)` значит `both`.
 
+pub(super) use crate::tolerance::COORD_EPS;
+
 mod place;
 mod query;
-
-/// Допуск сравнения точек: та же величина, что у ряда обтекания в
-/// `render.rs` — иначе флоат ровно по ширине контейнера уезжает вниз на
-/// ошибке округления.
-const EPS: f32 = 0.01;
 
 /// Полоса занятости — горизонтальный срез контекста, внутри которого набор
 /// флоатов постоянен. Полоса `i` покрывает `[bands[i].top, bands[i+1].top)`;
@@ -105,11 +102,6 @@ impl FloatBands {
         std::mem::replace(&mut self.cb, (l, r.max(l)))
     }
 
-    /// Флоатов ещё не было: вызывающий может не строить хост-обёртку.
-    pub fn is_empty(&self) -> bool {
-        self.bands.len() == 2
-    }
-
     /// Опустить потолок поточного содержимого: низ предыдущего блока
     /// (правило 5) или верх набираемой строки (правило 6).
     ///
@@ -167,21 +159,21 @@ impl FloatBands {
         let b = self.bands[i];
         if side < 0 {
             let x = b.left.unwrap_or(self.cb.0).max(self.cb.0);
-            if b.left.is_some() && x + w > self.cb.1 + EPS {
+            if b.left.is_some() && x + w > self.cb.1 + COORD_EPS {
                 return false;
             }
             match b.right {
                 None => true,
-                Some(r) => w <= r - x + EPS,
+                Some(r) => w <= r - x + COORD_EPS,
             }
         } else {
             let x = b.right.unwrap_or(self.cb.1).min(self.cb.1);
-            if b.right.is_some() && x - w < self.cb.0 - EPS {
+            if b.right.is_some() && x - w < self.cb.0 - COORD_EPS {
                 return false;
             }
             match b.left {
                 None => true,
-                Some(l) => w <= x - l + EPS,
+                Some(l) => w <= x - l + COORD_EPS,
             }
         }
     }

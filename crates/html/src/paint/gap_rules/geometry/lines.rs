@@ -1,7 +1,7 @@
 //! Сегменты правил промежутков строк flex и multicol.
 
 use super::assignment::{RuleSlot, assign};
-use super::{Crossing, GAP_EPS, GapItem, GapRun};
+use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::grid::merge;
 use crate::paint::gap_rules::geometry::tracks::tracks_a;
@@ -14,7 +14,7 @@ pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
         match out.last_mut() {
-            Some(last) if lo < last.1 - GAP_EPS || (lo - last.0).abs() <= GAP_EPS => {
+            Some(last) if lo < last.1 - GAP_RULE_EPS || (lo - last.0).abs() <= GAP_RULE_EPS => {
                 last.1 = last.1.max(hi)
             }
             _ => out.push((lo, hi)),
@@ -34,6 +34,8 @@ pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
 /// `flex-gap-decorations-001/019` 99.00, `-025/031/032/035/065…067`,
 /// `column-gap-decorations-001/003/014/016/019`, `row-gap-decorations-003/010`.
 /// Ряды многоколонника обходятся без него (v99: +11/−0).
+// Gap intersections require both axis geometries and their decoration styles.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
@@ -73,11 +75,11 @@ pub(crate) fn line_runs(
                 .iter()
                 .filter(|i| {
                     if lane_gap.is_some() {
-                        i.a0 < e - GAP_EPS && i.a1 > s + GAP_EPS
+                        i.a0 < e - GAP_RULE_EPS && i.a1 > s + GAP_RULE_EPS
                     } else if flex {
-                        (i.a0 - s).abs() <= GAP_EPS || (i.a0 > s && i.a0 < e - GAP_EPS)
+                        (i.a0 - s).abs() <= GAP_RULE_EPS || (i.a0 > s && i.a0 < e - GAP_RULE_EPS)
                     } else {
-                        (i.a0 - s).abs() <= GAP_EPS
+                        (i.a0 - s).abs() <= GAP_RULE_EPS
                     }
                 })
                 .collect();
@@ -89,7 +91,7 @@ pub(crate) fn line_runs(
                     .collect();
             }
             row.windows(2)
-                .filter(|w| w[1].b0 - w[0].b1 >= -GAP_EPS)
+                .filter(|w| w[1].b0 - w[0].b1 >= -GAP_RULE_EPS)
                 .map(|w| (w[0].b1.min(w[1].b0), w[1].b0))
                 .collect()
         })
@@ -124,7 +126,7 @@ pub(crate) fn line_runs(
     let mut mains = vec![];
     for k in 0..main_count {
         let (g0, g1) = (lines[k].1, lines[k + 1].0);
-        if g1 - g0 < -GAP_EPS {
+        if g1 - g0 < -GAP_RULE_EPS {
             continue;
         }
         let g0 = g0.min(g1);

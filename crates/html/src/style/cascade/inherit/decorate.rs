@@ -1,6 +1,7 @@
 //! Оформление текста при наследовании: линии text-decoration, их цвет, толщина и смещение, распространение на потомков.
 
 use super::*;
+use crate::style::computed::FontCx;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
 /// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных
@@ -21,7 +22,8 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
         }
     });
     let resolve = |l: DecorLen| match l {
-        DecorLen::Raw(raw) => crate::text::metrics::fallback_len_px(raw, &family, own_px)
+        DecorLen::Raw(raw) => raw
+            .to_px(None, FontCx::new(&family, own_px))
             .map_or(DecorLen::Auto, DecorLen::Px),
         other => other,
     };

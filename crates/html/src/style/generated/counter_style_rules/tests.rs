@@ -3,7 +3,8 @@
 use super::*;
 
 fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
-    reset();
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let _scope = doc.enter();
     for (name, descs) in css {
         let d: Vec<(String, Vec<String>)> = descs
             .iter()
@@ -12,7 +13,6 @@ fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
         register(name, &d);
     }
     f();
-    reset();
 }
 
 #[test]

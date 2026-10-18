@@ -12,28 +12,31 @@ impl Computed {
         hit: &mut bool,
     ) {
         match key {
-            // `baseline-shift` (css-inline-3 §5.2.2) — ТОТ ЖЕ разбор:
-            // спека сама пишет соответствие («''vertical-align/top''
-            // (''baseline-shift: top'')…», css-inline-3 §5.2). Значения
-            // совпадают дословно, кроме середины: у сокращения она
-            // `middle`, у длинной записи — `center`.
+            // CSS Inline 3 §5.2.2: shared alignment grammar; center is middle.
             "vertical-align" | "baseline-shift" => {
-                // Надстрочный и подстрочный кусок остаются В СТРОКЕ, только
-                // сдвигаются от базовой линии, — это не выравнивание коробки,
-                // поэтому у них своё поле. Доли кегля браузерные.
-                // Сдвиг хранится ДОЛЕЙ кегля: у длины она считается при
-                // разборе, у процента она и есть написанное (CSS 2.1 §10.8.1
-                // считает процент от `line-height`, но у нас доля умножается
-                // на кегль — при `line-height: normal` это то же самое с
-                // точностью до полулидинга, а точная формула ждёт модели
-                // строчной коробки).
+                if Len::parse(v).is_some()
+                    || matches!(
+                        v,
+                        "baseline"
+                            | "sub"
+                            | "super"
+                            | "middle"
+                            | "center"
+                            | "top"
+                            | "bottom"
+                            | "text-top"
+                            | "text-bottom"
+                    )
+                {
+                    self.accept_declaration();
+                }
+                // Sub/super shift within the line. Font fractions approximate
+                // normal line-height; percentage shifts retain their own slot.
                 self.vertical_shift = match v {
                     "super" => Some(-1.0 / 3.0),
                     "sub" => Some(1.0 / 5.0),
                     other => match Len::parse(other) {
-                        // Долей кегля пишутся процент и `em` — их и храним
-                        // долей. Ось сдвига смотрит вниз, а положительное
-                        // значение поднимает знак ВВЕРХ.
+                        // Positive shifts move upward, opposite our y axis.
                         Some(Len::Pct(k)) => {
                             // Процент — доля `line-height`, и считается он
                             // позже: кладём в своё поле.
@@ -44,9 +47,7 @@ impl Computed {
                         _ => None,
                     },
                 };
-                // Точки и единицы ШРИФТА считаются сразу в точках: доля
-                // кегля тут не годится — `ex` зависит от метрик гарнитуры, а
-                // кегль строчного приходит наследованием уже после разбора.
+                // Font metrics arrive after inheritance; retain relative units.
                 match Len::parse(v) {
                     // Точки не зависят ни от чего — сразу в поле.
                     Some(Len::Px(px)) => self.vertical_shift_px = (px != 0.0).then_some(-px),
@@ -62,9 +63,6 @@ impl Computed {
                     _ => None,
                 };
                 self.vertical_align = match v {
-                    // `center` — написание середины в `baseline-shift`
-                    // (css-inline-3 §5.2.2): «Align the center of the aligned
-                    // subtree with the center of the line box».
                     "middle" | "center" => Some(Align::Center),
                     "top" => Some(Align::Start),
                     "bottom" => Some(Align::End),
@@ -76,6 +74,7 @@ impl Computed {
             // -webkit-legacy?`; `auto` — срез по высоте контейнера. Строка
             // многоточия идёт маркером абзаца (`lines::marker_str`).
             "line-clamp" => {
+                self.accept_declaration();
                 self.line_clamp = None;
                 self.clamp_auto = None;
                 self.clamp_legacy = Some(false);
@@ -118,6 +117,7 @@ impl Computed {
             }
             // Лонгхенд `block-ellipsis`: `no-ellipsis | auto | <string>`.
             "block-ellipsis" => {
+                self.accept_declaration();
                 let t = v.trim();
                 self.clamp_mark = if t.eq_ignore_ascii_case("no-ellipsis") {
                     Some(String::new())
@@ -129,13 +129,11 @@ impl Computed {
                     None
                 };
             }
-            // Longhand `continue` (css-overflow-4 §5.2): `collapse` makes the
-            // box a line-clamp container clamped by its height when no
-            // `max-lines` is given — `line-clamp: auto` without the
-            // ellipsis, whose own longhand `block-ellipsis` starts at
-            // `none` (`continue-001`). `auto` undoes it.
+            // CSS Overflow 4 §5.2: collapse enables height clamping without
+            // max-lines; auto undoes it. The initial block ellipsis is empty.
             "continue" => match v.trim().to_ascii_lowercase().as_str() {
                 "collapse" => {
+                    self.accept_declaration();
                     self.clamp_auto = Some(true);
                     self.clamp_legacy = Some(false);
                     if self.clamp_mark.is_none() {
@@ -143,17 +141,19 @@ impl Computed {
                     }
                 }
                 "auto" => {
+                    self.accept_declaration();
                     self.clamp_auto = None;
                 }
                 _ => {}
             },
             "-webkit-line-clamp" => {
-                self.line_clamp = v.trim().parse().ok();
+                self.line_clamp = record_parsed!(self, v.trim().parse().ok());
                 self.clamp_auto = None;
                 self.clamp_legacy = Some(true);
             }
             "-webkit-box-orient" => {
-                self.webkit_box_vertical = Some(v.eq_ignore_ascii_case("vertical"))
+                self.webkit_box_vertical =
+                    accept_parsed!(self, Some(v.eq_ignore_ascii_case("vertical")))
             }
 
             // --- Письмо и цветовые фильтры -------------------------------------
@@ -167,6 +167,9 @@ impl Computed {
             // слов свободный (`drop 3`). Кегль и строку буквицы считает
             // раскладка (`render::initial_letter_float`).
             "initial-letter" => {
+                if v == "normal" {
+                    self.accept_declaration();
+                }
                 self.initial_letter = None;
                 if v != "normal" {
                     let mut size: Option<f32> = None;
@@ -182,6 +185,7 @@ impl Computed {
                         }
                     }
                     if let Some(size) = size {
+                        self.accept_declaration();
                         let sink = match sink {
                             Some(0) | None => (size.floor() as u32).max(1),
                             Some(n) => n,
@@ -190,40 +194,46 @@ impl Computed {
                     }
                 }
             }
-            // css-rhythm-1 §2: «A value other than `none` … causes the box to
-            // establish an independent formatting context». Сам шаг ритма мы
-            // не считаем, но ПРИЗНАК контекста нужен и без него: без него
-            // `block-step-size-establishes-*` неотличимы от обычного блока, и
-            // сосед флоата (`covered_flow_tail`, `render.rs`) накрывает их
-            // вместо того, чтобы встать сбоку. Проба
-            // (`target/scout-floatplace-2026-09.md` §5.3): с контекстом обе
-            // пары и обе их `-list-item`-разновидности дают 0.00.
+            // CSS Rhythm 1 §2: a step establishes an independent formatting
+            // context even while rhythm layout itself is unimplemented.
             "block-step-size" => {
+                if v == "none" || v == "auto" || Len::parse(v).is_some() {
+                    self.accept_declaration();
+                }
                 if v != "none" && v != "auto" {
                     self.flow_root = Some(true);
                 }
             }
             "text-orientation" => {
+                self.accept_declaration();
                 self.text_orientation =
                     Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
             }
             "writing-mode" => {
+                self.accept_declaration();
                 self.writing_mode = Some(
                     crate::style::computed::writing_mode::WritingModeKw::parse(v),
                 );
             }
             "text-combine-upright" => {
                 let mut it = v.split_whitespace();
-                self.combine_upright = match it.next() {
-                    Some("none") | None => None,
-                    Some("all") => Some(0),
-                    Some("digits") => Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2)),
-                    _ => None,
-                };
+                self.combine_upright = record_parsed!(
+                    self,
+                    match it.next() {
+                        Some("none") | None => None,
+                        Some("all") => Some(0),
+                        Some("digits") => Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2)),
+                        _ => None,
+                    }
+                );
+                if v == "none" {
+                    self.accept_declaration();
+                }
             }
 
             // --- Переносы и обрезка -------------------------------------------
             "hyphens" => {
+                self.accept_declaration();
                 self.hyphenate = Some(v != "none");
                 // `manual` только УВАЖАЕТ расставленные знаки мягкого
                 // переноса, сам их не ставит. Разделять обязательно: под одним

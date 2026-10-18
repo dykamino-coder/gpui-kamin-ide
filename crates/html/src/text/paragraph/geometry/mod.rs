@@ -58,11 +58,6 @@ pub(super) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
     }
 }
 
-/// Выключка из стиля.
-pub fn align_of(a: Option<crate::style::computed::TextAlign>) -> Align {
-    a.map(align_of_value).unwrap_or(Align::Left)
-}
-
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::style::computed::Computed) -> Align {
     let rtl = c.wm().rtl();

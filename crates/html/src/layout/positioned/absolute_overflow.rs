@@ -1,11 +1,10 @@
 //! Preserve abspos self alignment until actual static and original CB bounds exist.
+
+use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
 use crate::style::values::value::Len;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Styled, Window, point, px,
-};
+use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, point, px};
 use std::{cell::RefCell, collections::HashMap};
 
 thread_local! {
@@ -134,7 +133,7 @@ impl Plan {
         style.safe_alignment = Some((items, false, content, justify));
     }
     pub(crate) fn wrap(self, child: AnyElement) -> AnyElement {
-        SafePlace { child, plan: self }.into_any_element()
+        SafePlace { child, plan: self }.hooked()
     }
     fn shift(&self, bounds: Bounds<Pixels>, window: &Window) -> gpui::Point<Pixels> {
         let Some(flex) = FLEX.with(|map| map.borrow().get(&self.flex).copied()) else {
@@ -190,53 +189,14 @@ struct SafePlace {
     child: AnyElement,
     plan: Plan,
 }
-impl Element for SafePlace {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for SafePlace {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        (self.child.request_layout(window, cx), ())
-    }
-    fn prepaint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let shift = self.plan.shift(bounds, window);
         window.with_exact_element_offset(shift, |window| self.child.prepaint(window, cx));
-    }
-    fn paint(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.child.paint(window, cx);
-    }
-}
-impl IntoElement for SafePlace {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }
 

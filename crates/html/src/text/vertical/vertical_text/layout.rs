@@ -4,16 +4,10 @@ use super::VerticalText;
 use super::{VT_INLINE_MAX, VT_MEASURED};
 use crate::layout::writing_mode::orthogonal_measure;
 use crate::text::vertical::vertical_line_baseline;
-use gpui::{App, GlobalElementId, InspectorElementId, LayoutId, Window};
+use gpui::{App, LayoutId, Window};
 
 impl VerticalText {
-    pub(crate) fn request_layout_impl(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    pub(crate) fn request_layout_impl(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         // Собственный корень раскладки: размер текста нужен ЗДЕСЬ, чтобы
         // отдать его родителю перевёрнутым.
         //
@@ -46,17 +40,14 @@ impl VerticalText {
         );
         self.natural = if let Some(constraint) = self.inline_constraint {
             orthogonal_measure::measure(
-                self.child.as_mut().unwrap(),
+                &mut self.child,
                 constraint,
                 self.inline_keyword,
                 window,
                 cx,
             )
         } else {
-            self.child
-                .as_mut()
-                .unwrap()
-                .layout_as_root_unrounded(space, window, cx)
+            self.child.layout_as_root_unrounded(space, window, cx)
         };
         // Внутренний строчный размер повёрнутого текста — длина его самой
         // длинной строки (`natural.width` горизонтального абзаца до
@@ -68,14 +59,16 @@ impl VerticalText {
                 c.set(Some(v.max(f32::from(self.natural.width))));
             }
         });
-        let mut style = gpui::Style::default();
+        let mut style = gpui::Style {
+            flex_shrink: 0.0,
+            ..Default::default()
+        };
         // The turned line box is block-axis content of a vertical container
         // laid out by a flex-row adapter: lines overflow the block-end edge,
         // they are never compressed (CSS Writing Modes 4 §7.1). A shrunk
         // frame turned the line about the box's right edge, so an inline-block
         // narrower than its line painted the line flush right while its
         // exported baseline counted from the left (grid-self-baseline-001-ref).
-        style.flex_shrink = 0.0;
         // Ordinary orthogonal blocks claim the independently measured inline size;
         // other contexts let their existing parent-sizing contract decide height.
         // Факт прошлого кадра сильнее свободного замера: перенос строк при
@@ -93,7 +86,7 @@ impl VerticalText {
         ));
         vertical_line_baseline::apply(
             &mut style,
-            self.child.as_mut().unwrap(),
+            &mut self.child,
             self.natural,
             self.ccw,
             self.lr,
@@ -129,6 +122,6 @@ impl VerticalText {
         }
         let id = window.request_layout(style, [], cx);
         self.layout_id = Some(id);
-        (id, ())
+        id
     }
 }

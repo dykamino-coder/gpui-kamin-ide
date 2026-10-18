@@ -107,7 +107,7 @@ pub(crate) fn dispatch_element(
         // бандовый хост (`flow-root`) — там размер считает свой путь
         // (замерено: `float-replaced-height-005/007` 0.00 → «красное видно»).
         "iframe"
-            if !e.style.float.is_some_and(|f| f != 0)
+            if e.style.float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
                 && e.style.flow_root != Some(true)
                 && !matches!(
@@ -178,7 +178,7 @@ pub(crate) fn dispatch_element(
             }
         }
         // Синтетический узел обтекания формой (см. wrap_floats).
-        "shape-flow" => shape_flow(e, &merged, opts),
+        _ if e.marks.shape_flow.is_some() => shape_flow(e, &merged, opts),
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит

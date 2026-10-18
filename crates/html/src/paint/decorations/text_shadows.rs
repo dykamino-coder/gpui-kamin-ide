@@ -2,6 +2,7 @@
 
 mod groups;
 mod masks;
+use crate::hooks::IntoHooked;
 use groups::{ShadowStyle, collect_groups};
 use masks::masked_layer;
 
@@ -37,7 +38,7 @@ fn shadow_layer(
     let copy = if shadow.blur > 0.5 {
         let mut group = crate::paint::effects::grouped_element::Grouped::new(copy);
         group.blur = shadow.blur * 0.5;
-        group.into_any_element()
+        group.hooked()
     } else {
         copy
     };

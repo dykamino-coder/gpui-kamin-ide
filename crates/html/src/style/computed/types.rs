@@ -4,15 +4,16 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod background;
+mod bg_lists;
 mod boxes;
 mod decor;
 mod image;
 mod layout;
 mod text;
 pub use background::{BgClip, BgPos, BgRepeat, BgSize, Tiling, parse_pos_words};
+pub use bg_lists::{BgListProp, BgLists};
 pub use boxes::{
-    BorderShape, Logical, LogicalSides, Outline, Overflow, Position, PositionAnchor, SideSeq,
-    TextEdge,
+    BorderShape, Logical, Outline, Overflow, Position, PositionAnchor, SideSeq, TextEdge,
 };
 pub use decor::{
     DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen, DecorStyle, UPOS_FROM_FONT,

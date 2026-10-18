@@ -1,5 +1,7 @@
 //! Keep inherited atomic formatting contexts physical inside a rotated text paragraph.
+
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::style::computed::{Computed, Display, Sides};
 use gpui::{IntoElement, ParentElement, Styled};
 
@@ -89,7 +91,8 @@ pub(crate) fn physical(
             .child(
                 crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
                     physical, ccw, central,
-                ),
+                )
+                .into_hooked(),
             )
             .into_any_element(),
     )

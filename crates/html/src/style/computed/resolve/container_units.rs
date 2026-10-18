@@ -1,7 +1,7 @@
 //! База единиц контейнера `cq*` для потомков: содержимое контейнера запросов размера (css-conditional-5 §container-lengths).
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 impl Computed {
     /// Что унаследуют потомки в `cq_box`. Сам контейнер своих единиц от себя
@@ -15,10 +15,7 @@ impl Computed {
         if !self.container_size_query {
             return self.cq_box;
         }
-        let px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let px = px_strict;
         let border_box = self.border_box == Some(true);
         let inner = |size: Option<Len>, a: Option<Len>, b: Option<Len>, c, d| {
             let v = px(size)?;

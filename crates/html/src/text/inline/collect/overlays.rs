@@ -1,7 +1,7 @@
 //! Overlays for collect; split out to keep the owning module within 250 lines.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
 
@@ -49,10 +49,7 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     if style.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let (dx, dy) = (
         px_of(style.inset.left) - px_of(style.inset.right),
         px_of(style.inset.top) - px_of(style.inset.bottom),

@@ -1,6 +1,18 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# Keep upstream formatting in path dependencies outside workspace-wide rustfmt.
+exclude = [
+  "vendor/gpui",
+  "vendor/gpui-windows",
+  "vendor/gpui-base",
+  "vendor/gpui-component",
+  "vendor/taffy",
+  "vendor/html5ever",
+  "vendor/markup5ever_rcdom",
+  "vendor/resvg",
+  "vendor/usvg",
+]
 
 [workspace.package]
 version = "1.0.75"

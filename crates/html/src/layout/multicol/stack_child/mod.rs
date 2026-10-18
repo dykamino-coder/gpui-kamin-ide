@@ -125,12 +125,12 @@ pub(super) fn multicol_stack_child(
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.
     let rel = hoist_relative(&mut copy);
-    // Срез строки хоста (`kamin-host-trim-*`) — рисует
+    // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
-    if copy.attr("kamin-host-trim-start").is_some() {
+    if copy.marks.host_trim_start {
         copy.style.text_box_trim_start = true;
     }
-    if copy.attr("kamin-host-trim-end").is_some() {
+    if copy.marks.host_trim_end {
         copy.style.text_box_trim_end = true;
     }
     // Вложенный многоколоночник с ВЕРХА внешней колонки

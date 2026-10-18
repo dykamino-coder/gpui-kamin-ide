@@ -159,6 +159,8 @@ pub(super) fn flex_row_lines_of(
     Some(lines)
 }
 
+// Inline flex fragments carry their heights and break flags as one record.
+#[allow(clippy::type_complexity)]
 pub(super) fn inline_flex_lines(
     c: &Element,
     zero: impl Fn(&Option<Len>) -> bool,

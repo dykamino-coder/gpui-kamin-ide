@@ -61,6 +61,7 @@ pub(super) fn push_float_row(
         Node::Text(_) => false,
     });
     let mut column = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
@@ -85,7 +86,8 @@ pub(super) fn push_float_row(
             flex_shrink: Some(1.0),
             min_width: (!хвост_с_полями).then_some(Len::Px(0.0)),
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,
@@ -127,11 +129,16 @@ pub(super) fn push_float_row(
         row_children.push(Node::Element(f));
     }
     out.push(Node::Element(Element {
+        // Метка для сборщика дерева: у ряда обтекания текст ещё режется
+        // по нижнему краю плавающего блока (см. `float_flow`). Тег — только
+        // подпись для отладки; путь выбирает `Marks::float_row`.
+        marks: crate::dom::Marks {
+            float_row: true,
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
-        // Метка для сборщика дерева: у ряда обтекания текст ещё режется
-        // по нижнему краю плавающего блока (см. `float_flow`).
         tag: "kamin-float".into(),
         style: Computed {
             display: Some(Display::Flex),
@@ -141,7 +148,8 @@ pub(super) fn push_float_row(
             // (CSS 2.1 §9.5.1): ряд обязан переносить.
             flex_wrap: Some(true),
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,

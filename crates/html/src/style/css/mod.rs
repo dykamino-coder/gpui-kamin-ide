@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 
+pub(crate) mod resource_rules;
 pub(crate) mod selector_tokens;
 mod stylesheet_tokens;
 use crate::style::css::stylesheet_tokens::find_matching;
@@ -23,12 +24,15 @@ pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
+pub(crate) use decls::split_top_level;
 pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
 mod media;
 pub use crate::style::css::media::*;
 pub(crate) mod supports;
 pub(crate) use crate::style::css::supports::*;
+// The separately maintained at-rule registry exposes its heterogeneous CSS records.
+#[allow(clippy::type_complexity)]
 pub(super) mod at_rules;
 pub use crate::style::css::at_rules::*;
 pub(super) mod keyframes;

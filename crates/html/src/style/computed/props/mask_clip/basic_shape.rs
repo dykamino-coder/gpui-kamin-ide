@@ -1,6 +1,7 @@
 //! Базовые фигуры clip-path/маски (css-shapes-1 §3): polygon(), rect(), xywh(), inset() с правилом заливки и скруглением. Хвост ветви clip-path/mask из Computed::apply_clip_mask.
 
 use super::*;
+use crate::style::computed::FontCx;
 
 impl Computed {
     pub(super) fn clip_basic_shape(&mut self, v: &str) {
@@ -50,6 +51,7 @@ impl Computed {
                 })
                 .collect();
             if points.len() >= 3 {
+                self.accept_declaration();
                 self.clip_polygon = Some(points);
                 self.clip_polygon_evenodd = rule == "evenodd";
             }
@@ -66,7 +68,7 @@ impl Computed {
             // вместо вписанного круга. `shape_params` с пустым списком
             // радиусов даёт ровно `closest-side` (css-shapes-1
             // §3.1.1.3) от border-box — то, что и требуется.
-            self.clip_shape = Some(format!("shape:{}", v.trim()));
+            self.clip_shape = accept_parsed!(self, Some(format!("shape:{}", v.trim())));
         } else if let Some(rest) = v.strip_prefix("rect(") {
             // Края видимой области (css-shapes-1 §basic-shape):
             // top/right/bottom/left от верхнего-левого угла, auto —
@@ -78,6 +80,7 @@ impl Computed {
                 .map(|t| if t == "auto" { None } else { Len::parse(t) })
                 .collect();
             if vals.len() == 4 {
+                self.accept_declaration();
                 self.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
                 self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                 self.clip_round = inner
@@ -98,6 +101,7 @@ impl Computed {
                 .filter_map(Len::parse)
                 .collect();
             if vals.len() == 4 {
+                self.accept_declaration();
                 self.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
                 self.clip_round_len = inner.split("round").nth(1).and_then(uniform_round);
                 self.clip_round = inner
@@ -133,6 +137,7 @@ impl Computed {
                 }
             };
             if !vals.is_empty() {
+                self.accept_declaration();
                 self.clip_inset = Some([pick(0), pick(1), pick(2), pick(3)]);
             }
             let inner = rest.trim_end_matches(')');
@@ -144,15 +149,7 @@ impl Computed {
                 .and_then(|l| match l {
                     Len::Px(v) => Some(v),
                     Len::Pct(p) => Some(p),
-                    l @ (Len::Em(_)
-                    | Len::EmPx(..)
-                    | Len::Ch(_)
-                    | Len::Ic(_)
-                    | Len::Ex(_)
-                    | Len::Lh(_)
-                    | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
-                    Len::Vw(_) | Len::Vh(_) | Len::Calc(_) | Len::Anchor(_) => None,
-                    Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+                    l => l.to_px(None, FontCx::FALLBACK),
                 });
             self.clip_round = Some(radius.unwrap_or(0.0));
         }

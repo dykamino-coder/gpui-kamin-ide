@@ -1,10 +1,11 @@
 //! Настройка состояния Grouped после вычисления геометрии клипа.
 
 use super::rounded_rect_clip;
+use crate::hooks::IntoHooked;
 use crate::paint::effects::mask::mask_geometry;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use crate::style::values::value::{Len, px_lossy_zero};
+use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn grouped_wrapper(
@@ -35,16 +36,7 @@ pub(crate) fn grouped_wrapper(
         // A mask wrapper can be built from the element's own style before
         // the normal inherited-style resolution. Resolve gradient lengths
         // here too; background and mask images share CSS Values 4 §6.1.1.
-        if raw.contains("gradient(") {
-            let mut own = c.clone();
-            own.bg_image = None;
-            own.gradient_raw = None;
-            own.mask_image = Some(raw);
-            own.resolve_image_lengths();
-            own.mask_image.unwrap()
-        } else {
-            raw
-        }
+        c.resolve_mask_image(raw)
     });
     // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
     // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
@@ -190,10 +182,7 @@ pub(crate) fn grouped_wrapper(
     // (clip-path-polygon-008: полигон в margin-box; masking 82→84).
     wrapper.polygon = polygon.to_vec();
     wrapper.polygon_evenodd = c.clip_polygon_evenodd;
-    let side = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side = px_lossy_zero;
     let b = c.borders();
     wrapper.poly_expand = match c.clip_ref {
         Some(1) => {
@@ -214,5 +203,5 @@ pub(crate) fn grouped_wrapper(
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);
     }
-    wrapper.into_any_element()
+    wrapper.hooked()
 }

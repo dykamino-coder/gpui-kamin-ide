@@ -4,10 +4,9 @@
 use crate::dom::{Element, Node};
 use crate::layout::block::containing::CB_WIDTH;
 use crate::layout::block::struts::top_edge_open;
-use crate::paint::effects::grouped::px_of2;
 use crate::render::{in_flow, inline_marked_block, is_blank, own_context};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_missing_zero};
 
 /// Отрисовать корневые узлы документа.
 ///
@@ -23,8 +22,8 @@ fn has_clearable(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             floats(&e.style)
-                || e.first_letter.as_ref().is_some_and(floats)
-                || e.hover.as_ref().is_some_and(floats)
+                || e.first_letter.as_deref().is_some_and(floats)
+                || e.hover.as_deref().is_some_and(floats)
                 || has_clearable(&e.children)
         }
         Node::Text(_) => false,
@@ -86,16 +85,16 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32) -> bool {
         Some(w)
     } else {
         match (
-            px_of2(&n.style.padding.left),
-            px_of2(&n.style.padding.right),
-            px_of2(&b.left),
-            px_of2(&b.right),
+            px_missing_zero(n.style.padding.left),
+            px_missing_zero(n.style.padding.right),
+            px_missing_zero(b.left),
+            px_missing_zero(b.right),
         ) {
             (Some(pl), Some(pr), Some(bl), Some(br)) => Some(w + pl + pr + bl + br),
             _ => None,
         }
     };
-    !(n.inline && !inline_marked_block(n))
+    (!n.inline || inline_marked_block(n))
         && in_flow(&n.style)
         && matches!(
             n.style.display,

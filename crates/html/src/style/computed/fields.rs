@@ -1439,7 +1439,7 @@ pub struct Computed {
     pub(crate) object_view_box: Option<(u8, [Len; 4])>,
     /// Сырые СПИСКИ фоновых свойств со слоями через запятую: (свойство,
     /// запись). Поля `bg_*` несут верхний слой; все слои строит `bg_layers`.
-    pub(crate) bg_lists: Vec<(String, String)>,
+    pub(crate) bg_lists: BgLists,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
@@ -1574,6 +1574,8 @@ pub struct Computed {
     /// cascade, already in attribute syntax (`svg::serialize::geometry`);
     /// not inherited.
     pub svg_geometry: Vec<(&'static str, String)>,
+    /// Parse-time acceptance, armed only for a capability query.
+    pub(crate) declaration_parse: super::ParseResult,
     /// `writing-mode` (css-writing-modes-4 §3.1): declared on the own style, inherited in
     /// the merged one; `None` = not declared. Read through `Computed::wm()`.
     pub(crate) writing_mode: Option<super::writing_mode::WritingModeKw>,

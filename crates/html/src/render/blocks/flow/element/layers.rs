@@ -5,7 +5,7 @@ use crate::paint::stacking::{layered, stacking_context, z_index_applies};
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
@@ -84,10 +84,7 @@ pub(crate) fn finish_element(
     // Корень по содержимому = margin-box тела плюс рамка и отбивка
     // корня слева.
     if record_root {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let root_b = inherited.borders();
         let offset = side(e.style.margin.left) + side(inherited.padding.left) + side(root_b.left);
         done = crate::text::vertical::record_root_left(done, opts.doc_salt, offset);
@@ -143,13 +140,15 @@ pub(crate) fn finish_element(
         && e.tag != "body"
         && !crate::paint::stacking::nested_context(inherited)
     {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
     // краска — шаг 3 корневого контекста, под потоком родителя, как и
     // у держателя на распорке выше.
     if below_cb_axis {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
     // приложения E CSS 2.1 — ПОСЛЕ блоков и строк потока, — а у нас

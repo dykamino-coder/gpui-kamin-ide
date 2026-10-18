@@ -1,6 +1,7 @@
 //! apply_layout, этап сетки и промежутков: baseline на инлайн-оси сетки, justify-self, проекция выравнивания, aspect-ratio, gap.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
@@ -53,10 +54,7 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
         // (`grid-gutters-011`: `calc(15% + 7px)` от 220 = 40). Сторона не
         // известна — зазор не ставится, как и прежде, когда запись
         // отбрасывалась целиком (`gap-010-ltr` держит ровно это).
-        let px_or_0 = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_or_0 = px_lossy_zero;
         let edges = c.borders();
         let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
             Some(Len::Px(v)) if c.border_box == Some(true) => {

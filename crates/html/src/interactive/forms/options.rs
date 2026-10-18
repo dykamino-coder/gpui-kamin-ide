@@ -51,11 +51,12 @@ mod tests {
 
     fn element(tag: &str, attrs: &[(&str, &str)], children: Vec<Node>) -> Element {
         Element {
+            marks: Default::default(),
             list_item: None,
             node_id: 0,
             anim: None,
             tag: tag.into(),
-            style: Computed::default(),
+            style: Computed::default().into(),
             hover: None,
             first_letter: None,
             first_line: None,

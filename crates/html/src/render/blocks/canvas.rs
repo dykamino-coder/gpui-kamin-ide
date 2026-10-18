@@ -5,7 +5,7 @@ use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
 use crate::render::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
 pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
@@ -149,10 +149,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         // слой на весь холст перекрывает то, что рисуется выше по
         // потоку. Возвращаться вместе с переносом фона тела на
         // корень, когда кегль тела будет разрешаться до переноса.
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = e.style.borders();
         let mut band = div().absolute().top_0().bottom_0();
         band = match e.style.width {
@@ -202,11 +199,13 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         || e.style.clip_inset.is_some()
         || e.style.clip_xywh.is_some()
     {
-        let mut clip = Computed::default();
-        clip.clip_polygon = e.style.clip_polygon.clone();
-        clip.clip_shape = e.style.clip_shape.clone();
-        clip.clip_inset = e.style.clip_inset;
-        clip.clip_xywh = e.style.clip_xywh;
+        let clip = Computed {
+            clip_polygon: e.style.clip_polygon.clone(),
+            clip_shape: e.style.clip_shape.clone(),
+            clip_inset: e.style.clip_inset,
+            clip_xywh: e.style.clip_xywh,
+            ..Default::default()
+        };
         layer = grouped(
             div()
                 .absolute()

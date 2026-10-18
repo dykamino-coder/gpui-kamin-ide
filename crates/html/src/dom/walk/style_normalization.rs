@@ -1,4 +1,4 @@
-//! Style normalization for walk; split out to keep the owning module within 250 lines.
+//! Normalize element styles using HTML tag defaults and CSS applicability rules.
 
 use super::presentational_hints;
 use crate::dom::*;
@@ -9,7 +9,7 @@ use crate::style::select::Ancestor;
 #[allow(clippy::needless_borrow)]
 pub(super) fn normalize_style(
     mut style: &mut Computed,
-    tag: &String,
+    tag: &str,
     attrs: &[(String, String)],
     path: &[Ancestor],
 ) {
@@ -59,7 +59,7 @@ pub(super) fn normalize_style(
         let internal_table = match style.display {
             Some(Display::TableRow | Display::TableRowGroup | Display::TableCell) => true,
             None => matches!(
-                tag.as_str(),
+                tag,
                 "td" | "th" | "tr" | "thead" | "tbody" | "tfoot" | "col" | "colgroup"
             ),
             _ => false,
@@ -78,7 +78,7 @@ pub(super) fn normalize_style(
     style.plain_block_box = {
         use crate::style::computed::Display;
         let special = matches!(
-            tag.as_str(),
+            tag,
             "table"
                 | "caption"
                 | "colgroup"
@@ -119,7 +119,7 @@ pub(super) fn normalize_style(
             | Some(Display::ListItem)
             | Some(Display::Flex)
             | Some(Display::Grid) => true,
-            None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag.as_str()),
+            None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag),
             _ => false,
         };
         block && !special && style.float.is_none_or(|f| f == 0)
@@ -137,7 +137,7 @@ pub(super) fn normalize_style(
                 Some(Position::Absolute) | Some(Position::Fixed)
             );
         let replaced = matches!(
-            tag.as_str(),
+            tag,
             "img"
                 | "svg"
                 | "input"
@@ -152,7 +152,7 @@ pub(super) fn normalize_style(
                 | "meter"
                 | "progress"
         );
-        let inline_tag = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+        let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let non_atomic = !out_of_flow
             && !replaced
             && (style.inline_display == Some(true) || (style.display.is_none() && inline_tag));
@@ -171,9 +171,9 @@ pub(super) fn normalize_style(
                 style.position,
                 Some(Position::Absolute) | Some(Position::Fixed)
             );
-        let inline_tag = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+        let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let replaced = matches!(
-            tag.as_str(),
+            tag,
             "img"
                 | "svg"
                 | "input"
@@ -201,7 +201,7 @@ pub(super) fn normalize_style(
     // properties … apply to base containers or annotation containers»
     // (`ruby-box-model-001`: `.rbc.pv { padding: 100px }` не должен
     // отодвигать аннотацию от базы). Контейнер — по тегу или по роли.
-    if matches!(tag.as_str(), "rbc" | "rtc")
+    if matches!(tag, "rbc" | "rtc")
         || matches!(
             style.ruby_role,
             Some(crate::style::computed::RubyRole::BaseContainer)

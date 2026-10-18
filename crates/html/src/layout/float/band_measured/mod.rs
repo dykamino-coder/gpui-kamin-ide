@@ -90,7 +90,7 @@ pub(super) fn band_host_m(
         let Node::Element(next) = &nodes[j] else {
             break;
         };
-        if !next.style.float.is_some_and(|f| f != 0) {
+        if next.style.float.is_none_or(|f| f == 0) {
             break;
         }
         band_float_m(next, em)?;

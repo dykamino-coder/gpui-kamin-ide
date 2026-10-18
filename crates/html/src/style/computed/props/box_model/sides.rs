@@ -22,7 +22,10 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.top = crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.top = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                );
                 self.side_seq.padding[0] = self.decl_seq;
             }
             "padding-right" => {
@@ -41,8 +44,10 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.right =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.right = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                );
                 self.side_seq.padding[1] = self.decl_seq;
             }
             "padding-bottom" => {
@@ -61,8 +66,10 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.bottom =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.bottom = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                );
                 self.side_seq.padding[2] = self.decl_seq;
             }
             "padding-left" => {
@@ -81,8 +88,10 @@ impl Computed {
                 ) {
                     return;
                 }
-                self.padding.left =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
+                self.padding.left = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse(v))
+                );
                 self.side_seq.padding[3] = self.decl_seq;
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
@@ -97,6 +106,13 @@ impl Computed {
                     return;
                 }
                 self.margin = Sides::shorthand(v);
+                if self.margin.top.is_some()
+                    && self.margin.right.is_some()
+                    && self.margin.bottom.is_some()
+                    && self.margin.left.is_some()
+                {
+                    self.accept_declaration();
+                }
                 self.side_seq.margin = [self.decl_seq; 4];
             }
             "margin-top" => {
@@ -104,7 +120,7 @@ impl Computed {
                     self.margin_inherit[0] = true;
                     return;
                 }
-                self.margin.top = Len::parse(v);
+                self.margin.top = record_parsed!(self, Len::parse(v));
                 self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
@@ -116,8 +132,10 @@ impl Computed {
                 // её сама (css-values-4 §10.9), а вклад решает долю от нуля
                 // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right =
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.right = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                );
                 self.side_seq.margin[1] = self.decl_seq;
             }
             "margin-bottom" => {
@@ -125,7 +143,7 @@ impl Computed {
                     self.margin_inherit[2] = true;
                     return;
                 }
-                self.margin.bottom = Len::parse(v);
+                self.margin.bottom = record_parsed!(self, Len::parse(v));
                 self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
@@ -134,8 +152,10 @@ impl Computed {
                     return;
                 }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left =
-                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v));
+                self.margin.left = record_parsed!(
+                    self,
+                    crate::style::values::value::fold_zero_percentage(Len::parse_mixed(v))
+                );
                 self.side_seq.margin[3] = self.decl_seq;
             }
 

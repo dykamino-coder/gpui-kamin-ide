@@ -1,30 +1,14 @@
 //! Flow children retain absolute fractional origins until device rounding.
 
+use crate::hooks::Hooks;
 use crate::layout::fragment::types::{FlowChild, FlowRow};
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Window, point, px, size,
-};
+use gpui::{App, Bounds, IntoElement, LayoutId, Pixels, Window, point, px, size};
 
-impl Element for FlowRow {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for FlowRow {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let sizes: Vec<(f32, f32)> = self.children.iter().map(|c| (c.w, c.h)).collect();
         let shapes = self.shapes.clone();
         let rtl = self.rtl;
@@ -80,13 +64,11 @@ impl Element for FlowRow {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*state),
             size: window.layout_size_unrounded(*state),
@@ -143,11 +125,9 @@ impl Element for FlowRow {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {

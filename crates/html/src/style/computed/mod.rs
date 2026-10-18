@@ -5,6 +5,9 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+#[macro_use]
+mod declaration_parse;
+pub(crate) use declaration_parse::ParseResult;
 mod appearance;
 pub(crate) mod math_style;
 pub use appearance::Appearance;
@@ -42,6 +45,7 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
 mod queries;
 mod resolve;
+pub use resolve::FontCx;
 
 use crate::style::values::value::Len;
 mod fields;

@@ -27,11 +27,6 @@ pub fn gap_items_for(key: u64) -> GapItems {
     GAP_ITEMS.with(|m| m.borrow_mut().entry(key).or_default().clone())
 }
 
-pub fn forget_gap_buffers() {
-    GAP_ITEMS.with(|m| m.borrow_mut().clear());
-    GAP_STACK.with(|st| st.borrow_mut().clear());
-}
-
 /// Сторож стека линеек на время сборки ДЕТЕЙ контейнера.
 pub struct GapGuard(pub(crate) bool);
 

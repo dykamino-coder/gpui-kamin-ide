@@ -1,10 +1,11 @@
 //! Build the shared decoration layer before children, including atomic boxes.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::paint::gap_rules::{GapGuard, fresh_gap_items, painter::GapRulePainter};
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 pub(crate) fn decorated_children(
     e: &Element,
@@ -19,7 +20,7 @@ pub(crate) fn decorated_children(
     let _guard = context.as_ref().map(|(key, _)| GapGuard::enter(*key));
     let mut layers = Vec::new();
     if let (Some((_, buffer)), Some(spec)) = (context, spec) {
-        layers.push(GapRulePainter::new(buffer, spec).into_any_element());
+        layers.push(GapRulePainter::new(buffer, spec).hooked());
     }
     layers.extend(children());
     layers

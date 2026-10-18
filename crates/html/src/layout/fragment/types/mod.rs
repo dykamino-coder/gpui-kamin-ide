@@ -18,19 +18,10 @@ pub use rows::Kid;
 pub use rows::Par;
 pub use rows::Rows;
 mod stack_child;
+use crate::tolerance::COORD_EPS;
 pub use stack_child::Repeat;
 pub use stack_child::RepeatGeom;
 pub use stack_child::StackChild;
-
-/// Полоса выреза: на строках, пересекающих [y0, y1), начало (или конец)
-/// строки занято на `left`/`right` точек.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ExBand {
-    pub y0: f32,
-    pub y1: f32,
-    pub left: f32,
-    pub right: f32,
-}
 
 /// Ребёнок потока: элемент и его известный размер.
 pub struct FlowChild {
@@ -159,7 +150,7 @@ impl FlowRow {
             // полосный ряд включается только при обтекании, а тесты гибкой
             // раскладки флоатов не содержат.
             // Не влезает — новая строка; коробка шире строки стоит одна.
-            if x + cw > avail + 0.01 && x > 0.0 {
+            if x + cw > avail + COORD_EPS && x > 0.0 {
                 y += line_h;
                 x = 0.0;
                 line_h = 0.0;
@@ -170,12 +161,12 @@ impl FlowRow {
             // Коробка не помещается даже в начале строки — строка съезжает
             // ниже, пока вырез не отпустит (float-retry-push): плавающий
             // блок толкает СЛИШКОМ ШИРОКОЕ содержимое под себя.
-            if x == 0.0 && cw > (limit - cut.0 - cut.1).max(0.0) + 0.01 {
+            if x == 0.0 && cw > (limit - cut.0 - cut.1).max(0.0) + COORD_EPS {
                 let bottom = self.shapes_bottom();
                 while y < bottom {
                     y += 1.0;
                     cut = self.cut(y, ch.max(1.0));
-                    if cw <= (limit - cut.0 - cut.1).max(0.0) + 0.01 {
+                    if cw <= (limit - cut.0 - cut.1).max(0.0) + COORD_EPS {
                         break;
                     }
                 }

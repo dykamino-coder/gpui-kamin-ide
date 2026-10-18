@@ -191,6 +191,11 @@ pub struct TaffyTree<NodeContext = ()> {
 
     /// Layout mode configuration
     config: TaffyConfig,
+
+    /// KaminIDE: `calc()` pairs referenced by the styles of this tree's nodes
+    /// (`kamin_calc`); cleared with the nodes.
+    #[cfg(feature = "std")]
+    calc: super::kamin_calc::SharedRegistry,
 }
 
 impl Default for TaffyTree {
@@ -766,7 +771,24 @@ impl<NodeContext> TaffyTree<NodeContext> {
             parents: SlotMap::with_capacity(capacity),
             node_context_data: SecondaryMap::with_capacity(capacity),
             config: TaffyConfig::default(),
+            #[cfg(feature = "std")]
+            calc: Default::default(),
         }
+    }
+
+    /// KaminIDE: make this tree's calc registry current until the guard drops:
+    /// `calc_handle` registers into it while the host converts styles.
+    #[cfg(feature = "std")]
+    pub fn calc_scope(&self) -> super::kamin_calc::CalcScope {
+        super::kamin_calc::enter(&self.calc)
+    }
+
+    /// KaminIDE: resolve calc handles of `source`'s styles — for a tree built
+    /// from copies of `source`'s styles (a measurement snapshot). The registry
+    /// is shared, so it lives while either tree does.
+    #[cfg(feature = "std")]
+    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
+        self.calc = source.calc.clone();
     }
 
     /// Enable rounding of layout values. Rounding is enabled by default.
@@ -833,6 +855,11 @@ impl<NodeContext> TaffyTree<NodeContext> {
         // user data -- for a measure function, a boxed closure and everything it
         // captures -- alive after the node it belonged to is gone.
         self.node_context_data.clear();
+        #[cfg(feature = "std")]
+        self.calc
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clear();
     }
 
     /// Remove a specific node from the tree and drop it
@@ -1187,6 +1214,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
             FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
     {
         let use_rounding = self.config.use_rounding;
+        #[cfg(feature = "std")]
+        let _calc = self.calc_scope();
         let mut taffy_view = TaffyView {
             taffy: self,
             measure_function,

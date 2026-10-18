@@ -166,7 +166,7 @@ impl AnchorPlan {
 
     /// Куда просится край по `anchor()`: экранная координата; вставка в
     /// точках от края содержащего блока (запасное значение); ничего.
-    fn resolve_anchor(&self, first: AnchorFn, y_axis: bool, end_side: bool) -> Edge {
+    fn resolve_anchor(&self, first: std::rc::Rc<AnchorFn>, y_axis: bool, end_side: bool) -> Edge {
         let mut f = Some(first);
         // Цепочка запасных значений: `anchor(top, anchor(--a1 bottom))`.
         for _ in 0..4 {

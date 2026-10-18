@@ -1,6 +1,7 @@
 //! Computed::apply_transform_individual, хвост цепочки: backface-visibility, perspective, perspective-origin, transform-style, transform-box, vector-effect. Ветви в исходном порядке.
 
 use super::*;
+use crate::style::values::value::px_strict;
 
 impl Computed {
     #[allow(unused_variables)]
@@ -18,7 +19,9 @@ impl Computed {
             // проекции: `rotateY(180deg)` — это scaleX(-1), и элемент с
             // `backface-visibility: hidden` обязан исчезнуть
             // (css-transforms-2 §backface-visibility, признак m33 < 0).
-            "backface-visibility" => self.backface_hidden = Some(v == "hidden"),
+            "backface-visibility" => {
+                self.backface_hidden = accept_parsed!(self, Some(v == "hidden"))
+            }
             // `perspective` (css-transforms-2 §perspective-property): длина в
             // точках, «values less than 1px must be treated as 1px» — так и
             // `perspective: 0` (perspective-zero-2/-3, transform3d-
@@ -26,10 +29,16 @@ impl Computed {
             // сюда не доезжают (None). Ячейка заводится здесь, при разборе:
             // у родителя и его детей будет один и тот же Rc.
             "perspective" => {
-                self.perspective = match Len::parse(v) {
-                    Some(Len::Px(d)) => Some(d.max(1.0)),
-                    _ => None,
-                };
+                self.perspective = record_parsed!(
+                    self,
+                    match Len::parse(v) {
+                        Some(Len::Px(d)) => Some(d.max(1.0)),
+                        _ => None,
+                    }
+                );
+                if v == "none" {
+                    self.accept_declaration();
+                }
                 self.perspective_frame = self.perspective.map(|_| PerspectiveFrame::default());
             }
             // `perspective-origin` (§perspective-origin-property) — та же
@@ -49,12 +58,7 @@ impl Computed {
                         },
                     }
                 };
-                let px_axis = |t: &str| -> Option<f32> {
-                    match Len::parse(t) {
-                        Some(Len::Px(v)) => Some(v),
-                        _ => None,
-                    }
-                };
+                let px_axis = |t: &str| -> Option<f32> { px_strict(Len::parse(t)) };
                 let mut xs: Option<&str> = None;
                 let mut ys: Option<&str> = None;
                 let mut free: Vec<&str> = vec![];
@@ -69,7 +73,8 @@ impl Computed {
                 let first = xs.or_else(|| free.next()).unwrap_or("center");
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
                 self.perspective_origin_px = (px_axis(first), px_axis(second));
-                self.perspective_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                self.perspective_origin =
+                    accept_parsed!(self, Some((axis(first, 0.5), axis(second, 0.5))));
             }
             // `transform-style` (css-transforms-2 §transform-style-property):
             // `preserve-3d` держит детей в одном объёмном контексте с собой.
@@ -79,7 +84,7 @@ impl Computed {
             // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
             // (css-transforms-2 §3d-rendering-context, лист контекста).
             "transform-style" => {
-                self.preserve_3d = Some(v.trim() == "preserve-3d");
+                self.preserve_3d = accept_parsed!(self, Some(v.trim() == "preserve-3d"));
                 self.frame_3d = match self.preserve_3d {
                     Some(true) => Some(Frame3d::default()),
                     _ => None,
@@ -90,16 +95,21 @@ impl Computed {
             // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
             "transform-box" => {
                 self.transform_box_fill = Some(v.trim() == "fill-box");
-                self.transform_box = match v.trim() {
-                    "view-box" => Some(0),
-                    "fill-box" | "content-box" => Some(1),
-                    "stroke-box" | "border-box" => Some(2),
-                    _ => None,
-                };
+                self.transform_box = record_parsed!(
+                    self,
+                    match v.trim() {
+                        "view-box" => Some(0),
+                        "fill-box" | "content-box" => Some(1),
+                        "stroke-box" | "border-box" => Some(2),
+                        _ => None,
+                    }
+                );
             }
             // SVG 2 §vector-effect: `non-scaling-stroke` — толщина обводки в
             // точках экрана; нужна опорной коробке и толщине в `svg.rs`.
-            "vector-effect" => self.svg_non_scaling = Some(v.trim() == "non-scaling-stroke"),
+            "vector-effect" => {
+                self.svg_non_scaling = accept_parsed!(self, Some(v.trim() == "non-scaling-stroke"))
+            }
             _ => *hit = false,
         }
     }

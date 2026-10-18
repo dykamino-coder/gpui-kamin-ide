@@ -19,6 +19,7 @@ pub(super) use edges::in_edge;
 pub(super) use edges::own_size;
 
 use crate::dom::Node;
+use crate::hooks::IntoHooked;
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::*;
@@ -124,7 +125,7 @@ fn paragraph_routed(
                 (normal_font, size),
             )
             .first_height(first_lh)
-            .into_any_element();
+            .hooked();
         }
     }
     paragraph_pieces_routed(

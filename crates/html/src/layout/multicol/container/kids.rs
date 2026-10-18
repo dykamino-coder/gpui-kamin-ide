@@ -11,6 +11,8 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Child records keep their layout and paint callbacks with measured geometry.
+#[allow(clippy::type_complexity)]
 pub(super) fn column_kids(
     merged: &Computed,
     kids: Vec<(
@@ -57,7 +59,7 @@ pub(super) fn column_kids(
     for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
         if p.group == 0 {
             p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
-            p.float = c.attr("kamin-float-block").is_some();
+            p.float = c.marks.float_block;
             p.clears = c.style.clear.is_some();
         }
     }
@@ -76,6 +78,8 @@ pub(super) fn column_kids(
 }
 
 #[allow(clippy::too_many_arguments)]
+// The stack is assembled from the same measured child/callback records.
+#[allow(clippy::type_complexity)]
 pub(super) fn stack_children(
     e: &Element,
     merged: &Computed,

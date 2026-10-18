@@ -2,13 +2,14 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
 use crate::render::{RenderOpts, block_level_in_flow, own_context, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 mod lift;
 pub(super) use lift::band_flow_rest_lift;
 use lift::flow_interior_plain;
@@ -135,13 +136,10 @@ pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
 pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
-    let em: f32 = e
-        .attr("em")
-        .and_then(|c| c.parse().ok())
-        .unwrap_or(opts.base_size());
-    let cbh: Option<f32> = e.attr("cbh").and_then(|c| c.parse().ok());
-    let cbw: Option<f32> = e.attr("cbw").and_then(|c| c.parse().ok());
+    let host = e.marks.shape_flow.unwrap_or_default();
+    let count = host.count;
+    let em: f32 = host.em.unwrap_or(opts.base_size());
+    let (cbh, cbw) = (host.cbh, host.cbw);
     let mut inherited = inherited.clone();
     if let Some(h) = cbh {
         inherited.height = Some(Len::Px(h));
@@ -156,13 +154,12 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         inherited,
         opts,
         em,
-        e.attr("adjoining-start") == Some("1"),
+        e.marks.adjoining_start,
     );
-    let flow =
-        crate::layout::float::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
+    let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
     if inherited.wm().vertical() {
-        flow.vertical(inherited.wm().block_rl()).into_any_element()
+        flow.vertical(inherited.wm().block_rl()).hooked()
     } else {
-        flow.into_any_element()
+        flow.hooked()
     }
 }

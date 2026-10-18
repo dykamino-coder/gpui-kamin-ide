@@ -16,6 +16,7 @@ pub use border_geometry::motion_shape_d;
 pub use border_geometry::rrect_spec;
 
 use crate::paint::background::*;
+use crate::style::computed::FontCx;
 
 /// Перевести `shape()` (css-shapes-2 §2.4) в контур SVG `d`.
 ///
@@ -41,8 +42,8 @@ pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
         match crate::style::values::value::Len::parse(t)? {
             crate::style::values::value::Len::Px(v) => Some(v),
             crate::style::values::value::Len::Pct(p) => Some(p * side),
-            // Шрифтовые единицы — от запасного кегля (16px).
-            l => crate::text::metrics::fallback_len_px(l, "", 16.0),
+            // Шрифтовые единицы — от запасного кегля (`FontCx::FALLBACK`).
+            l => l.to_px(None, FontCx::FALLBACK),
         }
     };
     // Пара координат из токенов: позиционные слова идут в любом порядке

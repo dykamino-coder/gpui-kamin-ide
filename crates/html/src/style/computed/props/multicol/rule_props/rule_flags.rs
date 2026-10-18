@@ -24,6 +24,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(code) = code {
+                    self.accept_declaration();
                     if key != "row-rule-visibility-items" {
                         self.column_rule_visibility = Some(code);
                     }
@@ -34,8 +35,8 @@ impl Computed {
             }
             // §overlap: порядок краски пересекающихся линеек.
             "rule-overlap" => match v.trim() {
-                "row-over-column" => self.rule_column_over_row = Some(false),
-                "column-over-row" => self.rule_column_over_row = Some(true),
+                "row-over-column" => self.rule_column_over_row = accept_parsed!(self, Some(false)),
+                "column-over-row" => self.rule_column_over_row = accept_parsed!(self, Some(true)),
                 _ => {}
             },
             // §break: `none` 0, `normal` 1, `intersection` 2.
@@ -47,6 +48,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(code) = code {
+                    self.accept_declaration();
                     if key != "row-rule-break" {
                         self.column_rule_break = Some(code);
                     }
@@ -76,6 +78,7 @@ impl Computed {
                     }
                 }
                 if ok {
+                    self.accept_declaration();
                     self.margin_trim = bits;
                 }
             }
@@ -136,6 +139,7 @@ impl Computed {
                         },
                     }
                 }
+                self.accept_declaration();
                 self.column_height = None;
                 self.column_wrap = None;
                 if let Some(t) = tail {

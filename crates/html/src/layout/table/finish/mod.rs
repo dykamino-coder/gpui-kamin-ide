@@ -1,11 +1,12 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::predicates::edge_set;
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, Styled};
+use gpui::{AnyElement, Styled};
 mod outer;
 use outer::{finish_table_outer, table_outer_box};
 mod tracks;
@@ -18,6 +19,8 @@ mod captions;
 use captions::{collect_captions, wrap_with_captions};
 
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
+// Finishing consumes row elements and the corresponding band geometry together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,
@@ -31,7 +34,7 @@ pub(super) fn table_finish(
     row_elements: Vec<&Element>,
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     spacing: (f32, f32),
     cols: u16,
     from_cols: Vec<Option<f32>>,
@@ -45,15 +48,13 @@ pub(super) fn table_finish(
 ) -> AnyElement {
     let mut grid_children = under;
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element(),
-        );
+        grid_children
+            .push(crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).hooked());
     }
     grid_children.extend(cells);
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element(),
-        );
+        grid_children
+            .push(crate::layout::table::paint::EdgePainter::new(table_edges.clone()).hooked());
     }
     grid_children.extend(cells_over);
     let cells = grid_children;

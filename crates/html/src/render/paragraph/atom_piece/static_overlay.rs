@@ -1,6 +1,7 @@
 //! Замещаемый атом на статической позиции как overlay абзаца.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::render::*;
@@ -73,7 +74,7 @@ pub(crate) fn static_overlay(
     let inner = crate::layout::positioned::anchor::place::place(inner, &positioned, inherited);
     let rotated_rtl = inherited.wm().rtl() && inherited.wm().turned();
     let inner = if inherited.wm().rtl() && !rot_block && !rotated_rtl {
-        crate::layout::positioned::containing_block::InlineStartHang::new(inner).into_any_element()
+        crate::layout::positioned::containing_block::InlineStartHang::new(inner).hooked()
     } else {
         inner
     };

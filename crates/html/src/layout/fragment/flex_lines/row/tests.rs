@@ -8,11 +8,12 @@ use crate::style::values::value::Len;
 
 fn element(style: Computed, children: Vec<Element>) -> Element {
     Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
         tag: "div".into(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

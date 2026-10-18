@@ -1,12 +1,15 @@
 //! Ruby extents for probes; split out to keep the owning module within 250 lines.
 
 use super::LayoutTap;
-use gpui::{AnyElement, IntoElement, LayoutId};
+use crate::hooks::IntoHooked;
+use gpui::{AnyElement, LayoutId};
 
 /// Узлы стопок аннотаций одного руби: (под базой?, полулидинг базы, узел).
 /// Полулидинг вычитается: стопка стоит на краю коробки строки базы, а
 /// аннотация в браузере — на краю её СОДЕРЖИМОГО.
 #[derive(Default)]
+// Ruby extents retain annotation geometry keyed by the corresponding base span.
+#[allow(clippy::type_complexity)]
 pub struct RubyExtents {
     pub levels: Vec<(bool, f32, std::rc::Rc<std::cell::Cell<Option<LayoutId>>>)>,
     pub(crate) nested: Vec<Vec<crate::text::ruby::layers::LayerAttachment>>,
@@ -110,10 +113,6 @@ pub fn collect_ruby_extents<T>(build: impl FnOnce() -> T) -> (T, RubyExtents) {
 /// spacing … so that the ruby annotation fits» — строка растёт ровно на то,
 /// чем аннотация выходит за её коробку (Blink `ruby_utils.cc`
 /// `ComputeAnnotationOverflow`). Без сбора — сам элемент как есть.
-pub fn ruby_extent(el: AnyElement, under: bool, inset: f32) -> AnyElement {
-    ruby_layer(el, under, inset, &[])
-}
-
 pub(crate) fn ruby_layer(
     el: AnyElement,
     under: bool,
@@ -137,5 +136,5 @@ pub(crate) fn ruby_layer(
     if !collecting && layers.is_empty() {
         return el;
     }
-    LayoutTap { child: el, slot }.into_any_element()
+    LayoutTap { child: el, slot }.hooked()
 }

@@ -4,7 +4,7 @@ use crate::dom::Node;
 use crate::layout::writing_mode::orthogonal_fixed_child;
 use crate::render::in_flow;
 use crate::style::computed::{Align, Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Зеркальный ортогональный случай: ВЕРТИКАЛЬНЫЙ блок внутри горизонтального
 /// контейнера. Его строчная ось — высота, и авто-размер по ней зажимается
@@ -96,10 +96,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             && margins > 0.0
             && matches!(container.display, None | Some(Display::Block))
         {
-            let px = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let px = px_lossy_zero;
             // Предел — внутренний размер СБ: при `border-box` заданная
             // высота включает его рамки и отбивки по той же оси.
             let inner = if container.border_box == Some(true) {

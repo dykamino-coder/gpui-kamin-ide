@@ -80,7 +80,7 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
                 | Some(crate::style::computed::Position::Fixed)
         ) && (x_set || free_inline)
             && y_set
-            && !e.style.z_index.is_some_and(|z| z < 0))
+            && e.style.z_index.is_none_or(|z| z >= 0))
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): элемент ряда с z-index > 0 —
         // поверх соседей той же перестановкой: css-flexbox 734 -> 733
         // (`flexbox-items-as-stacking-contexts-001` 0.44 -> 0.60), плюсов

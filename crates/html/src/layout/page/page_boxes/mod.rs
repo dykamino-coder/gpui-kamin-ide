@@ -179,13 +179,15 @@ fn page_margin_boxes(
                 st.apply_one(k, v);
             }
             let inner = Element {
+                marks: Default::default(),
                 tag: "div".to_string(),
                 inline: false,
                 node_id: 0,
                 style: Computed {
                     height: inline,
                     ..Computed::default()
-                },
+                }
+                .into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,
@@ -196,7 +198,7 @@ fn page_margin_boxes(
             };
             let outer = Element {
                 tag: "div".to_string(),
-                style: st,
+                style: st.into(),
                 children: vec![Node::Element(inner.clone())],
                 ..inner
             };

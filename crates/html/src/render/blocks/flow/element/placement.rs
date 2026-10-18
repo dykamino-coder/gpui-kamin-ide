@@ -4,6 +4,7 @@ mod route;
 pub(super) use route::layer_route;
 
 use super::finish_element;
+use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
 use crate::layout::page::paged::{FIXED_LAYER, PAGED};
 use crate::paint::stacking::layered;
@@ -115,7 +116,9 @@ pub(crate) fn place_element(
                 built
             };
             let built = if to_icb && below_icb {
-                crate::paint::effects::underlay::Underlay::new(built).into_any_element()
+                crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(
+                    built,
+                ))
             } else {
                 built
             };
@@ -168,11 +171,8 @@ pub(crate) fn place_element(
                     spot.clone(),
                     true,
                 ));
-                crate::layout::positioned::containing_block::LatePlace {
-                    child: Some(kept),
-                    spot,
-                }
-                .into_any_element()
+                crate::layout::positioned::containing_block::LatePlace { child: kept, spot }
+                    .hooked()
             }
             Some(kept) => kept,
         }

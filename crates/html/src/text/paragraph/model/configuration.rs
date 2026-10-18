@@ -7,6 +7,8 @@ use gpui::{ElementId, Hsla, Pixels};
 
 impl Paragraph {
     /// Сдвиг кусков по вертикали: отрезок байт → смещение базовой линии.
+    // Relative spans retain text ranges and both two-axis displacements.
+    #[allow(clippy::type_complexity)]
     pub fn rel_spans(
         mut self,
         spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,

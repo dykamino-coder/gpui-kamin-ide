@@ -295,9 +295,6 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
-            eprintln!("ORD FRAME");
-        }
         self.paint_operations.clear();
         self.groups.clear();
         self.primitive_bounds.clear();
@@ -321,12 +318,6 @@ impl Scene {
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.primitive_bounds.insert(bounds) * ORDER_STEP;
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
-            eprintln!(
-                "ORD layer o={} x=({}, {}) y=({}, {})",
-                order, bounds.origin.x.0, bounds.size.width.0, bounds.origin.y.0, bounds.size.height.0
-            );
-        }
         self.layer_stack.push(order);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
@@ -464,15 +455,6 @@ impl Scene {
             }
             Primitive::Quad(quad) => {
                 quad.order = order;
-                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
-                    eprintln!(
-                        "ORD quad o={} x={:?} y={:?} grad={}",
-                        order,
-                        (quad.bounds.origin.x.0, quad.bounds.size.width.0),
-                        (quad.bounds.origin.y.0, quad.bounds.size.height.0),
-                        quad.background.tag != gpui::BackgroundTag::Solid
-                    );
-                }
                 self.quads.push(*quad);
             }
             Primitive::Path(path) => {
@@ -486,14 +468,6 @@ impl Scene {
             }
             Primitive::MonochromeSprite(sprite) => {
                 sprite.order = order;
-                if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("ORD_DBG").is_ok()); *ON } {
-                    eprintln!(
-                        "ORD mono o={} x={:?} y={:?}",
-                        order,
-                        (sprite.bounds.origin.x.0, sprite.bounds.size.width.0),
-                        (sprite.bounds.origin.y.0, sprite.bounds.size.height.0)
-                    );
-                }
                 self.monochrome_sprites.push(*sprite);
             }
             Primitive::SubpixelSprite(sprite) => {

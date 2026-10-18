@@ -2,10 +2,8 @@
 
 use super::geometry::Metrics;
 use super::{arrangement, parameters::Kind};
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, point, px, size,
-};
+use crate::hooks::Hooks;
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
 pub(super) struct Content {
     pub children: Vec<AnyElement>,
@@ -27,22 +25,11 @@ pub(super) struct Content {
     pub glyph_offset: (f32, f32),
 }
 
-impl Element for Content {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = gpui::Point<Pixels>;
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+impl Hooks for Content {
+    type Layout = LayoutId;
+    type Prepaint = gpui::Point<Pixels>;
+
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         self.roots.clear();
         let metrics = if let Kind::Space(leaf) = self.kind {
             leaf
@@ -132,15 +119,14 @@ impl Element for Content {
         );
         (id, id)
     }
+
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) -> gpui::Point<Pixels> {
+    ) -> Self::Prepaint {
         // Absolute unrounded origin: `layout_exact` is relative to the parent.
         let origin = window.layout_origin_unrounded(*state);
         for ((child, root), (x, y)) in self.children.iter_mut().zip(&self.roots).zip(&self.offsets)
@@ -152,13 +138,12 @@ impl Element for Content {
         // GPUI forbids `element_offset` during paint: keep the origin here.
         origin
     }
+
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        origin: &mut gpui::Point<Pixels>,
+        _state: &mut Self::Layout,
+        origin: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -179,11 +164,5 @@ impl Element for Content {
         for child in &mut self.children {
             child.paint(window, cx);
         }
-    }
-}
-impl IntoElement for Content {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
     }
 }

@@ -69,6 +69,8 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
 // исполнение `counter-*` слоя в собственном сегменте маркера и снятие
 // маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
 // 2026-09b.md` §1.
+// Pseudo boxes need the originating cascade, counters and generated-content state.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
@@ -166,11 +168,12 @@ pub(super) fn pseudo_box_named(
             flush(&mut run, &mut children, counters);
             if let Some(src) = content_image_src(src) {
                 children.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
                     tag: "img".into(),
-                    style: Computed::default(),
+                    style: Computed::default().into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -191,6 +194,7 @@ pub(super) fn pseudo_box_named(
         (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
+        marks: Default::default(),
         list_item,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.
@@ -205,7 +209,7 @@ pub(super) fn pseudo_box_named(
         // it one device row off (`position-anchor-*-pseudo-element-*`).
         inline: !anchor_positioned(&style),
         tag: format!("::{tag}"),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

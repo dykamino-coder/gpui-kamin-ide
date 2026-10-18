@@ -3,7 +3,7 @@
 
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 mod columns;
 mod rows;
@@ -11,6 +11,8 @@ pub(super) use columns::collapsed_col_edges;
 pub(super) use columns::collapsed_colgroup_edges;
 pub(super) use rows::collapsed_row_edges;
 
+// Border conflict resolution keeps style, color and width in the winning edge.
+#[allow(clippy::type_complexity)]
 pub(super) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,
@@ -84,10 +86,7 @@ pub(super) fn collapsed_cell_edge(
         let base = match own {
             Some(Len::Px(v)) => v,
             None => 0.0,
-            Some(_) => match merged {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            },
+            Some(_) => px_lossy_zero(merged),
         };
         Some(Len::Px(base + win[i] / 2.0))
     };

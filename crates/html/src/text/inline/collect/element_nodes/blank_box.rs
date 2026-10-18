@@ -2,7 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use crate::text::inline::*;
 use gpui::Styled;
 
@@ -40,10 +40,7 @@ pub(super) fn blank_box(
                     .chars()
                     .all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
     if blank && (lead != 0.0 || trail != 0.0) {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let size = match merged.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,

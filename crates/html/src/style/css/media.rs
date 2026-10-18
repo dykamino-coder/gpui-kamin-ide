@@ -1,8 +1,10 @@
-//! Медиазапросы: Media, сравнения диапазонов, PRINT_MEDIA.
+//! Медиазапросы: Media (носитель задаёт документ), сравнения диапазонов.
 
 use crate::style::css::*;
 
 mod calc;
+mod comparison;
+pub(crate) use comparison::MqCmp;
 mod custom;
 pub(crate) use custom::scan_custom_media;
 mod features;
@@ -24,18 +26,18 @@ pub struct Media {
     pub print: bool,
 }
 
-/// Носитель по умолчанию — печать? Ставит стенд для `*-print`-тестов;
-/// приложение всегда экран.
-pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 impl Default for Media {
     fn default() -> Self {
-        let print = PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed);
-        // Печатный носитель меряется ЛИСТОМ, а не окном (mediaqueries-4
-        // §width: «For paged media, this is the width of the page box»).
-        // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`
-        // запрос не меняет (csswg#5437; `media-queries-001-print`: запрос
-        // 4in..5in x 2in..3in при `@page { size: 10in }` обязан сработать).
+        Media::for_medium(false)
+    }
+}
+
+impl Media {
+    /// Экран или печать (`Document::new_media`; печать — `*-print`-тесты).
+    pub fn for_medium(print: bool) -> Self {
+        // Печать меряется ЛИСТОМ (mediaqueries-4 §width: «the width of the page
+        // box»): лист WPT 5in x 3in = 480x288, `@page { size }` запрос не меняет
+        // (csswg#5437; `media-queries-001-print` при `size: 10in`).
         let (width, height) = if print {
             (480.0, 288.0)
         } else {
@@ -46,40 +48,6 @@ impl Default for Media {
             height,
             dark: true,
             print,
-        }
-    }
-}
-
-/// Сравнение в диапазонной записи медиа-фичи (mediaqueries-5 §3.3).
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum MqCmp {
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    Eq,
-}
-
-impl MqCmp {
-    /// Перевернуть на другую сторону: в `(100px < width)` фича СПРАВА, и
-    /// отношение к ней обратное.
-    pub(crate) fn flip(self) -> Self {
-        match self {
-            MqCmp::Lt => MqCmp::Gt,
-            MqCmp::Le => MqCmp::Ge,
-            MqCmp::Gt => MqCmp::Lt,
-            MqCmp::Ge => MqCmp::Le,
-            MqCmp::Eq => MqCmp::Eq,
-        }
-    }
-
-    pub(crate) fn holds(self, a: f32, b: f32) -> bool {
-        match self {
-            MqCmp::Lt => a < b,
-            MqCmp::Le => a <= b,
-            MqCmp::Gt => a > b,
-            MqCmp::Ge => a >= b,
-            MqCmp::Eq => a == b,
         }
     }
 }

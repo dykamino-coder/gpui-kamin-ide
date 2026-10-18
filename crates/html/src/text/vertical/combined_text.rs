@@ -1,12 +1,13 @@
 //! Horizontal compositions apply only in vertical writing modes, with no letter spacing.
 //! CSS Writing Modes 4 §9.1 and §9.1.2 preserve font settings inside the composition.
+
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::render::{RenderOpts, gather_text, paragraph};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, TextTransform};
 use crate::style::values::value::Len;
 use crate::text::inline;
-use gpui::IntoElement;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) fn piece(
@@ -68,7 +69,7 @@ pub(crate) fn piece(
     };
     let inner = paragraph(nodes, &merged, opts);
     Some(inline::Piece::Atom(
-        crate::text::vertical::CombinedUpright::new(inner, em).into_any_element(),
+        crate::text::vertical::CombinedUpright::new(inner, em).hooked(),
     ))
 }
 

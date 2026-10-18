@@ -1,139 +1,24 @@
-//! Painting for cut_element; split out to keep the owning module within 250 lines.
+//! Clamp paint feedback: measured cuts, paragraph budgets and next-frame geometry.
 
 mod automatic;
+mod boxes;
 mod counted;
 mod fit;
+mod paragraph;
+pub(crate) use boxes::ClampBox;
+pub(super) use boxes::{chain_end, chain_extra, chain_sizes};
 
 use super::ClampCut;
 use super::{ClampEntry, clamp_cut, clamp_para, take_para_rows};
 use crate::text::clamp::line_state::{CLAMP_BOXES, CLAMP_EXTENT, CLAMP_NEXT};
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
-
-/// A probed block box inside the clamp container, in box-tree preorder.
-#[derive(Debug)]
-pub(crate) struct ClampBox {
-    /// Border-box top and padding-box bottom.
-    pub y0: f32,
-    pub y1: f32,
-    /// Definite height: not fragmented at the clamp point.
-    pub fixed: bool,
-    /// End border + padding and end margin.
-    pub bp: f32,
-    pub margin: f32,
-    /// `min-height` border-box extent from `y0`, 0 when none.
-    pub min_end: f32,
-    pub node: u64,
-    /// Paragraph numbers `[first, end)` of its descendants.
-    pub span: Option<(u32, u32)>,
-}
-
-impl ClampBox {
-    /// Inside a monolithic ancestor that ends before `c`: its overflow is
-    /// that ancestor's, parked at the ancestor's end, so the box can
-    /// neither hold nor push the clamp point.
-    pub(super) fn inside_fitting_fixed(&self, all: &[ClampBox], c: f32) -> bool {
-        let Some((a, z)) = self.span else {
-            return false;
-        };
-        all.iter().any(|o| {
-            !std::ptr::eq(o, self)
-                && o.fixed
-                && o.y1 <= c + 0.5
-                && o.y0 <= self.y0
-                && o.span.is_some_and(|(oa, oz)| oa <= a && z <= oz)
-        })
-    }
-
-    /// Lowest edge the box occupies in the flow: padding box, end border
-    /// and padding, end margin.
-    pub(super) fn flow_end(&self) -> f32 {
-        self.y1 + self.bp + self.margin.max(0.0)
-    }
-}
-
-/// Where the clamp container's content ends for a clamp point at `point`
-/// inside the boxes `chain` (fragmented at it), in preorder (outermost
-/// first): end border and padding of each box, `min-height` of each box,
-/// end margins collapsing through boxes without border/padding (css-
-/// overflow-4 §5.3; Blink `LineClampAncestorChain::
-/// InnerFinalLineClampBlockSize`). The clamp container is an independent
-/// BFC, so the margin left over at its end stays inside it.
-pub(super) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
-    chain_end_with(point, chain, true)
-}
-
-/// Space the end edges of `chain` take after the point, `min-height` aside
-/// (the line budget of `line-clamp: auto`).
-pub(super) fn chain_extra(chain: &[&ClampBox]) -> f32 {
-    chain_end_with(0.0, chain, false)
-}
-
-/// Used border-box heights of the boxes of `chain` (see `chain_end`).
-pub(super) fn chain_sizes(point: f32, chain: &[&ClampBox]) -> Vec<(u64, f32)> {
-    (0..chain.len())
-        .map(|i| {
-            let b = chain[i];
-            // The chain from the point up to `b`, margins after `b` aside.
-            let inner = &chain[i + 1..];
-            let mut y = chain_end_with(point, inner, true);
-            // Margins pending below `b` collapse through it unless it has
-            // end border/padding (then they are inside it).
-            if b.bp > 0.0 {
-                y += b.bp;
-            } else {
-                y -= pending_margin(inner);
-            }
-            let y = if b.min_end > 0.0 {
-                y.max(b.y0 + b.min_end)
-            } else {
-                y
-            };
-            (b.node, (y - b.y0).max(0.0))
-        })
-        .filter(|(n, _)| *n != 0)
-        .collect()
-}
-
-/// End margin still collapsing at the end of `chain` (no border/padding
-/// below it).
-fn pending_margin(chain: &[&ClampBox]) -> f32 {
-    let (mut pos, mut neg) = (0.0f32, 0.0f32);
-    for b in chain.iter().rev() {
-        if b.bp > 0.0 {
-            pos = 0.0;
-            neg = 0.0;
-        }
-        pos = pos.max(b.margin);
-        neg = neg.min(b.margin);
-    }
-    pos + neg
-}
-
-fn chain_end_with(point: f32, chain: &[&ClampBox], min: bool) -> f32 {
-    let (mut y, mut pos, mut neg) = (point, 0.0f32, 0.0f32);
-    for b in chain.iter().rev() {
-        if b.bp > 0.0 {
-            y += pos + neg + b.bp;
-            pos = 0.0;
-            neg = 0.0;
-        }
-        if min && b.min_end > 0.0 && b.y0 + b.min_end > y {
-            y = b.y0 + b.min_end;
-            pos = 0.0;
-            neg = 0.0;
-        }
-        pos = pos.max(b.margin);
-        neg = neg.min(b.margin);
-    }
-    y + pos + neg
-}
+use gpui::{App, Bounds, Pixels, Window};
 
 impl ClampCut {
+    // Keep the extracted GPUI Element paint signature intact.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_impl(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _state: &mut (),
         _prepaint: &mut (),
@@ -251,106 +136,7 @@ impl ClampCut {
         if boxes_moved {
             window.request_animation_frame();
         }
-        // ★ ЗАМЕРЕНО (10.09, `scout-clampmarker-2026-09c.md`, 21 хунк):
-        // срез 416 пар (семья `line-clamp` + схлопывание полей) 259 ->
-        // 260. Взяты `line-clamp-auto-003` 1.82 -> 0.00 и `-047`
-        // 1.62 -> 0.12; четвёрка `-018`…`-021` стояла на 0.39-0.40 и
-        // встала РОВНО на 0.00 — знак наконец в конце текста строки.
-        // Потеря одна: `-022` 0.39 -> 2.61 — тот же тест, что `-021`,
-        // но `max-height: 5.5lh` вместо `5lh` при том же эталоне;
-        // полстроки сверх бюджета у нас пускают лишнюю строку. Долг
-        // отдельным подкорнем CLAMP-HALF-LINE.
-        // Знак обрыва в АВТО-режиме (`limit == None`). Рисует его НЕ этот
-        // слой: сюда возвращается только БЮДЖЕТ строк — номер абзаца в
-        // контейнере и сколько его строк остаётся выше среза, — а «…»
-        // ставит уже проверенный `lines::clamp_lines`/`paint_line`: в
-        // конце ТЕКСТА строки, с выключкой и направлением письма
-        // (css-overflow-4: знак «is placed at the end of the line box
-        // reducing the space available to the other contents of the
-        // line», а для bidi — анонимный строчный с уровнем bidi-абзаца).
-        // Так же развязан и Blink: блочный слой отдаёт признак
-        // `IsAtClampPoint`, а ширину знака получает разрыватель строк
-        // (`inline_layout_algorithm.cc:1247` `SetupLineClampEllipsis` →
-        // `SetLineClampEllipsisWidth`). Прежний набросок рисовал знак у
-        // ПРАВОГО края коробки — мимо конца текста, мимо выключки и
-        // мимо rtl.
-        // Числовой предел, который `max-height` перехватил раньше N-й строки
-        // (`line-clamp: 4 auto` при `max-height: 3lh`), — та же точка
-        // обрыва, что в авто-режиме: §5.3 берёт ПЕРВУЮ из двух точек, и знак
-        // встаёт на последнюю строку перед ней (`line-clamp-041`).
-        let para = cut.filter(|_| !by_count).and_then(|c| {
-            // Есть ли что резать. Как только бюджет применён, абзац УЖЕ
-            // укорочен и сам за срез не выходит — признак защёлкивается
-            // применённым бюджетом, иначе кадры зациклились бы:
-            // обрезали → влезло → сняли → снова не влезло.
-            let overflow = entries.iter().any(|e| e.clamped.is_some())
-                || entries.iter().any(|e| {
-                    f32::from(e.bounds.origin.y) + f32::from(e.bounds.size.height) > c + 0.5
-                });
-            if !overflow {
-                return None;
-            }
-            // Знак садится на ПОСЛЕДНЮЮ строку перед точкой среза — в том
-            // числе когда точка стоит МЕЖДУ блоками и сам абзац видим
-            // целиком. Абзацы в своём контексте форматирования
-            // пропускаются: точкой среза их строки быть не могут.
-            // Последняя строка перед точкой — во ВЛОЖЕННОМ контексте
-            // форматирования (несчитаемая): знак не ставится вовсе, а не
-            // уходит на предыдущий считаемый абзац (css-overflow-4 §5.3:
-            // многоточие — на последней строке ПЕРЕД точкой среза в этом
-            // BFC; `line-clamp-auto-034/039`: «Line 4» без знака).
-            entries
-                .iter()
-                .filter(|e| e.line > 0.0 && (e.skip_count || e.seq.is_some()))
-                .filter_map(|e| {
-                    let seq = if e.skip_count { None } else { e.seq };
-                    let h = f32::from(e.bounds.size.height);
-                    if h <= 0.0 {
-                        return None;
-                    }
-                    let rows = fit(e);
-                    // Точка `c` уже стоит на СРЕЗАННОМ низу последней
-                    // строки — полный низ этой строки ниже на `trim_end`.
-                    let k = rows
-                        .iter()
-                        .filter(|(_, b)| *b <= c + trim_end + 0.5)
-                        .count();
-                    (k >= 1).then(|| (rows[k - 1].1, seq, k))
-                })
-                // The clamp point follows the LAST fitting line in box-tree
-                // order: on equal bottoms the later paragraph wins
-                // (`line-clamp-auto-043`: a line beside an earlier block's
-                // overflow).
-                .max_by(|a, b| {
-                    if (a.0 - b.0).abs() <= 0.5 {
-                        a.1.cmp(&b.1)
-                    } else {
-                        a.0.total_cmp(&b.0)
-                    }
-                })
-                // Пустая блочная коробка между последней строкой и точкой
-                // среза: точка — после неё (последняя возможная), и строка
-                // точке уже не предшествует — знака нет (§5.3).
-                // Not when that line is where WE cut the paragraph: the
-                // empty box then sits right after the cut only because the
-                // clamped paragraph got shorter, and the point stays in the
-                // paragraph (`line-clamp-with-abspos-021`,
-                // `-with-fixed-pos-016`).
-                .filter(|(bottom, seq, _)| {
-                    seq.is_some_and(|s| {
-                        entries
-                            .iter()
-                            .any(|e| e.seq == Some(s) && e.clamped.is_some())
-                    }) || !empties.iter().any(|e| {
-                        let y0 = f32::from(e.bounds.origin.y);
-                        e.empty
-                            && f32::from(e.bounds.size.height) <= 0.5
-                            && y0 >= *bottom - 0.5
-                            && y0 <= c + 0.5
-                    })
-                })
-                .and_then(|(_, seq, k)| seq.map(|s| (s, k)))
-        });
+        let para = paragraph::automatic_para(cut, by_count, &entries, &empties, fit, trim_end);
         // Бюджет одного и того же абзаца только УЖИМАЕТСЯ: рост числа
         // строк на следующем кадре — это отражение нашей же правки, а не
         // новое измерение. Правило конечно (бюджет строго убывает и не

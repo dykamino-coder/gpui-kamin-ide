@@ -127,55 +127,7 @@ impl Color {
 
     /// `hsl(210 40% 50% / 80%)` и `hsl(210, 40%, 50%)`.
     pub(super) fn parse_hsl(inner: &str) -> Option<Self> {
-        // Компонент `calc(<число><ед.> * <число>)` и родня — сворачивается
-        // заранее (css-values-4 §10: «calc() … can be used wherever <angle>,
-        // <percentage> … are allowed»): `hsl(calc(50deg * 2) 100% 50%)` после
-        // подстановки `sibling-index()` (`conic-gradient-color-with-sibling-index`).
-        let folded = fold_simple_calc(inner);
-        let inner = folded.as_str();
-        // `none` — отсутствующий компонент, при счёте он ноль
-        // (CSS Color 4 §4.4).
-        let cleaned = inner.replace('/', " ").replace("none", "0");
-        let parts: Vec<&str> = cleaned
-            .split([',', ' '])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if parts.len() < 3 {
-            return None;
-        }
-        // Тон — угол в любых угловых единицах (CSS Color 4 §7.1).
-        let h = {
-            let t = parts[0];
-            if let Some(n) = t.strip_suffix("grad") {
-                n.parse::<f32>().ok()? / 400.0
-            } else if let Some(n) = t.strip_suffix("rad") {
-                n.parse::<f32>().ok()? / std::f32::consts::TAU
-            } else if let Some(n) = t.strip_suffix("turn") {
-                n.parse::<f32>().ok()?
-            } else {
-                t.trim_end_matches("deg").parse::<f32>().ok()? / 360.0
-            }
-        }
-        // Оборот сверх круга заворачивается: `600deg` = 240deg, а зажим в
-        // границы делал из него красный.
-        .rem_euclid(1.0);
-        let s_ = parts[1].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
-        let l = parts[2].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
-        let a = parts.get(3).map_or(Some(1.0), |p| {
-            if let Some(pct) = p.strip_suffix('%') {
-                pct.parse::<f32>().ok().map(|v| v / 100.0)
-            } else {
-                p.parse::<f32>().ok()
-            }
-        })?;
-        let rgba: gpui::Rgba = gpui::hsla(h, s_, l, a).into();
-        Some(Color {
-            r: rgba.r,
-            g: rgba.g,
-            b: rgba.b,
-            a: rgba.a,
-        })
+        color_hsl::parse(inner)
     }
 
     pub(super) fn parse_rgb(inner: &str) -> Option<Self> {

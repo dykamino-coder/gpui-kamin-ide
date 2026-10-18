@@ -11,6 +11,8 @@ use crate::layout::fragment::oof_reach::Reach;
 use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
+// Child shapes retain their offsets and break metadata as one record.
+#[allow(clippy::type_complexity)]
 pub(super) fn kid_shapes(
     c: &Element,
     depth: u8,
@@ -93,7 +95,7 @@ pub(super) fn kid_shapes(
                             && !monolith_box(k)
                             && !solid.is_empty();
                         let solid = if solid_box(k)
-                            && !(inline_content(k) && !cuts.is_empty())
+                            && (!inline_content(k) || cuts.is_empty())
                             && !lines_only
                         {
                             vec![(0.0, h)]

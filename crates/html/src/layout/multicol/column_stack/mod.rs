@@ -4,7 +4,7 @@
 use crate::layout::fragment::types::{
     Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild,
 };
-use gpui::{Bounds, IntoElement, Pixels};
+use gpui::{Bounds, Pixels};
 
 pub mod avoid;
 mod axis;
@@ -65,6 +65,8 @@ pub struct ColumnStack {
 }
 
 impl ColumnStack {
+    // Construction keeps the independent CSS column constraints explicit.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         children: Vec<StackChild>,
         count: usize,
@@ -232,13 +234,5 @@ impl ColumnStack {
             }
             _ => (col, 0.0),
         }
-    }
-}
-
-impl IntoElement for ColumnStack {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

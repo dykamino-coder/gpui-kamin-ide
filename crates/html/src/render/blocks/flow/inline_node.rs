@@ -166,7 +166,7 @@ pub(crate) fn inline_node(
             None => {
                 e.inline
                     && (!ordered_context || e.tag == "br")
-                    && !e.style.float.is_some_and(|f| f != 0)
+                    && e.style.float.is_none_or(|f| f == 0)
             }
         },
     }

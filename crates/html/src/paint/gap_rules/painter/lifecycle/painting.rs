@@ -5,17 +5,15 @@ mod rules;
 pub(super) use rules::draw_rule;
 
 use crate::paint::gap_rules::geometry::{
-    GAP_EPS, GapItem, GapRun, GridTracks, line_runs, uniq_sorted,
+    GAP_RULE_EPS, GapItem, GapRun, GridTracks, line_runs, uniq_sorted,
 };
 use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::paint::gap_rules::{GapAxisRule, GapLayout};
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window};
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_body(
     group: &mut GapRulePainter,
-    _id: Option<&GlobalElementId>,
-    _inspector_id: Option<&InspectorElementId>,
     _bounds: Bounds<Pixels>,
     _state: &mut LayoutId,
     prepaint: &mut (Bounds<Pixels>, Option<GridTracks>),
@@ -64,7 +62,7 @@ pub(super) fn paint_body(
             let spans = it.iter().any(|i| {
                 starts
                     .iter()
-                    .any(|&s| s > i.a0 + GAP_EPS && s < i.a1 - GAP_EPS)
+                    .any(|&s| s > i.a0 + GAP_RULE_EPS && s < i.a1 - GAP_RULE_EPS)
             });
             // С дорожками раскладки ленты строятся по ним, и элемент во
             // несколько лент представим (запись в каждой ленте).

@@ -6,35 +6,13 @@ use super::*;
 /// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);
 /// внутри `:is()/:where()/:has()/:not()` прощающего разбора при проверке нет —
 /// неизвестная часть роняет всё (`…-detecting-invalid-in-logical-combinations`).
-/// Псевдоэлементы, которые Blink знает, а наш каскад не исполняет
-/// (`::details-content`, `::picker(select)`, `::picker-icon`,
-/// `::-webkit-slider-thumb`), для ПРОВЕРКИ снимаются; в `known_pseudo` их не
-/// вносим — иначе правила с ними начали бы применяться к самой коробке.
+/// Capabilities come from the actual selector parser and nesting normalization.
 fn supports_selector(args: &str) -> bool {
     let s = args.trim();
     if split_top_level(s, ',').len() > 1 {
         return false;
     }
-    // `&` — годный простой селектор (css-nesting-1 §3.1; вне правила он
-    // означает `:scope`): `@supports selector(&)` истинно (`supports-rule`).
-    let mut s = s.replace('&', ":scope");
-    for known in [
-        "::details-content",
-        "::picker(select)",
-        "::picker-icon",
-        "::-webkit-slider-thumb",
-        "::-webkit-slider-runnable-track",
-    ] {
-        s = s.replace(known, "");
-    }
-    // Неизвестные вендорные псевдо — не поддержаны (`::-webkit-asdf`).
-    if s.contains("::-webkit-") || s.contains(":-webkit-") {
-        return false;
-    }
-    // Снятый псевдоэлемент мог стоять один: `::picker-icon` → пусто.
-    if s.trim().is_empty() || s.ends_with(|ch: char| ch.is_whitespace() || "+>~".contains(ch)) {
-        s.push('*');
-    }
+    let s = super::super::sheet::selector_for_supports(s);
     selector_strict(&s)
 }
 
@@ -153,7 +131,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
     if split_top_level(inner, ';').len() > 1 {
         return SupTri::False;
     }
-    // Декларация: непустой разбор + дельта на чистом стиле.
+    // Декларация: синтаксис объявления и результат разбора свойства.
     let colons = split_top_level(inner, ':');
     if colons.len() >= 2 {
         // Пользовательское свойство поддержано всегда, если объявление
@@ -175,6 +153,11 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
             return SupTri::False;
         }
         if !attr_prefixes_declared(colons[1]) {
+            return SupTri::False;
+        }
+        // CSS Conditional 3 §6.1: substitution cannot add an unknown property.
+        let property = unescape(colons[0].trim()).to_ascii_lowercase();
+        if !crate::style::computed::Computed::recognizes_property(&property) {
             return SupTri::False;
         }
         // css-variables-1 §3: «If a property contains one or more var()
@@ -218,15 +201,18 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
                 (k.clone(), parts.join(&DECL_SEP.to_string()))
             })
             .collect();
-        let mut c = crate::style::computed::Computed::default();
-        c.apply_decls(&clean);
-        // Счётчик порядка объявлений и номера сторон — БУХГАЛТЕРИЯ каскада, а
-        // не значения свойств: они меняются у любого объявления, и без
-        // обнуления «поддержанным» выходило всё подряд, включая
-        // `(color: rainbow)` (`css-supports-005`, `at-supports-009`).
-        c.decl_seq = 0;
-        c.side_seq = Default::default();
-        return if format!("{c:?}") != format!("{:?}", crate::style::computed::Computed::default()) {
+        // CSS Conditional 3 §6.1 tests whether the declaration is accepted,
+        // independently of its resulting value or cascade bookkeeping.
+        let accepted = clean
+            .iter()
+            .filter(|(key, _)| key.as_str() != ORDER_KEY)
+            .any(|(key, value)| {
+                value.split(DECL_SEP).any(|part| {
+                    crate::style::computed::Computed::declaration_result(key, part)
+                        == crate::style::computed::ParseResult::Accepted
+                })
+            });
+        return if accepted {
             SupTri::True
         } else {
             SupTri::False

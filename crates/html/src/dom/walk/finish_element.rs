@@ -88,12 +88,13 @@ pub(super) fn finish_element(
         && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
     {
         vec![Node::Element(Element {
+            marks: Default::default(),
             list_item: None,
             node_id: 0,
             anim: None,
             inline: true,
             tag: "ruby".to_string(),
-            style: Computed::default(),
+            style: Computed::default().into(),
             hover: None,
             first_letter: None,
             first_line: None,
@@ -127,15 +128,16 @@ pub(super) fn finish_element(
         _ => (tag, children, attrs),
     };
     out.push(Node::Element(Element {
+        marks: Default::default(),
         list_item,
         node_id: node_id,
-        anim,
+        anim: anim.map(std::rc::Rc::new),
         inline,
         tag,
-        style,
-        hover,
-        first_letter,
-        first_line,
+        style: style.into(),
+        hover: hover.map(Into::into),
+        first_letter: first_letter.map(Into::into),
+        first_line: first_line.map(Into::into),
         children,
         attrs,
     }));

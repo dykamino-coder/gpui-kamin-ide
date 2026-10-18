@@ -12,7 +12,7 @@ use gpui::{
     TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
     WindowOptions, div, point, px, rgb, size,
 };
-use kamin_html::{BROWSER_CSS, Document, RenderOpts, render};
+use kamin_html::{BROWSER_CSS, Document, RenderOpts};
 use std::rc::Rc;
 
 struct Page {
@@ -41,7 +41,7 @@ impl Render for Page {
             .size_full()
             .bg(rgb(0xffffff))
             .text_size(px(16.))
-            .children(render(self.doc.nodes(), &opts))
+            .children(self.doc.render(&opts))
     }
 }
 

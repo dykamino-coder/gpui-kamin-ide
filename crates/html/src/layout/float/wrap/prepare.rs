@@ -146,7 +146,7 @@ pub(super) fn host_for_run(
                 !inline_level(c)
                     || c.tag == "br"
                     || out_of_flow(&c.style)
-                    || c.attr("bands").is_some()
+                    || c.marks.shape_flow.is_some_and(|h| h.bands.is_some())
             }
         })
         .map_or(0, |p| p + 1);
@@ -197,9 +197,13 @@ pub(super) fn wrap_into_host(
             && !cell_bfc
             && next == nodes.len()
             && parent.float_tail
-            && (!parent.in_multicol || host.attr("bands") == Some("1"))
+            && (!parent.in_multicol
+                || host
+                    .marks
+                    .shape_flow
+                    .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Static)))
         {
-            host.attrs.push(("inflow-height".into(), "1".into()));
+            host.marks.inflow_height = true;
         }
         if let Some(at) = took_lead {
             out.truncate(at);
@@ -209,12 +213,15 @@ pub(super) fn wrap_into_host(
         // (`band_kids` отдаёт его первому строчному прогону).
         // Внепоточные соседи (абсолюты, флоаты) строк не образуют
         // (`below-float3`: абсолют перед флоатом).
-        if host.attr("bands") == Some("m")
+        if host
+            .marks
+            .shape_flow
+            .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Measured))
             && out
                 .iter()
                 .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
         {
-            host.first_line = BAND_FL.with(|f| f.borrow().clone());
+            host.first_line = BAND_FL.with(|f| f.borrow().clone()).map(Into::into);
         }
         band_clearance::mark_start(&mut host, cb_top_open, &*out);
         out.push(Node::Element(host));

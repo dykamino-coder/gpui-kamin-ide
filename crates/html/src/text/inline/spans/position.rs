@@ -8,6 +8,8 @@ use crate::text::inline::*;
 ///
 /// Отдельно от `shift_spans`: тот растит строчную коробку, а относительный
 /// сдвиг на поток не влияет вовсе (CSS 2.1 §9.4.3).
+// Each relative span retains its text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
 pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
     let mut out = Vec::new();
     let mut at = 0usize;

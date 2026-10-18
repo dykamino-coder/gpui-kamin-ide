@@ -6,6 +6,7 @@ pub(super) use upright::upright_paragraph;
 
 use super::{paragraph, paragraph_routed};
 use crate::dom::Node;
+use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::{native_vertical, rotated_atom};
 use crate::render::*;
 use crate::style::computed::Computed;
@@ -204,7 +205,7 @@ pub(crate) fn vertical_paragraph(
     } else {
         vt
     };
-    vt.into_any_element()
+    vt.hooked()
 }
 
 /// Several atoms share a vertical line and wrap along the inline (physical vertical)

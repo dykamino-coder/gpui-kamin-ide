@@ -2,10 +2,11 @@
 
 use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
-use super::{EPS, Plan, Slot, flatten, frame, plan, with_vert};
+use super::{COORD_EPS, Plan, Slot, flatten, frame, plan, with_vert};
+use crate::hooks::Hooks;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Window, div, point, prelude::*, px, size,
+    AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
+    prelude::*, px, size,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -37,28 +38,17 @@ impl BandFlow {
     }
 }
 
-impl Element for BandFlow {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for BandFlow {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
-        let mut style = gpui::Style::default();
+        let style = gpui::Style {
+            flex_shrink: 0.0,
+            ..Default::default()
+        };
         // Auto inline size stretches when layout supplies known.width; float,
         // inline-block and cell hosts use their children's shrink-to-fit sizes
         // (CSS 2.1 §10.3.5). A percentage width would instead fill all available
@@ -66,7 +56,6 @@ impl Element for BandFlow {
         // letter-spacing-206-ref must fit its widest floated paragraph.
         // Height follows the owner's float-containment policy independently
         // of this inline-size calculation (§§10.6.3, 10.6.7).
-        style.flex_shrink = 0.0;
         let (vert, contain_floats) = (self.vert, self.contain_floats);
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
             with_vert(vert, || {
@@ -102,7 +91,7 @@ impl Element for BandFlow {
                     }),
                 };
                 if let Some(p) = cache.borrow().as_ref()
-                    && (p.width - cb).abs() < EPS
+                    && (p.width - cb).abs() < COORD_EPS
                 {
                     return phys(cb, p.height);
                 }
@@ -118,13 +107,11 @@ impl Element for BandFlow {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let _ = bounds;
         // Отдельное дерево сохраняет точное начало хоста. Коробки и текст
         // округляются от общего абсолютного места, без переноса дробной
@@ -141,7 +128,7 @@ impl Element for BandFlow {
             .plan
             .borrow()
             .as_ref()
-            .filter(|p| (p.width - cb).abs() < EPS)
+            .filter(|p| (p.width - cb).abs() < COORD_EPS)
             .cloned();
         let p = match cached {
             Some(p) => p,
@@ -213,11 +200,9 @@ impl Element for BandFlow {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -226,13 +211,5 @@ impl Element for BandFlow {
                 el.paint(window, cx);
             }
         });
-    }
-}
-
-impl IntoElement for BandFlow {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

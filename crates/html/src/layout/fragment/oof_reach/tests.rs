@@ -9,11 +9,12 @@ use crate::style::values::value::Len;
 fn element(style: Computed, children: Vec<Node>) -> Element {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     Element {
+        marks: Default::default(),
         list_item: None,
         node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         anim: None,
         tag: "div".into(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

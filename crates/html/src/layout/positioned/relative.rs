@@ -6,7 +6,7 @@ use crate::layout::positioned::static_position::at_static_position;
 use crate::render::{is_blank, real_inline};
 use crate::style::cascade::inherit::inherit_unpainted;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 /// Абсолют с краями по ОБЕИМ осям внутри НЕпозиционированного строчного —
 /// наружу, соседом этого строчного на блочном уровне. Его содержащий блок —
@@ -55,7 +55,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = inherit_unpainted(&parent, &k.style);
+                    k.style = inherit_unpainted(&parent, &k.style).into();
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {
@@ -110,10 +110,7 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
     if e.style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
-    let basis = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let basis = px_strict;
     let (bw, bh) = parent.map_or((None, None), |p| {
         (basis(p.style.width), basis(p.style.height))
     });

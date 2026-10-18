@@ -141,7 +141,11 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
         children: &[LayoutId],
     ) -> LayoutId {
-        let taffy_style = style.to_taffy(rem_size, scale_factor);
+        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
+        let taffy_style = {
+            let _calc = self.taffy.calc_scope();
+            style.to_taffy(rem_size, scale_factor)
+        };
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         if children.is_empty() {

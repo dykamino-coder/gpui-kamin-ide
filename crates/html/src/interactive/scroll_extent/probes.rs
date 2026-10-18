@@ -1,9 +1,13 @@
 //! Measured CSS boxes and extent proxies belonging to the current HTML scrollport.
+
 use super::{CURRENT, Clip, snap};
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
 use std::{cell::Cell, rc::Rc};
 
+// The viewport probe pairs its four insets with the shared decoration clip.
+#[allow(clippy::type_complexity)]
 pub(crate) fn viewport_decoration()
 -> Option<([f32; 4], Rc<Cell<Option<gpui::ContentMask<Pixels>>>>)> {
     let frame = CURRENT.with(|slot| slot.borrow().clone())?;
@@ -75,7 +79,7 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
                 );
             }
         })
-        .into_any_element(),
+        .hooked(),
     )
 }
 

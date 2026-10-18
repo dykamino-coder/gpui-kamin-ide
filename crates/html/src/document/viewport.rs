@@ -95,7 +95,8 @@ pub(super) fn wrap(
         scroll: c.scroll,
         viewport_unit_insets: c.viewport_unit_insets,
         ..Computed::default()
-    };
+    }
+    .into();
     vec![Node::Element(viewport)]
 }
 

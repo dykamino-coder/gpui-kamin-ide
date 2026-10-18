@@ -1,5 +1,6 @@
 //! Page-stack content and repeated table band copies.
 
+use crate::tolerance::COORD_EPS;
 use gpui::AnyElement;
 
 impl PageKid {
@@ -13,7 +14,7 @@ impl PageKid {
         let Some(r) = self.repeat.as_mut() else {
             return;
         };
-        if f.head > 0.01
+        if f.head > COORD_EPS
             && f.copy > 0
             && let Some(el) = r.head_els.get_mut(f.copy - 1)
         {
@@ -24,7 +25,7 @@ impl PageKid {
                 |window| el.paint(window, cx),
             );
         }
-        if f.foot > 0.01
+        if f.foot > COORD_EPS
             && let Some((_, bh)) = r.foot
             && let Some(el) = r.foot_els.get_mut(f.copy)
         {
@@ -41,6 +42,8 @@ impl PageKid {
 /// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
 /// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
 /// стопку попадает и голый текст, которого укладка колонок не видит.
+// A page shape stores height, cuts, forced breaks and monolithic intervals together.
+#[allow(clippy::type_complexity)]
 pub struct PageKid {
     pub el: AnyElement,
     /// Repeated table sections reserved by the common fragmentation planner.

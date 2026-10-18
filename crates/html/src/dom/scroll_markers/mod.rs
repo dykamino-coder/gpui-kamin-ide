@@ -175,12 +175,13 @@ pub(super) fn scroll_marker_pass(
         gstyle.contain_size = Some(true);
     }
     let group = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
         inline: false,
         tag: "::scroll-marker-group".to_string(),
-        style: gstyle,
+        style: gstyle.into(),
         hover: None,
         first_letter: None,
         first_line: None,

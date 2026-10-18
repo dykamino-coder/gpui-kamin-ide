@@ -28,11 +28,12 @@ fn explicit_currentcolor_defaults_to_black() {
 
 fn span(style: Computed, children: Vec<Node>) -> crate::dom::Element {
     crate::dom::Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
         tag: "span".into(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

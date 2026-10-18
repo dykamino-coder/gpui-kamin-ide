@@ -6,6 +6,8 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::render::is_blank;
 use crate::style::computed::Computed;
 
+// Group shapes retain their offsets and fragmentation metadata together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn group_shape(
     root: &Computed,
     shape_cx: ShapeCx,

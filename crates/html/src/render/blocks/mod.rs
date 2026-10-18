@@ -24,7 +24,7 @@ use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
@@ -122,18 +122,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
         && (!inherited.wm().rtl() || !inherited.wm().vertical());
     let _fl_guard =
         BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
-    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
-        h.replace(match inherited.height {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        })
-    }));
-    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| {
-        w.replace(match inherited.width {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        })
-    }));
+    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
+    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
     let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
     let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
     let collapsed = by_layer(

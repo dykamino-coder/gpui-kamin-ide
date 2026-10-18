@@ -7,6 +7,9 @@
 //! ничего не рисуют.
 
 mod direction;
+mod shared_style;
+pub use shared_style::SharedStyle;
+pub(crate) mod input;
 pub(crate) mod mathml;
 mod mathml_defaults;
 mod mathml_lengths;
@@ -15,7 +18,9 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod style_sources;
 pub(crate) mod xml;
+pub(crate) use xml::parse_current_xml;
 pub use xml::parse_xml;
 #[cfg(test)]
 mod presentational_hint_tests;
@@ -31,6 +36,7 @@ use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
 use crate::dom::parse_document::collect_style_tags;
 pub use crate::dom::parse_document::parse;
+pub(crate) use crate::dom::parse_document::parse_current;
 pub use crate::dom::parse_document::parse_media;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;
@@ -68,11 +74,18 @@ use crate::dom::element_style::*;
 pub(super) mod scroll_markers;
 pub(super) mod walk;
 use crate::dom::scroll_markers::*;
+mod marks;
+#[cfg(test)]
+mod marks_tests;
 pub(super) mod pseudo;
+pub use crate::dom::marks::Marks;
+pub(crate) use crate::dom::marks::{BandPath, LeadProbe, ShapeFlow};
 pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.
 #[derive(Clone, Debug)]
+// Keep tree metadata inline; computed styles already live behind pointers.
+#[allow(clippy::large_enum_variant)]
 pub enum Node {
     Text(String),
     Element(Element),
@@ -89,23 +102,25 @@ pub struct Element {
     /// начинается заново.
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
-    pub anim: Option<Vec<(f32, Computed)>>,
+    pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
     pub tag: String,
-    pub style: Computed,
+    pub style: Box<Computed>,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
-    pub hover: Option<Computed>,
+    pub hover: Option<SharedStyle>,
     /// Стиль первой буквы абзаца (`::first-letter`) — отдельным слоем поверх
     /// базового: это буквица, а не стиль всего блока.
-    pub first_letter: Option<Computed>,
+    pub first_letter: Option<SharedStyle>,
     /// Стиль первой строки абзаца (`::first-line`).
-    pub first_line: Option<Computed>,
+    pub first_line: Option<SharedStyle>,
     pub children: Vec<Node>,
     /// Атрибуты, которые нужны при отрисовке: `src`, `href`, `colspan`.
     pub attrs: Vec<(String, String)>,
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
     /// этого зависит, попадёт ли он в строку текста или станет блоком.
     pub inline: bool,
+    /// Internal layout marks (`Marks`): set only by layout, never by markup.
+    pub marks: Marks,
 }
 
 impl Element {

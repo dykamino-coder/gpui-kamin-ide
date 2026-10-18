@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::layout::table::anon::has_box_style_probe;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
@@ -53,7 +53,7 @@ pub(crate) fn child_probes(
         // `flow-root` под «Line 4»). Флоат и абсолют — не поточные,
         // строчный атом — внутри строки.
         let monolithic = makes_bfc
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)
@@ -71,10 +71,7 @@ pub(crate) fn child_probes(
         let sized = e.style.height.is_some()
             && !skip
             && matches!(merged.display, None | Some(Display::Block));
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         // Нижние рамка и паддинг фрагментированной коробки
         // остаются в потоке (css-overflow-4 §5.3): проба несёт
         // их вместе с границами паддинг-бокса; end margin too — it
@@ -83,7 +80,7 @@ pub(crate) fn child_probes(
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
         let bp_after = side(e.style.borders().bottom) + side(e.style.padding.bottom);
         let in_flow_block = !skip
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)
@@ -164,7 +161,7 @@ pub(crate) fn child_probes(
                             | Some(crate::style::computed::Position::Fixed)
                     ))
             })
-            && !merged.float.is_some_and(|f| f != 0)
+            && merged.float.is_none_or(|f| f == 0)
             && !matches!(
                 merged.position,
                 Some(crate::style::computed::Position::Absolute)

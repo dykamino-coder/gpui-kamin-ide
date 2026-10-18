@@ -57,20 +57,24 @@ pub(crate) fn band_host_nested(
         return None;
     }
     let mut host = Element {
+        marks: crate::dom::Marks {
+            shape_flow: Some(crate::dom::ShapeFlow {
+                em: Some(em),
+                bands: Some(crate::dom::BandPath::Measured),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
         tag: "shape-flow".into(),
-        style: Computed::default(),
+        style: Computed::default().into(),
         hover: None,
         first_letter: None,
         first_line: None,
         children: Vec::new(),
-        attrs: vec![
-            ("count".into(), "0".into()),
-            ("em".into(), em.to_string()),
-            ("bands".into(), "m".into()),
-        ],
+        attrs: Vec::new(),
         inline: false,
     };
     host.children = vec![Node::Element(c.clone())];
@@ -95,7 +99,7 @@ pub(crate) fn band_nest_ok(c: &Element, em: f32) -> bool {
         Node::Element(k) => {
             k.style.float.is_some_and(|f| f != 0)
                 || band_piece_m(n, inner_em).is_some()
-                || k.attr("anon") == Some("1")
+                || k.marks.anon
                 || band_flow_block(k, inner_em)
                 || band_nest_ok(k, inner_em)
         }

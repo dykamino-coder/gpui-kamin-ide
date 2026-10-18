@@ -1,10 +1,10 @@
 //! FirstLine: первая строка, отделённая от остального потока (::first-line).
 
 use super::{Cut, Split};
+use crate::hooks::Hooks;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Font, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, LineFragment, Pixels, SharedString, Style, Window,
-    px, size,
+    AnyElement, App, AvailableSpace, Bounds, Font, LayoutId, LineFragment, Pixels, SharedString,
+    Style, Window, px, size,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -27,7 +27,6 @@ pub struct FirstLine {
     /// интерлиньяж `::first-line` (css-pseudo-4 §first-line-styling).
     first_height: Option<f32>,
     pub(super) cut: Rc<Cell<Cut>>,
-    pub(super) child: Option<AnyElement>,
 }
 
 impl FirstLine {
@@ -50,7 +49,6 @@ impl FirstLine {
             line_height,
             first_height: None,
             cut: Rc::new(Cell::new(Cut::default())),
-            child: None,
         }
     }
 
@@ -80,25 +78,11 @@ pub(super) fn measure_first_line(
     (at, px((boundaries.len() + 1) as f32 * line_height))
 }
 
-impl Element for FirstLine {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for FirstLine {
+    type Layout = ();
+    type Prepaint = AnyElement;
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, ()) {
         let text = self.text.clone();
         let following = self.following.clone();
         let font = self.font.clone();
@@ -147,13 +131,11 @@ impl Element for FirstLine {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _: &mut (),
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> AnyElement {
         let at = if bounds.size.width != self.cut.get().width && bounds.size.width > px(0.) {
             measure_first_line(
                 &self.text,
@@ -177,29 +159,17 @@ impl Element for FirstLine {
             cx,
         );
         window.with_absolute_element_offset(bounds.origin, |window| child.prepaint(window, cx));
-        self.child = Some(child);
+        child
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _: &mut (),
+        child: &mut AnyElement,
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(child) = self.child.as_mut() {
-            child.paint(window, cx);
-        }
-    }
-}
-
-impl IntoElement for FirstLine {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
+        child.paint(window, cx);
     }
 }

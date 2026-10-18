@@ -1,10 +1,8 @@
 //! Collect border boxes and trailing margins for gap geometry.
 
+use crate::hooks::{Hooks, IntoHooked};
 use crate::paint::gap_rules::GapItems;
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 /// Проба элемента сетки: как `edge_probe`, но пишет только границы.
 ///
@@ -22,7 +20,7 @@ pub fn gap_item_probe(items: GapItems, border: [f32; 4], margins: [f32; 2]) -> A
         border,
         margins,
     }
-    .into_any_element()
+    .hooked()
 }
 
 /// Элемент пробы: границы берутся БЕЗ округления к точке устройства.
@@ -37,27 +35,15 @@ struct GapItemProbe {
     pub(crate) margins: [f32; 2],
 }
 
-impl Element for GapItemProbe {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for GapItemProbe {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let mut style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         style.inset.top = px(0.0).into();
         style.inset.left = px(0.0).into();
         style.size.width = gpui::relative(1.0).into();
@@ -68,13 +54,11 @@ impl Element for GapItemProbe {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let origin = window.layout_origin_unrounded(*state);
         let size = window.layout_size_unrounded(*state);
         let [t, r, b, l] = self.border;
@@ -88,21 +72,11 @@ impl Element for GapItemProbe {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         _window: &mut Window,
         _cx: &mut App,
     ) {
-    }
-}
-
-impl IntoElement for GapItemProbe {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

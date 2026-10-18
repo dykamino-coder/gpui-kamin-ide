@@ -1,5 +1,6 @@
 //! Текст: шрифт, цвет, выравнивание (apply_text).
 
+use crate::style::computed::FontCx;
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::Len;
 use gpui::{Div, Styled, px, relative};
@@ -61,9 +62,9 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
             Len::Em(k) => d.line_height(px(k * 16.0)),
-            l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => d.line_height(px(
-                crate::text::metrics::fallback_len_px(l, "", 16.0).unwrap_or(16.0),
-            )),
+            l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => {
+                d.line_height(px(l.to_px(None, FontCx::FALLBACK).unwrap_or(16.0)))
+            }
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
             // `anchor()` в `line-height` не бывает (css-anchor-position-1 §anchor-fn:

@@ -9,6 +9,8 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, SharedString};
 
 #[allow(clippy::too_many_arguments)]
+// Paragraph construction consumes the span geometry records used by the probes.
+#[allow(clippy::type_complexity)]
 pub(crate) fn native_paragraph(
     inherited: &Computed,
     opts: &RenderOpts,
@@ -229,6 +231,8 @@ pub(crate) fn native_paragraph(
 /// so the offset must be expressed in the pre-rotation frame: a clockwise turn
 /// sends the line axis (+x) to screen-down and the block axis (+y) to
 /// screen-left; `sideways-lr` turns the other way.
+// Rotation preserves each span's text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
 fn rotate_rel_spans(
     spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
     inherited: &crate::style::computed::Computed,

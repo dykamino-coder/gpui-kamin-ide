@@ -3,7 +3,7 @@
 //! `WPT_ANIMATION_FRAMES=0,125,500,1000` compares animated pairs at every listed
 //! millisecond time; without it the ordinary single-capture protocol is unchanged.
 //!
-//!     cargo run --example wptrun -- <список.txt> [ширина] [высота]
+//!     cargo run --example wptrun --features wpt-harness -- <список.txt> [ширина] [высота]
 //!
 //! Формат списка: по строке на пару, `тест|эталон`. Эталон в reftest написан
 //! примитивной вёрсткой, дающей заведомо тот же результат, поэтому

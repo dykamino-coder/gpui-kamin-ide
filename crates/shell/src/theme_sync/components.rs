@@ -93,6 +93,7 @@ pub fn apply(kind: ThemeKind, cx: &mut App) {
             c.into()
         };
         theme.scrollbar_mode = gpui_component::scroll::ScrollbarMode::Always;
+        theme.scrollbar_style = Some(super::scrollbar::styles);
         // Панель поиска редактора (`input/search.rs`) рисует себя как
         // `bg(popover)` + `border_b_1(border)`, а кнопки замены/prev/next — как
         // `secondary`. Ни одно из этих полей мы не пробрасывали, поэтому бар

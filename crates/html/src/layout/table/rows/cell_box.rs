@@ -6,6 +6,8 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Cell preparation returns its element, geometry and border decoration together.
+#[allow(clippy::type_complexity)]
 pub(super) fn prepare_cell_box(
     e: &Element,
     cols_collapsed: &[bool],
@@ -136,10 +138,10 @@ pub(super) fn prepare_cell_box(
     // высоту.
     if !(cell.style.wm().vertical()
         && !e.style.wm().vertical()
-        && cell.style.width_from_inline)
+        && cell.style.width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
-        && !table_is_vertical
+        || table_is_vertical)
         && matches!(
             cell.style.width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
