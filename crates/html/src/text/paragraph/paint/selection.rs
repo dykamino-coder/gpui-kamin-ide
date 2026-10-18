@@ -157,7 +157,7 @@ impl Paragraph {
             });
 
             let mv = st.clone();
-            let at_move = index_at.clone();
+            let at_move = index_at;
             window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _cx| {
                 if !phase.bubble() {
                     return;

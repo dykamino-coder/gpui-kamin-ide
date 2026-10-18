@@ -79,3 +79,6 @@ default-features = false
 
 [dev-dependencies.smallvec]
 version = "1"
+
+[lints]
+workspace = true

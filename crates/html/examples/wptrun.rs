@@ -14,8 +14,15 @@
 //! тысячи. Документ подменяется в той же сущности, кадр снимается прямо
 //! отсюда (`PrintWindow`), и следующая пара идёт без перезапуска.
 
-// The runner is configured through WPT_* environment variables (see clippy.toml).
-#![allow(clippy::disallowed_methods)]
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 
 #[path = "wptrun/animation_frames.rs"]
 mod animation_frames;

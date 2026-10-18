@@ -8,6 +8,10 @@ pub(crate) fn collect(markup: &str, xml: bool) -> Vec<String> {
     } else {
         super::input::html(markup)
     };
+    #[expect(
+        clippy::redundant_clone,
+        reason = "keep the root alive: Node::drop drains descendant children"
+    )]
     let mut pending = vec![dom.document.clone()];
     let mut sheets = Vec::new();
     let mut active_templates = std::collections::HashSet::new();

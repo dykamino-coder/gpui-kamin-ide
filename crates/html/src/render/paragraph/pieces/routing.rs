@@ -134,7 +134,7 @@ pub(crate) fn route_pieces(
         // рамка принадлежат абзацу целиком, а не каждому его слову.
         let d = apply(div(), &style.text_only())
             .max_w_full()
-            .child(SharedString::from(t.clone()));
+            .child(SharedString::from(t));
         d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево

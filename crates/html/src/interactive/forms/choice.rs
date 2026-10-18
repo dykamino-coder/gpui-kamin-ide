@@ -32,7 +32,7 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
                     .top_0()
                     .left_0()
                     .overflow_hidden()
-                    .child(SharedString::from(label.clone())),
+                    .child(SharedString::from(label)),
             )
             .child(
                 div()
@@ -45,7 +45,7 @@ pub(super) fn select(e: &Element, style: &Computed) -> AnyElement {
     // menulist (css-ui-4 §7.2); the label stays as the box's content.
     if style.appearance_none() {
         return field_box(style)
-            .child(SharedString::from(label.clone()))
+            .child(SharedString::from(label))
             .into_any_element();
     }
     let mut b = field_box(style);

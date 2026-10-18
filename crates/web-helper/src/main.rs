@@ -4,6 +4,11 @@
 //! kamin-host. Главный процесс кладёт копию этого exe в `web\kaminide-gpui.exe`
 //! (см. `crates/shell/src/web/process.rs`, там же — зачем именно так).
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
 #![windows_subsystem = "windows"]
 
 use cef::rc::*;

@@ -2,6 +2,10 @@
 //! никаких осиротевших node-хостов (порт sidecar.rs::assign_to_job 1:1).
 
 #[cfg(windows)]
+#[allow(
+    clippy::print_stderr,
+    reason = "preserve Windows job failure diagnostics until a logger is injected"
+)]
 pub fn assign_to_job(child: &std::process::Child) {
     use std::os::windows::io::AsRawHandle as _;
     use std::sync::OnceLock;

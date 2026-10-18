@@ -25,7 +25,7 @@ pub fn start(tx: Sender<ShellEvent>) {
 
     let state = HostState::default();
     let state_for_reconnect = state.clone();
-    let tx_endpoint = tx.clone();
+    let tx_endpoint = tx;
 
     // runtime/kamin-host.mjs рядом с exe выбирает packaged-режим, иначе dev-репо.
     let runtime_dir = std::env::current_exe()
@@ -246,7 +246,6 @@ fn connect_ws(endpoint: HostEndpoint, tx: Sender<ShellEvent>, state: HostState) 
                 // регистрации молча no-op, повторов host не делает).
                 eprintln!("[t+{:.1}s] ws connected", t0().elapsed().as_secs_f32());
                 {
-                    let client = client.clone();
                     std::thread::spawn(move || {
                         for _ in 0..30 {
                             let pending: Vec<&str> = KNOWN_WEBVIEWS

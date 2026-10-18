@@ -1,0 +1,10 @@
+# Engine configuration must be passed explicitly. Process entry points and
+# OS integration items may opt out with a reason; the HTML library may not.
+disallowed-methods = [
+    { path = "std::env::var", reason = "pass configuration explicitly into the HTML engine" },
+    { path = "std::env::var_os", reason = "pass configuration explicitly into the HTML engine" },
+    { path = "std::env::vars", reason = "pass configuration explicitly into the HTML engine" },
+    { path = "std::env::vars_os", reason = "pass configuration explicitly into the HTML engine" },
+]
+# partial_cmp(...).unwrap() cannot be expressed as a method ban without also
+# rejecting valid Option handling; scripts/check_conventions.py checks it.

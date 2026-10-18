@@ -197,9 +197,7 @@ pub(crate) fn tab_item(
         close = if is_active {
             close.opacity(0.7)
         } else {
-            close
-                .opacity(0.0)
-                .group_hover(group.clone(), |s| s.opacity(0.7))
+            close.opacity(0.0).group_hover(group, |s| s.opacity(0.7))
         };
         tab = tab.child(close);
     }

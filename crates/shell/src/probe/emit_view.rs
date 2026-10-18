@@ -31,7 +31,7 @@ pub(crate) fn emit_view(
             if name.is_empty() {
                 "Tooltip".to_string()
             } else {
-                name.clone()
+                name
             },
             req.get("x").and_then(Value::as_f64).unwrap_or(200.0) as f32,
             req.get("y").and_then(Value::as_f64).unwrap_or(200.0) as f32,

@@ -48,8 +48,7 @@ pub(super) fn table_finish(
 ) -> AnyElement {
     let mut grid_children = under;
     if paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).hooked());
+        grid_children.push(crate::layout::table::paint::CellBgPainter::new(cell_bgs).hooked());
     }
     grid_children.extend(cells);
     if paint_layers {

@@ -152,7 +152,7 @@ pub(crate) fn atom_line_align(
                 if let Some(v) = st.vertical_shift_px {
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
-                    let family = merged.font_family.clone().unwrap_or_default();
+                    let family = merged.font_family.unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(Some(l), &family, size))
                 } else if let Some(k) = st.vertical_shift {
                     AtomAlign::Shift(-k * size)
