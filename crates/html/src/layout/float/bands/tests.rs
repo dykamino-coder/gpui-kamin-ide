@@ -220,3 +220,17 @@ fn opposing_bands_have_no_common_interval() {
     assert_eq!(b.available(0.0, 200.0), (250.0, 150.0));
     assert_eq!(b.place_among(0.0, 200.0, 0.0), (250.0, 100.0, 150.0));
 }
+
+/// A zero-height float occupies no band but still cuts the line it falls in
+/// (`floats-zero-height-wrap-002`: the line around y=30 starts at 100).
+#[test]
+fn zero_height_float_cuts_its_line() {
+    let mut b = FloatBands::new(500.0);
+    b.add_float(-1, 10.0, 30.0, None);
+    assert_eq!(b.add_float(-1, 100.0, 0.0, Some(-1)), (0.0, 30.0));
+    assert_eq!(b.available(30.0, 0.0), (0.0, 500.0));
+    let (l, _) = &*b.shapes(0.0);
+    let cut = |y0: f32, y1: f32| l.iter().map(|s| s.cut(y0, y1)).fold(0.0f32, f32::max);
+    assert_eq!(cut(20.0, 40.0), 100.0);
+    assert_eq!(cut(40.0, 60.0), 0.0);
+}

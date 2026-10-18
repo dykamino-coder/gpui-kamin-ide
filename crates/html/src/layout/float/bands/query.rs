@@ -87,35 +87,25 @@ impl FloatBands {
     pub fn shapes(&self, from_y: f32) -> Arc<(Vec<FloatShape>, Vec<FloatShape>)> {
         let mut left = vec![];
         let mut right = vec![];
-        for w in self.bands.windows(2) {
-            let (b, next) = (w[0], w[1]);
-            // Сторож `-∞` занятости не несёт, а полоса, упирающаяся в сторож
-            // `+∞`, — это остаток контекста ниже последнего флоата: там уже
-            // свободно.
-            if !b.top.is_finite() || !next.top.is_finite() {
+        for e in &self.exclusions {
+            // An exclusion that ended above the consumer cuts none of its
+            // lines; a zero-height one still cuts the line it falls in.
+            let bottom = e.top + e.h;
+            if bottom < from_y || (e.h > 0.0 && bottom <= from_y) {
                 continue;
             }
-            // Полоса, кончившаяся ВЫШЕ потребителя, его строк не режет:
-            // `cut` на ней и так дал бы ноль, но и держать её незачем.
-            if next.top <= from_y {
-                continue;
-            }
-            let (top, h) = (b.top - from_y, next.top - b.top);
-            if h <= 0.0 {
-                continue;
-            }
-            if let Some(edge) = b.left {
+            let top = e.top - from_y;
+            if e.side < 0 {
                 left.push(FloatShape::Band {
                     top,
-                    h,
-                    w: (edge - self.cb.0).max(0.0),
+                    h: e.h,
+                    w: (e.edge - self.cb.0).max(0.0),
                 });
-            }
-            if let Some(edge) = b.right {
+            } else {
                 right.push(FloatShape::Band {
                     top,
-                    h,
-                    w: (self.cb.1 - edge).max(0.0),
+                    h: e.h,
+                    w: (self.cb.1 - e.edge).max(0.0),
                 });
             }
         }

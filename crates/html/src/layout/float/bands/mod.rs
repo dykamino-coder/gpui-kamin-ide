@@ -36,6 +36,20 @@ pub struct Band {
     pub right: Option<f32>,
 }
 
+/// The margin box of one placed float or initial letter as a line
+/// exclusion: its side, block range and far inline edge, in context
+/// coordinates. Line layout reads the exclusions per float rather than off
+/// the bands: a float of zero block size occupies no band, yet it still
+/// shortens the line box it falls in (CSS 2.1 §9.5,
+/// `floats-zero-height-wrap-*`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Exclusion {
+    side: i8,
+    top: f32,
+    h: f32,
+    edge: f32,
+}
+
 /// Полосы занятости одного блочного форматирующего контекста.
 ///
 /// Живёт ровно столько, сколько раскладывается контекст, и знает только
@@ -66,6 +80,8 @@ pub struct FloatBands {
     /// context's auto height include it (css-inline-3 §clearing initial
     /// letters; Blink `ClearanceOffsetIncludingInitialLetter`).
     letter: (f32, f32),
+    /// Every placed float and initial letter, in placement order.
+    exclusions: Vec<Exclusion>,
 }
 
 impl FloatBands {
@@ -90,6 +106,7 @@ impl FloatBands {
             clear_l: 0.0,
             clear_r: 0.0,
             letter: (0.0, 0.0),
+            exclusions: Vec::new(),
         }
     }
 

@@ -1,6 +1,6 @@
 //! Добавление флоата и буквицы в полосы (CSS 2.1 §9.5.1).
 
-use super::{COORD_EPS, FloatBands};
+use super::{COORD_EPS, Exclusion, FloatBands};
 
 impl FloatBands {
     /// Поставить флоат: `side` -1 слева / 1 справа, `w`/`h` — размеры
@@ -45,6 +45,12 @@ impl FloatBands {
         // Занятость: экстент — дальний от своей стороны край флоата.
         let edge = if side < 0 { x + w } else { x };
         let bot = y + h;
+        self.exclusions.push(Exclusion {
+            side,
+            top: y,
+            h,
+            edge,
+        });
         let a = self.split_at(y);
         let b = self.split_at(bot);
         for band in &mut self.bands[a..b] {
@@ -101,6 +107,12 @@ impl FloatBands {
             self.letter.1 = self.letter.1.max(y + h);
         }
         let edge = if side < 0 { x + w } else { x };
+        self.exclusions.push(Exclusion {
+            side,
+            top: y,
+            h,
+            edge,
+        });
         let a = self.split_at(y);
         let b = self.split_at(y + h);
         for band in &mut self.bands[a..b] {

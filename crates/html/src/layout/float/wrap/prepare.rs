@@ -155,6 +155,13 @@ pub(super) fn host_for_run(
     // не сойтись по размерам (`floats-placement-006`).
     let text_lead = out[text_at..].iter().any(|n| !is_blank(n));
 
+    if measured_ok {
+        return text_lead
+            .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
+            .flatten()
+            .map(|(h, n, l)| (h, n, Some(text_at), l))
+            .or_else(|| band_host_m(nodes, i, em, &[], cb).map(|(h, n, l)| (h, n, None, l)));
+    }
     has_lead
         .then(|| band_host(nodes, i, cb_width, &out[lead_at..]))
         .flatten()
