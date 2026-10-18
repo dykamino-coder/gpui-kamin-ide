@@ -13,21 +13,6 @@
 //! `z-index`, переходы и анимации — не переносятся, потому что примитивов под
 //! них в GPUI нет.
 
-// Стилевые lint'ы clippy, которые в движке вёрстки дают только шум: длинные
-// сигнатуры и типы отражают CSS-модель, индексные циклы идут по нескольким
-// массивам сразу, а `Default` + присваивания читаются как таблица свойств.
-// Корректностные lint'ы остаются включёнными и держатся под `-D warnings`.
-#![allow(
-    clippy::type_complexity,
-    clippy::field_reassign_with_default,
-    clippy::too_many_arguments,
-    clippy::large_enum_variant,
-    clippy::needless_range_loop,
-    clippy::manual_clamp,
-    clippy::nonminimal_bool,
-    clippy::redundant_guards
-)]
-
 #[cfg(test)]
 pub mod coverage;
 pub(crate) mod hooks;
@@ -43,27 +28,21 @@ pub use text::fonts;
 pub use text::metrics;
 pub mod render;
 pub use interactive::scroll;
-#[doc(hidden)]
+/// Static scrollbar capture control for the `wptrun` example (`wpt-harness` feature).
+#[cfg(feature = "wpt-harness")]
 pub use interactive::scrollbars::theme::set_scrollbar_capture_mode;
 pub use interactive::select;
 pub mod svg;
 pub use style::values::value;
 
 // Доменные модули (рефакторинг монолитов: перенос по доменам).
-#[doc(hidden)]
-pub mod animation;
-#[doc(hidden)]
-pub mod document;
-#[doc(hidden)]
-pub mod interactive;
-#[doc(hidden)]
-pub mod layout;
-#[doc(hidden)]
-pub mod paint;
-#[doc(hidden)]
-pub mod style;
-#[doc(hidden)]
-pub mod text;
+pub(crate) mod animation;
+pub(crate) mod document;
+pub(crate) mod interactive;
+pub(crate) mod layout;
+pub(crate) mod paint;
+pub(crate) mod style;
+pub(crate) mod text;
 
 /// Умолчания тегов, как в браузере, — для тех, кто рисует СТРАНИЦУ.
 ///

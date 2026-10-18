@@ -6,6 +6,7 @@ impl Computed {
     #[allow(unused_variables)]
     pub(super) fn apply_clip_mask(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
         if key == "mask" && mask_shorthand::apply(self, v) {
+            self.accept_declaration();
             return;
         }
         // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
@@ -15,7 +16,7 @@ impl Computed {
             if v.contains("-gradient(") || v.contains("url(") {
                 // Слоёв может быть несколько (`url(a), url(b)`) —
                 // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
-                self.mask_image = Some(v.trim().to_string());
+                self.mask_image = accept_parsed!(self, Some(v.trim().to_string()));
             }
             // Сокращение `mask` несёт и укладку (css-masking §7.9).
             if v.contains("no-repeat") {
@@ -27,6 +28,9 @@ impl Computed {
         // радиусом. Многоугольник прямоугольной маской не выразить —
         // его гасит по форме сборка буфера группы.
         let v = v.trim();
+        if v == "none" {
+            self.accept_declaration();
+        }
         // Опорная коробка формы (css-masking §1.3.1.1): слово до или
         // после функции; точки полигона отсчитываются от неё
         // (clip-path-polygon-008: margin-box).
@@ -47,6 +51,9 @@ impl Computed {
             self.clip_bare_box = !v.is_empty()
                 && !v.contains('(')
                 && v.split_whitespace().all(|w| w.ends_with("-box"));
+            if self.clip_bare_box {
+                self.accept_declaration();
+            }
         }
         // `clip-path: shape(...)` (css-shapes-2): команды хранятся
         // с `;` вместо запятых (по ним режутся слои), доли резолвит
@@ -65,7 +72,10 @@ impl Computed {
                 Some((r @ ("nonzero" | "evenodd"), b)) => (r, b),
                 _ => ("nonzero", rest),
             };
-            self.clip_shape = Some(format!("shapedef:{rule}:{}", body.replace(',', ";")));
+            self.clip_shape = accept_parsed!(
+                self,
+                Some(format!("shapedef:{rule}:{}", body.replace(',', ";")))
+            );
         }
         // `clip-path: path(правило, 'd')` — контур SVG: форма
         // растрируется маской покрытия; запятые в d заменяются
@@ -84,6 +94,7 @@ impl Computed {
                 _ => ("nonzero", rest),
             };
             let d = d.trim_matches(|c| c == '"' || c == '\'').replace(',', " ");
+            self.accept_declaration();
             // Ломаная до восьми вершин — та же геометрия, что `polygon()`,
             // и рисуется тем же шейдером: иначе один контур давал два разных
             // сглаживания (`corner-shape-*`: фигура коробки идёт
@@ -102,7 +113,7 @@ impl Computed {
             && let Some(url) = parse_url(v)
             && let Some(id) = url.strip_prefix('#')
         {
-            self.clip_shape = Some(format!("clipref:{id}"));
+            self.clip_shape = accept_parsed!(self, Some(format!("clipref:{id}")));
         }
         self.clip_basic_shape(v);
     }

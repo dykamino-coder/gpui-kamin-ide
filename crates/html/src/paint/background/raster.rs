@@ -68,6 +68,8 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// меньше — результат частично прозрачен. Слагаемое — цвет (или
 /// `image(<color>)`), градиент или `url()`; растр приводится к размеру плитки
 /// ближайшей точкой.
+// Pixel channel indices address the source and accumulator buffers together.
+#[allow(clippy::needless_range_loop)]
 pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let inner = src.strip_prefix("cross-fade(")?;
     let inner = &inner[..inner.rfind(')')?];

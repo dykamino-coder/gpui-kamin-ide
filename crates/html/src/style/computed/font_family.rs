@@ -17,7 +17,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     if !v.split(',').all(|part| family_name_ok(part.trim())) {
         return;
     }
-    style.font_families = Some(families(v));
+    style.font_families = accept_parsed!(style, Some(families(v)));
     let lower = v.to_ascii_lowercase();
     // Моноширинный запрос несёт смысл (код) и решает выбор
     // встроенного шрифта, если названного в системе нет.

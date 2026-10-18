@@ -98,7 +98,7 @@ impl Computed {
                 spec.names = if names.len() > 1 { names } else { vec![] };
             }
         }
-        self.animation = Some(spec);
+        self.animation = accept_parsed!(self, Some(spec));
     }
 }
 

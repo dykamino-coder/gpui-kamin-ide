@@ -7,6 +7,8 @@ use crate::layout::fragment::{ShapeCx, fragment_size};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Heights are computed from the same fragment records used by the cutting pass.
+#[allow(clippy::type_complexity)]
 pub(super) fn shaped_height(
     c: &Element,
     depth: u8,

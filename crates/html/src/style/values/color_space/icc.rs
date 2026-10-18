@@ -4,7 +4,6 @@ use super::*;
 use crate::tolerance::GAMUT_SLACK;
 
 mod resources;
-pub use resources::load_profiles;
 pub(crate) use resources::load_profiles_sheets;
 
 /// Применить вшитый цветовой профиль ICC к готовому образу.
@@ -69,12 +68,14 @@ pub(crate) fn apply_icc(
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-// Реестр профилей `@color-profile`: имя (`--foo`) — байты ICC.
-//
-// Живёт одну страницу, как и подмена шрифтов: имена придумывает страница.
-thread_local! {
-    pub(super) static PROFILES: std::cell::RefCell<std::collections::HashMap<String, Vec<u8>>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
+/// Профиль `@color-profile` текущего документа по имени (`--foo`): имена
+/// придумывает страница, реестр — её (`document::state`).
+pub(super) fn profile(name: &str) -> Option<Vec<u8>> {
+    crate::document::state::current()
+        .profiles
+        .borrow()
+        .get(name)
+        .cloned()
 }
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.
@@ -119,6 +120,8 @@ fn icc_tag(profile: &[u8], sig: &[u8; 4]) -> Option<(usize, usize)> {
 }
 
 /// Матрица колорантов профиля: столбцы rXYZ/gXYZ/bXYZ (в PCS D50).
+// ICC colorant indices become corresponding columns of the conversion matrix.
+#[allow(clippy::needless_range_loop)]
 fn icc_matrix(profile: &[u8]) -> Option<[f32; 9]> {
     let mut cols = [[0.0f32; 3]; 3];
     for (i, sig) in [b"rXYZ", b"gXYZ", b"bXYZ"].into_iter().enumerate() {

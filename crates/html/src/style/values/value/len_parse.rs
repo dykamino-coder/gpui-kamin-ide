@@ -159,7 +159,7 @@ impl Len {
         }
         // `rem` — кегль КОРНЯ, а не постоянные 16 (§6.1.4).
         if let Some(num) = s.strip_suffix("rem") {
-            return css_number(num).map(|v| match ROOT_FONT_VIEW.with(|c| c.get()) {
+            return css_number(num).map(|v| match root_font_view() {
                 Some((true, k)) => Len::Vh(v * k),
                 Some((false, k)) => Len::Vw(v * k),
                 None => Len::Px(v * root_font_px()),

@@ -38,6 +38,8 @@ pub(super) fn cubic_pts(
 
 /// Дуга `A rx ry φ large sweep x y` в точки: перевод из КОНЦЕВОЙ записи в
 /// центровую по SVG 2 §F.6.5 плюс раздутие недостаточных радиусов по §F.6.6.
+// Arguments follow the SVG endpoint arc parameterization.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn arc_pts(
     p0: (f32, f32),
     rx: f32,

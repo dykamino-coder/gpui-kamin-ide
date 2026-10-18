@@ -1,4 +1,4 @@
-//! Children for walk; split out to keep the owning module within 250 lines.
+//! Collect rendered children, shadow content and generated scroll controls.
 
 use super::{build_dom_node, walk_children};
 use crate::dom::*;
@@ -19,16 +19,14 @@ pub(super) fn collect_children(
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
-    path: &[Ancestor],
+    path: &mut Vec<Ancestor>,
     sibs: Sibs,
     style: &Computed,
     shadow: &Option<Rc<crate::dom::shadow::Shadow>>,
     preserve: bool,
-    tag: &String,
+    tag: &str,
     attrs: &[(String, String)],
 ) -> (Vec<Node>, ScrollPseudos) {
-    let mut path2 = path.to_vec();
-    path2.push(me.clone());
     let mut children = vec![];
     // Псевдоэлементы: коробка появляется, только если у правила есть
     // `content`. Значками, стрелками и разделителями в вёрстке
@@ -51,7 +49,7 @@ pub(super) fn collect_children(
             &shadow.scope.frames,
             counter,
             counters,
-            std::slice::from_ref(&shadow.marker),
+            &mut vec![shadow.marker.clone()],
             keep,
             &mut children,
         );
@@ -61,6 +59,7 @@ pub(super) fn collect_children(
         // таблицами ОБЛАСТИ ХОСТА и сопоставляется в светлом контексте
         // (предки хоста + хост, светлые братья), а наследует — от
         // слота, своего родителя в плоском дереве (`vars`, `keep`).
+        let mut host_path = slot.host_path.as_ref().clone();
         for s in &slot.assigned {
             let sibs = Sibs {
                 all: &slot.light_all[..],
@@ -75,7 +74,7 @@ pub(super) fn collect_children(
                 &slot.outer.frames,
                 counter,
                 counters,
-                &slot.host_path[..],
+                &mut host_path,
                 slot.light_spots[s.light_idx],
                 keep,
                 sibs,
@@ -86,6 +85,7 @@ pub(super) fn collect_children(
             );
         }
     } else {
+        path.push(me.clone());
         walk_children(
             handle,
             rules,
@@ -93,10 +93,11 @@ pub(super) fn collect_children(
             frames,
             counter,
             counters,
-            &path2,
+            path,
             keep,
             &mut children,
         );
+        path.pop();
     }
     if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs) {
         children.push(Node::Element(el));
@@ -136,7 +137,7 @@ pub(super) fn collect_children(
     // `display: table-column` с красным фоном ВНУТРИ ряда и требует
     // «no red». Без этой отсечки такой узел уехал бы в анонимную
     // ячейку и покрасился.
-    let holds_columns = matches!(tag.as_str(), "table" | "colgroup")
+    let holds_columns = matches!(tag, "table" | "colgroup")
         || style.col_role == Some(1)
         || matches!(
             style.display,

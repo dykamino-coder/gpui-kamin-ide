@@ -1,4 +1,4 @@
-//! Hidden for walk; split out to keep the owning module within 250 lines.
+//! Preserve root canvas styles and non-flow table columns during the walk.
 
 use super::walk_children;
 use crate::dom::*;
@@ -37,7 +37,7 @@ pub(super) fn hidden_element(
             tag: "html".to_string(),
             inline: false,
             node_id: 0,
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,
@@ -67,7 +67,7 @@ pub(super) fn hidden_element(
             frames,
             counter,
             counters,
-            &path2,
+            &mut path2,
             style.preserve_newlines.unwrap_or(preserve),
             &mut raw,
         );
@@ -85,7 +85,7 @@ pub(super) fn hidden_element(
         anim: None,
         inline: false,
         tag,
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

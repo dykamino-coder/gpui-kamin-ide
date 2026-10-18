@@ -67,7 +67,7 @@ pub(crate) fn initial_letter_float(
     let block_rl = inherited.vertical_rl == Some(true);
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
-        Node::Element(e) => !e.style.float.is_some_and(|f| f != 0),
+        Node::Element(e) => e.style.float.is_none_or(|f| f == 0),
     });
     let Some(at) = at else {
         return nodes;
@@ -195,7 +195,7 @@ pub(crate) fn initial_letter_float(
             node_id: 0,
             anim: None,
             tag: tag.into(),
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,

@@ -1,4 +1,4 @@
-//! Cascade for walk; split out to keep the owning module within 250 lines.
+//! Cascade stylesheet, inline and presentational declarations for an element.
 
 use super::presentational_hints;
 use crate::dom::*;
@@ -22,7 +22,7 @@ impl Drop for SchemeGuard {
 pub(super) fn cascade_element(
     me: &mut Ancestor,
     attrs: &Vec<(String, String)>,
-    tag: &String,
+    tag: &str,
     handle: &Handle,
     rules: &[Rule],
     inherited_vars: &Decls,

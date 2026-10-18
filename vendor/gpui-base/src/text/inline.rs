@@ -1919,6 +1919,7 @@ pub(super) mod test_fonts {
                 shaped_runs.push(ShapedRun {
                     font_id: run.font_id,
                     glyphs,
+                    font_size,
                 });
                 run_start += run.len;
             }

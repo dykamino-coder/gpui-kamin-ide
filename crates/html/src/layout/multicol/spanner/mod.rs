@@ -92,6 +92,8 @@ pub(super) fn multicol_inside(c: &Element, depth: u8) -> bool {
 /// column break and is taken out of flow to span across all columns of the
 /// nearest multicol ancestor», то есть режет содержимое предка на «до»,
 /// «спаннер» и «после».
+// Spans retain owned DOM nodes, matching the surrounding fragmentation pipeline.
+#[allow(clippy::large_enum_variant)]
 enum SpanPart {
     Body(Vec<Node>),
     Span(Node),

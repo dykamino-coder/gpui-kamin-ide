@@ -50,13 +50,9 @@ pub struct SyntaxHighlighter {
     parser: Parser,
     /// The last parsed tree.
     tree: Option<Tree>,
-    // KaminIDE patch (#76): межкадровый кэш `styles()`. TextElement::prepaint
-    // зовёт styles() по видимой строке КАЖДЫЙ КАДР, а внутри — свежий
-    // tree-sitter QueryCursor по диапазону: ~16 мс на prepaint-вызов, 15-20fps
-    // на скролле. Дерево и текст между кадрами не меняются — кэшируем по
-    // байт-диапазону; сбрасывается в update() (правка) и при смене темы.
-    styles_cache: std::cell::RefCell<HashMap<(usize, usize), Vec<(Range<usize>, HighlightStyle)>>>,
-    styles_cache_theme: std::cell::Cell<usize>,
+    // KaminIDE patch: cache query captures, never a resolver's identity or colors.
+    // Text/tree updates invalidate captures; theme changes need no invalidation.
+    styles_cache: super::capture_cache::CaptureCache<HighlightItem>,
 
     /// Parsed injection trees.
     /// These are built once in update() and queried multiple times in match_styles().
@@ -104,9 +100,6 @@ impl From<InjectionLayer> for ReusableInjectionLayer {
         }
     }
 }
-
-/// KaminIDE patch (#76): потолок записей styles_cache (переполнение → clear).
-const STYLES_CACHE_CAP: usize = 4096;
 
 struct TextProvider<'a>(&'a Rope);
 struct ByteChunks<'a> {
@@ -421,7 +414,6 @@ impl SyntaxHighlighter {
             tree: None,
             injection_layers: Vec::new(),
             styles_cache: Default::default(),
-            styles_cache_theme: std::cell::Cell::new(0),
         }
     }
 
@@ -546,7 +538,6 @@ impl SyntaxHighlighter {
             tree: None,
             // KaminIDE patch (#76)
             styles_cache: Default::default(),
-            styles_cache_theme: std::cell::Cell::new(0),
             injection_layers: Vec::new(),
         })
     }
@@ -568,8 +559,8 @@ impl SyntaxHighlighter {
         }
         self.edit_injection_layers(edit.as_ref());
         self.text = text.clone();
-        // KaminIDE patch (#76): текст изменился без репарса — сбросить кэш стилей.
-        self.styles_cache.borrow_mut().clear();
+        // KaminIDE patch (#76): текст изменился без репарса — сбросить кэш captures.
+        self.styles_cache.clear();
     }
 
     /// Keep the injection layers in step with `edit`, the way `Tree::edit`
@@ -632,9 +623,9 @@ impl SyntaxHighlighter {
         if self.text.eq(text) {
             return true;
         }
-        // KaminIDE patch (#76): текст изменился — стили пересчитать (все ветки
+        // KaminIDE patch (#76): текст изменился — captures пересчитать (все ветки
         // ниже, включая таймаут синхронного парса, меняют `self.text`).
-        self.styles_cache.borrow_mut().clear();
+        self.styles_cache.clear();
 
         // If there's no grammar for the language, just update the text.
         if self.parser.language().is_none() {
@@ -1021,8 +1012,8 @@ impl SyntaxHighlighter {
 
         self.tree = Some(tree);
         self.injection_layers = injection_layers;
-        // KaminIDE patch (#76): фоновый парс заменил дерево — стили устарели.
-        self.styles_cache.borrow_mut().clear();
+        // KaminIDE patch (#76): фоновый парс заменил дерево — captures устарели.
+        self.styles_cache.clear();
     }
 
     /// Parse injection layers after the main tree is updated.
@@ -1187,24 +1178,13 @@ impl SyntaxHighlighter {
         range: &Range<usize>,
         theme: &dyn gpui_base::input::HighlightStyleResolver,
     ) -> Vec<(Range<usize>, HighlightStyle)> {
-        // KaminIDE patch (#76): кэш по диапазону — см. поле styles_cache.
-        // Ключ темы — адрес данных резолвера (`Arc<HighlightTheme>` из темы:
-        // стабилен между кадрами, меняется при смене темы).
-        let theme_key = theme as *const dyn gpui_base::input::HighlightStyleResolver as *const ()
-            as usize;
-        if self.styles_cache_theme.get() != theme_key {
-            self.styles_cache.borrow_mut().clear();
-            self.styles_cache_theme.set(theme_key);
-        }
-        let cache_key = (range.start, range.end);
-        if let Some(hit) = self.styles_cache.borrow().get(&cache_key) {
-            return hit.clone();
-        }
-
         let mut styles = vec![];
         let start_offset = range.start;
-
-        let highlights = self.match_styles(range.clone());
+        let highlights = self
+            .styles_cache
+            .get_or_insert_with((range.start, range.end), || {
+                self.match_styles(range.clone())
+            });
 
         // let mut iter_count = 0;
         for item in highlights {
@@ -1232,20 +1212,11 @@ impl SyntaxHighlighter {
         }
 
         // If the matched styles is empty, return a default range.
-        if styles.len() == 0 {
-            let out = vec![(start_offset..range.end, HighlightStyle::default())];
-            self.styles_cache.borrow_mut().insert(cache_key, out.clone());
-            return out;
+        if styles.is_empty() {
+            return vec![(start_offset..range.end, HighlightStyle::default())];
         }
 
         let styles = unique_styles(&range, styles);
-        {
-            let mut cache = self.styles_cache.borrow_mut();
-            if cache.len() > STYLES_CACHE_CAP {
-                cache.clear();
-            }
-            cache.insert(cache_key, styles.clone());
-        }
 
         // NOTE: DO NOT remove this comment, it is used for debugging.
         // for style in &styles {
@@ -2009,3 +1980,7 @@ $x = 1;
         );
     }
 }
+
+#[cfg(test)]
+#[path = "cache_tests.rs"]
+mod cache_tests;

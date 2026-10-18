@@ -43,20 +43,24 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(gutter) = gutter {
+                    self.accept_declaration();
                     self.scroll.gutter = Some(gutter);
                     self.scroll.inherit_gutter = false;
                 }
             }
             "scrollbar-width" => match v {
                 "auto" => {
+                    self.accept_declaration();
                     self.scroll.width = Some(0);
                     self.scroll.inherit_width = false;
                 }
                 "thin" => {
+                    self.accept_declaration();
                     self.scroll.width = Some(1);
                     self.scroll.inherit_width = false;
                 }
                 "none" => {
+                    self.accept_declaration();
                     self.scroll.width = Some(2);
                     self.scroll.inherit_width = false;
                 }
@@ -68,6 +72,7 @@ impl Computed {
                     self.scroll.colors = None;
                     self.scroll.current = [false; 2];
                 } else if v == "auto" {
+                    self.accept_declaration();
                     self.scroll.colors = Some(None);
                     self.scroll.current = [false; 2];
                 } else {
@@ -87,6 +92,7 @@ impl Computed {
                         if let (Some(a), Some(b)) =
                             (color(&parts[0], current[0]), color(&parts[1], current[1]))
                         {
+                            self.accept_declaration();
                             self.scroll.colors = Some(Some([a, b]));
                             self.scroll.current = current;
                         }

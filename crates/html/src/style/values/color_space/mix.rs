@@ -16,6 +16,8 @@ pub(super) fn color_mix_unmapped(body: &str) -> Option<(f32, f32, f32, f32)> {
     color_mix_impl(body, false)
 }
 
+// A color stop is an RGBA tuple paired with an optional percentage.
+#[allow(clippy::type_complexity)]
 fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
     use crate::style::computed::GradSpace as S;
     let mut it = crate::style::css::split_args(body).into_iter();

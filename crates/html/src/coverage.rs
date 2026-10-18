@@ -24,26 +24,10 @@ mod report {
     use super::*;
 
     #[test]
-    fn print_coverage() {
-        let total = PROPERTIES.len();
-        let mapped = PROPERTIES
-            .iter()
-            .filter(|p| p.support == Support::Mapped)
-            .count();
-        let noop = PROPERTIES
-            .iter()
-            .filter(|p| matches!(p.support, Support::NoOp(_)))
-            .count();
-        let partial = PROPERTIES
-            .iter()
-            .filter(|p| matches!(p.support, Support::Partial(_)))
-            .count();
-        println!(
-            "ПОКРЫТИЕ: всего {total}, полностью {mapped}, частично {partial}, пустышек {noop}, \
-             невозможно {}, итого {:.1}%",
-            total - mapped - noop - partial,
-            mapped_pct()
-        );
+    fn coverage_percentage_is_finite_and_bounded() {
+        assert!(!PROPERTIES.is_empty());
+        assert!(mapped_pct().is_finite());
+        assert!((0.0..=100.0).contains(&mapped_pct()));
     }
 }
 mod sources;

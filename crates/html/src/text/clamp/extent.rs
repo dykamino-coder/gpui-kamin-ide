@@ -47,7 +47,7 @@ pub fn hide_box_after_point(
     use gpui::Styled;
     super::close_clamp_span(span.clone());
     let first = span.as_ref().map(|s| s.get().0);
-    let in_flow = !style.float.is_some_and(|f| f != 0)
+    let in_flow = style.float.is_none_or(|f| f == 0)
         && !matches!(
             style.position,
             Some(Position::Absolute) | Some(Position::Fixed)

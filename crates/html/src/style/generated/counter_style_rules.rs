@@ -1,8 +1,8 @@
 //! Правила `@counter-style` документа (css-counter-styles-3 §3).
 //!
-//! Разбор стилевых листов кладёт сюда дескрипторы каждого действительного
-//! правила (`register`), разбор следующего документа реестр чистит
-//! (`reset`). Представление значения строится по алгоритму спеки
+//! Разбор стилевых листов кладёт дескрипторы каждого действительного
+//! правила (`register`) в реестр текущего документа (`document::state`):
+//! у рамки свой документ и свои правила. Представление значения строится по алгоритму спеки
 //! §counter-style-generate: диапазон → резерв, начальное представление по
 //! системе, дополнение `pad`, знак `negative`. Предопределённые стили
 //! описаны в `counter_style::builtin`; без правил документа путь
@@ -12,7 +12,6 @@ use crate::style::generated::counter_style::{
     Context, builtin, builtin_initial, builtin_repr_in, normalize_name,
 };
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
 
 mod generate;
 mod math;
@@ -27,7 +26,7 @@ use resolve::{Algo, in_range, resolve_counter_style, uses_negative};
 use tokens::{Tok, tokenize};
 
 #[derive(Clone, Debug, PartialEq)]
-enum System {
+pub(crate) enum System {
     Cyclic,
     Numeric,
     Alphabetic,
@@ -39,7 +38,7 @@ enum System {
 
 /// Дескрипторы одного правила, как они заданы (незаданное — `None`).
 #[derive(Clone, Debug, Default)]
-struct Raw {
+pub(crate) struct Raw {
     system: Option<System>,
     symbols: Option<Vec<String>>,
     additive: Option<Vec<(u64, String)>>,
@@ -52,17 +51,8 @@ struct Raw {
     fallback: Option<String>,
 }
 
-static RULES: Mutex<Option<HashMap<String, Raw>>> = Mutex::new(None);
-
-fn registry<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
-    value
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-pub fn reset() {
-    registry(&RULES).take();
-}
+/// Реестр правил документа: имя (с исходным регистром) → дескрипторы.
+pub(crate) type CounterStyles = HashMap<String, Raw>;
 
 #[cfg(test)]
 mod tests {
@@ -70,19 +60,9 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn poisoned_registry_can_be_reused() {
-        let local = Mutex::new(vec![1]);
-        let _ = std::panic::catch_unwind(|| {
-            let _guard = local.lock().unwrap();
-            panic!("poison local registry");
-        });
-        registry(&local).push(2);
-        assert_eq!(*registry(&local), [1, 2]);
-    }
-
     fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce()) {
-        reset();
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let _scope = doc.enter();
         for (name, descs) in css {
             let d: Vec<(String, Vec<String>)> = descs
                 .iter()
@@ -91,7 +71,6 @@ mod tests {
             register(name, &d);
         }
         f();
-        reset();
     }
 
     #[test]

@@ -24,10 +24,12 @@ impl Computed {
             outset: [BorderImageWidth::Px(0.0); 4],
             repeat: (Tiling::None, Tiling::None),
         });
+        let mut accepted = false;
         let mut set = |part: &str, value: &str| match part {
             "border-image-source" => {
                 let value = value.trim();
                 if value == "none" {
+                    accepted = true;
                     image.src.clear();
                 } else if value.starts_with("linear-gradient(")
                     || value.starts_with("radial-gradient(")
@@ -37,10 +39,13 @@ impl Computed {
                     // (css-backgrounds-3 §6.1). Запись хранится как есть:
                     // растрирует её загрузчик картинок.
                     image.src = value.to_string();
+                    accepted = true;
                 } else if crate::style::computed::filter_image::parse_filter_image(value).is_some()
                 {
+                    accepted = true;
                     image.src = value.to_string();
                 } else if let Some(url) = parse_url(value) {
+                    accepted = true;
                     image.src = url;
                 }
             }
@@ -55,6 +60,7 @@ impl Computed {
                     None => t.parse().ok().map(BorderImageSlice::Px),
                 };
                 if let Some(sides) = four(&nums, one) {
+                    accepted = true;
                     image.slice = sides;
                 }
             }
@@ -82,6 +88,7 @@ impl Computed {
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();
                 if let Some(sides) = four(&words, one) {
+                    accepted = true;
                     image.width = sides;
                 }
             }
@@ -99,6 +106,7 @@ impl Computed {
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();
                 if let Some(sides) = four(&words, one) {
+                    accepted = true;
                     image.outset = sides;
                 }
             }
@@ -112,6 +120,7 @@ impl Computed {
                 };
                 let mut it = value.split_whitespace();
                 if let (Some(x), y) = (it.next().and_then(one), it.next().and_then(one)) {
+                    accepted = true;
                     image.repeat = (x, y.unwrap_or(x));
                 }
             }
@@ -197,6 +206,9 @@ impl Computed {
         // картинка), и рамка рисовалась четырьмя сжатыми копиями образа.
         // Не рисовать и не подавлять обычную рамку при пустом источнике —
         // забота потребителей.
+        if accepted {
+            self.accept_declaration();
+        }
         self.border_image = Some(image);
     }
 }

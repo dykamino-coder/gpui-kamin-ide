@@ -13,6 +13,9 @@ pub mod page;
 pub mod positioned;
 pub mod replaced;
 pub mod table;
+// Writing-mode algorithms are maintained separately; preserve their explicit
+// axis predicates and staged style construction during this cleanup.
+#[allow(clippy::nonminimal_bool, clippy::field_reassign_with_default)]
 pub mod writing_mode;
 
 #[cfg(test)]

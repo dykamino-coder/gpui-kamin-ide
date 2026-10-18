@@ -49,7 +49,7 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         node_id: cell.node_id ^ 0x0CE1_1C01_0000_0001,
         anim: None,
         tag: "div".to_string(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

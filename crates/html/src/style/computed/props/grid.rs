@@ -40,6 +40,7 @@ impl Computed {
                 // (`subgrid/repeat-auto-fill-005`).
                 self.grid_col_line_names = parse_line_names(v);
                 if v.trim_start().starts_with("subgrid") {
+                    self.accept_declaration();
                     self.subgrid_cols = true;
                     self.subgrid = true;
                     self.grid_cols = count_tracks(v);
@@ -92,6 +93,7 @@ impl Computed {
                     max_auto,
                     max_fr,
                 });
+                self.accept_declaration();
             }
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
@@ -99,6 +101,7 @@ impl Computed {
                 // Подсетка со списком имён в повторе — см. колонки выше.
                 self.grid_row_line_names = parse_line_names(v);
                 if v.trim_start().starts_with("subgrid") {
+                    self.accept_declaration();
                     self.subgrid_rows = true;
                     self.subgrid = true;
                     self.grid_rows = parse_tracks(v);
@@ -129,6 +132,7 @@ impl Computed {
                     max_auto,
                     max_fr,
                 });
+                self.accept_declaration();
             }
             _ => self.apply_grid_templates(key, val, v, hit),
         }

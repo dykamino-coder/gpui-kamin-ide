@@ -135,4 +135,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     if !family.is_empty() {
         style.apply_one("font-family", family);
     }
+    if style.font_size.is_some() && style.font_family.is_some() {
+        style.accept_declaration();
+    }
 }

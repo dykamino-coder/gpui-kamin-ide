@@ -4,6 +4,8 @@ use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
 
 #[allow(clippy::too_many_arguments)]
+// The open paragraph group pairs its starting column state with its furthest extent.
+#[allow(clippy::type_complexity)]
 pub(super) fn open_kid(
     col: &mut usize,
     y: &mut f32,

@@ -95,10 +95,7 @@ impl Session {
             return None;
         }
         let result = (|| {
-            let bytes = std::fs::read(&path).ok()?;
-            if bytes.len() > 16 * 1024 * 1024 {
-                return None;
-            }
+            let bytes = read_resource(&path)?;
             let text = std::str::from_utf8(&bytes).ok()?;
             let xml = roxmltree::Document::parse_with_options(
                 text,
@@ -137,5 +134,52 @@ fn resolve(href: &str, base: Option<&Url>) -> Option<Url> {
         Some(uri)
     } else {
         Url::parse(href).ok().or_else(|| base?.join(href).ok())
+    }
+}
+
+// KaminIDE patch: refuse oversized files before allocation and bound the read
+// as well: metadata alone cannot protect against a file growing after open.
+const RESOURCE_BYTE_LIMIT: u64 = 16 * 1024 * 1024;
+
+fn read_resource(path: &std::path::Path) -> Option<Vec<u8>> {
+    let file = std::fs::File::open(path).ok()?;
+    if file.metadata().ok()?.len() > RESOURCE_BYTE_LIMIT {
+        return None;
+    }
+    read_bounded(file, RESOURCE_BYTE_LIMIT)
+}
+
+fn read_bounded(reader: impl std::io::Read, limit: u64) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    reader.take(limit + 1).read_to_end(&mut bytes).ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
+}
+
+#[cfg(test)]
+mod byte_limit_tests {
+    use super::read_bounded;
+    use std::cell::Cell;
+    use std::io::{self, Read};
+
+    #[test]
+    fn accepts_the_limit_and_rejects_one_extra_byte() {
+        assert_eq!(read_bounded(&b"abcd"[..], 4), Some(b"abcd".to_vec()));
+        assert!(read_bounded(&b"abcde"[..], 4).is_none());
+    }
+
+    #[test]
+    fn growing_source_is_never_read_past_limit_plus_one() {
+        struct Growing<'a>(&'a Cell<usize>);
+        impl Read for Growing<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                buf.fill(b'x');
+                self.0.set(self.0.get() + buf.len());
+                Ok(buf.len())
+            }
+        }
+        let count = Cell::new(0);
+        assert!(read_bounded(Growing(&count), 4).is_none());
+        assert_eq!(count.get(), 5);
     }
 }

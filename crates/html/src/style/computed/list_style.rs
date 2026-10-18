@@ -4,6 +4,7 @@ use super::{Computed, list_style_string, split_outside_parens};
 
 pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
     if list_style_string::apply_string(style, key, value) {
+        style.accept_declaration();
         style.list_style_type = None;
         return;
     }
@@ -56,6 +57,7 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
     if none > 0 && kind.is_none() {
         kind = Some("none".into());
     }
+    style.accept_declaration();
     style.no_marker = Some(kind.as_deref() == Some("none"));
     style.marker_text = None;
     style.list_style_type = Some(kind.unwrap_or_else(|| "disc".into()));

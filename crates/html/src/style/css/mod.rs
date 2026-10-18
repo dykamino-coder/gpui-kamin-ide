@@ -32,6 +32,8 @@ mod media;
 pub use crate::style::css::media::*;
 pub(crate) mod supports;
 pub(crate) use crate::style::css::supports::*;
+// The separately maintained at-rule registry exposes its heterogeneous CSS records.
+#[allow(clippy::type_complexity)]
 pub(super) mod at_rules;
 pub use crate::style::css::at_rules::*;
 pub(super) mod keyframes;

@@ -172,7 +172,7 @@ pub(crate) fn nested_rows_shape(
                         h: sh.height,
                         mt: sh.margin_top,
                         mb: sh.margin_bottom,
-                        monolith: solid_box(&k) && !(inline_content(&k) && !sh.cuts.is_empty()),
+                        monolith: solid_box(&k) && (!inline_content(&k) || sh.cuts.is_empty()),
                         cuts: sh.cuts,
                         force_before: edge_break(&k, false),
                         force_after: edge_break(&k, true),

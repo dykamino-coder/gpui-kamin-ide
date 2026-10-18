@@ -157,7 +157,7 @@ thread_local! {
 /// а `prepaint` видит рамку без полей.
 #[derive(Clone)]
 struct SidePlan {
-    f: AnchorFn,
+    f: std::rc::Rc<AnchorFn>,
     margin: f32,
 }
 

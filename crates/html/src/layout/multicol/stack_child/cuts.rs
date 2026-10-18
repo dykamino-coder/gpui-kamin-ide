@@ -15,6 +15,8 @@ use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 
 #[allow(clippy::too_many_arguments)]
+// Fragment copies carry cuts, heights and continuation flags together.
+#[allow(clippy::type_complexity)]
 pub(super) fn copy_cuts_and_height(
     ix: usize,
     h: f32,
@@ -56,6 +58,8 @@ pub(super) fn copy_cuts_and_height(
 }
 
 #[allow(clippy::too_many_arguments)]
+// Line cuts retain their associated height and break flags.
+#[allow(clippy::type_complexity)]
 pub(super) fn line_cuts(
     h: f32,
     cuts: Vec<(f32, f32)>,

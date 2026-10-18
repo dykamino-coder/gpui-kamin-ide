@@ -165,7 +165,7 @@ mod tests {
             marks: Default::default(),
             node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             tag: "div".into(),
-            style,
+            style: style.into(),
             children,
             attrs: Vec::new(),
             inline: false,

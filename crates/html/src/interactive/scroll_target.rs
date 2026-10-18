@@ -163,8 +163,10 @@ mod tests {
             width: Some(Len::FitContent),
             ..Computed::default()
         };
-        let mut margin = Sides::default();
-        margin.left = Some(Len::Px(10.0));
+        let margin = Sides {
+            left: Some(Len::Px(10.0)),
+            ..Default::default()
+        };
         let handle = ScrollHandle::default();
         let (_, matched) = build(7, &handle, true, false, margin, || {
             let (_, child_matched) = build(8, &handle, false, true, Sides::default(), || {

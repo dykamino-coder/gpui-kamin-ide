@@ -13,6 +13,8 @@ use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
+// The clone plan preserves each child's measured shape and painting callback.
+#[allow(clippy::type_complexity)]
 pub(super) fn clone_plan_of(
     cols: u16,
     col_vert: bool,

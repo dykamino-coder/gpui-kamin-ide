@@ -69,7 +69,7 @@ pub(crate) fn band_host_nested(
         node_id: 0,
         anim: None,
         tag: "shape-flow".into(),
-        style: Computed::default(),
+        style: Computed::default().into(),
         hover: None,
         first_letter: None,
         first_line: None,

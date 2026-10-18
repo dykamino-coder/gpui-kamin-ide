@@ -3,7 +3,8 @@
 use crate::style::css;
 
 pub(super) fn faces(css: &str) -> Vec<String> {
-    css::resource_rules::resources(css, css::Media::default())
+    // `@font-face` под `@media` решает носитель текущего документа.
+    css::resource_rules::resources(css, crate::document::state::current().media())
         .into_iter()
         .filter(|rule| rule.name == "font-face")
         .map(|rule| rule.body)

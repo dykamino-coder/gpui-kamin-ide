@@ -52,6 +52,8 @@ pub(crate) fn explodes(c: &Element, col_w: Option<f32>) -> bool {
     flex_lines_of(c, col_w).is_some()
 }
 
+// Keep each flex line paired with its height and break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
