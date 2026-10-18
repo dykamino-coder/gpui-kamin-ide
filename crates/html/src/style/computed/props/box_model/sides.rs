@@ -1,88 +1,12 @@
-//! Computed::apply_box_model, продолжение цепочки: padding-* по сторонам и margin*. Ветви в исходном порядке; не совпавший ключ уходит в apply_box_model_logical.
+//! Физические padding и margin: значения сторон, наследование и порядок деклараций.
 
 use super::*;
 
 impl Computed {
     pub(super) fn apply_box_model_sides(&mut self, key: &str, v: &str, hit: &mut bool) {
         match key {
-            "padding-top" => {
-                // `inherit` разбором не выражается: слово копирует вычисленное
-                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
-                // `None`, и отступ обнулялся.
-                if v == "inherit" {
-                    self.padding_inherit_side[0] = true;
-                    return;
-                }
-                // Отрицательный внутренний отступ невалиден (§8.4) — слот
-                // не трогается (ref-no-vert-space-between и родня).
-                if matches!(
-                    Len::parse(v),
-                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-                ) {
-                    return;
-                }
-                self.padding.top = crate::style::values::value::fold_zero_percentage(Len::parse(v));
-                self.side_seq.padding[0] = self.decl_seq;
-            }
-            "padding-right" => {
-                // `inherit` разбором не выражается: слово копирует вычисленное
-                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
-                // `None`, и отступ обнулялся.
-                if v == "inherit" {
-                    self.padding_inherit_side[1] = true;
-                    return;
-                }
-                // Отрицательный внутренний отступ невалиден (§8.4) — слот
-                // не трогается (ref-no-vert-space-between и родня).
-                if matches!(
-                    Len::parse(v),
-                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-                ) {
-                    return;
-                }
-                self.padding.right =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
-                self.side_seq.padding[1] = self.decl_seq;
-            }
-            "padding-bottom" => {
-                // `inherit` разбором не выражается: слово копирует вычисленное
-                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
-                // `None`, и отступ обнулялся.
-                if v == "inherit" {
-                    self.padding_inherit_side[2] = true;
-                    return;
-                }
-                // Отрицательный внутренний отступ невалиден (§8.4) — слот
-                // не трогается (ref-no-vert-space-between и родня).
-                if matches!(
-                    Len::parse(v),
-                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-                ) {
-                    return;
-                }
-                self.padding.bottom =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
-                self.side_seq.padding[2] = self.decl_seq;
-            }
-            "padding-left" => {
-                // `inherit` разбором не выражается: слово копирует вычисленное
-                // значение родителя (§6.2.1). Без ветки `Len::parse` отдавал
-                // `None`, и отступ обнулялся.
-                if v == "inherit" {
-                    self.padding_inherit_side[3] = true;
-                    return;
-                }
-                // Отрицательный внутренний отступ невалиден (§8.4) — слот
-                // не трогается (ref-no-vert-space-between и родня).
-                if matches!(
-                    Len::parse(v),
-                    Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-                ) {
-                    return;
-                }
-                self.padding.left =
-                    crate::style::values::value::fold_zero_percentage(Len::parse(v));
-                self.side_seq.padding[3] = self.decl_seq;
+            "padding-top" | "padding-right" | "padding-bottom" | "padding-left" => {
+                self.apply_padding_side(key, v);
             }
             // Физическая запись ГАСИТ логический слот той же стороны: разбор
             // идёт в порядке каскада, и авторский `margin: 0` обязан бить
@@ -141,4 +65,31 @@ impl Computed {
             _ => self.apply_box_model_logical(key, v, hit),
         }
     }
+
+    fn apply_padding_side(&mut self, key: &str, value: &str) {
+        let (index, slot) = match key {
+            "padding-top" => (0, &mut self.padding.top),
+            "padding-right" => (1, &mut self.padding.right),
+            "padding-bottom" => (2, &mut self.padding.bottom),
+            "padding-left" => (3, &mut self.padding.left),
+            _ => return,
+        };
+        // CSS 2.1 §6.2.1: inherit copies the parent's computed side.
+        if value == "inherit" {
+            self.padding_inherit_side[index] = true;
+            return;
+        }
+        // CSS 2.1 §8.4: a negative padding leaves the previous slot intact.
+        if matches!(
+            Len::parse(value),
+            Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
+        ) {
+            return;
+        }
+        *slot = crate::style::values::value::fold_zero_percentage(Len::parse(value));
+        self.side_seq.padding[index] = self.decl_seq;
+    }
 }
+
+#[cfg(test)]
+mod tests;
