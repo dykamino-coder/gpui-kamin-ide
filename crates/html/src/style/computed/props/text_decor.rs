@@ -14,7 +14,7 @@ impl Computed {
                 // (§4.2): `text-decoration: diagonal` оставляет прежнее
                 // значение (`c71-fwd-parsing-003`).
                 let lower = v.trim().to_ascii_lowercase();
-                let words = crate::paint::background::split_top(&lower);
+                let words = crate::style::css::value_tokens::split_top(&lower);
                 if words.is_empty() {
                     return;
                 }
@@ -152,7 +152,7 @@ impl Computed {
                     self.td_inset = Some(None);
                     return;
                 }
-                let words = crate::paint::background::split_top(&t);
+                let words = crate::style::css::value_tokens::split_top(&t);
                 let lens: Vec<DecorLen> =
                     words.iter().filter_map(|w| parse_decor_inset(w)).collect();
                 if lens.len() != words.len() || lens.is_empty() || lens.len() > 2 {

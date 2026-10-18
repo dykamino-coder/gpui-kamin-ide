@@ -84,7 +84,7 @@ pub(super) fn local_image_source<'a>(
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
-        .or_else(|| crate::paint::background::filter_image::parse(src).map(|_| src))
+        .or_else(|| crate::paint::background::filter_image::parse_filter_image(src).map(|_| src))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
     let key = crate::paint::background::key(local.unwrap_or(src), &e.style);
     let own = crate::paint::background::source(&key).and_then(|s| match s {
@@ -103,7 +103,7 @@ pub(super) fn local_image_source<'a>(
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
     let mut d = d;
     if !wants_pipe
-        && crate::paint::background::filter_image::parse(src).is_none()
+        && crate::paint::background::filter_image::parse_filter_image(src).is_none()
         && let Some(image) = super::grid_measured::measured(e, local.unwrap_or(src), &mut d)
     {
         return Err(image);

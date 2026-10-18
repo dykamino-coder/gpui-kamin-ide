@@ -6,10 +6,10 @@ use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
 
 pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
-    // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура — SVG-
+    // Рамка `border-shape` (css-borders-4 §border-shape): одна фигура —
     // обводка толщиной «relevant side» по центру контура, две — заливка между
     // внешней и внутренней. Квад цвета не получает (`apply::apply_paint`),
-    // полосы разных сторон не рисуются (ниже). Слой — растр `svg::rasterize`
+    // полосы разных сторон не рисуются (ниже). Слой — растр типизированной `Scene`
     // на border-box плюс вынос (`Computed::border_shape_ext`) — тот же
     // контур, что у маски группы (`background::border_shape_path`).
     if let Some(bs) = c.border_shape.clone() {
@@ -36,7 +36,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
         if inset.iter().any(|(_, k)| k.a > 0.0) {
             let (bs, outer_out, inner) = (bs.clone(), outer_out, inner.clone());
             out.push(shape_layer(ext, [t, r, b, l], move |bw, bh, cw, ch| {
-                crate::paint::background::border_shape_shadow_svg(
+                crate::paint::background::border_shape_shadow_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                     stroke,
@@ -55,7 +55,7 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
         // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
             out.push(shape_layer(ext, [t, r, b, l], move |bw, bh, cw, ch| {
-                crate::paint::background::border_shape_ring_svg(
+                crate::paint::background::border_shape_ring_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
                     stroke,
@@ -76,15 +76,15 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>) 
 fn shape_layer(
     ext: [f32; 4],
     [t, r, b, l]: [f32; 4],
-    markup: impl Fn(f32, f32, f32, f32) -> Option<String> + 'static,
+    scene: impl Fn(f32, f32, f32, f32) -> Option<crate::svg::path_scene::Scene> + 'static,
 ) -> gpui::AnyElement {
     gpui::canvas(
         |_, _, _| {},
         move |bounds, _, window, _| {
             let (cw, ch) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let (bw, bh) = (cw - ext[3] - ext[1], ch - ext[0] - ext[2]);
-            if let Some(markup) = markup(bw, bh, cw, ch)
-                && let Some(img) = crate::svg::raster::rasterize(&markup, cw, ch)
+            if let Some(scene) = scene(bw, bh, cw, ch)
+                && let Some(img) = scene.rasterize()
             {
                 let _ = window.paint_image_with_sampling(
                     bounds,

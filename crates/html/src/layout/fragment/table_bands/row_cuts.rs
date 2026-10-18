@@ -47,12 +47,12 @@ pub(super) fn table_row_cuts(
         for cell in &geometry[i].cells {
             let shape = &cell.shape;
             if !cell.expandable {
-                spans.push((i, cell.span, shape.0));
+                spans.push((i, cell.span, shape.height));
                 continue;
             }
-            cuts.extend(shape.3.iter().map(|&(a, b)| (start + a, start + b)));
-            forced.extend(shape.4.iter().map(|&f| start + f));
-            solid.extend(shape.5.iter().map(|&(a, b)| (start + a, start + b)));
+            cuts.extend(shape.cuts.iter().map(|&(a, b)| (start + a, start + b)));
+            forced.extend(shape.forced.iter().map(|&f| start + f));
+            solid.extend(shape.solid.iter().map(|&(a, b)| (start + a, start + b)));
         }
         // css-break-4 §unforced-breaks Rule 1: «may break at a class A break point
         // only if all the 'break-after' and 'break-before' values applicable to

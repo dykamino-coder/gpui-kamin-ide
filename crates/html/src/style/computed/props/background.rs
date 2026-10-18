@@ -85,7 +85,7 @@ impl Computed {
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());
                     }
-                } else if crate::paint::background::filter_image::parse(v).is_some() {
+                } else if crate::style::computed::filter_image::parse_filter_image(v).is_some() {
                     // Filter the rendered image, preserving gradient geometry,
                     // rather than rewriting its stops before interpolation.
                     self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
@@ -127,7 +127,8 @@ impl Computed {
                                 None => img.to_string(),
                             })
                         );
-                    } else if crate::paint::background::filter_image::parse(v).is_some() {
+                    } else if crate::style::computed::filter_image::parse_filter_image(v).is_some()
+                    {
                         // `filter(url(…), …)`: the raster loader filters it.
                         self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
                     }

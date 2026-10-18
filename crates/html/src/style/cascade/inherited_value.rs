@@ -27,7 +27,7 @@ pub(super) fn note(c: &mut Computed, key: &str, value: &str) -> bool {
     false
 }
 
-pub(super) fn resolve(c: &mut Computed, parent: &Computed) {
+pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed) {
     for property in std::mem::take(&mut c.explicit_inherit) {
         property.copy(parent, c);
     }
@@ -43,16 +43,16 @@ pub(crate) fn settle(nodes: &mut [Node]) {
             _ => false,
         })
     }
-    fn walk(nodes: &mut [Node], parent: &Computed) {
+    fn apply_inheritance_to_descendants(nodes: &mut [Node], parent: &Computed) {
         for node in nodes {
             let Node::Element(e) = node else { continue };
-            resolve(&mut e.style, parent);
+            apply_explicit_inheritance(&mut e.style, parent);
             let computed = super::inherit::inherit_unpainted(parent, &e.style);
-            walk(&mut e.children, &computed);
+            apply_inheritance_to_descendants(&mut e.children, &computed);
         }
     }
     if pending(nodes) {
-        walk(nodes, &Computed::default());
+        apply_inheritance_to_descendants(nodes, &Computed::default());
     }
 }
 
@@ -67,11 +67,11 @@ mod tests {
         parent.apply_one("column-width", "100px");
         let mut child = Computed::default();
         child.apply_one("column-width", "inherit");
-        resolve(&mut child, &parent);
+        apply_explicit_inheritance(&mut child, &parent);
         assert_eq!(child.column_width, Some(Len::Px(100.0)));
         child.apply_one("column-width", "inherit");
         child.apply_one("column-width", "auto");
-        resolve(&mut child, &parent);
+        apply_explicit_inheritance(&mut child, &parent);
         assert_eq!(child.column_width, None);
     }
 
@@ -82,7 +82,7 @@ mod tests {
         let mut child = Computed::default();
         child.apply_one("gap", "inherit");
         child.apply_one("row-gap", "30px");
-        resolve(&mut child, &parent);
+        apply_explicit_inheritance(&mut child, &parent);
         assert_eq!(child.gap, Some((Some(Len::Px(30.0)), Some(Len::Px(20.0)))));
     }
 

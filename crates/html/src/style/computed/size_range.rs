@@ -3,7 +3,7 @@
 
 use crate::style::values::value::Len;
 
-pub(super) fn parse(value: &str) -> Option<Len> {
+pub(super) fn parse_nonnegative_size(value: &str) -> Option<Len> {
     let parsed = Len::parse_mixed(value)?;
     let lower = value.trim_start().to_ascii_lowercase();
     let math = ["calc(", "min(", "max(", "clamp("]

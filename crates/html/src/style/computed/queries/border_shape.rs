@@ -93,15 +93,16 @@ impl Computed {
         } else {
             self.border_shape_stroke().0
         };
-        let spike = if stroke > 0.0 && crate::paint::background::shape_is_linear(&bs.outer) {
-            stroke * 5.0
-        } else {
-            0.0
-        };
+        let spike =
+            if stroke > 0.0 && crate::style::computed::shape_kind::shape_is_linear(&bs.outer) {
+                stroke * 5.0
+            } else {
+                0.0
+            };
         let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
         // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
         // и рисуются растром на той же области (`background::
-        // border_shape_shadow_svg`): наружная уходит за border-box на разлёт,
+        // border_shape_shadow_scene`): наружная уходит за border-box на разлёт,
         // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
         // размытия тоже нужен — область фильтра обрезает бросающий
         // прямоугольник, и без запаса край холста просвечивал бы.
@@ -119,7 +120,7 @@ impl Computed {
             }
         }
         // Контур `outline` повторяет фигуру (слой над группой,
-        // `background::border_shape_outline_svg`) — вынос на сдвиг и толщину.
+        // `background::border_shape_outline_scene`) — вынос на сдвиг и толщину.
         if let Some((w, off, _)) = self.shaped_outline() {
             let reach = (off + w).max(0.0) + 1.0;
             for e in &mut ext {

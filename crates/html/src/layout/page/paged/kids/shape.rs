@@ -38,49 +38,58 @@ pub(crate) fn group_shape(
     let shape = match n {
         _ if group.iter().filter(|g| !is_blank(g)).count() > 1 => None,
         Node::Element(e) if !e.inline && !positioned(e) => {
-            shape_full(e, 4, shape_cx).map(|(h, mt, mb, mut cuts, mut forced, mut solid)| {
-                let floated = e.style.float.unwrap_or(0) != 0;
-                // Письмо — своё или унаследованное от корня (`html, body {
-                // writing-mode }` снимаются выше, свой стиль ребёнка его не
-                // несёт).
-                let vertical = e.style.vertical_decl().or(root.vertical_decl()) == Some(true);
-                let fold = pad_top > 0.0 || floated;
-                let lead = if vertical {
-                    pad_top
-                } else if fold {
-                    pad_top + mt
-                } else {
-                    0.0
-                };
-                if lead != 0.0 {
-                    for c in cuts.iter_mut() {
-                        c.0 += lead;
-                        c.1 += lead;
+            shape_full(e, 4, shape_cx).map(
+                |crate::layout::fragment::Shape {
+                     height: h,
+                     margin_top: mt,
+                     margin_bottom: mb,
+                     mut cuts,
+                     mut forced,
+                     mut solid,
+                 }| {
+                    let floated = e.style.float.unwrap_or(0) != 0;
+                    // Письмо — своё или унаследованное от корня (`html, body {
+                    // writing-mode }` снимаются выше, свой стиль ребёнка его не
+                    // несёт).
+                    let vertical = e.style.vertical_decl().or(root.vertical_decl()) == Some(true);
+                    let fold = pad_top > 0.0 || floated;
+                    let lead = if vertical {
+                        pad_top
+                    } else if fold {
+                        pad_top + mt
+                    } else {
+                        0.0
+                    };
+                    if lead != 0.0 {
+                        for c in cuts.iter_mut() {
+                            c.0 += lead;
+                            c.1 += lead;
+                        }
+                        for f in forced.iter_mut() {
+                            *f += lead;
+                        }
+                        for r in solid.iter_mut() {
+                            r.0 += lead;
+                            r.1 += lead;
+                        }
                     }
-                    for f in forced.iter_mut() {
-                        *f += lead;
+                    // Вертикальное письмо: поля меры — по блочной оси письма, не
+                    // по высоте стопки; прежнее поведение (`block-001-wm-vlr/vrl`:
+                    // `margin-inline-start` сверху — 0.40 -> 0.88 с полями).
+                    if vertical {
+                        let h = if floated { h + mb } else { h };
+                        return (h + pad_top, cuts, forced, solid);
                     }
-                    for r in solid.iter_mut() {
-                        r.0 += lead;
-                        r.1 += lead;
+                    if fold {
+                        let tail = if floated { mb } else { 0.0 };
+                        margins = (0.0, if floated { 0.0 } else { mb }, 0.0);
+                        (h + lead + tail, cuts, forced, solid)
+                    } else {
+                        margins = (mt, mb, mt);
+                        (h, cuts, forced, solid)
                     }
-                }
-                // Вертикальное письмо: поля меры — по блочной оси письма, не
-                // по высоте стопки; прежнее поведение (`block-001-wm-vlr/vrl`:
-                // `margin-inline-start` сверху — 0.40 -> 0.88 с полями).
-                if vertical {
-                    let h = if floated { h + mb } else { h };
-                    return (h + pad_top, cuts, forced, solid);
-                }
-                if fold {
-                    let tail = if floated { mb } else { 0.0 };
-                    margins = (0.0, if floated { 0.0 } else { mb }, 0.0);
-                    (h + lead + tail, cuts, forced, solid)
-                } else {
-                    margins = (mt, mb, mt);
-                    (h, cuts, forced, solid)
-                }
-            })
+                },
+            )
         }
         _ => None,
     };

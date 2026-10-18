@@ -14,7 +14,7 @@ pub(super) fn math(raw: &str) -> Option<String> {
         return None;
     }
     let typed = lengths(raw, 16.0, 16.0, 8.0, 8.0, 16.0);
-    resolve(&typed, 1.0).map(|_| raw.to_string())
+    resolve_position_math(&typed, 1.0).map(|_| raw.to_string())
 }
 
 pub(super) fn capture(raw: &str) -> [Option<String>; 2] {
@@ -71,7 +71,7 @@ pub(super) fn capture(raw: &str) -> [Option<String>; 2] {
 /// Resolve every percentage to a length BEFORE evaluating min/max/clamp.
 /// This keeps the existing arithmetic parser and dimensional type checks,
 /// without changing comparison simplification for other CSS properties.
-pub(super) fn resolve(raw: &str, basis: f32) -> Option<f32> {
+pub(super) fn resolve_position_math(raw: &str, basis: f32) -> Option<f32> {
     let bytes = raw.as_bytes();
     let mut normalized = String::with_capacity(raw.len());
     let mut i = 0;

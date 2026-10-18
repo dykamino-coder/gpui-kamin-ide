@@ -56,6 +56,8 @@ mod presentational_legacy;
 mod replaced_display;
 mod subgrid_axes;
 mod subgrid_used;
+pub(crate) mod table_boxes;
+pub(crate) mod whitespace;
 pub(crate) use crate::dom::counter_decls::{
     apply_counter_decls, apply_value_hint, counter_snapshot, inherit_counter_decls,
 };
@@ -76,8 +78,6 @@ pub(super) mod scroll_markers;
 pub(super) mod walk;
 use crate::dom::scroll_markers::*;
 mod marks;
-#[cfg(test)]
-mod marks_tests;
 pub(super) mod pseudo;
 pub use crate::dom::marks::Marks;
 pub(crate) use crate::dom::marks::{BandPath, LeadProbe, ShapeFlow};

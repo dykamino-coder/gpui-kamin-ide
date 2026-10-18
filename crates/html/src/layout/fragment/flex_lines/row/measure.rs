@@ -64,9 +64,17 @@ pub(crate) fn measure_rows(
         let mut row_solids = Vec::new();
         for item in &row.items {
             let s = &item.shape;
-            row_cuts.extend(s.3.iter().map(|&(a, b)| (s.1 + a, s.1 + b)));
-            row_forces.extend(s.4.iter().map(|&a| s.1 + a));
-            row_solids.extend(s.5.iter().map(|&(a, b)| (s.1 + a, s.1 + b)));
+            row_cuts.extend(
+                s.cuts
+                    .iter()
+                    .map(|&(a, b)| (s.margin_top + a, s.margin_top + b)),
+            );
+            row_forces.extend(s.forced.iter().map(|&a| s.margin_top + a));
+            row_solids.extend(
+                s.solid
+                    .iter()
+                    .map(|&(a, b)| (s.margin_top + a, s.margin_top + b)),
+            );
         }
         inner.push((
             row.height,

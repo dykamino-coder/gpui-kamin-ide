@@ -127,7 +127,7 @@ pub(super) fn flex_row_lines_of(
             }
         }
     }
-    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.4.is_empty())) {
+    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.forced.is_empty())) {
         return None;
     }
     shape_flex_lines(row_gap, side, &mut lines)?;

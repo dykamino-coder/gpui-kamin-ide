@@ -1,6 +1,7 @@
 //! Покраска и эффекты.
 // owner: coordinator
 
+pub mod apply;
 pub mod background;
 pub mod border_image;
 pub mod decorations;

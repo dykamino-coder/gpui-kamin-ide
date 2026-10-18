@@ -54,7 +54,7 @@ fn descend(parent: &mut crate::dom::Element, vertical: bool) {
     if item_parent
         || child_vertical != vertical
         || !block_like(child)
-        || crate::render::own_context_style(&child.style)
+        || crate::style::computed::formatting_context::own_context_style(&child.style)
         || child.style.float.is_some_and(|f| f != 0)
     {
         return;

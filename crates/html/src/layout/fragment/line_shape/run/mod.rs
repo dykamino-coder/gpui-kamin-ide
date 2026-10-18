@@ -160,5 +160,12 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
         h
     };
     solid.push((from, last_end));
-    Some((h, mt, mb, cuts, Vec::new(), solid))
+    Some(crate::layout::fragment::Shape {
+        height: h,
+        margin_top: mt,
+        margin_bottom: mb,
+        cuts,
+        forced: Vec::new(),
+        solid,
+    })
 }

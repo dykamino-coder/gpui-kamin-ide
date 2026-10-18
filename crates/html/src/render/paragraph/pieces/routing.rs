@@ -2,8 +2,8 @@
 
 use super::native_paragraph;
 use crate::layout::writing_mode::upright_in_mixed;
+use crate::paint::apply::apply;
 use crate::render::*;
-use crate::style::apply::apply;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;

@@ -34,7 +34,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
     // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
     // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
-    let own = shape_full(e, 4, cx).map(|s| s.0).unwrap_or_else(|| {
+    let own = shape_full(e, 4, cx).map(|s| s.height).unwrap_or_else(|| {
         if e.children.iter().all(is_blank) {
             0.0
         } else {
@@ -54,7 +54,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
             .iter()
             .filter_map(|n| match n {
                 Node::Element(k) if !k.inline && !out_of_flow(&k.style) => {
-                    shape_full(k, 3, cx).map(|s| s.0 + s.1 + s.2)
+                    shape_full(k, 3, cx).map(|s| s.height + s.margin_top + s.margin_bottom)
                 }
                 _ => None,
             })

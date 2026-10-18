@@ -34,9 +34,8 @@ mod row_element;
 /// верхнее поле, мера `shape_full`, годны ли его внутренние точки сетке.
 type GridSpot = (usize, usize, f32, Shape, bool);
 
-/// То же плюс смещения принудительных разрывов и диапазоны
-/// монолитов внутри.
-pub(crate) type Shape = (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
+mod shape;
+pub(crate) use shape::Shape;
 
 /// Условия меры: `paged` — стопка страниц (монолитом считается и
 /// `contain: size`, см. `solid_box`); `viewport` — размер области просмотра
@@ -112,7 +111,7 @@ pub(crate) fn with_lines<T>(
     opts: &RenderOpts,
     f: impl FnOnce() -> T,
 ) -> T {
-    let prev = LINE_CX.with(|l| {
+    let _scope = LineContextScope(LINE_CX.with(|l| {
         l.borrow_mut().replace(LineCx {
             opts: opts.clone(),
             frames: vec![LineFrame {
@@ -122,10 +121,16 @@ pub(crate) fn with_lines<T>(
                 items: 0,
             }],
         })
-    });
-    let out = f();
-    LINE_CX.with(|l| *l.borrow_mut() = prev);
-    out
+    }));
+    f()
+}
+
+struct LineContextScope(Option<LineCx>);
+
+impl Drop for LineContextScope {
+    fn drop(&mut self) {
+        LINE_CX.with(|l| *l.borrow_mut() = self.0.take());
+    }
 }
 
 /// Кадр меры строк на время `shape_full(c)`.
@@ -172,5 +177,42 @@ impl Drop for LineScope {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_context_restores_nested_width_after_unwind() {
+        let opts = RenderOpts {
+            text: gpui::TextStyle::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            doc_salt: 0,
+            frag: Default::default(),
+        };
+        let base = Computed::default();
+        assert!(LINE_CX.with(|l| l.borrow().is_none()));
+        with_lines(&base, Some(120.0), &opts, || {
+            assert!(
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    with_lines(&base, Some(60.0), &opts, || {
+                        assert_eq!(
+                            LINE_CX.with(|l| l.borrow().as_ref().unwrap().frames[0].w),
+                            Some(60.0)
+                        );
+                        panic!("measurement failed");
+                    });
+                }))
+                .is_err()
+            );
+            assert_eq!(
+                LINE_CX.with(|l| l.borrow().as_ref().unwrap().frames[0].w),
+                Some(120.0)
+            );
+        });
+        assert!(LINE_CX.with(|l| l.borrow().is_none()));
     }
 }

@@ -81,7 +81,7 @@ pub fn source(src: &str) -> Option<Source> {
                         raw: color_image(color),
                     })
             })
-    } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
+    } else if let Some((url, list)) = super::filter_image::parse_filter_image(src_plain) {
         // Filter Effects 1 §13 `filter()`: the filtered raster is its own
         // image, keyed by the whole function so each list caches apart.
         let key = if orient {
@@ -160,7 +160,7 @@ fn load_url(src: &str, orient: bool) -> Option<Source> {
     };
     read_bytes(path)
         .map(|b| match view {
-            Some(id) => svg_fragment::resolve(b, id),
+            Some(id) => svg_fragment::rewrite_svg_fragment(b, id),
             None => b,
         })
         .as_deref()
@@ -168,5 +168,43 @@ fn load_url(src: &str, orient: bool) -> Option<Source> {
 }
 
 #[cfg(test)]
-#[path = "image_tests.rs"]
-mod tests;
+mod tests {
+    //! URL decoding takes precedence over a dimensionless image() color fallback.
+
+    use super::{Source, key, source};
+    use crate::style::{computed::Computed, values::value::Color};
+
+    #[test]
+    fn decode_url_before_using_fallback() {
+        let image = source("image('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%222%22 height=%223%22/%3E', red)").unwrap();
+        assert!(matches!(image, Source::Vector { .. }));
+        let size = image.intrinsic();
+        assert_eq!((size.w, size.h), (Some(2.0), Some(3.0)));
+        for url in [
+            "data:text/plain,not-an-image",
+            "missing-image-fallback-unit.png",
+        ] {
+            let image = source(&format!("image('{url}', green)")).unwrap();
+            assert!(matches!(image, Source::Gradient { .. }));
+            let size = image.intrinsic();
+            assert_eq!((size.w, size.h, size.ratio), (None, None, None));
+            assert!(source(&format!("image('{url}')")).is_none());
+        }
+    }
+
+    #[test]
+    fn fallback_current_color_resolves_after_inheritance_with_alpha() {
+        let c = Computed {
+            color: Color::parse("rgba(0, 128, 0, 0.5)"),
+            ..Computed::default()
+        };
+        let src = key("image('data:text/plain,invalid', currentColor)", &c);
+        let Some(Source::Gradient { raw }) = source(&src) else {
+            panic!("fallback missing")
+        };
+        assert_eq!(
+            crate::style::computed::parse_image_color(&raw).and_then(Color::parse),
+            c.color
+        );
+    }
+}

@@ -29,6 +29,7 @@ pub(super) fn blocks_flow(
     below_run_start: usize,
     below_zs: Vec<i32>,
 ) -> Vec<AnyElement> {
+    let mut late_layer = crate::layout::positioned::layer_scope::LayerScope::late();
     // Запросы среза строк (`text::line_trim`): свой контейнер адресует их
     // владельцам строк до раскладки детей, а сам забирает адресованные ему.
     let trim_req = trim::register(nodes, inherited, opts, ordered_context);
@@ -88,8 +89,8 @@ pub(super) fn blocks_flow(
                     | Some(crate::style::computed::Position::Sticky)
             )
         {
-            out.extend(crate::layout::positioned::containing_block::late_close());
-            crate::layout::positioned::containing_block::late_open();
+            out.extend(late_layer.finish());
+            late_layer = crate::layout::positioned::layer_scope::LayerScope::late();
         }
         if let Node::Element(e) = n {
             // Отложенный offset-трансформ абсолюта в начальном содержащем
@@ -137,7 +138,7 @@ pub(super) fn blocks_flow(
     trim::release(trim_req);
     // Верхний слой: то, что обязано рисоваться поверх соседей, идёт последним
     // и возвращается на своё место замеренным сдвигом.
-    out.extend(crate::layout::positioned::containing_block::late_close());
+    out.extend(late_layer.finish());
     containment_paint::collect(out, inherited)
 }
 

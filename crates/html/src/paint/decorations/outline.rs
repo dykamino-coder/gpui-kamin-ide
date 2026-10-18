@@ -80,7 +80,7 @@ pub(super) fn decorations(c: &Computed) -> Vec<AnyElement> {
             // Угол контура повторяет угол коробки, раздвинутый сдвигом и
             // толщиной (css-ui-4 §outline): доля решается так же, как у
             // рамки, — прежде она читалась нулём (`outline-005`).
-            let corner = crate::style::apply::radius_px(c, c.radius.tl)
+            let corner = crate::paint::apply::radius_px(c, c.radius.tl)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
             // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1
