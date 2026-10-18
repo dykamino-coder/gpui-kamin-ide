@@ -2,9 +2,6 @@
 
 use super::*;
 
-/// Разбор внутренности атрибутного условия: `name`, `name=value`,
-/// `name~="v" i` и родня. Кавычки значения снимаются, ` i` в хвосте —
-/// регистронезависимость.
 /// Известно ли имя псевдокласса или псевдоэлемента.
 ///
 /// Перечень закрытый: по Selectors §3.1 неизвестное имя роняет весь список
@@ -12,6 +9,22 @@ use super::*;
 /// иначе правило с ним пропало бы целиком.
 pub(super) fn known_pseudo(name: &str) -> bool {
     let head = name.split_once('(').map_or(name, |(h, _)| h);
+    match head {
+        // CSS Forms §3.1: the picker name is a nonempty list of control identifiers.
+        "picker" => {
+            return name
+                .strip_prefix("picker(")
+                .and_then(|s| s.strip_suffix(')'))
+                .is_some_and(|args| {
+                    selector_tokens::ident_list(args).is_some_and(|args| {
+                        !args.is_empty()
+                            && args.iter().all(|arg| arg.eq_ignore_ascii_case("select"))
+                    })
+                });
+        }
+        "picker-icon" | "-webkit-slider-thumb" | "details-content" => return name == head,
+        _ => {}
+    }
     is_pseudo_element(head)
         || matches!(
             head,
@@ -75,7 +88,7 @@ pub(super) fn known_pseudo(name: &str) -> bool {
         )
 }
 
-/// ПсевдоЭЛЕМЕНТ (а не псевдокласс): после него составная часть кончается.
+/// Псевдоэлемент, включая функциональные формы.
 /// Имя может нести аргумент (`scroll-button(block-end)`) — сравнивается голова.
 pub(super) fn is_pseudo_element(name: &str) -> bool {
     let head = name.split_once('(').map_or(name, |(h, _)| h);
@@ -91,6 +104,9 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
             | "selection"
             | "backdrop"
             | "file-selector-button"
+            | "picker"
+            | "picker-icon"
+            | "-webkit-slider-thumb"
             | "-webkit-scrollbar"
             // css-overflow-5: коробки собирает `dom.rs::scroll_marker_pass`.
             | "scroll-marker"
@@ -99,6 +115,11 @@ pub(super) fn is_pseudo_element(name: &str) -> bool {
             // HTML §15.5.4: the `<details>` slot box, `dom::walk::details_content`.
             | "details-content"
     )
+}
+
+/// CSS Pseudo §5: element-backed pseudo-elements admit further pseudos.
+pub(super) fn is_element_backed(name: &str) -> bool {
+    matches!(name, "details-content" | "file-selector-button")
 }
 
 /// Список селекторов через запятую вне скобок - для `of S` и `:has()`.
