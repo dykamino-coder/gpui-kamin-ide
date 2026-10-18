@@ -77,7 +77,7 @@ fn build_dom_node(
                 handle,
                 &tag,
                 &attrs,
-                content::html_attributes(&name.ns),
+                content::html_attributes(&name.ns, tree.xhtml),
                 spot,
                 sibs,
                 tree,

@@ -136,7 +136,7 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Optio
         content_style: None,
         content_none: None,
         tag: local_name(&name.local),
-        html_attrs: content::html_attributes(&name.ns),
+        html_attrs: content::html_attributes(&name.ns, tree.xhtml),
         id: find("id"),
         classes: find("class")
             .map(|v| v.split_whitespace().map(str::to_string).collect())

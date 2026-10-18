@@ -60,7 +60,6 @@ pub(super) fn border_shape_layer(c: &Computed, out: &mut Vec<gpui::AnyElement>, 
         // При обрезке переполнения кольцо уходит НАД буфер группы
         // (`grouped` → `Grouped::over`): здесь оно легло бы под детей.
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 && !c.border_shape_clips() {
-            let values = values.clone();
             out.push(shape_layer(ext, [t, r, b, l], move |bw, bh, cw, ch| {
                 let vcx = values.vcx();
                 crate::paint::background::border_shape_ring_scene(
