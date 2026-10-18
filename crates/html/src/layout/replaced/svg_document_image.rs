@@ -10,7 +10,7 @@
 
 use crate::dom::Element;
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
-use crate::render::{RenderOpts, blocks, styled_div};
+use crate::render::{RenderOpts, styled_div};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -52,20 +52,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
     );
-    let scope = embedded.state.enter_frame();
-    let nodes = embedded.nodes;
-    let mut sub = opts.clone();
-    sub.viewport = (w, h);
-    sub.doc_salt = embedded.salt;
-    IFRAME_DEPTH.with(|d| d.set(d.get() + 1));
-    crate::layout::positioned::containing_block::icb_open();
-    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(crate::layout::positioned::containing_block::icb_close());
-    IFRAME_DEPTH.with(|d| d.set(d.get() - 1));
-    drop(scope);
-    let kids = kids
-        .into_iter()
-        .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k));
+    let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(
         styled_div(e)
             .w(px(w))
