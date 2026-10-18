@@ -66,7 +66,7 @@ pub(crate) fn atom_line_align(
                 // ради него значило вести тест рядом, а эталон строкой
                 // (`baseline-with-orthogonal-flow-001`).
                 let floated = k.style.float.is_some_and(|f| f != 0);
-                (k.style.vertical.is_some() && !sized_by_parent && floated)
+                (k.style.writing_mode.is_some() && !sized_by_parent && floated)
                     || has_vertical(&k.children, box_layout(&k.style))
             }
             _ => false,
@@ -86,10 +86,10 @@ pub(crate) fn atom_line_align(
     // baseline. Обратная ортогональность требует адаптера повёрнутой строки:
     // обычный атом и text-combine там пока идут общим прежним путём.
     let orthogonal_block = st.display == Some(Display::InlineBlock)
-        && st.vertical == Some(true)
-        && inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true);
-    if (st.vertical.is_some() && !box_layout(st) && !orthogonal_block)
+        && st.wm().vertical()
+        && !inherited.wm().vertical()
+        && !inherited.wm().turned();
+    if (st.writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {
         return None;

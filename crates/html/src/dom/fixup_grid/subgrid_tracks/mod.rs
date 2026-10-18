@@ -104,8 +104,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // написано `subgrid`: своя ось подсетки остаётся своей
                     // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
                     // `repeat(2, 1fr)` — прежний откат с сырой долей давал 99.00).
-                    let parallel =
-                        child.style.vertical.unwrap_or(false) == el.style.vertical.unwrap_or(false);
+                    let parallel = child.style.wm().vertical() == el.style.wm().vertical();
                     if !subgrid_axes::linked(&el.style, &child.style, row_dir)
                         || (from_fr && !parallel)
                     {

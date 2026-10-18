@@ -22,7 +22,7 @@ pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> 
     // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
     // ортогональный: его внутренний поток идёт по другой оси, и полей
     // на этой границе не отдаёт (available-size-020..023).
-    if e.style.vertical == Some(false) {
+    if e.style.vertical_decl() == Some(false) {
         return own;
     }
     let b = e.style.borders();
@@ -56,7 +56,7 @@ pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> 
     // an earlier sibling's end margin the parent's and dropped it from
     // between the two (`available-size-020`: an orthogonal `article` after a
     // `p` lost the `p`'s block-end margin).
-    .filter(|c| c.style.vertical.is_none() && c.style.vertical_rl.is_none());
+    .filter(|c| c.style.writing_mode.is_none() && c.style.flow_mode().is_none());
     match edge_child {
         Some(c) => {
             let inner = absorb_margin(c, tail_side, reverse);
@@ -114,8 +114,8 @@ pub(crate) fn collapses_through(e: &Element) -> bool {
     };
     let b = e.style.borders();
     e.style.display.is_none()
-        && e.style.vertical.is_none()
-        && e.style.vertical_rl.is_none()
+        && e.style.writing_mode.is_none()
+        && e.style.flow_mode().is_none()
         && !matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)

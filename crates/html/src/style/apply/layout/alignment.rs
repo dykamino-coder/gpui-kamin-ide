@@ -84,8 +84,8 @@ pub(super) fn layout_alignment(
         // Только горизонтальное письмо: в вертикальном оси уже переставлены
         // поворотом, и `left/right` там держит прежний путь (★ ЗАМЕРЕНО:
         // без этой отсечки `flexbox-justify-content-wmvert-001` 0.00 -> 1.12).
-        let main_vertical =
-            c.vertical.is_none() && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
+        let main_vertical = c.writing_mode.is_none()
+            && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
         let j = match j {
             // Не вдоль строчной оси — `start` ПИСЬМА, а не `flex-start`: у
             // `column-reverse` они смотрят в разные стороны, а спека требует

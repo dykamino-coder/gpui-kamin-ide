@@ -114,9 +114,8 @@ pub(super) fn prepare_cell_box(
         table_is_vertical,
         spans_collapsed,
     );
-    let orthogonal_inline = cell.style.vertical == Some(true)
-        && e.style.vertical != Some(true)
-        && cell.style.width_from_inline;
+    let orthogonal_inline =
+        cell.style.wm().vertical() && !e.style.wm().vertical() && cell.style.width_from_inline;
     if !table_is_vertical
         && !orthogonal_inline
         // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
@@ -137,8 +136,8 @@ pub(super) fn prepare_cell_box(
     // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
     // её width — логический inline-size, он ниже перекладывается в
     // высоту.
-    if !(cell.style.vertical == Some(true)
-        && e.style.vertical != Some(true)
+    if !(cell.style.wm().vertical()
+        && !e.style.wm().vertical()
         && cell.style.width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).

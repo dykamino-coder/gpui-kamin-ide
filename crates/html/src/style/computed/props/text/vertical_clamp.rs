@@ -199,17 +199,14 @@ impl Computed {
             }
             "text-orientation" => {
                 self.accept_declaration();
-                self.upright = Some(v == "upright");
-                self.text_sideways = Some(v == "sideways" || v == "sideways-right");
+                self.text_orientation =
+                    Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
             }
             "writing-mode" => {
                 self.accept_declaration();
-                // `sideways-*` отличается от `vertical-*` только поворотом
-                // глифов, а направление потока у них общее.
-                let vertical = v.starts_with("vertical") || v.starts_with("sideways");
-                self.vertical = Some(vertical);
-                self.vertical_rl = Some(vertical && v.ends_with("rl"));
-                self.sideways = Some(v.starts_with("sideways"));
+                self.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::parse(v),
+                );
             }
             "text-combine-upright" => {
                 let mut it = v.split_whitespace();

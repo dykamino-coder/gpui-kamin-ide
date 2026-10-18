@@ -35,7 +35,7 @@ pub(crate) fn physical(
     // writing mode, including an explicitly orthogonal mode. Only the
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
     if !HAS_TEXT_TURN.with(|cell| cell.get())
-        || flow.rotated_line != Some(true)
+        || !flow.wm().turned()
         || e.style.inline_display == Some(true)
         || !(matches!(
             e.style.display,
@@ -57,8 +57,12 @@ pub(crate) fn physical(
         return None;
     }
     let mut context = flow.clone();
-    context.vertical = Some(true);
-    context.rotated_line = None;
+    context.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+        true,
+        context.wm().block_rl(),
+        context.wm().sideways(),
+    ));
+    context.turned_line = false;
     context.lines_reversed = None;
     context.para_vertical = None;
     let mut child =
@@ -73,8 +77,8 @@ pub(crate) fn physical(
         child.style.inset = Default::default();
     }
     let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
-    let central = flow.sideways != Some(true) && flow.text_sideways != Some(true);
-    let ccw = crate::style::computed::writing_mode::WritingMode::of_line(flow).line_turn()
+    let central = !flow.wm().alphabetic_baseline();
+    let ccw = flow.wm().line().line_turn()
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = crate::render::element(&child, &context, opts);
     let mut wrapper =

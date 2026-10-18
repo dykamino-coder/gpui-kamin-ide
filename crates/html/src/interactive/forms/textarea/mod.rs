@@ -65,7 +65,7 @@ fn natural(e: &Element, c: &Computed) -> [f32; 2] {
         .unwrap_or_else(|| {
             crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font)
         });
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let gutter = gutters(c);
     let inline = (positive(e.attr("cols"), 20) as f32 * ch).ceil()
         + if vertical { gutter[1] } else { gutter[0] };
@@ -89,7 +89,7 @@ fn gutters(c: &Computed) -> [f32; 2] {
     };
     // The block-axis auto scrollbar contributes to the inline natural size;
     // the inline-axis scrollbar contributes only when always requested.
-    if c.vertical == Some(true) {
+    if c.wm().vertical() {
         [
             if c.overflow_y == Some(Overflow::Scroll) && c.scroll.forced[1] {
                 c.scroll.thickness()

@@ -44,7 +44,7 @@ pub(super) fn flex_row_lines_of(
     let s = &c.style;
     if !plain_container(c)
         || !matches!(s.flex_dir, None | Some(FlexDir::Row))
-        || s.rtl == Some(true)
+        || s.wm().rtl()
         || !matches!(s.height, None | Some(Len::Auto))
         || s.background.is_some()
         || s.bg_image.is_some()

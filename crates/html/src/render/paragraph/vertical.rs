@@ -31,19 +31,20 @@ pub(crate) fn vertical_paragraph(
     // стопка обязана строиться так же, как при флаге на контейнере.
     let kids_upright = !nodes.is_empty()
         && nodes.iter().all(|n| match n {
-            Node::Element(e) => e.style.upright == Some(true),
+            Node::Element(e) => e.style.wm().upright(),
             Node::Text(t) => t.trim().is_empty(),
         });
-    let upright = (inherited.upright == Some(true) || kids_upright)
-        && !upright::only_mixed_text(nodes, inherited);
-    if upright && inherited.sideways != Some(true) {
+    let upright =
+        (inherited.wm().upright() || kids_upright) && !upright::only_mixed_text(nodes, inherited);
+    if upright && !inherited.wm().sideways() {
         return upright_paragraph(nodes, inherited, opts);
     }
     let mut horizontal = inherited.clone();
-    horizontal.vertical = None;
+    horizontal.flat_mode = horizontal.flow_mode();
+    horizontal.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого
     // абзаца нужен контр-поворот (см. atom-ветку ниже).
-    horizontal.rotated_line = Some(true);
+    horizontal.turned_line = true;
     // `vertical-lr`: колонки идут слева направо — строки подаются снизу
     // вверх, чтобы после поворота ПО ЧАСОВОЙ первая оказалась левой (у
     // vertical-rl порядок родной: первая строка правой колонкой).
@@ -74,7 +75,7 @@ pub(crate) fn vertical_paragraph(
         // The row sits at the box's inline-start, which is the BOTTOM for
         // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical
         // Mapping: `wm-propagation-body-035`, `overconstrained-rel-pos-rtl-*`).
-        let from_bottom = ccw_line != (inherited.rtl == Some(true));
+        let from_bottom = ccw_line != (inherited.wm().rtl());
         if from_bottom && nodes.iter().any(|n| matches!(n, Node::Element(_))) {
             return div()
                 .flex()
@@ -90,7 +91,7 @@ pub(crate) fn vertical_paragraph(
     // (`VerticalText::prepaint`), not at a fixed fallback width.
     let atom_line = plain.trim().is_empty() && !plain.contains('\u{a0}');
     let mut flow = horizontal.clone();
-    flow.para_vertical = Some(inherited.vertical_rl == Some(true));
+    flow.para_vertical = Some(inherited.wm().block_rl());
     let fallback = inherited.ortho_limit.unwrap_or(opts.viewport.1);
     flow.ortho_limit = Some(fallback);
     flow.orthogonal_inline = native_vertical::constraint(inherited, fallback);
@@ -168,7 +169,7 @@ pub(crate) fn vertical_paragraph(
         Some(Len::Pct(k)) | Some(Len::Em(k)) => Some(px(k * em)),
         _ => None,
     };
-    let central = inherited.sideways != Some(true) && inherited.text_sideways != Some(true);
+    let central = !inherited.wm().alphabetic_baseline();
     let vt = crate::text::vertical::VerticalText::new(inner)
         .counter_clockwise(ccw_line)
         .lines_left_first(wm.lines_reversed())
@@ -216,7 +217,7 @@ fn turned_atom_line(nodes: &[Node], style: &Computed) -> bool {
         .iter()
         .filter(|n| matches!(n, Node::Element(_)))
         .count();
-    let wm = crate::style::computed::writing_mode::WritingMode::containing_block(style);
+    let wm = style.cb_wm;
     let parallel = !style.wm().is_orthogonal_to(wm);
     atoms >= 2
         && (parallel

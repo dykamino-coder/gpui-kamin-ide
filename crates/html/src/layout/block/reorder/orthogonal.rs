@@ -13,7 +13,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// раскладка сама.
 pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
     let has_vertical = children.iter().any(|n| match n {
-        Node::Element(ch) => !ch.inline && ch.style.vertical == Some(true),
+        Node::Element(ch) => !ch.inline && ch.style.wm().vertical(),
         _ => false,
     });
     if !has_vertical {
@@ -22,7 +22,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
     let mut out = children;
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || ch.style.vertical != Some(true) {
+        if ch.inline || !ch.style.wm().vertical() {
             continue;
         }
         if !in_flow(&ch.style) {
@@ -48,7 +48,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // его уважают; для корня с ФОНОМ-КАРТИНКОЙ якорь ранее гасил
         // canvas-слой — тем страницам якорь не ставится (замерено).
         if matches!(ch.tag.as_str(), "html" | "body")
-            && ch.style.vertical_rl == Some(true)
+            && ch.style.wm().block_rl()
             && ch.style.align_self.is_none()
             && ch.style.bg_image.is_none()
         {

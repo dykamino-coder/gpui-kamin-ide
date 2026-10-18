@@ -46,7 +46,7 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
     }
     let clip = Clip::new(c);
     let snap = c.snap;
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
     Some(
         super::exact_probe::ExactProbe::new(move |b: Bounds<Pixels>, _snapped: Bounds<Pixels>| {

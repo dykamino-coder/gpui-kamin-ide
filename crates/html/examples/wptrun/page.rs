@@ -83,11 +83,8 @@ impl Render for Page {
                     _ => None,
                 })
                 .map(|e| {
-                    (
-                        e.style.vertical == Some(true),
-                        e.style.vertical_rl == Some(true),
-                        e.style.rtl == Some(true),
-                    )
+                    let wm = e.style.wm();
+                    (wm.vertical(), wm.block_rl(), wm.rtl())
                 })
                 .unwrap_or((false, false, false));
             let rtl = root_wm.2;
@@ -118,6 +115,7 @@ impl Render for Page {
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
+            frag: Default::default(),
         };
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся

@@ -21,7 +21,7 @@ pub(super) fn table_shape_bands(
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    if depth == 0 || c.style.vertical == Some(true) || c.style.border_collapse == Some(true) {
+    if depth == 0 || c.style.wm().vertical() || c.style.border_collapse == Some(true) {
         return None;
     }
     // Заданная высота таблицы БОЛЬШЕ не повод отказаться от меры: она просто

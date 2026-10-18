@@ -262,17 +262,6 @@ pub struct Computed {
     pub(crate) height_inherit: bool,
     /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
     pub(crate) minmax_inherit: [bool; 4],
-    /// Сторона письма СОДЕРЖАЩЕГО БЛОКА: избыточный край выбирается по ней,
-    /// а не по своей (§9.4.3). Ставится при наследовании.
-    pub(crate) cb_rtl: bool,
-    /// Письмо СОДЕРЖАЩЕГО БЛОКА: вертикальное ли (в том числе повёрнутый
-    /// абзац, чей стиль собран горизонтальным клоном с `rotated_line`), идут ли
-    /// блоки справа налево, `sideways-*` ли. По ним у переопределённой оси
-    /// абсолюта выбирается отбрасываемый край (css-writing-modes-4 §7.1).
-    /// Ставится при наследовании, как `cb_rtl`.
-    pub(crate) cb_vertical: bool,
-    pub(crate) cb_vertical_rl: bool,
-    pub(crate) cb_sideways: bool,
     /// top/right/bottom/left.
     pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
@@ -864,19 +853,9 @@ pub struct Computed {
     /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
     /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
     pub clear: Option<i8>,
-    /// `writing-mode`: вертикальное письмо — блоки идут по горизонтали.
-    pub vertical: Option<bool>,
-    /// `writing-mode: vertical-rl` — блоки идут справа налево.
-    pub vertical_rl: Option<bool>,
-    /// `writing-mode: sideways-*`: глифы повёрнуты, а у `sideways-lr` строка
-    /// идёт СНИЗУ вверх — содержимое прижимается к нижнему краю.
-    pub sideways: Option<bool>,
     /// `text-combine-upright`: сколько знаков сжимается в один кегль
     /// (0 — `all`, 2..=4 — `digits N`). Наследуется.
     pub combine_upright: Option<u8>,
-    /// Служебное: абзац собран для ПОВЁРНУТОЙ отрисовки вертикального
-    /// письма — местам с `text-combine-upright` нужен контр-поворот.
-    pub rotated_line: Option<bool>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -957,16 +936,6 @@ pub struct Computed {
     /// `rel_shift` на элементе, чьи подложка и рамка (`inline_bg`,
     /// `inline_border`) у куска: коробка предка едет только его сдвигом.
     pub box_shift: Option<(f32, f32)>,
-    /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
-    /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
-    /// вертикальном письме вертикальна, то есть равна кеглю.
-    pub upright: Option<bool>,
-    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
-    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
-    /// «In vertical typographic mode, the central baseline is used as the
-    /// dominant baseline when text-orientation is mixed or upright»).
-    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
-    pub text_sideways: Option<bool>,
     /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
     /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
     /// переставляются оси выравнивания вертикальной сетки и пишутся биты
@@ -1607,4 +1576,21 @@ pub struct Computed {
     pub svg_geometry: Vec<(&'static str, String)>,
     /// Parse-time acceptance, armed only for a capability query.
     pub(crate) declaration_parse: super::ParseResult,
+    /// `writing-mode` (css-writing-modes-4 §3.1): declared on the own style, inherited in
+    /// the merged one; `None` = not declared. Read through `Computed::wm()`.
+    pub(crate) writing_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: the vertical mode whose lines this horizontal clone typesets laid
+    /// flat (turned paragraph, upright stack). Inherited; read through `Computed::wm()`.
+    pub(crate) flat_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
+    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
+    pub(crate) turned_line: bool,
+    /// The writing mode of the containing block (the parent's line mode: a turned
+    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
+    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
+    pub(crate) cb_wm: super::writing_mode::WritingMode,
+    /// `text-orientation` (css-writing-modes-4 §5.1); `None` = not declared. `upright` also
+    /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
+    /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
+    pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
 }

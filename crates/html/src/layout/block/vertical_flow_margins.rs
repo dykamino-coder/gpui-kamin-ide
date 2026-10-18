@@ -67,7 +67,9 @@ mod tests {
             for reverse in [false, true] {
                 let parent = Computed {
                     display: Some(display),
-                    vertical: Some(true),
+                    writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                        true, false, false,
+                    )),
                     ..Computed::default()
                 };
                 for node in children(items(), &parent, reverse, Some(0.0)) {
@@ -84,7 +86,9 @@ mod tests {
     #[test]
     fn ordinary_vertical_blocks_still_collapse_adjacent_positive_margins() {
         let parent = Computed {
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         let result = children(items(), &parent, false, None);

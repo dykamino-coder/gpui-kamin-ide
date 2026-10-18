@@ -20,7 +20,11 @@ use gpui::AnyElement;
 
 /// Блочный элемент.
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    crate::layout::fragment::paginate::watch::wrap(e.node_id, element_inner(e, inherited, opts))
+    crate::layout::fragment::paginate::watch::wrap(
+        e.node_id,
+        element_inner(e, inherited, opts),
+        opts,
+    )
 }
 
 fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
@@ -31,8 +35,9 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
     let e = media_sized.as_ref().unwrap_or(e);
-    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`flow::OUTER_ROW`).
-    let outer_row = crate::layout::fragment::types::take_outer_row();
+    // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
+    let (outer_row, inner_opts) = opts.take_outer_row();
+    let opts = inner_opts.as_ref().unwrap_or(opts);
     let mut merged = inherit(inherited, &e.style);
     list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего

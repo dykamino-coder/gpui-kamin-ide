@@ -12,7 +12,7 @@ pub(in crate::style::apply) fn grid_line_names(c: &Computed) -> Option<gpui::Gri
     let mut out = gpui::GridLineNames::default();
     let grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     if grid {
-        let flip = c.vertical == Some(true);
+        let flip = c.wm().vertical();
         let subgrid_ok = !crate::dom::subgrid_inhibited(c);
         let (cols, rows) = (c.grid_col_line_names.clone(), c.grid_row_line_names.clone());
         let (cols_sub, rows_sub) = (c.subgrid_cols && subgrid_ok, c.subgrid_rows && subgrid_ok);

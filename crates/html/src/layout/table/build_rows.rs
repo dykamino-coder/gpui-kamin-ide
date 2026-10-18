@@ -44,7 +44,7 @@ pub(super) fn table_rows_with_bands(
     table_is_vertical: bool,
 ) -> AnyElement {
     let (grp_els, col_els, grp_rects, col_rects, have_rows) =
-        column_bands(e, opts, cols, &mut under, &row_elements);
+        column_bands(e, cols, &mut under, &row_elements);
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
     // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
@@ -62,7 +62,7 @@ pub(super) fn table_rows_with_bands(
         px_of(table_border.bottom),
         px_of(table_border.left),
     ];
-    let table_edges = crate::layout::table::paint::cell_edges_for(e.node_id ^ opts.doc_salt);
+    let table_edges = crate::layout::table::paint::CellEdges::default();
     let collapse_cells = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
     // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
@@ -143,7 +143,6 @@ pub(super) fn table_rows_with_bands(
 #[allow(clippy::type_complexity)]
 pub(super) fn column_bands<'a>(
     e: &'a Element,
-    opts: &RenderOpts,
     cols: u16,
     under: &mut Vec<AnyElement>,
     row_elements: &[&Element],
@@ -161,8 +160,8 @@ pub(super) fn column_bands<'a>(
     let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
         vec![None; cols as usize];
     let have_rows = !row_elements.is_empty();
-    push_col_bands(&grp_els, opts.doc_salt, have_rows, &mut grp_rects, under);
-    push_col_bands(&col_els, opts.doc_salt, have_rows, &mut col_rects, under);
+    push_col_bands(&grp_els, have_rows, &mut grp_rects, under);
+    push_col_bands(&col_els, have_rows, &mut col_rects, under);
     (grp_els, col_els, grp_rects, col_rects, have_rows)
 }
 
