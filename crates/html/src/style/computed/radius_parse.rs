@@ -117,7 +117,7 @@ fn axes(raw: &str) -> Option<(&str, Option<&str>)> {
 }
 
 fn length(raw: &str) -> Option<Len> {
-    match super::size_range::parse(raw)? {
+    match super::size_range::parse_nonnegative_size(raw)? {
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
         length => Some(length),
     }

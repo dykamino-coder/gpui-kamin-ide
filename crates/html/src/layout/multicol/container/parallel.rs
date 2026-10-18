@@ -14,7 +14,7 @@ use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
 
-fn measure(c: &Element) -> Option<(Shape, f32)> {
+fn measure_fragment_and_own_height(c: &Element) -> Option<(Shape, f32)> {
     let s = shape_full(c, 4, ShapeCx::COLUMNS)?;
     let own = OOF_OWN.with(|m| {
         m.borrow()
@@ -61,7 +61,7 @@ fn positioned(
     {
         return false;
     }
-    let Some((s, _)) = measure(c) else {
+    let Some((s, _)) = measure_fragment_and_own_height(c) else {
         return false;
     };
     if s.cuts.is_empty() || (s.forced.is_empty() && s.solid.is_empty()) {
@@ -95,11 +95,17 @@ fn positioned(
     true
 }
 
-fn walk(c: &mut Element, origin: f32, h: f32, count: usize, copies: usize) -> bool {
+fn grow_positioned_descendants(
+    c: &mut Element,
+    origin: f32,
+    h: f32,
+    count: usize,
+    copies: usize,
+) -> bool {
     if !block(c) {
         return false;
     }
-    let Some((_, own)) = measure(c) else {
+    let Some((_, own)) = measure_fragment_and_own_height(c) else {
         return false;
     };
     let cb = establishes_cb(&c.style);
@@ -113,11 +119,11 @@ fn walk(c: &mut Element, origin: f32, h: f32, count: usize, copies: usize) -> bo
             }
             continue;
         }
-        let Some((s, height)) = measure(k) else {
+        let Some((s, height)) = measure_fragment_and_own_height(k) else {
             continue;
         };
         let start = cursor + previous.max(s.margin_top);
-        changed |= walk(k, origin + start, h, count, copies);
+        changed |= grow_positioned_descendants(k, origin + start, h, count, copies);
         cursor = start + height;
         previous = s.margin_bottom;
     }
@@ -127,10 +133,10 @@ fn walk(c: &mut Element, origin: f32, h: f32, count: usize, copies: usize) -> bo
 pub(super) fn grow(kids: &mut [(Element, Shape)], h: f32, count: usize, copies: usize) {
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     for (c, s) in kids {
-        let own = measure(c).map_or(s.height, |(_, own)| own);
+        let own = measure_fragment_and_own_height(c).map_or(s.height, |(_, own)| own);
         let start = cursor + previous.max(s.margin_top);
         if c.attr(crate::layout::fragment::paginate::MARK).is_none()
-            && walk(c, start, h, count, copies)
+            && grow_positioned_descendants(c, start, h, count, copies)
             && let Some(next) = shape_full(c, 4, ShapeCx::COLUMNS)
         {
             *s = crate::layout::fragment::Shape {
@@ -205,13 +211,16 @@ mod tests {
     #[test]
     fn bottom_position_is_resolved_before_auto_height_grows() {
         let mut cb = containing_block();
-        assert!(walk(&mut cb, 0.0, 100.0, 2, 4));
+        assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4));
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
         assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
-        assert_eq!(measure(abs).unwrap().0.height, 200.0);
-        let (shape, own) = measure(&cb).unwrap();
+        assert_eq!(
+            measure_fragment_and_own_height(abs).unwrap().0.height,
+            200.0
+        );
+        let (shape, own) = measure_fragment_and_own_height(&cb).unwrap();
         assert_eq!(shape.height, 200.0);
         assert_eq!(own, 190.0);
     }
@@ -219,12 +228,15 @@ mod tests {
     #[test]
     fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
         let mut cb = containing_block();
-        assert!(walk(&mut cb, 80.0, 100.0, 2, 4));
+        assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4));
         let Node::Element(abs) = &cb.children[0] else {
             panic!()
         };
         assert_eq!(abs.style.inset.top, Some(Len::Px(0.0)));
-        assert_eq!(measure(abs).unwrap().0.height, 220.0);
-        assert_eq!(measure(&cb).unwrap().1, 190.0);
+        assert_eq!(
+            measure_fragment_and_own_height(abs).unwrap().0.height,
+            220.0
+        );
+        assert_eq!(measure_fragment_and_own_height(&cb).unwrap().1, 190.0);
     }
 }

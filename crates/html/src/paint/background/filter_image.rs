@@ -10,7 +10,7 @@ use gpui::RenderImage;
 use std::sync::Arc;
 
 /// Splits `filter(url(x), list)` into the decoded url and the filter list.
-pub(crate) fn parse(src: &str) -> Option<(String, String)> {
+pub(crate) fn parse_filter_image(src: &str) -> Option<(String, String)> {
     let rest = src.trim().strip_prefix("filter(")?;
     let inner = &rest[..rest.rfind(')')?];
     let parts = crate::style::css::split_args(inner);

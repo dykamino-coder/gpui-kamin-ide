@@ -94,7 +94,7 @@ pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) ->
         ) {
             continue;
         }
-        let Some(l) = size_percent::resolve(c, l, f) else {
+        let Some(l) = size_percent::resolve_cyclic_size_percentage(c, l, f) else {
             continue;
         };
         // Доли считаются от родителя и компенсации не требуют.

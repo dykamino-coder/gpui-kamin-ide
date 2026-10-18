@@ -23,7 +23,7 @@ use generate::anonymous;
 pub use generate::{custom_marker, custom_repr, valid_symbols_fn};
 use math::{Math, is_math_fn};
 pub use parse::register;
-use resolve::{Algo, in_range, resolve, uses_negative};
+use resolve::{Algo, in_range, resolve_counter_style, uses_negative};
 use tokens::{Tok, tokenize};
 
 #[derive(Clone, Debug, PartialEq)]

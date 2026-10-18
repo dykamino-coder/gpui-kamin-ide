@@ -8,7 +8,7 @@ pub(super) fn view_box(markup: &str, fragment: &str) -> Option<String> {
     // Media Fragments §6.3: the last syntactically valid occurrence wins.
     let (mut rect, mut percent) = (None, false);
     for part in fragment.split('&').filter_map(|p| p.strip_prefix("xywh=")) {
-        if let Some((value, unit)) = parse(part) {
+        if let Some((value, unit)) = parse_spatial_fragment(part) {
             rect = Some(value);
             percent = unit;
         }
@@ -31,7 +31,7 @@ pub(super) fn view_box(markup: &str, fragment: &str) -> Option<String> {
     (w > 0.0 && h > 0.0).then(|| format!("{x} {y} {w} {h}"))
 }
 
-fn parse(value: &str) -> Option<([f32; 4], bool)> {
+fn parse_spatial_fragment(value: &str) -> Option<([f32; 4], bool)> {
     let (value, percent) = if let Some(value) = value.strip_prefix("percent:") {
         (value, true)
     } else {

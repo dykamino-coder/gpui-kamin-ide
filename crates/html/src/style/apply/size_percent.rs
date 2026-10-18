@@ -4,7 +4,11 @@
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, calc_get};
 
-pub(super) fn resolve(style: &Computed, value: Len, field: u8) -> Option<Len> {
+pub(super) fn resolve_cyclic_size_percentage(
+    style: &Computed,
+    value: Len,
+    field: u8,
+) -> Option<Len> {
     let (percentage, length) = match value {
         Len::Pct(p) => (p, 0.0),
         Len::Calc(index) => match calc_get(index).pct_px() {

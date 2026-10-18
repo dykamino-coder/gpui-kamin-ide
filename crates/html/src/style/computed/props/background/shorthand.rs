@@ -83,7 +83,7 @@ impl Computed {
             self.bg_image = Some(v.to_string());
         } else if let Some(image) = split_outside_parens(v)
             .into_iter()
-            .find(|t| crate::paint::background::filter_image::parse(t).is_some())
+            .find(|t| crate::paint::background::filter_image::parse_filter_image(t).is_some())
         {
             // `filter(url(…), …)` is one image (Filter Effects 1 §13); its
             // inner url is not the layer's image.

@@ -47,7 +47,7 @@ fn inherit_stage(parent: &Computed, own: &Computed, paint_filter: bool) -> Compu
         own
     } else {
         resolved = own.clone();
-        super::inherited_value::resolve(&mut resolved, parent);
+        super::inherited_value::apply_explicit_inheritance(&mut resolved, parent);
         &resolved
     };
     let mut c = own.clone();

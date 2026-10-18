@@ -81,7 +81,7 @@ pub fn source(src: &str) -> Option<Source> {
                         raw: color_image(color),
                     })
             })
-    } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
+    } else if let Some((url, list)) = super::filter_image::parse_filter_image(src_plain) {
         // Filter Effects 1 §13 `filter()`: the filtered raster is its own
         // image, keyed by the whole function so each list caches apart.
         let key = if orient {
@@ -160,7 +160,7 @@ fn load_url(src: &str, orient: bool) -> Option<Source> {
     };
     read_bytes(path)
         .map(|b| match view {
-            Some(id) => svg_fragment::resolve(b, id),
+            Some(id) => svg_fragment::rewrite_svg_fragment(b, id),
             None => b,
         })
         .as_deref()

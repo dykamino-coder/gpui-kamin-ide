@@ -3,7 +3,7 @@
 mod expressions;
 use super::{Computed, parse_pos_words};
 use crate::style::values::value::Len;
-use expressions::{capture, math, resolve};
+use expressions::{capture, math, resolve_position_math};
 
 impl Computed {
     pub(crate) fn set_background_position(&mut self, raw: &str) {
@@ -89,7 +89,7 @@ impl Computed {
                     ch,
                     line,
                 );
-                if let Some(value) = resolve(&raw, [free.0, free.1][i]) {
+                if let Some(value) = resolve_position_math(&raw, [free.0, free.1][i]) {
                     used[i] = value;
                 }
             }

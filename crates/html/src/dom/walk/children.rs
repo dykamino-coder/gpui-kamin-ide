@@ -1,6 +1,6 @@
 //! Children for walk; split out to keep the owning module within 250 lines.
 
-use super::{walk, walk_children};
+use super::{build_dom_node, walk_children};
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -68,7 +68,7 @@ pub(super) fn collect_children(
                 is_elem: s.anc.is_some(),
                 rc: Some(&slot.light_all),
             };
-            walk(
+            build_dom_node(
                 &s.node,
                 &slot.outer.rules,
                 vars,
