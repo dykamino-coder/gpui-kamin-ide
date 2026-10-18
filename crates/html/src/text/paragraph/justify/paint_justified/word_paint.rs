@@ -1,9 +1,7 @@
-//! Word paint for paint_justified; split out to keep the owning module within 250 lines.
+//! Покраска слов выключенной строки с поправками фрагментов и метрик.
 
-mod gaps;
-
+use super::Edge;
 use super::JustifiedPaint;
-use super::{Edge, Word};
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, SharedString, Window, point, px};
 

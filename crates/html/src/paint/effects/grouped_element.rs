@@ -3,6 +3,7 @@
 
 mod lifecycle;
 mod mask_sources;
+mod painting;
 use mask_sources::{mask_layer_source, rasterize_mask_def, svg_fragment};
 
 use gpui::AnyElement;

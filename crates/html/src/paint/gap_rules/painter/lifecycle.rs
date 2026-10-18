@@ -1,8 +1,7 @@
 //! Жизненный цикл GPUI-элемента; отделён от состояния и конструкторов.
 
-mod painting;
+use super::painting::paint_body;
 use crate::hooks::Hooks;
-use painting::paint_body;
 
 use super::GapRulePainter;
 use crate::paint::gap_rules::GapLayout;
