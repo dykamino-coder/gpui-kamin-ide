@@ -35,18 +35,8 @@ impl PagedBuild {
         self.open.set(false);
     }
 
-    /// Начать сборку кида: слой `fixed` пуст.
-    pub(crate) fn clear_fixed(&self) {
-        self.fixed.borrow_mut().clear();
-    }
-
     pub(crate) fn push_fixed(&self, els: Vec<AnyElement>) {
         self.fixed.borrow_mut().extend(els);
-    }
-
-    /// Забрать слой `fixed` собранного кида.
-    pub(crate) fn take_fixed(&self) -> Vec<AnyElement> {
-        std::mem::take(&mut *self.fixed.borrow_mut())
     }
 }
 
@@ -62,6 +52,20 @@ impl RenderOpts {
     /// Идёт сборка детей стопки страниц.
     pub(crate) fn paged_build(&self) -> Option<&PagedBuild> {
         self.frag.paged.as_deref().filter(|p| p.open.get())
+    }
+
+    /// Начать сборку кида стопки страниц: слой `fixed` пуст.
+    pub(crate) fn clear_paged_fixed(&self) {
+        if let Some(paged) = self.paged_build() {
+            paged.fixed.borrow_mut().clear();
+        }
+    }
+
+    /// Забрать слой `fixed` собранного кида (вне сборки листов — пусто).
+    pub(crate) fn take_paged_fixed(&self) -> Vec<AnyElement> {
+        self.paged_build()
+            .map(|paged| std::mem::take(&mut *paged.fixed.borrow_mut()))
+            .unwrap_or_default()
     }
 }
 
