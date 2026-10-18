@@ -2,7 +2,6 @@
 
 use super::is_cell;
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::CB_WIDTH;
 use crate::style::values::value::{Len, px_strict};
 
 pub(super) fn zero_width_cols(
@@ -10,6 +9,7 @@ pub(super) fn zero_width_cols(
     cols: u16,
     row_elements: &Vec<&Element>,
     from_cols: &[Option<f32>],
+    cb_px: Option<f32>,
 ) -> Vec<bool> {
     let vertical = e.style.vertical == Some(true);
     let axes = super::axes::Axes::new(&e.style);
@@ -23,7 +23,7 @@ pub(super) fn zero_width_cols(
             e.style.width
         } {
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) if !vertical => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
+            Some(Len::Pct(k)) if !vertical => cb_px.filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         };
         match (e.style.table_fixed == Some(true), своя_ширина) {

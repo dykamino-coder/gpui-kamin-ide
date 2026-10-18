@@ -1,7 +1,6 @@
 //! Картинка с авто-размерами: естественный размер, пределы и соотношение.
 
 use crate::dom::Element;
-use crate::layout::block::containing::CB_WIDTH;
 use crate::layout::replaced::limits::css2_replaced_limits;
 use crate::style::values::value::Len;
 use gpui::{Styled, StyledImage, px};
@@ -19,6 +18,7 @@ pub(super) fn auto_sized_image(
     max_w: Option<f32>,
     max_h: Option<f32>,
     limit: impl Fn(f32, Option<f32>, Option<f32>) -> f32,
+    cb_width: Option<f32>,
 ) -> gpui::Img {
     let both_auto = matches!(e.style.width, None | Some(Len::Auto))
         && matches!(e.style.height, None | Some(Len::Auto));
@@ -48,8 +48,7 @@ pub(super) fn auto_sized_image(
                 // ширину взять неоткуда (`ratio-2.svg` в
                 // `visudet/replaced-elements-*`: мы рисовали 300×150,
                 // эталон — 200×100 по `div { width: 200px }`).
-                let w = CB_WIDTH
-                    .get()
+                let w = cb_width
                     .filter(|v| *v > 0.0)
                     .unwrap_or_else(|| (150.0 * r).min(300.0));
                 (w, w / r)

@@ -108,7 +108,7 @@ pub(crate) fn paragraph_pieces_routed(
         }
         piece
     };
-    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted);
+    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted, opts.cx.avail_w);
     if pieces.is_empty() {
         return div().into_any_element();
     }

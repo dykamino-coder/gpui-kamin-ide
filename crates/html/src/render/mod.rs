@@ -14,7 +14,6 @@ use paint_order::paint_last_ok;
 use paint_order::unkeyed_positions;
 
 use crate::dom::Node;
-use crate::layout::block::containing::AVAIL_W;
 use crate::layout::float::clear::without_inert_clear;
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
@@ -71,6 +70,9 @@ pub struct RenderOpts {
     /// полоса фона одного забирала прямоугольники ячеек другого с тем же
     /// номером узла. Ноль допустим, пока документ один.
     pub doc_salt: u64,
+    /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
+    /// коробок внутри. Хост передаёт `LayoutCx::default()`.
+    pub cx: crate::layout::cx::LayoutCx,
 }
 
 impl RenderOpts {
@@ -116,8 +118,8 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // их края решает область просмотра (§10.1 п.4).
     crate::layout::positioned::containing_block::icb_open();
     // Корень документа получает ширину области просмотра: от неё цепочка
-    // `AVAIL_W` вычитает поля/рамки/отступы `html` и `body`.
-    let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
+    // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
+    let opts = &*opts.inner(|cx| cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0));
     // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
     // после потока корневого контекста в порядке разметки — собиратель
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
@@ -132,7 +134,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     }
     let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
     let mut out = blocks(nodes, &root, opts);
-    AVAIL_W.set(avail_prev);
     out.extend(crate::layout::positioned::containing_block::icb_close());
     UNKEYED.replace(unkeyed_prev);
     RENDER_DEPTH.with(|d| d.set(d.get() - 1));
@@ -178,9 +179,8 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     crate::layout::positioned::containing_block::icb_open();
-    let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
+    let opts = &*opts.inner(|cx| cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0));
     let out = blocks(std::slice::from_ref(node), &root, opts);
-    AVAIL_W.set(avail_prev);
     let layer = crate::layout::positioned::containing_block::icb_close();
     let first = out.into_iter().next()?;
     if layer.is_empty() {

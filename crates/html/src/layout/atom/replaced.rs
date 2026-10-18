@@ -1,7 +1,6 @@
 //! Замещаемые атомы по тегу: контейнеры, img, svg, canvas.
 
 use crate::dom::Element;
-use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::replaced::image::{image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
@@ -68,7 +67,7 @@ pub(super) fn container_atom(
 
 pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
-    replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
+    replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
     // ставит только `inline::inherit`: без переноса `apply` выбрасывал
@@ -92,17 +91,21 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
         return Some(doc);
     }
-    Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+    Some(image_with(
+        &copy,
+        Some(atom_base_font(inherited, opts)),
+        &opts.cx,
+    ))
 }
 
 pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     // Рисунок без собственного размера — stretch-fit от содержащего
     // блока (`svg::stretch_fit`): ширина родителя, когда она в
-    // точках, иначе ближайшая известная (`CB_WIDTH` — та же, что у
+    // точках, иначе ближайшая известная (`LayoutCx::cb_width` — та же, что у
     // картинки с одним соотношением в `image_with`).
     let cb_w = match inherited.width {
         Some(Len::Px(v)) if v > 0.0 => Some(v),
-        _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+        _ => opts.cx.cb_width.filter(|v| *v > 0.0),
     };
     // Размер в единицах шрифта (`svg { width: 10ch }`) решается тем же
     // шагом, что у картинки (`image_with` → `resolve_em`): сырой стиль
@@ -119,6 +122,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         Some(image_with(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
+            &opts.cx,
         ))
     })
 }

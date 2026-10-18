@@ -21,6 +21,7 @@ pub(super) fn sized_image(
     узкая: &mut Option<(f32, f32)>,
     ratio_of: impl Fn() -> Option<f32>,
     transfer: impl Fn(f32, f32, bool) -> f32,
+    cb_width: Option<f32>,
 ) -> gpui::Img {
     if let (Some(Len::Px(w)), Some(Len::Px(h))) = (e.style.width, e.style.height) {
         image = vectorize(image, (w - sub_w).max(1.0), (h - sub_h).max(1.0));
@@ -152,7 +153,7 @@ pub(super) fn sized_image(
         && !matches!(e.style.height, Some(Len::Px(_)))
     {
         image = auto_sized_image(
-            src, e, local, image, vectorize, sub_w, sub_h, clamp, max_w, max_h, limit,
+            src, e, local, image, vectorize, sub_w, sub_h, clamp, max_w, max_h, limit, cb_width,
         );
     }
     image

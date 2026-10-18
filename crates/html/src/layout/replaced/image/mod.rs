@@ -21,8 +21,8 @@ use sized::sized_image;
 mod auto_sized;
 use auto_sized::auto_sized_image;
 
-pub(crate) fn image(e: &Element) -> AnyElement {
-    image_with(e, None)
+pub(crate) fn image(e: &Element, cx: &crate::layout::cx::LayoutCx) -> AnyElement {
+    image_with(e, None, cx)
 }
 
 /// Доля ВЫСОТЫ замещаемого, сведённая к точкам по содержащему блоку.

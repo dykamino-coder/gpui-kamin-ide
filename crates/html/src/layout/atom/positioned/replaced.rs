@@ -30,12 +30,12 @@ pub(super) fn replaced_abs_atom(
         copy.style.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        image(&copy)
+        image(&copy, &opts.cx)
     };
     let holder = styled_div_with(e, merged).child(built).into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.

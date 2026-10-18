@@ -24,12 +24,12 @@ pub(super) fn collect_element(
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
     out: &mut Vec<Piece>,
     gap_at: &mut Option<usize>,
     from: usize,
 ) {
-    if special_node(e, inherited, atom, has_text, case, out) {
+    if special_node(e, inherited, atom, has_text, cx, out) {
         return;
     }
     // Атому сообщают, лежит ли он в позиционированном строчном
@@ -56,7 +56,7 @@ pub(super) fn collect_element(
             out.push(joiner());
         }
         if matches!(piece, Piece::Atom(_)) {
-            case.boundary();
+            cx.case.boundary();
         }
         out.push(piece);
         if join {
@@ -109,7 +109,7 @@ pub(super) fn collect_element(
     // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
     // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
-        inline_spacing::inline_sides(e, &merged, inherited);
+        inline_spacing::inline_sides(e, &merged, inherited, cx.cb);
     let own_rtl = merged.rtl == Some(true);
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);
@@ -195,7 +195,7 @@ pub(super) fn collect_element(
         INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
     }
     crate::text::inline::atom_parent::open(&e.style, inherited);
-    let kids = list_item::children(e, &merged, atom, has_text, case);
+    let kids = list_item::children(e, &merged, atom, has_text, cx);
     crate::text::inline::atom_parent::close();
     let kids = if cb_here {
         INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));

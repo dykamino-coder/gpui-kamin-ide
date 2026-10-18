@@ -11,7 +11,7 @@ pub(super) fn special_node(
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
     out: &mut Vec<Piece>,
 ) -> bool {
     // `display: contents` on `<br>`/`<wbr>` behaves as
@@ -29,7 +29,7 @@ pub(super) fn special_node(
         if inherited.ruby_suppress_breaks {
             return true;
         }
-        case.boundary();
+        cx.case.boundary();
         out.push(Piece::Text {
             text: "\n".into(),
             style: inherited.clone(),
@@ -66,7 +66,7 @@ pub(super) fn special_node(
             &merged,
             atom,
             has_text,
-            case,
+            cx,
         ));
         return true;
     }

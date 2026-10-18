@@ -1,14 +1,15 @@
 //! Inline list markers participate in the item's normal text flow.
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::text::inline::{Piece, text_case};
+use crate::text::inline::Piece;
+use crate::text::inline::collect::CollectCx;
 
 pub(super) fn children(
     e: &Element,
     merged: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
 ) -> Vec<Piece> {
     // CSS Lists 3: outside computes to inside for an inline list item.
     if e.style.inline_display == Some(true)
@@ -19,8 +20,8 @@ pub(super) fn children(
         let mut nodes = Vec::with_capacity(e.children.len() + 1);
         nodes.push(marker);
         nodes.extend(e.children.iter().cloned());
-        super::super::collect_with_empty_metrics(&nodes, merged, atom, has_text, case)
+        super::super::collect_with_empty_metrics(&nodes, merged, atom, has_text, cx)
     } else {
-        super::super::collect_with_empty_metrics(&e.children, merged, atom, has_text, case)
+        super::super::collect_with_empty_metrics(&e.children, merged, atom, has_text, cx)
     }
 }

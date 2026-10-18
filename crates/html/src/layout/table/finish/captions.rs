@@ -1,7 +1,6 @@
 //! Подписи таблицы (caption): сбор сверху/снизу и обёртка вокруг сетки.
 
 use crate::dom::{Element, Node};
-use crate::layout::block::margins::CELL_BFC;
 use crate::paint::effects::transform::transformed;
 use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
@@ -26,10 +25,8 @@ pub(super) fn collect_captions(
             let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
-            // contains its floats (§10.6.7), like a cell (`CELL_BFC`).
-            CELL_BFC.with(|c| c.set(true));
-            let inside = blocks(&cap.children, &cm, opts);
-            CELL_BFC.with(|c| c.set(false));
+            // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
+            let inside = blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
             let built = styled_div_with(cap, &cm)
                 .flex()
                 .flex_col()

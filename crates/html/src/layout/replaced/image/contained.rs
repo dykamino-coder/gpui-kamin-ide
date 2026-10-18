@@ -11,6 +11,7 @@ pub(super) fn contained_image(
     src: &str,
     e: &Element,
     d: gpui::Div,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Result<AnyElement, gpui::Div> {
     if e.style.contains_width() || e.style.contains_height() {
         let side = px_lossy_zero;
@@ -128,7 +129,7 @@ pub(super) fn contained_image(
             fitted.style.border_box = Some(false);
             fitted.style.contain_size = Some(false);
             fitted.style.contain_inline_size = Some(false);
-            return Ok(image_with(&fitted, base_font));
+            return Ok(image_with(&fitted, base_font, cx));
         }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
         return Ok(d.child(image).into_any_element());

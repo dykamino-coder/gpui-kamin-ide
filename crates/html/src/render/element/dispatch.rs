@@ -2,7 +2,6 @@
 
 use super::element;
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
 use crate::layout::float::shape_flow::shape_flow;
 use crate::layout::list::{list_container, list_item};
 use crate::layout::replaced::iframe::object_is_document;
@@ -58,7 +57,7 @@ pub(crate) fn dispatch_element(
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
+                replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
             }
             copy.style.image_orient_none = merged.image_orient_none;
             crate::layout::replaced::image::inherit_item_metadata(
@@ -78,13 +77,14 @@ pub(crate) fn dispatch_element(
             }
             // Единицы окна — в точки, как у строчной картинки.
             copy.style.resolve_viewport(opts.viewport);
-            crate::layout::replaced::svg_document_image::render(&copy, opts)
-                .unwrap_or_else(|| image_with(&copy, Some(atom_base_font(inherited, opts))))
+            crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
+                image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
+            })
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
-        "embed" if e.attr("src").is_some() => image(e),
+        "embed" if e.attr("src").is_some() => image(e, &opts.cx),
         // Вложенный документ (`<iframe>` и `<object>` с документом в `data`)
         // построен выше; рукав стоит ПЕРЕД картиночным `object`, иначе
         // документ уходил в `image()` пустой коробкой. Объект с документом,
@@ -130,15 +130,17 @@ pub(crate) fn dispatch_element(
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            image(&copy)
+            image(&copy, &opts.cx)
         }
         "video" if e.attr("poster").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            image(&copy)
+            image(&copy, &opts.cx)
         }
-        _ if crate::layout::replaced::media::empty(e) => crate::layout::replaced::media::render(e),
+        _ if crate::layout::replaced::media::empty(e) => {
+            crate::layout::replaced::media::render(e, opts)
+        }
         // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
         // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
         // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —
@@ -152,7 +154,7 @@ pub(crate) fn dispatch_element(
             // уже собственный стиль рисунка.
             let cb_w = match inherited.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
-                _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+                _ => opts.cx.cb_width.filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
             svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(

@@ -2,20 +2,20 @@
 
 use super::{contained_image, fit_local_image, local_image_source, view_boxed};
 use crate::dom::Element;
-use crate::layout::block::containing::AVAIL_W;
+use crate::layout::cx::LayoutCx;
 use crate::layout::replaced::replaced_used_style;
 use crate::render::styled_div;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
-pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
+pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> AnyElement {
     // Ключевое слово содержимого в оси замещаемого — его природный (или
     // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
     // §5.1: «When the box has a preferred aspect ratio, size constraints in
     // the opposite dimension will transfer through»; Blink
     // `ComputeReplacedSizeInternal`): `width: min-content; height: 100px` —
     // ширина из соотношения (`intrinsic-size-017…025`).
-    let normalized = replaced_used_style::normalize(e, AVAIL_W.get());
+    let normalized = replaced_used_style::normalize(e, cx.avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
@@ -56,7 +56,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // соотношения, — их задаёт `contain-intrinsic-size`. Врезка ранняя: ниже
     // по ветке `intrinsic()` вернул бы настоящие 100×100, и всё посчиталось бы
     // по ним.
-    let d = match contained_image(base_font, src, e, d) {
+    let d = match contained_image(base_font, src, e, d, cx) {
         Ok(value) => return value,
         Err(d) => d,
     };
@@ -193,8 +193,22 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             replaced_used_style::transfer(&e.style, size, ratio, from_width, [sub_w, sub_h])
         };
         return fit_local_image(
-            src, e, local, d, image, vectorize, sub_w, sub_h, clamp, max_w, max_h, limit, узкая,
-            ratio_of, transfer,
+            src,
+            e,
+            local,
+            d,
+            image,
+            vectorize,
+            sub_w,
+            sub_h,
+            clamp,
+            max_w,
+            max_h,
+            limit,
+            узкая,
+            ratio_of,
+            transfer,
+            cx.cb_width,
         );
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

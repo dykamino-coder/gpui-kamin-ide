@@ -27,7 +27,8 @@ pub(super) fn atom_element_raw(
 ) -> Option<AnyElement> {
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
+    let media_sized =
+        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w);
     let e = media_sized.as_ref().unwrap_or(e);
     // Строчный атом — независимый контекст форматирования: строки внутри
     // `inline-block` в бюджет `line-clamp` не входят (css-overflow-4 §5.3),
@@ -117,6 +118,7 @@ pub(super) fn atom_element_raw(
         "embed" if e.attr("src").is_some() => Some(image_with(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
+            &opts.cx,
         )),
         // `<object>` с ДОКУМЕНТОМ в `data` (HTML §4.8.7: `type` text/html
         // или адрес .html/.htm/.xht/.xhtml) — вложенный контекст, как
@@ -138,6 +140,7 @@ pub(super) fn atom_element_raw(
             Some(image_with(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
+                &opts.cx,
             ))
         }
         "video" if e.attr("poster").is_some() => {
@@ -147,14 +150,15 @@ pub(super) fn atom_element_raw(
             Some(image_with(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
+                &opts.cx,
             ))
         }
         "iframe" => Some(
             iframe(e, inherited, opts)
-                .unwrap_or_else(|| replaced_content::empty_iframe(e, inherited, opts.viewport)),
+                .unwrap_or_else(|| replaced_content::empty_iframe(e, inherited, opts)),
         ),
         _ if crate::layout::replaced::media::empty(e) => {
-            Some(crate::layout::replaced::media::render(e))
+            Some(crate::layout::replaced::media::render(e, opts))
         }
         "svg" => svg_atom(inherited, opts, e),
         // Свой бокс (фон, рамка, отступы) означает, что кусок не может быть

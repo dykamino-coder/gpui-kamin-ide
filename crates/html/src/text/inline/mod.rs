@@ -161,17 +161,23 @@ pub struct InlineCb {
 }
 
 /// Собрать инлайн-куски из детей узла.
+/// `cb` — доступная ширина блока абзаца (`LayoutCx::avail_w`): от неё
+/// доли полей и отступов строчных коробок.
 pub fn collect(
     children: &[Node],
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    cb: Option<f32>,
 ) -> Vec<Piece> {
     collect_with_empty_metrics(
         children,
         inherited,
         atom,
         empty_inline::has_text(children),
-        &mut text_case::Context::default(),
+        &mut collect::CollectCx {
+            case: text_case::Context::default(),
+            cb,
+        },
     )
 }
 

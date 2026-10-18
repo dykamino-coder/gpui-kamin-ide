@@ -58,7 +58,8 @@ fn atom_piece_in(
     let in_inline_cb = crate::text::inline::take_atom_cb();
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
-    let media_sized = crate::layout::replaced::media::resolve(e, inherited, opts.viewport);
+    let media_sized =
+        crate::layout::replaced::media::resolve(e, inherited, opts.viewport, opts.cx.avail_w);
     let e = media_sized.as_ref().unwrap_or(e);
     // CSS 2.1 sections 10.3.8/10.6.5 use the replaced default size
     // before solving absolute insets; an empty frame is still replaced.

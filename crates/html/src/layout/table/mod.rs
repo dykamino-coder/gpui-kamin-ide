@@ -185,7 +185,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols);
+    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, opts.cx.cb_width);
     let busy: Vec<u16> = vec![0; cols as usize];
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,

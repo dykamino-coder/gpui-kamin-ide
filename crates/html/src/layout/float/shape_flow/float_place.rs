@@ -211,7 +211,7 @@ pub(super) fn push_float_holder(
     // поля уже сняты выше — их несёт держатель), как на пути замещаемых
     // и внепоточных (`:7718`, `:7722`).
     let built = if copy.tag == "img" {
-        grouped(image(&copy), &copy.style)
+        grouped(image(&copy, &opts.cx), &copy.style)
     } else if copy.style.display == Some(Display::ListItem) {
         // CSS Lists 3 §2: a floated list item keeps its marker.
         grouped(

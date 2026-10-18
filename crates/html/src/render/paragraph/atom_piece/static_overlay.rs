@@ -34,7 +34,7 @@ pub(crate) fn static_overlay(
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;
         copy.style.position = None;
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
         copy.style.image_orient_none = merged.image_orient_none;
@@ -42,7 +42,7 @@ pub(crate) fn static_overlay(
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
-        grouped(image(&copy), &e.style)
+        grouped(image(&copy, &opts.cx), &e.style)
     } else {
         // Тот же буфер группы, что и у картинки: маска, обрезка и
         // фильтр иначе не доходят до коробки на статической позиции.

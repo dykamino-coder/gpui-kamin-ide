@@ -94,13 +94,13 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     );
     if in_flow
         && let Some(Len::Pct(k)) = resolved.style.width
-        && let Some(width) = crate::layout::block::containing::AVAIL_W.with(|v| v.get())
+        && let Some(width) = opts.cx.avail_w
     {
         resolved.style.width = Some(Len::Px(k * width));
     }
     if in_flow
         && let Some(Len::Pct(k)) = resolved.style.height
-        && let Some(height) = crate::layout::block::available_height::HEIGHT.with(|v| v.get())
+        && let Some(height) = opts.cx.avail_h
     {
         resolved.style.height = Some(Len::Px(k * height));
     }

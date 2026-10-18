@@ -15,12 +15,20 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::text::inline::*;
 
+/// What the piece collection carries across the inline boxes it descends:
+/// the text-transform word state (CSS Text 3 §2.1) and the paragraph block's
+/// available width — the containing block of inline-box percentages.
+pub(crate) struct CollectCx {
+    pub(super) case: text_case::Context,
+    pub(super) cb: Option<f32>,
+}
+
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
     inherited: &Computed,
     atom: &mut dyn FnMut(&Element) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
 ) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).
@@ -31,7 +39,7 @@ pub(super) fn collect_with_empty_metrics(
         let from = out.len();
         match child {
             Node::Text(t) => {
-                collect_text(t, inherited, case, &mut out);
+                collect_text(t, inherited, &mut cx.case, &mut out);
             }
             Node::Element(e) => {
                 collect_element(
@@ -39,7 +47,7 @@ pub(super) fn collect_with_empty_metrics(
                     inherited,
                     atom,
                     has_text,
-                    case,
+                    cx,
                     &mut out,
                     &mut gap_at,
                     from,

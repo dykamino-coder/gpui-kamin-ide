@@ -23,6 +23,7 @@ pub(super) fn fit_local_image(
     mut узкая: Option<(f32, f32)>,
     ratio_of: impl Fn() -> Option<f32>,
     transfer: impl Fn(f32, f32, bool) -> f32,
+    cb_width: Option<f32>,
 ) -> AnyElement {
     image = sized_image(
         src,
@@ -39,6 +40,7 @@ pub(super) fn fit_local_image(
         &mut узкая,
         &ratio_of,
         transfer,
+        cb_width,
     );
     image = match e.style.object_fit.as_deref() {
         Some("cover") => image.object_fit(gpui::ObjectFit::Cover),

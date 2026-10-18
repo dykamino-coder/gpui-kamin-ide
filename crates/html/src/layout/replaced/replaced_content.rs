@@ -80,11 +80,15 @@ pub(crate) fn empty_iframe_size(
     copy
 }
 
-pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> AnyElement {
-    let mut copy = empty_iframe_size(e, inherited, viewport);
+pub(crate) fn empty_iframe(
+    e: &Element,
+    inherited: &Computed,
+    opts: &crate::render::RenderOpts,
+) -> AnyElement {
+    let mut copy = empty_iframe_size(e, inherited, opts.viewport);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return crate::layout::replaced::image::image(&copy);
+        return crate::layout::replaced::image::image(&copy, &opts.cx);
     }
     crate::render::styled_div(&copy)
         .flex_shrink_0()

@@ -32,18 +32,22 @@ pub(crate) fn wrap_floats(
     // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
-    // The parent is a table cell (see `CELL_BFC`): a BFC root whose float
+    // The parent is a table cell (see `LayoutCx::cell_bfc`): a BFC root whose float
     // host keeps containing floats, while the band-host choices above stay
     // those of an ordinary block (margin-collapse-121..125, 157, 158).
     cell_bfc: bool,
+    // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
+    // `bfc_no_fit`.
+    cb_px: Option<f32>,
 ) -> Vec<Node> {
     let cb_width = parent.width;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open);
-    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, &mut nodes) {
+    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px);
+    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, &mut nodes, cb_px)
+    {
         return value;
     }
     let mut out: Vec<Node> = vec![];
@@ -67,6 +71,7 @@ pub(crate) fn wrap_floats(
             parent_bfc,
             cell_bfc,
             cb_width,
+            cb_px,
             &mut nodes,
             &mut out,
             &mut i,

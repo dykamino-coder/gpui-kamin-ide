@@ -34,6 +34,7 @@ pub(super) fn band_atom(
         image_with(
             &with_inherited_font(&inner, inherited),
             Some(atom_base_font(inherited, opts)),
+            &opts.cx,
         )
     } else {
         styled_div_with(&inner, &merged)

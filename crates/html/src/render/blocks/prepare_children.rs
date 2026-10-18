@@ -17,7 +17,7 @@ use crate::style::values::value::{Len, px_strict};
 pub(crate) fn prepare_children(
     nodes: &[Node],
     inherited: &Computed,
-    _opts: &RenderOpts,
+    opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {
     let stripped: Vec<Node>;
@@ -200,6 +200,7 @@ pub(crate) fn prepare_children(
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ),
+            opts.cx.cb_width,
         );
         margin_height::zero_float_blocks(&mut out, inherited);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));

@@ -19,6 +19,7 @@ pub(super) fn band_host_m_tail(
     floaters: Vec<Element>,
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
+    cb: Option<f32>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
     // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
@@ -83,7 +84,7 @@ pub(super) fn band_host_m_tail(
         r.extend(rest);
         r
     };
-    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted))?;
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb)?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
     if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {
