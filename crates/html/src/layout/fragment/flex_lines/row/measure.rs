@@ -3,9 +3,10 @@
 use super::geometry::{collect_rows, row_container, row_forced};
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_avoid;
+use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::finish_row_shape;
 use crate::layout::fragment::shape_kids::stack_kids;
-use crate::layout::fragment::{LINE_CX, Shape, ShapeCx};
+use crate::layout::fragment::{LINE_CX, ShapeCx};
 use crate::style::values::value::{Len, px_auto_zero};
 pub(crate) fn main_size(c: &Element) -> Option<f32> {
     LINE_CX
@@ -42,7 +43,7 @@ pub(crate) fn measure_rows(
     bot: f32,
     mt: f32,
     mb: f32,
-) -> Option<Shape> {
+) -> Option<Measure> {
     if !row_container(c) {
         return None;
     }

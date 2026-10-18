@@ -118,8 +118,8 @@ pub(crate) fn route_pieces(
         // только для кусков, стоячих ЦЕЛИКОМ: смешанный кусок потребовал бы
         // резки на прогоны по ориентации.
         let vert_style;
-        let style = if style.rotated_line == Some(true)
-            && style.sideways != Some(true)
+        let style = if style.wm().turned()
+            && !style.wm().sideways()
             && t.chars().any(upright_in_mixed)
             && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
         {
@@ -143,12 +143,12 @@ pub(crate) fn route_pieces(
     let align = inherited
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)
-        .physical(inherited.rtl == Some(true));
+        .physical(inherited.wm().rtl());
     inline::as_wrapped_row(
         pieces,
         inherited.vertical_align,
         Some(align),
-        inherited.rtl == Some(true),
+        inherited.wm().rtl(),
         match inherited.text_indent {
             Some(Len::Px(v)) => v,
             // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
@@ -160,7 +160,7 @@ pub(crate) fn route_pieces(
         },
         inherited.nowrap == Some(true),
         &mut render_text,
-        inherited.vertical != Some(true) && inherited.rotated_line != Some(true),
-        (inherited.rotated_line == Some(true)).then_some(inherited.vertical_rl == Some(true)),
+        !inherited.wm().vertical() && !inherited.wm().turned(),
+        (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
     )
 }

@@ -67,8 +67,8 @@ pub(crate) fn resolve(
     } else {
         parent.orthogonal_scrollport
     };
-    let vertical = style.vertical == Some(true);
-    let parent_vertical = parent.vertical == Some(true);
+    let vertical = style.wm().vertical();
+    let parent_vertical = parent.wm().vertical();
     style.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
         crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent).map(
             |constraint| {

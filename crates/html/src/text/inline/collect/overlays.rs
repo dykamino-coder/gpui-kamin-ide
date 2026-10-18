@@ -114,8 +114,8 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
 /// turn sends the line axis (+x) to screen-down and the block axis (+y) to
 /// screen-left; `sideways-lr` turns the other way (css-writing-modes-4 §7.1).
 pub(crate) fn to_rotated_frame(style: &Computed, (dx, dy): (f32, f32)) -> (f32, f32) {
-    use crate::style::computed::writing_mode::{Turn, WritingMode};
-    if WritingMode::of_line(style).line_turn() == Turn::CounterClockwise {
+    use crate::style::computed::writing_mode::Turn;
+    if style.wm().line().line_turn() == Turn::CounterClockwise {
         (-dy, dx)
     } else {
         (dy, -dx)

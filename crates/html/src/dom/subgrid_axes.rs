@@ -2,7 +2,7 @@
 use crate::style::computed::Computed;
 
 pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> bool {
-    let parallel = parent.vertical.unwrap_or(false) == child.vertical.unwrap_or(false);
+    let parallel = parent.wm().vertical() == child.wm().vertical();
     if parent_rows == parallel {
         child.subgrid_rows
     } else {
@@ -62,12 +62,18 @@ mod tests {
     fn linked_axis_maps_parallel_and_orthogonal_writing_modes() {
         for vertical in [false, true] {
             let parent = Computed {
-                vertical: Some(vertical),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    vertical, false, false,
+                )),
                 ..Computed::default()
             };
             for orthogonal in [false, true] {
                 let child = Computed {
-                    vertical: Some(vertical != orthogonal),
+                    writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                        vertical != orthogonal,
+                        false,
+                        false,
+                    )),
                     subgrid_cols: true,
                     ..Computed::default()
                 };

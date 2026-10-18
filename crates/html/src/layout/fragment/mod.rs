@@ -14,6 +14,7 @@ pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;
 pub(crate) mod paginate;
+pub(crate) mod plan;
 pub mod probe;
 pub mod push;
 pub mod shape_contents;
@@ -190,6 +191,7 @@ mod tests {
             viewport: (800.0, 600.0),
             normal_line_height: 1.2,
             doc_salt: 0,
+            frag: Default::default(),
         };
         let base = Computed::default();
         assert!(LINE_CX.with(|l| l.borrow().is_none()));

@@ -92,9 +92,11 @@ pub(super) fn copy_whole_box(
             mc.style.border_box = None;
         }
         drop(frag_gap_guard.take());
-        let _outer_row = crate::layout::fragment::types::OuterRow::enter(Some((hh, nest_phase_k)));
-        let el = element(&mc, merged, opts);
-        return Some(el);
+        return Some(element(
+            &mc,
+            merged,
+            &opts.with_outer_row((hh, nest_phase_k)),
+        ));
     }
     if whole {
         let mut mc = copy.clone();

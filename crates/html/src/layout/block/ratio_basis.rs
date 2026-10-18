@@ -42,7 +42,9 @@ mod tests {
         };
         let mut child = Computed {
             height: Some(Len::Pct(1.0)),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         resolve(&mut child, &parent, (800.0, 600.0), false);

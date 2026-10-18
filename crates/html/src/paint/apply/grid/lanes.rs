@@ -20,7 +20,7 @@ pub(super) fn grid_lanes(mut d: Div, c: &Computed) -> Div {
         // Ось решётки taffy — ФИЗИЧЕСКАЯ, а `grid-lanes-direction` —
         // логическая: при вертикальном письме колонки идут по y, ряды — по x
         // (та же перестановка, что у дорожек сетки ниже, `flip`).
-        let vertical = c.vertical == Some(true);
+        let vertical = c.wm().vertical();
         let logical_rows = crate::dom::lanes_row_dir(c);
         d.style().grid_lanes = Some(gpui::GridLanesFlow {
             rows: logical_rows != vertical,

@@ -43,10 +43,6 @@ pub(super) fn finish_stack_child(
     // по собственным причинам коробки (css-break-3 §4.1).
     let (measure, monolith) =
         measured_monolith(measured_kids, copy, nest_row, whole, scrolls, monolith);
-    // Пока строятся копии — «внутри стопки»: вложенный
-    // многоколоночник со спаннером остаётся на
-    // сегментном пути (см. `unified` выше).
-    let _nested = crate::layout::fragment::types::StackScope::enter();
     let span = copy.style.column_span == Some(true) && !copy.inline;
     // Переполняющие колонки (css-multicol-1 §8.2: «A multicol
     // container can have more columns than it has room for due

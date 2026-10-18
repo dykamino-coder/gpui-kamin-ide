@@ -24,8 +24,8 @@ pub(super) fn layout_flex_axes(
     // `compute_constants`); многострочной колонке то же делает `flip` ниже.
     // Вертикальное письмо сюда не входит: там прижим держит `items_end`
     // ниже (записи откатов 04.09).
-    if c.rtl == Some(true)
-        && c.vertical != Some(true)
+    if c.wm().rtl()
+        && !c.wm().vertical()
         && c.flex_wrap != Some(true)
         && c.webkit_box != Some(true)
         && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
@@ -45,12 +45,11 @@ pub(super) fn layout_flex_axes(
         // `sideways-lr` — единственное письмо, где строчная ось идёт СНИЗУ
         // ВВЕРХ (css-writing-modes-4 §3.1), поэтому поперечная ось колонки
         // разворачивается им так же, как `direction: rtl`.
-        let inline_reversed =
-            (c.rtl == Some(true)) != (c.sideways == Some(true) && c.vertical_rl != Some(true));
+        let inline_reversed = (c.wm().rtl()) != c.wm().sideways_lr();
         let flip = if matches!(c.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse)) {
             inline_reversed
         } else {
-            c.vertical_rl == Some(true)
+            c.wm().block_rl()
         };
         if (c.flex_wrap_reverse == Some(true)) != flip {
             d.style().flex_wrap = Some(gpui::FlexWrap::WrapReverse);
@@ -80,13 +79,13 @@ pub(super) fn layout_flex_axes(
                 | Some(Display::InlineGrid)
         )
     {
-        let vertical = c.vertical == Some(true);
-        let (block_start, block_end) = match (vertical, c.vertical_rl == Some(true)) {
+        let vertical = c.wm().vertical();
+        let (block_start, block_end) = match (vertical, c.wm().block_rl()) {
             (false, _) => (1u8, 4u8),
             (true, true) => (2, 8),
             (true, false) => (8, 2),
         };
-        let (inline_start, inline_end) = match (vertical, c.rtl == Some(true)) {
+        let (inline_start, inline_end) = match (vertical, c.wm().rtl()) {
             (false, false) => (8u8, 2u8),
             (false, true) => (2, 8),
             (true, false) => (1, 4),
@@ -187,7 +186,7 @@ pub(super) fn layout_display(mut d: Div, c: &Computed) -> Div {
     }
     // `direction: rtl` переворачивает главную ось и выравнивание по
     // умолчанию: ряд идёт справа налево, текст прижимается вправо.
-    if c.rtl == Some(true) {
+    if c.wm().rtl() {
         // Разворот главной оси — дело ТОЛЬКО гибкого ряда: обычный блок
         // собирается колонкой, и разворот переставлял его детей снизу вверх.
         // Ряд с явно заданным направлением разворачивается ниже, вместе с

@@ -27,12 +27,10 @@ pub(crate) fn paragraph_spans(
             inherited.para_vertical == Some(true),
         )
         .ortho_limit(inherited.ortho_limit.map(px))
-        .vertical_central_baseline(
-            inherited.sideways != Some(true) && inherited.text_sideways != Some(true),
-        )
+        .vertical_central_baseline(!inherited.wm().alphabetic_baseline())
         .rotated_central(rotated_central(inherited))
         .vertical_counter_clockwise(
-            inherited.para_vertical == Some(false) && inherited.sideways == Some(true),
+            inherited.para_vertical == Some(false) && inherited.wm().sideways(),
         )
         .vertical_inline_constraint(
             inherited.orthogonal_inline,
@@ -66,7 +64,7 @@ pub(crate) fn paragraph_spans(
             // They replace tracking only: an autospace gap stays in charge.
             let mut bidi = inline::bidi_letter_spans(
                 pieces,
-                inherited.rtl == Some(true),
+                inherited.wm().rtl(),
                 inline::block_letter_spacing(inherited, biggest),
                 &letters,
             );
@@ -111,8 +109,8 @@ pub(crate) fn paragraph_spans(
             pieces,
             biggest,
             crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
-            (inherited.rotated_line == Some(true) || inherited.vertical == Some(true))
-                .then(|| inherited.sideways == Some(true) && inherited.vertical_rl != Some(true)),
+            (inherited.wm().turned() || inherited.wm().vertical())
+                .then(|| inherited.wm().sideways_lr()),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
@@ -121,7 +119,5 @@ pub(crate) fn paragraph_spans(
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).
 fn rotated_central(inherited: &Computed) -> bool {
-    inherited.rotated_line == Some(true)
-        && inherited.sideways != Some(true)
-        && inherited.text_sideways != Some(true)
+    inherited.wm().turned() && !inherited.wm().alphabetic_baseline()
 }

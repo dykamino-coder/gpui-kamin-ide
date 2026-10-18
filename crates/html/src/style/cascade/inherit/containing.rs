@@ -118,13 +118,9 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     {
         c.will_change |= crate::style::computed::wc::STACK;
     }
-    c.cb_rtl = parent.rtl == Some(true);
-    // Внутри повёрнутого абзаца родитель — горизонтальный клон
-    // (`render.rs: paragraph`, `horizontal.vertical = None`), и о вертикальном
-    // письме содержащего блока говорит только `rotated_line`.
-    c.cb_vertical = parent.vertical == Some(true) || parent.rotated_line == Some(true);
-    c.cb_vertical_rl = parent.vertical_rl == Some(true);
-    c.cb_sideways = parent.sideways == Some(true);
+    // Inside a turned paragraph the parent is the horizontal clone
+    // (`render/paragraph/vertical.rs`); its line mode is the vertical one.
+    c.cb_wm = parent.wm().line();
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
     // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг

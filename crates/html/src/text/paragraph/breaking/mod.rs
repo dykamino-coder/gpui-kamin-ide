@@ -37,7 +37,7 @@ pub fn wrap_of(c: &crate::style::computed::Computed) -> Wrap {
         auto_phrase: c.auto_phrase == Some(true),
         break_word: c.break_word == Some(true),
         wrap_anywhere: c.wrap_anywhere == Some(true),
-        rtl: c.rtl == Some(true),
+        rtl: c.wm().rtl(),
         balance: c.balance_lines == Some(true),
         keep_spaces: c.keep_spaces == Some(true),
         loose: c.line_break_loose.unwrap_or(0),

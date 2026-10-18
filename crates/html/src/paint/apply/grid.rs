@@ -26,7 +26,7 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     // поперёк, поэтому колонки становятся физическими рядами и наоборот.
     // Раскладка под нами письма не знает и считает оси физическими, так что
     // переставляем здесь, на границе.
-    let flip = c.vertical == Some(true);
+    let flip = c.wm().vertical();
     let along_line = |d: Div, tracks: Vec<gpui::GridTrack>| -> Div {
         if flip {
             d.grid_template_rows(tracks)

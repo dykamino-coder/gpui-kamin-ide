@@ -76,7 +76,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
                 && s.min_height.is_none()
                 && s.max_height.is_none()))
         && matches!(s.display, None | Some(Display::Block))
-        && s.vertical != Some(true)
+        && !s.wm().vertical()
         && s.float.unwrap_or(0) == 0
         && !has_deep_spanner(c)
         && (!carries_abspos(c, 4) || oof_in_plain_kids(c))

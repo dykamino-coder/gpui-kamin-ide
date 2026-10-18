@@ -50,12 +50,9 @@ fn positioned_reach_crosses_static_wrappers_without_moving_siblings() {
         },
         vec![Node::Element(wrapper), Node::Element(sibling)],
     );
-    let shape = shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap();
-    assert_eq!(shape.height, 200.0);
-    assert_eq!(
-        OOF_OWN.with(|m| m.borrow().get(&parent.node_id).copied()),
-        Some((20.0, 200.0))
-    );
+    let m = crate::layout::fragment::fragment_size::measure(&parent, 4, ShapeCx::COLUMNS).unwrap();
+    assert_eq!(m.shape.height, 200.0);
+    assert_eq!(m.own, Some((20.0, 200.0)));
 }
 
 #[test]
@@ -120,4 +117,34 @@ fn contained_fixed_reach_passes_relative_boxes_to_its_own_cb() {
         shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().height,
         200.0
     );
+}
+
+#[test]
+fn measure_hands_the_positioned_reach_up_as_a_value() {
+    use crate::layout::fragment::fragment_size::measure;
+    use crate::style::computed::Position;
+    let abs = element(
+        Computed {
+            height: Some(Len::Px(150.0)),
+            position: Some(Position::Absolute),
+            ..Default::default()
+        },
+        vec![],
+    );
+    // The wrapper is not a containing block: the reach travels up from it.
+    let wrapper = element(Computed::default(), vec![Node::Element(abs)]);
+    let m = measure(&wrapper, 4, ShapeCx::COLUMNS).unwrap();
+    assert_eq!(m.shape.height, 0.0);
+    // Measuring an unrelated box in between cannot change a returned value
+    // (it used to be a slot keyed by node id).
+    let other = element(
+        Computed {
+            height: Some(Len::Px(10.0)),
+            ..Default::default()
+        },
+        vec![],
+    );
+    let none = measure(&other, 4, ShapeCx::COLUMNS).unwrap();
+    assert_eq!(none.up.absolute.end(), 0.0);
+    assert_eq!(m.up.absolute.end(), 150.0);
 }

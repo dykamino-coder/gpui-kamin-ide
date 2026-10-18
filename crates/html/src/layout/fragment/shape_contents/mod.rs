@@ -4,8 +4,9 @@
 use crate::dom::{Element, Node};
 use crate::layout::float::{float_only_box, has_float};
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
+use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::table_bands::{table_box, table_shape};
-use crate::layout::fragment::{LineScope, Shape, ShapeCx};
+use crate::layout::fragment::{LineScope, ShapeCx};
 use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -33,7 +34,9 @@ use height::shaped_height;
 /// Строки собираются, но контейнер с переносом теряет высоту фрагмента: пары,
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
-pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
+/// Мера содержимого коробки с её внепоточной досягаемостью (`Measure`).
+pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Measure> {
+    let none = Measure::plain;
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let _line_frame = LineScope::enter(c);
     let px_or = |l: &Option<Len>, strict: bool| match l {
@@ -61,14 +64,14 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         } else {
             Vec::new()
         };
-        return Some(crate::layout::fragment::Shape {
+        return Some(none(crate::layout::fragment::Shape {
             height: top + tall + bot,
             margin_top: mt,
             margin_bottom: mb,
             cuts: Vec::new(),
             forced: Vec::new(),
             solid,
-        });
+        }));
     }
     if has_float(c, 3) {
         return None;
@@ -85,7 +88,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     // `L-brk` 2874 пар, +0/−2). Страницы — стопкой блоков.
     if table_box(c) {
         match table_shape(c, depth, cx) {
-            Some(s) => return Some(s),
+            Some(s) => return Some(none(s)),
             None if !cx.paged => return None,
             None => {}
         }
@@ -123,10 +126,10 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
     };
     let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
     let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
-    if let Some(shape) =
+    if let Some(measure) =
         crate::layout::fragment::flex_lines::measure_rows(c, depth, cx, unclamp, top, bot, mt, mb)
     {
-        return Some(shape);
+        return Some(measure);
     }
     // Строчное содержимое — по строкам, если ширина колонки известна.
     if !cx.paged
@@ -137,7 +140,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
         )
         && let Some(s) = line_run_shape(c, top, bot, mt, mb)
     {
-        return Some(s);
+        return Some(none(s));
     }
     let mut kids: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
     // Гибкий контейнер, чьи элементы идут СТОПКОЙ (колонка; перенос по
@@ -157,7 +160,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 | Some(crate::style::computed::FlexDir::RowReverse)
         ) && c.style.flex_wrap != Some(true));
     let flex_col = flex_items
-        && c.style.vertical != Some(true)
+        && !c.style.wm().vertical()
         && c.style.flex_wrap != Some(true)
         && matches!(
             c.style.flex_dir,
@@ -165,7 +168,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shap
                 | Some(crate::style::computed::FlexDir::ColReverse)
         );
     let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
         _ => 0.0,
     };
     if flex_items {

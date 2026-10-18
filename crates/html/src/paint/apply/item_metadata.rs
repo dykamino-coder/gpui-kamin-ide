@@ -5,7 +5,7 @@ fn grid_mode(c: &Computed) -> u8 {
     if c.parent_grid != 0 {
         c.parent_grid
     } else if c.parent_lanes {
-        match (c.cb_vertical, c.cb_vertical_rl) {
+        match (c.cb_wm.vertical(), c.cb_wm.block_rl()) {
             (false, _) => 1,
             (true, false) => 2,
             (true, true) => 3,
@@ -21,15 +21,16 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         if !c.parent_flex_grid {
             return None;
         }
-        let central = c.cb_vertical && !c.cb_sideways && c.text_sideways != Some(true);
-        if c.vertical == Some(true) {
-            return Some(4 | u8::from(c.vertical_rl == Some(true)) | if central { 2 } else { 0 });
+        let central = c.cb_wm.vertical() && !c.cb_wm.sideways() && !c.wm().text_sideways();
+        if c.wm().vertical() {
+            return Some(4 | u8::from(c.wm().block_rl()) | if central { 2 } else { 0 });
         }
         return c
-            .cb_vertical
-            .then(|| u8::from(c.cb_vertical_rl) | if central { 2 } else { 0 });
+            .cb_wm
+            .vertical()
+            .then(|| u8::from(c.cb_wm.block_rl()) | if central { 2 } else { 0 });
     }
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let rl = if c.parent_grid != 0
         && matches!(
             c.position,
@@ -41,12 +42,12 @@ pub(super) fn baseline_x_flags(c: &Computed) -> Option<u8> {
         // No baseline-sharing context: fallback is the item's own self-start.
         super::grid_flow_axes::reversed(c)[0]
     } else if vertical {
-        c.vertical_rl == Some(true)
+        c.wm().block_rl()
     } else {
         parent == 3
     };
     let mut bits = u8::from(rl);
-    if parent >= 2 && !c.cb_sideways && c.text_sideways != Some(true) {
+    if parent >= 2 && !c.cb_wm.sideways() && !c.wm().text_sideways() {
         bits |= 2;
     }
     if vertical {
@@ -93,9 +94,9 @@ mod tests {
         ] {
             let parent = Computed {
                 display: Some(Display::Flex),
-                vertical: Some(true),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, sideways,
+                )),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
@@ -116,14 +117,18 @@ mod tests {
         ] {
             let parent = Computed {
                 display: Some(Display::Flex),
-                vertical: Some(true),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, sideways,
+                )),
                 ..Computed::default()
             };
             let own = Computed {
-                vertical: Some(false),
-                text_sideways: Some(false),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    false, false, false,
+                )),
+                text_orientation: Some(
+                    crate::style::computed::writing_mode::TextOrientation::Mixed,
+                ),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own);
@@ -142,8 +147,9 @@ mod tests {
         };
         for (rl, flags) in [(false, 4), (true, 5)] {
             let own = Computed {
-                vertical: Some(true),
-                vertical_rl: Some(rl),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, rl, false,
+                )),
                 ..Computed::default()
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own);
@@ -172,8 +178,9 @@ mod tests {
             ..Computed::default()
         };
         let own = Computed {
-            vertical: Some(true),
-            vertical_rl: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, true, false,
+            )),
             justify_self: Some(Align::Baseline),
             justify_self_last: true,
             ..Computed::default()

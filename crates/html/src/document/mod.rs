@@ -121,7 +121,7 @@ impl Document {
             base_url::document_base(html, base_url.as_ref())
         };
         crate::text::paragraph::forget_measures();
-        crate::layout::table::paint::forget_row_rects();
+        crate::text::clamp::forget_clamp_buffers();
         crate::text::vertical::forget_vt_measures();
         let (state, nodes, root) =
             parse_document(html, theme_css, effective_base.as_ref(), xml, media);

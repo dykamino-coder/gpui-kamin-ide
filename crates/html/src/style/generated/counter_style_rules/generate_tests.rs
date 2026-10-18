@@ -106,7 +106,11 @@ fn disclosure_context_survives_extends_and_fallback() {
     let rtl = Context::new(&style, Context::default());
     assert_eq!(super::generate(&rules, 2, "alias", 0, rtl), "◂");
     assert_eq!(super::generate(&rules, 2, "limited", 0, rtl), "◂");
-    style.vertical = Some(true);
+    style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+        true,
+        style.wm().block_rl(),
+        style.wm().sideways(),
+    ));
     let vertical = Context::new(&style, Context::default());
     assert_eq!(super::generate(&rules, 2, "limited", 0, vertical), "▴");
     assert_eq!(super::generate(&rules, -2, "alias", 0, vertical), "▴");

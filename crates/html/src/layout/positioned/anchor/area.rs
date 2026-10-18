@@ -38,9 +38,9 @@ fn tracks_of(kw: AreaKw, flip: bool) -> Tracks {
 pub(super) fn physical_area(area: PositionArea, cb: &Computed, own: &Computed) -> (Tracks, Tracks) {
     let wm_vertical = |s: AreaSide| {
         if s.self_wm {
-            own.vertical == Some(true)
+            own.wm().vertical()
         } else {
-            cb.vertical == Some(true)
+            cb.wm().vertical()
         }
     };
     let axis_x = |s: AreaSide| -> Option<bool> {
@@ -58,9 +58,9 @@ pub(super) fn physical_area(area: PositionArea, cb: &Computed, own: &Computed) -
         (None, Some(b)) => (!b, b),
         (None, None) => {
             let v = if area.0.self_wm || area.1.self_wm {
-                own.vertical == Some(true)
+                own.wm().vertical()
             } else {
-                cb.vertical == Some(true)
+                cb.wm().vertical()
             };
             (v, !v)
         }

@@ -1,86 +1,63 @@
-//! Состояние обхода стопки (глубина вложенности, внешний ряд) и ось стопки.
+//! Контекст фрагментации сборки (`FragCx`: копия ребёнка стопки, ряд внешней колонки) и ось стопки.
 
 use gpui::{Bounds, Pixels, point, px, size};
 
-thread_local! {
-    /// Глубина построения копий детей стопки (`render.rs`, `StackChild`).
-    static STACK_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+use crate::render::RenderOpts;
+
+/// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
+/// приложение, а код, строящий фрагменты (Blink несёт то же в
+/// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
+#[derive(Clone, Debug, Default)]
+pub struct FragCx {
+    /// Строится копия ребёнка стопки колонок (`multicol_stack_child`).
+    /// Многоколоночник со спаннером внутри другой стопки остаётся на
+    /// сегментном пути: единой стопке нужен перенос ряда/спаннера во ВНЕШНЮЮ
+    /// колонку (Blink `LayoutSpanner`: «The new row doesn't fit in the outer
+    /// fragmentainer»), которого нет (`column-height-029`).
+    pub(crate) in_stack_copy: bool,
+    /// Высота ряда и фаза вложенного многоколоночника, заданные ВНЕШНЕЙ
+    /// колонкой: копия строится рядами этой высоты (css-break-4 §2.1: «when a
+    /// multi-column container breaks across pages, it generates a new row of
+    /// columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
+    /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
+    /// Адресована одному элементу — тому, чей `element()` вызван с ней; его
+    /// дети её не видят (`RenderOpts::take_outer_row`).
+    pub(crate) outer_row: Option<(f32, f32)>,
+    /// Строится копия ребёнка, разбиваемого на фрагменты собственной
+    /// раскладкой (`fragment::paginate`): `render::element` оборачивает её
+    /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
+    pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    /// Строятся дети стопки страниц (`PagedBuild`).
+    pub(crate) paged: Option<std::rc::Rc<crate::layout::page::paged::PagedBuild>>,
 }
 
-/// Сторож «строится копия ребёнка стопки». Многоколоночник со спаннером
-/// внутри другой стопки остаётся на сегментном пути: единой стопке нужен
-/// перенос ряда/спаннера во ВНЕШНЮЮ колонку (Blink `LayoutSpanner`: «The new
-/// row doesn't fit in the outer fragmentainer»), которого нет
-/// (`column-height-029`, `target/scout-columnwrap-2026-09b.md` §2.3).
-pub struct StackScope;
-
-impl StackScope {
-    pub fn enter() -> Self {
-        STACK_DEPTH.with(|d| d.set(d.get() + 1));
-        StackScope
+impl RenderOpts {
+    /// Настройки для сборки копий детей стопки колонок.
+    pub(crate) fn in_stack_copy(&self) -> RenderOpts {
+        let mut opts = self.clone();
+        opts.frag.in_stack_copy = true;
+        opts
     }
-}
 
-impl Drop for StackScope {
-    fn drop(&mut self) {
-        STACK_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+    /// Настройки для сборки вложенного многоколоночника рядами внешней колонки.
+    pub(crate) fn with_outer_row(&self, row: (f32, f32)) -> RenderOpts {
+        let mut opts = self.clone();
+        opts.frag.outer_row = Some(row);
+        opts
     }
-}
 
-thread_local! {
-    /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
-    /// (`OuterRow::enter` → `take_outer_row` первой строкой `render::element`).
-    static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
-    /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
-    /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
-    /// не влезший с верха такой колонки монолит уходит дальше, а не
-    /// переполняет её (Blink: `is_at_fragmentainer_start` ложно —
-    /// `BreakBeforeChildIfNeeded`, css-break-3 §4.1 «may be pushed»).
-    pub(crate) static NOT_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
-/// Передать следующему `element()` высоту внешнего фрагментаинера: копия
-/// вложенного многоколоночника строится рядами этой высоты (css-break-4 §2.1:
-/// «when a multi-column container breaks across pages, it generates a new row
-/// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
-/// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
-/// Сторож `NOT_TOP` на время укладки.
-pub(crate) struct NotTop(pub(crate) usize);
-
-impl NotTop {
-    pub(crate) fn set(n: usize) -> Self {
-        NotTop(NOT_TOP.with(|c| c.replace(n)))
+    /// Забрать высоту ряда, адресованную этому элементу: она сама и
+    /// настройки без неё для всего, что строится внутри.
+    pub(crate) fn take_outer_row(&self) -> (Option<(f32, f32)>, Option<RenderOpts>) {
+        match self.frag.outer_row {
+            None => (None, None),
+            Some(row) => {
+                let mut inner = self.clone();
+                inner.frag.outer_row = None;
+                (Some(row), Some(inner))
+            }
+        }
     }
-}
-
-impl Drop for NotTop {
-    fn drop(&mut self) {
-        NOT_TOP.with(|c| c.set(self.0));
-    }
-}
-
-/// Scoped one-shot handoff to the next element; restores an enclosing handoff.
-pub(crate) struct OuterRow(Option<(f32, f32)>);
-
-impl OuterRow {
-    pub(crate) fn enter(h: Option<(f32, f32)>) -> Self {
-        Self(OUTER_ROW.with(|r| r.replace(h)))
-    }
-}
-
-impl Drop for OuterRow {
-    fn drop(&mut self) {
-        OUTER_ROW.with(|r| r.set(self.0));
-    }
-}
-
-/// Забрать переданную высоту (одноразово).
-pub fn take_outer_row() -> Option<(f32, f32)> {
-    OUTER_ROW.with(|r| r.take())
-}
-
-pub fn in_stack() -> bool {
-    STACK_DEPTH.with(|d| d.get() > 0)
 }
 
 /// Ось стопки колонок. css-multicol-1 §2 (`Overview.bs:375-379`): «The
@@ -107,6 +84,15 @@ pub enum StackAxis {
 }
 
 impl StackAxis {
+    /// The block-flow axis of a writing mode (§3.1): `sideways-lr` stacks like `vertical-lr`.
+    pub(crate) fn of(wm: crate::style::computed::writing_mode::WritingMode) -> Self {
+        match (wm.vertical(), wm.block_rl()) {
+            (false, _) => StackAxis::Horizontal,
+            (true, true) => StackAxis::VerticalRl,
+            (true, false) => StackAxis::VerticalLr,
+        }
+    }
+
     pub fn is_vertical(self) -> bool {
         !matches!(self, StackAxis::Horizontal)
     }
@@ -147,27 +133,40 @@ pub fn axis_box(
 mod tests {
     use super::*;
 
-    #[test]
-    fn outer_row_is_consumed_once_and_restores_nested_handoff() {
-        let _outer = OuterRow::enter(Some((120.0, 0.0)));
-        {
-            let _inner = OuterRow::enter(Some((60.0, 0.5)));
-            assert_eq!(take_outer_row(), Some((60.0, 0.5)));
-            assert_eq!(take_outer_row(), None);
+    fn opts() -> RenderOpts {
+        RenderOpts {
+            text: Default::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            doc_salt: 0,
+            frag: Default::default(),
         }
-        assert_eq!(take_outer_row(), Some((120.0, 0.0)));
     }
 
     #[test]
-    fn outer_row_restores_handoff_after_unwind() {
-        let _outer = OuterRow::enter(Some((120.0, 0.0)));
+    fn outer_row_is_consumed_for_children_without_changing_enclosing_handoff() {
+        let outer = opts().with_outer_row((120.0, 0.0));
+        let inner = outer.with_outer_row((60.0, 0.5));
+        let (row, children) = inner.take_outer_row();
+        assert_eq!(row, Some((60.0, 0.5)));
+        let children = children.unwrap();
+        let (row, cleared) = children.take_outer_row();
+        assert_eq!(row, None);
+        assert!(cleared.is_none());
+        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
+    }
+
+    #[test]
+    fn outer_row_survives_unwind_of_nested_build() {
+        let outer = opts().with_outer_row((120.0, 0.0));
         assert!(
-            std::panic::catch_unwind(|| {
-                let _inner = OuterRow::enter(Some((60.0, 0.5)));
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let inner = outer.with_outer_row((60.0, 0.5));
+                assert_eq!(inner.take_outer_row().0, Some((60.0, 0.5)));
                 panic!("render failed");
-            })
+            }))
             .is_err()
         );
-        assert_eq!(take_outer_row(), Some((120.0, 0.0)));
+        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
     }
 }

@@ -2,7 +2,6 @@
 
 use super::{PageGeom, PageStack};
 use crate::layout::fragment::types::{Frag, Kid};
-use crate::tolerance::COORD_EPS;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
@@ -52,40 +51,29 @@ impl PageStack {
             };
             let kid = &mut self.kids[f.kid];
             if let Some(r) = kid.repeat.as_mut() {
-                let mut band = |el: Option<&mut gpui::AnyElement>, at: f32| {
-                    if let Some(el) = el {
-                        el.layout_as_root(
-                            size(
-                                gpui::AvailableSpace::Definite(px(w)),
-                                gpui::AvailableSpace::Definite(px(h)),
-                            ),
-                            window,
-                            cx,
-                        );
-                        el.prepaint_at(
-                            point(
-                                bounds.origin.x + px(sx + ax),
-                                bounds.origin.y + px(sy + ay + f.y + at - inner_top),
-                            ),
-                            window,
-                            cx,
-                        );
-                    }
-                };
-                if let Some((src, _)) = r.head.filter(|_| f.head > COORD_EPS && f.copy > 0) {
-                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
-                }
-                if let Some((src, bh)) = r.foot.filter(|_| f.foot > COORD_EPS) {
-                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
-                }
+                r.place_bands(f, |el, at| {
+                    el.layout_as_root(
+                        size(
+                            gpui::AvailableSpace::Definite(px(w)),
+                            gpui::AvailableSpace::Definite(px(h)),
+                        ),
+                        window,
+                        cx,
+                    );
+                    el.prepaint_at(
+                        point(
+                            bounds.origin.x + px(sx + ax),
+                            bounds.origin.y + px(sy + ay + f.y + at - inner_top),
+                        ),
+                        window,
+                        cx,
+                    );
+                });
             }
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             el.layout_as_root(
                 size(

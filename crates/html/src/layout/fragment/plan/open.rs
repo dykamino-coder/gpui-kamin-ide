@@ -1,7 +1,7 @@
 //! Начало ребёнка в колонке: группы, принудительные разрывы, флоаты, отступ.
 
+use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::Kid;
-use crate::layout::multicol::column_stack::ColumnStack;
 
 #[allow(clippy::too_many_arguments)]
 // The open paragraph group pairs its starting column state with its furthest extent.
@@ -46,7 +46,7 @@ pub(super) fn open_kid(
         *col += 1;
         *y = 0.0;
         *placed = *col < not_top;
-        ColumnStack::skip_float(float_hold, col, y, placed);
+        skip_float(float_hold, col, y, placed);
         *prev_mb = 0.0;
         *first = true;
     }

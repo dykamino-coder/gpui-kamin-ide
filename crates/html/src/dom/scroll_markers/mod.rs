@@ -59,9 +59,9 @@ pub(super) fn scroll_marker_pass(
             .as_deref()
             .is_some_and(|p| p.starts_with("scroll-button("))
     }) {
-        let vertical = style.vertical == Some(true);
-        let rl = style.vertical_rl == Some(true);
-        let rtl = style.rtl == Some(true);
+        let vertical = style.wm().vertical();
+        let rl = style.wm().block_rl();
+        let rtl = style.wm().rtl();
         for logical in ["block-start", "inline-start", "inline-end", "block-end"] {
             let physical = match (logical, vertical) {
                 ("block-start", false) => "up",

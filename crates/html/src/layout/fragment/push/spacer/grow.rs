@@ -9,7 +9,6 @@ use crate::layout::fragment::clone::{clone_dec, solid_box};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::grid_bands::grow_grid_track;
 use crate::layout::fragment::probe::size_monolith;
-use crate::layout::fragment::push::PUSH_FORCED;
 use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::spanner::parallel_items_inside;
@@ -108,9 +107,7 @@ pub(crate) fn grow_pushed(
                 }
                 continue;
             }
-            PUSH_FORCED.with(|f| f.set(forced));
-            let found = pushed_box_at(c, at, 4);
-            PUSH_FORCED.with(|f| f.set(false));
+            let found = pushed_box_at(c, at, 4, forced);
             let Some(id) = found else {
                 continue;
             };

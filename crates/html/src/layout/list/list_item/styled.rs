@@ -105,14 +105,14 @@ pub(crate) fn render_with_style(
                 // line's available area, including a preceding float.
                 // The hidden strut supplies that line for an empty item.
                 let intrusion = merged.flow_shapes.as_ref().map_or(0.0, |shapes| {
-                    let side = if merged.rtl == Some(true) {
+                    let side = if merged.wm().rtl() {
                         &shapes.1
                     } else {
                         &shapes.0
                     };
                     side.iter().map(|s| s.cut(0.0, 1.0)).fold(0.0, f32::max)
                 });
-                if merged.rtl == Some(true) {
+                if merged.wm().rtl() {
                     m.left(gpui::relative(1.))
                         .ml(gpui::px(px_of(side.right) - intrusion))
                         .text_left()

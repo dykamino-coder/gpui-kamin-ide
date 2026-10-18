@@ -1,4 +1,5 @@
-//! Logical properties for document.
+//! Document pass after the cascade: logical properties onto physical sides by the inherited
+//! writing mode, then the passes that need physical sides (zoom, explicit `inherit`, anchors, motion).
 
 use crate::dom::Node;
 
@@ -12,48 +13,24 @@ use crate::dom::Node;
 /// Проход идёт после каскада и после распространения письма с `<body>` —
 /// то есть в единственной точке, где письмо узла уже окончательно.
 pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
-    fn walk(nodes: &mut [Node], mode: (Option<bool>, Option<bool>, Option<bool>, Option<bool>)) {
+    use crate::style::computed::writing_mode::WritingProps;
+    fn walk(nodes: &mut [Node], parent: WritingProps) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
-            // Письмо и направление наследуются; свои значения сильнее.
-            // `sideways` — часть ЗНАЧЕНИЯ `writing-mode`, а оно наследуемое
-            // (css-writing-modes-4 §3.1, `Inherited: yes`). Без него потомок
-            // блока `sideways-lr`, у которого своего письма нет, разбирал
-            // логические стороны по строке `vertical-lr` таблицы
-            // §Abstract-Physical Mapping: `inline-start` уезжал с НИЖНЕГО
-            // края на верхний (эталон `initial-letter-block-position-
-            // margins-slr-ref` ставил `margin-inline-start: 15px` сверху).
-            let own = (
-                e.style.vertical.or(mode.0),
-                e.style.vertical_rl.or(mode.1),
-                e.style.rtl.or(mode.2),
-                e.style.sideways.or(mode.3),
-            );
-            let (was_v, was_rl, was_rtl, was_sw) = (
-                e.style.vertical,
-                e.style.vertical_rl,
-                e.style.rtl,
-                e.style.sideways,
-            );
-            e.style.vertical = own.0;
-            e.style.vertical_rl = own.1;
-            e.style.rtl = own.2;
-            e.style.sideways = own.3;
-            // Табличность ячейки на этом шаге держится ТЕГОМ:
-            // `Display::TableCell` приходит только из авторского CSS
-            // (замеренный откат в шапке `resolve_logical`), поэтому
-            // проверяются оба признака.
+            // `writing-mode` and `direction` are inherited (css-writing-modes-4 §3.1, §2.1):
+            // the box maps its logical sides by the inherited value, which the own style
+            // does not hold (the cascade merge happens when the renderer builds the box).
+            let props = WritingProps::of(&e.style).inherit(parent);
+            let wm = props.wm();
+            let parent_vertical = parent.wm().vertical();
+            // A table cell is recognised by its tag too: `Display::TableCell` comes
+            // only from author CSS at this stage.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
                 || e.style.display == Some(crate::style::computed::Display::TableCell);
-            e.style.resolve_logical(mode.0, is_cell);
-            // Слои `:hover`, `::first-letter` и `::first-line` — ТЕМ ЖЕ
-            // проходом. Слой собирается копией стиля элемента ДО этого
-            // прохода (`dom.rs:2473 layer()`), поэтому логические стороны
-            // остаются у него в `Computed::logical` и на физические поля не
-            // ложатся НИКОГДА. Из-за этого `::first-letter
-            // { margin-block-start: 10px }` не доезжал до буквицы:
-            // `render::initial_letter_float` читает у слоя `margin.top` и
-            // родню, а там `None`.
+            e.style.resolve_logical(wm, parent_vertical, is_cell);
+            // `:hover`, `::first-letter` and `::first-line` layers are copies of the
+            // element style made before this pass, so they map with the element's mode
+            // (`::first-letter { margin-block-start }` reaches the initial letter).
             for layer in [
                 e.hover.as_mut(),
                 e.first_letter.as_mut(),
@@ -62,37 +39,19 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>) -> Vec<Node> {
             .into_iter()
             .flatten()
             {
-                let (lv, lrl, lrtl, lsw) =
-                    (layer.vertical, layer.vertical_rl, layer.rtl, layer.sideways);
-                layer.vertical = own.0;
-                layer.vertical_rl = own.1;
-                layer.rtl = own.2;
-                layer.sideways = own.3;
-                layer.resolve_logical(mode.0, is_cell);
-                layer.vertical = lv;
-                layer.vertical_rl = lrl;
-                layer.rtl = lrtl;
-                layer.sideways = lsw;
+                layer.resolve_logical(wm, parent_vertical, is_cell);
             }
-            // Унаследованное обратно снимается: наследованием занимается
-            // сборщик дерева, и оставленное здесь значение завело бы узлу
-            // собственную коробку (см. `has_box_style`).
-            e.style.vertical = was_v;
-            e.style.vertical_rl = was_rl;
-            e.style.rtl = was_rtl;
-            e.style.sideways = was_sw;
             // Physical margins are final here; collapsing rewrites them later.
             // An orthogonal flow root keeps them too: its inline size is the
             // fallback available space minus its own inline-axis margins
             // (css-writing-modes-4 §7.3), which collapsing may hoist away.
-            let orthogonal = own.0.unwrap_or(false) != mode.0.unwrap_or(false);
-            if e.style.clip_ref == Some(1) || orthogonal {
+            if e.style.clip_ref == Some(1) || wm.vertical() != parent_vertical {
                 e.style.own_margin = Some(e.style.margin);
             }
-            walk(&mut e.children, own);
+            walk(&mut e.children, props);
         }
     }
-    walk(&mut nodes, (None, None, None, None));
+    walk(&mut nodes, WritingProps::default());
     // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
     // проходом по собственным стилям — до слияния и до раскладки, а не в
     // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
@@ -202,5 +161,28 @@ mod tests {
         let mut flags = Vec::new();
         collect(doc.nodes(), &mut flags);
         assert_eq!(flags, [Some(true), Some(false), Some(false)]);
+    }
+
+    #[test]
+    fn logical_sides_map_by_the_inherited_mode_without_touching_own_styles() {
+        use crate::style::values::value::Len;
+        let doc = Document::new(
+            r#"<body><div style="writing-mode: sideways-lr; direction: rtl">
+            <p id="a" style="margin-inline-start: 15px; padding-block-start: 5px"></p>
+            </div></body>"#,
+            "",
+        );
+        fn find(nodes: &[Node]) -> Option<&crate::dom::Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.attrs.iter().any(|(k, v)| k == "id" && v == "a") => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let p = find(doc.nodes()).expect("p");
+        // sideways-lr + rtl: inline-start is the top, block-start the left (§6.4).
+        assert_eq!(p.style.margin.top, Some(Len::Px(15.0)));
+        assert_eq!(p.style.padding.left, Some(Len::Px(5.0)));
+        assert_eq!((p.style.writing_mode, p.style.rtl), (None, None));
     }
 }

@@ -33,7 +33,7 @@ pub(super) fn flex_lines_of(
         || s.flex_wrap != Some(true)
         || s.flex_wrap_reverse == Some(true)
         || s.flex_balance == Some(true)
-        || s.vertical == Some(true)
+        || s.wm().vertical()
         || s.justify_content.is_some()
         || s.align_content.is_some()
         || s.align_items.is_some()

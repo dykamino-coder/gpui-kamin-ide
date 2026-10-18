@@ -1,7 +1,7 @@
 //! Preserve the legacy vertical row cross-end only on its physical X axis.
 use crate::style::computed::{Computed, Display, FlexDir};
 pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
-    c.vertical_rl == Some(true)
+    c.wm().block_rl()
         && c.align_items.is_none()
         && matches!(c.display, Some(Display::Flex) | Some(Display::InlineFlex))
         && matches!(physical, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
@@ -14,8 +14,9 @@ mod tests {
     fn logical_vertical_columns_do_not_get_a_physical_bottom_default() {
         for display in [Display::Flex, Display::InlineFlex] {
             let mut c = Computed {
-                vertical: Some(true),
-                vertical_rl: Some(true),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    true, true, false,
+                )),
                 display: Some(display),
                 ..Computed::default()
             };
@@ -28,9 +29,13 @@ mod tests {
                 assert!(!ends_on_x(&c, Some(physical)));
                 c.align_items = None;
             }
-            c.vertical_rl = Some(false);
+            c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            ));
             assert!(!ends_on_x(&c, Some(FlexDir::Col)));
-            c.vertical_rl = Some(true);
+            c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, true, false,
+            ));
             c.display = Some(Display::Block);
             assert!(!ends_on_x(&c, Some(FlexDir::Col)));
         }

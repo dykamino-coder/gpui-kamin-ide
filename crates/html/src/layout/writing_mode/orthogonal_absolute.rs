@@ -8,7 +8,7 @@ pub(super) fn constraint(style: &Computed, available: f32) -> Option<InlineConst
     let positioned =
         matches!(style.position, Some(Position::Absolute | Position::Fixed)) || style.abs_static;
     let definite = |value| !matches!(value, None | Some(Len::Auto));
-    if !positioned || style.vertical != Some(true) || style.ortho_col || style.parent_flex_grid {
+    if !positioned || !style.wm().vertical() || style.ortho_col || style.parent_flex_grid {
         return None;
     }
     let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -34,7 +34,9 @@ mod tests {
     fn free_absolute_inline_size_uses_intrinsics_instead_of_zero() {
         let style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         let c = constraint(&style, 600.0).unwrap();
@@ -52,7 +54,9 @@ mod tests {
     fn two_auto_size_insets_and_parent_layout_keep_their_contracts() {
         let mut style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         style.height = Some(Len::Px(200.0));
@@ -74,7 +78,9 @@ mod tests {
     fn definite_absolute_inline_size_replaces_fallback_before_alignment() {
         let mut style = Computed {
             position: Some(Position::Absolute),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             rtl: Some(true),
             height: Some(Len::Px(80.0)),
             ..Computed::default()

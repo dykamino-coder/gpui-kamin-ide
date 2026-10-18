@@ -5,24 +5,19 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::push::grow_pushed;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::spanner::multicol_container;
-use crate::layout::positioned::predicates::OOF_OWN;
 use crate::render::out_of_flow;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;
 
 fn measure_fragment_and_own_height(c: &Element) -> Option<(Shape, f32)> {
-    let s = shape_full(c, 4, ShapeCx::COLUMNS)?;
-    let own = OOF_OWN.with(|m| {
-        m.borrow()
-            .get(&c.node_id)
-            .filter(|&&(_, full)| (full - s.height).abs() < 0.01)
-            .map_or(s.height, |&(own, _)| own)
-    });
-    Some((s, own))
+    let m = crate::layout::fragment::fragment_size::measure(c, 4, ShapeCx::COLUMNS)?;
+    let own = Measure::own_size(m.own, m.shape.height);
+    Some((m.shape, own))
 }
 
 fn zero(v: Option<Len>) -> bool {
