@@ -166,7 +166,7 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
         &doc.frames,
         &mut counter,
         &mut counters,
-        &[],
+        &mut Vec::new(),
         false,
         &mut out,
     );
