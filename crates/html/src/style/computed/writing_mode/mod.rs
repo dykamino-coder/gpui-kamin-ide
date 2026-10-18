@@ -16,7 +16,9 @@
 use super::Computed;
 
 mod keyword;
+mod props;
 pub(crate) use keyword::WritingModeKw;
+pub(crate) use props::WritingProps;
 
 /// How a horizontally typeset line is turned to become the vertical line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,13 +77,9 @@ impl WritingMode {
     }
 
     pub(crate) fn of(style: &Computed) -> Self {
-        let flow = style.writing_mode.or(style.flat_mode).unwrap_or_default();
         Self {
-            vertical: style.writing_mode.is_some_and(WritingModeKw::is_vertical),
-            rl: flow.is_rl(),
-            sideways: flow.is_sideways(),
             turned: style.turned_line,
-            rtl: style.rtl == Some(true),
+            ..WritingProps::of(style).wm()
         }
     }
 
@@ -156,6 +154,15 @@ impl WritingMode {
     pub(crate) fn inline_start(self) -> Side {
         let left = self.line_left();
         if self.rtl { left.opposite() } else { left }
+    }
+
+    /// Block-start (§6.4): top in horizontal modes, right for `*-rl`, left for `*-lr`.
+    pub(crate) fn block_start(self) -> Side {
+        match (self.vertical, self.rl) {
+            (false, _) => Side::Top,
+            (true, true) => Side::Right,
+            (true, false) => Side::Left,
+        }
     }
 }
 

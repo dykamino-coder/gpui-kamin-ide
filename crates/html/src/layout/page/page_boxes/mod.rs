@@ -92,7 +92,7 @@ fn page_margin_boxes(
         own.writing_mode = resolved.writing_mode;
         own.flat_mode = resolved.flat_mode;
         own.rtl = resolved.rtl;
-        own.resolve_logical(ctx_style.vertical_decl(), false);
+        own.resolve_logical(own.wm(), ctx_style.wm().vertical(), false);
         let fs = match resolved.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,

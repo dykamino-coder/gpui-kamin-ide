@@ -22,6 +22,15 @@ fn inline_start_follows_line_left_and_direction() {
 }
 
 #[test]
+fn block_start_follows_block_flow_direction() {
+    assert_eq!(mode(false, true, false).block_start(), Side::Top);
+    assert_eq!(mode(true, true, false).block_start(), Side::Right);
+    assert_eq!(mode(true, false, false).block_start(), Side::Left);
+    assert_eq!(mode(true, true, true).block_start(), Side::Right);
+    assert_eq!(mode(true, false, true).block_start(), Side::Left);
+}
+
+#[test]
 fn turned_line_clone_keeps_its_vertical_mode() {
     let clone = Computed {
         flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
