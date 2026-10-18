@@ -64,6 +64,8 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                     colors: vec![],
+                    shape: Default::default(),
+                    polar: None,
                 };
                 let layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 bands.push(
@@ -119,6 +121,8 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                     colors: vec![],
+                    shape: Default::default(),
+                    polar: None,
                 };
                 let mut layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:

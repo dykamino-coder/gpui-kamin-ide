@@ -11,26 +11,12 @@ pub(crate) mod stops;
 pub(crate) use current_color::{
     parse_gradient, parse_gradient_with_current, resolve_gradient_colors,
 };
-pub(crate) use direction::corner_angle;
+pub(super) use direction::corner_direction;
 use direction::gradient_direction;
 pub(super) use image_set::image_set_pick;
 use parse::gradient_angle;
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-bgimg-2026-09.md` §4
-/// IMG-IMAGE-SET, 2 хунка): выбор кандидата `image-set()` по спеке — отсев по
-/// MIME, дублям разрешения и «кандидатов не осталось ⇒ негодная картинка».
-/// Обещание +13. Полный свод против v37: **+9/−17**. Плюсы — семья, где
-/// кандидат ДОЛЖЕН быть отвергнут (`image-set-type-unsupported-*`,
-/// `-zero-resolution-*`, `-negative-resolution-*`, градиенты). Минусы — 17
-/// пар с единственным годным кандидатом (`image-set-rendering`, `-dpi-*`,
-/// `-dppx-*`, `-calc-x-*`, `-no-res-*`, `-type-*`), все ровно 2.08: картинка
-/// встала не на место. Отбор верен, теряется адрес выбранного кандидата —
-/// возвращать вместе с разбором `<string>` как адреса (стенд `wptrun.rs:704`
-/// перебазирует только `url(...)`).
-/// Записи `<gradient>`, которых GPU-путь не выражает: коническая (обход по
-/// углу) и все повторяющиеся (узор стопов мостится вдоль линии —
-/// css-images-3 §3.6). Такие рисуются растровой плиткой — тем же путём,
-/// которым уже ходит `conic-gradient()`.
+/// Conic/repeating gradients and cross-fades require an image tile.
 pub(crate) fn gradient_as_raster(v: &str) -> bool {
     // `cross-fade()` (css-images-4 §2.6) — смесь картинок растром той же
     // плиткой (`background::rasterize_cross_fade`).

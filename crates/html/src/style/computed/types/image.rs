@@ -22,6 +22,8 @@ pub struct Shadow {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Gradient {
     pub angle_deg: f32,
+    pub(crate) shape: GradientShape,
+    pub(crate) polar: Option<crate::style::values::color_space::DirectGradient>,
     /// Радиальный: угол не участвует, цвет идёт от центра к краям.
     pub radial: bool,
     /// `circle` — окружность вместо эллипса по краям коробки.

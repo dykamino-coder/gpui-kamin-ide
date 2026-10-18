@@ -102,14 +102,16 @@ pub(crate) fn paint_gradient(
     let Some(mut gradient) = crate::style::computed::parse_gradient(raw) else {
         return false;
     };
-    if let Some(angle) = crate::style::computed::corner_angle(
-        raw,
-        (f32::from(bounds.size.width), f32::from(bounds.size.height)),
-    ) {
+    if let Some(angle) = gradient
+        .shape
+        .corner_angle((f32::from(bounds.size.width), f32::from(bounds.size.height)))
+    {
         gradient.angle_deg = angle;
     }
     let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    if let Some(geometry) = super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg) {
+    if let Some(geometry) =
+        super::gradient_geometry::Geometry::new(&gradient, css, gradient.angle_deg)
+    {
         gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
     }
     // Extended stop ranges lose the visible colour variation in the analytic

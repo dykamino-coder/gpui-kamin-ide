@@ -22,7 +22,7 @@ pub(super) fn paint(
         return false;
     }
     let (kx, ky) = (dw / sw, dh / sh);
-    let angle = crate::style::computed::corner_angle(raw, image).unwrap_or(g.angle_deg);
+    let angle = g.shape.corner_angle(image).unwrap_or(g.angle_deg);
     let axis_aligned = (angle / 90.0 - (angle / 90.0).round()).abs() < 0.0001;
     if (!axis_aligned && (kx - ky).abs() > 0.0001)
         || ((!g.stops_px.is_empty() || !g.stops_raw.is_empty()) && (kx != 1.0 || ky != 1.0))

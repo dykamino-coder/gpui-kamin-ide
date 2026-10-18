@@ -41,13 +41,13 @@ pub(super) fn raster(
     }
     let repeating = src.starts_with("repeating-");
     let g = crate::style::computed::parse_gradient(src)?;
-    let angle = crate::style::computed::corner_angle(src, css).unwrap_or(g.angle_deg);
-    let geometry = Geometry::new(src, css, angle)?;
+    let angle = g.shape.corner_angle(css).unwrap_or(g.angle_deg);
+    let geometry = Geometry::new(&g, css, angle)?;
     // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
     // gradient line, which is the horizontal radius for a radial gradient.
     let stops = resolved_stops(&g, geometry.length());
     let hsl = crate::style::values::color_space::HslRamp::new(&stops, g.space, g.hue);
-    let palette = crate::style::values::color_space::DirectGradient::new(src, stops.len(), g.space);
+    let palette = &g.polar;
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {

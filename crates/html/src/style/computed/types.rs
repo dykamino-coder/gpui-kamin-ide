@@ -9,6 +9,7 @@ mod bg_lists;
 mod blend;
 mod boxes;
 mod decor;
+mod gradient_geometry;
 mod image;
 mod layout;
 mod text;
@@ -25,6 +26,7 @@ pub use decor::{
 pub(super) use decor::{
     parse_decor_inset, parse_decor_length, parse_decor_style, parse_decor_thickness,
 };
+pub(crate) use gradient_geometry::{GradientShape, RadialExtent, RadialSize};
 pub use image::{BorderImage, BorderImageSlice, BorderImageWidth, GradSpace, Gradient, Shadow};
 pub use layout::{Align, AutoFlow, Display, FlexDir, GapInset, GapList, Justify, Placement};
 pub use text::{

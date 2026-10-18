@@ -26,6 +26,7 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
 }
 
 pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
+    let authored = v;
     let v = v.strip_prefix("repeating-").unwrap_or(v);
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
@@ -193,7 +194,16 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
         .zip(raw_px.iter())
         .map(|((c, f), (_, p))| (*c, *f, *p))
         .collect();
+    let space = named_space.unwrap_or(if all_legacy {
+        GradSpace::Srgb
+    } else {
+        GradSpace::Oklab
+    });
+    let polar =
+        crate::style::values::color_space::DirectGradient::new(authored, stops.len(), space);
     Some(Gradient {
+        shape: GradientShape::parse(authored)?,
+        polar,
         angle_deg: angle,
         radial,
         circle,
@@ -202,14 +212,7 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
         stops,
         stops_px,
         stops_raw,
-        // §12.2: без записи — sRGB, пока ВСЕ цвета устаревших форм, иначе
-        // OKLab. Именно эта оговорка и держит совместимость: почти весь набор
-        // пишет градиенты именами, `#hex` и `rgb()`, и остаётся в sRGB.
-        space: named_space.unwrap_or(if all_legacy {
-            GradSpace::Srgb
-        } else {
-            GradSpace::Oklab
-        }),
+        space,
         hue: hue_arc,
         colors: if colors.iter().any(|c| c.depends_on_current()) {
             colors
