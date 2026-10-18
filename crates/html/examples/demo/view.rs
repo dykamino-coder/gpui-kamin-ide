@@ -20,6 +20,7 @@ impl Render for Demo {
             normal_line_height: 1.31,
             doc_salt: 0,
             cx: Default::default(),
+            frag: Default::default(),
         };
         div()
             .size_full()

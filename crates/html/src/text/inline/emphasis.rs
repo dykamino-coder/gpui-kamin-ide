@@ -60,8 +60,8 @@ pub(crate) fn emphasis_spans(
                 // typographic mode, including inherited emphasis on a child.
                 mark: if style.emphasis_auto_shape
                     && rotated.is_some()
-                    && style.sideways != Some(true)
-                    && style.text_sideways != Some(true)
+                    && !style.wm().sideways()
+                    && !style.wm().text_sideways()
                 {
                     if mark == "\u{25CB}" {
                         "\u{FE46}"

@@ -175,7 +175,7 @@ pub(crate) fn dispatch_element(
         "hr" => {
             let d = styled_div_with(e, &merged, &opts.cx);
             // A `width` (CSS or the §15.3.11 hint) keeps its own size.
-            if inherited.vertical == Some(true) || merged.width.is_some() {
+            if inherited.wm().vertical() || merged.width.is_some() {
                 d.into_any_element()
             } else {
                 d.w_full().into_any_element()

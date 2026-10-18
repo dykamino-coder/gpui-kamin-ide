@@ -62,8 +62,7 @@ pub(super) fn frag_box_div(
                 && matches!(k.style.width, None | Some(Len::Auto))
                 && matches!(k.style.height, Some(Len::Px(_))))
     };
-    if src.style.display.is_none() && src_inner.vertical != Some(true) && kids.iter().any(ratio_kid)
-    {
+    if src.style.display.is_none() && !src_inner.wm().vertical() && kids.iter().any(ratio_kid) {
         d = d.flex().flex_col();
     }
     // Для ЛЮБОЙ flex/grid-копии, не только с линейками:

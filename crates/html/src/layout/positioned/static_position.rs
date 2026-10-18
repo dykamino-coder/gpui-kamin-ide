@@ -24,7 +24,7 @@ pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32
     if e.style.inline_display != Some(true) {
         return None;
     }
-    let rtl = inherited.rtl == Some(true);
+    let rtl = inherited.wm().rtl();
     match inherited
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)
@@ -105,8 +105,8 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
     // block axis, whatever the writing mode (Blink
     // `BlockLayoutAlgorithm::HandleOutOfFlowPositioned` works in logical
     // offsets; `align-self-static-position-002`).
-    if inherited.vertical == Some(true) {
-        let kb = if inherited.vertical_rl == Some(true) {
+    if inherited.wm().vertical() {
+        let kb = if inherited.wm().block_rl() {
             1.0 - kb
         } else {
             kb
@@ -124,9 +124,9 @@ pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f3
 /// `justify-items`/`align-items`). Horizontal ltr only — other modes keep the
 /// previous placement (`None`), as does `normal`/`auto` in both axes.
 pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
-    if inherited.vertical == Some(true)
-        || inherited.rotated_line == Some(true)
-        || inherited.rtl == Some(true)
+    if inherited.wm().vertical()
+        || inherited.wm().turned()
+        || inherited.wm().rtl()
         || e.style.inline_display == Some(true)
     {
         return None;

@@ -17,7 +17,7 @@ pub(crate) fn inner(
         None | Some(Display::Block | Display::ListItem | Display::InlineBlock) => {}
         _ => return None,
     }
-    if st.vertical == Some(true) || st.column_count.is_some() || st.column_width.is_some() {
+    if st.wm().vertical() || st.column_count.is_some() || st.column_width.is_some() {
         return None;
     }
     let outer = if st.root_box { Some(viewport) } else { outer };

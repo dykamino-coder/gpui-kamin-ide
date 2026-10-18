@@ -117,7 +117,7 @@ pub(crate) fn band_flow_rest_lift(
             if !text && !atoms {
                 bad = true;
             }
-            if atoms && BAND_WM.with(std::cell::Cell::get) != 0 {
+            if atoms && BAND_WM.with(std::cell::Cell::get).vertical() {
                 bad = true;
             }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
@@ -184,7 +184,7 @@ pub(crate) fn band_flow_rest_lift(
                     // вставал ПОСЛЕ буквицы вместо обтекания
                     // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
                     // осадки сразу за буквицей).
-                    let only_breaks = BAND_WM.with(std::cell::Cell::get) != 0
+                    let only_breaks = BAND_WM.with(std::cell::Cell::get).vertical()
                         && run
                             .iter()
                             .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));

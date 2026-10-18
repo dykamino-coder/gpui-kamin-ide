@@ -84,8 +84,8 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     }
     let seq = c.anchor_seq;
     let default_anchor = default_anchor_of(c);
-    let cb_vertical = inherited.vertical == Some(true);
-    let own_vertical = c.vertical == Some(true);
+    let cb_vertical = inherited.wm().vertical();
+    let own_vertical = c.wm().vertical();
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
         USED_LAST.with(|u| u.set(true));

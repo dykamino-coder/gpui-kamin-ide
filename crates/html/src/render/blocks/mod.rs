@@ -17,7 +17,6 @@ use crate::layout::float::band_flow_host::{
 };
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
-use crate::layout::page::paged::PAGED;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
@@ -106,8 +105,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
     // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
     // line-left — низ, и плана для него нет.
-    let vert_host = inherited.vertical == Some(true)
-        && (inherited.sideways != Some(true) || inherited.vertical_rl == Some(true));
+    let vert_host =
+        inherited.wm().vertical() && (!inherited.wm().sideways() || inherited.wm().block_rl());
     // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
     // `line-clamp` (точка среза считает строки и флоаты за ней —
     // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
@@ -117,25 +116,19 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let measured_ok = !flex_ctx
         && inherited.line_clamp.is_none()
         && crate::text::clamp::clamp_context().is_none()
-        && !PAGED.with(std::cell::Cell::get)
+        && opts.paged_build().is_none()
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && (inherited.vertical != Some(true) || vert_host)
-        && (inherited.vertical_rl != Some(true) || vert_host)
-        && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
+        && (!inherited.wm().vertical() || vert_host)
+        && (!inherited.wm().block_rl() || vert_host)
+        && (!inherited.wm().rtl() || !inherited.wm().vertical());
     let _fl_guard =
         BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
     let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
-    let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
-        w.replace(match (inherited.vertical, inherited.vertical_rl) {
-            (Some(true), Some(true)) => 1,
-            (Some(true), _) => 2,
-            _ => 0,
-        })
-    }));
+    let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
     let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
     let collapsed = by_layer(
         wrap_floats(

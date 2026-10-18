@@ -119,7 +119,7 @@ fn build(
         factories,
         operator,
         kind,
-        rtl: style.rtl == Some(true),
+        rtl: style.wm().rtl(),
         width: px_strict(style.width),
         height: px_strict(style.height),
         offsets: vec![],

@@ -1,8 +1,8 @@
 //! Ребёнок с box-decoration-break: clone — фрагменты с повторяемой декорацией.
 
 use super::pieces::LoopStep;
+use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
-use crate::layout::multicol::column_stack::ColumnStack;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fill_clone_dec(
@@ -55,7 +55,7 @@ pub(super) fn fill_clone_dec(
             *col += 1;
             *cur = 0.0;
             *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, cur, placed);
+            skip_float(float_hold, col, cur, placed);
             return Some(LoopStep::Continue);
         }
         // Пустая колонка, где украшению не хватило места, всё равно
@@ -121,7 +121,7 @@ pub(super) fn fill_clone_dec(
         *col += 1;
         *cur = 0.0;
         *placed = *col < not_top;
-        ColumnStack::skip_float(float_hold, col, cur, placed);
+        skip_float(float_hold, col, cur, placed);
         return Some(LoopStep::Continue);
     }
     None

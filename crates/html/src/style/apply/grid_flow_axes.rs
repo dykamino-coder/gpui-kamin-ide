@@ -2,22 +2,11 @@
 use crate::style::computed::Computed;
 
 pub(super) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.vertical == Some(true);
-    let sideways = c.sideways == Some(true);
-    // Upright vertical text forces the used direction to LTR; sideways writing ignores orientation.
-    let rtl = c.rtl == Some(true) && !(vertical && !sideways && c.upright == Some(true));
-    if vertical {
-        [
-            c.vertical_rl == Some(true),
-            rtl != (sideways && c.vertical_rl != Some(true)),
-        ]
-    } else {
-        [rtl, false]
-    }
+    c.wm().reversed_axes()
 }
 
 pub(super) fn block(c: &Computed) -> [bool; 3] {
-    let vertical = c.vertical == Some(true);
+    let vertical = c.wm().vertical();
     let axes = reversed(c);
     [vertical, vertical && axes[0], axes[usize::from(vertical)]]
 }
@@ -40,9 +29,9 @@ mod tests {
             (true, true, true, false, [true, false]),
         ] {
             let c = Computed {
-                vertical: Some(vertical),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    vertical, rl, sideways,
+                )),
                 rtl: Some(rtl),
                 ..Computed::default()
             };
@@ -61,18 +50,23 @@ mod tests {
     #[test]
     fn upright_uses_ltr_only_in_vertical_writing() {
         let mut c = Computed {
-            vertical: Some(true),
-            vertical_rl: Some(false),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             rtl: Some(true),
-            upright: Some(true),
+            text_orientation: Some(crate::style::computed::writing_mode::TextOrientation::Upright),
             ..Computed::default()
         };
         assert_eq!(reversed(&c), [false, false]);
-        c.vertical = Some(false);
+        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            false,
+            c.wm().block_rl(),
+            c.wm().sideways(),
+        ));
         assert_eq!(reversed(&c), [true, false]);
-        c.vertical = Some(true);
-        c.sideways = Some(true);
-        c.vertical_rl = Some(true);
+        c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, true, true,
+        ));
         assert_eq!(reversed(&c), [true, true]);
     }
 }

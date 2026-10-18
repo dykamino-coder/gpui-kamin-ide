@@ -63,7 +63,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // больше его не видит (`max-height-table`: `max-height: 0` сплющивал
     // ряд 5px в ноль).
     let unlimited;
-    let inherited = if inherited.vertical != Some(true)
+    let inherited = if !inherited.wm().vertical()
         && matches!(
             inherited.max_height,
             Some(Len::MinContent)
@@ -199,7 +199,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.vertical == Some(true) || inherited.vertical == Some(true);
+    let table_is_vertical = e.style.wm().vertical() || inherited.wm().vertical();
     measure_col_widths(
         e,
         inherited,

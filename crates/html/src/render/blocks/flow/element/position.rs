@@ -52,7 +52,7 @@ pub(crate) fn position_element(
     // Содержимое выше растяжения держатель не зажмёт — приближение.
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let holder_axis = if positioned_out
-        && e.style.vertical.is_none()
+        && e.style.writing_mode.is_none()
         && auto_len(e.style.height)
         && kw_len(e.style.max_height)
         && edge_set(e.style.inset.top)

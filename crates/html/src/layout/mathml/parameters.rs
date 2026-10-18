@@ -35,7 +35,7 @@ pub(super) fn kind(e: &Element, style: &Computed, opts: &RenderOpts) -> Kind {
             voffset: attr("voffset").unwrap_or(0.0),
             css_width: px_strict(style.width),
             css_height: px_strict(style.height),
-            rtl: style.rtl == Some(true),
+            rtl: style.wm().rtl(),
         })
     } else {
         let font = super::font_parameters::FontParameters::new(e, style, opts);

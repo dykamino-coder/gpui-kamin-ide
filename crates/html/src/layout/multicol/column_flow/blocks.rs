@@ -41,7 +41,7 @@ pub(super) fn non_inline_columns(
         }
         // Вложенный многоколоночник с заданной высотой — не «тот же поток»: его
         // строки идут СВОИМИ колонками, рядами во внешних (`nested_rows_box`,
-        // `flow::OUTER_ROW`), а текстовый путь разложил бы их по внешним
+        // `FragCx::outer_row`), а текстовый путь разложил бы их по внешним
         // колонкам (`multicol-breaking-000…006`).
         if nested_rows_box(only) {
             return Some(None);

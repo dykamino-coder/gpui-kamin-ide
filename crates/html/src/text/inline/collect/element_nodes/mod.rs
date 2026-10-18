@@ -107,7 +107,7 @@ pub(super) fn collect_element(
     // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
         inline_spacing::inline_sides(e, &merged, inherited, cx.layout.avail_w);
-    let own_rtl = merged.rtl == Some(true);
+    let own_rtl = merged.wm().rtl();
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);
         std::mem::swap(&mut mlead, &mut mtrail);
@@ -203,11 +203,7 @@ pub(super) fn collect_element(
         kids
     };
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged);
-    out.extend(shift_overlays(
-        kids,
-        &e.style,
-        merged.rotated_line == Some(true),
-    ));
+    out.extend(shift_overlays(kids, &e.style, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(Piece::Text {
             text: mark.to_string(),

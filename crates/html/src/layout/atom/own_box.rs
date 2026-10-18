@@ -32,9 +32,9 @@ pub(super) fn own_box_atom(
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
     if e.style.display == Some(Display::InlineBlock)
         && e.style.inline_display != Some(true)
-        && merged.vertical == Some(true)
-        && inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true)
+        && merged.wm().vertical()
+        && !inherited.wm().vertical()
+        && !inherited.wm().turned()
     {
         box_.style().baseline_unavailable = Some(true);
     }
@@ -85,7 +85,7 @@ pub(super) fn own_box_atom(
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
     if e.style.display == Some(Display::InlineBlock)
-        && merged.vertical == Some(true)
+        && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
                 if !k.inline || matches!(k.style.display, Some(Display::Block)))
@@ -116,7 +116,7 @@ pub(super) fn own_box_atom(
             merged.ortho_limit = Some((h - edges).max(0.0));
         }
         box_ = box_.flex();
-        box_ = if merged.vertical_rl == Some(true) {
+        box_ = if merged.wm().block_rl() {
             box_.flex_row_reverse()
         } else {
             box_.flex_row()

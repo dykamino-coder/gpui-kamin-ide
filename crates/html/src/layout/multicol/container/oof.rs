@@ -31,10 +31,10 @@ pub(super) fn place_oof_statics(
                 edge_set(oof.style.inset.left) || edge_set(oof.style.inset.right),
                 edge_set(oof.style.inset.top) || edge_set(oof.style.inset.bottom),
             ),
-            rtl: merged.rtl == Some(true),
-            vertical: merged.vertical == Some(true),
-            vertical_rl: merged.vertical_rl == Some(true),
-            own_vertical: oof.style.vertical == Some(true),
+            rtl: merged.wm().rtl(),
+            vertical: merged.wm().vertical(),
+            vertical_rl: merged.wm().block_rl(),
+            own_vertical: oof.style.wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {

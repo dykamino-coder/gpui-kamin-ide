@@ -24,14 +24,20 @@ fn static_cross_axis_tracks_parent_writing_mode_and_direction() {
             .unwrap()
             .horizontal
     );
-    parent.vertical = Some(true);
+    parent.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+        true,
+        parent.wm().block_rl(),
+        parent.wm().sideways(),
+    ));
     assert!(
         !Plan::new(&own, &parent, &Default::default())
             .unwrap()
             .horizontal
     );
     parent.flex_dir = Some(FlexDir::Row);
-    parent.vertical_rl = Some(true);
+    parent.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+        true, true, false,
+    ));
     let plan = Plan::new(&own, &parent, &Default::default()).unwrap();
     assert!(plan.horizontal && plan.from_end);
     let mut inset = own.clone();

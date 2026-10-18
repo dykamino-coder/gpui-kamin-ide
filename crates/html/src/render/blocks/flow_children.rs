@@ -47,8 +47,8 @@ pub(crate) fn flow_children(
                     // `horizontal-tb` box under a vertical ancestor still
                     // carries the inherited `vertical_rl` value, which kept
                     // the rule off (`abs-pos-vlr-border-001-ref`).
-                    if inherited.rtl == Some(true)
-                        && !inherited.wm().vertical
+                    if inherited.wm().rtl()
+                        && !inherited.wm().vertical()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
@@ -135,7 +135,7 @@ pub(crate) fn flow_children(
                             || (matches!(e.style.height, Some(Len::Pct(_)))
                                 && matches!(inherited.height, Some(Len::Px(_)))))
                         && e.style.align_self.is_none()
-                        && inherited.vertical.is_none()
+                        && inherited.writing_mode.is_none()
                         && !e.inline
                         && !positioned_out
                     {

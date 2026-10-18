@@ -174,7 +174,7 @@ pub(super) fn atom_element_raw(
             // css-writing-modes-4 §3.1 «its display computes instead to
             // inline-block»: коробка со своими размерами
             // (`different-block-flow-dir-001/002`).
-            || (e.style.vertical.is_some() && e.style.vertical != inherited.vertical) =>
+            || (e.style.writing_mode.is_some() && e.style.vertical_decl() != inherited.vertical_decl()) =>
         {
             own_box_atom(inherited, e, opts)
         }

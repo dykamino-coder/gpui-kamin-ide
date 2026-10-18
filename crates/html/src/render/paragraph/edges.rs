@@ -58,7 +58,7 @@ pub(crate) fn edge_pieces(
     // A rotated vertical paragraph is laid out in its pre-rotation frame,
     // whose top is the line-over side (css-writing-modes-4 §line-relative
     // directions), so `top`/`bottom` keep their meaning there.
-    if inherited.vertical == Some(true) {
+    if inherited.wm().vertical() {
         return out;
     }
     let mut at = 0usize;

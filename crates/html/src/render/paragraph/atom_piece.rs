@@ -93,8 +93,8 @@ fn atom_piece_in(
     // ограничено абзацем, чей содержащий блок пишет вертикально —
     // признак этого у нас `ortho_limit`, он ставится только внутри
     // вертикального содержащего блока (`element()`, `inline.rs:1012`).
-    let plain_flow = inherited.vertical != Some(true)
-        && (inherited.rtl != Some(true) || (flow_text && inherited.ortho_limit.is_some()));
+    let plain_flow = !inherited.wm().vertical()
+        && (!inherited.wm().rtl() || (flow_text && inherited.ortho_limit.is_some()));
     // Статическая позиция считается для ГИПОТЕТИЧЕСКОГО статического
     // элемента (§10.3.7: «if position had been static») — блокификация
     // `display: inline` под absolute на неё не влияет, метка
@@ -108,9 +108,8 @@ fn atom_piece_in(
     // красное проступало у всех `css-position/static-position/v{lr,rl}-*`.
     // В повёрнутом абзаце коробка поворачивается вместе со строками, и её
     // до-поворотное место — ровно гипотетическая коробка §10.6.4.
-    let rot_block = inherited.rotated_line == Some(true)
-        && !inline_level(e)
-        && e.style.inline_display != Some(true);
+    let rot_block =
+        inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
         && at_static_position(&e.style)
         && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
@@ -133,9 +132,9 @@ fn atom_piece_in(
     // Стоячая коробка в повёрнутом абзаце: `inline-block` с явным
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
-    if inherited.rotated_line == Some(true)
+    if inherited.wm().turned()
         && e.style.display == Some(Display::InlineBlock)
-        && e.style.vertical == Some(false)
+        && e.style.vertical_decl() == Some(false)
     {
         // An orthogonal atomic inline keeps its physical box and own writing
         // mode (css-writing-modes-4 §4.3); the line synthesizes its baseline
@@ -144,12 +143,12 @@ fn atom_piece_in(
         // Measured against Chrome for alphabetic (sideways) lines only; a
         // central-baseline line keeps the tcy emulation below
         // (text-combine-upright-compression-007 moved its CJK glyphs).
-        let alphabetic = inherited.sideways == Some(true) || inherited.text_sideways == Some(true);
+        let alphabetic = inherited.wm().alphabetic_baseline();
         if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
             return Some(inline::Piece::Atom(physical));
         }
         let mut merged = inherit(inherited, &e.style);
-        merged.rotated_line = None;
+        merged.turned_line = false;
         let em = match merged.width {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
@@ -216,8 +215,8 @@ fn atom_piece_in(
     // piece of the horizontal pre-rotation paragraph, whose clone has
     // `vertical` cleared. Carry the writing mode on the box itself.
     let vertical_abs;
-    let e = if (inherited.rotated_line == Some(true) || inherited.upright_stack)
-        && e.style.vertical.is_none()
+    let e = if (inherited.wm().turned() || inherited.upright_stack)
+        && e.style.writing_mode.is_none()
         && matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)
@@ -227,9 +226,11 @@ fn atom_piece_in(
         && !replaced_tag(e)
     {
         let mut copy = e.clone();
-        copy.style.vertical = Some(true);
-        copy.style.vertical_rl = Some(inherited.vertical_rl == Some(true));
-        copy.style.sideways = Some(inherited.sideways == Some(true));
+        copy.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            inherited.wm().block_rl(),
+            inherited.wm().sideways(),
+        ));
         vertical_abs = copy;
         &vertical_abs
     } else {

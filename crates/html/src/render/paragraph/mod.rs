@@ -48,7 +48,7 @@ fn paragraph_routed(
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
     // Vertical paragraphs choose the physical text route after inline collection.
-    if inherited.vertical == Some(true) {
+    if inherited.wm().vertical() {
         return vertical_paragraph(nodes, inherited, opts, native_request);
     }
     // Первая строка со своим стилем: где она кончается, известно только после
