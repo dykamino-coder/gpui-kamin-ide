@@ -97,7 +97,10 @@ impl RenderOpts {
     /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
     /// с `line-height: 1em` при одном и том же шрифте.
     pub(crate) fn root_style(&self) -> Computed {
-        Computed::default()
+        Computed {
+            icb: true,
+            ..Computed::default()
+        }
     }
 }
 

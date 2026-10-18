@@ -5,11 +5,10 @@ use crate::dom::Node;
 use crate::render::{inline_level, is_blank, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
-mod build;
-pub(super) use build::band_edge;
-pub(super) use build::band_em;
-pub(super) use build::band_host;
-pub(super) use build::band_margins;
+mod edges;
+pub(super) use edges::band_edge;
+pub(super) use edges::band_em;
+pub(super) use edges::band_margins;
 
 /// Многоколоночный поток из сплошного текста.
 ///

@@ -1,6 +1,7 @@
 //! Добавление флоата и буквицы в полосы (CSS 2.1 §9.5.1).
 
 use super::{COORD_EPS, Exclusion, FloatBands};
+use crate::layout::float::shapes::FloatShape;
 
 impl FloatBands {
     /// Поставить флоат: `side` -1 слева / 1 справа, `w`/`h` — размеры
@@ -50,6 +51,8 @@ impl FloatBands {
             top: y,
             h,
             edge,
+            near: if side < 0 { x } else { x + w_fit },
+            shape: None,
         });
         let a = self.split_at(y);
         let b = self.split_at(bot);
@@ -75,6 +78,16 @@ impl FloatBands {
         // Правило 5: следующий флоат не выше этого.
         self.ceil_floats = self.ceil_floats.max(y);
         (x, y)
+    }
+
+    /// Give the float placed last its `shape-outside` line exclusion
+    /// (css-shapes-1 §2), measured from the float's own side of its margin
+    /// box and from its top. Later floats and boxes that establish a
+    /// formatting context keep avoiding the margin box (§1, CSS 2.1 §9.5).
+    pub fn shape_last(&mut self, shape: FloatShape) {
+        if let Some(e) = self.exclusions.last_mut() {
+            e.shape = Some(shape);
+        }
     }
 
     /// Поставить исключение буквицы (css-inline-3 §initial-letter-floats,
@@ -112,6 +125,8 @@ impl FloatBands {
             top: y,
             h,
             edge,
+            near: if side < 0 { x } else { x + w },
+            shape: None,
         });
         let a = self.split_at(y);
         let b = self.split_at(y + h);

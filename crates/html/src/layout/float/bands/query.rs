@@ -95,18 +95,31 @@ impl FloatBands {
                 continue;
             }
             let top = e.top - from_y;
+            let shape = match &e.shape {
+                Some(s) => {
+                    let off = if e.side < 0 {
+                        e.near - self.cb.0
+                    } else {
+                        self.cb.1 - e.near
+                    };
+                    let mut s = s.offset(off);
+                    s.shift_top(e.top - from_y);
+                    s
+                }
+                None => FloatShape::Band {
+                    top,
+                    h: e.h,
+                    w: if e.side < 0 {
+                        (e.edge - self.cb.0).max(0.0)
+                    } else {
+                        (self.cb.1 - e.edge).max(0.0)
+                    },
+                },
+            };
             if e.side < 0 {
-                left.push(FloatShape::Band {
-                    top,
-                    h: e.h,
-                    w: (e.edge - self.cb.0).max(0.0),
-                });
+                left.push(shape);
             } else {
-                right.push(FloatShape::Band {
-                    top,
-                    h: e.h,
-                    w: (self.cb.1 - e.edge).max(0.0),
-                });
+                right.push(shape);
             }
         }
         Arc::new((left, right))

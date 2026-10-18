@@ -88,7 +88,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/float/wrap/shaped.rs"),
     include_str!("../../layout/float/wrap/float_run.rs"),
     include_str!("../../layout/float/band_host/mod.rs"),
-    include_str!("../../layout/float/band_host/build.rs"),
+    include_str!("../../layout/float/band_host/edges.rs"),
     include_str!("../../layout/float/band_measured/mod.rs"),
     include_str!("../../layout/float/band_measured/nested.rs"),
     include_str!("../../layout/float/band_measured/tail.rs"),

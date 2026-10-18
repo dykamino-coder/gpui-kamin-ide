@@ -72,6 +72,8 @@ pub(crate) struct ShapeFlow {
     pub(crate) cbw: Option<f32>,
     /// Writing mode of the containing block the host was built for.
     pub(crate) wm: crate::style::computed::writing_mode::WritingMode,
+    /// The containing block is the initial containing block.
+    pub(crate) icb: bool,
     /// Band layout path; `None` — the live `shape-outside` path.
     pub(crate) bands: Option<BandPath>,
 }
@@ -79,8 +81,6 @@ pub(crate) struct ShapeFlow {
 /// Band layout path of a synthetic band host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BandPath {
-    /// Static band host (sizes known from style).
-    Static,
     /// Measured band host (`band_flow`).
     Measured,
 }

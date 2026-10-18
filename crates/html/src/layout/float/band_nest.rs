@@ -6,7 +6,7 @@ use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_dimensions;
-use crate::layout::float::band_flow_host::{band_flow_rest, band_kids};
+use crate::layout::float::band_flow_host::{band_flow_rest, band_kids, band_orthogonal};
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::band_float_m;
 use crate::render::{
@@ -38,6 +38,10 @@ pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
 pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
     // Рамка, поля и высота коробки `Kind::Nest` — физические.
     !wm.vertical
+        // A box whose writing mode differs from its parent's establishes an
+        // independent formatting context (css-writing-modes-4 §3.2): the
+        // host's floats do not reach into it.
+        && !band_orthogonal(&c.style, wm)
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
@@ -140,7 +144,6 @@ pub(super) fn band_seq(nodes: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec
         // a text-free vertical float does not need inline text measurement.
         if open_run
             || (f.style.vertical == Some(true) && band_float_m(f, em, wm).is_none())
-            || f.style.shape_outside.is_some()
             || band_margins(&f.style, em).is_none()
         {
             return None;

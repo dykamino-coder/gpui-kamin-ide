@@ -1,0 +1,93 @@
+//! The `shape-outside` line exclusion of a measured float (css-shapes-1 §2,
+//! §3): the shape's reference box comes from the float's laid-out border box,
+//! its own borders and paddings, and the margins the host resolved.
+
+use crate::dom::Element;
+use crate::layout::float::shape_flow::float_shape_of;
+use crate::layout::float::shapes::FloatShape;
+use crate::style::values::value::Len;
+
+/// The exclusion of float `f` on side `side` (-1 line-left, 1 line-right)
+/// whose border box measured `bw` × `bh` in the host's logical axes (inline,
+/// block), with logical margins `[block-start, inline-end, block-end,
+/// inline-start]`, in a containing block `cbw` wide in the inline axis; `em`
+/// is the float's font size. `vertical`: the host is `vertical-rl`
+/// (`Some(true)`) or `vertical-lr` (`Some(false)`). Measured from the
+/// float's own margin edge and margin-box block-start, in logical axes.
+pub(crate) fn measured_shape(
+    f: &Element,
+    side: i8,
+    (bw, bh): (f32, f32),
+    [mt, mr, mb, ml]: [f32; 4],
+    cbw: f32,
+    em: f32,
+    vertical: Option<bool>,
+) -> FloatShape {
+    // Physical sizes and margins (css-writing-modes-4 §6.4): in vertical
+    // modes the inline axis is the height and block-start is the right
+    // (`vertical-rl`) or the left (`vertical-lr`) edge.
+    let ((bw, bh), [mt, mr, mb, ml]) = match vertical {
+        None => ((bw, bh), [mt, mr, mb, ml]),
+        Some(true) => ((bh, bw), [ml, mt, mr, mb]),
+        Some(false) => ((bh, bw), [ml, mb, mr, mt]),
+    };
+    // Paddings resolve against the containing block width (CSS 2.1 §8.4),
+    // like the margins the host already resolved.
+    let px = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => *v,
+        Some(Len::Em(k)) => k * em,
+        Some(Len::Pct(k)) => k * cbw,
+        _ => 0.0,
+    };
+    let b = f.style.borders();
+    let (bl, br, bt, bb) = (px(&b.left), px(&b.right), px(&b.top), px(&b.bottom));
+    let p = &f.style.padding;
+    let (pl, pr, pt, pb) = (px(&p.left), px(&p.right), px(&p.top), px(&p.bottom));
+    let cw = (bw - bl - br - pl - pr).max(0.0);
+    let ch = (bh - bt - bb - pt - pb).max(0.0);
+    let (mw, mh) = (ml + bw + mr, mt + bh + mb);
+    let raw = f.style.shape_outside.clone().unwrap_or_default();
+    // The reference box (css-shapes-1 §3.3), margin-box by default, in
+    // margin-box coordinates.
+    let (bx, by, rw, rh) = if raw.contains("border-box") {
+        (ml, mt, bw, bh)
+    } else if raw.contains("padding-box") {
+        (ml + bl, mt + bt, bw - bl - br, bh - bt - bb)
+    } else if raw.contains("content-box") {
+        (ml + bl + pl, mt + bt + pt, cw, ch)
+    } else {
+        (0.0, 0.0, mw, mh)
+    };
+    // `shape-margin` percentages resolve against the containing block's
+    // inline size (css-shapes-1 §shape-margin-property).
+    let vert_lr = vertical == Some(false);
+    let sm = match f.style.shape_margin {
+        Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) => k * cbw,
+        _ => 0.0,
+    };
+    float_shape_of(
+        vert_lr,
+        false,
+        f,
+        i32::from(side),
+        ml,
+        mt,
+        bl,
+        bt,
+        pl,
+        pt,
+        cw,
+        ch,
+        mw,
+        mh,
+        raw,
+        bx,
+        by,
+        rw,
+        rh,
+        0.0,
+        sm,
+        vertical.is_some(),
+    )
+}

@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn float_shape_of(
+pub(crate) fn float_shape_of(
     vert_lr: bool,
     line_left_bottom: bool,
     f: &Element,

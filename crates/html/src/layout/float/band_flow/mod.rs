@@ -30,7 +30,7 @@ mod kid;
 mod piece;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
-pub use kid::{Kid, Kind, Nest};
+pub use kid::{Kid, Kind, Nest, ShapeOf};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -168,22 +168,39 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
     }
 }
 
-/// Дети и их места плоским списком в порядке краски: `floats == false` —
-/// всё, кроме флоатов (коробка `Kind::Nest` раньше своих детей), `true` —
-/// одни флоаты, на любой глубине.
+/// Painting layer of a host child (CSS 2.1 Appendix E): in-flow block-level
+/// boxes paint their backgrounds (step 4) below floats (step 5), and inline
+/// content (step 7) above them. An anonymous inline run has no box of its
+/// own, so it is painted entirely in the inline layer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layer {
+    Block,
+    Float,
+    Inline,
+}
+
+fn layer(kid: &Kid) -> Layer {
+    match kid.kind {
+        Kind::Float { .. } => Layer::Float,
+        _ if kid.anon => Layer::Inline,
+        _ => Layer::Block,
+    }
+}
+
+/// Дети слоя `layer` и их места плоским списком в порядке краски, на любой
+/// глубине (коробка `Kind::Nest` раньше своих детей).
 fn flatten<'a>(
     kids: &'a [Kid],
     slots: &'a [Slot],
-    floats: bool,
+    which: Layer,
     out: &mut Vec<(&'a Kid, &'a Slot)>,
 ) {
     for (kid, s) in kids.iter().zip(slots.iter()) {
-        let float = matches!(kid.kind, Kind::Float { .. });
-        if float == floats {
+        if layer(kid) == which {
             out.push((kid, s));
         }
         if let Some(nest) = kid.nest.as_ref() {
-            flatten(&nest.kids, &s.kids, floats, out);
+            flatten(&nest.kids, &s.kids, which, out);
         }
     }
 }

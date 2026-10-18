@@ -184,6 +184,9 @@ pub(super) fn build_band_kid(
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
     let own_vertical = copy.style.vertical.or(inherited.vertical) == Some(true);
+    if float && !vertical {
+        super::fit_own_layout(&mut copy.style, inherited, avail, cb);
+    }
     if float && !table && !replaced && !vertical && !own_vertical && !list_item {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).

@@ -2,8 +2,9 @@
 
 use super::build_band_kid;
 use crate::dom::{Element, Node};
-use crate::layout::float::band_host::band_margins;
+use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
+use crate::layout::float::shape_exclusion::measured_shape;
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
@@ -166,6 +167,16 @@ pub(crate) fn band_kids(
                 )
             });
         let clear = if float { None } else { c.style.clear };
+        // css-shapes-1 §2: the float's shape shortens the lines next to it.
+        let shape: Option<crate::layout::float::band_flow::ShapeOf> =
+            (float && c.style.shape_outside.is_some()).then(|| {
+                let f = c.clone();
+                let side = c.style.float.unwrap_or(-1);
+                let em = band_em(&c.style, em).unwrap_or(em);
+                std::rc::Rc::new(move |bw: f32, bh: f32, m: [f32; 4], cbw: f32| {
+                    measured_shape(&f, side, (bw, bh), m, cbw, em, vert)
+                }) as crate::layout::float::band_flow::ShapeOf
+            });
         kids.push(Kid {
             kind,
             clear,
@@ -177,6 +188,7 @@ pub(crate) fn band_kids(
             lead_base: if float { base_for(idx) } else { None },
             margin_offset: c.style.float_margin_offset.unwrap_or(0.0),
             start_open,
+            shape,
         });
     }
     kids

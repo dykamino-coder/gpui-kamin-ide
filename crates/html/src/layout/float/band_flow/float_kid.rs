@@ -36,12 +36,22 @@ pub(super) fn place_float(
     // каркаса не уже min-content.
     if shrink {
         let (mn, mx) = intrinsic(kid, p);
-        avail = if p.vert {
+        let own_layout = matches!(
+            kid.kind,
+            Kind::Float {
+                own_layout: true,
+                ..
+            }
+        );
+        avail = if p.vert || own_layout {
             // В вертикальном письме каркас — ряд, и поперечная ось
             // ряда (высота) у вертикального блока растягивается
             // до окна и при `align-items: flex-start`: строчный
             // размер флоата задаётся каркасу явно, полной формулой
             // §10.3.5 `min(max(min-content, доступно), max-content)`.
+            // Так же — флекс- и сеточному контейнеру: каркас его не
+            // сжимает (`row-001`,
+            // `flex-item-transferred-sizes-*`: флекс-флоат во всю ширину).
             mx.min(mn.max(avail))
         } else {
             avail.max(mn)
@@ -84,7 +94,11 @@ pub(super) fn place_float(
     let (fx, fy) = if letter {
         bands.add_initial_letter(side, ml + bw + mr, mt + bh + mb, y)
     } else {
-        bands.add_float(side, ml + bw + mr, mt + bh + mb, clear)
+        let at = bands.add_float(side, ml + bw + mr, mt + bh + mb, clear);
+        if let Some(shape) = kid.shape.as_ref() {
+            bands.shape_last(shape(bw, bh, [mt, mr, mb, ml], cbw));
+        }
+        at
     };
     slots[k] = Slot {
         x: fx + ml,

@@ -38,6 +38,7 @@ pub(super) fn place_seq(
                 clear,
                 shrink,
                 letter,
+                ..
             } => {
                 place_float(
                     x0, x1, bands, p, cbw, &mut slots, y, k, kid, mt, mr, mb, ml, side, clear,

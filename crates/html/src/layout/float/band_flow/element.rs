@@ -2,7 +2,7 @@
 
 use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Plan, Probe, Slot, flatten, frame, plan};
+use super::{COORD_EPS, Layer, Plan, Probe, Slot, flatten, frame, plan};
 use crate::hooks::Hooks;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
@@ -180,11 +180,12 @@ impl Hooks for BandFlow {
         let mut host = div().relative().w(px(pw)).h(px(ph));
         // CSS 2.1 прил. E: фоны блоков потока (шаг 4) — РАНЬШЕ флоатов
         // (шаг 5): флоат лежит поверх блока, под которым стоит
-        // (`clear-004`). Строки рядом с флоатом его не перекрывают — их
-        // порядок с флоатом не виден.
+        // (`clear-004`); анонимные строчные прогоны (шаг 7) — поверх флоатов
+        // (`shape-outside-content-box-001`: атомы шире выреза).
         let mut flat: Vec<(&Kid, &Slot)> = Vec::new();
-        flatten(&self.kids, &p.slots, false, &mut flat);
-        flatten(&self.kids, &p.slots, true, &mut flat);
+        for which in [Layer::Block, Layer::Float, Layer::Inline] {
+            flatten(&self.kids, &p.slots, which, &mut flat);
+        }
         for (kid, s) in flat {
             if matches!(kid.kind, Kind::Strut(_)) {
                 continue;

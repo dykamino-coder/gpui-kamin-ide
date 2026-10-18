@@ -20,8 +20,9 @@ pub(crate) fn band_host_nested(
     i: usize,
     em: f32,
     parent_bfc: bool,
-    wm: WritingMode,
+    cb: crate::layout::float::FloatCb,
 ) -> Option<(Element, usize)> {
+    let wm = cb.wm;
     let Node::Element(c) = &nodes[i] else {
         return None;
     };
@@ -63,6 +64,7 @@ pub(crate) fn band_host_nested(
         crate::dom::ShapeFlow {
             em: Some(em),
             wm,
+            icb: cb.icb,
             ..Default::default()
         },
         children,
@@ -103,13 +105,4 @@ pub(crate) fn has_ruby(n: &Node) -> bool {
                 || e.children.iter().any(has_ruby)
         }
     }
-}
-
-/// Есть ли среди флоатов пробега (`run` — узлы от первого флоата до конца
-/// хвоста) флоат с `shape-outside`.
-pub(super) fn host_floats_shaped(run: &[Node]) -> bool {
-    run.iter().any(|n| {
-        matches!(n, Node::Element(c)
-            if c.style.float.is_some_and(|f| f != 0) && c.style.shape_outside.is_some())
-    })
 }

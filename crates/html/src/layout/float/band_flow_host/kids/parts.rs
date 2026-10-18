@@ -35,6 +35,7 @@ pub(crate) fn band_kid_kind(
                 matches!(c.style.width, None | Some(Len::Auto))
             },
             letter: c.marks.initial_letter,
+            own_layout: super::super::own_layout_mode(&c.style),
         }
     } else {
         match band_piece_m(n, em, wm) {

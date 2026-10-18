@@ -1,6 +1,6 @@
 //! Хвост измеренного хоста полос (band_host_m_tail).
 
-use super::{band_piece_m, host_floats_shaped, measured_host};
+use super::{band_piece_m, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
 use crate::layout::float::FloatCb;
@@ -13,7 +13,6 @@ use crate::style::computed::Computed;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn band_host_m_tail(
     nodes: &[Node],
-    i: usize,
     j: usize,
     em: f32,
     lead: &[Node],
@@ -22,10 +21,20 @@ pub(super) fn band_host_m_tail(
     probes: Vec<(usize, usize, Vec<Node>)>,
     cb: FloatCb,
 ) -> Option<(Element, usize, Vec<Node>)> {
-    // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
-    // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
-    // только в хосте.
-    if floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)) && lead.is_empty() {
+    // A lone float with nothing after it stays a box of the flow when
+    // columns are involved: in a column fragmentainer the monolithic host
+    // cannot be fragmented by the column stack (`multicol-fill-balance-032`),
+    // and a multi-column float needs the element pipeline (spanner hoisting,
+    // balancing) that the host's float frame does not run
+    // (`multicol-span-all-margin-nested-firstchild-001`, `intrinsic-size-001`).
+    if floaters.len() < 2
+        && rest.iter().all(is_blank)
+        && lead.is_empty()
+        && (cb.in_multicol
+            || floaters
+                .iter()
+                .any(|f| crate::layout::multicol::spanner::multicol_container(&f.style)))
+    {
         return None;
     }
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
@@ -98,13 +107,6 @@ pub(super) fn band_host_m_tail(
     {
         return None;
     }
-    // Флоат с `shape-outside` рядом со СТРОКАМИ: строки обтекают ФОРМУ, а
-    // полосы держат только прямоугольник margin-box (css-shapes-1 §1) —
-    // такому пробегу место на живом пути форм `shape_flow`. Коробкам своего
-    // контекста форма не важна: они обходят margin-box.
-    if flows && host_floats_shaped(&nodes[i..j]) {
-        return None;
-    }
     // Высота, ширина и письмо содержащего блока: у хоста своих нет.
     let count = floaters.len();
     let mut children: Vec<Node> = floaters.into_iter().map(Node::Element).collect();
@@ -117,6 +119,7 @@ pub(super) fn band_host_m_tail(
             cbh: cb.height,
             cbw: cb.width,
             wm: cb.wm,
+            icb: cb.icb,
             ..Default::default()
         },
         children,

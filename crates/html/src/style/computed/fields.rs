@@ -1605,4 +1605,7 @@ pub struct Computed {
     /// cascade, already in attribute syntax (`svg::serialize::geometry`);
     /// not inherited.
     pub svg_geometry: Vec<(&'static str, String)>,
+    /// The style of the initial containing block (`RenderOpts::root_style`),
+    /// whose box is the embedder's; not inherited.
+    pub(crate) icb: bool,
 }

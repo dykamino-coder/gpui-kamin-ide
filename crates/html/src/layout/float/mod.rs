@@ -25,6 +25,7 @@ pub mod initial_letter;
 pub(super) mod inline_floats;
 pub(crate) mod outside_block;
 pub(crate) mod rounded_box;
+mod shape_exclusion;
 pub mod shape_flow;
 pub(crate) mod shapes;
 pub(crate) mod split_flow;
@@ -39,6 +40,10 @@ pub(crate) struct FloatCb {
     pub(crate) wm: WritingMode,
     pub(crate) width: Option<f32>,
     pub(crate) height: Option<f32>,
+    /// The containing block is the initial containing block.
+    pub(crate) icb: bool,
+    /// The containing block's content is fragmented into columns.
+    pub(crate) in_multicol: bool,
 }
 
 impl FloatCb {
@@ -47,6 +52,8 @@ impl FloatCb {
             wm: WritingMode::of(cb),
             width: px_strict(cb.width),
             height: px_strict(cb.height),
+            icb: cb.icb,
+            in_multicol: cb.in_multicol || crate::layout::multicol::spanner::multicol_container(cb),
         }
     }
 }

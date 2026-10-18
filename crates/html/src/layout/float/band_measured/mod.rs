@@ -15,7 +15,6 @@ mod nested;
 pub(super) use nested::band_host_nested;
 pub(super) use nested::band_nest_ok;
 pub(super) use nested::has_ruby;
-use nested::host_floats_shaped;
 
 /// Кусок хвоста измеряемого хоста: `Some(true)` — коробка, флоаты не
 /// перекрывающая (§9.5, последний абзац), `Some(false)` — распорка, `None` —
@@ -166,7 +165,7 @@ pub(super) fn band_host_m(
     {
         return None;
     }
-    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes, cb)
+    band_host_m_tail(nodes, j, em, lead, floaters, rest, probes, cb)
 }
 
 /// The synthetic node of a measured float host: `shape_flow` hands it to

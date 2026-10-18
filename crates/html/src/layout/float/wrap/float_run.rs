@@ -27,7 +27,7 @@ pub(super) fn wrap_float_run(
     side: i8,
 ) -> ControlFlow<()> {
     let cb_width = parent.width;
-    let hosted = host_for_run(em, measured_ok, cb_width, cb, &*nodes, &*out, *i);
+    let hosted = host_for_run(em, measured_ok, cb, &*nodes, &*out, *i);
     if let ControlFlow::Break(_) = wrap_into_host(
         parent,
         cb_top_open,

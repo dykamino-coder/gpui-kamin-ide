@@ -2,13 +2,12 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
-use crate::layout::float::band_host::{BandPiece, band_host, band_piece};
 use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
 use crate::render::{inline_level, is_blank, out_of_flow, phantom_inline};
-use crate::style::computed::Computed;
+use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use std::ops::ControlFlow;
 
@@ -31,7 +30,7 @@ pub(super) fn unfloated_flow(
         // `floats-bfc-003`). Хост начинается с такого блока.
         if measured_ok {
             for i in 0..nodes.len() {
-                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb.wm) {
+                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
                     band_clearance::mark_start(&mut host, cb_top_open, &out);
                     out.push(Node::Element(host));
@@ -50,6 +49,18 @@ pub(super) fn prepare_float_nodes(
     parent: &Computed,
     cb_top_open: bool,
 ) -> Vec<Node> {
+    // CSS Display 3 §2.5: an element with `display: contents` generates no
+    // box, so `float` does not apply to it (`display-contents-float-001`).
+    let nodes: Vec<Node> = nodes
+        .into_iter()
+        .map(|n| match n {
+            Node::Element(mut e) if e.style.display == Some(Display::Contents) => {
+                e.style.float = None;
+                Node::Element(e)
+            }
+            n => n,
+        })
+        .collect();
     let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
@@ -119,26 +130,24 @@ pub(super) fn prepare_float_nodes(
     nodes
 }
 
+/// The measured float host for the run starting at node `i`, if the run
+/// and its tail are expressible in it; `None` keeps the run on the row path.
 pub(super) fn host_for_run(
     em: f32,
     measured_ok: bool,
-    cb_width: Option<Len>,
     cb: FloatCb,
     nodes: &[Node],
     out: &[Node],
     i: usize,
 ) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
-    let lead_at = out
-        .iter()
-        .rposition(|n| !is_blank(n) && band_piece(n) != Some(BandPiece::Atom))
-        .map_or(0, |p| p + 1);
-    let has_lead = out[lead_at..]
-        .iter()
-        .any(|n| band_piece(n) == Some(BandPiece::Atom));
-    // Флоат посреди строки ТЕКСТА («Hello<float>Kitty»): набранное до
-    // него строчное содержимое (от последнего блока или `<br>`) уходит в
-    // измеряемый хост началом прогона, флоат — на его строку
-    // (`floats-placement-vertical-001a`).
+    if !measured_ok {
+        return None;
+    }
+    // CSS 2.1 §9.5.1 rule 6: a float in the middle of a line («Hello<float>
+    // Kitty») sits on that line. The inline content collected since the last
+    // block or `<br>` goes into the host as the start of its first run, and
+    // the float onto its line (`floats-placement-vertical-001a`); preceding
+    // atoms included (`floats-030`: text, an image, then the float).
     let text_at = out
         .iter()
         .rposition(|n| match n {
@@ -151,38 +160,12 @@ pub(super) fn host_for_run(
             }
         })
         .map_or(0, |p| p + 1);
-    // Атомы тоже: статический хост с атомами впереди (`band_host`) мог
-    // не сойтись по размерам (`floats-placement-006`).
     let text_lead = out[text_at..].iter().any(|n| !is_blank(n));
-
-    if measured_ok {
-        return text_lead
-            .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
-            .flatten()
-            .map(|(h, n, l)| (h, n, Some(text_at), l))
-            .or_else(|| band_host_m(nodes, i, em, &[], cb).map(|(h, n, l)| (h, n, None, l)));
-    }
-    has_lead
-        .then(|| band_host(nodes, i, cb_width, &out[lead_at..]))
+    text_lead
+        .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
         .flatten()
-        .map(|(h, n, l)| (h, n, Some(lead_at), l))
-        .or_else(|| {
-            (measured_ok && text_lead)
-                .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
-                .flatten()
-                .map(|(h, n, l)| (h, n, Some(text_at), l))
-        })
-        .or_else(|| band_host(nodes, i, cb_width, &[]).map(|(h, n, l)| (h, n, None, l)))
-        // Статический гейт не сошёлся из-за НЕИЗВЕСТНЫХ стилю размеров
-        // (ширина содержащего блока, shrink-to-fit флоата, коробка
-        // своего контекста без размеров) — их меряет раскладка
-        // (`band_flow.rs`, шаги F2/F3/F5).
-        .or_else(|| {
-            measured_ok
-                .then(|| band_host_m(nodes, i, em, &[], cb))
-                .flatten()
-                .map(|(h, n, l)| (h, n, None, l))
-        })
+        .map(|(h, n, l)| (h, n, Some(text_at), l))
+        .or_else(|| band_host_m(nodes, i, em, &[], cb).map(|(h, n, l)| (h, n, None, l)))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -205,11 +188,7 @@ pub(super) fn wrap_into_host(
             && !cell_bfc
             && next == nodes.len()
             && parent.float_tail
-            && (!parent.in_multicol
-                || host
-                    .marks
-                    .shape_flow
-                    .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Static)))
+            && !parent.in_multicol
         {
             host.marks.inflow_height = true;
         }

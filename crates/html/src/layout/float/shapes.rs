@@ -51,6 +51,51 @@ impl FloatShape {
         }
     }
 
+    /// The same shape seen from a side edge `off` further out (the float's
+    /// own margin edge lies `off` from the containing block's edge): only
+    /// rows the shape occupies move, an empty row stays empty.
+    pub fn offset(&self, off: f32) -> FloatShape {
+        match self.clone() {
+            FloatShape::Band { top, h, w } => FloatShape::Band { top, h, w: w + off },
+            FloatShape::Circle { top, cx, cy, r } => FloatShape::Circle {
+                top,
+                cx: cx + off,
+                cy,
+                r,
+            },
+            FloatShape::Ellipse {
+                top,
+                cx,
+                cy,
+                rx,
+                ry,
+            } => FloatShape::Ellipse {
+                top,
+                cx: cx + off,
+                cy,
+                rx,
+                ry,
+            },
+            FloatShape::Poly { top, pts } => FloatShape::Poly {
+                top,
+                pts: std::sync::Arc::new(pts.iter().map(|&(x, y)| (x + off, y)).collect()),
+            },
+            FloatShape::RoundedBox { top, off: o, shape } => FloatShape::RoundedBox {
+                top,
+                off: o + off,
+                shape,
+            },
+            FloatShape::Profile { top, ext } => FloatShape::Profile {
+                top,
+                ext: std::sync::Arc::new(
+                    ext.iter()
+                        .map(|&v| if v > 0.0 { v + off } else { v })
+                        .collect(),
+                ),
+            },
+        }
+    }
+
     pub fn cut(&self, y0: f32, y1: f32) -> f32 {
         match *self {
             FloatShape::Band { top, h, w } => {
