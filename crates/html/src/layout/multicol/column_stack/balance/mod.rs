@@ -98,7 +98,7 @@ impl ColumnStack {
                 Some(_) => cap,
                 None => self.balance_line(kids, limit, Some(cap)).0,
             };
-            let (_, _, plan) = Self::fill(kids, target, limit, false);
+            let (_, _, plan) = crate::layout::fragment::plan::fill(kids, target, limit, false);
             return (h, vec![(0.0, h)], plan, Vec::new());
         }
         // Курсор по коробке (Blink `intrinsic_block_size_`): сетка рядов с

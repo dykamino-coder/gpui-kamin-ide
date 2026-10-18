@@ -27,9 +27,9 @@ impl ColumnStack {
         paged: bool,
     ) -> (usize, f32, Vec<Frag>) {
         if !kids.iter().any(|k| k.avoid_before || k.avoid_after) {
-            return Self::fill_at(kids, target_at, limit, paged);
+            return crate::layout::fragment::plan::fill_at(kids, target_at, limit, paged);
         }
-        let mut best = Self::fill_at(kids, target_at, limit, paged);
+        let mut best = crate::layout::fragment::plan::fill_at(kids, target_at, limit, paged);
         // Метка — ОДНА на поток: у обычной стопки поток один, у строк flex
         // (`Par`) — свой у каждой строки, и отступ в одной строке не трогает
         // соседние (параллельные потоки; `multi-line-column-flex-
@@ -93,7 +93,12 @@ impl ColumnStack {
                 for at in cands {
                     let mut e2 = early.clone();
                     e2.push((bad - 1, at));
-                    let cand = Self::fill_at(&build(&marks, &e2), target_at, limit, paged);
+                    let cand = crate::layout::fragment::plan::fill_at(
+                        &build(&marks, &e2),
+                        target_at,
+                        limit,
+                        paged,
+                    );
                     let still = Self::avoid_violation_where(kids, &cand.2, &|i| {
                         stuck.contains(&flow_of(i)) || i < bad
                     });
@@ -117,7 +122,12 @@ impl ColumnStack {
             };
             marks.retain(|m| m.0 != flow);
             marks.push((flow, next));
-            best = Self::fill_at(&build(&marks, &early), target_at, limit, paged);
+            best = crate::layout::fragment::plan::fill_at(
+                &build(&marks, &early),
+                target_at,
+                limit,
+                paged,
+            );
         }
         best
     }

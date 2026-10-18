@@ -10,7 +10,6 @@ pub mod avoid;
 mod axis;
 pub mod balance;
 pub mod element;
-pub mod fill;
 mod gap_geometry;
 mod paginate;
 

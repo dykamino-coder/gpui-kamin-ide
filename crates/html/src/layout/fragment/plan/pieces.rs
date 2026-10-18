@@ -1,8 +1,8 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
 
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
+use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
-use crate::layout::multicol::column_stack::ColumnStack;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn fill_pieces(
@@ -203,7 +203,7 @@ pub(super) fn fill_pieces(
             *col += 1;
             *y = 0.0;
             *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, y, placed);
+            skip_float(float_hold, col, y, placed);
             break;
         }
         if copy + 1 >= limit {
@@ -216,7 +216,7 @@ pub(super) fn fill_pieces(
         *col += 1;
         cur = rg.head_at(from);
         *placed = *col < not_top;
-        ColumnStack::skip_float(float_hold, col, &mut cur, placed);
+        skip_float(float_hold, col, &mut cur, placed);
     }
 }
 

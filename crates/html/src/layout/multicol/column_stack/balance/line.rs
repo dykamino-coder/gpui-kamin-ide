@@ -27,7 +27,7 @@ impl ColumnStack {
             return (h, slots);
         }
         if let Some(h) = self.forced_h {
-            let (_, _, slots) = Self::fill(kids, h, limit, false);
+            let (_, _, slots) = crate::layout::fragment::plan::fill(kids, h, limit, false);
             return (h, slots);
         }
         // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
@@ -86,7 +86,8 @@ impl ColumnStack {
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
         let mut target = clamp(guess.max(tallest).max(1.0));
         for _ in 0..6 {
-            let (cols, shortage, slots) = Self::fill(kids, target, limit, false);
+            let (cols, shortage, slots) =
+                crate::layout::fragment::plan::fill(kids, target, limit, false);
             if cols <= self.count {
                 // Колонок хватило, но план рвёт запрещённую границу (css-break-3
                 // §4.3, правило 1) — растим высоту ровно на недолаз
@@ -138,7 +139,8 @@ impl ColumnStack {
                 // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
                 let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
                 if used > 0.01 && used < target - 0.01 {
-                    let (cols2, _, slots2) = Self::fill(kids, used, limit, false);
+                    let (cols2, _, slots2) =
+                        crate::layout::fragment::plan::fill(kids, used, limit, false);
                     if cols2 == cols {
                         return (used, slots2);
                     }
@@ -151,7 +153,7 @@ impl ColumnStack {
             // Как blink: расти ровно на минимально необходимое.
             target = clamp(target + if shortage > 0.0 { shortage } else { 1.0 });
         }
-        let (_, _, slots) = Self::fill(kids, target, limit, false);
+        let (_, _, slots) = crate::layout::fragment::plan::fill(kids, target, limit, false);
         (target, slots)
     }
 
@@ -192,7 +194,8 @@ impl ColumnStack {
         let count = self.count;
         let limit = self.copies;
         let line_h = |l: usize| if l == 0 { first } else { cap };
-        let (cols, _, plan) = Self::fill_at(kids, &|c| line_h(c / count), limit, false);
+        let (cols, _, plan) =
+            crate::layout::fragment::plan::fill_at(kids, &|c| line_h(c / count), limit, false);
         let n = cols.div_ceil(count).max(1);
         let last = line_h(n - 1);
         if !balance_last {
@@ -211,7 +214,8 @@ impl ColumnStack {
         }
         for _ in 0..6 {
             let at = |c: usize| if c < full { line_h(c / count) } else { t };
-            let (cols, shortage, slots) = Self::fill_at(kids, &at, limit, false);
+            let (cols, shortage, slots) =
+                crate::layout::fragment::plan::fill_at(kids, &at, limit, false);
             if cols <= full + count {
                 return (n, slots, t);
             }

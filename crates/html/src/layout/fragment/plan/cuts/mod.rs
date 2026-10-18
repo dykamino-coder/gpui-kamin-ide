@@ -1,8 +1,8 @@
 //! Разрез ребёнка в колонке: принудительный разрыв, влезание, место разреза и его выпуск.
 
 use super::pieces::LoopStep;
+use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
-use crate::layout::multicol::column_stack::ColumnStack;
 mod at;
 pub(super) use at::cut_at;
 
@@ -55,7 +55,7 @@ pub(super) fn forced_or_fits(
         *col += 1;
         *cur = rg.head_at(*from);
         *placed = *col < not_top;
-        ColumnStack::skip_float(float_hold, col, cur, placed);
+        skip_float(float_hold, col, cur, placed);
         return Some(LoopStep::Continue);
     }
     if rest <= room_all + 0.01 {
@@ -161,7 +161,7 @@ pub(super) fn place_cut(
             *col += 1;
             *cur = 0.0;
             *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, cur, placed);
+            skip_float(float_hold, col, cur, placed);
             return Some(LoopStep::Continue);
         }
         // Одно поле ребёнка (ни куска содержимого) уже ушло за край
@@ -176,7 +176,7 @@ pub(super) fn place_cut(
             *col += 1;
             *cur = 0.0;
             *placed = *col < not_top;
-            ColumnStack::skip_float(float_hold, col, cur, placed);
+            skip_float(float_hold, col, cur, placed);
             return Some(LoopStep::Continue);
         }
         None if !mono && rest > target + 0.01 && room > 0.01 => {
