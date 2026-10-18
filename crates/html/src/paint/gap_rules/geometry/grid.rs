@@ -1,7 +1,7 @@
 //! Сегменты правил промежутков сетки с учётом занятых ячеек.
 
 use super::assignment::RuleSlot;
-use super::{Crossing, GAP_EPS, GapItem, GapRun};
+use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::tracks::gaps_of;
 use crate::paint::gap_rules::geometry::tracks::template_tracks;
@@ -12,7 +12,7 @@ pub(super) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
         match out.last_mut() {
-            Some(last) if lo <= last.1 + GAP_EPS => last.1 = last.1.max(hi),
+            Some(last) if lo <= last.1 + GAP_RULE_EPS => last.1 = last.1.max(hi),
             _ => out.push((lo, hi)),
         }
     }
@@ -22,14 +22,14 @@ pub(super) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
 pub(crate) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
     let mut out = vec![];
     for (s, e) in parts {
-        if hi <= s + GAP_EPS || lo >= e - GAP_EPS {
+        if hi <= s + GAP_RULE_EPS || lo >= e - GAP_RULE_EPS {
             out.push((s, e));
             continue;
         }
-        if lo > s + GAP_EPS {
+        if lo > s + GAP_RULE_EPS {
             out.push((s, lo));
         }
-        if hi < e - GAP_EPS {
+        if hi < e - GAP_RULE_EPS {
             out.push((hi, e));
         }
     }
@@ -50,7 +50,7 @@ pub(super) fn occupied(
     if visibility < 2 {
         return true;
     }
-    let near = 2.0 * GAP_EPS;
+    let near = 2.0 * GAP_RULE_EPS;
     let before = items
         .iter()
         .any(|i| i.covers_b(lo, hi) && ((i.a1 - g0).abs() <= near || i.spans_a(g0, g1)));
@@ -90,8 +90,8 @@ pub(crate) fn grid_runs(
     // отсчёта, и тогда остаётся прежний счёт по элементам и шаблону.
     let on_lines = |tracks: &[(f32, f32)], items: &[GapItem]| {
         items.iter().all(|i| {
-            tracks.iter().any(|t| (t.0 - i.a0).abs() <= GAP_EPS)
-                && tracks.iter().any(|t| (t.1 - i.a1).abs() <= GAP_EPS)
+            tracks.iter().any(|t| (t.0 - i.a0).abs() <= GAP_RULE_EPS)
+                && tracks.iter().any(|t| (t.1 - i.a1).abs() <= GAP_RULE_EPS)
         })
     };
     if let Some((ta, tb)) = abs

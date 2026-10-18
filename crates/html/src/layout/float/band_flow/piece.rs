@@ -1,6 +1,6 @@
 //! Physical float opportunities and direction-dependent block origins.
 
-use crate::layout::float::band_flow::EPS;
+use crate::layout::float::band_flow::COORD_EPS;
 
 pub(super) struct Edges {
     start: f32,
@@ -18,8 +18,8 @@ impl Edges {
         margins: (f32, f32),
     ) -> Self {
         let (ml, mr) = margins;
-        let has_left = left > root.0 + EPS;
-        let has_right = right < root.1 - EPS;
+        let has_left = left > root.0 + COORD_EPS;
+        let has_right = right < root.1 - COORD_EPS;
         let (start, end) = if !has_left && !has_right {
             (left + ml, right - mr)
         } else {
@@ -48,7 +48,7 @@ impl Edges {
     }
 
     pub(super) fn fits(&self, left: f32, right: f32, x: f32, width: f32) -> bool {
-        !(self.has_left && x < left - EPS || self.has_right && x + width > right + EPS)
-            && !((self.has_left || self.has_right) && width > right - left + EPS)
+        !(self.has_left && x < left - COORD_EPS || self.has_right && x + width > right + COORD_EPS)
+            && !((self.has_left || self.has_right) && width > right - left + COORD_EPS)
     }
 }

@@ -1,14 +1,12 @@
 //! Static positions retain CSS geometry until the positioned subtree is placed.
 
+use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::positioned::containing_block::SpotCell;
 use crate::text::vertical::{VT_FRAME, vt_map};
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 pub(super) fn probe(spot: SpotCell, full: bool, child: AnyElement) -> AnyElement {
-    Probe { spot, full, child }.into_any_element()
+    Probe { spot, full, child }.hooked()
 }
 
 struct Probe {
@@ -17,46 +15,22 @@ struct Probe {
     child: AnyElement,
 }
 
-impl IntoElement for Probe {
-    type Element = Self;
+impl Hooks for Probe {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
-impl Element for Probe {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let id = self.child.request_layout(window, cx);
         (id, id)
     }
 
     fn prepaint(
         &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
         _: Bounds<Pixels>,
-        id: &mut LayoutId,
+        id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let bounds = Bounds {
             origin: window.layout_origin_unrounded(*id),
             size: window.layout_size_unrounded(*id),
@@ -79,11 +53,9 @@ impl Element for Probe {
 
     fn paint(
         &mut self,
-        _: Option<&GlobalElementId>,
-        _: Option<&InspectorElementId>,
         _: Bounds<Pixels>,
-        _: &mut LayoutId,
-        _: &mut (),
+        _: &mut Self::Layout,
+        _: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {

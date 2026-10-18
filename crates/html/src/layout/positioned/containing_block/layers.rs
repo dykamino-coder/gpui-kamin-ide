@@ -3,7 +3,8 @@
 use super::SpotCell;
 use super::late::LatePlace;
 use super::late::spot_place;
-use gpui::{AnyElement, IntoElement};
+use crate::hooks::IntoHooked;
+use gpui::AnyElement;
 
 thread_local! {
     /// Слои верхней отрисовки: по одному на каждый блок-контейнер в работе.
@@ -50,11 +51,7 @@ pub(super) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     if spot.get().layout_only {
         return child;
     }
-    LatePlace {
-        child: Some(child),
-        spot,
-    }
-    .into_any_element()
+    LatePlace { child, spot }.hooked()
 }
 
 /// Открыт ли слой начального содержащего блока.

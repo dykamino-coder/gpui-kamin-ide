@@ -1,7 +1,7 @@
 //! Empty containment sizes retain the box geometry while excluding descendant contributions.
 
 use crate::style::computed::{Computed, Display, Track, TrackSize};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{Div, Styled};
 
 /// Внутренний размер ПУСТОЙ коробки с `contain: size` по оси (без отступов).
@@ -16,10 +16,7 @@ use gpui::{Div, Styled};
 ///
 /// `inline` — строчная ось (ширина при горизонтальном письме).
 pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     // `gap` хранит пару (ряды, колонки); `column-gap` пишет и пару, и своё
     // поле (`computed.rs`, ветки `"gap"`/`"column-gap"`).
     let gap = if inline {

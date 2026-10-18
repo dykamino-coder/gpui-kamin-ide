@@ -51,6 +51,7 @@ mod tests {
 
     fn element(tag: &str, attrs: &[(&str, &str)], children: Vec<Node>) -> Element {
         Element {
+            marks: Default::default(),
             list_item: None,
             node_id: 0,
             anim: None,

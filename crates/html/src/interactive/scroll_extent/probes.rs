@@ -1,5 +1,7 @@
 //! Measured CSS boxes and extent proxies belonging to the current HTML scrollport.
+
 use super::{CURRENT, Clip, snap};
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
 use std::{cell::Cell, rc::Rc};
@@ -77,7 +79,7 @@ pub(crate) fn probe(id: u64, c: &Computed) -> Option<AnyElement> {
                 );
             }
         })
-        .into_any_element(),
+        .hooked(),
     )
 }
 

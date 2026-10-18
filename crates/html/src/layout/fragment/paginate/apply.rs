@@ -1,10 +1,10 @@
 //! Pagination struts applied to a copy of the DOM before it is laid out again.
 
-use super::{column_flex, layout_parent, px_or_zero, row_flex};
+use super::{column_flex, layout_parent, row_flex};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::monolith_box;
 use crate::style::computed::Display;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_auto_zero};
 use std::collections::HashMap;
 
 /// A pagination strut: how far the box moves, and its laid-out border-box
@@ -39,10 +39,10 @@ fn content_height(k: &Element, h: f32) -> Option<f32> {
     }
     let b = k.style.borders();
     Some(
-        h - px_or_zero(&k.style.padding.top)?
-            - px_or_zero(&k.style.padding.bottom)?
-            - px_or_zero(&b.top)?
-            - px_or_zero(&b.bottom)?,
+        h - px_auto_zero(k.style.padding.top)?
+            - px_auto_zero(k.style.padding.bottom)?
+            - px_auto_zero(b.top)?
+            - px_auto_zero(b.bottom)?,
     )
 }
 
@@ -103,14 +103,14 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                 }
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.gap > 0.0 && gap_rows) {
-                let Some(m) = px_or_zero(&k.style.margin.top) else {
+                let Some(m) = px_auto_zero(k.style.margin.top) else {
                     return false;
                 };
                 k.style.margin.top = Some(Len::Px(m + st.gap));
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
                 if as_margin {
-                    let Some(m) = px_or_zero(&k.style.margin.top) else {
+                    let Some(m) = px_auto_zero(k.style.margin.top) else {
                         return false;
                     };
                     k.style.margin.top = Some(Len::Px(m + st.by));
@@ -139,6 +139,7 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
 
 fn spacer_box(id: u64, h: f32) -> Element {
     Element {
+        marks: Default::default(),
         list_item: None,
         node_id: id ^ 0x5041_4749_4E41_5445,
         anim: None,

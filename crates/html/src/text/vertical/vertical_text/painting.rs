@@ -1,21 +1,10 @@
 //! Painting for vertical_text; split out to keep the owning module within 250 lines.
 
 use super::VerticalText;
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window};
+use gpui::{App, Bounds, Pixels, Window};
 
 impl VerticalText {
-    // Keep the extracted GPUI Element paint signature intact.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn paint_impl(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    pub(crate) fn paint_impl(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // ЗАМЕРЕНО И ОТКАЧЕНО (01.09): статическая позиция абсолюта внутри
         // ВЕРТИКАЛЬНОЙ строки. Корень виден числом: щуп пишет дырку в
         // ДО-поворотных координатах (матрица ниже применяется только на
@@ -67,7 +56,7 @@ impl VerticalText {
                 dev(-bounds.origin.x),
                 dev(-bounds.origin.y - phase),
             ));
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         // Свой слой с ПОСЛЕ-поворотными границами: порядок отрисовки сцена
         // считает по границам примитивов, а у повёрнутого текста они
         // ДО-трансформные — лежат вне своей коробки, перекрытие с фоном не

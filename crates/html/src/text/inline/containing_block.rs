@@ -3,7 +3,7 @@
 use super::{InlineCb, OverlayAt, Piece};
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::IntoElement;
 
 thread_local! {
@@ -47,10 +47,7 @@ pub(super) fn mark_inline_cb(pieces: Vec<Piece>, e: &Element) -> Vec<Piece> {
     }
     static CB_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
     let id = CB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let pad = [
         px_of(e.style.padding.top),
         px_of(e.style.padding.right),

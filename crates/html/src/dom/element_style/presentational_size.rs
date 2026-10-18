@@ -1,7 +1,7 @@
 //! Presentational size for element_style; split out to keep the owning module within 250 lines.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// `aspect-ratio: auto && <ratio>` у НЕзамещаемой коробки (css-sizing-4
 /// §5.1): «the preferred aspect ratio is the specified ratio … unless it is
@@ -40,10 +40,7 @@ pub(crate) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
         style.aspect_ratio = Some(r);
         return;
     }
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let b = style.borders();
     let pad_x = px(style.padding.left) + px(style.padding.right) + px(b.left) + px(b.right);
     let pad_y = px(style.padding.top) + px(style.padding.bottom) + px(b.top) + px(b.bottom);

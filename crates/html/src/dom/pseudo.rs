@@ -168,6 +168,7 @@ pub(super) fn pseudo_box_named(
             flush(&mut run, &mut children, counters);
             if let Some(src) = content_image_src(src) {
                 children.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
@@ -193,6 +194,7 @@ pub(super) fn pseudo_box_named(
         (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
+        marks: Default::default(),
         list_item,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.

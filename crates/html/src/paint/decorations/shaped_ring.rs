@@ -5,7 +5,7 @@
 //! цветной растр; углы только с выемками по осям — прежний `linear_corners`.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{Color, px_lossy_zero};
 use gpui::{Bounds, Pixels, Window, px};
 
 /// Рисует кольцо по записи `rrect(... / t r b l)` в border-box `bounds`.
@@ -63,10 +63,7 @@ pub(crate) fn spec(c: &Computed) -> Option<(String, Color, [f32; 4])> {
         .filter(|f| sides.iter().all(|s| s == *f))
         .map(|f| **f);
     let mixed = sides.len() > 1 && uniform.is_none();
-    let side_px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side_px = px_lossy_zero;
     let bw = c.borders();
     let widths = [
         side_px(bw.top),

@@ -1,11 +1,12 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::predicates::edge_set;
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, Styled};
+use gpui::{AnyElement, Styled};
 mod outer;
 use outer::{finish_table_outer, table_outer_box};
 mod tracks;
@@ -47,15 +48,13 @@ pub(super) fn table_finish(
 ) -> AnyElement {
     let mut grid_children = under;
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element(),
-        );
+        grid_children
+            .push(crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).hooked());
     }
     grid_children.extend(cells);
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element(),
-        );
+        grid_children
+            .push(crate::layout::table::paint::EdgePainter::new(table_edges.clone()).hooked());
     }
     grid_children.extend(cells_over);
     let cells = grid_children;

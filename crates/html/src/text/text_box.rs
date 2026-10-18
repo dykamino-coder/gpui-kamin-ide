@@ -7,7 +7,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
 /// отформатированная строка контейнера — для `text-box-trim`
@@ -63,10 +63,7 @@ pub(crate) fn text_box_line_style(
                 return None;
             }
             let merged = inherit(inherited, &e.style);
-            let px_of = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
                 px_of(merged.padding.top) != 0.0 || px_of(bs.top) != 0.0

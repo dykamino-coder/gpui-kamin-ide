@@ -95,7 +95,7 @@ pub(crate) fn decorate_atom(
     let el = if e.style.z_index.is_some_and(|z| z < 0)
         && e.style.position == Some(crate::style::computed::Position::Relative)
     {
-        crate::paint::effects::underlay::Underlay::new(el).into_any_element()
+        crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(el))
     } else {
         el
     };

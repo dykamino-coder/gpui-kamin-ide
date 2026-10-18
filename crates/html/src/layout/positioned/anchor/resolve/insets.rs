@@ -2,7 +2,7 @@
 
 use super::super::{AREA_LAST, USED_LAST};
 use crate::style::computed::{Computed, Position};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Пара вставок оси, хотя бы одна — `anchor()`, при `auto`-размере: коробка
 /// заполняет inset-modified containing block (CSS 2.1 §10.3.7, css-position-3
@@ -33,10 +33,7 @@ pub(super) fn fill_anchor_pairs(c: &mut Computed, grid_parent: Option<bool>) {
     let Some((w, h)) = AREA_LAST.with(|m| m.borrow().get(&c.anchor_key).copied()) else {
         return;
     };
-    let pxv = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let pxv = px_lossy_zero;
     let b = c.borders();
     let inner = c.border_box != Some(true);
     let edge = |m0: Option<Len>, m1: Option<Len>, b0, b1, p0, p1| {

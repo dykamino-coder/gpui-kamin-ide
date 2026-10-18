@@ -3,7 +3,7 @@
 use crate::dom::Node;
 use crate::render::*;
 use crate::style::computed::{Align, Computed, Display, FlexDir};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn item_sizing(
@@ -106,10 +106,7 @@ pub(crate) fn item_sizing(
         && e.style.border_box != Some(true)
         && let Some(Len::Px(b)) = e.style.flex_basis
     {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let bd = e.style.borders();
         let row = matches!(
             inherited.flex_dir,

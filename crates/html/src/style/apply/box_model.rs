@@ -2,11 +2,12 @@
 
 use crate::style::apply::*;
 use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{Div, Styled, px};
 
 mod clip_position;
 mod overflow_inset;
+use crate::style::computed::FontCx;
 use clip_position::box_clip_position;
 use overflow_inset::box_overflow;
 
@@ -29,10 +30,7 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
             None | Some(Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent)
         )
     {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = c.borders();
         let pad = side(c.padding.top) + side(c.padding.bottom) + side(b.top) + side(b.bottom);
         let ci = px(c
@@ -77,10 +75,7 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
         ) || (shrink_to_fit && matches!(c.width, None | Some(Len::Auto))))
     {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = c.borders();
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
         d = d.w(px(c
@@ -99,10 +94,7 @@ pub(super) fn apply_box(mut d: Div, c: &Computed) -> Div {
         && matches!(c.width, None | Some(Len::Auto))
         && !shrink_to_fit
     {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = c.borders();
         let pad = side(c.padding.left) + side(c.padding.right) + side(b.left) + side(b.right);
         d = d.min_w(px(c.contain_intrinsic.0.unwrap_or(0.0) + pad));
@@ -182,10 +174,7 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind) -> Div {
 /// размера берётся заведомо большое значение — растеризатор обрежет его
 /// половиной меньшей стороны, что и даёт круг.
 pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
-    let px_len = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_len = px_lossy_zero;
     let b = c.borders();
     let extra_w =
         px_len(c.padding.left) + px_len(c.padding.right) + px_len(b.left) + px_len(b.right);
@@ -202,7 +191,7 @@ pub(crate) fn radius_px(c: &Computed, l: Option<Len>) -> Option<f32> {
         Len::Pct(p) if base.is_nan() => Some(9999.0 * p.min(1.0)),
         Len::Pct(p) => Some(base * p),
         // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l => crate::text::metrics::fallback_len_px(l, "", 16.0),
+        l => l.to_px(None, FontCx::FALLBACK),
     }
 }
 

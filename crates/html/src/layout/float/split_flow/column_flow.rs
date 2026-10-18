@@ -1,10 +1,10 @@
 //! ColumnFlow как элемент gpui: структура и раскладка колонок.
 
 use super::columns::{intrinsic_column_width, measure_columns};
+use crate::hooks::Hooks;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, Font, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Style, Window, point, px,
-    size,
+    AnyElement, App, AvailableSpace, Bounds, Font, LayoutId, Pixels, SharedString, Style, Window,
+    point, px, size,
 };
 use std::rc::Rc;
 
@@ -35,7 +35,6 @@ pub struct ColumnFlow {
     /// `orphans`/`widows` блока со строками (css-break-3 §4.4).
     pub(super) line_breaks: (usize, usize),
     pub(super) cuts: Rc<std::cell::RefCell<(Vec<usize>, Pixels, usize)>>,
-    pub(super) child: Option<AnyElement>,
 }
 
 impl ColumnFlow {
@@ -65,7 +64,6 @@ impl ColumnFlow {
             whole,
             line_breaks: (1, 1),
             cuts: Rc::new(std::cell::RefCell::new((Vec::new(), px(0.), 1))),
-            child: None,
         }
     }
 
@@ -77,25 +75,11 @@ impl ColumnFlow {
     }
 }
 
-impl Element for ColumnFlow {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for ColumnFlow {
+    type Layout = LayoutId;
+    type Prepaint = AnyElement;
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
+    fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let text = self.text.clone();
         let count = self.count;
         let col_w = self.col_w;
@@ -167,13 +151,11 @@ impl Element for ColumnFlow {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        state: &mut LayoutId,
+        state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> AnyElement {
         let stale = self.cuts.borrow().1 != bounds.size.width;
         if stale && bounds.size.width > px(0.) {
             let (at, used, _, _) = measure_columns(
@@ -213,29 +195,17 @@ impl Element for ColumnFlow {
             cx,
         );
         child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-        self.child = Some(child);
+        child
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        child: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(child) = self.child.as_mut() {
-            child.paint(window, cx);
-        }
-    }
-}
-
-impl IntoElement for ColumnFlow {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
+        child.paint(window, cx);
     }
 }

@@ -1,6 +1,7 @@
 //! Слои рамки для apply_paint: обычная рамка стороны и двойная (double) двумя полосами.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 /// Рамка ПОВЕРХ слоя картинки: цвет и толщины сторон, если рамку надо
 /// рисовать отдельным слоем после плиток фона, а не квадом коробки.
@@ -54,10 +55,7 @@ pub(crate) fn border_layer(c: &Computed) -> Option<(crate::style::values::value:
         return None;
     }
     let w = c.borders();
-    let side_px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side_px = px_lossy_zero;
     let widths = [
         side_px(w.top),
         side_px(w.right),
@@ -98,10 +96,7 @@ pub(crate) fn double_border(
         return None;
     }
     let w = c.borders();
-    let side_px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side_px = px_lossy_zero;
     let widths = [
         side_px(w.top),
         side_px(w.right),

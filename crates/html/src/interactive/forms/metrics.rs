@@ -1,6 +1,7 @@
 //! Native control metrics, independent of the embedding application's UI.
 
 use crate::style::computed::Computed;
+use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
 
 // Blink html.css / LayoutThemeDefault and WebThemeEngine on Windows.
@@ -32,7 +33,7 @@ pub(super) fn text_style(style: &Computed) -> Computed {
     let normal = crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font);
     let line = c
         .line_height
-        .and_then(|l| crate::text::metrics::fallback_len_px(l, family, font))
+        .and_then(|l| l.to_px(None, FontCx::new(family, font)))
         .unwrap_or(normal);
     c.line_height = Some(Len::Px(line.max(normal)));
     c

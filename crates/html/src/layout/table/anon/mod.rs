@@ -139,23 +139,20 @@ fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Vec<Node> {
     out
 }
 
-const ANON_CELL: &str = "anonymous-cell";
-
 /// An HTML `td`/`th` element, whose UA style inherits the row's
 /// `vertical-align` (HTML §15.3.9); anonymous cells keep the initial value.
 pub(super) fn html_cell(cell: &Element) -> bool {
-    matches!(cell.tag.as_str(), "td" | "th") && cell.attr(ANON_CELL).is_none()
+    matches!(cell.tag.as_str(), "td" | "th") && !cell.marks.anonymous_cell
 }
 
 pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
     // CSS 2.1 §17.2.1: an anonymous cell is not an HTML `td`; the UA rule
     // `td { vertical-align: inherit }` (HTML §15.3.9) does not reach it.
-    let attrs = if tag == "td" {
-        vec![(ANON_CELL.into(), "1".into())]
-    } else {
-        vec![]
-    };
     Element {
+        marks: crate::dom::Marks {
+            anonymous_cell: tag == "td",
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
@@ -165,7 +162,7 @@ pub(crate) fn anon_element(tag: &str, children: Vec<Node>) -> Element {
         first_letter: None,
         first_line: None,
         children,
-        attrs,
+        attrs: Vec::new(),
         inline: false,
     }
 }

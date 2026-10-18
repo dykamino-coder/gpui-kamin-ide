@@ -14,6 +14,8 @@
 //! них в GPUI нет.
 
 pub mod coverage;
+pub(crate) mod hooks;
+pub mod tolerance;
 pub use style::css;
 pub mod dom;
 pub use dom::encoding;

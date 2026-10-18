@@ -45,6 +45,7 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
 mod queries;
 mod resolve;
+pub use resolve::FontCx;
 
 use crate::style::values::value::Len;
 mod fields;

@@ -3,7 +3,7 @@
 use super::settle::{DefaultAnchor, default_anchor_of};
 use super::{AREA_LAST, AnchorRec, CELL_LAST, CHOSEN, LAST_IMPLICIT, LAST_NAMED, USED_LAST};
 use crate::style::computed::{Align, Computed, Position};
-use crate::style::values::value::{AnchorSize, Len, anchor_get};
+use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 use std::rc::Rc;
 
 mod insets;
@@ -178,10 +178,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     let Some((w, h)) = AREA_LAST.with(|m| m.borrow().get(&c.anchor_key).copied()) else {
         return;
     };
-    let pxv = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let pxv = px_lossy_zero;
     let block_stretch = c.align_self == Some(Align::Stretch);
     let inline_stretch = c.justify_self == Some(Align::Stretch);
     let (x_stretch, y_stretch) = if cb_vertical {

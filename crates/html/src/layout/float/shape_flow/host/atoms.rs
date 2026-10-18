@@ -1,6 +1,7 @@
 //! Прогон атомов в хосте обтекания формой.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_host::px_margin_box;
 use crate::layout::float::float_atom::band_atom;
 use crate::render::{RenderOpts, inline_level};
@@ -112,12 +113,10 @@ pub(crate) fn atoms_flow(
             if let Some(Len::Px(v)) = e.style.height {
                 row = row.inline_limit(v);
             }
-            return Ok(host.child(row).into_any_element());
+            return Ok(host.child(row.into_hooked()).into_any_element());
         }
         return Ok(host
-            .child(crate::layout::fragment::types::FlowRow::new(
-                atoms, shapes, rtl,
-            ))
+            .child(crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl).into_hooked())
             .into_any_element());
     }
     Err((host, shapes))

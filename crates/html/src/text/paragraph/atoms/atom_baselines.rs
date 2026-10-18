@@ -1,5 +1,6 @@
 //! Atom baselines for atoms; split out to keep the owning module within 250 lines.
 
+use crate::hooks::IntoHooked;
 use crate::text::paragraph::*;
 use gpui::{AnyElement, IntoElement, Window};
 
@@ -23,14 +24,17 @@ impl Paragraph {
                     child: gpui::div()
                         .flex()
                         .items_baseline()
-                        .child(BaselineProbe {
-                            slot: probe.clone(),
-                        })
+                        .child(
+                            BaselineProbe {
+                                slot: probe.clone(),
+                            }
+                            .into_hooked(),
+                        )
                         .child(el)
                         .into_any_element(),
                     slot: root.clone(),
                 }
-                .into_any_element();
+                .hooked();
                 AtomSlot {
                     at,
                     el,

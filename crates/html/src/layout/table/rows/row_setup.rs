@@ -2,6 +2,7 @@
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
@@ -89,8 +90,7 @@ pub(super) fn row_band_probes(
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
         );
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
@@ -126,8 +126,7 @@ pub(super) fn row_band_probes(
             band_style.background = None;
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
         );
     }
     (row_rects, grp_band)

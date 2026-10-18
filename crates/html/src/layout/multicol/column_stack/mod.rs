@@ -4,7 +4,7 @@
 use crate::layout::fragment::types::{
     Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild,
 };
-use gpui::{Bounds, IntoElement, Pixels};
+use gpui::{Bounds, Pixels};
 
 pub mod avoid;
 mod axis;
@@ -234,13 +234,5 @@ impl ColumnStack {
             }
             _ => (col, 0.0),
         }
-    }
-}
-
-impl IntoElement for ColumnStack {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

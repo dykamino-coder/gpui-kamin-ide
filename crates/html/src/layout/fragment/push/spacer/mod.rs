@@ -93,6 +93,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         c.children.insert(
             i,
             Node::Element(Element {
+                marks: Default::default(),
                 list_item: None,
                 // Свой устойчивый номер: анимации у распорки нет, но номер
                 // обязан быть уникальным — иначе GPUI склеит её состояние с

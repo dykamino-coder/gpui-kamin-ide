@@ -2,6 +2,7 @@
 
 use super::super::SpotCell;
 use super::LatePlace;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::spot_geometry;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
@@ -65,11 +66,7 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         && ((now.fixed_axes != (false, false) && (now.own_vertical || !now.replaced))
             || (now.preserve_cb_geometry && !now.replaced))
     {
-        return LatePlace {
-            child: Some(child),
-            spot,
-        }
-        .into_any_element();
+        return LatePlace { child, spot }.hooked();
     }
     // При вертикальном письме поток строк идёт поперёк: распорка тянется по
     // высоте, а не по ширине, иначе она уводила бы содержимое вниз. Ветка
@@ -84,10 +81,7 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         let mut wrap = gpui::div().w_0().h_0().flex_shrink_0();
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap
-            .child(LatePlace {
-                child: Some(child),
-                spot,
-            })
+            .child(LatePlace { child, spot }.into_hooked())
             .into_any_element();
     }
     let mut wrap = if vertical_flow {
@@ -130,9 +124,6 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     } else {
         wrap.justify_start()
     };
-    wrap.child(LatePlace {
-        child: Some(child),
-        spot,
-    })
-    .into_any_element()
+    wrap.child(LatePlace { child, spot }.into_hooked())
+        .into_any_element()
 }

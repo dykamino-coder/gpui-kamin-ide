@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 pub(crate) fn inset_holder_box(
@@ -43,10 +43,7 @@ pub(crate) fn inset_holder_box(
     }
     // Поперечный размер держателя — border-box внутренней коробки:
     // её рамка и отбивка прибавляются (у держателя своих нет).
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let bd = e.style.borders();
     if block_axis {
         let extra = px_of(e.style.padding.left)

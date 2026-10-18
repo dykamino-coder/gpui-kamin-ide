@@ -51,6 +51,7 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             st.apply_one(k, &v);
         }
         let el = Element {
+            marks: Default::default(),
             tag: "div".to_string(),
             inline: false,
             node_id: 0,

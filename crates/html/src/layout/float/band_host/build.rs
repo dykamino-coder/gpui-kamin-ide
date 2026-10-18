@@ -135,6 +135,19 @@ pub(crate) fn band_host(
     }
     let side = floaters[0].style.float.unwrap_or(-1);
     let mut host = Element {
+        // Сторона первого флоата — только запасной ответ для живого пути
+        // `shape-outside`: у бандового хоста сторона лежит на КАЖДОМ
+        // ребёнке, и `shape_flow` читает её оттуда. Путь `Static` включает
+        // блочную ветку `shape_flow`.
+        marks: crate::dom::Marks {
+            shape_flow: Some(crate::dom::ShapeFlow {
+                right: side >= 0,
+                count: floaters.len(),
+                bands: Some(crate::dom::BandPath::Static),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
         list_item: None,
         node_id: 0,
         anim: None,
@@ -148,22 +161,7 @@ pub(crate) fn band_host(
         first_letter: None,
         first_line: None,
         children: Vec::new(),
-        attrs: vec![
-            // Сторона первого флоата — только запасной ответ для живого пути
-            // `shape-outside`: у бандового хоста сторона лежит на КАЖДОМ
-            // ребёнке, и `shape_flow` читает её оттуда.
-            (
-                "side".into(),
-                if side < 0 {
-                    "left".into()
-                } else {
-                    "right".into()
-                },
-            ),
-            ("count".into(), floaters.len().to_string()),
-            // Метка бандового хоста: включает блочную ветку `shape_flow`.
-            ("bands".into(), "1".into()),
-        ],
+        attrs: Vec::new(),
         inline: false,
     };
     host.children = floaters.into_iter().map(Node::Element).collect();

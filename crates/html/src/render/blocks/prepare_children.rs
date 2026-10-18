@@ -11,7 +11,7 @@ use crate::layout::table::anon::wrap_anon_tables;
 use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_children(
@@ -186,10 +186,7 @@ pub(crate) fn prepare_children(
         // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
         // считаются от ширины содержащего блока, схлопывание — по уже
         // разрешённым значениям). Известна только заданная в точках.
-        let cb_w = match inherited.width {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let cb_w = px_strict(inherited.width);
         let prev_w = COLLAPSE_CB_WIDTH_PX.with(|c| c.replace(cb_w));
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`inline::inherit`): он зависит

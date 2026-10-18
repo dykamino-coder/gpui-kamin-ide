@@ -1,10 +1,11 @@
 //! Настройка состояния Grouped после вычисления геометрии клипа.
 
 use super::rounded_rect_clip;
+use crate::hooks::IntoHooked;
 use crate::paint::effects::mask::mask_geometry;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use crate::style::values::value::{Len, px_lossy_zero};
+use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn grouped_wrapper(
@@ -190,10 +191,7 @@ pub(crate) fn grouped_wrapper(
     // (clip-path-polygon-008: полигон в margin-box; masking 82→84).
     wrapper.polygon = polygon.to_vec();
     wrapper.polygon_evenodd = c.clip_polygon_evenodd;
-    let side = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side = px_lossy_zero;
     let b = c.borders();
     wrapper.poly_expand = match c.clip_ref {
         Some(1) => {
@@ -214,5 +212,5 @@ pub(crate) fn grouped_wrapper(
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);
     }
-    wrapper.into_any_element()
+    wrapper.hooked()
 }
