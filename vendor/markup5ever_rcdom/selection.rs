@@ -16,9 +16,10 @@ fn attr(node: &Node, key: &str) -> Option<String> {
     let NodeData::Element { attrs, .. } = &node.data else {
         return None;
     };
-    attrs.borrow().iter().find_map(|a| {
-        (a.name.ns.is_empty() && &*a.name.local == key).then(|| a.value.to_string())
-    })
+    attrs
+        .borrow()
+        .iter()
+        .find_map(|a| (a.name.ns.is_empty() && &*a.name.local == key).then(|| a.value.to_string()))
 }
 
 // HTML's non-negative integer parser consumes a digit prefix, accepts '+'
