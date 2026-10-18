@@ -40,7 +40,7 @@ pub(crate) fn paint_element(
     below: &mut BelowRun,
 ) {
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
-    let paint_key = next_paint_key();
+    let paint_key = opts.cx.next_paint_key();
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
     let layer_ok = !inside_deferred();
     let geometry_layer_ok = !paint_scope::deferred();

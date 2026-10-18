@@ -213,7 +213,7 @@ pub(super) fn absolute_atom(
         return match opts
             .cx
             .positioning
-            .late_push(spot, inline_abs_paint_last(e, inner))
+            .late_push(spot, inline_abs_paint_last(e, inner, &opts.cx))
         {
             None => Some(probe),
             Some(kept) => {

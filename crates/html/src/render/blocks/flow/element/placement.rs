@@ -40,7 +40,7 @@ pub(crate) fn place_element(
         geometry_layer_ok,
         nodes,
         idx,
-        &opts.cx.positioning,
+        &opts.cx,
     );
     let built = if to_icb || to_cb {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
@@ -106,7 +106,7 @@ pub(crate) fn place_element(
             } else {
                 built
             };
-            let built = if paint_last_ok(e, &nodes[idx + 1..]) {
+            let built = if paint_last_ok(e, &nodes[idx + 1..], &opts.cx) {
                 gpui::PaintLast::new(built)
                     .key(paint_key)
                     .into_any_element()

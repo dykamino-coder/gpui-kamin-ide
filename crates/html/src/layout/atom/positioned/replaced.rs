@@ -72,7 +72,7 @@ pub(super) fn replaced_abs_atom(
         );
         return match inline_replaced_position::push(
             spot,
-            inline_abs_paint_last(e, holder),
+            inline_abs_paint_last(e, holder, &opts.cx),
             &e.style,
             inherited,
             &opts.cx.positioning,

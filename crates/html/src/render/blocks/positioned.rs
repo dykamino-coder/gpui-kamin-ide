@@ -26,7 +26,7 @@ pub(crate) fn static_position_layer(
     below_zs: &mut Vec<i32>,
     mut below_run_start: usize,
     mut below_run_end: usize,
-    positioning: &crate::layout::positioned::containing_block::Positioning,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> (usize, usize) {
     // Позиционированный элемент рисуется ПОВЕРХ обычного
     // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
@@ -116,15 +116,15 @@ pub(crate) fn static_position_layer(
     // всех соседей контейнера.
     let taken = if below {
         Some(built)
-    } else if paint_last_ok(e, &nodes[idx + 1..]) {
-        positioning.late_push(
+    } else if paint_last_ok(e, &nodes[idx + 1..], cx) {
+        cx.positioning.late_push(
             spot,
             gpui::PaintLast::new(built)
                 .key(paint_key)
                 .into_any_element(),
         )
     } else {
-        positioning.late_push(spot, built)
+        cx.positioning.late_push(spot, built)
     };
     match taken {
         None => out.push(probe),

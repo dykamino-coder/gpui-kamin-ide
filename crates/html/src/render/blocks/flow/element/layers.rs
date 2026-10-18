@@ -71,7 +71,7 @@ pub(crate) fn finish_element(
             &mut below.zs,
             below.start,
             below.end,
-            &opts.cx.positioning,
+            &opts.cx,
         );
         return;
     }
@@ -169,7 +169,7 @@ pub(crate) fn finish_element(
             | Some(crate::style::computed::Position::Sticky)
     ) && e.style.z_index.unwrap_or(0) == 0
         && !matches!(e.tag.as_str(), "html" | "body")
-        && paint_last_ok(e, &nodes[idx + 1..]);
+        && paint_last_ok(e, &nodes[idx + 1..], &opts.cx);
     // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что
     // позиционированные с `z-index: 0` (css-color-4 §opacity: «painted
     // on the same layer … as positioned elements with stacking order
@@ -196,7 +196,7 @@ pub(crate) fn finish_element(
                 || e.style.blend.is_some_and(|b| b != 0))
             && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
             && !matches!(e.tag.as_str(), "html" | "body")
-            && paint_last_ok(e, &nodes[idx + 1..]));
+            && paint_last_ok(e, &nodes[idx + 1..], &opts.cx));
     if step8 {
         done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
     }

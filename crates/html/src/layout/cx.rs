@@ -46,6 +46,23 @@ pub struct LayoutCx {
     /// Offer of a positioned inline ancestor as the containing block of the
     /// inline atom being built (`InlineCbOffer`).
     pub(crate) inline_cb: Option<std::rc::Rc<crate::text::inline::InlineCbOffer>>,
+    /// Paint keys of CSS 2.1 Appendix E step 8 (`gpui::PaintLast`), in build
+    /// order: an ancestor gets a smaller key than its descendants. Shared by
+    /// everything that paints into one collector, nested documents included.
+    pub(crate) paint_keys: Rc<std::cell::Cell<u64>>,
+    /// Positions of the document's nodes in a forward walk and of the LAST
+    /// positioned node that keeps no paint key (`unkeyed_positions`).
+    pub(crate) unkeyed: Rc<crate::render::Unkeyed>,
+}
+
+impl LayoutCx {
+    /// The next step-8 paint key: taken on entering an element, before its
+    /// children are built.
+    pub(crate) fn next_paint_key(&self) -> u64 {
+        let v = self.paint_keys.get().wrapping_add(1);
+        self.paint_keys.set(v);
+        v
+    }
 }
 
 impl RenderOpts {

@@ -136,10 +136,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     if depth == 1 {
         gpui::paint_collect_reset();
     }
-    let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
+    let opts = &*opts.inner(|cx| cx.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes)));
     let mut out = blocks(nodes, &root, opts);
     out.extend(opts.cx.positioning.icb_close());
-    UNKEYED.replace(unkeyed_prev);
     RENDER_DEPTH.with(|d| d.set(d.get() - 1));
     let (open, close) = gpui::PaintCollect::pair();
     out.insert(0, open.into_any_element());
@@ -150,24 +149,12 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
 thread_local! {
     /// Глубина вложенных `render` (документ в рамке собирается внутри).
     static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-    /// Номер элемента в порядке сборки — ключ краски шага 8 (`PaintLast`).
-    static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-    /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
-    /// позиционированного, который ключа краски не получает (см.
-    /// `unkeyed_positions`).
-    static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
-        std::cell::RefCell::new((std::collections::HashMap::new(), None));
 }
 
-/// Следующий ключ краски: зовётся при входе в элемент, до сборки детей, —
-/// предок получает ключ меньше потомков (прямой обход).
-fn next_paint_key() -> u64 {
-    PAINT_KEY.with(|k| {
-        let v = k.get().wrapping_add(1);
-        k.set(v);
-        v
-    })
-}
+/// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
+/// позиционированного, который ключа краски не получает (см.
+/// `unkeyed_positions`).
+pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>);
 
 /// Один блок верхнего уровня — единица виртуализации.
 ///
