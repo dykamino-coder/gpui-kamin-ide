@@ -13,7 +13,7 @@
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;
-pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
+pub(crate) use root_box::{Measurement as RootMeasurement, record as record_root_box};
 
 mod fills;
 mod flat_stack;

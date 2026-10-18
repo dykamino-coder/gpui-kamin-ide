@@ -179,8 +179,9 @@ pub(crate) fn paint_element(
         && inherited.vertical_rl == Some(true)
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
+    let mut root_box = None;
     let e = if canvas_paint {
-        canvas_layer(e, opts, out);
+        root_box = canvas_layer(e, opts, out);
         let mut copy = e.clone();
         copy.style.background = None;
         copy.style.gradient = None;
@@ -215,5 +216,6 @@ pub(crate) fn paint_element(
         hoist_margins,
         placement,
         record_root,
+        root_box,
     )
 }

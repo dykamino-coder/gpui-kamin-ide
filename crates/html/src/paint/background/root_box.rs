@@ -4,39 +4,19 @@ use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
-use std::{
-    cell::{Cell, RefCell},
-    rc::{Rc, Weak},
-};
+use std::{cell::Cell, rc::Rc};
 
+/// The root's padding box, written by the root's box at prepaint and read
+/// by the canvas background layer when it paints in the same frame.
 pub(crate) type Measurement = Rc<Cell<Option<Bounds<Pixels>>>>;
-type WeakMeasurement = Weak<Cell<Option<Bounds<Pixels>>>>;
-
-thread_local! {
-    static PENDING: RefCell<Vec<(u64, WeakMeasurement)>> = const { RefCell::new(Vec::new()) };
-}
-
-pub(crate) fn capture(key: u64) -> Measurement {
-    let area = Rc::new(Cell::new(None));
-    PENDING.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        pending.retain(|(_, area)| area.strong_count() > 0);
-        pending.push((key, Rc::downgrade(&area)));
-    });
-    area
-}
-
-fn take(key: u64) -> Option<Measurement> {
-    PENDING.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        let index = pending.iter().rposition(|(salt, _)| *salt == key)?;
-        pending.remove(index).1.upgrade()
-    })
-}
 
 /// The child remains the layout node: measuring cannot change margin collapse or sizing.
-pub(crate) fn record(child: AnyElement, key: u64, style: &Computed, base_size: f32) -> AnyElement {
-    let Some(area) = take(key) else { return child };
+pub(crate) fn record(
+    child: AnyElement,
+    area: Measurement,
+    style: &Computed,
+    base_size: f32,
+) -> AnyElement {
     let em = match style.font_size {
         Some(Len::Px(v)) => v,
         _ => base_size,

@@ -8,10 +8,15 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
-pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
-    // Pair each root instance with its canvas, including identical iframe documents.
-    let measured =
-        (e.tag == "html").then(|| crate::paint::background::measure_root_box(opts.doc_salt));
+/// Push the canvas background layer of root `e`; return the root box
+/// measurement it reads, for the root's own box to fill at prepaint.
+pub(crate) fn canvas_layer(
+    e: &Element,
+    opts: &RenderOpts,
+    out: &mut Vec<gpui::AnyElement>,
+) -> Option<crate::paint::background::RootMeasurement> {
+    let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
+    let measurement = measured.clone();
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -219,4 +224,5 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         );
     }
     out.push(crate::interactive::scroll_target::canvas(layer));
+    measurement
 }
