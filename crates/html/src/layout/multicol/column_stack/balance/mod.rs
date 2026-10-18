@@ -1,7 +1,8 @@
 //! Балансировка колонок.
 // owner: A
 
-use crate::layout::fragment::types::{Frag, Kid, NotTop, Rows};
+use crate::layout::fragment::plan::{self, Space};
+use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
 mod growth;
 mod line;
@@ -98,7 +99,7 @@ impl ColumnStack {
                 Some(_) => cap,
                 None => self.balance_line(kids, limit, Some(cap)).0,
             };
-            let (_, _, plan) = crate::layout::fragment::plan::fill(kids, target, limit, false);
+            let (_, _, plan) = plan::fill(kids, target, Space::columns(limit));
             return (h, vec![(0.0, h)], plan, Vec::new());
         }
         // Курсор по коробке (Blink `intrinsic_block_size_`): сетка рядов с
@@ -127,7 +128,9 @@ impl ColumnStack {
         } else {
             0.0
         };
-        let _not_top = NotTop::set(if phase0 > 0.01 { count } else { 0 });
+        // Первый ряд начат ниже верха внешней колонки: его колонки — не с
+        // верха фрагментаинера (`Space::not_at_start`).
+        let not_at_start = if phase0 > 0.01 { count } else { 0 };
         let mut y = phase0;
         let mut lines: Vec<(f32, f32)> = Vec::new();
         let mut plan: Vec<Frag> = Vec::new();
@@ -175,7 +178,8 @@ impl ColumnStack {
             // decorations-011`: 120px в трёх колонках по 40, а не 60 + 60).
             let balance_last = self.fixed_height.is_none() || j < kids.len();
             let base = lines.len() * count;
-            let (n, frags, tail) = self.balance_run(&kids[i..j], first, cap, balance_last);
+            let (n, frags, tail) =
+                self.balance_run(&kids[i..j], first, cap, balance_last, not_at_start);
             for f in frags {
                 plan.push(Frag {
                     kid: f.kid + i,

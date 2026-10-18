@@ -1,6 +1,6 @@
 //! Планировщик фрагментации: укладка детей-`Kid` по фрагментаинерам (колонки и страницы) в план `Frag`.
 
-use crate::layout::fragment::types::{Frag, Kid, NOT_TOP};
+use crate::layout::fragment::types::{Frag, Kid};
 mod pieces;
 use pieces::fill_pieces;
 mod open;
@@ -10,6 +10,45 @@ use cuts::{cut_at, forced_or_fits, place_cut};
 mod clone_dec;
 use clone_dec::fill_clone_dec;
 
+/// Фрагментаинеры плана — то, что Blink несёт в `ConstraintSpace`
+/// (`constraint_space.h`: `BlockFragmentationType`, `IsAtFragmentainerStart`):
+/// предел их числа (копий ребёнка), вид (страницы или колонки) и сколько
+/// первых фрагментаинеров начинаются НЕ с их верха. Высота каждого — отдельный
+/// аргумент `target_at`: её подбирает балансировка.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Space {
+    pub(crate) limit: usize,
+    /// Стопка СТРАНИЦ (`fill`): монолит, переполнивший страницу, занимает
+    /// место и на следующих.
+    pub(crate) paged: bool,
+    /// Сколько первых фрагментаинеров стоят не с верха: первый ряд
+    /// вложенного многоколоночника, начатого ниже верха внешней колонки. Не
+    /// влезший с верха такой колонки монолит уходит дальше, а не переполняет
+    /// её (Blink: `is_at_fragmentainer_start` ложно — `BreakBeforeChildIfNeeded`,
+    /// css-break-3 §4.1 «may be pushed»).
+    pub(crate) not_at_start: usize,
+}
+
+impl Space {
+    /// Колонки многоколоночника, все — с верха.
+    pub(crate) const fn columns(limit: usize) -> Self {
+        Space {
+            limit,
+            paged: false,
+            not_at_start: 0,
+        }
+    }
+
+    /// Page areas стопки страниц.
+    pub(crate) const fn pages(limit: usize) -> Self {
+        Space {
+            limit,
+            paged: true,
+            not_at_start: 0,
+        }
+    }
+}
+
 /// Жадная укладка при данной высоте колонки: сколько колонок вышло,
 /// минимальный недолаз и план кусков. Вертикальные поля соседей
 /// СХЛОПЫВАЮТСЯ (CSS 2.1 §8.3.1) и обнуляются на границе колонки
@@ -17,18 +56,13 @@ use clone_dec::fill_clone_dec;
 /// ЗАКОННОЙ точке (класс A); без таких точек — по краю колонки, если
 /// он выше колонки, иначе уходит в следующую целиком; монолит режется
 /// никогда и с верха пустой колонки переполняет её (css-break-3 §4.1).
-/// `paged` — стопка СТРАНИЦ, а не колонок: монолит, переполнивший
+/// `space.paged` — стопка СТРАНИЦ, а не колонок: монолит, переполнивший
 /// страницу, занимает место и на следующих (Blink, crbug 1402540:
 /// содержимое после него продолжается там, где кончилось переполнение,
 /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
 /// «в середине второй страницы»). В колонках правило не действует.
-pub(crate) fn fill(
-    kids: &[Kid],
-    target: f32,
-    limit: usize,
-    paged: bool,
-) -> (usize, f32, Vec<Frag>) {
-    fill_at(kids, &|_| target, limit, paged)
+pub(crate) fn fill(kids: &[Kid], target: f32, space: Space) -> (usize, f32, Vec<Frag>) {
+    fill_at(kids, &|_| target, space)
 }
 
 /// То же с высотой ПО КОЛОНКАМ: `target_at(col)`. Нужно рядам —
@@ -57,14 +91,17 @@ pub(crate) fn skip_float(
 pub(crate) fn fill_at(
     kids: &[Kid],
     target_at: &dyn Fn(usize) -> f32,
-    limit: usize,
-    paged: bool,
+    space: Space,
 ) -> (usize, f32, Vec<Frag>) {
+    let Space {
+        limit,
+        paged,
+        not_at_start: not_top,
+    } = space;
     let mut col = 0usize;
     let mut y = 0.0f32;
     let mut prev_mb = 0.0f32;
     let mut first = true;
-    let not_top = NOT_TOP.with(|c| c.get());
     let mut placed = not_top > 0;
     let mut shortage = f32::MAX;
     let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
@@ -190,3 +227,6 @@ pub(crate) fn fill_at(
     let last = out.iter().map(|f| f.col).fold(col, usize::max);
     (last + 1, shortage, out)
 }
+
+#[cfg(test)]
+mod tests;

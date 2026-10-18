@@ -10,7 +10,6 @@ pub use scope::axis_box;
 pub use scope::in_stack;
 pub use scope::set_outer_row;
 pub use scope::take_outer_row;
-pub(crate) use scope::{NOT_TOP, NotTop};
 mod rows;
 pub(crate) use rows::Frag;
 pub use rows::Intrinsic;

@@ -31,12 +31,6 @@ thread_local! {
     /// Высота ряда вложенного многоколоночника, заданная ВНЕШНЕЙ колонкой
     /// (`set_outer_row` → `take_outer_row` первой строкой `render::element`).
     static OUTER_ROW: std::cell::Cell<Option<(f32, f32)>> = const { std::cell::Cell::new(None) };
-    /// Сколько первых колонок укладки стоят НЕ с верха фрагментаинера (первый
-    /// ряд вложенного многоколоночника, начатого ниже верха внешней колонки):
-    /// не влезший с верха такой колонки монолит уходит дальше, а не
-    /// переполняет её (Blink: `is_at_fragmentainer_start` ложно —
-    /// `BreakBeforeChildIfNeeded`, css-break-3 §4.1 «may be pushed»).
-    pub(crate) static NOT_TOP: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Передать следующему `element()` высоту внешнего фрагментаинера: копия
@@ -44,21 +38,6 @@ thread_local! {
 /// «when a multi-column container breaks across pages, it generates a new row
 /// of columns on the next page»; Blink `column_layout_algorithm.cc:1741-1748`
 /// `ConstrainColumnBlockSize` → `min(size, available_outer_space)`).
-/// Сторож `NOT_TOP` на время укладки.
-pub(crate) struct NotTop(pub(crate) usize);
-
-impl NotTop {
-    pub(crate) fn set(n: usize) -> Self {
-        NotTop(NOT_TOP.with(|c| c.replace(n)))
-    }
-}
-
-impl Drop for NotTop {
-    fn drop(&mut self) {
-        NOT_TOP.with(|c| c.set(self.0));
-    }
-}
-
 pub fn set_outer_row(h: Option<(f32, f32)>) {
     OUTER_ROW.with(|r| r.set(h));
 }

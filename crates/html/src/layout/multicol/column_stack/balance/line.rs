@@ -1,5 +1,6 @@
 //! Балансировка по строкам: строка баланса, avoid на пределе, прогон.
 
+use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid};
 use crate::layout::multicol::column_stack::ColumnStack;
 
@@ -23,11 +24,11 @@ impl ColumnStack {
             // (сегодня 0.53): баланс уходит 75 -> 125 при верных 100 — то есть
             // в балансе отступ мало поставить, надо ещё выбрать высоту, а это
             // отдельный шаг с отдельным замером.
-            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, limit, false);
+            let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(limit));
             return (h, slots);
         }
         if let Some(h) = self.forced_h {
-            let (_, _, slots) = crate::layout::fragment::plan::fill(kids, h, limit, false);
+            let (_, _, slots) = plan::fill(kids, h, Space::columns(limit));
             return (h, slots);
         }
         // Нижнее поле ПОСЛЕДНЕГО ребёнка не примыкает к разрыву — многоколоночник
@@ -86,8 +87,7 @@ impl ColumnStack {
         let clamp = |t: f32| cap.map_or(t, |c| t.min(c));
         let mut target = clamp(guess.max(tallest).max(1.0));
         for _ in 0..6 {
-            let (cols, shortage, slots) =
-                crate::layout::fragment::plan::fill(kids, target, limit, false);
+            let (cols, shortage, slots) = plan::fill(kids, target, Space::columns(limit));
             if cols <= self.count {
                 // Колонок хватило, но план рвёт запрещённую границу (css-break-3
                 // §4.3, правило 1) — растим высоту ровно на недолаз
@@ -139,8 +139,7 @@ impl ColumnStack {
                 // `columns: 1`, прогоны 100 + 100 — колонка 200 вместо 100).
                 let used = slots.iter().map(|f| f.y + f.h).fold(0.0f32, f32::max);
                 if used > 0.01 && used < target - 0.01 {
-                    let (cols2, _, slots2) =
-                        crate::layout::fragment::plan::fill(kids, used, limit, false);
+                    let (cols2, _, slots2) = plan::fill(kids, used, Space::columns(limit));
                     if cols2 == cols {
                         return (used, slots2);
                     }
@@ -153,7 +152,7 @@ impl ColumnStack {
             // Как blink: расти ровно на минимально необходимое.
             target = clamp(target + if shortage > 0.0 { shortage } else { 1.0 });
         }
-        let (_, _, slots) = crate::layout::fragment::plan::fill(kids, target, limit, false);
+        let (_, _, slots) = plan::fill(kids, target, Space::columns(limit));
         (target, slots)
     }
 
@@ -174,7 +173,7 @@ impl ColumnStack {
         if Self::first_avoid_violation(kids, &slots).is_none() {
             return slots;
         }
-        Self::fill_avoiding(kids, &|_| target, limit, false).2
+        Self::fill_avoiding(kids, &|_| target, Space::columns(limit)).2
     }
 
     /// Пробег линий колонок между спаннерами: первая линия высотой `first`
@@ -182,7 +181,8 @@ impl ColumnStack {
     /// `balance_last` балансируется (Blink балансирует КАЖДУЮ линию и режет
     /// её остатком ряда, так что полные ряды выходят ровно в `column-height`,
     /// а последняя — по содержимому: `column-height-003` — 80px остатка в
-    /// двух колонках по 40, а не 50 + 30). Возвращает число линий, план
+    /// двух колонках по 40, а не 50 + 30). `not_at_start` — сколько первых
+    /// колонок стоят не с верха фрагментаинера (`Space`). Возвращает число линий, план
     /// (колонки от нуля, дети от нуля) и высоту последней линии.
     pub(crate) fn balance_run(
         &self,
@@ -190,12 +190,15 @@ impl ColumnStack {
         first: f32,
         cap: f32,
         balance_last: bool,
+        not_at_start: usize,
     ) -> (usize, Vec<Frag>, f32) {
         let count = self.count;
-        let limit = self.copies;
+        let space = Space {
+            not_at_start,
+            ..Space::columns(self.copies)
+        };
         let line_h = |l: usize| if l == 0 { first } else { cap };
-        let (cols, _, plan) =
-            crate::layout::fragment::plan::fill_at(kids, &|c| line_h(c / count), limit, false);
+        let (cols, _, plan) = plan::fill_at(kids, &|c| line_h(c / count), space);
         let n = cols.div_ceil(count).max(1);
         let last = line_h(n - 1);
         if !balance_last {
@@ -214,8 +217,7 @@ impl ColumnStack {
         }
         for _ in 0..6 {
             let at = |c: usize| if c < full { line_h(c / count) } else { t };
-            let (cols, shortage, slots) =
-                crate::layout::fragment::plan::fill_at(kids, &at, limit, false);
+            let (cols, shortage, slots) = plan::fill_at(kids, &at, space);
             if cols <= full + count {
                 return (n, slots, t);
             }

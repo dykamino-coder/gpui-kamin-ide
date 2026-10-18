@@ -2,6 +2,7 @@
 
 use super::{PageGeom, PageStack};
 use crate::hooks::Hooks;
+use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::Frag;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
@@ -83,7 +84,7 @@ impl Hooks for PageStack {
                     .unwrap_or_else(|| (self.geom_for)(c, &tail));
                 self.area_logical(&g).1.max(1.0)
             };
-            let (pages, _, plan) = crate::layout::fragment::plan::fill_at(&kids, &at, limit, true);
+            let (pages, _, plan) = plan::fill_at(&kids, &at, Space::pages(limit));
             let new_names = names_of(&plan, pages);
             let stable = new_names == names;
             names = new_names;
