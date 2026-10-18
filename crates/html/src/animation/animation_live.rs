@@ -105,10 +105,10 @@ mod tests {
         let mut source = crate::layout::table::anon::anon_element("div", vec![]);
         source.style.apply_one("animation", "move 1s linear");
         let spec = source.style.animation.as_ref().unwrap();
-        let mut start = source.style.clone();
+        let mut start = (*source.style).clone();
         start.apply_one("margin", "0px");
         start.apply_one("transform", "translateX(0px)");
-        let mut end = source.style.clone();
+        let mut end = (*source.style).clone();
         end.apply_one("margin", "200px");
         end.apply_one("transform", "translateX(200px)");
         let frames = [(0.0, start), (1.0, end)];

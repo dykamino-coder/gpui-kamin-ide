@@ -117,7 +117,7 @@ mod tests {
             node_id: 0,
             anim: None,
             tag: "div".into(),
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,

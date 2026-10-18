@@ -14,6 +14,9 @@ impl Computed {
                 // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
                 let tokens = split_outside_parens(v);
                 let parts: Vec<Option<Len>> = tokens.iter().map(|t| Len::parse_mixed(t)).collect();
+                if (1..=2).contains(&parts.len()) && parts.iter().all(Option::is_some) {
+                    self.accept_declaration();
+                }
                 self.gap = match parts.len() {
                     1 => Some((parts[0], parts[0])),
                     2 => Some((parts[0], parts[1])),
@@ -31,16 +34,21 @@ impl Computed {
                     self.column_gap = Len::parse(&tokens[tokens.len() - 1]);
                 }
             }
-            "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
+            "row-gap" => {
+                self.gap = Some((
+                    record_parsed!(self, Len::parse(v)),
+                    self.gap.and_then(|g| g.1),
+                ))
+            }
             // Одно свойство служит двум раскладкам: в сетке и гибкой строке
             // это зазор между ячейками, в многоколоночном потоке — между
             // колонками. Пишем в оба поля, читает нужное та раскладка, которая
             // включена.
             "column-gap" => {
                 self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v)));
-                self.column_gap = Len::parse(v);
+                self.column_gap = record_parsed!(self, Len::parse(v));
             }
-            "order" => self.order = v.parse().ok(),
+            "order" => self.order = record_parsed!(self, v.parse().ok()),
             "flex-flow" => {
                 for token in v.split_whitespace() {
                     let prop = if token.starts_with("wrap") || token == "nowrap" {
@@ -53,7 +61,7 @@ impl Computed {
             }
             "align-content" => {
                 self.align_inherit &= !ainh::ALIGN_CONTENT;
-                self.align_content = parse_justify(v);
+                self.align_content = record_parsed!(self, parse_justify(v));
                 self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
                 self.align_content_safe = is_safe(v);
@@ -69,16 +77,25 @@ impl Computed {
                     .unwrap_or("");
                 self.align_content_block =
                     self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
+                if self.align_content_block || v == "normal" {
+                    self.accept_declaration();
+                }
             }
             "justify-items" => {
                 self.align_inherit &= !ainh::JUSTIFY_ITEMS;
-                self.justify_items = parse_align(v);
+                self.justify_items = record_parsed!(self, parse_align(v));
+                if matches!(v, "normal" | "legacy") {
+                    self.accept_declaration();
+                }
                 self.justify_items_safe = is_safe(v);
                 self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             "justify-self" => {
                 self.align_inherit &= !ainh::JUSTIFY_SELF;
-                self.justify_self = parse_align(v);
+                self.justify_self = record_parsed!(self, parse_align(v));
+                if matches!(v, "auto" | "normal") {
+                    self.accept_declaration();
+                }
                 self.justify_self_physical = match v.split_whitespace().last() {
                     Some("left") => Some(false),
                     Some("right") => Some(true),

@@ -43,7 +43,7 @@ mod kamin_calc;
 #[cfg(feature = "taffy_tree")]
 mod kamin_output;
 #[cfg(all(feature = "taffy_tree", feature = "std"))]
-pub use kamin_calc::calc_handle;
+pub use kamin_calc::{CalcScope, calc_handle};
 #[cfg(feature = "taffy_tree")]
 pub use kamin_calc::calc_value;
 

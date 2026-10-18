@@ -22,6 +22,8 @@ mod emit;
 use cell::table_cell;
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
+// Rows carry their elements and associated row/column band records.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_rows(
     rows: Vec<(
         &Element,
@@ -48,7 +50,7 @@ pub(super) fn table_rows(
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
     table_is_vertical: bool,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     paint_layers: bool,
     cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: Vec<&Element>,

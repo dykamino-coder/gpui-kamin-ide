@@ -27,6 +27,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
             (Some((width, height)), 0)
         }
     };
+    style.accept_declaration();
     style.mask_size = size;
     style.mask_fit = Some(fit);
 }

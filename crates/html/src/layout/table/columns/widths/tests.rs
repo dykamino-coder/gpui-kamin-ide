@@ -12,7 +12,7 @@ fn col(node_id: u64) -> Element {
         node_id,
         anim: None,
         tag: "col".into(),
-        style: Computed {
+        style: Box::new(Computed {
             background: Some(Color {
                 r: 0.0,
                 g: 0.5,
@@ -20,7 +20,7 @@ fn col(node_id: u64) -> Element {
                 a: 1.0,
             }),
             ..Default::default()
-        },
+        }),
         hover: None,
         first_letter: None,
         first_line: None,

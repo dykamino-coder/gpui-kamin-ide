@@ -27,6 +27,8 @@ impl PageKid {
 /// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
 /// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
 /// стопку попадает и голый текст, которого укладка колонок не видит.
+// A page shape stores height, cuts, forced breaks and monolithic intervals together.
+#[allow(clippy::type_complexity)]
 pub struct PageKid {
     pub el: AnyElement,
     /// Repeated table sections reserved by the common fragmentation planner.

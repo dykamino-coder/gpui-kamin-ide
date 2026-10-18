@@ -14,7 +14,7 @@ fn element(style: Computed, children: Vec<Node>) -> Element {
         node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         anim: None,
         tag: "div".into(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

@@ -94,7 +94,7 @@ pub(super) fn wrap(
         node_id: 0,
         anim: None,
         tag: "::details-content".into(),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

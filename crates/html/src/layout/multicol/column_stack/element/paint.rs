@@ -6,6 +6,8 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
+    // Fragment painting shares the column geometry and the active GPUI context.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_frags(
         &mut self,
         window: &mut Window,

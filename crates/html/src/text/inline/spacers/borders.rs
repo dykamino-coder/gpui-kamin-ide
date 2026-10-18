@@ -39,6 +39,8 @@ pub(super) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f3
     }
 }
 
+// A CSS edge index selects the corresponding width, color and style entries.
+#[allow(clippy::needless_range_loop)]
 pub fn sided_border(c: &Computed, font_px: f32) -> Option<(Color, [f32; 4])> {
     let w = c.borders();
     let px_of = |l: Option<Len>| border_px(l, c, font_px);

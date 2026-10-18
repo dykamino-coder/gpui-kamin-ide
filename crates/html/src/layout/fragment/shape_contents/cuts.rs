@@ -12,6 +12,8 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Fragment cuts carry offsets and their optional break metadata together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn finish_shape_cuts(
     c: &Element,
     unclamp: bool,

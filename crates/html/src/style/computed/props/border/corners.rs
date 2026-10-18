@@ -13,8 +13,10 @@ impl Computed {
             // значение — объявление отбрасывается (прежнее остаётся).
             "border-shape" => {
                 if v.eq_ignore_ascii_case("none") {
+                    self.accept_declaration();
                     self.border_shape = None;
                 } else if let Some(bs) = parse_border_shape(v) {
+                    self.accept_declaration();
                     self.border_shape = Some(bs);
                 }
             }
@@ -77,6 +79,7 @@ impl Computed {
             }
             "corner-shape" => {
                 if let Some(k) = corner_shape_shorthand(v) {
+                    self.accept_declaration();
                     self.corner_shape = Some(k);
                 }
             }
@@ -91,6 +94,7 @@ impl Computed {
                     .filter_map(corner_shape_param)
                     .collect();
                 if let Some(first) = vals.first().copied() {
+                    self.accept_declaration();
                     let second = vals.get(1).copied().unwrap_or(first);
                     let mut k = self.corner_shape.unwrap_or([1.0; 4]);
                     // Порядок пар — по часовой от первого угла стороны.
@@ -110,6 +114,7 @@ impl Computed {
             | "corner-bottom-right-shape"
             | "corner-bottom-left-shape" => {
                 if let Some(val) = corner_shape_param(v) {
+                    self.accept_declaration();
                     let mut k = self.corner_shape.unwrap_or([1.0; 4]);
                     k[match key {
                         "corner-top-left-shape" => 0,

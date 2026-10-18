@@ -890,11 +890,6 @@ impl DirectWriteState {
                 0.0,
                 0.0,
             );
-            if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VERT_DBG").is_ok()); *ON }
-                && let Err(e) = &drawn
-            {
-                eprintln!("VERT_DBG draw err={e:?} text={text:?}");
-            }
             drawn?;
             let width = px(renderer_context.width);
             if !folded.is_empty() {
@@ -1978,15 +1973,6 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             .vert_ranges
             .iter()
             .any(|&(start, len)| desc.textPosition >= start && desc.textPosition < start + len);
-        if { static ON: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| std::env::var("VERT_DBG").is_ok()); *ON } {
-            eprintln!(
-                "VERT_DBG pos={} vert={} ranges={:?} adv={:?}",
-                desc.textPosition,
-                vert,
-                context.vert_ranges,
-                &glyph_advances[..glyph_count.min(4)]
-            );
-        }
         let vert_advances: Option<Vec<f32>> = if vert {
             let mut m: DWRITE_FONT_METRICS1 = unsafe { std::mem::zeroed() };
             unsafe { font_face.GetMetrics(&mut m) };

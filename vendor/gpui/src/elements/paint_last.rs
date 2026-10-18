@@ -1,29 +1,37 @@
-// KaminIDE patch: краска ребёнка ПОСЛЕ потока без смены раскладки.
-//
-// Позиционированный элемент с `z-index: auto | 0` рисуется на шаге 8
-// приложения E CSS 2.1 — после всего обычного содержимого БЛИЖАЙШЕГО
-// контекста наложения и в порядке разметки, — а место в раскладке держит
-// своё (относительный сдвиг, абсолют с одной свободной осью). Порядок краски
-// в GPUI — порядок детей, и переставить ребёнка значило бы сдвинуть
-// раскладку. Обёртка ничего не меняет в раскладке и prepaint (узел раскладки
-// — узел ребёнка).
-//
-// Краска — в два режима:
-// - собиратель открыт (`PaintCollect` корня документа, `Div` с прозрачностью
-//   < 1): ребёнок со снимком контекста краски (`Window::paint_ctx`) уходит в
-//   собиратель и рисуется в его конце по возрастанию ключа — номера элемента
-//   в разметке. Через обычные `Div` перенос проходит насквозь; любой другой
-//   элемент (преобразование, маска, подложка, фрагменты) собиратель
-//   закрывает для своего поддерева (`hoist_boundary`), пока он сам не
-//   откроет его снова (`paint_reopen`).
-// - собирателя нет: `Div::paint` рисует такие обёртки вторым проходом, после
-//   прочих детей.
-//
-// Отложенная краска (`deferred`) тут не годится: она выносит поддерево из
-// масок и вложенной не бывает.
+//! KaminIDE patch: краска ребёнка ПОСЛЕ потока без смены раскладки.
+//!
+//! Позиционированный элемент с `z-index: auto | 0` рисуется на шаге 8
+//! приложения E CSS 2.1 — после всего обычного содержимого БЛИЖАЙШЕГО
+//! контекста наложения и в порядке разметки, — а место в раскладке держит
+//! своё (относительный сдвиг, абсолют с одной свободной осью). Порядок краски
+//! в GPUI — порядок детей, и переставить ребёнка значило бы сдвинуть
+//! раскладку. Обёртка ничего не меняет в раскладке и prepaint (узел раскладки
+//! — узел ребёнка).
+//!
+//! Краска — в два режима:
+//! - собиратель открыт (`PaintCollect` корня документа, `Div` с прозрачностью
+//!   < 1): ребёнок со снимком контекста краски (`Window::paint_ctx`) уходит в
+//!   собиратель и рисуется в его конце по возрастанию ключа — номера элемента
+//!   в разметке. Через обычные `Div` перенос проходит насквозь; любой другой
+//!   элемент (преобразование, маска, подложка, фрагменты) собиратель
+//!   закрывает для своего поддерева (`hoist_boundary`), пока он сам не
+//!   откроет его снова (`paint_reopen`).
+//! - собирателя нет: `Div::paint` рисует такие обёртки вторым проходом, после
+//!   прочих детей.
+//!
+//! Отложенная краска (`deferred`) тут не годится: она выносит поддерево из
+//! масок и вложенной не бывает.
+mod collect;
+mod inline;
+mod positioned;
+
+pub use collect::PaintCollect;
+pub use inline::PaintInline;
+pub use positioned::PaintLast;
+
 use crate::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
-    IntoElement, LayoutId, Pixels, Style, Window,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Style, Window,
     window::{PaintCtx, TextPaintCtx},
 };
 use std::cell::{Cell, RefCell};
@@ -186,280 +194,4 @@ pub(crate) fn hoist_collect(
     let (depth, prev) = open_frame();
     f(window, cx);
     close_frame(depth, prev, window, cx);
-}
-
-/// Ребёнок `Div`, который рисуется после потока.
-pub struct PaintLast {
-    child: Option<AnyElement>,
-    key: u64,
-}
-
-impl PaintLast {
-    /// Обернуть элемент: раскладка та же, краска — после потока.
-    pub fn new(child: AnyElement) -> Self {
-        PaintLast {
-            child: Some(child),
-            key: 0,
-        }
-    }
-
-    /// Номер элемента в разметке: порядок краски внутри собирателя.
-    pub fn key(mut self, key: u64) -> Self {
-        self.key = key;
-        self
-    }
-}
-
-impl Element for PaintLast {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let child = self.child.as_mut().expect("PaintLast: ребёнок на месте");
-        (child.request_layout(window, cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if let Some(child) = self.child.as_mut() {
-            child.prepaint(window, cx);
-        }
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if hoist_open() && FRAMES.with(|f| !f.borrow().is_empty()) {
-            if let Some(el) = self.child.take() {
-                let ctx = window.paint_ctx();
-                let key = self.key;
-                FRAMES.with(|f| {
-                    if let Some(frame) = f.borrow_mut().last_mut() {
-                        frame.positioned.push(Hoisted { key, el, ctx });
-                    }
-                });
-            }
-            return;
-        }
-        if let Some(child) = self.child.as_mut() {
-            child.paint(window, cx);
-        }
-    }
-}
-
-impl IntoElement for PaintLast {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
-/// Пара меток собирателя без своей коробки: открывающая ставится первым
-/// ребёнком корня документа, закрывающая — последним; между ними `PaintLast`
-/// уходит в собиратель, а на закрывающей дорисовывается по ключам.
-pub struct PaintCollect {
-    open: bool,
-    state: Rc<Cell<Option<(usize, bool)>>>,
-}
-
-impl PaintCollect {
-    /// Пара меток: открывающая и закрывающая.
-    pub fn pair() -> (PaintCollect, PaintCollect) {
-        let state: Rc<Cell<Option<(usize, bool)>>> = Rc::default();
-        (
-            PaintCollect {
-                open: true,
-                state: state.clone(),
-            },
-            PaintCollect { open: false, state },
-        )
-    }
-}
-
-impl Element for PaintCollect {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        // Внепоточная коробка нулевого размера: соседей не двигает.
-        let style = Style {
-            position: crate::Position::Absolute,
-            ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _window: &mut Window,
-        _cx: &mut App,
-    ) {
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if self.open {
-            self.state.set(Some(open_frame()));
-        } else if let Some((depth, prev)) = self.state.take() {
-            close_frame(depth, prev, window, cx);
-        }
-    }
-}
-
-impl IntoElement for PaintCollect {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
-/// KaminIDE patch: строчное содержимое блока (строки с текстом, строчными
-/// коробками и атомами), которое рисуется ПОСЛЕ фонов и рамок всех блоков
-/// потока своего контекста наложения.
-///
-/// CSS 2.1 прил. E: шаг 4 — фоны блочных потомков в порядке дерева, шаг 5 —
-/// флоаты, шаг 7 — строчное содержимое (в порядке дерева, строка за
-/// строкой), шаг 8 — позиционированные. Порядок краски в GPUI — порядок
-/// детей, поэтому строки раннего блока ложились ПОД фон позднего блока,
-/// наехавшего на них отрицательным полем (`inline-block-zorder-001`).
-/// При открытом собирателе (`PaintCollect` корня, `Div` с прозрачностью)
-/// обёртка уходит в него и рисуется в его конце раньше позиционированных;
-/// без собирателя — на месте, как прежде. Раскладка не меняется.
-pub struct PaintInline {
-    child: Option<AnyElement>,
-}
-
-impl PaintInline {
-    /// Обернуть строчное содержимое.
-    pub fn new(child: AnyElement) -> Self {
-        PaintInline { child: Some(child) }
-    }
-}
-
-impl Element for PaintInline {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let child = self.child.as_mut().expect("PaintInline: ребёнок на месте");
-        (child.request_layout(window, cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if let Some(child) = self.child.as_mut() {
-            child.prepaint(window, cx);
-        }
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if hoist_open() && FRAMES.with(|f| !f.borrow().is_empty()) {
-            if let Some(el) = self.child.take() {
-                let ctx = window.text_paint_ctx();
-                FRAMES.with(|f| {
-                    if let Some(frame) = f.borrow_mut().last_mut() {
-                        frame.inline.push_back(HoistedInline { el, ctx });
-                    }
-                });
-            }
-            return;
-        }
-        if let Some(child) = self.child.as_mut() {
-            child.paint(window, cx);
-        }
-    }
-}
-
-impl IntoElement for PaintInline {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
 }

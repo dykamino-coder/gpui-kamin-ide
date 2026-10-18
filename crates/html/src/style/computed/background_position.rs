@@ -26,6 +26,9 @@ impl Computed {
             })
             .collect();
         self.bg_pos = parse_pos_words(&words.join(" "));
+        if self.bg_pos.x.is_some() || self.bg_pos.y.is_some() {
+            self.accept_declaration();
+        }
     }
 
     pub(crate) fn background_position_length(raw: &str) -> bool {
@@ -40,6 +43,7 @@ impl Computed {
     ) {
         let expression = math(raw);
         if value.is_some() || expression.is_some() {
+            self.accept_declaration();
             let value = value.or_else(|| expression.as_ref().map(|_| Len::Px(0.0)));
             if axis == 0 {
                 self.bg_pos.x = value.or(self.bg_pos.x);

@@ -88,6 +88,8 @@ pub(crate) fn skip_float(
     }
 }
 
+// Filling returns column geometry and continuation metadata together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn fill_at(
     kids: &[Kid],
     target_at: &dyn Fn(usize) -> f32,

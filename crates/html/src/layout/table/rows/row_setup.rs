@@ -85,7 +85,7 @@ pub(super) fn row_band_probes(
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
-        let mut band_style = row.style.clone();
+        let mut band_style = (*row.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
@@ -115,7 +115,7 @@ pub(super) fn row_band_probes(
             .get(&row.node_id)
             .is_some_and(|(_, first, _)| *first)
     {
-        let mut band_style = g.style.clone();
+        let mut band_style = (*g.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }

@@ -472,10 +472,6 @@ impl Element for Img {
                         self.style.object_position,
                         window.rem_size(),
                     );
-                    // KaminIDE patch: временная трасса под IMG_DBG.
-                    if std::env::var("IMG_DBG").is_ok() {
-                        eprintln!("IMG bounds={:?} natural={:?}", bounds, data.size(layout_state.frame_index));
-                    }
                     let exact_bounds = layout_state.natural_bounds.map(|exact| {
                         image_style::position(
                             self.style
@@ -796,7 +792,7 @@ impl From<image::ImageError> for ImageCacheError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ParentElement as _, TestAppContext, canvas, div, point, px, size};
+    use crate::{ObjectFit, ParentElement as _, TestAppContext, canvas, div, point, px, size};
     use image::{Frame, ImageBuffer, Rgba};
 
     const TEST_IMG_ID: &str = "test-img";

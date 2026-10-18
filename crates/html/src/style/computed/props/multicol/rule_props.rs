@@ -13,6 +13,7 @@ impl Computed {
             // Первое значение уходит в скаляры — ими живёт многоколонник.
             "column-rule-width" | "row-rule-width" | "rule-width" => {
                 if let Some(l) = gap_list(v, gap_width) {
+                    self.accept_declaration();
                     if key != "row-rule-width" {
                         self.set_gap_widths(true, &l);
                     }
@@ -23,6 +24,7 @@ impl Computed {
             }
             "column-rule-style" | "row-rule-style" | "rule-style" => {
                 if let Some(l) = gap_list(v, gap_style) {
+                    self.accept_declaration();
                     let double = v.trim().eq_ignore_ascii_case("double");
                     let kinds = gap_list(v, super::gap_rules::gap_kind);
                     if key != "row-rule-style" {
@@ -51,6 +53,7 @@ impl Computed {
                     return;
                 }
                 if let Some(l) = gap_list(v, gap_color) {
+                    self.accept_declaration();
                     if key != "row-rule-color" {
                         self.set_gap_colors(true, &l);
                     }
@@ -86,6 +89,7 @@ impl Computed {
                     _ => (None, None),
                 };
                 if let (Some(vs), Some(ve)) = (vs, ve) {
+                    self.accept_declaration();
                     let slots = [cap && start, cap && end, junction && start, junction && end];
                     for column in [true, false] {
                         if (column && k.starts_with("row-"))

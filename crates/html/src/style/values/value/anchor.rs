@@ -51,18 +51,20 @@ pub struct AnchorFn {
     pub max: bool,
 }
 
-/// Арена `anchor()` — тем же порядком, что `CALC_POOL`: append-only, `Len`
-/// несёт индекс, тело живёт здесь.
-static ANCHOR_POOL: std::sync::Mutex<Vec<AnchorFn>> = std::sync::Mutex::new(Vec::new());
+/// Ручка `anchor()` (`Len::Anchor`) — как `CalcId`: тело в арене документа.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AnchorId(crate::document::state::ArenaKey);
 
-pub fn anchor_store(f: AnchorFn) -> u32 {
-    let mut pool = ANCHOR_POOL.lock().unwrap();
-    pool.push(f);
-    (pool.len() - 1) as u32
+pub fn anchor_store(f: AnchorFn) -> AnchorId {
+    AnchorId(crate::document::state::store(
+        |d| &d.anchor,
+        std::rc::Rc::new(f),
+    ))
 }
 
-pub fn anchor_get(i: u32) -> Option<AnchorFn> {
-    ANCHOR_POOL.lock().unwrap().get(i as usize).cloned()
+/// Функция по ручке — общим `Rc`, без копии вложенных `alts` на чтение.
+pub fn anchor_get(i: AnchorId) -> Option<std::rc::Rc<AnchorFn>> {
+    crate::document::state::load(|d| &d.anchor, i.0)
 }
 
 /// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.
@@ -170,7 +172,7 @@ pub(super) fn parse_anchor_minmax(s: &str, max: bool) -> Option<Len> {
         if f.size.is_some() || !f.alts.is_empty() {
             return None;
         }
-        fns.push(f);
+        fns.push(AnchorFn::clone(&f));
     }
     let mut first = fns.remove(0);
     first.alts = fns;

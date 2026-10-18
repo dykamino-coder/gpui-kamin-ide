@@ -32,6 +32,18 @@ pub fn parse_xml(markup: &str, extra_css: &str) -> Vec<super::Node> {
     nodes
 }
 
+/// The same as XML into the fresh state of the current document (`Document`).
+pub(crate) fn parse_current_xml(
+    markup: &str,
+    extra_css: &str,
+    media: crate::style::css::Media,
+) -> Vec<super::Node> {
+    XML.with(|x| x.set(true));
+    let nodes = super::parse_current(markup, extra_css, media);
+    XML.with(|x| x.set(false));
+    nodes
+}
+
 /// Build the DOM of an XML document.
 pub(crate) fn xml_dom(markup: &str) -> RcDom {
     let dom = RcDom::default();

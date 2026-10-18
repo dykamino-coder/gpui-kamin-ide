@@ -113,7 +113,8 @@ pub(super) fn wrap_lone_float(
                     style: Computed {
                         display: Some(Display::Flex),
                         ..Computed::default()
-                    },
+                    }
+                    .into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -139,7 +140,8 @@ pub(super) fn wrap_lone_float(
                     style: Computed {
                         display: Some(Display::Flex),
                         ..Computed::default()
-                    },
+                    }
+                    .into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,

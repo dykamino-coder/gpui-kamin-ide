@@ -1,4 +1,4 @@
-//! Pseudo styles for walk; split out to keep the owning module within 250 lines.
+//! Cascade generated pseudo-elements and derive their inherited styles.
 
 use super::initial_pseudos;
 use crate::style::computed::{Computed, Display};
@@ -10,7 +10,7 @@ use crate::style::select::{Ancestor, Sibs};
 #[allow(clippy::needless_borrow)]
 pub(super) fn pseudo_styles(
     style: &mut Computed,
-    tag: &String,
+    tag: &str,
     rules: &[Rule],
     vars: &Decls,
     me: &Ancestor,
@@ -63,12 +63,14 @@ pub(super) fn pseudo_styles(
             .collect();
         found.sort_by_key(|r| (r.sel.specificity(), r.order));
         (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
-            let mut m = Computed::default();
             // CSS Lists 3 marker UA style preserves spaces and tab characters.
-            m.keep_spaces = Some(true);
-            m.preserve_newlines = Some(true);
-            m.nowrap = Some(true);
-            m.text_transform = Some(crate::style::computed::TextTransform::None);
+            let mut m = Computed {
+                keep_spaces: Some(true),
+                preserve_newlines: Some(true),
+                nowrap: Some(true),
+                text_transform: Some(crate::style::computed::TextTransform::None),
+                ..Default::default()
+            };
             if !found.is_empty() {
                 m.bidi_isolate = Some(true);
             }

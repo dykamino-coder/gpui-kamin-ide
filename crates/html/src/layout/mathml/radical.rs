@@ -20,6 +20,8 @@ pub(super) fn base(children: &[Metrics], p: Parameters, rtl: bool) -> Metrics {
         row(children, rtl).0
     }
 }
+// Radical metrics, child offsets and the rule geometry form one layout result.
+#[allow(clippy::type_complexity)]
 pub(super) fn layout(
     children: &[Metrics],
     surd: Metrics,

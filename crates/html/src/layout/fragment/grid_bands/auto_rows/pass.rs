@@ -10,6 +10,8 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Each grid band carries its geometry and independent break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn grid_pass(
     c: &Element,
     depth: u8,
@@ -157,10 +159,10 @@ pub(crate) fn grid_pass(
                     | Some(crate::style::computed::Align::AnchorCenter)
             )
         };
-        let plain = !solid_box(k)
-            && !aligned(&k.style.align_self)
-            && !(k.style.align_self.is_none() && aligned(&c.style.align_items))
-            && !matches!(k.style.margin.top, Some(Len::Auto));
+        let plain = !(solid_box(k)
+            || aligned(&k.style.align_self)
+            || k.style.align_self.is_none() && aligned(&c.style.align_items)
+            || matches!(k.style.margin.top, Some(Len::Auto)));
         spots.push((ix, row, ks.1, ks, plain));
         if line.is_none() {
             cur_row = row;
