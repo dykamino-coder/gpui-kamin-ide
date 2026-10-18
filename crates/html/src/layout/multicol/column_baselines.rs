@@ -37,6 +37,8 @@ impl Measurements {
         }
     }
 
+    // Baselines depend on the fragment, its column geometry and the paint context.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn measure(
         &mut self,
         probe: &ColumnStack,

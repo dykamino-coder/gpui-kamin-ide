@@ -12,6 +12,8 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
 
 #[allow(clippy::too_many_arguments)]
+// Emitting a cell threads its element and row/column placement records together.
+#[allow(clippy::type_complexity)]
 pub(super) fn emit_cell(
     row_ix: i16,
     occupied: &mut [u16],

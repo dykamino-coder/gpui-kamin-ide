@@ -6,6 +6,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use crate::text::inline::*;
 use gpui::Styled;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn blank_box(
     e: &Element,
     merged: &Computed,

@@ -15,6 +15,7 @@ mod run;
 mod shaped;
 use float_run::wrap_float_run;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
     parent: &Computed,

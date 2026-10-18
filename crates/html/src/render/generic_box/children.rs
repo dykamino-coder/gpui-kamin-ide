@@ -22,6 +22,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement};
+use std::borrow::Cow;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn generic_children(
@@ -33,59 +34,63 @@ pub(crate) fn generic_children(
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
     let makes_bfc = formatting_context::independent(&merged, &e.tag);
-    let children = match &e.style.grid_areas {
-        Some(areas) => place_named_areas(areas, e.children.clone()),
-        None => e.children.clone(),
-    };
-    // Resolve physical margins before preparing the vertical formatting context.
-    let children = if merged.vertical == Some(true) {
-        // Поле самого контейнера по ведущей стороне оси потока —
-        // для схлопывания с первым ребёнком (§8.3.1). Ведущая
-        // сторона: левая у `vertical-lr`/`sideways-*`, правая у
-        // `vertical-rl`. Открыта, если там нет ни рамки, ни
-        // внутреннего отступа; у корня поля не схлопываются вовсе.
-        let reverse = merged.vertical_rl == Some(true);
-        let lead_margin = if e.tag == "html" {
-            None
-        } else {
-            let b = e.style.borders();
-            let (border, pad, own) = if reverse {
-                (b.right, e.style.padding.right, e.style.margin.right)
-            } else {
-                (b.left, e.style.padding.left, e.style.margin.left)
-            };
-            // Независимый контекст форматирования (overflow не
-            // `visible`, флоат, `display: flow-root`, `contain`) не
-            // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
-            // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016`
-            // (`overflow: hidden`, v100: 0.00 → «красное видно»).
-            let sealed = makes_bfc
-                || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-                || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
-            if sealed {
+    let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
+        Cow::Borrowed(children)
+    } else {
+        let children = match &e.style.grid_areas {
+            Some(areas) => place_named_areas(areas, e.children.clone()),
+            None => e.children.clone(),
+        };
+        // Resolve physical margins before preparing the vertical formatting context.
+        let children = if merged.vertical == Some(true) {
+            // Поле самого контейнера по ведущей стороне оси потока —
+            // для схлопывания с первым ребёнком (§8.3.1). Ведущая
+            // сторона: левая у `vertical-lr`/`sideways-*`, правая у
+            // `vertical-rl`. Открыта, если там нет ни рамки, ни
+            // внутреннего отступа; у корня поля не схлопываются вовсе.
+            let reverse = merged.vertical_rl == Some(true);
+            let lead_margin = if e.tag == "html" {
                 None
             } else {
-                Some(margin_px(own, &e.style).unwrap_or(0.0))
-            }
-        };
-        // Доли полей/отступов — в точки от высоты контейнера ДО
-        // схлопывания (см. `resolve_inline_pct`).
-        vertical_hug::children(
-            orthogonal_children(
-                vertical_flow_margins::children(
-                    resolve_inline_pct(children, &merged, true),
+                let b = e.style.borders();
+                let (border, pad, own) = if reverse {
+                    (b.right, e.style.padding.right, e.style.margin.right)
+                } else {
+                    (b.left, e.style.padding.left, e.style.margin.left)
+                };
+                // Независимый контекст форматирования (overflow не
+                // `visible`, флоат, `display: flow-root`, `contain`) не
+                // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
+                // modes-4 §7.4).
+                let sealed = makes_bfc
+                    || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+                if sealed {
+                    None
+                } else {
+                    Some(margin_px(own, &e.style).unwrap_or(0.0))
+                }
+            };
+            // Доли полей/отступов — в точки от высоты контейнера ДО
+            // схлопывания (см. `resolve_inline_pct`).
+            vertical_hug::children(
+                orthogonal_children(
+                    vertical_flow_margins::children(
+                        resolve_inline_pct(children, &merged, true),
+                        &merged,
+                        reverse,
+                        lead_margin,
+                    ),
                     &merged,
-                    reverse,
-                    lead_margin,
+                    opts.viewport.0,
                 ),
+                &e.style,
                 &merged,
-                opts.viewport.0,
-            ),
-            &e.style,
-            &merged,
-        )
-    } else {
-        orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
+            )
+        } else {
+            orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
+        };
+        Cow::Owned(children)
     };
     let mut kids: Vec<AnyElement> = Vec::new();
     kids.extend(clip_layer(&merged, opts));

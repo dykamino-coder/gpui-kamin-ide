@@ -4,6 +4,8 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::oof_reach::Reach;
 
 #[allow(clippy::too_many_arguments)]
+// Each child cut retains its geometry and optional break metadata.
+#[allow(clippy::type_complexity)]
 pub(super) fn stack_kid_cuts(
     kids: Vec<(
         f32,
@@ -129,7 +131,7 @@ pub(super) fn stack_kid_cuts(
                 }
                 flex_chain = false;
                 flex_open = b;
-                flex_open_ok = !(fb || force_next) && !line_inner.get(ki).copied().unwrap_or(false);
+                flex_open_ok = !(fb || force_next || line_inner.get(ki).copied().unwrap_or(false));
             }
         } else if !first {
             cuts.push((*y, *y + lead));

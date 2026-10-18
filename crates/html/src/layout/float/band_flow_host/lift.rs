@@ -138,7 +138,7 @@ pub(crate) fn band_flow_rest_lift(
                 node_id: 0,
                 anim: None,
                 tag: "div".into(),
-                style: Computed::default(),
+                style: Computed::default().into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,

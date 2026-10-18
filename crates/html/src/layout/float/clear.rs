@@ -21,8 +21,8 @@ fn has_clearable(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Element(e) => {
             floats(&e.style)
-                || e.first_letter.as_ref().is_some_and(floats)
-                || e.hover.as_ref().is_some_and(floats)
+                || e.first_letter.as_deref().is_some_and(floats)
+                || e.hover.as_deref().is_some_and(floats)
                 || has_clearable(&e.children)
         }
         Node::Text(_) => false,
@@ -93,7 +93,7 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
             _ => None,
         }
     };
-    !(n.inline && !inline_marked_block(n))
+    (!n.inline || inline_marked_block(n))
         && in_flow(&n.style)
         && matches!(
             n.style.display,

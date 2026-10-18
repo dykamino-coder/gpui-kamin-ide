@@ -3,6 +3,7 @@ mod columns;
 pub(super) use columns::ColumnPlan;
 pub(super) use columns::column_plan;
 
+mod child_borrow;
 mod children;
 pub(super) use children::generic_children;
 

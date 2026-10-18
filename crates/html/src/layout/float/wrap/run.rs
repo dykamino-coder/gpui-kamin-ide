@@ -221,7 +221,8 @@ pub(super) fn clearance_before_next(
                     display: Some(Display::Block),
                     height: Some(Len::Px(top)),
                     ..Computed::default()
-                },
+                }
+                .into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,

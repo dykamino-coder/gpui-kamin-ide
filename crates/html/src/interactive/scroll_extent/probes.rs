@@ -6,6 +6,8 @@ use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
 use std::{cell::Cell, rc::Rc};
 
+// The viewport probe pairs its four insets with the shared decoration clip.
+#[allow(clippy::type_complexity)]
 pub(crate) fn viewport_decoration()
 -> Option<([f32; 4], Rc<Cell<Option<gpui::ContentMask<Pixels>>>>)> {
     let frame = CURRENT.with(|slot| slot.borrow().clone())?;

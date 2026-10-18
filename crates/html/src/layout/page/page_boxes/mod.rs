@@ -187,7 +187,8 @@ fn page_margin_boxes(
                 style: Computed {
                     height: inline,
                     ..Computed::default()
-                },
+                }
+                .into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,
@@ -198,7 +199,7 @@ fn page_margin_boxes(
             };
             let outer = Element {
                 tag: "div".to_string(),
-                style: st,
+                style: st.into(),
                 children: vec![Node::Element(inner.clone())],
                 ..inner
             };

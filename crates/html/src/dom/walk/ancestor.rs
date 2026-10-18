@@ -7,7 +7,7 @@ use markup5ever_rcdom::Handle;
 #[allow(clippy::ptr_arg, clippy::let_and_return)]
 pub(super) fn element_ancestor(
     handle: &Handle,
-    tag: &String,
+    tag: &str,
     attrs: &Vec<(String, String)>,
     html_attrs: bool,
     spot: Spot,
@@ -28,7 +28,7 @@ pub(super) fn element_ancestor(
         counter_context: Default::default(),
         content_style: None,
         content_none: None,
-        tag: tag.clone(),
+        tag: tag.to_string(),
         html_attrs,
         id: id.clone(),
         classes: classes.clone(),

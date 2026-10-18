@@ -1,4 +1,4 @@
-//! Sibling survey for walk; split out to keep the owning module within 250 lines.
+//! Survey sibling positions and walk children with their ancestor stack.
 
 use super::walk;
 use crate::dom::tree_index::TreeIndex;
@@ -19,7 +19,7 @@ pub(crate) fn walk_children(
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
-    path: &[Ancestor],
+    path: &mut Vec<Ancestor>,
     preserve: bool,
     out: &mut Vec<Node>,
 ) {

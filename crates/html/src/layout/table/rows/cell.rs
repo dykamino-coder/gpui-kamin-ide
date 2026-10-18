@@ -12,6 +12,8 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
+// A table cell returns its element and row/column placement metadata together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_cell(
     row_ix: i16,
     occupied: &mut [u16],

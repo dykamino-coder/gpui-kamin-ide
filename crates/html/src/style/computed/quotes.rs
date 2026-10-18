@@ -4,6 +4,12 @@
 use super::{Computed, unescape_content};
 
 pub(super) fn apply(style: &mut Computed, v: &str) {
+    if matches!(
+        v.to_ascii_lowercase().as_str(),
+        "none" | "auto" | "match-parent"
+    ) {
+        style.accept_declaration();
+    }
     match v.to_ascii_lowercase().as_str() {
         "none" => style.quotes = Some(None),
         // Empty pairs distinguish explicit auto from inheritance.
@@ -36,6 +42,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
                 at = body + len;
             }
             if ok && !strs.is_empty() && strs.len() % 2 == 0 {
+                style.accept_declaration();
                 style.quotes = Some(Some(
                     strs.chunks(2)
                         .map(|p| (p[0].clone(), p[1].clone()))

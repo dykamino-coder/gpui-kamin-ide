@@ -360,7 +360,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     self.temp_buf.borrow_mut().push_char(data);
                 }
                 None
-            }
+            },
             Some(matched) => Some(matched),
         }
     }
@@ -377,7 +377,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     Some(x) => {
                         *x += dt;
                         false
-                    }
+                    },
                     None => true,
                 };
                 if new {
@@ -390,7 +390,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     ProcessResult::Script(node) => return TokenizerResult::Script(node),
                     ProcessResult::EncodingIndicator(encoding) => {
                         return TokenizerResult::EncodingIndicator(encoding);
-                    }
+                    },
                 }
             }
         } else {
@@ -401,7 +401,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     ProcessResult::Script(node) => return TokenizerResult::Script(node),
                     ProcessResult::EncodingIndicator(encoding) => {
                         return TokenizerResult::EncodingIndicator(encoding);
-                    }
+                    },
                 }
             }
         }
@@ -461,7 +461,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
         match self.current_tag_kind.get() {
             StartTag => {
                 *self.last_start_tag_name.borrow_mut() = Some(name.clone());
-            }
+            },
             EndTag => {
                 if !self.current_tag_attrs.borrow().is_empty() {
                     self.emit_error(Borrowed("Attributes on an end tag"));
@@ -469,7 +469,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 if self.current_tag_self_closing.get() {
                     self.emit_error(Borrowed("Self-closing end tag"));
                 }
-            }
+            },
         }
 
         let token = TagToken(Tag {
@@ -485,18 +485,18 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             TokenSinkResult::Plaintext => {
                 self.state.set(states::Plaintext);
                 ProcessResult::Continue
-            }
+            },
             TokenSinkResult::Script(node) => {
                 self.state.set(states::Data);
                 ProcessResult::Script(node)
-            }
+            },
             TokenSinkResult::RawData(kind) => {
                 self.state.set(states::RawData(kind));
                 ProcessResult::Continue
-            }
+            },
             TokenSinkResult::EncodingIndicator(encoding) => {
                 ProcessResult::EncodingIndicator(encoding)
-            }
+            },
         }
     }
 
@@ -586,7 +586,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             Some(last) => {
                 (self.current_tag_kind.get() == EndTag)
                     && (**self.current_tag_name.borrow() == **last)
-            }
+            },
             None => false,
         }
     }
@@ -851,19 +851,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('&') => {
                         // Set the return state to the data state. Switch to the character reference state.
                         go!(self: consume_char_ref)
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     FromSet('<') => {
                         // Switch to the tag open state.
                         go!(self: to State::TagOpen)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Emit the current input character as a character token.
                         self.bad_char_error();
                         self.emit_char('\0');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -884,17 +884,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0026 AMPERSAND (&)
                     FromSet('&') => {
                         go!(self: consume_char_ref)
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     FromSet('<') => {
                         // Switch to the RCDATA less-than sign state.
                         go!(self: to State::RawLessThanSign(Rcdata))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -916,14 +916,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('<') => {
                         // Switch to the RAWTEXT less-than sign state.
                         go!(self: to State::RawLessThanSign(Rawtext));
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Emit a U+FFFD REPLACEMENT CHARACTER character token.
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -945,14 +945,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('<') => {
                         // Switch to the script data less-than sign state.
                         go!(self: to State::RawLessThanSign(ScriptData));
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Emit a U+FFFD REPLACEMENT CHARACTER character token.
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -975,7 +975,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+FFFD REPLACEMENT CHARACTER character token.
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -991,12 +991,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '!' => {
                         // Switch to the markup declaration open state.
                         go!(self: to State::MarkupDeclarationOpen)
-                    }
+                    },
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         // Switch to the end tag open state.
                         go!(self: to State::EndTagOpen)
-                    }
+                    },
                     // ↪ ASCII alpha
                     character if character.is_ascii_alphabetic() => {
                         // Create a new start tag token, set its tag name to the empty string.
@@ -1005,14 +1005,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // to the new tag (as that is what the "tag name" state would do).
                         let character = character.to_ascii_lowercase();
                         go!(self: create_tag StartTag character; to State::TagName)
-                    }
+                    },
                     // ↪ U+003F QUESTION MARK (?)
                     '?' => {
                         // KaminIDE patch: инструкция обработки, а не мусорный
                         // комментарий — см. `ProcessingInstructionToken`.
                         self.bad_char_error();
                         go!(self: clear_pi; to PiTarget)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is an invalid-first-character-of-tag-name parse error.
@@ -1021,7 +1021,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         self.bad_char_error();
                         self.emit_char('<');
                         go!(self: reconsume Data)
-                    }
+                    },
                 }
             },
 
@@ -1037,14 +1037,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // to the new tag (as that is what the "tag name" state would do).
                         let character = character.to_ascii_lowercase();
                         go!(self: create_tag EndTag character; to State::TagName)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is a missing-end-tag-name parse error.
                         // Switch to the data state.
                         self.bad_char_error();
                         go!(self: to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is an invalid-first-character-of-tag-name parse error.
@@ -1052,7 +1052,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Reconsume in the bogus comment state.
                         self.bad_char_error();
                         go!(self: clear_comment; reconsume BogusComment)
-                    }
+                    },
                 }
             },
 
@@ -1067,34 +1067,34 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the before attribute name state.
                         go!(self: to State::BeforeAttributeName)
-                    }
+                    },
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         // Switch to the self-closing start tag state.
                         go!(self: to State::SelfClosingStartTag)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state.
                         // Emit the current tag token.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // ↪ ASCII upper alpha
                     character if character.is_ascii_uppercase() => {
                         // Append the lowercase version of the current input character (add 0x0020 to the
                         // character's code point) to the current tag token's tag name.
                         go!(self: push_tag (character.to_ascii_lowercase()))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         self.bad_char_error();
                         go!(self: push_tag '\u{fffd}')
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Append the current input character to the current tag token's tag name.
                         go!(self: push_tag (character))
-                    }
+                    },
                 }
             },
 
@@ -1105,7 +1105,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         go!(self: clear_temp; to State::RawEndTagOpen(ScriptDataEscaped(Escaped)))
-                    }
+                    },
                     character => match lower_ascii_letter(character) {
                         // ↪ ASCII alpha
                         Some(character_lowercase) => {
@@ -1118,12 +1118,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             self.emit_char('<');
                             self.emit_char(character);
                             go!(self: to State::ScriptDataEscapeStart(DoubleEscaped));
-                        }
+                        },
                         // ↪ Anything else
                         None => {
                             self.emit_char('<');
                             go!(self: reconsume RawData(ScriptDataEscaped(Escaped)));
-                        }
+                        },
                     },
                 }
             },
@@ -1140,12 +1140,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         go!(self: clear_temp);
                         self.emit_char('/');
                         go!(self: to State::ScriptDataDoubleEscapeEnd);
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the script data double escaped state.
                         go!(self: reconsume RawData(ScriptDataEscaped(DoubleEscaped)))
-                    }
+                    },
                 }
             },
 
@@ -1160,7 +1160,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Set the temporary buffer to the empty string.
                         // Switch to the RCDATA end tag open state.
                         go!(self: clear_temp; to State::RawEndTagOpen(kind))
-                    }
+                    },
                     // ↪ U+0021 EXCLAMATION MARK (!)
                     '!' if kind == ScriptData => {
                         // Switch to the script data escape start state.
@@ -1168,14 +1168,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         self.emit_char('<');
                         self.emit_char('!');
                         go!(self: to State::ScriptDataEscapeStart(Escaped));
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Emit a U+003C LESS-THAN SIGN character token.
                         // Reconsume in the RCDATA/script data/RAWTEXT state.
                         self.emit_char('<');
                         go!(self: reconsume RawData(kind));
-                    }
+                    },
                 }
             },
 
@@ -1224,18 +1224,18 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         '\t' | '\n' | '\x0C' | ' ' => {
                             // Switch to the before attribute name state
                             go!(self: clear_temp; to State::BeforeAttributeName)
-                        }
+                        },
                         // ↪ U+002F SOLIDUS (/)
                         '/' => {
                             // Switch to the self-closing start tag state
                             go!(self: clear_temp; to State::SelfClosingStartTag)
-                        }
+                        },
                         // ↪ U+003E GREATER-THAN SIGN (>)
                         '>' => {
                             // Switch to the data state and emit the current tag token
                             go!(self: clear_temp; emit_tag Data)
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                 }
 
@@ -1248,7 +1248,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Append the current input character to the current tag token's tag name.
                         // Append the current input character to the temporary buffer.
                         go!(self: push_tag character_lowercase; push_temp character)
-                    }
+                    },
                     // ↪ Anything else
                     None => {
                         // Emit a U+003C LESS-THAN SIGN character token, a U+002F SOLIDUS character token,
@@ -1260,7 +1260,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         self.emit_char('/');
                         self.emit_temp_buf();
                         go!(self: reconsume RawData(kind));
-                    }
+                    },
                 }
             },
 
@@ -1285,7 +1285,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         };
                         self.emit_char(character);
                         go!(self: to State::RawData(ScriptDataEscaped(escaped_kind)));
-                    }
+                    },
                     // ↪ ASCII upper alpha
                     //     NOTE: This is the same as the "ASCII lower alpha" branch, except we lowercase the character first
                     // ↪ ASCII lower alpha
@@ -1295,12 +1295,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             // Emit the current input character as a character token.
                             go!(self: push_temp character_lowercase);
                             self.emit_char(character);
-                        }
+                        },
                         // ↪ Anything else
                         None => {
                             // Reconsume in the script data escaped state.
                             go!(self: reconsume RawData(ScriptDataEscaped(Escaped)))
-                        }
+                        },
                     },
                 }
             },
@@ -1321,21 +1321,21 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
                         go!(self: to State::ScriptDataEscapedDash(DoubleEscaped));
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     FromSet('<') => {
                         // Switch to the script data double escaped less-than sign state.
                         // Emit a U+003C LESS-THAN SIGN character token.
                         self.emit_char('<');
                         go!(self: to State::RawLessThanSign(ScriptDataEscaped(DoubleEscaped)))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Emit a U+FFFD REPLACEMENT CHARACTER character token.
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -1353,12 +1353,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
                         go!(self: to State::ScriptDataEscapeStartDash);
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the script data state.
                         go!(self: reconsume RawData(ScriptData))
-                    }
+                    },
                 }
             },
 
@@ -1372,12 +1372,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
                         go!(self: to State::ScriptDataEscapedDashDash(Escaped));
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the script data state.
                         go!(self: reconsume RawData(ScriptData))
-                    }
+                    },
                 }
             },
 
@@ -1397,19 +1397,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
                         go!(self: to State::ScriptDataEscapedDash(Escaped));
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     FromSet('<') => {
                         // Switch to the script data escaped less-than sign state.
                         go!(self: to State::RawLessThanSign(ScriptDataEscaped(Escaped)))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Emit a U+FFFD REPLACEMENT CHARACTER character token.
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
-                    }
+                    },
                     // ↪ Anything else
                     //     Emit the current input character as a character token.
                     FromSet(character) => self.emit_char(character),
@@ -1428,7 +1428,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
                         go!(self: to State::ScriptDataEscapedDashDash(kind));
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     '<' => {
                         // Switch to the script data escaped less-than sign/script data double escaped less-than sign state.
@@ -1436,7 +1436,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             self.emit_char('<');
                         }
                         go!(self: to State::RawLessThanSign(ScriptDataEscaped(kind)));
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
@@ -1445,14 +1445,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
                         go!(self: to State::RawData(ScriptDataEscaped(kind)));
-                    }
+                    },
                     // ↪ Anything else
                     c => {
                         // Switch to the script data escaped/script data double escaped state.
                         // Emit the current input character as a character token.
                         self.emit_char(c);
                         go!(self: to State::RawData(ScriptDataEscaped(kind)));
-                    }
+                    },
                 }
             },
 
@@ -1465,7 +1465,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Emit a U+002D HYPHEN-MINUS character token.
                         self.emit_char('-');
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     '<' => {
                         // Switch to the script data escaped less-than sign/script data double escaped less-than sign state.
@@ -1473,14 +1473,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             self.emit_char('<');
                         }
                         go!(self: to State::RawLessThanSign(ScriptDataEscaped(kind)));
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the script data state.
                         // Emit a U+003E GREATER-THAN SIGN character token.
                         self.emit_char('>');
                         go!(self: to State::RawData(ScriptData));
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
@@ -1489,14 +1489,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         self.bad_char_error();
                         self.emit_char('\u{fffd}');
                         go!(self: to State::RawData(ScriptDataEscaped(kind)))
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Switch to the script data escaped/script data double escaped state.
                         // Emit the current input character as a character token.
                         self.emit_char(character);
                         go!(self: to State::RawData(ScriptDataEscaped(kind)));
-                    }
+                    },
                 }
             },
 
@@ -1521,7 +1521,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         };
                         self.emit_char(character);
                         go!(self: to State::RawData(ScriptDataEscaped(escaped_kind)));
-                    }
+                    },
 
                     character => match lower_ascii_letter(character) {
                         // ↪ ASCII upper alpha
@@ -1533,12 +1533,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             // Emit the current input character as a character token.
                             go!(self: push_temp character_lowercase);
                             self.emit_char(character);
-                        }
+                        },
                         // ↪ Anything else
                         None => {
                             // Reconsume in the script data double escaped state.
                             go!(self: reconsume RawData(ScriptDataEscaped(DoubleEscaped)))
-                        }
+                        },
                     },
                 }
             },
@@ -1552,38 +1552,38 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // U+002F SOLIDUS (/)
                     '/' => {
                         // Reconsume in the after attribute name state.
                         // NOTE: Instead we move to the self closing start tag,
                         // as that is what the "after attribute name" state would do.
                         go!(self: to State::SelfClosingStartTag)
-                    }
+                    },
                     // U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Reconsume in the after attribute name state.
                         // NOTE: Instead we emit the current tag and move to the data state,
                         // as that is what the "after attribute name" state would do.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // NOTE: In the "anything else" case we should reconsume in the attribute name state,
                     // but instead of reconsuming we inline what that state *would* do here.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: create_attr '\u{fffd}'; to State::AttributeName)
-                    }
+                    },
                     character => match lower_ascii_letter(character) {
                         Some(character) => {
                             go!(self: create_attr character; to State::AttributeName)
-                        }
+                        },
                         None => {
                             if matches!(character, '"' | '\'' | '<' | '=') {
                                 self.bad_char_error();
                             }
 
                             go!(self: create_attr character; to State::AttributeName);
-                        }
+                        },
                     },
                 }
             },
@@ -1601,40 +1601,40 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // NOTE: Instead we move to the after attribute name state and ignore
                         // the character, as that state would ignore it as well.
                         go!(self: to State::AfterAttributeName)
-                    }
+                    },
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         // Reconsume in the after attribute name state.
                         // NOTE: Instead we move to the self closing start tag state, as that is
                         // what the after attribute name state would do when it encounters a '/'.
                         go!(self: to State::SelfClosingStartTag)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Reconsume in the after attribute name state.
                         // NOTE: Instead we move to the data state, as that is
                         // what the after attribute name state would do when it encounters a '>'.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // ↪ U+003D EQUALS SIGN (=)
                     '=' => {
                         // Switch to the before attribute value state.
                         go!(self: to State::BeforeAttributeValue)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the current attribute's name.
                         self.bad_char_error();
                         go!(self: push_name '\u{fffd}')
-                    }
+                    },
                     character => match lower_ascii_letter(character) {
                         // ↪ ASCII upper alpha
                         Some(character_lowercase) => {
                             // Append the lowercase version of the current input character
                             // (add 0x0020 to the character's code point) to the current attribute's name.
                             go!(self: push_name character_lowercase)
-                        }
+                        },
                         None => {
                             // ↪ U+0022 QUOTATION MARK (")
                             // ↪ U+0027 APOSTROPHE (')
@@ -1647,7 +1647,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             // ↪ Anything else
                             // Append the current input character to the current attribute's name.
                             go!(self: push_name character);
-                        }
+                        },
                     },
                 }
             },
@@ -1662,40 +1662,40 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         // Switch to the self-closing start tag state.
                         go!(self: to State::SelfClosingStartTag)
-                    }
+                    },
                     // ↪ U+003D EQUALS SIGN (=)
                     '=' => {
                         // Switch to the before attribute value state.
                         go!(self: to State::BeforeAttributeValue)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current tag token.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // NOTE: The "anything else" match arm in the specification reconsumes
                     // the input in the attribute name state. Instead of reconsuming we inline
                     // what the attribute name state *would* do, and the move to it.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: create_attr '\u{fffd}'; to State::AttributeName)
-                    }
+                    },
                     character => match lower_ascii_letter(character) {
                         Some(character_lowercase) => {
                             go!(self: create_attr character_lowercase; to State::AttributeName)
-                        }
+                        },
                         None => {
                             if matches!(character, '"' | '\'' | '<') {
                                 self.bad_char_error();
                             }
 
                             go!(self: create_attr character; to State::AttributeName);
-                        }
+                        },
                     },
                 }
             },
@@ -1713,17 +1713,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\r' | '\x0C' | ' ' => {
                         // Ignore the character.
                         go!(self: discard_char input)
-                    }
+                    },
                     // ↪ U+0022 QUOTATION MARK (")
                     '"' => {
                         // Switch to the attribute value (double-quoted) state.
                         go!(self: discard_char input; to State::AttributeValue(DoubleQuoted))
-                    }
+                    },
                     // ↪ U+0027 APOSTROPHE (')
                     '\'' => {
                         // Switch to the attribute value (single-quoted) state.
                         go!(self: discard_char input; to State::AttributeValue(SingleQuoted))
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is a missing-attribute-value parse error.
@@ -1732,12 +1732,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         go!(self: discard_char input);
                         self.bad_char_error();
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the attribute value (unquoted) state.
                         go!(self: to State::AttributeValue(Unquoted))
-                    }
+                    },
                 }
             },
 
@@ -1755,20 +1755,20 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('"') => {
                         // Switch to the after attribute value (quoted) state.
                         go!(self: to State::AfterAttributeValueQuoted)
-                    }
+                    },
                     // ↪ U+0026 AMPERSAND (&)
                     FromSet('&') => {
                         // Set the return state to the attribute value (double-quoted) state.
                         // Switch to the character reference state.
                         go!(self: consume_char_ref)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the current attribute's value.
                         self.bad_char_error();
                         go!(self: push_value '\u{fffd}')
-                    }
+                    },
                     // ↪ Anything else
                     //     Append the current input character to the current attribute's value.
                     FromSet(character) => go!(self: push_value character),
@@ -1790,20 +1790,20 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('\'') => {
                         // Switch to the after attribute value (quoted) state.
                         go!(self: to State::AfterAttributeValueQuoted)
-                    }
+                    },
                     // ↪ U+0026 AMPERSAND (&)
                     FromSet('&') => {
                         // Set the return state to the attribute value (single-quoted) state.
                         // Switch to the character reference state.
                         go!(self: consume_char_ref)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the current attribute's value.
                         self.bad_char_error();
                         go!(self: push_value '\u{fffd}')
-                    }
+                    },
                     // ↪ Anything else
                     //     Append the current input character to the current attribute's value.
                     FromSet(character) => go!(self: push_value character),
@@ -1829,26 +1829,26 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     FromSet('\t') | FromSet('\n') | FromSet('\x0C') | FromSet(' ') => {
                         // Switch to the before attribute name state.
                         go!(self: to State::BeforeAttributeName)
-                    }
+                    },
                     // ↪ U+0026 AMPERSAND (&)
                     FromSet('&') => {
                         // Set the return state to the attribute value (unquoted) state.
                         // Switch to the character reference state.
                         go!(self: consume_char_ref)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     FromSet('>') => {
                         // Switch to the data state.
                         // Emit the current tag token.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     FromSet('\0') => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the current attribute's value.
                         self.bad_char_error();
                         go!(self: push_value '\u{fffd}')
-                    }
+                    },
                     FromSet(c) => {
                         // ↪ U+0022 QUOTATION MARK (")
                         // ↪ U+0027 APOSTROPHE (')
@@ -1863,12 +1863,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // ↪ Anything else
                         //     Append the current input character to the current attribute's value.
                         go!(self: push_value c);
-                    }
+                    },
                     // ↪ Anything else
                     NotFromSet(ref characters) => {
                         // Append the current input character to the current attribute's value.
                         go!(self: append_value characters)
-                    }
+                    },
                 }
             },
 
@@ -1883,24 +1883,24 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the before attribute name state.
                         go!(self: to State::BeforeAttributeName)
-                    }
+                    },
                     // ↪ U+002F SOLIDUS (/)
                     '/' => {
                         // Switch to the self-closing start tag state.
                         go!(self: to State::SelfClosingStartTag)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current tag token.
                         go!(self: emit_tag Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-whitespace-between-attributes parse error.
                         // Reconsume in the before attribute name state.
                         self.bad_char_error();
                         go!(self: reconsume BeforeAttributeName)
-                    }
+                    },
                 }
             },
 
@@ -1914,14 +1914,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Switch to the data state. Emit the current tag token.
                         self.current_tag_self_closing.set(true);
                         go!(self: emit_tag Data);
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is an unexpected-solidus-in-tag parse error.
                         // Reconsume in the before attribute name state.
                         self.bad_char_error();
                         go!(self: reconsume BeforeAttributeName)
-                    }
+                    },
                 }
             },
 
@@ -1933,19 +1933,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '>' => {
                         // Switch to the data state. Emit the current comment token.
                         go!(self: emit_comment; to State::Data)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the comment token's data.
                         self.bad_char_error();
                         go!(self: push_comment '\u{fffd}')
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Append the current input character to the comment token's data.
                         go!(self: push_comment character)
-                    }
+                    },
                 }
             },
 
@@ -2024,7 +2024,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Switch to the comment start dash state.
                         go!(self: to State::CommentStartDash)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is an abrupt-closing-of-empty-comment parse error.
@@ -2032,14 +2032,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current comment token.
                         self.bad_char_error();
                         go!(self: emit_comment; to State::Data)
-                    }
+                    },
                     // NOTE: The "anything else" case in the specification reconsumes the character in the
                     // comment state, instead we inline what the comment state *would* do if it encountered
                     // that character.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: push_comment '\u{fffd}'; to State::Comment)
-                    }
+                    },
                     character => go!(self: push_comment character; to State::Comment),
                 }
             },
@@ -2052,7 +2052,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Switch to the comment end state.
                         go!(self: to State::CommentEnd)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is an abrupt-closing-of-empty-comment parse error.
@@ -2060,17 +2060,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current comment token.
                         self.bad_char_error();
                         go!(self: emit_comment; to State::Data)
-                    }
+                    },
                     // NOTE: The "anything else" case in the specification reconsumes the character in the
                     // comment state, instead we inline what the comment state *would* do if it encountered
                     // that character.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: append_comment "-\u{fffd}"; to State::Comment)
-                    }
+                    },
                     character => {
                         go!(self: push_comment '-'; push_comment character; to State::Comment)
-                    }
+                    },
                 }
             },
 
@@ -2083,24 +2083,24 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Append the current input character to the comment token's data.
                         // Switch to the comment less-than sign state.
                         go!(self: push_comment c; to State::CommentLessThanSign)
-                    }
+                    },
                     // ↪ U+002D HYPHEN-MINUS (-)
                     '-' => {
                         // Switch to the comment end dash state.
                         go!(self: to State::CommentEndDash)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the comment token's data.
                         self.bad_char_error();
                         go!(self: push_comment '\u{fffd}')
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Append the current input character to the comment token's data.
                         go!(self: push_comment character)
-                    }
+                    },
                 }
             },
 
@@ -2113,17 +2113,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Append the current input character to the comment token's data.
                         // Switch to the comment less-than sign bang state.
                         go!(self: push_comment c; to State::CommentLessThanSignBang)
-                    }
+                    },
                     // ↪ U+003C LESS-THAN SIGN (<)
                     c @ '<' => {
                         // Append the current input character to the comment token's data.
                         go!(self: push_comment c)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the comment state.
                         go!(self: reconsume Comment)
-                    }
+                    },
                 }
             },
 
@@ -2135,12 +2135,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Switch to the comment less-than sign bang dash state.
                         go!(self: to State::CommentLessThanSignBangDash)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the comment state.
                         go!(self: reconsume Comment)
-                    }
+                    },
                 }
             },
 
@@ -2152,12 +2152,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Switch to the comment less-than sign bang dash dash state.
                         go!(self: to State::CommentLessThanSignBangDashDash)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Reconsume in the comment end dash state.
                         go!(self: reconsume CommentEndDash)
-                    }
+                    },
                 }
             },
 
@@ -2168,14 +2168,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '>' => {
                         // Reconsume in the comment end state.
                         go!(self: reconsume CommentEnd)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a nested-comment parse error.
                         // Reconsume in the comment end state.
                         self.bad_char_error();
                         go!(self: reconsume CommentEnd)
-                    }
+                    },
                 }
             },
 
@@ -2187,16 +2187,16 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '-' => {
                         // Switch to the comment end state.
                         go!(self: to State::CommentEnd)
-                    }
+                    },
                     // NOTE: The "anything else" case in the specification reconsumes the character in the
                     // comment state. Instead we inline what the comment state *would* do here.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: append_comment "-\u{fffd}"; to State::Comment)
-                    }
+                    },
                     character => {
                         go!(self: push_comment '-'; push_comment character; to State::Comment)
-                    }
+                    },
                 }
             },
 
@@ -2209,23 +2209,23 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Switch to the data state.
                         // Emit the current comment token.
                         go!(self: emit_comment; to State::Data)
-                    }
+                    },
                     // ↪ U+0021 EXCLAMATION MARK (!)
                     '!' => {
                         // Switch to the comment end bang state.
                         go!(self: to State::CommentEndBang)
-                    }
+                    },
                     // ↪ U+002D HYPHEN-MINUS (-)
                     '-' => {
                         // Append a U+002D HYPHEN-MINUS character (-) to the comment token's data.
                         go!(self: push_comment '-')
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Append two U+002D HYPHEN-MINUS characters (-) to the comment token's data.
                         // Reconsume in the comment state.
                         go!(self: append_comment "--"; reconsume Comment)
-                    }
+                    },
                 }
             },
 
@@ -2239,16 +2239,16 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '>' => {
                         self.bad_char_error();
                         go!(self: emit_comment; to State::Data)
-                    }
+                    },
                     // NOTE: The "anything else" case in the specification reconsumes the character in the
                     // comment state. Instead we inline what the comment state *would* do here.
                     '\0' => {
                         self.bad_char_error();
                         go!(self: append_comment "--!\u{fffd}"; to State::Comment)
-                    }
+                    },
                     character => {
                         go!(self: append_comment "--!"; push_comment character; to State::Comment)
-                    }
+                    },
                 }
             },
 
@@ -2263,19 +2263,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the before DOCTYPE name state.
                         go!(self: to State::BeforeDoctypeName)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Reconsume in the before DOCTYPE name state.
                         go!(self: reconsume BeforeDoctypeName)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-whitespace-before-doctype-name parse error.
                         // Reconsume in the before DOCTYPE name state.
                         self.bad_char_error();
                         go!(self: reconsume BeforeDoctypeName)
-                    }
+                    },
                 }
             },
 
@@ -2289,7 +2289,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
@@ -2298,7 +2298,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Switch to the DOCTYPE name state.
                         self.bad_char_error();
                         go!(self: create_doctype; push_doctype_name '\u{fffd}'; to State::DoctypeName)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is a missing-doctype-name parse error.
@@ -2308,7 +2308,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current token.
                         self.bad_char_error();
                         go!(self: create_doctype; force_quirks; emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ ASCII upper alpha
                     //     NOTE: This is the same as "anythign else", except we use the lowercase version of the character.
                     // ↪ Anything else
@@ -2318,7 +2318,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Switch to the DOCTYPE name state.
                         go!(self: create_doctype; push_doctype_name (character.to_ascii_lowercase());
                                   to State::DoctypeName)
-                    }
+                    },
                 }
             },
 
@@ -2333,26 +2333,26 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the after DOCTYPE name state.
                         go!(self: clear_temp; to State::AfterDoctypeName)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current DOCTYPE token.
                         go!(self: emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
                         // Append a U+FFFD REPLACEMENT CHARACTER character to the current DOCTYPE token's name.
                         self.bad_char_error();
                         go!(self: push_doctype_name '\u{fffd}')
-                    }
+                    },
                     // ↪ ASCII upper alpha
                     //     NOTE: This is the same as "anythign else", except we use the lowercase version of the character.
                     // ↪ Anything else
                     character => {
                         // Append the current input character to the current DOCTYPE token's name.
                         go!(self: push_doctype_name (character.to_ascii_lowercase()))
-                    }
+                    },
                 }
             },
 
@@ -2380,12 +2380,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // ↪ U+0020 SPACE
                         '\t' | '\n' | '\x0C' | ' ' => {
                             // Ignore the character.
-                        }
+                        },
                         // ↪ U+003E GREATER-THAN SIGN (>)
                         '>' => {
                             // Switch to the data state. Emit the current DOCTYPE token.
                             go!(self: emit_doctype; to State::Data)
-                        }
+                        },
                         // ↪ Anything else
                         _ => {
                             // Otherwise, this is an invalid-character-sequence-after-doctype-name parse error.
@@ -2393,7 +2393,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                             // Reconsume in the bogus DOCTYPE state.
                             self.bad_char_error();
                             go!(self: force_quirks; reconsume BogusDoctype)
-                        }
+                        },
                     }
                 }
             },
@@ -2409,7 +2409,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the before DOCTYPE public/system identifier state.
                         go!(self: to State::BeforeDoctypeIdentifier(kind))
-                    }
+                    },
                     // ↪ U+0022 QUOTATION MARK (")
                     '"' => {
                         // This is a missing-whitespace-after-doctype-public/system-keyword parse error.
@@ -2418,7 +2418,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // state.
                         self.bad_char_error();
                         go!(self: clear_doctype_id kind; to State::DoctypeIdentifierDoubleQuoted(kind))
-                    }
+                    },
                     // ↪ U+0027 APOSTROPHE (')
                     '\'' => {
                         // This is a missing-whitespace-after-doctype-public-keyword parse error.
@@ -2427,7 +2427,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // state.
                         self.bad_char_error();
                         go!(self: clear_doctype_id kind; to State::DoctypeIdentifierSingleQuoted(kind))
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is a missing-doctype-public-identifier parse error.
@@ -2436,7 +2436,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current DOCTYPE token.
                         self.bad_char_error();
                         go!(self: force_quirks; emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-quote-before-doctype-public-identifier parse error.
@@ -2444,7 +2444,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Reconsume in the bogus DOCTYPE state.
                         self.bad_char_error();
                         go!(self: force_quirks; reconsume BogusDoctype)
-                    }
+                    },
                 }
             },
 
@@ -2459,21 +2459,21 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // ↪ U+0022 QUOTATION MARK (")
                     '"' => {
                         // Set the current DOCTYPE token's public/system identifier to the empty string
                         // (not missing), then switch to the DOCTYPE public/system identifier (double-quoted)
                         // state.
                         go!(self: clear_doctype_id kind; to State::DoctypeIdentifierDoubleQuoted(kind))
-                    }
+                    },
                     // ↪ U+0027 APOSTROPHE (')
                     '\'' => {
                         // Set the current DOCTYPE token's public/systen identifier to the empty string
                         // (not missing), then switch to the DOCTYPE public/system identifier (single-quoted)
                         // state.
                         go!(self: clear_doctype_id kind; to State::DoctypeIdentifierSingleQuoted(kind))
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is a missing-doctype-public/system-identifier parse error.
@@ -2482,7 +2482,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current DOCTYPE token.
                         self.bad_char_error();
                         go!(self: force_quirks; emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-quote-before-doctype-public/system-identifier parse error.
@@ -2490,7 +2490,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Reconsume in the bogus DOCTYPE state.
                         self.bad_char_error();
                         go!(self: force_quirks; reconsume BogusDoctype)
-                    }
+                    },
                 }
             },
 
@@ -2503,7 +2503,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '"' => {
                         // Switch to the after DOCTYPE public/system identifier state.
                         go!(self: to State::AfterDoctypeIdentifier(kind))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
@@ -2511,7 +2511,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // DOCTYPE token's public identifier.
                         self.bad_char_error();
                         go!(self: push_doctype_id kind '\u{fffd}')
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is an abrupt-doctype-public-identifier parse error.
@@ -2520,7 +2520,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current DOCTYPE token.
                         self.bad_char_error();
                         go!(self: force_quirks; emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     character => go!(self: push_doctype_id kind character),
                 }
@@ -2535,7 +2535,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\'' => {
                         // Switch to the after DOCTYPE public/system identifier state.
                         go!(self: to State::AfterDoctypeIdentifier(kind))
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
@@ -2543,7 +2543,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // to the current DOCTYPE token's public/system identifier.
                         self.bad_char_error();
                         go!(self: push_doctype_id kind '\u{fffd}')
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // This is an abrupt-doctype-public/system-identifier parse error.
@@ -2552,13 +2552,13 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Emit the current DOCTYPE token.
                         self.bad_char_error();
                         go!(self: force_quirks; emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Append the current input character to the current DOCTYPE token's
                         // public/system identifier.
                         go!(self: push_doctype_id kind character)
-                    }
+                    },
                 }
             },
 
@@ -2573,12 +2573,12 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Switch to the between DOCTYPE public and system identifiers state.
                         go!(self: to State::BetweenDoctypePublicAndSystemIdentifiers)
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current DOCTYPE token.
                         go!(self: emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ U+0022 QUOTATION MARK (")
                     '"' => {
                         // This is a missing-whitespace-between-doctype-public-and-system-identifiers
@@ -2586,7 +2586,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // (not missing), then switch to the DOCTYPE system identifier (double-quoted) state.
                         self.bad_char_error();
                         go!(self: clear_doctype_id System; to State::DoctypeIdentifierDoubleQuoted(System))
-                    }
+                    },
                     // ↪ U+0027 APOSTROPHE (')
                     '\'' => {
                         // This is a missing-whitespace-between-doctype-public-and-system-identifiers parse error.
@@ -2594,7 +2594,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // then switch to the DOCTYPE system identifier (single-quoted) state.
                         self.bad_char_error();
                         go!(self: clear_doctype_id System; to State::DoctypeIdentifierSingleQuoted(System))
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-quote-before-doctype-system-identifier parse error.
@@ -2602,7 +2602,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Reconsume in the bogus DOCTYPE state.
                         self.bad_char_error();
                         go!(self: force_quirks; reconsume BogusDoctype)
-                    }
+                    },
                 }
             },
 
@@ -2616,24 +2616,24 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current DOCTYPE token.
                         go!(self: emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ U+0022 QUOTATION MARK (")
                     '"' => {
                         // Set the current DOCTYPE token's system identifier to the empty string (not missing),
                         // then switch to the DOCTYPE system identifier (double-quoted) state.
                         go!(self: clear_doctype_id System; to State::DoctypeIdentifierDoubleQuoted(System))
-                    }
+                    },
                     // ↪ U+0027 APOSTROPHE (')
                     '\'' => {
                         // Set the current DOCTYPE token's system identifier to the empty string (not missing),
                         // then switch to the DOCTYPE system identifier (single-quoted) state.
                         go!(self: clear_doctype_id System; to State::DoctypeIdentifierSingleQuoted(System))
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is a missing-quote-before-doctype-system-identifier parse error.
@@ -2641,7 +2641,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Reconsume in the bogus DOCTYPE state.
                         self.bad_char_error();
                         go!(self: force_quirks; reconsume BogusDoctype)
-                    }
+                    },
                 }
             },
 
@@ -2655,19 +2655,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     // ↪ U+0020 SPACE
                     '\t' | '\n' | '\x0C' | ' ' => {
                         // Ignore the character.
-                    }
+                    },
                     // ↪ U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state. Emit the current DOCTYPE token.
                         go!(self: emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // This is an unexpected-character-after-doctype-system-identifier parse error.
                         // Reconsume in the bogus DOCTYPE state.
                         self.bad_char_error();
                         go!(self: reconsume BogusDoctype)
-                    }
+                    },
                 }
             },
 
@@ -2680,17 +2680,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                         // Switch to the data state.
                         // Emit the current DOCTYPE token.
                         go!(self: emit_doctype; to State::Data)
-                    }
+                    },
                     // ↪ U+0000 NULL
                     '\0' => {
                         // This is an unexpected-null-character parse error.
                         // Ignore the character.
                         self.bad_char_error();
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Ignore the character.
-                    }
+                    },
                 }
             },
 
@@ -2702,17 +2702,17 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     ']' => {
                         // Switch to the CDATA section bracket state.
                         go!(self: to State::CdataSectionBracket)
-                    }
+                    },
                     // FIXME: This is not in the specification.
                     '\0' => {
                         self.emit_temp_buf();
                         self.emit_char('\0');
-                    }
+                    },
                     // ↪ Anything else
                     character => {
                         // Emit the current input character as a character token.
                         go!(self: push_temp character)
-                    }
+                    },
                 }
             },
 
@@ -2724,14 +2724,14 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     ']' => {
                         // Switch to the CDATA section end state.
                         go!(self: to State::CdataSectionEnd)
-                    }
+                    },
                     // ↪ Anything else
                     _ => {
                         // Emit a U+005D RIGHT SQUARE BRACKET character token. Reconsume in the CDATA section state.
                         go!(self: push_temp ']'; reconsume CdataSection)
-                    }
+                    },
                 }
-            }
+            },
 
             // https://html.spec.whatwg.org/#cdata-section-end-state
             states::CdataSectionEnd => loop {
@@ -2741,19 +2741,19 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     ']' => {
                         // Emit a U+005D RIGHT SQUARE BRACKET character token.
                         go!(self: push_temp ']')
-                    }
+                    },
                     // U+003E GREATER-THAN SIGN (>)
                     '>' => {
                         // Switch to the data state.
                         self.emit_temp_buf();
                         go!(self: to State::Data);
-                    }
+                    },
                     // Anything else
                     _ => {
                         // Emit two U+005D RIGHT SQUARE BRACKET character tokens.
                         // Reconsume in the CDATA section state.
                         go!(self: push_temp ']'; push_temp ']'; reconsume CdataSection)
-                    }
+                    },
                 }
             },
             // TODO: What about the processing-instruction related states?
@@ -2768,7 +2768,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 self.process_char_ref(char_ref);
                 *char_ref_tokenizer = None;
                 return ProcessResult::Continue;
-            }
+            },
 
             char_ref::Status::Stuck => ProcessResult::Suspend,
             char_ref::Status::Progress => ProcessResult::Continue,
@@ -2812,7 +2812,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             None => (),
             Some(mut tokenizer) => {
                 self.process_char_ref(tokenizer.end_of_file(self, &input));
-            }
+            },
         }
 
         // Process all remaining buffered input.
@@ -2880,7 +2880,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             | states::ScriptDataEscapedDashDash(_) => {
                 self.bad_eof_error();
                 go!(self: to State::Data)
-            }
+            },
 
             states::BeforeAttributeValue => go!(self: reconsume AttributeValue(Unquoted)),
 
@@ -2888,46 +2888,46 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                 self.bad_eof_error();
                 self.emit_char('<');
                 go!(self: to State::Data);
-            }
+            },
 
             states::EndTagOpen => {
                 self.bad_eof_error();
                 self.emit_char('<');
                 self.emit_char('/');
                 go!(self: to State::Data);
-            }
+            },
 
             states::RawLessThanSign(ScriptDataEscaped(DoubleEscaped)) => {
                 go!(self: to State::RawData(ScriptDataEscaped(DoubleEscaped)))
-            }
+            },
 
             states::RawLessThanSign(kind) => {
                 self.emit_char('<');
                 go!(self: to State::RawData(kind));
-            }
+            },
 
             states::RawEndTagOpen(kind) => {
                 self.emit_char('<');
                 self.emit_char('/');
                 go!(self: to State::RawData(kind));
-            }
+            },
 
             states::RawEndTagName(kind) => {
                 self.emit_char('<');
                 self.emit_char('/');
                 self.emit_temp_buf();
                 go!(self: to State::RawData(kind))
-            }
+            },
 
             states::ScriptDataEscapeStart(kind) => {
                 go!(self: to State::RawData(ScriptDataEscaped(kind)))
-            }
+            },
 
             states::ScriptDataEscapeStartDash => go!(self: to State::RawData(ScriptData)),
 
             states::ScriptDataDoubleEscapeEnd => {
                 go!(self: to State::RawData(ScriptDataEscaped(DoubleEscaped)))
-            }
+            },
 
             states::CommentStart
             | states::CommentStartDash
@@ -2937,11 +2937,11 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             | states::CommentEndBang => {
                 self.bad_eof_error();
                 go!(self: emit_comment; to State::Data)
-            }
+            },
 
             states::CommentLessThanSign | states::CommentLessThanSignBang => {
                 go!(self: reconsume Comment)
-            }
+            },
 
             states::CommentLessThanSignBangDash => go!(self: reconsume CommentEndDash),
 
@@ -2950,7 +2950,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             states::Doctype | states::BeforeDoctypeName => {
                 self.bad_eof_error();
                 go!(self: create_doctype; force_quirks; emit_doctype; to State::Data)
-            }
+            },
 
             states::DoctypeName
             | states::AfterDoctypeName
@@ -2962,7 +2962,7 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
             | states::BetweenDoctypePublicAndSystemIdentifiers => {
                 self.bad_eof_error();
                 go!(self: force_quirks; emit_doctype; to State::Data)
-            }
+            },
 
             states::BogusDoctype => go!(self: emit_doctype; to State::Data),
 
@@ -2981,24 +2981,24 @@ impl<Sink: TokenSink> Tokenizer<Sink> {
                     self.process_token_and_continue(CommentToken(raw));
                 }
                 go!(self: to Data)
-            }
+            },
 
             states::MarkupDeclarationOpen => {
                 self.bad_char_error();
                 go!(self: to State::BogusComment)
-            }
+            },
 
             states::CdataSection => {
                 self.emit_temp_buf();
                 self.bad_eof_error();
                 go!(self: to State::Data)
-            }
+            },
 
             states::CdataSectionBracket => go!(self: push_temp ']'; to State::CdataSection),
 
             states::CdataSectionEnd => {
                 go!(self: push_temp ']'; push_temp ']'; to State::CdataSection)
-            }
+            },
         }
     }
 
@@ -3277,15 +3277,15 @@ mod test {
             match token {
                 CharacterTokens(b) => {
                     self.current_str.borrow_mut().push_slice(&b);
-                }
+                },
 
                 NullCharacterToken => {
                     self.current_str.borrow_mut().push_char('\0');
-                }
+                },
 
                 ParseError(_) => {
                     panic!("unexpected parse error");
-                }
+                },
 
                 TagToken(mut t) => {
                     // The spec seems to indicate that one can emit
@@ -3295,11 +3295,11 @@ mod test {
                         EndTag => {
                             t.self_closing = false;
                             t.attrs = vec![];
-                        }
+                        },
                         _ => t.attrs.sort_by(|a1, a2| a1.name.cmp(&a2.name)),
                     }
                     self.push(TagToken(t), line_number);
-                }
+                },
 
                 EOFToken => (),
 

@@ -22,8 +22,10 @@ impl Hooks for GridProbe {
     type Prepaint = ();
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+        let mut style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         style.inset.top = px(0.0).into();
         style.inset.left = px(0.0).into();
         let id = window.request_layout(style, [], cx);

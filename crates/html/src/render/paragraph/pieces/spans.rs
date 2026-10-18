@@ -132,6 +132,8 @@ fn rotated_central(inherited: &Computed) -> bool {
 /// so the offset must be expressed in the pre-rotation frame: a clockwise turn
 /// sends the line axis (+x) to screen-down and the block axis (+y) to
 /// screen-left; `sideways-lr` turns the other way.
+// Rotation preserves each span's text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
 pub(super) fn rotate_rel_spans(
     spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
     inherited: &crate::style::computed::Computed,

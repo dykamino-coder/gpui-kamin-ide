@@ -7,6 +7,8 @@ use gpui::{
 };
 use std::rc::Rc;
 
+type ScrollBuilder = Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>;
+
 /// Прокрутка содержимого — `overflow: auto` и `scroll`.
 ///
 /// Раньше оба значения давали только обрезку: часть содержимого пропадала без
@@ -23,16 +25,11 @@ pub struct ScrollArea {
     /// Shift chain the area is built in (`ShiftLink`): its border box and
     /// scrollport are recorded without those paint-time shifts.
     sticky: Option<crate::interactive::scroll_extent::StickyShift>,
-    pub(crate) build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
+    pub(crate) build: ScrollBuilder,
 }
 
 impl ScrollArea {
-    pub fn new(
-        id: ElementId,
-        horizontal: bool,
-        vertical: bool,
-        build: Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>,
-    ) -> Self {
+    pub fn new(id: ElementId, horizontal: bool, vertical: bool, build: ScrollBuilder) -> Self {
         ScrollArea {
             id,
             horizontal,

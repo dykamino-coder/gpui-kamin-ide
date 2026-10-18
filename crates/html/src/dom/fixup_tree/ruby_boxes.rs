@@ -67,7 +67,7 @@ pub(crate) fn wrap_misparented_ruby(
                 anim: None,
                 inline: true,
                 tag: "ruby".to_string(),
-                style: Computed::default(),
+                style: Computed::default().into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,

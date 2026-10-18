@@ -144,14 +144,13 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         }
     };
     // Рамка меряет свои `@media` своей коробкой (`doc::parse_embedded`).
-    // Режим quirks у вложенного документа свой: разбор его перепишет, а
-    // внешний возвращается после сборки рамки.
-    let outer_quirks = crate::style::select::quirks();
+    // Правила, метрики корня и режим quirks у вложенного документа свои:
+    // его дерево собирается в ЕГО области, внешняя возвращается сама.
     let responsive = st.frame_sizing_height
         && matches!(st.height, None | Some(Len::Auto))
         && e.attr("height").is_none()
         && responsive_embedded_sizing(&html);
-    let (nodes, salt) = crate::document::parse_embedded_sized(
+    let embedded = crate::document::parse_embedded_sized(
         &html,
         crate::BROWSER_CSS,
         (w, h),
@@ -165,22 +164,9 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.
-    let nodes = orthogonal_vertical_children(nodes, &Computed::default());
-
-    let mut sub = opts.clone();
-    sub.viewport = (w, h);
-    sub.doc_salt = salt;
-    sub.cx.positioning = Default::default();
-    sub.cx.frame_depth += 1;
-    // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
-    // предка держатся ЕГО начального содержащего блока — области просмотра
-    // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
-    // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
-    // верхний угол внешнего документа).
-    sub.cx.positioning.icb_open();
-    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(sub.cx.positioning.icb_close());
-    crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
+    let kids = build_embedded(embedded, (w, h), opts, |nodes| {
+        orthogonal_vertical_children(nodes, &Computed::default())
+    });
     Some(
         {
             let mut frame = styled_div(e, &opts.cx).w(px(outer_w));
@@ -201,4 +187,35 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
         .children(kids)
         .into_any_element(),
     )
+}
+
+/// Сборка вложенного документа (рамка, SVG с `<foreignObject>`) в ЕГО
+/// области: `prepare` правит верхний уровень, дерево собирается с его
+/// областью просмотра и солью, глубина вложенности растёт на время сборки,
+/// элементы уходят под `Scoped` — его фазы GPUI тоже в его области.
+pub(crate) fn build_embedded(
+    embedded: crate::document::Embedded,
+    viewport: (f32, f32),
+    opts: &RenderOpts,
+    prepare: impl FnOnce(Vec<crate::dom::Node>) -> Vec<crate::dom::Node>,
+) -> Vec<AnyElement> {
+    let scope = embedded.state.enter_frame();
+    let nodes = prepare(embedded.nodes);
+    let mut sub = opts.clone();
+    sub.viewport = viewport;
+    sub.doc_salt = embedded.salt;
+    sub.cx.positioning = Default::default();
+    sub.cx.frame_depth += 1;
+    // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
+    // предка держатся ЕГО начального содержащего блока — области просмотра
+    // рамки, а не внешней страницы (HTML §4.8.5 «nested browsing context»;
+    // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
+    // верхний угол внешнего документа).
+    sub.cx.positioning.icb_open();
+    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
+    kids.extend(sub.cx.positioning.icb_close());
+    drop(scope);
+    kids.into_iter()
+        .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k))
+        .collect()
 }

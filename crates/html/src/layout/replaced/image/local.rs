@@ -64,7 +64,7 @@ pub(super) fn fit_local_image(
             &e.style,
         ))
     {
-        let mut style = e.style.clone();
+        let mut style = (*e.style).clone();
         if fills_holder {
             style.object_fit = Some("fill".into());
         }
@@ -163,31 +163,35 @@ pub(super) fn piped_image(
                 y: Some(Len::Pct(0.5)),
             });
         use crate::style::computed::BgSize;
-        let mut bgc = crate::style::computed::Computed::default();
-        bgc.bg_image = Some(local.unwrap_or(src).to_string());
-        bgc.bg_repeat = Some(crate::style::computed::BgRepeat::NoRepeat);
-        bgc.bg_pos = pos;
-        // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
-        // положить руками: иначе `image-orientation: none` вместе с
-        // `object-fit`/`object-position` уходил бы мимо ключа источника.
-        bgc.image_orient_none = e.style.image_orient_none;
-        bgc.image_pixelated = e.style.image_pixelated;
-        bgc.bg_size = match e.style.object_fit.as_deref() {
-            Some("contain") => BgSize::Contain,
-            Some("cover") => BgSize::Cover,
-            Some("none") => BgSize::Auto,
-            Some("scale-down") => {
-                // Меньшее из `none` и `contain`: влезает — своим
-                // размером, нет — вписать.
-                let fits = crate::paint::background::source(&crate::paint::background::key(
-                    local.unwrap_or(src),
-                    &e.style,
-                ))
-                .map(|s| s.intrinsic())
-                .is_some_and(|i| i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h));
-                if fits { BgSize::Auto } else { BgSize::Contain }
-            }
-            _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+        let bgc = crate::style::computed::Computed {
+            bg_image: Some(local.unwrap_or(src).to_string()),
+            bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
+            bg_pos: pos,
+            // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
+            // положить руками: иначе `image-orientation: none` вместе с
+            // `object-fit`/`object-position` уходил бы мимо ключа источника.
+            image_orient_none: e.style.image_orient_none,
+            image_pixelated: e.style.image_pixelated,
+            bg_size: match e.style.object_fit.as_deref() {
+                Some("contain") => BgSize::Contain,
+                Some("cover") => BgSize::Cover,
+                Some("none") => BgSize::Auto,
+                Some("scale-down") => {
+                    // Меньшее из `none` и `contain`: влезает — своим
+                    // размером, нет — вписать.
+                    let fits = crate::paint::background::source(&crate::paint::background::key(
+                        local.unwrap_or(src),
+                        &e.style,
+                    ))
+                    .map(|s| s.intrinsic())
+                    .is_some_and(|i| {
+                        i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                    });
+                    if fits { BgSize::Auto } else { BgSize::Contain }
+                }
+                _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),
+            },
+            ..Default::default()
         };
         // `overflow: visible` на замещаемом (HTML §rendering: UA-правило
         // `img { overflow: clip; overflow-clip-margin: content-box }`,

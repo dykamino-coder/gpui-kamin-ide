@@ -8,7 +8,6 @@ pub(crate) use crate::text::paragraph::probes::ruby_extents::RubyBaseOffer;
 pub use crate::text::paragraph::probes::ruby_extents::RubyExtents;
 pub use crate::text::paragraph::probes::ruby_extents::RubyOverhangInfo;
 pub use crate::text::paragraph::probes::ruby_extents::ruby_base_with_overhang;
-pub use crate::text::paragraph::probes::ruby_extents::ruby_extent;
 pub(crate) use ruby_extents::ruby_layer;
 
 use gpui::{AnyElement, LayoutId};

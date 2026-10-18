@@ -4,7 +4,11 @@ use crate::style::css::*;
 
 mod at_rule;
 #[cfg(test)]
+mod declaration_tests;
+#[cfg(test)]
 mod property_tests;
+#[cfg(test)]
+mod selector_tests;
 mod terms;
 use terms::supports_eval_term;
 
@@ -12,9 +16,8 @@ use terms::supports_eval_term;
 ///
 /// Трёхзначная логика: неизвестная конструкция (`general-enclosed`) — не
 /// ложь и не истина, а «неизвестно»; на верхнем уровне неизвестное и
-/// невалидное равнозначны лжи. Поддержка декларации проверяется ОРАКУЛОМ:
-/// разобранное объявление применяется к чистому стилю — изменился, значит
-/// свойство и значение наши (той же механикой живёт реестр покрытия).
+/// невалидное равнозначны лжи. Поддержку декларации сообщает разборщик
+/// свойства явно, в том числе для значений, совпадающих с начальным стилем.
 pub(super) fn supports(condition: &str) -> bool {
     supports_in(condition, &SelectorCx::default())
 }

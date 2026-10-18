@@ -18,9 +18,11 @@ fn clip_margin_exposes_only_the_intersection_of_descendant_overflow() {
 
 #[test]
 fn paint_containment_clips_overflow_but_hidden_ignores_clip_margin() {
-    let mut c = Computed::default();
-    c.contain_paint = Some(true);
-    c.clip_margin = Some(10.0);
+    let mut c = Computed {
+        contain_paint: Some(true),
+        clip_margin: Some(10.0),
+        ..Default::default()
+    };
     let own = [0.0, 0.0, 100.0, 100.0];
     let child = [-50.0, -50.0, 150.0, 150.0];
     assert_eq!(

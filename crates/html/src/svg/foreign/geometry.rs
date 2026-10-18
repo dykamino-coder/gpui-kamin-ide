@@ -45,7 +45,7 @@ pub(super) fn capture(
 
 pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>) {
     let mut image = e.clone();
-    image.style = Computed::default();
+    image.style = Computed::default().into();
     image.attrs = [
         ("x", -f32::from(origin.x)),
         ("y", -f32::from(origin.y)),

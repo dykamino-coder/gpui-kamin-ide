@@ -9,7 +9,7 @@
 //! rasterized. Images without `<foreignObject>` keep the raster path.
 
 use crate::dom::Element;
-use crate::render::{RenderOpts, blocks, styled_div};
+use crate::render::{RenderOpts, styled_div};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -43,8 +43,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let html = format!(
         "<!DOCTYPE html><html><head><style>html,body{{margin:0;padding:0}}</style></head><body>{markup}</body></html>"
     );
-    let outer_quirks = crate::style::select::quirks();
-    let (nodes, salt) = crate::document::parse_embedded_sized(
+    let embedded = crate::document::parse_embedded_sized(
         &html,
         crate::BROWSER_CSS,
         (w, h),
@@ -52,15 +51,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         None,
     );
-    let mut sub = opts.clone();
-    sub.viewport = (w, h);
-    sub.doc_salt = salt;
-    sub.cx.positioning = Default::default();
-    sub.cx.frame_depth += 1;
-    sub.cx.positioning.icb_open();
-    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
-    kids.extend(sub.cx.positioning.icb_close());
-    crate::style::select::QUIRKS.with(|q| q.set(outer_quirks));
+    let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(
         styled_div(e, &opts.cx)
             .w(px(w))

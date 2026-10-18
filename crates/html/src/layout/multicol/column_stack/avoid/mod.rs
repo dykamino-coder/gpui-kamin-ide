@@ -166,9 +166,9 @@ impl ColumnStack {
             1
         };
         (lo.max(1)..bad).rev().find(|&j| {
-            !kids[j].avoid_before
-                && !kids[j - 1].avoid_after
-                && !(kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
+            !(kids[j].avoid_before
+                || kids[j - 1].avoid_after
+                || kids[j].par.group != 0 && kids[j].par.line_start && !kids[j].par.group_start)
                 && !((kids[bad].par.group == 0 || kids[bad].par.group_start)
                     && kids[j].par.group != 0
                     && !kids[j].par.group_start)

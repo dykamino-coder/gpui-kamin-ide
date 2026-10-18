@@ -60,15 +60,10 @@ pub(crate) struct Ancestor {
     pub(crate) foreign: bool,
 }
 
-thread_local! {
-    /// Документ в режиме quirks (ставит `parse_media`; рамка сохраняет и
-    /// возвращает признак внешнего документа сама — `render::iframe`).
-    pub(crate) static QUIRKS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Режим quirks текущего документа.
+/// Режим quirks текущего документа (ставит его разбор; у рамки свой
+/// документ — `document::state`).
 pub(crate) fn quirks() -> bool {
-    QUIRKS.with(|q| q.get())
+    crate::document::state::current().quirks.get()
 }
 
 /// Место элемента среди соседей — по нему считаются структурные псевдоклассы.

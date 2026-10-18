@@ -8,6 +8,8 @@ use crate::tolerance::COORD_EPS;
 pub(super) use captions::caption_slots_shape;
 
 #[allow(clippy::too_many_arguments)]
+// Row bands return their geometry and fragmentation flags as one record.
+#[allow(clippy::type_complexity)]
 pub(super) fn row_band_shape(
     c: &Element,
     depth: u8,

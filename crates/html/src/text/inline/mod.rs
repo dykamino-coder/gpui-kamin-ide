@@ -75,6 +75,8 @@ pub use crate::text::inline::runs::*;
 
 /// Кусок инлайн-содержимого: либо текст со своим стилем, либо готовый элемент
 /// (картинка, кнопка — то, что текстом не является).
+// Text and replaced elements share an owned inline sequence without extra boxing.
+#[allow(clippy::large_enum_variant)]
 pub enum Piece {
     Text {
         text: String,

@@ -9,6 +9,8 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, SharedString};
 
 #[allow(clippy::too_many_arguments)]
+// Paragraph construction consumes the span geometry records used by the probes.
+#[allow(clippy::type_complexity)]
 pub(crate) fn native_paragraph(
     inherited: &Computed,
     opts: &RenderOpts,

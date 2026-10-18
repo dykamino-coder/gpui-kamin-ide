@@ -9,6 +9,8 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 
 #[allow(clippy::too_many_arguments)]
+// Edge probes retain border colors, styles and widths as one record.
+#[allow(clippy::type_complexity)]
 pub(super) fn cell_edge_probes(
     row_ix: i16,
     group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,

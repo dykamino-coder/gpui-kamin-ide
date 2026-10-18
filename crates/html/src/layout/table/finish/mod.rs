@@ -19,6 +19,8 @@ mod captions;
 use captions::{collect_captions, wrap_with_captions};
 
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
+// Finishing consumes row elements and the corresponding band geometry together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,
@@ -32,7 +34,7 @@ pub(super) fn table_finish(
     row_elements: Vec<&Element>,
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     spacing: (f32, f32),
     cols: u16,
     from_cols: Vec<Option<f32>>,

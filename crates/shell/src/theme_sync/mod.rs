@@ -11,6 +11,7 @@
 //! accent = самый НАСЫЩЕННЫЙ кандидат, muted/disabled — blend при отсутствии.
 
 mod components;
+mod scrollbar;
 mod syntax;
 #[cfg(test)]
 mod tests;

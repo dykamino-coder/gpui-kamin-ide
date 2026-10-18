@@ -1,4 +1,4 @@
-//! Tests for document; split out to keep the owning module within 250 lines.
+//! Document wrapper preservation, update invalidation and root style regression tests.
 
 use crate::dom::Node;
 
@@ -18,7 +18,6 @@ fn html_after_survives_unwrap() {
             Node::Text(t) => format!("txt[{t}]"),
         })
         .collect();
-    eprintln!("TOP: {tags:?}");
     fn has_after(nodes: &[Node]) -> bool {
         nodes.iter().any(|n| match n {
             Node::Element(e) => e.tag.contains("after") || has_after(&e.children),

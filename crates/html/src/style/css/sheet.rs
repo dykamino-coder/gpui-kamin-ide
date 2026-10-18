@@ -1,7 +1,6 @@
 //! Таблица стилей: правила, каскадные слои, пространства имён.
 
 use crate::style::css::*;
-use std::collections::HashMap;
 
 pub(crate) mod default_ns;
 mod nesting;
@@ -10,6 +9,11 @@ pub use parse_cx::LayerRegistry;
 pub(crate) use parse_cx::{CustomMedia, SelectorCx, SheetCx};
 mod rules;
 use rules::sheet_rules;
+
+/// Normalize nesting selectors through the same path as top-level style rules.
+pub(super) fn selector_for_supports(selector: &str, cx: &SelectorCx) -> String {
+    nesting::top_level_parts(&[selector], cx).remove(0)
+}
 
 pub fn parse_stylesheet(css: &str) -> Vec<Rule> {
     parse_stylesheet_media(css, Media::default())

@@ -11,6 +11,7 @@ thread_local! {
     /// абзаца делились бы поровну, а строка с крупным кеглем или руби
     /// выше прочих (css-overflow-4 §5.3: точка среза — между строчными
     /// коробками, их высоты свои).
+    #[allow(clippy::type_complexity)] // A container/paragraph key maps to measured row bounds.
     pub(super) static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// (ключ, номер) абзаца, который сейчас будет собран.
@@ -108,6 +109,8 @@ pub fn take_para_budget() -> Option<usize> {
 
 /// Проба строк: канвас в элементе с текстом (или блоке), пишет границы и
 /// высоту строки в prepaint своего кадра.
+// The probe records paragraph identity, line geometry and clamp constraints.
+#[allow(clippy::too_many_arguments)]
 pub fn clamp_probe(
     lines: ClampLines,
     line: f32,

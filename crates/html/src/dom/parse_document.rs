@@ -1,4 +1,6 @@
-//! Parse HTML/XML into styled nodes, collecting stylesheet and shadow scopes before conversion.
+//! Разбор документа: html5ever -> каскад -> дерево `Node` с вычисленными
+//! стилями и поправками дерева. Правила и метрики документа пишутся в
+//! состояние текущего документа (`document::state`).
 
 use super::style_sources::collect_style_tags;
 use super::{Node, user_agent_css};
@@ -12,7 +14,7 @@ use crate::dom::walk::*;
 use crate::dom::xhtml::*;
 use crate::style::css::{Decls, LayerRegistry, Media, Rule, parse_document_sheet, parse_keyframes};
 use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
-use crate::style::select::{QUIRKS, quirks};
+use crate::style::select::quirks;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -26,21 +28,23 @@ pub fn parse(html: &str, extra_css: &str) -> Vec<Node> {
 }
 
 /// То же, но с известными условиями окружения для `@media`.
-pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
+///
+/// Разбор без `Document`: правила и метрики ложатся в отсоединённый
+/// документ потока (`document::state`), который этот вызов очищает, — для
+/// тестов и инструментов. `Document` разбирает в своё состояние.
+pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Vec<Node> {
+    let doc = crate::document::state::detached_for_parse(media);
+    let _scope = doc.enter();
+    parse_current(html, extra_css, media)
+}
+
+/// Разобрать в СВЕЖЕЕ состояние текущего документа: область открыта
+/// вызывающим (`Document`, вложенный документ рамки).
+pub(crate) fn parse_current(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     let _content_document = content::document(html);
-    // Правила `@page` — от последнего РАЗОБРАННОГО документа: почистить,
-    // чтобы прошлый лист не красил страницу нового. `@position-try` — тот же
-    // пул и та же чистка.
-    let _ = crate::style::css::take_page_decls();
-    let _ = crate::style::css::take_try_rules();
-    let _ = crate::style::css::take_property_rules();
-    crate::style::generated::counter_style_rules::reset();
-    // `@font-feature-values` — тоже от прошлого документа.
+    // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
+    // разбора, `LayerRegistry` ниже).
     crate::text::fonts::alternates::reset();
-    // Корневые метрики (`rem`, `rlh`) — тоже от прошлого документа: у рамки
-    // и у страницы свой корень, и чужие четыре точки на кегль испортили бы
-    // весь разбор. Пишет их `walk` ниже, на элементе `html`.
-    crate::style::values::value::reset_root_metrics();
     // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
     let xml = super::xml::is_xml();
     let html = if xml {
@@ -61,12 +65,10 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
     // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
     // documents … always in no-quirks mode»), а мы разбираем и его HTML-
     // разборщиком, поэтому пространство имён корня его исключает.
-    QUIRKS.with(|q| {
-        q.set(
-            dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
-                && !html.contains("http://www.w3.org/1999/xhtml"),
-        )
-    });
+    crate::document::state::current().quirks.set(
+        dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks
+            && !html.contains("http://www.w3.org/1999/xhtml"),
+    );
 
     // Правила: сначала умолчания тегов, затем тема, затем <style> документа.
     // Каскадные слои у всех таблиц документа общие (css-cascade-5 §6.4.3).
@@ -187,7 +189,7 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
         &doc.frames,
         &mut counter,
         &mut counters,
-        &[],
+        &mut Vec::new(),
         false,
         &mut out,
     );

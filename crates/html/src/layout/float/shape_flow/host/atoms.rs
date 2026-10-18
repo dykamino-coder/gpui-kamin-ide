@@ -11,6 +11,8 @@ use gpui::{AnyElement, IntoElement, ParentElement};
 
 #[allow(clippy::result_large_err)]
 #[allow(clippy::too_many_arguments)]
+// Failure returns the partially built host together with both float-shape lists.
+#[allow(clippy::type_complexity)]
 pub(crate) fn atoms_flow(
     e: &Element,
     inherited: &Computed,
