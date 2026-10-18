@@ -154,7 +154,7 @@ pub(super) fn paint_table_border(
             outer_win[3] / 2.0,
         ];
         outer = outer.child(crate::layout::table::paint::edge_probe(
-            table_edges.clone(),
+            table_edges,
             bw,
             colors,
             styles,

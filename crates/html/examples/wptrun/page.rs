@@ -163,7 +163,7 @@ impl Render for Page {
                 .h(px(f32::from(window.viewport_size().height)))
                 .bg(rgb(0xffffff))
                 .text_size(px(16.))
-                .font_family(opts.text.font_family.clone())
+                .font_family(opts.text.font_family)
                 .child(self.doc.scoped(stack))
                 .into_any_element();
         }
@@ -180,7 +180,7 @@ impl Render for Page {
             // своего семейства, нарисованные НЕ текстовым путём абзаца (ряд
             // слов при картинке вне потока, подпись `alt`), брали шрифт
             // интерфейса (Segoe UI) вместо Times (`background-bg-pos-204-ref`).
-            .font_family(opts.text.font_family.clone())
+            .font_family(opts.text.font_family)
             .children(children)
             .into_any_element()
     }

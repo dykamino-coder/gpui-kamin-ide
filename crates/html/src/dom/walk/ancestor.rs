@@ -30,8 +30,8 @@ pub(super) fn element_ancestor(
         content_none: None,
         tag: tag.to_string(),
         html_attrs,
-        id: id.clone(),
-        classes: classes.clone(),
+        id,
+        classes,
         attrs: attrs.clone(),
         spot,
         href: attrs

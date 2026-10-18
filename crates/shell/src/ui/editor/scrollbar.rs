@@ -125,7 +125,6 @@ pub fn scrollbar(
 
     let on_jump = {
         let input = input.clone();
-        let origin = origin.clone();
         move |wy: f32, cx: &mut gpui::App| {
             let (_, oy, h) = origin.get();
             input.update(cx, |st, cx| {

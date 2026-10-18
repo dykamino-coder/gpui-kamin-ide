@@ -65,7 +65,7 @@ pub(super) fn piped_image(
         let spills = e.style.overflow_x == Some(crate::style::computed::Overflow::Visible)
             && e.style.overflow_y == Some(crate::style::computed::Overflow::Visible);
         if spills {
-            let style = bgc.clone();
+            let style = bgc;
             let layer = gpui::canvas(
                 |_, _, _| {},
                 move |bounds: gpui::Bounds<gpui::Pixels>, _, window, _| {

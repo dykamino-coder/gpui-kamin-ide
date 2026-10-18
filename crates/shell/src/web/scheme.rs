@@ -19,11 +19,11 @@ const TRANSPARENT_DOT: &[u8] = &[
 
 /// Зарегистрировать обработчик. Зовётся один раз после инициализации CEF.
 pub(crate) fn register() {
-    let factory = KaminScheme::new();
+    let mut factory = KaminScheme::new();
     let ok = register_scheme_handler_factory(
         Some(&"http".into()),
         Some(&"kamin.localhost".into()),
-        Some(&mut factory.clone()),
+        Some(&mut factory),
     );
     if ok != 1 {
         println!("[cef] обработчик kamin.localhost не зарегистрирован");

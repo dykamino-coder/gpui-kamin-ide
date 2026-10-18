@@ -18,6 +18,23 @@ exclude = [
 version = "1.0.75"
 edition = "2024"
 
+# Keep fallible results visible at every workspace boundary.
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+redundant_clone = "deny"
+declare_interior_mutable_const = "deny"
+disallowed_methods = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+# As in GPUI, preserve the established DSL spelling; correctness lints
+# and explicit denies above still apply independently of style suggestions.
+style = { level = "allow", priority = -1 }
+
 [workspace.dependencies]
 # Пакет на crates.io — `gpui-pre` (снимок zed@279fe07), библиотека — `gpui`.
 # `stacker`: рекурсия раскладки/отрисовки под StackSafe — глубокие HTML-деревья

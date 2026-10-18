@@ -45,7 +45,7 @@ pub(crate) fn render_with_style(
     // `apply_text` без семейства брал шрифт интерфейса (Segoe UI), и
     // строковый маркер выходил чужой гарнитурой рядом с Times пункта
     // (`list-style-type-string-*`).
-    let mut mark_style = marker_style.clone().unwrap_or_else(|| merged.clone());
+    let mut mark_style = marker_style.unwrap_or_else(|| merged.clone());
     if mark_style.font_family.as_deref().is_none_or(str::is_empty)
         && mark_style.monospace != Some(true)
     {

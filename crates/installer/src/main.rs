@@ -10,6 +10,15 @@
 //!
 //! Лог: %TEMP%\kaminide-install.log (формат совместим с NSIS-логом).
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 mod payload;
@@ -64,7 +73,7 @@ fn main() {
 
     // Установка — в фоновом потоке; главный поток либо крутит окно (обычный
     // запуск и /update), либо ждёт (тихий /S). Прогресс шлётся через ui::.
-    let dir = install_dir.clone();
+    let dir = install_dir;
     let ver = version.to_string();
     let worker = std::thread::spawn(move || {
         let r = steps::install_with_progress(&dir, &ver, ui::set_progress);

@@ -10,6 +10,12 @@
 //!
 //!     cargo run -p kamin-html --example demo
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+
 use gpui::ScrollHandle;
 use gpui::{AppContext as _, Bounds, Context, Entity, WindowBounds, WindowOptions, px, size};
 use kamin_html::Document;

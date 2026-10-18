@@ -102,7 +102,7 @@ pub(crate) fn builtin_items(
         }))
         .child(item("fm-copy", FA_COPY, "Copy", false, p, {
             let tx = tx.clone();
-            let paths = clip_paths.clone();
+            let paths = clip_paths;
             move || {
                 let _ = tx.try_send(ShellEvent::Ed(EdEvent::FsCopy(paths.clone())));
                 let _ = tx.try_send(ShellEvent::Ed(EdEvent::CloseFileMenu));
@@ -172,7 +172,6 @@ pub(crate) fn builtin_items(
                 } else {
                     let tx = tx.clone();
                     let path = path.to_string();
-                    let name = name.clone();
                     // Зарезервированное имя устройства в корзину не уходит —
                     // оригинал предлагает удалить навсегда
                     // (`file-context-menu.ts::deleteEntry`)

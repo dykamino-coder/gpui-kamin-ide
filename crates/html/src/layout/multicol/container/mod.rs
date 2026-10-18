@@ -175,7 +175,7 @@ pub(crate) fn multicol_column_stack(
     // от ПРАВОГО края (`flex_row_reverse`), там начало
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
-    let painter = gap_items.clone().zip(gap_spec.clone());
+    let painter = gap_items.clone().zip(gap_spec);
     let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).hooked()));
     let mut d = column_stack_div(
         d,
