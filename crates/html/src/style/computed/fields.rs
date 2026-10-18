@@ -249,7 +249,7 @@ pub struct Computed {
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
     /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
     /// цвета каждого элемента заново.
-    pub background_rcs: Option<String>,
+    pub background_rcs: Option<crate::style::values::color_space::ColorExpression>,
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,

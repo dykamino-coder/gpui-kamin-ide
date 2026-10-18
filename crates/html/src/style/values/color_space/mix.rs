@@ -16,98 +16,8 @@ pub(super) fn color_mix_unmapped(body: &str) -> Option<(f32, f32, f32, f32)> {
     color_mix_impl(body, false)
 }
 
-// A color stop is an RGBA tuple paired with an optional percentage.
-#[allow(clippy::type_complexity)]
 fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
-    use crate::style::computed::GradSpace as S;
-    let mut it = crate::style::css::split_args(body).into_iter();
-    // css-color-5 §2.1: пара смешивается «as described in
-    // [[css-color-4#interpolation]]», дугой тона управляет
-    // <hue-interpolation-method>, по умолчанию shorter. Blink несёт
-    // пространство и дугу до самого вычисления (`core/css/style_color.cc:301-303`,
-    // `Color::FromColorMix(color_interpolation_space_, hue_interpolation_method_, …)`).
-    // Прежде пространство выбрасывалось и смесь шла в гамма-sRGB:
-    // `color-mix(in hsl longer hue, red, blue)` давал пурпур вместо лайма, и
-    // эталон `gradient-longer-hue-{hsl,lch}-001-ref` рисовал ДРУГУЮ дугу, чем
-    // тест, как только обе стороны ушли на растр (`gradient_as_tile`): 0.75/0.81.
-    let head = it.next()?.trim().to_ascii_lowercase();
-    let method = head.strip_prefix("in ").unwrap_or("");
-    let space = match method.split_whitespace().next() {
-        Some(
-            "srgb-linear"
-            | "xyz"
-            | "xyz-d50"
-            | "xyz-d65"
-            | "display-p3-linear"
-            | "rec2020-linear"
-            | "a98-rgb-linear"
-            | "prophoto-rgb-linear",
-        ) => S::Linear,
-        Some("oklab") => S::Oklab,
-        Some("oklch") => S::Oklch,
-        Some("lab") => S::Lab,
-        Some("lch") => S::Lch,
-        Some("hsl") => S::Hsl,
-        Some("hwb") => S::Hwb,
-        _ => S::Srgb,
-    };
-    // Дуга тона — коды `hue_arc`: 0 shorter, 1 longer, 2 increasing,
-    // 3 decreasing (css-color-4 §12.4).
-    let hue = if method.contains("longer") {
-        1
-    } else if method.contains("increasing") {
-        2
-    } else if method.contains("decreasing") {
-        3
-    } else {
-        0
-    };
-    let one = |raw: &str| -> Option<((f32, f32, f32, f32), Option<f32>)> {
-        let raw = raw.trim();
-        // Доля стоит рядом с цветом и записывается процентом.
-        let (color, share) = match raw.rfind('%') {
-            Some(at) => {
-                let head = raw[..at].trim_end();
-                // `+1` резал бы многобайтный пробел (NBSP/U+3000) посреди
-                // кода — шаг вперёд строго на ДЛИНУ найденного знака.
-                let cut = head
-                    .rfind(char::is_whitespace)
-                    .map(|i| i + head[i..].chars().next().map_or(1, char::len_utf8))
-                    .unwrap_or(0);
-                let pct: f32 = head[cut..].parse().ok()?;
-                (raw[..cut].trim(), Some(pct / 100.0))
-            }
-            None => (raw, None),
-        };
-        let c = interpolation_color(color)?;
-        Some(((c.r, c.g, c.b, c.a), share))
-    };
-    let (first, p1) = one(it.next()?)?;
-    let (second, p2) = one(it.next()?)?;
-    let (w1, w2) = match (p1, p2) {
-        (Some(a), Some(b)) if a + b > 0.0 => (a / (a + b), b / (a + b)),
-        (Some(a), None) => (a, 1.0 - a),
-        (None, Some(b)) => (1.0 - b, b),
-        _ => (0.5, 0.5),
-    };
-    let alpha = first.3 * w1 + second.3 * w2;
-    // Премультипликация (css-color-4 §12.3): для прямоугольных осей она
-    // сводится к доле `w2·a2 / alpha` — тот же приём, что у `colour_at`
-    // (background.rs). У непрозрачной пары доля остаётся `w2`, и `in srgb`
-    // даёт прежнее `first·w1 + second·w2`.
-    let k = if alpha > 0.0 {
-        w2 * second.3 / alpha
-    } else {
-        w2
-    };
-    let colour = |c: (f32, f32, f32, f32)| crate::style::values::value::Color {
-        r: c.0,
-        g: c.1,
-        b: c.2,
-        a: c.3,
-    };
-    let (r, g, b) = mix_in_impl(space, hue, colour(first), colour(second), k, mapped);
-    Some((r, g, b, alpha))
+    super::color_expression::absolute_mix(body, mapped)
 }
 
 /// Смешать два цвета в заданном пространстве интерполяции (css-color-4 §12).
@@ -126,7 +36,7 @@ pub(super) fn mix_in(
     mix_in_impl(space, hue, a, b, k, true)
 }
 
-fn mix_in_impl(
+pub(super) fn mix_in_impl(
     space: crate::style::computed::GradSpace,
     hue: u8,
     a: crate::style::values::value::Color,

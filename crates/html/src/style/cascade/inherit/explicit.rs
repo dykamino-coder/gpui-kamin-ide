@@ -162,9 +162,6 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             b: 0.0,
             a: 1.0,
         });
-        if let Some(resolved) = crate::style::values::color_space::resolve_relative(&expr, current)
-        {
-            c.background = Some(resolved);
-        }
+        c.background = Some(expr.resolve(current));
     }
 }

@@ -81,130 +81,13 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
     Some((r, g, b, a))
 }
 
-/// Относительный цвет (css-color-5 §4): `hsl(from currentColor h s l)`.
-///
-/// Тождественные каналы дают сам базовый цвет: преобразование туда-обратно в
-/// плавающих пространствах без потерь. Подстановки каналов считаются честно
-/// для `rgb()` и `hsl()` — прочим пространствам хватает тождества: обратные
-/// преобразования им пока не заведены.
+/// Resolve a specified relative color through the computed operand parser.
 pub(crate) fn resolve_relative(
     expr: &str,
     current: crate::style::values::value::Color,
 ) -> Option<crate::style::values::value::Color> {
-    use crate::style::values::value::Color;
-    // Голое слово: цвет текста этого же элемента.
-    if expr.eq_ignore_ascii_case("currentcolor") {
-        return Some(current);
-    }
-    // `color-mix` с `currentColor`: слово подставляется уже решённым цветом,
-    // дальше работает обычный разбор смеси.
-    let low = expr.to_ascii_lowercase();
-    if low.starts_with("color-mix(") {
-        let rgb = format!(
-            "rgb({} {} {} / {})",
-            (current.r * 255.0).round(),
-            (current.g * 255.0).round(),
-            (current.b * 255.0).round(),
-            current.a
-        );
-        return Color::parse(&low.replace("currentcolor", &rgb));
-    }
-    let open = expr.find('(')?;
-    let name = expr[..open].trim();
-    let inner = expr[open + 1..].trim().strip_suffix(')')?;
-    let rest = inner.trim().strip_prefix("from ")?;
-    let words = crate::style::computed::split_outside_parens(rest);
-    let base_tok = words.first()?;
-    let base = if base_tok.eq_ignore_ascii_case("currentcolor") {
-        current
-    } else {
-        Color::parse(base_tok)?
-    };
-    // Прозрачность после косой: `alpha` — своя, число — новая.
-    let mut channels: Vec<&str> = vec![];
-    let mut alpha = base.a;
-    let mut after_slash = false;
-    for w in words[1..].iter().map(|w| w.as_str()) {
-        if w == "/" {
-            after_slash = true;
-        } else if after_slash {
-            alpha = match w {
-                "alpha" => base.a,
-                t => t
-                    .strip_suffix('%')
-                    .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
-                    .or_else(|| t.parse().ok())
-                    .unwrap_or(base.a),
-            };
-        } else {
-            channels.push(w);
-        }
-    }
-    let identity: &[&str] = match name {
-        "rgb" | "rgba" => &["r", "g", "b"],
-        "hsl" | "hsla" => &["h", "s", "l"],
-        "hwb" => &["h", "w", "b"],
-        "lab" | "oklab" => &["l", "a", "b"],
-        "lch" | "oklch" => &["l", "c", "h"],
-        "color" => {
-            // Первый канал — имя пространства.
-            let space = channels.first().copied().unwrap_or("");
-            let rest = &channels[1..];
-            let names: &[&str] = if space.starts_with("xyz") {
-                &["x", "y", "z"]
-            } else {
-                &["r", "g", "b"]
-            };
-            return (rest == names).then_some(Color { a: alpha, ..base });
-        }
-        _ => return None,
-    };
-    if channels == identity {
-        return Some(Color { a: alpha, ..base });
-    }
-    match name {
-        "rgb" | "rgba" => {
-            let chan = |t: &str| match t {
-                "r" => Some(base.r),
-                "g" => Some(base.g),
-                "b" => Some(base.b),
-                t => t
-                    .strip_suffix('%')
-                    .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
-                    .or_else(|| t.parse::<f32>().ok().map(|v| v / 255.0)),
-            };
-            Some(Color {
-                r: chan(channels.first()?)?.clamp(0.0, 1.0),
-                g: chan(channels.get(1)?)?.clamp(0.0, 1.0),
-                b: chan(channels.get(2)?)?.clamp(0.0, 1.0),
-                a: alpha,
-            })
-        }
-        "hsl" | "hsla" => {
-            let (h, s, l) = rgb_to_hsl(base);
-            let chan = |t: &str, own: f32, pct: bool| match t {
-                "h" => Some(h),
-                "s" => Some(s),
-                "l" => Some(l),
-                t => {
-                    let _ = own;
-                    if pct {
-                        t.strip_suffix('%')
-                            .and_then(|n| n.parse::<f32>().ok().map(|v| v / 100.0))
-                            .or_else(|| t.parse().ok())
-                    } else {
-                        t.strip_suffix("deg").unwrap_or(t).parse::<f32>().ok()
-                    }
-                }
-            };
-            let (h, s, l) = (
-                chan(channels.first()?, h, false)?,
-                chan(channels.get(1)?, s, true)?.clamp(0.0, 1.0),
-                chan(channels.get(2)?, l, true)?.clamp(0.0, 1.0),
-            );
-            let (r, g, b) = hsl_to_rgb(h, s, l);
-            Some(Color { r, g, b, a: alpha })
-        }
-        _ => None,
+    match ColorExpression::parse(expr)? {
+        ColorExpression::Color(_) => None,
+        expression => Some(expression.resolve(current)),
     }
 }

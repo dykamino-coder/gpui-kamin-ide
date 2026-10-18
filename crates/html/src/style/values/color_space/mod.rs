@@ -17,6 +17,8 @@ pub(crate) use gradient_stop::{
 mod convert;
 mod direct_gradient;
 pub(crate) use direct_gradient::DirectGradient;
+mod color_expression;
+pub use color_expression::ColorExpression;
 mod functions;
 mod gradient_stop;
 mod hsl_ramp;

@@ -51,7 +51,10 @@ impl Computed {
                 || low.contains("(from ")
                 || (low.starts_with("color-mix(") && low.contains("currentcolor")))
         {
-            self.background_rcs = accept_parsed!(self, Some(v.to_string()));
+            self.background_rcs = accept_parsed!(
+                self,
+                crate::style::values::color_space::ColorExpression::parse(v)
+            );
             return;
         }
         // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
