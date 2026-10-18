@@ -18,7 +18,7 @@ use crate::style::values::value::Len;
 /// `shape_full(cell)` распорка ложится в `lead`). Охваты и высоты строк
 /// берутся из общей `row_geometry`. Подпись, сросшиеся рамки и заданная высота здесь
 /// тоже `None` — распорки нет, поведение прежнее.
-pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8, forced: bool) -> Option<u64> {
     if depth == 0
         || c.style.wm().vertical()
         || c.style.border_collapse == Some(true)
@@ -108,7 +108,7 @@ pub(super) fn pushed_cell_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
                 .cells
                 .iter()
                 .filter(|cell| cell.expandable)
-                .find_map(|cell| pushed_box_at(cell.cell, a - start, depth - 1));
+                .find_map(|cell| pushed_box_at(cell.cell, a - start, depth - 1, forced));
         }
         y = start + row.height;
     }

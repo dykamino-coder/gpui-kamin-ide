@@ -19,7 +19,6 @@ use crate::layout::float::band_flow_host::{
 };
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
-use crate::layout::page::paged::PAGED;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
@@ -112,7 +111,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let measured_ok = !flex_ctx
         && inherited.line_clamp.is_none()
         && crate::text::clamp::clamp_context().is_none()
-        && !PAGED.with(std::cell::Cell::get)
+        && opts.paged_build().is_none()
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)

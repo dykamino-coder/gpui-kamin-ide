@@ -115,6 +115,7 @@ impl Render for Page {
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
+            frag: Default::default(),
         };
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
