@@ -13,6 +13,7 @@ pub(crate) mod filter_image;
 pub(crate) mod flat_background;
 pub(crate) mod formatting_context;
 pub(crate) mod math_style;
+pub(crate) mod shape_kind;
 pub(crate) mod single_corner;
 pub(crate) mod stacking;
 pub use appearance::Appearance;
