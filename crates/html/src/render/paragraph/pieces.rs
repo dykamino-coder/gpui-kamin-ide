@@ -11,6 +11,7 @@ pub(super) use native::native_paragraph;
 
 mod spans;
 pub(super) use spans::paragraph_spans;
+use spans::rotate_rel_spans;
 
 use crate::dom::{Element, Node};
 use crate::render::*;

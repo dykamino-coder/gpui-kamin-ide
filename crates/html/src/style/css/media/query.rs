@@ -185,3 +185,41 @@ impl Media {
         }
     }
 }
+
+impl Media {
+    /// Выполняется ли условие `@media` — mediaqueries-5 §3 «Media Queries»
+    /// и §3.1 «Error Handling».
+    ///
+    /// Логика ТРЁХЗНАЧНАЯ. Нераспознанная скобка — это `<general-enclosed>`,
+    /// и её значение «неизвестно», а не «ложь»: `not (unknown)` обязано
+    /// остаться «неизвестно» (то есть на верхнем уровне ложью), тогда как
+    /// прежний двухзначный разбор переворачивал ложь в истину и применял
+    /// правило (`at-media-002`, `negation-001`, `mq-gamut-003`).
+    pub fn matches(&self, query: &str) -> bool {
+        self.matches_in(query, CustomMedia::NONE)
+    }
+
+    /// `matches` with the `@custom-media` aliases of the sheet being parsed.
+    pub(crate) fn matches_in(&self, query: &str, custom: CustomMedia) -> bool {
+        let q = query.trim();
+        let q = q.strip_prefix("@media").unwrap_or(q).trim();
+        // Любой пробельный знак — тот же пробел (css-syntax-3 §4.2
+        // whitespace-token): `and` на отдельной строке
+        // (`mq-negative-range-001/002`) не должен ронять запрос.
+        let q = q.split_whitespace().collect::<Vec<_>>().join(" ");
+        let q = q.as_str();
+        // Пустой список запросов равен `all` (mediaqueries-5 §2.1:
+        // «An empty media query list evaluates to true»): пробел после
+        // `@media` необязателен, и `@media{ ... }` обязано примениться
+        // (`at-media-whitespace-optional-001/002`).
+        if q.is_empty() {
+            return true;
+        }
+        // Список запросов через запятую — «или». Негодный запрос НЕ валит
+        // список целиком (§3.1: он заменяется на `not all`), поэтому каждая
+        // часть считается сама по себе.
+        split_top_level(q, ',')
+            .into_iter()
+            .any(|alt| self.mq_query(alt, custom) == SupTri::True)
+    }
+}

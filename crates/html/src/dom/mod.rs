@@ -32,9 +32,9 @@ mod ua_style;
 mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
-use crate::dom::parse_document::collect_style_tags;
 pub use crate::dom::parse_document::parse;
 pub use crate::dom::parse_document::parse_media;
+use crate::dom::style_sources::collect_style_tags;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;
 

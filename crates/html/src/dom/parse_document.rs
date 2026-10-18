@@ -1,5 +1,6 @@
 //! Parse HTML/XML into styled nodes, collecting stylesheet and shadow scopes before conversion.
 
+use super::style_sources::collect_style_tags;
 use super::{Node, user_agent_css};
 use super::{content, float_tail, grid_static_position, subgrid_used};
 use crate::dom::display_inheritance::resolve_display_inherit;
@@ -12,7 +13,7 @@ use crate::dom::xhtml::*;
 use crate::style::css::{Decls, LayerRegistry, Media, Rule, parse_document_sheet, parse_keyframes};
 use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
 use crate::style::select::{QUIRKS, quirks};
-use markup5ever_rcdom::{Handle, NodeData};
+use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -217,42 +218,4 @@ pub fn parse_media(html: &str, extra_css: &str, mut media: Media) -> Vec<Node> {
         quirks_percent_heights(&mut out, None);
     }
     out
-}
-
-/// Содержимое `<style>`-тегов документа, каждый — отдельной таблицей;
-/// html5ever кладёт его текстом внутрь.
-/// ПРОБОВАЛИ И ОТКАТИЛИ: раскрывать ссылки на знаки (`&gt;`, `&amp;`) в
-/// содержимом `<style>`, когда документ XHTML. По разбору XML это верно —
-/// построитель HTML держит `<style>` сырым текстом, и селектор `body &gt; div`
-/// не совпадает ни с чем; в наборе таких файлов 103. Замерено по всему CSS2:
-/// 5233 -> 5230, приобретено 0, потеряно 3. Раскрытые правила доезжают до
-/// раскладки и вскрывают ошибки НИЖЕ (`text-indent-intrinsic-001` 0.00 -> 1.10,
-/// `-003` 0.00 -> 0.68), а `content-177` 0.42 -> «красное видно»: раскрытая
-/// `&quot;` закрывает строку CSS раньше времени. Возвращаться сюда после
-/// разбора этих трёх корней.
-pub(super) fn collect_style_tags(handle: &Handle, out: &mut Vec<String>) {
-    if let NodeData::Element { name, .. } = &handle.data
-        && &*name.local == "style"
-    {
-        let mut sheet = String::new();
-        for child in handle.children.borrow().iter() {
-            if let NodeData::Text { contents } = &child.data {
-                // Обёртка `<![CDATA[ … ]]>` встречается в эталонах XHTML: там
-                // она прячет стиль от разбора XML. Разбору CSS она мусор, и
-                // правила до первой закрывающей скобки пропадали вместе с ней.
-                let text = contents.borrow();
-                let trimmed = text.trim();
-                let body = trimmed
-                    .strip_prefix("<![CDATA[")
-                    .and_then(|rest| rest.strip_suffix("]]>"))
-                    .unwrap_or(&text);
-                // Preserve child text content: an invented LF makes EOF strings invalid.
-                sheet.push_str(body);
-            }
-        }
-        out.push(sheet);
-    }
-    for child in handle.children.borrow().iter() {
-        collect_style_tags(child, out);
-    }
 }

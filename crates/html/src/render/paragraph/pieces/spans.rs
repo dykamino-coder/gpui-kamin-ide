@@ -126,3 +126,22 @@ fn rotated_central(inherited: &Computed) -> bool {
         && inherited.sideways != Some(true)
         && inherited.text_sideways != Some(true)
 }
+
+/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
+/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
+/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
+/// sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way.
+pub(super) fn rotate_rel_spans(
+    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
+    inherited: &crate::style::computed::Computed,
+) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
+    if inherited.rotated_line != Some(true) {
+        return spans;
+    }
+    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
+    spans
+        .into_iter()
+        .map(|(r, d, b)| (r, turn(d), turn(b)))
+        .collect()
+}

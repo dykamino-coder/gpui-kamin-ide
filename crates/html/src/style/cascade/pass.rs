@@ -4,6 +4,38 @@ use super::*;
 mod all_reset;
 
 impl Computed {
+    pub fn apply_decls(&mut self, d: &Decls) {
+        for (k, v) in d {
+            if k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
+                continue;
+            }
+            for part in v.split(crate::style::css::DECL_SEP) {
+                self.apply_one(k, part);
+            }
+        }
+    }
+
+    /// То же, но со словарём переменных: `var(--x)` подставляется значением.
+    ///
+    /// Без этого современные темы не работают вовсе — они целиком построены на
+    /// переменных, и каждое такое объявление молча терялось.
+    pub fn apply_decls_with_vars(&mut self, d: &Decls, vars: &Decls) {
+        // Два прохода: сначала обычные объявления, затем помеченные
+        // `!important`. Так важное перекрывает любое обычное независимо от
+        // порядка правил — раньше пометка просто срезалась, и объявление
+        // конкурировало на общих основаниях.
+        // Порядок объявлений внутри правила: сперва СОКРАЩЁННЫЕ, потом
+        // отдельные. `border: solid gray; border-width: 1px 2px 3px 4px`
+        // обязано дать 1/2/3/4, а не 3px от сокращения; словарь объявлений
+        // исходного порядка не помнит, и без сортировки исход зависел от
+        // случайного обхода хеш-таблицы — от запуска к запуску РАЗНОГО
+        // (`abs-pos-border-offset-001`). Общность меряется числом дефисов:
+        // `border` < `border-width` < `border-top-width`.
+        for important in [false, true] {
+            self.apply_pass(d, vars, important, CascadeCx::NONE);
+        }
+    }
+
     /// Один проход: только обычные объявления либо только важные.
     pub(crate) fn apply_pass<'a>(
         &mut self,

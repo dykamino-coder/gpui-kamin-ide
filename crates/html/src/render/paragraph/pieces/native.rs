@@ -1,6 +1,6 @@
 //! Построение абзаца с собственной раскладкой строк.
 
-use super::paragraph_spans;
+use super::{paragraph_spans, rotate_rel_spans};
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -235,23 +235,4 @@ pub(crate) fn native_paragraph(
             .into_any_element(),
         projection,
     )
-}
-
-/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
-/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
-/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
-/// sends the line axis (+x) to screen-down and the block axis (+y) to
-/// screen-left; `sideways-lr` turns the other way.
-fn rotate_rel_spans(
-    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
-    inherited: &crate::style::computed::Computed,
-) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
-    if inherited.rotated_line != Some(true) {
-        return spans;
-    }
-    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
-    spans
-        .into_iter()
-        .map(|(r, d, b)| (r, turn(d), turn(b)))
-        .collect()
 }
