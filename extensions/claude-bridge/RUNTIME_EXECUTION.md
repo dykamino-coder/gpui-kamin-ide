@@ -48,7 +48,7 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 
 ## Текущая пачка `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
 
-**Status:** in progress. **Snapshot:** public `origin/main` `fd1a3e34d52fa06d3d5090138cebd73bda33dcc9`.
+**Status:** in progress. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
 **Поручение 2026-10-20:** владелец поручил самому завершить fixes со скриншотов,
 прояснить future completion/acceptance flow, выпустить один release и отдельно
 проверить поведение после выкладки. Роль текущего агента — мейнтейнер; разрешены
@@ -69,10 +69,11 @@ commit/push/review/merge и один coordinated release. Доступа к depl
 
 Порядок: decision/coordination → #377 → повторный fetch → #378 → close-out →
 один release. Входящие чужие PR не включаются автоматически. #380 (INC-0069,
-retired subagent watcher) уже открыт и пересекается по server watcher: его не
-принимать в эту пачку; если он войдёт в main, интегрировать только уже принятый
-source без `ours`/`theirs`, повторить применимые tests и отметить delivery в
-release notes. #302 и HTML/WPT не входят в поручение. Старый RV snapshot ниже
+retired subagent watcher) принят другим мейнтейнером в `9c965ea8` до этой
+coordination: это уже исходный accepted source, а не новая задача этой пачки.
+Он пересекается с #378 по server watcher: интегрировать без `ours`/`theirs`,
+повторить применимые tests и отметить фактическую доставку в release notes.
+#302 и HTML/WPT не входят в поручение. Старый RV snapshot ниже
 сохраняет исходные состав, ограничения и незакрытые Windows gates.
 
 ## История `RV-2026-09-29` — остаток прежнего snapshot, приёмка открыта
