@@ -173,6 +173,7 @@ pub(crate) fn vertical_paragraph(
     };
     let central = !inherited.wm().alphabetic_baseline();
     let vt = crate::text::vertical::VerticalText::new(inner)
+        .measure_context(&opts.cx)
         .counter_clockwise(ccw_line)
         .lines_left_first(wm.lines_reversed())
         .first_line(measure_font(inherited, opts), px(em), lh, central)
@@ -185,6 +186,7 @@ pub(crate) fn vertical_paragraph(
         .inline_keyword(native_vertical::keyword(inherited))
         .keyed(crate::text::vertical::vt_seq_key(
             text_id(&plain) ^ opts.doc_salt ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
+            opts.cx.vcx(),
         ));
     // Настоящий предел от родителя (ортогональная ячейка): строка,
     // которая уже влезает, заявляет высоту честно — без неё гибкая

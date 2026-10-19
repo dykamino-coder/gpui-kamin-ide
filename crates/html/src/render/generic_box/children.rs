@@ -203,6 +203,7 @@ pub(crate) fn generic_children(
                 e.style.clamp_lines(),
                 max_h,
             )
+            .measure_context(&opts.cx)
             .trim_end(clamp_trim)
             .hooked(),
         );

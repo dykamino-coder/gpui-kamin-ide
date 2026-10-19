@@ -31,6 +31,10 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Vertical paragraph measurements and root paint geometry of this document.
+    pub(crate) vertical_measures: Rc<crate::text::vertical::VerticalMeasures>,
+    /// Paragraph paint rows consumed by this document's clamp cuts.
+    pub(crate) paragraph_rows: Rc<crate::text::clamp::ParagraphRows>,
     /// CSS font-face metric descriptors, scoped to this document.
     pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
     /// Shaped paragraphs and fit results shared only inside this document.

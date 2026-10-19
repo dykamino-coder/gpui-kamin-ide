@@ -1,6 +1,5 @@
 //! Clamp container measurements, paragraph numbering, and build traversal scopes.
 
-use super::PARA_ROWS;
 use gpui::{Bounds, Pixels};
 
 /// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
@@ -185,7 +184,6 @@ pub fn forget_clamp_buffers() {
     CLAMP_NEXT.with(|m| m.borrow_mut().clear());
     CLAMP_BOXES.with(|m| m.borrow_mut().clear());
     CLAMP_SEQ.with(|m| m.borrow_mut().clear());
-    PARA_ROWS.with(|m| m.borrow_mut().clear());
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.

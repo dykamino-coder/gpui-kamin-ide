@@ -82,6 +82,7 @@ pub(crate) fn canvas_layer(
             };
             let b = e.style.borders();
             let area = crate::paint::background::RootArea {
+                vertical: Some(vcx.doc.vertical_measures.clone()),
                 measured,
                 left: side(e.style.margin.left) + side(b.left),
                 top: side(e.style.margin.top) + side(b.top),

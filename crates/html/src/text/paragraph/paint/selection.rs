@@ -28,6 +28,7 @@ impl Paragraph {
         }
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
+            clamp_rows: self.clamp_rows.clone(),
             measures: self.measures.clone(),
             scroll_owner: None,
             plaintext: self.plaintext,

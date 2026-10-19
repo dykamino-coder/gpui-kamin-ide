@@ -1,7 +1,7 @@
-//! Layout for vertical_text; split out to keep the owning module within 250 lines.
+//! Vertical text measurement and physical layout claims.
 
+use super::VT_INLINE_MAX;
 use super::VerticalText;
-use super::{VT_INLINE_MAX, VT_MEASURED};
 use crate::layout::writing_mode::orthogonal_measure;
 use crate::text::vertical::vertical_line_baseline;
 use gpui::{App, LayoutId, Window};
@@ -78,7 +78,7 @@ impl VerticalText {
             self.natural.height
         } else {
             self.key
-                .and_then(|k| VT_MEASURED.with(|c| c.borrow().get(&k).copied()))
+                .and_then(|k| self.measures.measured.borrow().get(&k).copied())
                 .unwrap_or(self.natural.height)
         };
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

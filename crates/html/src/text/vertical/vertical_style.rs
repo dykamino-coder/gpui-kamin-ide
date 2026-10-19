@@ -5,6 +5,7 @@ use gpui::{AnyElement, Pixels};
 impl VerticalText {
     pub fn new(child: AnyElement) -> Self {
         VerticalText {
+            measures: Default::default(),
             child,
             natural: gpui::Size::default(),
             fit_limit: None,
@@ -19,6 +20,12 @@ impl VerticalText {
             layout_id: None,
             turn: None,
         }
+    }
+
+    /// Share measurements with the document that built this paragraph.
+    pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
+        self.measures = cx.doc().vertical_measures.clone();
+        self
     }
 
     /// Строки поданы снизу вверх (`vertical-lr`): первая — левая колонка.

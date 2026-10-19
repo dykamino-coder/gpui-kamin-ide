@@ -10,7 +10,7 @@ mod paragraph;
 mod tests;
 
 use super::ClampCut;
-use super::{ClampEntry, clamp_cut, clamp_para, take_para_rows};
+use super::{ClampEntry, clamp_cut, clamp_para};
 use crate::text::clamp::line_state::{CLAMP_BOXES, CLAMP_EXTENT, CLAMP_NEXT};
 use crate::text::clamp::{CLAMP_CUTS, CLAMP_PARA};
 pub(crate) use boxes::ClampBox;
@@ -30,7 +30,7 @@ impl ClampCut {
         _cx: &mut App,
     ) {
         let all_entries = std::mem::take(&mut *self.lines.borrow_mut());
-        let para_rows = take_para_rows(self.key);
+        let para_rows = self.rows.take(self.key);
         let prev_para = clamp_para(self.key);
         let plan = ClampGeometry {
             limit: self.limit,

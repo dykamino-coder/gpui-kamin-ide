@@ -62,7 +62,7 @@ pub fn render_paged_select(
     let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
-    crate::interactive::frame::frame_sanitize();
+    crate::interactive::frame::frame_sanitize(vcx);
     collect_mask_defs(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);

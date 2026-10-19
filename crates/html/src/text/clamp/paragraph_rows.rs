@@ -3,39 +3,31 @@
 use super::{ClampEntry, ClampLines};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
 
-thread_local! {
-    /// Настоящие строки абзацев клэмп-контейнера на этом кадре: (ключ,
-    /// номер абзаца) → (верх, низ) строк в координатах окна. Пишет их
-    /// отрисовка абзаца (`lines::Paragraph::paint`), забирает `ClampCut`
-    /// (он рисуется последним ребёнком контейнера). Без них строки
-    /// абзаца делились бы поровну, а строка с крупным кеглем или руби
-    /// выше прочих (css-overflow-4 §5.3: точка среза — между строчными
-    /// коробками, их высоты свои).
-    #[allow(clippy::type_complexity)] // A container/paragraph key maps to measured row bounds.
-    pub(super) static PARA_ROWS: std::cell::RefCell<std::collections::HashMap<(u64, u32), Vec<(f32, f32)>>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
+use std::{cell::RefCell, collections::HashMap};
 
-/// Отрисовка абзаца сообщает его строки (см. `PARA_ROWS`).
-pub fn publish_para_rows(tag: (u64, u32), rows: Vec<(f32, f32)>) {
-    PARA_ROWS.with(|m| {
-        m.borrow_mut().insert(tag, rows);
-    });
-}
+type Rows = HashMap<(u64, u32), Vec<(f32, f32)>>;
 
-pub(super) fn take_para_rows(key: u64) -> std::collections::HashMap<u32, Vec<(f32, f32)>> {
-    PARA_ROWS.with(|m| {
-        let mut m = m.borrow_mut();
-        let tags: Vec<(u64, u32)> = m.keys().filter(|k| k.0 == key).copied().collect();
+/// Actual paragraph rows shared with the document's clamp cut elements.
+#[derive(Default)]
+pub(crate) struct ParagraphRows(RefCell<Rows>);
+
+impl ParagraphRows {
+    pub(crate) fn publish(&self, tag: (u64, u32), rows: Vec<(f32, f32)>) {
+        self.0.borrow_mut().insert(tag, rows);
+    }
+
+    pub(crate) fn take(&self, key: u64) -> HashMap<u32, Vec<(f32, f32)>> {
+        let mut rows = self.0.borrow_mut();
+        let tags: Vec<_> = rows.keys().filter(|tag| tag.0 == key).copied().collect();
         tags.into_iter()
-            .filter_map(|t| {
-                m.remove(&t).map(|mut v| {
-                    v.sort_by(|a, b| a.0.total_cmp(&b.0));
-                    (t.1, v)
+            .filter_map(|tag| {
+                rows.remove(&tag).map(|mut row| {
+                    row.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    (tag.1, row)
                 })
             })
             .collect()
-    })
+    }
 }
 
 /// Проба строк: канвас в элементе с текстом (или блоке), пишет границы и
@@ -116,4 +108,22 @@ pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
     .left_0()
     .size_full()
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn cuts_take_only_their_document_and_container_rows() {
+        let a = crate::document::state::DocState::default();
+        let b = crate::document::state::DocState::default();
+        a.paragraph_rows
+            .publish((7, 0), vec![(20., 25.), (10., 15.)]);
+        a.paragraph_rows.publish((8, 0), vec![(30., 35.)]);
+        b.paragraph_rows.publish((7, 0), vec![(40., 45.)]);
+        assert_eq!(a.paragraph_rows.take(7)[&0], vec![(10., 15.), (20., 25.)]);
+        assert!(a.paragraph_rows.take(7).is_empty());
+        assert_eq!(a.paragraph_rows.take(8)[&0], vec![(30., 35.)]);
+        assert_eq!(b.paragraph_rows.take(7)[&0], vec![(40., 45.)]);
+    }
 }

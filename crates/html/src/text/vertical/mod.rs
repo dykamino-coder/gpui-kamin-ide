@@ -4,7 +4,6 @@ mod root_left;
 mod vertical_text;
 pub use crate::text::vertical::combined_upright::CombinedUpright;
 pub use crate::text::vertical::root_left::record_root_left;
-pub use crate::text::vertical::root_left::root_left_prev;
 pub use crate::text::vertical::vertical_text::VerticalText;
 
 // owner: A
@@ -16,53 +15,17 @@ pub(crate) mod combined_text;
 mod vertical_line_baseline;
 mod vertical_style;
 
-thread_local! {
-    /// Двухкадровый замер повёрнутого блока: ключ абзаца → фактическая
-    /// высота содержимого при РЕШЁННОЙ длине строки (см. `prepaint`).
-    /// Первый кадр заявляет ширину по свободному замеру, второй — по факту;
-    /// стенд и так ждёт устоявшийся кадр (как пробы ячеек).
-    static VT_MEASURED: std::cell::RefCell<std::collections::HashMap<u64, Pixels>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Счётчик ВХОЖДЕНИЙ базового ключа за кадр: два вертикальных абзаца с
-    /// одинаковым текстом и числом узлов (повторяющиеся ячейки) делили один
-    /// ключ, и замер одного применялся к другому. Порядок обхода кадра
-    /// детерминирован — порядковый номер вхождения стабилен между кадрами.
-    pub(crate) static VT_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u64>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Замер ЛЕВОГО края коробки корня (ключ — соль документа): фон холста
-    /// позиционируется от коробки корня (CSS 2.2 §14.2), а она при
-    /// `vertical-rl` по содержимому и прижата к правому краю окна — её край
-    /// известен только после раскладки. Пишет подготовка тела, читает
-    /// отрисовка холста того же кадра (подготовка всего дерева идёт раньше
-    /// отрисовки); прошлое значение — запасное.
-    static ROOT_LEFT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
+mod measures;
+pub(crate) use measures::VerticalMeasures;
 
-/// Санитария начала кадра (`render`/`render_block`): счётчик вхождений
-/// VT-ключей обнуляется, а НЕЗАКРЫТЫЕ слои позиционированных выбрасываются —
-/// пойманная паника прошлого кадра оставляла слой навсегда, и `late_close`
-/// следующей страницы отдавал чужие элементы.
-/// Забыть двухкадровые замеры вертикальных абзацев — при смене документа:
-/// ключи солятся документом, но мусор копился бы бесконечно.
+/// Clear only the unfinished paint frame; document measurements have owners.
 pub fn forget_vt_measures() {
-    VT_MEASURED.with(|c| c.borrow_mut().clear());
-    ROOT_LEFT.with(|c| c.borrow_mut().clear());
-    // Рамка повёрнутого абзаца живёт только на время его подготовки; если
-    // подготовка оборвалась паникой, `set(prev)` не выполнится, и рамка
-    // протекла бы в следующие страницы — щупы горизонтальных абсолютов
-    // считались бы повёрнутыми (`abspos-*` из CSS2 уходили в красное).
     VT_FRAME.with(|c| c.set(None));
 }
 
-/// Ключ с порядковым номером вхождения базового ключа в этом кадре.
-pub fn vt_seq_key(base: u64) -> u64 {
-    VT_SEQ.with(|c| {
-        let mut m = c.borrow_mut();
-        let n = m.entry(base).or_insert(0);
-        *n += 1;
-        base ^ n.wrapping_mul(0x517C_C1B7_2722_0A95)
-    })
+/// Stable occurrence key within this document's current traversal.
+pub fn vt_seq_key(base: u64, vcx: crate::document::state::ValueCx<'_>) -> u64 {
+    vcx.doc.vertical_measures.sequence_key(base)
 }
 
 thread_local! {

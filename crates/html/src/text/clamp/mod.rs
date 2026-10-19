@@ -20,13 +20,10 @@ pub use crate::text::clamp::line_state::forget_clamp_buffers;
 pub use crate::text::clamp::line_state::{ClampSpan, close_clamp_span, open_clamp_span};
 pub use crate::text::clamp::paragraph_rows::clamp_empty_probe;
 pub use crate::text::clamp::paragraph_rows::clamp_probe;
-pub use crate::text::clamp::paragraph_rows::publish_para_rows;
-use crate::text::clamp::paragraph_rows::take_para_rows;
+pub(crate) use paragraph_rows::ParagraphRows;
 
 // owner: A
 
 use crate::text::clamp::line_state::CLAMP_CUTS;
 
 use crate::text::clamp::line_state::CLAMP_PARA;
-
-use crate::text::clamp::paragraph_rows::PARA_ROWS;

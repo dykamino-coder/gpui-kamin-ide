@@ -13,6 +13,7 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 // Paragraph span records retain their text ranges, geometry and decoration state.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
+    pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,
     /// Scroll owner and the shift chain the paragraph is built in.
     pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
@@ -57,8 +58,7 @@ pub struct Paragraph {
     /// Знак строки обрыва `line-clamp` (`block-ellipsis`): None — U+2026,
     /// пустая строка — `no-ellipsis`.
     pub(super) clamp_marker: Option<String>,
-    /// (ключ клэмп-контейнера, номер абзаца): отрисовка сообщает строки
-    /// вычислителю среза (`interact::publish_para_rows`).
+    /// Container/paragraph identity for rows shared with the clamp cut.
     pub(super) clamp_tag: Option<(u64, u32)>,
     /// Шаги строк абзаца ДО балансировки (`text-wrap: balance` в
     /// клэмп-контейнере, пока бюджета нет): точка среза определяется до

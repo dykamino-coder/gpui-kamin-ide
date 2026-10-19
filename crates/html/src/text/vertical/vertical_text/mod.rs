@@ -1,14 +1,15 @@
-//! Vertical text for vertical; split out to keep the owning module within 250 lines.
+//! Vertical text geometry, element ownership, and GPUI phase hooks.
 
 mod layout;
 mod painting;
 mod prepaint;
 
-use super::{VT_FRAME, VT_INLINE_MAX, VT_MEASURED};
+use super::{VT_FRAME, VT_INLINE_MAX};
 use crate::hooks::Wrap;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 pub struct VerticalText {
+    pub(crate) measures: std::rc::Rc<super::VerticalMeasures>,
     /// Own layout node: the unrounded box edge anchors the turned content.
     pub(crate) layout_id: Option<LayoutId>,
     /// Clockwise turn frame from prepaint: unrounded block extent and the

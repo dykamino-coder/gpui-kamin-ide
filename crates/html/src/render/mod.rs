@@ -118,7 +118,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
-    crate::interactive::frame::frame_sanitize();
+    crate::interactive::frame::frame_sanitize(vcx);
     collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
@@ -164,7 +164,7 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
-    crate::interactive::frame::frame_sanitize();
+    crate::interactive::frame::frame_sanitize(vcx);
     collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный

@@ -8,6 +8,8 @@ use gpui::{Bounds, Pixels, px};
 /// недоступен: автоматическую высоту нельзя восстанавливать по высоте холста.
 #[derive(Clone, Default)]
 pub struct RootArea {
+    /// Vertical root measurements shared with the document's paint elements.
+    pub(crate) vertical: Option<std::rc::Rc<crate::text::vertical::VerticalMeasures>>,
     /// Geometry of the real root box, recorded before the canvas is painted.
     pub(crate) measured: Option<super::root_box::Measurement>,
     /// Поле плюс рамка корня с этой стороны.
@@ -39,7 +41,14 @@ impl RootArea {
         let left_abs = self
             .left_key
             .filter(|_| self.width.is_none())
-            .and_then(crate::text::vertical::root_left_prev)
+            .and_then(|key| {
+                self.vertical
+                    .as_ref()?
+                    .root_left
+                    .borrow()
+                    .get(&key)
+                    .copied()
+            })
             .map(|l| l - f32::from(clip.origin.x));
         let (x, w) = match left_abs {
             Some(l) => (l, (cw - l - self.right).max(0.0)),
