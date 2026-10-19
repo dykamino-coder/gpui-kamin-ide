@@ -55,33 +55,6 @@ impl Computed {
                 self.apply_one("text-shadow", &px, vcx);
             }
         }
-        if let Some(raw) = self.gradient_em.take() {
-            let own_font = match self.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * parent_font_px,
-                _ => parent_font_px,
-            };
-            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
-            let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-            if let Some(g) = parse_gradient_with_current(
-                &px,
-                self.color.unwrap_or(Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                }),
-                vcx,
-            ) {
-                if self.gradient_current.is_some() {
-                    self.gradient_current = Some(g.clone());
-                }
-                self.gradient = Some(g);
-                if self.gradient_raw.is_some() {
-                    self.gradient_raw = Some(px);
-                }
-            }
-        }
         for list in [self.grid_tracks.as_mut(), self.grid_rows.as_mut()]
             .into_iter()
             .flatten()
@@ -213,6 +186,7 @@ impl Computed {
             fix(&mut o.offset);
         }
         self.resolve_decor_inset_font(fix, &family, base, vcx);
+        self.resolve_gradient_lengths(fix, vcx);
         self.bg_lists.resolve_font(used, ex, ch, vcx);
         self.resolve_image_lengths(vcx);
     }

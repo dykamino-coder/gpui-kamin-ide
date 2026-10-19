@@ -48,18 +48,8 @@ impl Computed {
                     *value,
                     |length| {
                         fix(length);
-                        match *length {
-                            Some(Len::Lh(k)) => *length = Some(Len::Px(k * line)),
-                            Some(Len::LhPx(k, p)) => *length = Some(Len::Px(k * line + p)),
-                            Some(Len::Calc(i)) => {
-                                let mut sum = calc_get(i, vcx);
-                                if sum.lh != 0.0 {
-                                    sum.px += sum.lh * line;
-                                    sum.lh = 0.0;
-                                    *length = sum.collapse_mixed(vcx);
-                                }
-                            }
-                            _ => {}
+                        if let Some(length) = length {
+                            length.resolve_line_height(line, vcx);
                         }
                     },
                     vcx,

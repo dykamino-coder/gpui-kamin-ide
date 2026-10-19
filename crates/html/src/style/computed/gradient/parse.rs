@@ -46,9 +46,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
     }
     let mut idx = 0usize;
     let circle = radial && parts[0].contains("circle");
-    // Способ ИНТЕРПОЛЯЦИИ (css-images-4 §3.4.1.1): `to right in hsl longer
-    // hue` — суффикс отделяется от направления, иначе матч направления
-    // промахивался и первый аргумент уходил в стопы.
+    // Interpolation follows the optional ending-shape/direction head.
     let (head, interp) = match parts[0].find(" in ") {
         Some(at) => (parts[0][..at].trim(), Some(parts[0][at + 4..].trim())),
         None if parts[0].trim_start().starts_with("in ") => {
@@ -69,8 +67,6 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
             0
         }
     });
-    // Пространство смешения: явное из записи, иначе решается ниже по составу
-    // стопов (css-color-4 §12.2).
     let named_space: Option<GradSpace> =
         interp
             .and_then(|i| i.split_whitespace().next())
@@ -90,11 +86,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
                 "lch" => Some(GradSpace::Lch),
                 "hsl" => Some(GradSpace::Hsl),
                 "hwb" => Some(GradSpace::Hwb),
-                // Пространства с собственным охватом (`display-p3`, `a98-rgb`,
-                // `rec2020`, `prophoto-rgb`) гамма-кодированы, и для цветов
-                // ВНУТРИ охвата sRGB смешение в них от sRGB не отличается:
-                // кривая одна и та же, а матрица первичных с интерполяцией
-                // коммутирует. Заводить их отдельно нечем.
+                // Other encoded RGB spaces retain the legacy sRGB route.
                 _ => None,
             });
     if interp.is_some() && head.is_empty() {
@@ -107,6 +99,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
     let mut raw: Vec<(Color, Option<f32>)> = vec![];
     let mut raw_px: Vec<(Color, Option<f32>)> = vec![];
     let mut any_pct = false;
+    let mut lengths = Vec::new();
     // Умолчание пространства держится на ЗАПИСИ цветов, а не на их значениях
     // (css-color-4 §12.2), поэтому решается прямо здесь, пока текст стопа
     // ещё под рукой.
@@ -127,6 +120,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
                 crate::style::values::color_space::ColorExpression::Relative(_)
             );
         if words.len() == 1 {
+            lengths.push(None);
             colors.push(expression);
             raw.push((colour, None));
             raw_px.push((colour, None));
@@ -134,6 +128,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         }
         for t in &words[1..] {
             let before = raw.len();
+            let length = Len::parse_mixed(t, vcx);
             if let Some(n) = t
                 .strip_suffix('%')
                 .and_then(|n| n.trim().parse::<f32>().ok())
@@ -141,26 +136,27 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
                 any_pct = true;
                 raw.push((colour, Some(n / 100.0)));
                 raw_px.push((colour, None));
-            } else if let Some(Len::Px(v)) = Len::parse(t, vcx) {
+            } else if let Some(Len::Px(v)) = length {
                 // Позиция в точках: долей не выразить, длина оси известна
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if let Some((pct, px)) = pct_px_pair(t, vcx) {
+            } else if let Some((pct, px)) = length.and_then(|length| match length {
+                Len::Calc(id) => crate::style::values::value::calc_get(id, vcx).pct_px(),
+                _ => None,
+            }) {
                 // Percentage and pixels remain paired until the axis is known.
                 any_pct = true;
                 raw.push((colour, Some(pct)));
                 raw_px.push((colour, Some(px)));
-            } else if !t.trim().is_empty()
-                && Len::parse(t, vcx).is_none()
-                && t.trim().parse::<f32>().is_err()
-            {
+            } else if !t.trim().is_empty() && length.is_none() && t.trim().parse::<f32>().is_err() {
                 continue;
             } else {
                 raw.push((colour, None));
                 raw_px.push((colour, None));
             }
             if raw.len() > before {
+                lengths.push(length);
                 colors.push(expression.clone());
             }
         }
@@ -176,10 +172,9 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         // нет, а `stops_px` собирается только когда позиция есть у всех.
         raw_px = vec![(colour, None), (colour, None)];
         colors = vec![colors[0].clone(); 2];
+        lengths = vec![None; 2];
     }
-    // Фиксация по css-images-3 §3.5.3: позиция не меньше предыдущей, стопы
-    // без позиции — поровну между соседями С позициями (а не по номеру в
-    // списке). Тот же расклад, что у растра.
+    // CSS Images 3 §3.5.3 fixes decreasing and omitted stop positions.
     let last = raw.len() - 1;
     let stops: Vec<(Color, f32)> = crate::style::computed::place_stops(raw.clone());
     // Точечные стопы пригодны к отрисовке, только когда позиции есть у ВСЕХ:
@@ -212,6 +207,15 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         stops,
         stops_px,
         stops_raw,
+        stop_lengths: if lengths
+            .iter()
+            .flatten()
+            .any(|l| !matches!(l, Len::Px(_) | Len::Pct(_)))
+        {
+            lengths
+        } else {
+            vec![]
+        },
         space,
         hue: hue_arc,
         colors: if colors.iter().any(|c| c.depends_on_current()) {

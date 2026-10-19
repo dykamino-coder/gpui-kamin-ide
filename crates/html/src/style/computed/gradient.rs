@@ -7,11 +7,10 @@ use crate::style::values::value::{Color, Len};
 mod current_color;
 mod direction;
 mod image_set;
+mod lengths;
 mod parse;
 pub(crate) mod stops;
-pub(crate) use current_color::{
-    parse_gradient, parse_gradient_with_current, resolve_gradient_colors,
-};
+pub(crate) use current_color::{parse_gradient, resolve_gradient_colors};
 pub(super) use direction::corner_direction;
 use direction::gradient_direction;
 pub(super) use image_set::image_set_pick;

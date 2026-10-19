@@ -111,6 +111,32 @@ impl Len {
         })
     }
 
+    /// Fold a computed line-height basis without resolving percentages.
+    pub(crate) fn resolve_line_height(&mut self, line: f32, vcx: ValueCx<'_>) {
+        match *self {
+            Len::Lh(_) | Len::LhPx(..) => {
+                *self = self.font_units_to_px(
+                    FontCx {
+                        line_px: Some(line),
+                        ..FontCx::FALLBACK
+                    },
+                    vcx,
+                );
+            }
+            Len::Calc(id) => {
+                let mut sum = calc_get(id, vcx);
+                if sum.lh != 0.0 {
+                    sum.px += sum.lh * line;
+                    sum.lh = 0.0;
+                    if let Some(length) = sum.collapse_mixed(vcx) {
+                        *self = length;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Шрифтовые единицы в точки по `font`, остальное — как было: шаг
     /// «решить em» без базы долей (прежний `fallback_len_px(...).map(Len::Px)`).
     pub fn font_units_to_px(self, font: FontCx<'_>, vcx: ValueCx<'_>) -> Len {

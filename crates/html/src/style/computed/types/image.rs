@@ -41,6 +41,8 @@ pub struct Gradient {
     /// точечная позиция теряется и стоп встаёт «поровну» (blue 170px в
     /// 50px-градиенте красил край синим вместо интерполяции).
     pub stops_raw: Vec<(Color, Option<f32>, Option<f32>)>,
+    /// Parsed relative stop lengths, aligned with expanded color stops.
+    pub(crate) stop_lengths: Vec<Option<Len>>,
     /// Пространство, в котором смешиваются цвета (css-color-4 §12.2).
     pub space: GradSpace,
     /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,

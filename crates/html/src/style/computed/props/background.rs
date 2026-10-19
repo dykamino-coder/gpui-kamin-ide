@@ -91,7 +91,6 @@ impl Computed {
                             .as_ref()
                             .filter(|g| !g.colors.is_empty())
                             .cloned();
-                        self.gradient_em = has_font_units(v).then(|| v.to_string());
                         // Сырая запись нужна фону РЯДА таблицы: он рисуется
                         // слоем картинки, и градиент туда идёт источником.
                         self.gradient_raw = Some(v.to_string());

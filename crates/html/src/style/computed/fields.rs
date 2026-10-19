@@ -598,11 +598,6 @@ pub struct Computed {
     /// Resolved opaque, constant background stacks retain their clip regions.
     pub(crate) flat_text_background: Option<Color>,
     pub(crate) flat_border_background: Option<Color>,
-    /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
-    /// стопа в `em` разбором не читается и терялась (стоп становился «без
-    /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`
-    /// (`white-space-intrinsic-size-017/018`).
-    pub gradient_em: Option<String>,
     /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
     pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,

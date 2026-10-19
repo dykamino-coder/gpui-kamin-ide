@@ -67,7 +67,6 @@ impl Computed {
             .as_ref()
             .filter(|g| !g.colors.is_empty())
             .cloned();
-        self.gradient_em = has_font_units(top).then(|| top.to_string());
         // Corner keywords need the concrete image size (CSS Images 3 §3.1).
         // Preserve the existing native route for other untiled shorthand
         // gradients: canvas and table backgrounds select it by raw presence.
@@ -76,7 +75,7 @@ impl Computed {
             .as_ref()
             .filter(|g| {
                 tiled
-                    || self.gradient_em.is_some()
+                    || has_font_units(top)
                     || g.radial
                     || g.stops_raw.iter().any(|(_, _, px)| px.is_some())
                     || !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)

@@ -69,11 +69,6 @@ impl Computed {
             .filter(|&(x, y)| x != 0.0 || y != 0.0)
     }
 
-    /// Перевести `em` в точки по размеру шрифта.
-    ///
-    /// Размер шрифта известен только после каскада, поэтому длины в `em`
-    /// доживают до этого места неразрешёнными. Для самого `font-size` база —
-    /// РОДИТЕЛЬСКИЙ размер, для остального — свой собственный.
     /// Перевести единицы окна в точки.
     ///
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
@@ -142,6 +137,12 @@ impl Computed {
         sides(&mut self.border_width);
         sides(&mut self.inset);
         self.resolve_radius_lengths(fix);
+        for gradient in [self.gradient.as_mut(), self.gradient_current.as_mut()]
+            .into_iter()
+            .flatten()
+        {
+            gradient.resolve_lengths(fix, vcx);
+        }
         if let Some((row, col)) = self.gap.as_mut() {
             fix(row);
             fix(col);

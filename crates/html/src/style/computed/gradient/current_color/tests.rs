@@ -129,7 +129,7 @@ fn inherited_template_preserves_computed_font_positions() {
     let g = child.gradient.unwrap();
     assert_eq!(g.stops_px[0], (Color::parse("green", vcx).unwrap(), 20.0));
     assert_eq!(g.stops_px[1].1, 40.0);
-    assert!(child.gradient_em.is_none());
+    assert!(g.stop_lengths.is_empty());
 }
 #[test]
 fn radial_first_stop_accepts_current_and_relative_colors() {

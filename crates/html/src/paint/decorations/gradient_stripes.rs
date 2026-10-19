@@ -60,6 +60,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
                     stops_raw: vec![],
+                    stop_lengths: vec![],
                     // Полоса наследует пространство интерполяции исходного градиента.
                     space: g.space,
                     hue: g.hue,
@@ -117,6 +118,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     stops: vec![(from, 0.0), (to, 1.0)],
                     stops_px: vec![],
                     stops_raw: vec![],
+                    stop_lengths: vec![],
                     // Полоса наследует пространство интерполяции исходного градиента.
                     space: g.space,
                     hue: g.hue,

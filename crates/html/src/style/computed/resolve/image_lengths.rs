@@ -66,7 +66,7 @@ impl Computed {
         lengths(&raw, font, root_font_px(vcx), ex, ch, line)
     }
 
-    fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
+    pub(in crate::style::computed) fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
         let font = match self.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
