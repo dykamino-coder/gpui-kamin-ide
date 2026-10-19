@@ -41482,12 +41482,14 @@ function handleServerMessage(msg, ctx) {
       break;
     }
     case "jsonl:status": {
+      const startsLegacyReplay = msg.status === "watching" && (msg.compacted || !msg.segmentIndex && !msg.replayProgress);
+      const replayComplete = msg.replayComplete ?? (startsLegacyReplay ? false : void 0);
       const statusData = {
         status: msg.status,
         filePath: msg.filePath,
         error: msg.error,
         compacted: msg.compacted,
-        replayComplete: msg.replayComplete,
+        replayComplete,
         // Live byte-progress of the historical replay → the renderer's "loading
         // history … N%". Transient like `compacted`: NOT cached below, or a
         // renderer reload would replay a frozen bar at whatever % it last saw.
@@ -41512,7 +41514,9 @@ function handleServerMessage(msg, ctx) {
         ctx.batcher.flushSubagent();
       }
       const { compacted: _oneShot, replayProgress: _transient, ...cacheableStatus } = statusData;
-      ctx.setCachedJsonlStatus(cacheableStatus);
+      if (statusData.status !== "watching" || replayComplete !== void 0) {
+        ctx.setCachedJsonlStatus(cacheableStatus);
+      }
       ctx.window.webContents.send("jsonl-status", ctx.tabId, statusData);
       break;
     }
