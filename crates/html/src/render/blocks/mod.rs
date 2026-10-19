@@ -100,11 +100,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // перевод в физику при сборке. Float sides are line-relative (left =
     // line-left), independent of `direction` (css-writing-modes-4 §6.3), so
     // RTL hosts use the same plan; paragraphs handle RTL within the bands.
-    // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
-    // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
-    // line-left — низ, и плана для него нет.
-    let vert_host =
-        inherited.wm().vertical() && (!inherited.wm().sideways() || inherited.wm().block_rl());
+    // `sideways-lr` uses the same logical bands; physical holders and shape
+    // profiles start at the bottom line edge (css-writing-modes-4 §6.3).
     // Page stacks still need the measured host's break opportunities before
     // they can fragment it (CSS Break 3 section 4.1). Deferred clamp children
     // retain the counting scope, including the float's independent BFC.
@@ -113,8 +110,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && (!inherited.wm().vertical() || vert_host)
-        && (!inherited.wm().block_rl() || vert_host);
+        && (!inherited.wm().block_rl() || inherited.wm().vertical());
     let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
     let collapsed = by_layer(
         wrap_floats(

@@ -127,13 +127,14 @@ pub(super) fn place_seq(
                         None => break (x0 + ml, top, (cbw - ml - mr).max(0.0)),
                     }
                 };
-                let (_, bh) = probe(kid, cbw, avail, None, p);
+                let (bw, bh) = probe(kid, cbw, avail, None, p);
                 slots[k] = Slot {
                     x,
                     y: t,
                     geometry: p.last_geometry.clone(),
                     avail,
                     b: bh,
+                    i: bw,
                     ..Slot::default()
                 };
                 y = t + bh + mb;

@@ -93,6 +93,8 @@ struct Slot {
     /// Блочный размер border-box: в вертикальном письме по нему ставится
     /// физический левый край (`vertical-rl` идёт от ПРАВОГО края).
     b: f32,
+    /// Measured border-box inline extent, for a bottom-to-top line axis.
+    i: f32,
 }
 
 /// One plan's probe context: the window whose nested layout engine lays the

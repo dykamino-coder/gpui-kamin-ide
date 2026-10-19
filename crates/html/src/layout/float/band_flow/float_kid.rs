@@ -110,6 +110,7 @@ pub(super) fn place_float(
         float_margins: [mt, mb],
         avail,
         b: bh,
+        i: bw,
         ..Slot::default()
     };
 }
@@ -160,6 +161,7 @@ pub(super) fn place_nest(
         x: bx0,
         y: top,
         avail: (bx1 - bx0).max(0.0),
+        i: (bx1 - bx0).max(0.0),
         h: Some(h),
         kids: kids_slots,
         b: it + h + ib,

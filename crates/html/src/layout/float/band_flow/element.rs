@@ -17,6 +17,7 @@ pub struct BandFlow {
     pub(super) built: Vec<AnyElement>,
     /// Письмо хоста: `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr`.
     pub(super) vert: Option<bool>,
+    pub(super) inline_up: bool,
     pub(super) contain_floats: bool,
     pub(super) fragment: Option<super::fragment::FragmentFlow>,
 }
@@ -28,14 +29,16 @@ impl BandFlow {
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
             vert: None,
+            inline_up: false,
             contain_floats,
             fragment: None,
         }
     }
 
-    /// Вертикальное письмо хоста: `rl` — `vertical-rl`, иначе `vertical-lr`.
-    pub fn vertical(mut self, rl: bool) -> Self {
-        self.vert = Some(rl);
+    /// Host block direction and line-left edge (Writing Modes 4 §6.4).
+    pub fn vertical(mut self, wm: crate::style::computed::writing_mode::WritingMode) -> Self {
+        self.vert = Some(wm.block_rl());
+        self.inline_up = wm.sideways_lr();
         self
     }
 }
@@ -197,12 +200,12 @@ impl Hooks for BandFlow {
                 vert.is_some(),
             );
             // Логическое место → физическое (Blink
-            // `writing_mode_converter.cc:80-102`): строчный сдвиг — вниз,
-            // блочный — от правого края у `vertical-rl`, от левого у `-lr`.
+            // `writing_mode_converter.cc:80-110`): line-left is the bottom
+            // edge in sideways-lr, so subtract the measured inline extent.
             let (left, top) = match vert {
                 None => (s.x, s.y),
                 Some(true) => (p.height - s.y - s.b, s.x),
-                Some(false) => (s.y, s.x),
+                Some(false) => (s.y, if self.inline_up { cb - s.x - s.i } else { s.x }),
             };
             host = host.child(div().absolute().left(px(left)).top(px(top)).child(el));
         }

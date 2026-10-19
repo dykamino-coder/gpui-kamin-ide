@@ -42,7 +42,7 @@ pub(super) fn place_flow(
     let walls = bands.set_walls(x0 + ml, x1 - mr);
     let shapes = bands.shapes(top);
     bands.set_walls(walls.0, walls.1);
-    let (_, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
+    let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
     slots[k] = Slot {
         x: x0 + ml,
         y: top,
@@ -50,6 +50,7 @@ pub(super) fn place_flow(
         shapes: Some(shapes),
         geometry: p.last_geometry.clone(),
         b: bh,
+        i: bw,
         ..Slot::default()
     };
     *y = top + bh + mb;

@@ -125,6 +125,7 @@ pub(crate) fn band_kids(
         let margin = match vert {
             None => margin,
             Some(true) => [r, b, l, t],
+            Some(false) if wm.sideways_lr() => [l, t, r, b],
             Some(false) => [l, b, r, t],
         };
         // Распорка держит физическую высоту — в вертикальном письме это не
@@ -181,7 +182,7 @@ pub(crate) fn band_kids(
                 let side = c.style.float.unwrap_or(-1);
                 let em = band_em(&c.style, em).unwrap_or(em);
                 std::rc::Rc::new(move |bw: f32, bh: f32, m: [f32; 4], cbw: f32| {
-                    measured_shape(&f, side, (bw, bh), m, cbw, em, vert, shape_values.vcx())
+                    measured_shape(&f, side, (bw, bh), m, cbw, em, wm, shape_values.vcx())
                 }) as crate::layout::float::band_flow::ShapeOf
             });
         kids.push(Kid {

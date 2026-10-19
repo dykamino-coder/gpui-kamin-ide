@@ -163,6 +163,11 @@ pub(super) fn build_band_kid(
         } else {
             row.block_lr()
         };
+        let row = if inherited.wm().sideways_lr() {
+            row.inline_up()
+        } else {
+            row
+        };
         return row.hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,

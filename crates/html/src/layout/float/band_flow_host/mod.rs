@@ -161,7 +161,7 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         None => flow,
     };
     if inherited.wm().vertical() {
-        return flow.vertical(inherited.wm().block_rl()).hooked();
+        return flow.vertical(inherited.wm()).hooked();
     }
     let flow = flow.hooked();
     if !host.icb {
