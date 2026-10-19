@@ -5,7 +5,6 @@ use crate::dom::Element;
 use crate::layout::float::band_flow::Edge;
 use crate::layout::float::band_host::band_margins;
 use crate::style::computed::Computed;
-use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::Len;
 
 #[test]
@@ -22,11 +21,8 @@ fn transformed_float_keeps_untransformed_margins() {
     style.transform = Some(Default::default());
     style.transform.as_mut().expect("transform").scale = (2.0, 3.0);
     let turned = Element::synthetic("div", style, Default::default(), vec![]);
-    assert_eq!(band_float_m(&plain, 16.0, WritingMode::default()), Some(()));
-    assert_eq!(
-        band_float_m(&turned, 16.0, WritingMode::default()),
-        Some(())
-    );
+    assert_eq!(band_float_m(&plain, 16.0), Some(()));
+    assert_eq!(band_float_m(&turned, 16.0), Some(()));
     let margins = band_margins(&turned.style, 16.0).expect("resolvable margins");
     assert!(matches!(margins[3], Edge::Px(v) if v == 32.0));
     assert!(matches!(margins[1], Edge::Pct(v) if v == 0.1));
@@ -67,4 +63,39 @@ fn float_host_retains_a_preceding_invisible_inline_run() {
     assert_eq!(next, nodes.len());
     assert!(host.children.iter().any(|n| matches!(n,
         crate::dom::Node::Element(c) if c.marks.anon && c.marks.lead.is_none())));
+}
+
+#[test]
+fn orthogonal_text_float_uses_the_shared_measured_host() {
+    use crate::dom::Node;
+    use crate::style::computed::writing_mode::WritingModeKw;
+    for rl in [false, true] {
+        let parent = Computed {
+            writing_mode: Some(WritingModeKw::new(true, rl, false)),
+            ..Default::default()
+        };
+        let child = Element::synthetic(
+            "div",
+            Computed {
+                float: Some(-1),
+                writing_mode: Some(WritingModeKw::new(false, false, false)),
+                ..Default::default()
+            },
+            Default::default(),
+            vec![Node::Text("a horizontal floated line".into())],
+        );
+        let (host, next, _) = super::band_host_m(
+            &[Node::Element(child)],
+            0,
+            16.0,
+            &[],
+            crate::layout::float::FloatCb::of(&parent),
+        )
+        .expect("orthogonal text keeps the measured float path");
+        assert_eq!(next, 1);
+        assert!(matches!(
+            host.marks.shape_flow.as_ref().and_then(|f| f.bands),
+            Some(crate::dom::BandPath::Measured)
+        ));
+    }
 }

@@ -52,6 +52,12 @@ pub(super) fn build_band_kid(
     // статического хоста.
     copy.style.float = None;
     copy.style.floated_box |= float;
+    // CSS2 section 9.5: a completed float is not a flex item of the host.
+    // Blink floats_utils.cc:173-244 keeps its laid-out physical fragment
+    // while searching opportunities; the probe/final flex frame cannot shrink it.
+    if float {
+        copy.style.flex_shrink = Some(0.0);
+    }
     copy.style.band_kid = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();

@@ -166,7 +166,7 @@ pub(super) fn band_seq(
         // CSS 2.1 section 9.5: floats in nested flow blocks participate in
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
-        if (f.style.wm().vertical() && band_float_m(f, em, wm).is_none())
+        if (f.style.wm().vertical() && band_float_m(f, em).is_none())
             || band_margins(&f.style, em).is_none()
         {
             return None;
