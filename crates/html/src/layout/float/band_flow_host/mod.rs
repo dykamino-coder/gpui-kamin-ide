@@ -124,7 +124,7 @@ pub(super) fn band_flow_rest(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let host = e.marks.shape_flow.unwrap_or_default();
     let count = host.count;
     let em: f32 = host.em.unwrap_or(opts.base_size());
