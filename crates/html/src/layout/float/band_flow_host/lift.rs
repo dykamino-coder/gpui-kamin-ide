@@ -157,7 +157,8 @@ pub(crate) fn band_flow_rest_lift(
                         l.push(n);
                         continue;
                     }
-                    if !wm.vertical() && c.style.inline_display == Some(true) {
+                    // Without an external lift, pinned boxes must keep their CB.
+                    if !wm.vertical() && !abs_pinned(&c.style) {
                         run.push(n);
                         continue;
                     }

@@ -23,7 +23,7 @@ mod first_line_text;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
 mod first_letter_descendants;
 mod first_letter_scope;
-mod first_line_descendants;
+pub(super) mod first_line_descendants;
 mod inline_splits;
 pub(super) mod pseudo_line_layers;
 pub(crate) use inline_splits::split_block_in_inline;

@@ -44,6 +44,9 @@ fn a_phantom_paragraph_counts_no_line_and_uses_each_float_opportunity_once() {
                     paragraph.point_of(&[], 0, bounds),
                     point(px(expected), px(100.0))
                 );
+                // A hypothetical block starts at the BFC edge, even beside
+                // a float and under text alignment (CSS Position 3).
+                assert_eq!(paragraph.next_line_point(0, bounds), bounds.origin);
             }
         }
     }

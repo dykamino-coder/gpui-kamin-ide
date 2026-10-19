@@ -104,7 +104,9 @@ pub(crate) fn static_overlay(
     Some(inline::Piece::Overlay(
         inner,
         inline::OverlayAt {
-            next_line: rot_block,
+            next_line: rot_block
+                || (inherited.band_kid
+                    && !crate::layout::positioned::static_position::hypothetical_inline_level(e)),
             bidi_hang: rotated_rtl && !rot_block,
             ..Default::default()
         },

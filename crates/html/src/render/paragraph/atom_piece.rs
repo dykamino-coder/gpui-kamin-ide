@@ -1,15 +1,11 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
 mod static_overlay;
 pub(super) use static_overlay::static_overlay;
-
 mod decoration;
 pub(super) use decoration::decorate_atom;
-
 mod atom_cx;
 pub(crate) use atom_cx::AtomRuby;
-
 // owner: A
-
 use crate::animation::frames::bake_frozen;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -110,7 +106,10 @@ fn atom_piece_in(
         inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
         && at_static_position(&e.style)
-        && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
+        && (inline_level(e)
+            || e.style.inline_display == Some(true)
+            || rot_block
+            || inherited.band_kid)
     {
         return static_overlay(e, inherited, opts, rot_block);
     }

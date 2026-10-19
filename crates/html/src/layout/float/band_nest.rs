@@ -106,8 +106,15 @@ pub(super) fn band_nest(
     let vcx = opts.cx.vcx();
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
-    let seq = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb)?;
-    let merged = inherit(inherited, &c.style, vcx);
+    let mut merged = inherit(inherited, &c.style, vcx);
+    crate::render::pseudo_line_layers::install(c, &mut merged, vcx);
+    // The first formatted line may belong to a nested in-flow block;
+    // floats and positioned children cannot consume its pseudo layer.
+    let children = crate::render::first_line_descendants::route(
+        collapse_margins(&c.children, false, cb),
+        &merged,
+    );
+    let seq = band_seq(children, inner_em, wm, cb)?;
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
     Some(crate::layout::float::band_flow::Nest {
         kids,

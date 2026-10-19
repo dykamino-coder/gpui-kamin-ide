@@ -26,15 +26,6 @@ pub(crate) fn inline_node(
                 || !blank_text(t)
                 || (!pending.is_empty() && t.contains(' '))
         }
-        // The measured host keeps the hypothetical inline position in its paragraph.
-        Node::Element(e)
-            if inherited.band_kid
-                && !ordered_context
-                && at_static_position(&e.style)
-                && e.style.inline_display == Some(true) =>
-        {
-            true
-        }
         // Элемент с ЗАДАННЫМИ краями строчным не бывает: края он считает
         // от позиционированного предка, а не от строки. Куском абзаца он
         // получал содержащим блоком сам абзац — и `inset: 0` растягивал
@@ -72,6 +63,21 @@ pub(crate) fn inline_node(
                 ) || cb_padding_shifts_replaced(e, inherited)) =>
         {
             false
+        }
+        // Only a free axis needs the paragraph's hypothetical static position.
+        // Fully pinned boxes retain their external containing block above.
+        Node::Element(e)
+            if inherited.band_kid
+                && !ordered_context
+                && matches!(
+                    e.style.position,
+                    Some(
+                        crate::style::computed::Position::Absolute
+                            | crate::style::computed::Position::Fixed
+                    )
+                ) =>
+        {
+            true
         }
         // Абсолют строчного уровня (до блокификации — `inline-block` и
         // родня) с РОВНО ОДНОЙ заданной осью: свободная ось берётся от
@@ -178,5 +184,47 @@ pub(crate) fn inline_node(
                     && e.style.float.is_none_or(|f| f == 0)
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Element;
+    use crate::style::computed::Position;
+
+    #[test]
+    fn band_paragraph_admits_static_position_probes_but_not_floats_or_pinned_boxes() {
+        let inherited = Computed {
+            band_kid: true,
+            ..Default::default()
+        };
+        let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
+        e.style.position = Some(Position::Absolute);
+        assert!(inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        e.style.inset.top = Some(Len::Px(0.));
+        assert!(inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        e.style.inset.left = Some(Len::Px(0.));
+        assert!(!inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        *e.style = Computed {
+            float: Some(-1),
+            ..Default::default()
+        };
+        assert!(!inline_node(&Node::Element(e), &inherited, false, &[]));
     }
 }

@@ -3,6 +3,7 @@
 use super::*;
 use crate::dom::{BandPath, parse};
 use crate::layout::float::band_flow_host::band_flow_rest_lift;
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
@@ -224,4 +225,25 @@ fn nested_pinned_absolute_keeps_the_external_containing_block() {
     assert!(find(&host.children, "pin").is_none());
     assert_eq!(lifted.len(), 1);
     assert!(find(&lifted, "pin").is_some());
+    let pin = Node::Element(find(nodes, "pin").unwrap().clone());
+    assert!(band_flow_rest_lift(vec![pin], 16., None, WritingMode::default(), None).is_none());
+}
+
+#[test]
+fn block_static_positions_stay_in_the_shared_paragraph() {
+    for inset in ["", "top:0;", "left:0;"] {
+        let tree = parse(
+            &format!(
+                r#"<div id="source"><div style="float:left;width:50px;height:50px"></div><div id="oof" style="position:absolute;{inset}width:20px;height:10px"></div></div>"#
+            ),
+            "",
+        );
+        let nodes = &find(&tree, "source").unwrap().children;
+        let (host, end, lifted) =
+            band_host_m(nodes, 0, 16., &[], FloatCb::of(&Computed::default()))
+                .expect("shared paragraph owns the hypothetical block position");
+        assert_eq!(end, nodes.len());
+        assert!(lifted.is_empty());
+        assert!(find(&host.children, "oof").is_some());
+    }
 }

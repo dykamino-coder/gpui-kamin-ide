@@ -1,11 +1,9 @@
-//! Prepaint for element; split out to keep the owning module within 250 lines.
-
+//! Paragraph geometry publication and placement of inline overlays before paint.
 use crate::text::paragraph::*;
 use gpui::{
     App, Bounds, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window, point, px,
 };
-
 impl Paragraph {
     pub(crate) fn prepaint_impl(
         &mut self,
@@ -45,10 +43,8 @@ impl Paragraph {
         } else {
             bounds.size.width
         };
-        // Коробка приходит округлённой ВНИЗ до точки устройства, а мерили её
-        // по дробной ширине: строка, влезавшая ровно, на отрисовке уже не
-        // влезала и рвалась заново (`hyphens-manual-011`). Возвращаем себе эту
-        // одну точку устройства — иначе раскладка кадра расходится с замером.
+        // Restore the device pixel lost by downward snapping so a line that
+        // fitted the fractional measured width does not wrap during prepaint.
         let scale = window.scale_factor().max(1.0);
         let limit = limit + px(1.0 / scale);
         self.indent_basis = {
@@ -227,7 +223,11 @@ impl Paragraph {
                     let (lh, start) = match self.lines.get(row) {
                         Some(l) => {
                             let (a, b) = self.line_extents(&l.range.clone());
-                            let start = self.point_of(&segs, l.range.start, bounds).x;
+                            let start = if *next {
+                                bounds.origin.x
+                            } else {
+                                self.point_of(&segs, l.range.start, bounds).x
+                            };
                             (px(a + b).max(self.line_height), start)
                         }
                         None => (self.line_height, bounds.origin.x),
