@@ -1,6 +1,7 @@
 //! Узел-элемент в элемент GPUI: element().
 
 mod orthogonal;
+mod quirks;
 pub(super) use orthogonal::orthogonal_limit;
 
 mod dispatch;
@@ -89,6 +90,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
+    quirks::fill(e, &mut merged, inherited, opts);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
     merged.scroll.used = gutters.used;

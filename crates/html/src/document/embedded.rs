@@ -101,7 +101,7 @@ pub(super) fn unwrap_document(
     loop {
         let single_wrapper = match nodes.as_slice() {
             [Node::Element(e)] if matches!(e.tag.as_str(), "html" | "body") => {
-                !has_box_style(&e.style)
+                !e.marks.quirks_fill && !has_box_style(&e.style)
             }
             _ => false,
         };
