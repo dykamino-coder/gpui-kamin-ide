@@ -223,7 +223,7 @@ async function createAdmittedSession(
 
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.model, config.cwd, config.bearerHash)
+  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd

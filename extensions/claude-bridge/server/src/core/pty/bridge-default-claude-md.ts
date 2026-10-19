@@ -1,4 +1,5 @@
 /** Shared, tenant-agnostic instructions installed for every Bridge session. */
+import { RUNTIME_SETTINGS_CONTEXT } from './runtime-settings-context'
 
 export const AGENT_TEAMS_REPORTING_CONTRACT = `## Agent Teams delivery contract
 
@@ -11,7 +12,7 @@ If you choose to use Agent Teams for a task:
 - If the single recovery request does not produce a report, state that limitation explicitly and synthesize only the reports that were actually delivered.
 
 Agent Teams are optional. Do not create a team merely because the feature is available; use it only when parallel, independent work materially helps the user's task.
-`;
+`
 
 /** Tenant-agnostic preamble describing Open Claude Bridge's split architecture
  * (Linux container holds CLI; user's machine holds files + tools). Used both as
@@ -25,11 +26,13 @@ their local machine (Windows / macOS / Linux).
 ## Important
 
 - All file operations (Read, Write, Edit, Glob, Grep) execute on the USER's local machine via MCP tools, not on this server.
-- Bash commands also execute on the user's machine.
+- Bash and PowerShell commands also execute on the user's machine. Use MCP BashOutput/KillShell for their background processes, not native TaskOutput.
 - The current server-side directory (\`/home/bridge/.claude/bridge-sessions/...\`) is NOT the user's filesystem — do not attempt to access files there directly.
 - Always use absolute paths under the user's working directory as the project root.
 - When the user asks about "current directory" or "project", they mean their local cwd, not this container.
 - Network access from this container goes through the bridge's outbound proxy if configured; the user's local machine has its own network.
+
+${RUNTIME_SETTINGS_CONTEXT}
 
 ## Editor context (auto-attached messages)
 
@@ -57,4 +60,4 @@ Treat that block as the **implicit subject** of the user's question:
 - If the JSON block is absent, the user is asking a general question — do NOT
   assume any particular file is in focus.
 
-${AGENT_TEAMS_REPORTING_CONTRACT}`;
+${AGENT_TEAMS_REPORTING_CONTRACT}`
