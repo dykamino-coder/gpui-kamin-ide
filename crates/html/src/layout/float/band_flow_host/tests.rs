@@ -44,6 +44,25 @@ fn invisible_inline_run_uses_the_paragraph_without_becoming_an_atom() {
 }
 
 #[test]
+fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
+    let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
+    span.inline = true;
+    span.style.margin.left = Some(Len::Px(40.));
+    let nodes = vec![Node::Element(span)];
+    let lifted = band_flow_rest_lift(nodes, 16., None, WritingMode::default(), None)
+        .expect("empty inline fragment belongs to the paragraph");
+    let Node::Element(run) = &lifted[0] else {
+        panic!("anonymous paragraph");
+    };
+    assert!(run.marks.anon && !run.marks.atoms);
+    let Node::Element(span) = &run.children[0] else {
+        panic!("inline fragment");
+    };
+    assert_eq!(span.style.margin.left, Some(Len::Px(40.)));
+    assert!(span.children.is_empty());
+}
+
+#[test]
 fn unknown_atomic_container_sizes_belong_to_the_paragraph() {
     for display in [
         Display::InlineBlock,

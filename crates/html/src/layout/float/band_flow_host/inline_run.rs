@@ -40,9 +40,11 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
                 || container
                 || inline_level(c)
                 && band_piece(n) != Some(BandPiece::Atom)
-                // The paragraph also owns whitespace-only inline fragments on either
-                // side of a floated child (CSS 2.1 sections 9.2.1.1, 9.5).
-                && (replaced_tag(c) || subtree_has_text(c) || c.children.iter().all(is_blank))
+                // After inline floats are lifted, the empty in-flow fragment
+                // still owns its margin and current line (CSS2 sections 9.2.2, 9.5).
+                && (replaced_tag(c)
+                    || subtree_has_text(c)
+                    || c.children.iter().all(is_blank))
         }
     }) || run
         .iter()

@@ -81,3 +81,87 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
     assert_eq!(float.style.width, Some(Len::Ch(8.5)));
     assert!(matches!(float.style.margin.left, Some(Len::Px(v)) if v > 0.));
 }
+
+#[test]
+fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
+    let doc = crate::document::state::DocState::new(Default::default());
+    let mut inline = Element::synthetic(
+        "span",
+        Computed::default(),
+        Default::default(),
+        (0..2)
+            .map(|_| {
+                Node::Element(Element::synthetic(
+                    "span",
+                    Computed {
+                        float: Some(-1),
+                        width: Some(Len::Pct(0.5)),
+                        ..Default::default()
+                    },
+                    Default::default(),
+                    vec![],
+                ))
+            })
+            .collect(),
+    );
+    inline.inline = true;
+    inline.style.margin.left = Some(Len::Px(40.));
+    inline.children.insert(1, Node::Text("\n ".into()));
+    for (newlines, spaces) in [(true, false), (false, true)] {
+        for inherited in [false, true] {
+            let mut kept = inline.clone();
+            let mut parent = Computed::default();
+            let style = if inherited {
+                &mut parent
+            } else {
+                &mut kept.style
+            };
+            style.preserve_newlines = Some(newlines);
+            style.keep_spaces = Some(spaces);
+            let lifted = inline_floats::lift(vec![Node::Element(kept)], &parent, doc.values());
+            assert_eq!(
+                lifted.len(),
+                1,
+                "preserved whitespace must stay in its inline"
+            );
+            let Node::Element(kept) = &lifted[0] else {
+                panic!("preserved inline")
+            };
+            assert_eq!(kept.children.len(), 3);
+            assert!(matches!(&kept.children[1], Node::Text(t) if t == "\n "));
+        }
+    }
+    let nodes = prepare_float_nodes(
+        vec![Node::Element(inline)],
+        &Computed::default(),
+        false,
+        Some(784.),
+        doc.values(),
+    );
+    assert_eq!(nodes.len(), 3);
+    let Node::Element(fragment) = &nodes[0] else {
+        panic!("inline fragment")
+    };
+    assert!(fragment.children.is_empty());
+    assert_eq!(fragment.style.margin.left, Some(Len::Px(40.)));
+    for node in &nodes[1..] {
+        let Node::Element(float) = node else {
+            panic!("float")
+        };
+        assert_eq!(float.style.float, Some(-1));
+        assert_eq!(float.style.width, Some(Len::Pct(0.5)));
+        assert_eq!(float.style.margin.left, None);
+    }
+    let (host, end, lead, _) = host_for_run(
+        16.,
+        true,
+        FloatCb::of(&Computed::default()),
+        &nodes,
+        &nodes[..1],
+        1,
+    )
+    .expect("shared host");
+    assert_eq!(end, nodes.len());
+    assert_eq!(lead, Some(0));
+    assert_eq!(host.marks.shape_flow.expect("host").count, 2);
+}
