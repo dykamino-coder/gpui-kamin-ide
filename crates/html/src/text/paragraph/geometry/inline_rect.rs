@@ -93,7 +93,7 @@ impl Paragraph {
         // (`visual_x_rtl`) — строка прижата к правому краю до-поворотной
         // коробки и переставлена разбором UAX#9, а логическое продвижение от
         // левого края верно только для одного rtl-прогона.
-        if self.wrap.rtl && crate::text::vertical::in_rotated_frame() {
+        if self.wrap.rtl && self.paint_context.is_rotated() {
             let free_raw = bounds.size.width - line.width - line.indent - px(self.flow_cut(row).1);
             let left = bounds.origin.x + line_offset(self.line_align(row, line), true, free_raw)
                 - shift

@@ -70,7 +70,8 @@ pub(crate) fn static_position_layer(
         self_align: static_self_align(e, inherited),
         ..Default::default()
     });
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true, None);
+    let probe =
+        crate::layout::positioned::containing_block::spot_probe(spot.clone(), true, None, cx);
     // Поля сдвигают абсолютный элемент ОТ статической позиции
     // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
     // под нами поля у absolute без краёв не считает — сдвиг

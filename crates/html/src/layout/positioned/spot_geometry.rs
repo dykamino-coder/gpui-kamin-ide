@@ -2,16 +2,19 @@
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::positioned::containing_block::SpotCell;
-use crate::text::vertical::{VT_FRAME, vt_map};
+use crate::text::vertical::VerticalPaint;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
+use std::rc::Rc;
 
 pub(super) fn probe(
     spot: SpotCell,
     full: bool,
     line: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
     child: AnyElement,
+    paint_context: Rc<VerticalPaint>,
 ) -> AnyElement {
     Probe {
+        paint_context,
         spot,
         full,
         line,
@@ -21,6 +24,7 @@ pub(super) fn probe(
 }
 
 struct Probe {
+    paint_context: Rc<VerticalPaint>,
     spot: SpotCell,
     full: bool,
     /// The line box of the text line this probe sits in, when a paragraph
@@ -50,12 +54,12 @@ impl Hooks for Probe {
             size: window.layout_size_unrounded(*id),
         };
         let mut now = self.spot.get();
-        now.rotated = VT_FRAME.with(|frame| frame.get()).is_some();
+        now.rotated = self.paint_context.is_rotated();
         now.block_strut = self.full;
         if !self.full {
             now.line_box = self.line.as_ref().and_then(|slot| slot.take());
         }
-        let hole = vt_map(bounds, px(now.line_thickness));
+        let hole = self.paint_context.map(bounds, px(now.line_thickness));
         now.hole = Some(if now.viewport_static {
             crate::layout::fragment::static_coordinates::map(hole)
         } else {

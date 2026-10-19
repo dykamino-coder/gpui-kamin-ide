@@ -10,9 +10,9 @@ pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
 
 /// Абзац со своей раскладкой строк.
-// Paragraph span records retain their text ranges, geometry and decoration state.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
+    pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,
     /// Scroll owner and the shift chain the paragraph is built in.

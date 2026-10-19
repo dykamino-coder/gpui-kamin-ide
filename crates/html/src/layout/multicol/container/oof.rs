@@ -11,6 +11,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
 pub(super) fn place_oof_statics(
     merged: &Computed,
+    opts: &RenderOpts,
     oof_static: &[(usize, Element)],
     kid_starts: Vec<usize>,
     children: Vec<crate::layout::fragment::types::StackChild>,
@@ -43,6 +44,7 @@ pub(super) fn place_oof_statics(
                 oof_spots[i].clone(),
                 true,
                 None,
+                &opts.cx,
             ),
             frags: Vec::new(),
             monolith: false,

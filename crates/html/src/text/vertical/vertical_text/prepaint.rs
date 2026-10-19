@@ -1,8 +1,7 @@
 //! Resolved vertical text measurement and rotated prepaint geometry.
 
-use super::VT_FRAME;
 use super::VerticalText;
-use crate::text::vertical::{VT_CCW, VT_PHASE};
+use crate::text::vertical::TurnFrame;
 use gpui::{App, Bounds, Pixels, Window, px};
 
 impl VerticalText {
@@ -47,14 +46,14 @@ impl VerticalText {
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
         // до-поворотной точки в экранную у `sideways-lr` зеркально (см. `vt_map`).
         let (frame, phase) = self.turn_frame(bounds, window);
-        let prev_ccw = VT_CCW.with(|c| c.replace(self.ccw));
-        let prev = VT_FRAME.with(|c| c.replace(Some(frame)));
-        let prev_phase = VT_PHASE.with(|c| c.replace(phase));
+        let previous = self.paint_context.replace(Some(TurnFrame {
+            bounds: frame,
+            ccw: self.ccw,
+            phase,
+        }));
         let flat = gpui::point(bounds.origin.x, bounds.origin.y + phase);
         self.child.prepaint_at(flat, window, cx);
-        VT_PHASE.with(|c| c.set(prev_phase));
-        VT_FRAME.with(|c| c.set(prev));
-        VT_CCW.with(|c| c.set(prev_ccw));
+        self.paint_context.replace(previous);
         self.turn = Some((frame.size.width, phase));
     }
 

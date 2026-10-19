@@ -5,6 +5,7 @@ use gpui::{AnyElement, Pixels};
 impl VerticalText {
     pub fn new(child: AnyElement) -> Self {
         VerticalText {
+            paint_context: Default::default(),
             measures: Default::default(),
             child,
             natural: gpui::Size::default(),
@@ -25,6 +26,7 @@ impl VerticalText {
     /// Share measurements with the document that built this paragraph.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
         self.measures = cx.doc().vertical_measures.clone();
+        self.paint_context = cx.vertical_paint.clone();
         self
     }
 

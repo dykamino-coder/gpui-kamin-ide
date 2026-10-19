@@ -94,7 +94,7 @@ impl Paragraph {
         // not put every paragraph before it, but prepaint of the whole tree
         // precedes any paint (css-overflow-4 §5.3; one frame per relayout
         // step, like Blink's measure-then-relayout pass).
-        if !self.vertical && !crate::text::vertical::in_rotated_frame() {
+        if !self.vertical && !self.paint_context.is_rotated() {
             let pads = self.line_padding();
             let lh = self.line_height;
             let step = |i: usize| -> Pixels {
@@ -128,7 +128,7 @@ impl Paragraph {
                     })
                 })
                 .collect();
-            let rotated = crate::text::vertical::in_rotated_frame();
+            let rotated = self.paint_context.is_rotated();
             let scale = window.scale_factor().max(0.01);
             // Строчные якоря и содержащие блоки — до куска внутри них:
             // носитель краёв стоит в конце коробки, а абсолют — раньше.

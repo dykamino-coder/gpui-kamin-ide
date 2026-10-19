@@ -163,6 +163,6 @@ pub(crate) fn route_pieces(
         &mut render_text,
         !inherited.wm().vertical() && !inherited.wm().turned(),
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
-        &opts.cx.positioning,
+        &opts.cx,
     )
 }

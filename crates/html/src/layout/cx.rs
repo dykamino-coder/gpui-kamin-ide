@@ -15,6 +15,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Prepaint frame shared only by elements of this render tree.
+    pub(crate) vertical_paint: Rc<crate::text::vertical::VerticalPaint>,
     /// Enclosing atomic inlines relative to this clamp count root.
     pub(crate) clamp_atom_depth: u32,
     /// Inputs offered only to the paragraph currently being built.

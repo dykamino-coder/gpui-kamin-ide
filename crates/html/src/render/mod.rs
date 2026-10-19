@@ -126,6 +126,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let opts = &*opts.inner(|cx| {
         cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.positioning = Default::default();
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+        }
     });
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
@@ -172,6 +175,9 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let opts = &*opts.inner(|cx| {
         cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.positioning = Default::default();
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+        }
     });
     let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     let out = blocks(std::slice::from_ref(node), &root, opts);

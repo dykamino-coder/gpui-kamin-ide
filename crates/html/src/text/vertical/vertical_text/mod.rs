@@ -4,11 +4,12 @@ mod layout;
 mod painting;
 mod prepaint;
 
-use super::{VT_FRAME, VT_INLINE_MAX};
+use super::VT_INLINE_MAX;
 use crate::hooks::Wrap;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 pub struct VerticalText {
+    pub(crate) paint_context: std::rc::Rc<super::VerticalPaint>,
     pub(crate) measures: std::rc::Rc<super::VerticalMeasures>,
     /// Own layout node: the unrounded box edge anchors the turned content.
     pub(crate) layout_id: Option<LayoutId>,

@@ -54,6 +54,11 @@ pub fn render_paged_select(
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
+    let opts = &*opts.inner(|cx| {
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+        }
+    });
     let vcx = opts.cx.vcx();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.

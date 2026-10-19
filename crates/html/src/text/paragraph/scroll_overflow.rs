@@ -19,9 +19,7 @@ impl Paragraph {
         let Some((owner, sticky)) = &self.scroll_owner else {
             return;
         };
-        if !crate::interactive::scroll_extent::text_active()
-            || crate::text::vertical::in_rotated_frame()
-        {
+        if !crate::interactive::scroll_extent::text_active() || self.paint_context.is_rotated() {
             return;
         }
         let exact = Bounds {

@@ -75,7 +75,10 @@ pub(crate) fn physical(
         wrapper
             .child(
                 crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
-                    physical, ccw, central,
+                    physical,
+                    ccw,
+                    central,
+                    opts.cx.vertical_paint.clone(),
                 )
                 .into_hooked(),
             )

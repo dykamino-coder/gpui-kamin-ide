@@ -168,7 +168,7 @@ pub(crate) fn multicol_column_stack(
     // `out_of_flow_layout_part.cc`,
     // `LayoutFragmentainerDescendants`: позиция кандидата
     // считается относительно ФРАГМЕНТАИНЕРА.
-    let (children, oof_spots) = place_oof_statics(&merged, &oof_static, kid_starts, children);
+    let (children, oof_spots) = place_oof_statics(&merged, opts, &oof_static, kid_starts, children);
     // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
     // это высота, значит коробка кладёт её гибким рядом
     // (поперечная ось растягивает высоту), у `vertical-rl` —

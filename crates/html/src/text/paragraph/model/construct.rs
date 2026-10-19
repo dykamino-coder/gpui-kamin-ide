@@ -15,6 +15,7 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            paint_context: Default::default(),
             clamp_rows: Default::default(),
             measures: Default::default(),
             scroll_owner: None,
@@ -104,6 +105,7 @@ impl Paragraph {
     /// Measurement owner shared with other paragraphs in this document.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
         self.measures = cx.doc().paragraph_measures.clone();
+        self.paint_context = cx.vertical_paint.clone();
         self.clamp_rows = cx.doc().paragraph_rows.clone();
         self
     }
