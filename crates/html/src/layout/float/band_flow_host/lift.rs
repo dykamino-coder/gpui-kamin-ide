@@ -2,7 +2,7 @@
 
 use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
-use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
+use crate::layout::float::band_measured::{band_nest_ok, band_piece_m};
 use crate::render::{block_level_in_flow, inline_level, is_blank, out_of_flow, own_context};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
@@ -118,13 +118,6 @@ pub(crate) fn band_flow_rest_lift(
         if run.iter().any(|n| !is_blank(n)) {
             let (atoms, hostable) = inline_run::classify(run);
             if !hostable {
-                bad = true;
-            }
-            // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
-            // высоты `line_no × line-height`; руби поднимает строку на
-            // аннотацию, и вырез уезжает с неё
-            // (`initial-letter-block-position-raise-over-ruby-ref`).
-            if run.iter().any(has_ruby) {
                 bad = true;
             }
             out.push(Node::Element(Element::synthetic(

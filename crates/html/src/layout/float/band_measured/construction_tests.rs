@@ -97,3 +97,45 @@ fn orthogonal_block_tail_keeps_its_independent_contents_in_the_measured_host() {
         assert_eq!(tail.style.height, Some(Len::Px(120.)));
     }
 }
+
+#[test]
+fn inline_ruby_remains_in_the_measured_paragraph_across_breaks() {
+    for position in ["over", "under"] {
+        let markup = format!(
+            r#"<div id="source"><div style="float:left;width:50px;height:50px"></div><ruby id="ruby" style="ruby-position:{position}">base<rt>annotation</rt></ruby><br>next</div>"#
+        );
+        let tree = parse(&markup, "");
+        let nodes = &find(&tree, "source").expect("source").children;
+        let (host, end, lifted) = band_host_m(
+            nodes,
+            0,
+            16.,
+            &[],
+            FloatCb::of(&crate::style::computed::Computed::default()),
+        )
+        .expect("inline ruby is measured by its paragraph");
+        assert_eq!(end, nodes.len());
+        assert!(lifted.is_empty());
+        assert_eq!(
+            host.marks.shape_flow.expect("host").bands,
+            Some(BandPath::Measured)
+        );
+        let runs: Vec<_> = host
+            .children
+            .iter()
+            .filter_map(|node| match node {
+                Node::Element(e) if e.marks.anon => Some(e),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(runs.len(), 2);
+        assert!(!runs[0].marks.atoms && !runs[0].marks.cont);
+        assert!(runs[1].marks.cont);
+        let ruby = find(&runs[0].children, "ruby").expect("ruby stays in its line");
+        assert!(
+            ruby.children
+                .iter()
+                .any(|node| matches!(node, Node::Element(e) if e.tag == "rt"))
+        );
+    }
+}
