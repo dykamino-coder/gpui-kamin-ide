@@ -231,6 +231,7 @@ pub(crate) fn native_paragraph(
         native_request.unwrap().built.set(true);
     }
     let projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll_frame.as_ref(),
         inherited.self_node,
         None,
         opts.cx.sticky.as_ref(),
@@ -240,7 +241,7 @@ pub(crate) fn native_paragraph(
         .map(|p| p.link().clone())
         .or_else(|| opts.cx.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node, sticky)
+        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll_frame.clone())
             .into_any_element(),
         projection,
     )

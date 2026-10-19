@@ -30,7 +30,12 @@ pub(crate) mod text_shadows;
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<AnyElement> {
+pub(crate) fn decorations(
+    c: &Computed,
+    empty: bool,
+    vcx: ValueCx<'_>,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+) -> Vec<AnyElement> {
     if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
         return Vec::new();
     }
@@ -119,7 +124,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     if let Some(layer) = crate::paint::border_image::layer(c, vcx) {
         out.push(layer);
     }
-    stationary(c, &mut out, start);
+    stationary(c, &mut out, start, cx);
 
     gradient_stripes(c, &mut out);
 
@@ -129,15 +134,23 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     // несовпадающие стороны дорисовываются полосами поверх.
     let start = out.len();
     coloured_borders(c, &mut out, vcx);
-    stationary(c, &mut out, start);
+    stationary(c, &mut out, start, cx);
     out
 }
 
-fn stationary(c: &Computed, out: &mut Vec<AnyElement>, start: usize) {
+fn stationary(
+    c: &Computed,
+    out: &mut Vec<AnyElement>,
+    start: usize,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+) {
     let layers = out.split_off(start);
-    out.extend(
-        layers
-            .into_iter()
-            .map(|el| crate::interactive::scroll_target::stationary(c.self_node, el)),
-    );
+    out.extend(layers.into_iter().map(|el| {
+        crate::interactive::scroll_target::stationary(
+            cx.and_then(|cx| cx.scroll_frame.as_ref()),
+            cx.and_then(|cx| cx.scroll_target.as_deref()),
+            c.self_node,
+            el,
+        )
+    }));
 }

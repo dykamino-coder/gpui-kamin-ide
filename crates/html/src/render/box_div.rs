@@ -79,9 +79,13 @@ pub(crate) fn styled_div_with(
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
-    d = crate::interactive::scroll_target::attach(d, e, c, vcx);
-    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c, cx.sticky.as_ref())
-    {
+    d = crate::interactive::scroll_target::attach(d, e, c, cx);
+    if let Some(probe) = crate::interactive::scroll_extent::probe(
+        cx.scroll_frame.as_ref(),
+        e.node_id,
+        c,
+        cx.sticky.as_ref(),
+    ) {
         d = d.child(probe);
     }
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
@@ -230,7 +234,7 @@ pub(crate) fn styled_div_with(
     } else {
         c
     };
-    for extra in decorations(c, empty, vcx) {
+    for extra in decorations(c, empty, vcx, Some(cx)) {
         d = d.child(extra);
     }
     d

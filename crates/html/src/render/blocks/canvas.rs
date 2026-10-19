@@ -227,6 +227,10 @@ pub(crate) fn canvas_layer(
             vcx,
         );
     }
-    out.push(crate::interactive::scroll_target::canvas(layer));
+    out.push(crate::interactive::scroll_target::canvas(
+        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll_target.as_deref(),
+        layer,
+    ));
     measurement
 }

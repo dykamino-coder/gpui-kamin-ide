@@ -16,7 +16,7 @@ pub struct Paragraph {
     pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,
     /// Scroll owner and the shift chain the paragraph is built in.
-    pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
+    pub(super) scroll_owner: Option<super::scroll_overflow::ScrollOwner>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,

@@ -15,6 +15,10 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Scrollable overflow owner captured by probes and deferred text elements.
+    pub(crate) scroll_frame: Option<crate::interactive::scroll_extent::Frame>,
+    /// Native scroll handle offered to this CSS box by its scroll-area builder.
+    pub(crate) scroll_target: Option<Rc<crate::interactive::scroll_target::Target>>,
     /// Prepaint frame shared only by elements of this render tree.
     pub(crate) vertical_paint: Rc<crate::text::vertical::VerticalPaint>,
     /// Enclosing atomic inlines relative to this clamp count root.

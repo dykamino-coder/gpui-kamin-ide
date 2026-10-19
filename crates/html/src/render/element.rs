@@ -90,7 +90,11 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     }
     merged.resolve_viewport(opts.viewport, vcx);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
-    let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
+    let gutters = crate::interactive::scroll_extent::classic::model(
+        opts.cx.scroll_frame.as_ref(),
+        e.node_id,
+        &merged,
+    );
     merged.scroll.used = gutters.used;
     merged.scroll.native = gutters.native;
     crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
@@ -106,6 +110,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     let scroll_projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll_frame.as_ref(),
         inherited.self_node,
         Some(&merged),
         opts.cx.sticky.as_ref(),
