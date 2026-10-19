@@ -20,6 +20,7 @@ mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
 pub(crate) mod style_sources;
+pub(crate) mod text_content;
 pub(crate) mod tree_index;
 pub(crate) mod xml;
 pub(crate) use xml::parse_current_xml;

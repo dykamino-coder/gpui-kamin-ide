@@ -14,6 +14,7 @@ use paint_order::paint_last_ok;
 use paint_order::unkeyed_positions;
 
 use crate::dom::Node;
+pub(crate) use crate::dom::text_content::{gather_text, split_nodes};
 use crate::layout::float::clear::without_inert_clear;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
