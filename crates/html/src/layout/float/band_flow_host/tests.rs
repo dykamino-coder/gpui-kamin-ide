@@ -71,3 +71,38 @@ fn unknown_atomic_container_sizes_belong_to_the_paragraph() {
         );
     }
 }
+
+#[test]
+fn nested_lift_stops_at_the_absolute_containing_block() {
+    use crate::style::computed::Position;
+
+    let pinned = Element::synthetic(
+        "div",
+        Computed {
+            position: Some(Position::Absolute),
+            inset: crate::style::computed::Sides {
+                top: Some(Len::Px(10.)),
+                left: Some(Len::Px(20.)),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        Default::default(),
+        vec![],
+    );
+    for position in [None, Some(Position::Relative)] {
+        let mut ancestor = Element::synthetic(
+            "div",
+            Computed {
+                position,
+                ..Default::default()
+            },
+            Default::default(),
+            vec![Node::Element(pinned.clone())],
+        );
+        let mut lifted = vec![];
+        nested_lift::lift_nested(&mut ancestor, 16., WritingMode::default(), &mut lifted);
+        assert_eq!(lifted.len(), usize::from(position.is_none()));
+        assert_eq!(ancestor.children.len(), usize::from(position.is_some()));
+    }
+}

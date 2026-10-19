@@ -13,6 +13,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 mod inline_run;
 mod lift;
+mod nested_lift;
 pub(super) use lift::band_flow_rest_lift;
 pub(in crate::layout::float) use lift::flow_interior_plain;
 pub(in crate::layout::float) use lift::trimmed_clear;

@@ -5,7 +5,6 @@ use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_dimensions;
 use crate::layout::float::band_flow_host::{
     band_flow_rest, band_kids, band_orthogonal, trimmed_clear,
 };
@@ -57,7 +56,7 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && c.style.opacity.is_none()
         && c.style.filter.is_none()
         && (matches!(c.style.width, None | Some(Len::Auto))
-            || (band_dimensions::content_width(&c.style, em).is_some()
+            || (band_em(&c.style, em).and_then(|em| band_edge(&c.style.width, em)).is_some()
                 && c.style.border_box != Some(true)))
         && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_)))
         && c.style.min_height.is_none()
@@ -114,7 +113,11 @@ pub(super) fn band_nest(
         kids,
         inset: band_inset(c, em)?,
         height: px_strict(c.style.height),
-        width: band_dimensions::content_width(&c.style, em),
+        width: if matches!(c.style.width, None | Some(Len::Auto)) {
+            None
+        } else {
+            Some(band_edge(&c.style.width, inner_em)?)
+        },
     })
 }
 

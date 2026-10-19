@@ -10,7 +10,6 @@ use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::blank_text;
 
 pub(super) mod band_clearance;
-mod band_dimensions;
 mod band_flow;
 pub mod band_flow_host;
 pub mod band_host;

@@ -178,3 +178,50 @@ fn orthogonal_float_roots_keep_native_layout_ownership() {
         }
     }
 }
+
+#[test]
+fn nested_percentage_width_keeps_one_shared_float_context() {
+    let tree = parse(
+        r#"<div id="source"><div style="float:left;width:20px;height:10px"></div><div id="nested" style="width:200%"><div style="float:left;width:50%;height:40px"></div><div style="clear:both;width:50%"><div style="display:flow-root;height:100px"></div></div></div></div>"#,
+        "",
+    );
+    let nodes = &find(&tree, "source").expect("source").children;
+    let (host, end, _) = band_host_m(
+        nodes,
+        0,
+        16.,
+        &[],
+        FloatCb::of(&crate::style::computed::Computed::default()),
+    )
+    .expect("percentage width does not establish an independent BFC");
+    assert_eq!(end, nodes.len());
+    assert_eq!(
+        host.marks.shape_flow.expect("host").bands,
+        Some(BandPath::Measured)
+    );
+    assert_eq!(
+        find(&host.children, "nested").expect("nested").style.width,
+        Some(Len::Pct(2.))
+    );
+}
+
+#[test]
+fn nested_pinned_absolute_keeps_the_external_containing_block() {
+    let tree = parse(
+        r#"<div id="source"><div style="float:left;width:50px;height:50px"></div><div><div style="float:left;width:50px;height:50px"></div><div id="pin" style="position:absolute;right:0;top:40px;width:50px;height:10px"></div></div></div>"#,
+        "",
+    );
+    let nodes = &find(&tree, "source").expect("source").children;
+    let (host, end, lifted) = band_host_m(
+        nodes,
+        0,
+        16.,
+        &[],
+        FloatCb::of(&crate::style::computed::Computed::default()),
+    )
+    .expect("pinned descendant does not depend on a hypothetical line");
+    assert_eq!(end, nodes.len());
+    assert!(find(&host.children, "pin").is_none());
+    assert_eq!(lifted.len(), 1);
+    assert!(find(&lifted, "pin").is_some());
+}

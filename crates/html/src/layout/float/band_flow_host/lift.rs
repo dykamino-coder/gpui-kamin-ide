@@ -140,7 +140,13 @@ pub(crate) fn band_flow_rest_lift(
             false
         }
     };
-    for n in rest {
+    for mut n in rest {
+        if let Node::Element(c) = &mut n
+            && !band_flow_block(c, em)
+            && let Some(l) = lift.as_deref_mut()
+        {
+            super::nested_lift::lift_nested(c, em, wm, l);
+        }
         match &n {
             Node::Text(_) => run.push(n),
             Node::Element(c) => {
