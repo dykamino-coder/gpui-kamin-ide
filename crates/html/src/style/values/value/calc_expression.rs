@@ -3,6 +3,7 @@
 use super::Sum;
 use super::calc::{Calc, Val};
 use super::calc_function::{Arguments, Function};
+use crate::document::state::ValueCx;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LengthExpression(Node);
@@ -15,10 +16,10 @@ pub(super) enum Node {
 }
 
 impl LengthExpression {
-    pub(crate) fn parse(raw: &str) -> Option<Self> {
+    pub(crate) fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let mut calc = Calc::new(raw);
         calc.recording = Some(Vec::new());
-        if !matches!(calc.expr()?, Val::Len(_)) || !calc.rest.trim().is_empty() {
+        if !matches!(calc.expr(vcx)?, Val::Len(_)) || !calc.rest.trim().is_empty() {
             return None;
         }
         let mut nodes = calc.recording?;
@@ -96,25 +97,31 @@ mod tests {
 
     #[test]
     fn comparisons_use_concrete_percentage_lengths() {
-        let expression = LengthExpression::parse("min(0%, 100%)").unwrap();
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let expression = LengthExpression::parse("min(0%, 100%)", vcx).unwrap();
         assert_eq!(expression.evaluate(50.0), Some(0.0));
         assert_eq!(expression.evaluate(-50.0), Some(-50.0));
         let expression =
-            LengthExpression::parse("calc(clamp(10px, 75%, 40px) + hypot(3px, 4px))").unwrap();
+            LengthExpression::parse("calc(clamp(10px, 75%, 40px) + hypot(3px, 4px))", vcx).unwrap();
         assert_eq!(expression.evaluate(100.0), Some(45.0));
         assert_eq!(expression.evaluate(-100.0), Some(15.0));
     }
 
     #[test]
     fn nested_calls_and_edge_offsets_preserve_the_expression_tree() {
-        let expression =
-            LengthExpression::parse("calc(2 * min(50%, 20px) + round(up, max(10%, 3px), 2px))")
-                .unwrap()
-                .offset_from_end();
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let expression = LengthExpression::parse(
+            "calc(2 * min(50%, 20px) + round(up, max(10%, 3px), 2px))",
+            vcx,
+        )
+        .unwrap()
+        .offset_from_end();
         assert_eq!(expression.evaluate(100.0), Some(50.0));
         assert_eq!(expression.evaluate(-100.0), Some(-4.0));
-        assert!(LengthExpression::parse("min(100%, 1)").is_none());
-        assert!(LengthExpression::parse("min(100%, 1vw)").is_none());
-        assert!(LengthExpression::parse("clamp(0px, 10%)").is_none());
+        assert!(LengthExpression::parse("min(100%, 1)", vcx).is_none());
+        assert!(LengthExpression::parse("min(100%, 1vw)", vcx).is_none());
+        assert!(LengthExpression::parse("clamp(0px, 10%)", vcx).is_none());
     }
 }

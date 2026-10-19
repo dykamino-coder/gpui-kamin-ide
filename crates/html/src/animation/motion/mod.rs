@@ -34,6 +34,7 @@
 //! отрисовка), проход отдаёт `None`, и работают ровно те ветки, что работали
 //! раньше: `path()` и `ray()` с пиксельным `offset-distance`.
 
+use crate::document::state::ValueCx;
 mod path;
 use path::flatten;
 use path::polyline_length;
@@ -143,14 +144,14 @@ pub struct Cb {
 
 /// Второй проход по дереву коробок: каждому элементу с `offset-path`
 /// считается offset-трансформ по геометрии его СОДЕРЖАЩЕГО БЛОКА.
-pub fn settle(nodes: &mut [Node]) {
+pub fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     // `offset-path: url(#id)` ссылается на SVG-фигуру ЛЮБОГО места документа —
     // словарь эквивалентных путей собирается до обхода и живёт ровно один
     // проход (вложенный документ `<iframe>` зовёт `settle` со своим деревом).
     let mut shapes = std::collections::HashMap::new();
     collect_shapes(nodes, &mut shapes);
     SVG_SHAPES.with(|m| *m.borrow_mut() = shapes);
-    apply_offset_transforms(nodes, None, true);
+    apply_offset_transforms(nodes, None, true, vcx);
     SVG_SHAPES.with(|m| m.borrow_mut().clear());
 }
 
@@ -162,12 +163,17 @@ thread_local! {
 }
 
 /// Приставить offset-трансформ к авторскому.
-pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>, svg_origin: (f32, f32)) {
-    let Some(css) = offset_transform_css(c, cb, svg_origin) else {
+pub fn apply_offset_transform(
+    c: &mut Computed,
+    cb: Option<&Cb>,
+    svg_origin: (f32, f32),
+    vcx: ValueCx<'_>,
+) {
+    let Some(css) = offset_transform_css(c, cb, svg_origin, vcx) else {
         return;
     };
     let author = c.transform.take();
-    c.apply_one("transform", &css);
+    c.apply_one("transform", &css, vcx);
     if let (Some(off), Some(a)) = (c.transform, author) {
         c.transform = Some(off.then(&a));
     }
@@ -177,7 +183,7 @@ pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>, svg_origin: (f3
 /// опорные коробки — окно `viewport` (css-position-3 §initial containing
 /// block; motion-1 §offset-path: коробки берутся у элемента, устанавливающего
 /// содержащий блок).
-pub fn apply_icb(c: &mut Computed, viewport: (f32, f32)) {
+pub fn apply_icb(c: &mut Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
     if !c.offset_icb || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
         return;
     }
@@ -190,7 +196,7 @@ pub fn apply_icb(c: &mut Computed, viewport: (f32, f32)) {
         },
         c,
     );
-    apply_offset_transform(c, Some(&g), (0.0, 0.0));
+    apply_offset_transform(c, Some(&g), (0.0, 0.0), vcx);
 }
 
 /// Исходные параметры offset-трансформа для расчётов в дочерних модулях.

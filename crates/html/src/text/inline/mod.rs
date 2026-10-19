@@ -28,17 +28,14 @@ pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
 pub use crate::text::inline::collapse::collapse_across_pieces;
+pub(crate) use crate::text::inline::containing_block::InlineCbOffer;
 pub(crate) use crate::text::inline::containing_block::backdrop_root;
 pub(crate) use crate::text::inline::containing_block::establishes_cb;
 use crate::text::inline::containing_block::mark_inline_cb;
-pub(crate) use crate::text::inline::containing_block::note_abs_cb;
-pub(crate) use crate::text::inline::containing_block::set_atom_cb;
-pub(crate) use crate::text::inline::containing_block::take_abs_cb;
-pub(crate) use crate::text::inline::containing_block::take_atom_cb;
 pub use crate::text::inline::first_line::style_first_line;
 
 mod emphasis;
-pub use crate::text::inline::emphasis::emphasis_spans;
+pub(crate) use crate::text::inline::emphasis::emphasis_spans;
 
 mod empty_inline;
 mod first_letter;
@@ -100,7 +97,7 @@ pub enum Piece {
 }
 
 /// Как кусок вне потока садится на своё место в тексте (`lines.rs`).
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct OverlayAt {
     /// Гипотетическая коробка БЛОЧНАЯ: место — начало следующей строки.
     pub next_line: bool,
@@ -140,8 +137,9 @@ pub struct OverlayAt {
     /// в таблице `inline_box`, края — относительно места куска.
     pub inline_box: Option<InlineCb>,
     /// The piece is a static-position probe of an absolute box with one
-    /// inset axis (`absolute_atom`): its prepaint gets the line box.
-    pub line_probe: bool,
+    /// inset axis (`absolute_atom`): its prepaint gets the line box through
+    /// this slot.
+    pub line_probe: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;
@@ -163,20 +161,24 @@ pub struct InlineCb {
 }
 
 /// Собрать инлайн-куски из детей узла.
+/// `cx` — контекст раскладки блока абзаца: его доступная ширина — база
+/// долей полей и отступов строчных коробок.
 pub fn collect(
     children: &[Node],
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {
     collect_with_empty_metrics(
         children,
         inherited,
         atom,
         empty_inline::has_text(children),
-        &mut text_case::Context::default(),
+        &mut collect::CollectCx {
+            case: text_case::Context::default(),
+            layout: cx.clone(),
+            inline_parents: Vec::new(),
+            inline_cb_depth: 0,
+        },
     )
 }
-
-use crate::text::inline::containing_block::INLINE_CB_DEPTH;
-
-use crate::text::inline::containing_block::ATOM_CB;

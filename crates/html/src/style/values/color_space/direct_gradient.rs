@@ -3,6 +3,7 @@
 //! space through RGB is unnecessary and can change a hue at the 0/360 seam.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
 use crate::style::values::value::Color;
 
@@ -14,7 +15,7 @@ pub(crate) struct DirectGradient {
 }
 
 impl DirectGradient {
-    pub(crate) fn new(raw: &str, count: usize, space: GradSpace) -> Option<Self> {
+    pub(crate) fn new(raw: &str, count: usize, space: GradSpace, vcx: ValueCx<'_>) -> Option<Self> {
         let (name, ok) = match space {
             GradSpace::Lch => ("lch(", false),
             GradSpace::Oklch => ("oklch(", true),
@@ -27,7 +28,7 @@ impl DirectGradient {
             .filter(|words| {
                 words
                     .first()
-                    .is_some_and(|v| interpolation_color(v).is_some())
+                    .is_some_and(|v| interpolation_color(v, vcx).is_some())
             })
             .collect();
         let single_stop = candidates.len() == 1 && candidates[0].len() == 1;
@@ -100,12 +101,14 @@ mod tests {
 
     #[test]
     fn equal_authored_hues_produce_identical_pixels() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let render = |start| {
             let raw = format!(
                 "linear-gradient(in lch decreasing hue, lch(50% 100% {start}deg), lch(50% 100% 270deg))"
             );
-            let g = crate::style::computed::parse_gradient(&raw).unwrap();
-            DirectGradient::new(&raw, g.stops.len(), g.space)
+            let g = crate::style::computed::parse_gradient(&raw, vcx).unwrap();
+            DirectGradient::new(&raw, g.stops.len(), g.space, vcx)
                 .unwrap()
                 .colour_at(&g.stops, 0.5, g.hue)
         };
@@ -114,9 +117,11 @@ mod tests {
 
     #[test]
     fn polar_stop_preserves_the_authored_zero_hue() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let raw =
             "linear-gradient(in lch decreasing hue, lch(50% 100% 360deg), lch(50% 100% 270deg))";
-        let palette = DirectGradient::new(raw, 2, GradSpace::Lch).unwrap();
+        let palette = DirectGradient::new(raw, 2, GradSpace::Lch, vcx).unwrap();
         assert_eq!(
             palette.colors,
             vec![[50.0, 150.0, 0.0], [50.0, 150.0, 270.0]]

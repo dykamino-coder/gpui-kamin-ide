@@ -1,5 +1,6 @@
 //! SVG resources belong to a document; deferred groups retain immutable definitions.
 
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -39,23 +40,17 @@ impl PaintContext {
         self.viewport.get()
     }
 
-    pub(crate) fn begin(&self, nodes: &[Node], viewport: (f32, f32)) {
+    pub(crate) fn begin(&self, nodes: &[Node], viewport: (f32, f32), vcx: ValueCx<'_>) {
         if !self.prepared.get() {
-            self.collect(nodes);
+            self.collect(nodes, vcx);
         }
         self.viewport.set(viewport);
     }
 
-    pub(crate) fn reset(&self) {
-        *self.definitions.borrow_mut() = Arc::default();
-        self.viewport.set((0.0, 0.0));
-        self.prepared.set(false);
-    }
-
     /// Rebuild before tree construction, including updates at the same node address.
     /// Old groups keep their own Arc until their deferred paint has finished.
-    pub(crate) fn collect(&self, nodes: &[Node]) {
-        fn walk(nodes: &[Node], out: &mut MaskDefinitions) {
+    pub(crate) fn collect(&self, nodes: &[Node], vcx: ValueCx<'_>) {
+        fn walk(nodes: &[Node], out: &mut MaskDefinitions, vcx: ValueCx<'_>) {
             for n in nodes {
                 let Node::Element(e) = n else { continue };
                 let tag = e.tag.to_ascii_lowercase();
@@ -66,7 +61,7 @@ impl PaintContext {
                     let ids = crate::svg::ClipIds::for_document(e);
                     for c in &e.children {
                         if let Node::Element(el) = c {
-                            crate::svg::serialize::write_in(el, &mut markup, &ids);
+                            crate::svg::serialize::write_in(el, &mut markup, &ids, vcx);
                         }
                     }
                     out.0.insert(
@@ -81,7 +76,7 @@ impl PaintContext {
                     && let Some(id) = e.attr("id")
                 {
                     let mut markup = String::new();
-                    crate::svg::serialize::write_element(e, &mut markup);
+                    crate::svg::serialize::write_element(e, &mut markup, vcx);
                     out.0.insert(
                         format!("filter:{id}"),
                         MaskDefinition {
@@ -90,11 +85,11 @@ impl PaintContext {
                         },
                     );
                 }
-                walk(&e.children, out);
+                walk(&e.children, out, vcx);
             }
         }
         let mut definitions = MaskDefinitions::default();
-        walk(nodes, &mut definitions);
+        walk(nodes, &mut definitions, vcx);
         *self.definitions.borrow_mut() = Arc::new(definitions);
         self.prepared.set(true);
     }
@@ -106,32 +101,36 @@ mod tests {
     use crate::document::state::DocState;
     use crate::style::css::Media;
 
-    fn nodes(alpha: bool, fill: &str) -> Vec<Node> {
+    fn nodes(alpha: bool, fill: &str, doc: &std::rc::Rc<DocState>) -> Vec<Node> {
         let mode = if alpha { "alpha" } else { "luminance" };
-        crate::dom::parse(
+        crate::dom::parse_current(
             &format!(
                 "<svg><mask id='m' style='mask-type:{mode}'><rect width='20' height='20' fill='{fill}'/></mask><clipPath id='c'><rect width='10' height='20'/></clipPath><filter id='f'><feFlood flood-color='{fill}'/></filter></svg>"
             ),
             "",
+            Media::default(),
+            doc,
         )
     }
 
     #[test]
     fn delayed_masks_keep_markup_and_alpha_after_other_documents_and_rebuilds() {
+        let doc = DocState::new(Media::default());
+        let vcx = doc.values();
         let a = PaintContext::default();
-        a.collect(&nodes(true, "red"));
+        a.collect(&nodes(true, "red", &doc), vcx);
         let retained = a.definitions();
         let markup = retained.get("m").unwrap().markup.clone();
         assert!(retained.get("m").unwrap().alpha);
         assert!(!retained.get("c").unwrap().alpha);
         assert!(retained.get("filter:f").is_some());
         let b = PaintContext::default();
-        b.collect(&nodes(false, "blue"));
+        b.collect(&nodes(false, "blue", &doc), vcx);
         assert!(!b.definitions().get("m").unwrap().alpha);
         assert_ne!(b.definitions().get("m").unwrap().markup, markup);
         // Rebuilding resources must not invalidate a retained group, regardless of count.
         for _ in 0..1002 {
-            a.collect(&[]);
+            a.collect(&[], vcx);
         }
         assert!(a.definitions().get("m").is_none());
         assert_eq!(retained.get("m").unwrap().markup, markup);
@@ -151,14 +150,16 @@ mod tests {
                 }
             }
         }
+        let doc = DocState::new(Media::default());
+        let vcx = doc.values();
         let context = PaintContext::default();
-        let mut nodes = nodes(false, "red");
+        let mut nodes = nodes(false, "red", &doc);
         let address = nodes.as_ptr();
-        context.collect(&nodes);
+        context.collect(&nodes, vcx);
         let before = context.definitions();
         recolor(&mut nodes);
         assert_eq!(nodes.as_ptr(), address);
-        context.collect(&nodes);
+        context.collect(&nodes, vcx);
         assert_ne!(
             before.get("m").unwrap().markup,
             context.definitions().get("m").unwrap().markup
@@ -166,24 +167,12 @@ mod tests {
     }
 
     #[test]
-    fn nested_document_scopes_restore_viewport_and_resource_owner() {
+    fn explicit_documents_keep_independent_viewports_and_resource_owners() {
         let a = DocState::new(Media::default());
         let b = DocState::new(Media::default());
-        let _outer = a.enter();
-        a.paint.begin(&[], (300.0, 200.0));
-        {
-            let _inner = b.enter();
-            b.paint.begin(&[], (10.0, 20.0));
-            assert_eq!(
-                crate::document::state::current().paint.viewport(),
-                (10.0, 20.0)
-            );
-        }
-        assert_eq!(
-            crate::document::state::current().paint.viewport(),
-            (300.0, 200.0)
-        );
-        a.paint.reset();
-        assert_eq!(a.paint.viewport(), (0.0, 0.0));
+        a.paint.begin(&[], (300.0, 200.0), a.values());
+        b.paint.begin(&[], (10.0, 20.0), b.values());
+        assert_eq!(b.paint.viewport(), (10.0, 20.0));
+        assert_eq!(a.paint.viewport(), (300.0, 200.0));
     }
 }

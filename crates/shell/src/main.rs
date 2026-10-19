@@ -1,3 +1,12 @@
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 // GUI-subsystem в release: console-subsystem дарил packaged-приложению чёрное
 // консольное окно. В dev (debug_assertions) консоль остаётся — туда идут логи
 // сайдкара при запуске из терминала.

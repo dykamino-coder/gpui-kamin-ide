@@ -45,6 +45,7 @@ fn cases(text: &str) -> Vec<(Vec<u8>, String)> {
 }
 
 #[test]
+#[allow(clippy::print_stdout, reason = "report corpus test totals")]
 fn encoding_detection() {
     let dir = suite_dir();
     if !dir.exists() {

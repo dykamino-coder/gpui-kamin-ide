@@ -1,15 +1,20 @@
 //! Mask sources preserve the element orientation when looking up cached images.
 
 use super::Grouped;
+use crate::document::state::ValueCx;
 
 impl Grouped {
-    pub(crate) fn mask_source(&self, source: &str) -> Option<crate::paint::background::Source> {
+    pub(crate) fn mask_source(
+        &self,
+        source: &str,
+        vcx: ValueCx<'_>,
+    ) -> Option<crate::paint::background::Source> {
         // CSS Images 3 §5.1 applies image-orientation to decorative images too.
         // Keep oriented and encoded rasters (and their intrinsic sizes) distinct.
         if self.mask_orient_none {
-            crate::paint::background::source(&format!("exif-none|{source}"))
+            crate::paint::background::source(&format!("exif-none|{source}"), vcx)
         } else {
-            crate::paint::background::source(source)
+            crate::paint::background::source(source, vcx)
         }
     }
 }

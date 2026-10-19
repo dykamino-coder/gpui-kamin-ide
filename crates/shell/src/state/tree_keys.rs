@@ -92,7 +92,7 @@ impl RootView {
             }
             ("v", true) => {
                 let dir = if is_dir {
-                    first.clone()
+                    first
                 } else {
                     first
                         .rsplit_once(['/', '\\'])

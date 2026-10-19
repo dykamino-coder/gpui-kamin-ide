@@ -9,6 +9,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
 pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
+    let vcx = opts.cx.vcx();
     // Pair each root instance with its canvas, including identical iframe documents.
     let measured =
         (e.tag == "html").then(|| crate::paint::background::measure_root_box(opts.doc_salt));
@@ -22,7 +23,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let canvas_layers = e.style.bg_layers();
+    let canvas_layers = e.style.bg_layers(vcx);
     if let Some(g) = e
         .style
         .gradient
@@ -109,13 +110,15 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) = crate::paint::background::canvas_layer(l, area.clone()) {
+                        if let Some(t) =
+                            crate::paint::background::canvas_layer(l, area.clone(), vcx)
+                        {
                             stack = stack.child(t);
                         }
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::paint::background::canvas_layer(&e.style, area),
+                None => crate::paint::background::canvas_layer(&e.style, area, vcx),
             }
         }
     {
@@ -129,7 +132,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             .child(tiles)
             .into_any_element();
     } else if e.style.bg_image.is_some()
-        && let Some(tiles) = crate::paint::background::layer(&e.style)
+        && let Some(tiles) = crate::paint::background::layer(&e.style, vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по
@@ -216,6 +219,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 .child(layer)
                 .into_any_element(),
             &clip,
+            vcx,
         );
     }
     out.push(crate::interactive::scroll_target::canvas(layer));

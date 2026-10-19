@@ -1,6 +1,7 @@
 //! Форма содержимого по детям: флаги разрывов детей и сборка формы из их вырезов.
 
 use super::{finish_shape_cuts, kid_shapes, shaped_height};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
@@ -39,8 +40,9 @@ pub(super) fn shape_from_kids(
     grid_rows_stack: bool,
     row_gap: f32,
     no_descent: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Measure> {
-    let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent);
+    let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent, vcx);
     let mut cuts: Vec<(f32, f32)> = Vec::new();
     let mut forced: Vec<f32> = Vec::new();
     let mut solid: Vec<(f32, f32)> = Vec::new();
@@ -96,6 +98,7 @@ pub(super) fn shape_from_kids(
         &mut forced,
         &mut solid,
         stacked,
+        vcx,
     ) {
         Ok(value) => value,
         Err(value) => return value.map(Measure::plain),
@@ -110,7 +113,7 @@ pub(super) fn shape_from_kids(
     // НЕ является, дотяг принадлежит кому-то выше и здесь
     // не учитывается — он всплывёт там.
     finish_shape_cuts(
-        c, unclamp, cx, top, bot, cuts, forced, solid, stacked, oof_reach, h, mt, mb,
+        c, unclamp, cx, top, bot, cuts, forced, solid, stacked, oof_reach, h, mt, mb, vcx,
     )
 }
 
@@ -121,6 +124,7 @@ pub(super) fn kid_break_flags(
     cx: ShapeCx,
     kids: &Vec<&Node>,
     flex_items: bool,
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<bool>,
     Vec<bool>,
@@ -171,7 +175,9 @@ pub(super) fn kid_break_flags(
     let avoid_kid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if avoid_chains => (edge_avoid(k, false), edge_avoid(k, true)),
+            Node::Element(k) if avoid_chains => {
+                (edge_avoid(k, false, vcx), edge_avoid(k, true, vcx))
+            }
             _ => (false, false),
         })
         .collect();
@@ -201,7 +207,7 @@ pub(super) fn kid_break_flags(
         .iter()
         .map(|n| match n {
             Node::Element(k) if !flex_items && !out_of_flow(&k.style) => {
-                (edge_avoid(k, false), edge_avoid(k, true))
+                (edge_avoid(k, false, vcx), edge_avoid(k, true, vcx))
             }
             _ => (false, false),
         })

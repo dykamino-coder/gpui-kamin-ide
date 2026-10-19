@@ -10,6 +10,7 @@
 
 use super::Sum;
 use super::calc::{Calc, Val};
+use crate::document::state::ValueCx;
 use std::f32::consts::{E, PI};
 
 const FNS: [&str; 17] = [
@@ -158,7 +159,7 @@ pub(super) fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
 impl Calc<'_> {
     /// Вызов математической функции в начале остатка (`is_math_fn` уже
     /// истинно). Доводы — полные выражения через запятую.
-    pub(super) fn math_fn(&mut self) -> Option<Val> {
+    pub(super) fn math_fn(&mut self, vcx: ValueCx<'_>) -> Option<Val> {
         let name = math_name(self.rest)?;
         let mut sub = self.sub(&self.rest[name.len() + 1..]);
         let mut strategy = "nearest";
@@ -181,7 +182,7 @@ impl Calc<'_> {
         }
         let function = super::calc_function::Function::Math(name, strategy);
         let mut arguments = super::calc_function::Arguments::new(function);
-        let count = sub.arguments(|value| arguments.push(value))?;
+        let count = sub.arguments(vcx, |value| arguments.push(value))?;
         sub.record_call(function, count)?;
         self.resume(sub);
         arguments.finish()

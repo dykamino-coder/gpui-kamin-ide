@@ -5,6 +5,8 @@ use crate::style::values::value::Color;
 
 #[test]
 fn slotted_has_matches_the_assigned_elements_own_subtree() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><style>i { color: red }</style><div><template shadowrootmode=open><style>
           i { color: red } slot { color: red }
@@ -16,7 +18,7 @@ fn slotted_has_matches_the_assigned_elements_own_subtree() {
         <div id=box><i class=Assigned><b class=Child></b></i></div></div>"#,
     );
     // The assigned element is #box, so its descendant i does not match ::slotted.
-    assert_eq!(colors, vec![Color::parse("red")]);
+    assert_eq!(colors, vec![Color::parse("red", vcx)]);
     let colors = child_colors(
         r#"<!doctype html><div><template shadowrootmode=open><style>
           i { color: red } slot { color: red }
@@ -26,22 +28,26 @@ fn slotted_has_matches_the_assigned_elements_own_subtree() {
         </style><section><slot id=box></slot></section></template>
         <i class=Assigned><b class=Child></b></i></div>"#,
     );
-    assert_eq!(colors, vec![Color::parse("green")]);
+    assert_eq!(colors, vec![Color::parse("green", vcx)]);
 }
 
 #[test]
 fn slotted_does_not_select_its_own_fallback() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div><template shadowrootmode=open><style>
           i { color: red }
           ::slotted(i:has(b)) { color: green }
         </style><slot id=box><i><b></b></i></slot></template></div>"#,
     );
-    assert_eq!(colors, vec![Color::parse("red")]);
+    assert_eq!(colors, vec![Color::parse("red", vcx)]);
 }
 
 #[test]
 fn host_has_keeps_light_and_shadow_descendants_separate() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div><template shadowrootmode=open>
         <style>
@@ -53,11 +59,13 @@ fn host_has_keeps_light_and_shadow_descendants_separate() {
         </style><div id=box><i class=light></i><i class=shadow></i></div>
         <article><h2></h2></article></template><section><h1 class=Heading></h1></section></div>"#,
     );
-    assert_eq!(colors, vec![Color::parse("green"); 2]);
+    assert_eq!(colors, vec![Color::parse("green", vcx); 2]);
 }
 
 #[test]
 fn host_has_registration_precedes_all_tree_passports() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><main><template shadowrootmode=open>
         <div><template shadowrootmode=open><style>
@@ -66,11 +74,13 @@ fn host_has_registration_precedes_all_tree_passports() {
         </style><div id=box><i></i></div></template><section></section></div>
         </template></main>"#,
     );
-    assert_eq!(colors, vec![Color::parse("green")]);
+    assert_eq!(colors, vec![Color::parse("green", vcx)]);
 }
 
 #[test]
 fn featureless_negation_requires_an_eligible_subject() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let colors = child_colors(
         r#"<!doctype html><div id=box><template shadowrootmode=open>
         <style>i { color: red }
@@ -84,5 +94,5 @@ fn featureless_negation_requires_an_eligible_subject() {
         </style><i class=a></i><i class=b></i>
         </template></div>"#,
     );
-    assert_eq!(colors, vec![Color::parse("green"); 2]);
+    assert_eq!(colors, vec![Color::parse("green", vcx); 2]);
 }

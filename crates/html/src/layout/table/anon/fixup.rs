@@ -1,6 +1,7 @@
 //! Достройка детей таблицы и ряда анонимными объектами (CSS 2.1 §17.2.1).
 
 use super::anon_element;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
@@ -13,8 +14,8 @@ use crate::style::computed::Display;
 /// растворяется с наследованием, последовательные не-ячейки сливаются в
 /// одну анонимную ячейку, а вложенный ряд выталкивается ОТДЕЛЬНЫМ рядом
 /// после текущего.
-pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
-    fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>) {
+pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
+    fn walk(nodes: &[Node], cells: &mut Vec<Node>, run: &mut Vec<Node>, vcx: ValueCx<'_>) {
         for child in nodes {
             match child {
                 Node::Element(el) if el.style.display == Some(Display::Contents) => {
@@ -26,7 +27,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = inherit(&el.style, &ge.style).into();
+                                ge.style = inherit(&el.style, &ge.style, vcx).into();
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -43,7 +44,7 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
                             other => other,
                         })
                         .collect();
-                    walk(&merged, cells, run);
+                    walk(&merged, cells, run, vcx);
                 }
                 // §17.2.1 шаг 2: ребёнок ряда, который не ячейка, уходит в
                 // АНОНИМНУЮ ЯЧЕЙКУ этого же ряда — ряд внутри ряда тоже.
@@ -86,18 +87,18 @@ pub(crate) fn fixup_row_children(row: &Element) -> Vec<Node> {
         return vec![Node::Element(row.clone())];
     }
     let (mut cells, mut run) = (vec![], vec![]);
-    walk(&row.children, &mut cells, &mut run);
+    walk(&row.children, &mut cells, &mut run, vcx);
     table_roles::flush_inline(&mut cells, &mut run);
     let mut fixed = row.clone();
     fixed.children = cells;
     vec![Node::Element(fixed)]
 }
 
-pub(crate) fn fixup_table_children(children: &[Node]) -> Vec<Node> {
-    fixup_children(children, false)
+pub(crate) fn fixup_table_children(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
+    fixup_children(children, false, vcx)
 }
 
-fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
+fn fixup_children(children: &[Node], in_group: bool, vcx: ValueCx<'_>) -> Vec<Node> {
     let mut out: Vec<Node> = vec![];
     let mut stray: Vec<Node> = vec![];
     fn flush(stray: &mut Vec<Node>, out: &mut Vec<Node>) {
@@ -129,7 +130,7 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
     // BEFORE the fixup (css-display-3 §box-generation): the cells of two
     // `tr { display: contents }` are consecutive siblings and share one
     // anonymous row (`display-contents-tr-001`).
-    let flat = flatten_contents(children);
+    let flat = flatten_contents(children, vcx);
     let children = flat.as_slice();
     for child in children {
         match child {
@@ -148,14 +149,14 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
                     // содержимое встречаются и там.
                     flush(&mut stray, &mut out);
                     let mut copy = el.clone();
-                    copy.children = fixup_children(&el.children, true);
+                    copy.children = fixup_children(&el.children, true, vcx);
                     out.push(Node::Element(copy));
                 } else if is_cap && !in_group {
                     flush(&mut stray, &mut out);
                     out.push(child.clone());
                 } else if row {
                     flush(&mut stray, &mut out);
-                    out.extend(fixup_row_children(el));
+                    out.extend(fixup_row_children(el, vcx));
                 } else {
                     stray.push(child.clone());
                 }
@@ -201,7 +202,7 @@ fn fixup_children(children: &[Node], in_group: bool) -> Vec<Node> {
 /// Replace `display: contents` elements by their children, merging the
 /// dissolved element's inherited style into them; bare text gets an inline
 /// wrapper that carries that style.
-fn flatten_contents(children: &[Node]) -> Vec<Node> {
+fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
     let mut out = Vec::with_capacity(children.len());
     for n in children {
         let Node::Element(el) = n else {
@@ -212,10 +213,10 @@ fn flatten_contents(children: &[Node]) -> Vec<Node> {
             out.push(n.clone());
             continue;
         }
-        for g in flatten_contents(&el.children) {
+        for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = inherit(&el.style, &ge.style).into();
+                    ge.style = inherit(&el.style, &ge.style, vcx).into();
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {

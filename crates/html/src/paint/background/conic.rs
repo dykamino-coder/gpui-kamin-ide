@@ -1,6 +1,7 @@
 //! Conic gradient rays in CSS coordinates, sampled at device pixel centers.
 
 use super::{Source, angle_fraction, len_px, place_stops, split_top, wrap_repeat};
+use crate::document::state::ValueCx;
 use crate::style::computed::parse_pos_words;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
@@ -15,7 +16,12 @@ pub(super) fn is_conic(raw: &str) -> bool {
 /// CSS Images 4 §conic-gradients: positions translate the ray origin;
 /// aspect ratio does not distort angles. Sampling in device pixels avoids
 /// a second interpolation across hard color stops at fractional DPI.
-pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc<RenderImage>> {
+pub(super) fn rasterize(
+    raw: &str,
+    size: (f32, f32),
+    density: f32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     let repeating = raw.starts_with("repeating-");
     let raw = raw.strip_prefix("repeating-").unwrap_or(raw);
     let inner = raw.strip_prefix("conic-gradient(")?.strip_suffix(')')?;
@@ -36,7 +42,7 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
                 match words[i] {
                     "from" => {
                         // Preserve the existing fallback for angle calculations not yet parsed.
-                        from = angle_fraction(words.get(i + 1)?).unwrap_or(0.0);
+                        from = angle_fraction(words.get(i + 1)?, vcx).unwrap_or(0.0);
                         i += 2;
                     }
                     "at" | "in" => {
@@ -48,8 +54,11 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
                         }
                         let value = words[start..i].join(" ");
                         if kind == "at" {
-                            let position = parse_pos_words(&value);
-                            center = (len_px(position.x, size.0)?, len_px(position.y, size.1)?);
+                            let position = parse_pos_words(&value, vcx);
+                            center = (
+                                len_px(position.x, size.0, vcx)?,
+                                len_px(position.y, size.1, vcx)?,
+                            );
                         } else {
                             interpolation = format!("in {value}, ");
                         }
@@ -66,10 +75,10 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
         let words = crate::style::computed::split_outside_parens(part);
         let Some(color) = words
             .first()
-            .and_then(|w| crate::style::values::color_space::interpolation_color(w))
+            .and_then(|w| crate::style::values::color_space::interpolation_color(w, vcx))
         else {
             if words.len() == 1
-                && let Some(at) = angle_fraction(&words[0])
+                && let Some(at) = angle_fraction(&words[0], vcx)
             {
                 hints.push((raw_stops.len(), at));
             }
@@ -78,7 +87,7 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
         colors.push(words[0].clone());
         let positions: Vec<f32> = words[1..]
             .iter()
-            .filter_map(|w| angle_fraction(w))
+            .filter_map(|w| angle_fraction(w, vcx))
             .collect();
         if positions.is_empty() {
             raw_stops.push((color, None));
@@ -90,10 +99,10 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
         return None;
     }
     // Reuse interpolation-space selection and hue rules for all gradient kinds.
-    let method = crate::style::computed::parse_gradient(&format!(
-        "linear-gradient({interpolation}{})",
-        colors.join(", ")
-    ))?;
+    let method = crate::style::computed::parse_gradient(
+        &format!("linear-gradient({interpolation}{})", colors.join(", ")),
+        vcx,
+    )?;
     let stops = place_stops(raw_stops);
     let hard_stops: Vec<f32> = stops
         .windows(2)
@@ -153,9 +162,14 @@ pub(super) fn rasterize(raw: &str, size: (f32, f32), density: f32) -> Option<Arc
     gpui::bgra_bytes_to_image(w, h, bytes)
 }
 
-pub(super) fn tile(source: &Source, size: (f32, f32), density: f32) -> Option<Arc<RenderImage>> {
+pub(super) fn tile(
+    source: &Source,
+    size: (f32, f32),
+    density: f32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     match source {
-        Source::Gradient { raw } if is_conic(raw) => rasterize(raw, size, density),
-        _ => source.raster(size),
+        Source::Gradient { raw } if is_conic(raw) => rasterize(raw, size, density, vcx),
+        _ => source.raster(size, vcx),
     }
 }

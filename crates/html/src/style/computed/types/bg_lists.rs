@@ -1,5 +1,7 @@
 //! Типизированные списки фоновых компонентов и циклическое повторение слоёв.
 
+use crate::document::state::ValueCx;
+
 /// Фоновое свойство, значение которого — список слоёв через запятую.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BgListProp {
@@ -79,10 +81,10 @@ impl BgLists {
             .map(|(_, v)| v.as_slice())
     }
     /// Разбор списка выполняется в каскаде тем же диспетчером, что и одного слоя.
-    pub fn set(&mut self, prop: BgListProp, raw: String) {
+    pub fn set(&mut self, prop: BgListProp, raw: String, vcx: ValueCx<'_>) {
         let layers = super::background_layers(&raw)
             .into_iter()
-            .map(|v| super::bg_layer::BgLayer::parse(prop, v, None))
+            .map(|v| super::bg_layer::BgLayer::parse(prop, v, None, vcx))
             .collect();
         self.set_layers(prop, layers);
     }
@@ -108,11 +110,12 @@ impl BgLists {
                 .flat_map(|layer| layer.position_math.iter_mut().flatten())
         })
     }
-    pub(crate) fn resolve_font(&mut self, font: f32, ex: f32, ch: f32) {
+    pub(crate) fn resolve_font(&mut self, font: f32, ex: f32, ch: f32, vcx: ValueCx<'_>) {
         for (prop, layers) in &mut self.lists {
             for layer in layers {
                 if let Some(raw) = layer.pending.take() {
-                    *layer = super::bg_layer::BgLayer::parse(*prop, &raw, Some((font, ex, ch)));
+                    *layer =
+                        super::bg_layer::BgLayer::parse(*prop, &raw, Some((font, ex, ch)), vcx);
                 }
             }
         }
@@ -131,9 +134,11 @@ mod tests {
     }
     #[test]
     fn replacement_keeps_only_new_typed_layers() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut l = BgLists::default();
-        l.set(BgListProp::Clip, "border-box, padding-box".into());
-        l.set(BgListProp::Clip, "text, content-box".into());
+        l.set(BgListProp::Clip, "border-box, padding-box".into(), vcx);
+        l.set(BgListProp::Clip, "text, content-box".into(), vcx);
         let mut c = super::super::Computed::default();
         let layers = l.get(BgListProp::Clip).unwrap();
         assert_eq!(layers.len(), 2);

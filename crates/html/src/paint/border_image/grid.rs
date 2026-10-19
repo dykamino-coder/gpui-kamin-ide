@@ -67,8 +67,14 @@ mod tests {
 
     #[test]
     fn overlapping_source_cuts_stay_anchored_to_opposite_edges() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.apply_one("border-image", "linear-gradient(green, green) 80 / 20px");
+        c.apply_one(
+            "border-image",
+            "linear-gradient(green, green) 80 / 20px",
+            vcx,
+        );
         let mut image = c.border_image.unwrap();
         image.slice = [BorderImageSlice::Px(80.0); 4];
         let source = Source::Gradient {
@@ -84,10 +90,12 @@ mod tests {
 
     #[test]
     fn shorthand_resets_width_and_preserves_outset_multipliers() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let declarations = crate::style::css::parse_decls(
             "border-image-width: 3; border-image: url(x.png) 25% / / 2 5px",
         );
-        let c = Computed::resolve(&mut vec![], &declarations);
+        let c = Computed::resolve(&mut vec![], &declarations, vcx);
         let image = c.border_image.unwrap();
         assert_eq!(image.width, [BorderImageWidth::Times(1.0); 4]);
         assert_eq!(image.outset[0].px(20.0, 100.0), 40.0);

@@ -1,6 +1,8 @@
 //! Resolve physical CSS scroll ranges, including far-edge origins.
+
 use super::geometry::{sides, union};
 use super::*;
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use gpui::ScrollHandle;
 impl Frame {
@@ -10,6 +12,8 @@ impl Frame {
         c: &Computed,
         handle: &ScrollHandle,
         bounds: Bounds<Pixels>,
+        sticky: Option<&super::exact_probe::StickyShift>,
+        vcx: ValueCx<'_>,
     ) -> bool {
         if !self.marker.get() {
             return false;
@@ -18,7 +22,7 @@ impl Frame {
         // coordinate space for a nested scrollport's origin (Overflow 3 §2.2).
         let snap_bounds = bounds;
         let mut bounds = bounds;
-        bounds.origin -= super::exact_probe::sticky_shift();
+        bounds.origin -= super::exact_probe::sticky_shift(sticky);
         let boxes = self.boxes.borrow();
         let text_boxes = self.text_boxes.borrow();
         fn area(
@@ -164,6 +168,7 @@ impl Frame {
                 snap_bounds,
                 self.insets.get(),
                 self.range.get(),
+                vcx,
             );
         }
         false

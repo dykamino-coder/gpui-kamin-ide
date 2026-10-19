@@ -1,9 +1,10 @@
 //! Разбор длины: Len::parse — числа с единицами, проценты, calc()/min()/max()/clamp(), anchor(), ключевые слова размеров.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Len {
-    pub fn parse(raw: &str) -> Option<Self> {
+    pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         if s.eq_ignore_ascii_case("auto") {
             return Some(Len::Auto);
@@ -47,7 +48,7 @@ impl Len {
         if let Some(arg) = lower
             .strip_prefix("fit-content(")
             .and_then(|r| r.strip_suffix(')'))
-            && Len::parse(arg).is_some()
+            && Len::parse(arg, vcx).is_some()
         {
             return Some(Len::FitContent);
         }
@@ -65,13 +66,13 @@ impl Len {
         // статическую позицию. Имя якоря чувствительно к регистру
         // (`--myAnchor`), поэтому режется `s`, а не `lower`.
         if lower.starts_with("anchor(") && s.ends_with(')') {
-            return parse_anchor(&s[7..s.len() - 1], 0.0, false);
+            return parse_anchor(&s[7..s.len() - 1], 0.0, false, vcx);
         }
         // `anchor-size()` (§anchor-size-fn) — та же арена, `AnchorFn::size`
         // задан. В размер попадает уже точками: `anchor::resolve_sizes`
         // решает её ДО раскладки из реестра прошлого кадра.
         if lower.starts_with("anchor-size(") && s.ends_with(')') {
-            return parse_anchor(&s[12..s.len() - 1], 0.0, true);
+            return parse_anchor(&s[12..s.len() - 1], 0.0, true, vcx);
         }
         // `min()`/`max()` от `anchor()` (css-values-4 §comparison-functions):
         // прежде запись проваливалась в общий разбор и выбрасывалась, и
@@ -80,12 +81,12 @@ impl Len {
             && lower.contains("anchor(")
             && s.ends_with(')')
         {
-            return parse_anchor_minmax(s, lower.starts_with("max("));
+            return parse_anchor_minmax(s, lower.starts_with("max("), vcx);
         }
         if lower.starts_with("calc(")
             && (lower.contains("anchor(") || lower.contains("anchor-size("))
         {
-            return parse_anchor_calc(s);
+            return parse_anchor_calc(s, vcx);
         }
         // `min()`/`max()`/`clamp()` на верхнем уровне (css-values-4 §10.2):
         // разбираются тем же выражением, что и `calc()` — функцию сравнения
@@ -97,7 +98,7 @@ impl Len {
             || lower.starts_with("clamp(")
             || calc_math::is_math_fn(&lower)
         {
-            return parse_calc(&lower);
+            return parse_calc(&lower, vcx);
         }
         // Имена единиц регистронезависимы (css-values-4 §6: «unit identifiers
         // are ASCII case-insensitive»): `105.83333Q` — те же четверть-
@@ -106,10 +107,10 @@ impl Len {
         // место — имя якоря — разобрано выше по исходной строке.
         let s = lower.as_str();
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
-            return parse_calc(inner);
+            return parse_calc(inner, vcx);
         }
-        super::atom::Atom::parse(s)
-            .map(|atom| atom.length())
+        super::atom::Atom::parse(s, vcx)
+            .map(|atom| atom.length(vcx))
             // Bare numbers retain the existing permissive px contract.
             .or_else(|| css_number(s).map(Len::Px))
     }

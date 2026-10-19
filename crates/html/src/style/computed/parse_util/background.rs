@@ -1,6 +1,7 @@
 //! Разбор фона: функция картинки, валидность сокращения background, список слоёв через запятую, пары процент/точки.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Функция картинки в начале слоя и хвост за её закрывающей скобкой.
 pub(in crate::style::computed) fn split_image_func(v: &str) -> (&str, &str) {
@@ -29,7 +30,7 @@ pub(in crate::style::computed) fn split_image_func(v: &str) -> (&str, &str) {
 /// другом обязаны оставить фон зелёным. Разбор ниже намеренно снисходителен —
 /// он берёт из записи всё, что узнал, — поэтому годность проверяется
 /// отдельно, и только ею решается сброс (`escapes-002/014`, `keywords-000`).
-pub(in crate::style::computed) fn background_shorthand_valid(v: &str) -> bool {
+pub(in crate::style::computed) fn background_shorthand_valid(v: &str, vcx: ValueCx<'_>) -> bool {
     if v.contains("gradient(") || v.contains("url(") {
         return true;
     }
@@ -68,9 +69,9 @@ pub(in crate::style::computed) fn background_shorthand_valid(v: &str) -> bool {
                 | "top"
                 | "bottom"
                 | "center"
-        ) || Len::parse(t).is_some()
-            || Color::parse(t).is_some()
-            || image_function::arguments(t).is_some();
+        ) || Len::parse(t, vcx).is_some()
+            || Color::parse(t, vcx).is_some()
+            || image_function::arguments(t, vcx).is_some();
         if !known {
             return false;
         }
@@ -123,9 +124,9 @@ pub(crate) fn top_level_comma(inner: &str) -> Option<usize> {
 /// которые доли решают САМИ при отрисовке, зная размер коробки
 /// (css-values-4 §10.9). Любая другая природа в сумме (`ch`, `vw`, `em`…) —
 /// `None`: её здесь сложить не с чем, и запись, как прежде, не применяется.
-pub(in crate::style::computed) fn pct_px_pair(t: &str) -> Option<(f32, f32)> {
-    match Len::parse_mixed(t)? {
-        Len::Calc(i) => crate::style::values::value::calc_get(i).pct_px(),
+pub(in crate::style::computed) fn pct_px_pair(t: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
+    match Len::parse_mixed(t, vcx)? {
+        Len::Calc(i) => crate::style::values::value::calc_get(i, vcx).pct_px(),
         _ => None,
     }
 }

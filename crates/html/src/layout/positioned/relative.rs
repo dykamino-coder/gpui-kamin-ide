@@ -1,4 +1,6 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -20,7 +22,7 @@ use crate::style::values::value::{Len, px_strict};
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -46,8 +48,8 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
             && e.style.contain_paint != Some(true)
             && !crate::text::inline::establishes_cb(&e.style)
     }
-    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed) {
-        let parent = inherit_unpainted(inherited, &e.style);
+    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed, vcx: ValueCx<'_>) {
+        let parent = inherit_unpainted(inherited, &e.style, vcx);
         let kids = std::mem::take(&mut e.children);
         for n in kids {
             match n {
@@ -55,11 +57,11 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = inherit_unpainted(&parent, &k.style).into();
+                    k.style = inherit_unpainted(&parent, &k.style, vcx).into();
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {
-                    take(&mut k, out, &parent);
+                    take(&mut k, out, &parent, vcx);
                     e.children.push(Node::Element(k));
                 }
                 other => e.children.push(other),
@@ -84,7 +86,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
             Node::Element(e) if passable(e) && has(e) => {
                 let mut e = e.clone();
                 let mut moved = Vec::new();
-                take(&mut e, &mut moved, inherited);
+                take(&mut e, &mut moved, inherited, vcx);
                 out.push(Node::Element(e));
                 out.extend(moved);
             }

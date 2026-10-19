@@ -1,5 +1,6 @@
 //! Constant background colors and clip fills computed from CSS values and image facts.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{BgRepeat, Computed, Tiling};
 use crate::style::values::{composite::over, value::Color};
 
@@ -10,15 +11,18 @@ pub(crate) use stack::collapse as collapse_flat_stack;
 /// Color composition does not depend on decoded image or GUI element types.
 pub(crate) trait BackgroundImageValues {
     /// Whether the source can be displayed, as required by CSS Backgrounds 3 §2.3.
-    fn image_available(&self, raw: &str) -> bool;
+    fn image_available(&self, raw: &str, vcx: ValueCx<'_>) -> bool;
     /// A color only when every image pixel is identical and opaque.
-    fn uniform_image_color(&self, raw: &str) -> Option<Color>;
+    fn uniform_image_color(&self, raw: &str, vcx: ValueCx<'_>) -> Option<Color>;
 }
 
 /// Весь фон коробки одним цветом, если он таков: цвет фона, поверх него
 /// одноцветный градиент или одноцветный растр, мощённый без зазоров.
 /// `None` — фон узорный (или его нет вовсе).
-pub(crate) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+pub(crate) fn flat_fill(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<crate::style::values::value::Color> {
     if c.gradient.is_some() && c.bg_image.is_some() {
         return None;
     }
@@ -57,7 +61,7 @@ pub(crate) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Col
         if !covers(rep.axis(true)) || !covers(rep.axis(false)) {
             return None;
         }
-        fill = over(c.uniform_image_color(src)?, fill);
+        fill = over(c.uniform_image_color(src, vcx)?, fill);
     }
     (fill.a > 0.0).then_some(fill)
 }
@@ -67,12 +71,15 @@ pub(crate) fn flat_fill(c: &Computed) -> Option<crate::style::values::value::Col
 /// Только НЕПРОЗРАЧНАЯ: тогда «цвет поверх заливки» тоже непрозрачен, и
 /// повторное слияние стилей (`inline::inherit` зовётся цепочкой) даёт тот же
 /// цвет — смешение не копится.
-pub(crate) fn text_clip_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+pub(crate) fn text_clip_fill(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<crate::style::values::value::Color> {
     if let Some(fill) = c.flat_text_background {
         return Some(fill);
     }
     if c.bg_clip != Some(crate::style::computed::BgClip::Text) {
         return None;
     }
-    flat_fill(c).filter(|f| f.a >= 1.0)
+    flat_fill(c, vcx).filter(|f| f.a >= 1.0)
 }

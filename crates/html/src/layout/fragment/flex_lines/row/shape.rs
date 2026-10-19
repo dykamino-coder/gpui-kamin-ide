@@ -1,5 +1,6 @@
 //! Формы флекс-строк ряда: поперечный размер и вырезы элементов.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
@@ -12,6 +13,7 @@ pub(crate) fn shape_flex_lines(
     row_gap: f32,
     side: impl Fn(&Option<Len>) -> Option<f32>,
     lines: &mut [Vec<(f32, Element, crate::layout::fragment::Shape)>],
+    vcx: ValueCx<'_>,
 ) -> Option<()> {
     for (li, line) in lines.iter_mut().enumerate() {
         let cross = line
@@ -19,12 +21,12 @@ pub(crate) fn shape_flex_lines(
             .map(|x| x.2.height + x.2.margin_top + x.2.margin_bottom)
             .fold(0.0f32, f32::max);
         let (bf, ba) = (
-            line.iter().any(|x| edge_break(&x.1, false)),
-            line.iter().any(|x| edge_avoid(&x.1, false)),
+            line.iter().any(|x| edge_break(&x.1, false, vcx)),
+            line.iter().any(|x| edge_avoid(&x.1, false, vcx)),
         );
         let (af, aa) = (
-            line.iter().any(|x| edge_break(&x.1, true)),
-            line.iter().any(|x| edge_avoid(&x.1, true)),
+            line.iter().any(|x| edge_break(&x.1, true, vcx)),
+            line.iter().any(|x| edge_avoid(&x.1, true, vcx)),
         );
         let m = line.len();
         for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
@@ -39,7 +41,7 @@ pub(crate) fn shape_flex_lines(
                     + side(&eb.bottom).unwrap_or(0.0);
                 let content = (cross - sh.margin_top - sh.margin_bottom - edges).max(0.0);
                 e.style.min_height = Some(Len::Px(content));
-                *sh = shape_full(e, 4, ShapeCx::COLUMNS)?;
+                *sh = shape_full(e, 4, ShapeCx::COLUMNS, vcx)?;
             }
             // Зазор между строками — к полю элементов следующей строки.
             if li > 0 {

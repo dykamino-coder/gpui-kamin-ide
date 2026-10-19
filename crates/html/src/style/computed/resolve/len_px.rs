@@ -6,6 +6,7 @@
 //! решает `Computed::resolve_viewport`), а `auto`, размеры по содержимому и
 //! `anchor()` — не длины, у них `None`.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, calc_get};
 
@@ -83,14 +84,14 @@ impl Len {
     /// Длина в точках. `basis` — база долей (`None`: доля не решается →
     /// `None`); шрифтовые единицы — по `font`; `calc` с иной природой, единицы
     /// окна, `auto`, размеры по содержимому и `anchor()` — `None`.
-    pub fn to_px(self, basis: Option<f32>, font: FontCx<'_>) -> Option<f32> {
+    pub fn to_px(self, basis: Option<f32>, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
         let pct = |k: f32| basis.map(|b| b * k);
         let lh = || font.line_px.unwrap_or(1.2 * font.font_px);
         Some(match self {
             Len::Px(v) => v,
             Len::Pct(k) => pct(k)?,
             Len::Calc(i) => {
-                let (k, add) = calc_get(i).pct_px()?;
+                let (k, add) = calc_get(i, vcx).pct_px()?;
                 if k == 0.0 { add } else { pct(k)? + add }
             }
             Len::Em(k) => k * font.font_px,
@@ -112,7 +113,7 @@ impl Len {
 
     /// Шрифтовые единицы в точки по `font`, остальное — как было: шаг
     /// «решить em» без базы долей (прежний `fallback_len_px(...).map(Len::Px)`).
-    pub fn font_units_to_px(self, font: FontCx<'_>) -> Len {
+    pub fn font_units_to_px(self, font: FontCx<'_>, vcx: ValueCx<'_>) -> Len {
         match self {
             Len::Em(_)
             | Len::EmPx(..)
@@ -120,7 +121,7 @@ impl Len {
             | Len::Ex(_)
             | Len::Ic(_)
             | Len::Lh(_)
-            | Len::LhPx(..) => self.to_px(None, font).map_or(self, Len::Px),
+            | Len::LhPx(..) => self.to_px(None, font, vcx).map_or(self, Len::Px),
             other => other,
         }
     }
@@ -132,29 +133,35 @@ mod tests {
 
     #[test]
     fn percentage_needs_a_basis() {
-        assert_eq!(Len::Pct(0.5).to_px(None, FontCx::FALLBACK), None);
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        assert_eq!(Len::Pct(0.5).to_px(None, FontCx::FALLBACK, vcx), None);
         assert_eq!(
-            Len::Pct(0.5).to_px(Some(200.0), FontCx::FALLBACK),
+            Len::Pct(0.5).to_px(Some(200.0), FontCx::FALLBACK, vcx),
             Some(100.0)
         );
-        assert_eq!(Len::Px(7.0).to_px(None, FontCx::FALLBACK), Some(7.0));
+        assert_eq!(Len::Px(7.0).to_px(None, FontCx::FALLBACK, vcx), Some(7.0));
     }
 
     #[test]
     fn font_units_follow_the_context() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let font = FontCx::new("", 20.0);
-        assert_eq!(Len::Em(2.0).to_px(None, font), Some(40.0));
-        assert_eq!(Len::EmPx(1.0, 3.0).to_px(None, font), Some(23.0));
-        assert_eq!(Len::Lh(1.0).to_px(None, font), Some(24.0));
+        assert_eq!(Len::Em(2.0).to_px(None, font, vcx), Some(40.0));
+        assert_eq!(Len::EmPx(1.0, 3.0).to_px(None, font, vcx), Some(23.0));
+        assert_eq!(Len::Lh(1.0).to_px(None, font, vcx), Some(24.0));
         let with_line = FontCx {
             line_px: Some(30.0),
             ..font
         };
-        assert_eq!(Len::LhPx(2.0, 1.0).to_px(None, with_line), Some(61.0));
+        assert_eq!(Len::LhPx(2.0, 1.0).to_px(None, with_line, vcx), Some(61.0));
     }
 
     #[test]
     fn keywords_and_viewport_units_are_not_lengths() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for l in [
             Len::Auto,
             Len::MinContent,
@@ -162,7 +169,7 @@ mod tests {
             Len::Vw(1.0),
             Len::Vh(1.0),
         ] {
-            assert_eq!(l.to_px(Some(100.0), FontCx::FALLBACK), None);
+            assert_eq!(l.to_px(Some(100.0), FontCx::FALLBACK, vcx), None);
         }
     }
 

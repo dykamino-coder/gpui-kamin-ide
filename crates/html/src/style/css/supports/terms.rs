@@ -1,24 +1,25 @@
 //! Термы @supports: (свойство: значение), selector() со строгим разбором, прочие функции; трёхзначный результат.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `selector(<complex-selector>)` (css-conditional-4 §at-supports-ext):
 /// ОДИН сложный селектор — список через запятую ложен (`at-supports-selector-004`);
 /// внутри `:is()/:where()/:has()/:not()` прощающего разбора при проверке нет —
 /// неизвестная часть роняет всё (`…-detecting-invalid-in-logical-combinations`).
 /// Capabilities come from the actual selector parser and nesting normalization.
-fn supports_selector(args: &str) -> bool {
+fn supports_selector(args: &str, cx: &SelectorCx) -> bool {
     let s = args.trim();
     if split_top_level(s, ',').len() > 1 {
         return false;
     }
-    let s = super::super::sheet::selector_for_supports(s);
-    selector_strict(&s)
+    let s = super::super::sheet::selector_for_supports(s, cx);
+    selector_strict(&s, cx)
 }
 
 /// Селектор годен, и годна КАЖДАЯ часть списков внутри `:is()` и родни.
-fn selector_strict(s: &str) -> bool {
-    if Selector::parse(s).is_none() {
+fn selector_strict(s: &str, cx: &SelectorCx) -> bool {
+    if Selector::parse_in(s, cx).is_none() {
         return false;
     }
     for f in [":is(", ":where(", ":has(", ":not(", ":matches(", ":any("] {
@@ -47,7 +48,7 @@ fn selector_strict(s: &str) -> bool {
                 if f == ":has(" {
                     p = p.trim_start_matches(['>', '+', '~']).trim_start();
                 }
-                if p.is_empty() || !selector_strict(p) {
+                if p.is_empty() || !selector_strict(p, cx) {
                     return false;
                 }
             }
@@ -57,7 +58,7 @@ fn selector_strict(s: &str) -> bool {
     true
 }
 
-pub(super) fn supports_eval_term(term: &str) -> SupTri {
+pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx, vcx: ValueCx<'_>) -> SupTri {
     let term = term.trim();
     // Функция `имя(...)`.
     if !term.starts_with('(') {
@@ -68,7 +69,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         let args = &term[open + 1..term.len().saturating_sub(1)];
         return match name.as_str() {
             "selector" => {
-                if supports_selector(args) {
+                if supports_selector(args, cx) {
                     SupTri::True
                 } else {
                     SupTri::False
@@ -121,7 +122,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
     }
     let inner = &term[1..term.len() - 1];
     // Скобки вокруг условия.
-    if let Some(t) = supports_condition(inner) {
+    if let Some(t) = supports_condition(inner, cx, vcx) {
         return t;
     }
     // Точка с запятой внутри скобок: `<declaration>` её не содержит
@@ -152,12 +153,12 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
         if colons.len() > 2 {
             return SupTri::False;
         }
-        if !attr_prefixes_declared(colons[1]) {
+        if !attr_prefixes_declared(colons[1], cx) {
             return SupTri::False;
         }
         // CSS Conditional 3 §6.1: substitution cannot add an unknown property.
         let property = unescape(colons[0].trim()).to_ascii_lowercase();
-        if !crate::style::computed::Computed::recognizes_property(&property) {
+        if !crate::style::computed::Computed::recognizes_property(&property, vcx) {
             return SupTri::False;
         }
         // css-variables-1 §3: «If a property contains one or more var()
@@ -208,7 +209,7 @@ pub(super) fn supports_eval_term(term: &str) -> SupTri {
             .filter(|(key, _)| key.as_str() != ORDER_KEY)
             .any(|(key, value)| {
                 value.split(DECL_SEP).any(|part| {
-                    crate::style::computed::Computed::declaration_result(key, part)
+                    crate::style::computed::Computed::declaration_result(key, part, vcx)
                         == crate::style::computed::ParseResult::Accepted
                 })
             });

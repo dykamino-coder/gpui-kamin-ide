@@ -1,15 +1,15 @@
 //! Computed::apply_background, хвост цепочки: background-repeat, origin/clip, size, position(-x/-y), object-position, background-attachment. Ветви в исходном порядке после box-shadow и background-image.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_background_layers(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             "background-blend-mode" => {
@@ -105,8 +105,8 @@ impl Computed {
                         // точками сам (css-values-4 §10.9).
                         let words = split_outside_parens(v);
                         let mut it = words.iter().map(String::as_str);
-                        let w = it.next().and_then(Len::parse_mixed);
-                        let h = it.next().and_then(Len::parse_mixed);
+                        let w = it.next().and_then(|s| Len::parse_mixed(s, vcx));
+                        let h = it.next().and_then(|s| Len::parse_mixed(s, vcx));
                         if neg(&w) || neg(&h) {
                             return;
                         }
@@ -126,18 +126,18 @@ impl Computed {
                     self.inherit_bits |= inh::BG_POS;
                     return;
                 }
-                self.set_background_position(v);
+                self.set_background_position(v, vcx);
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
             "object-view-box" => {
-                self.object_view_box = record_parsed!(self, parse_view_box(v));
+                self.object_view_box = record_parsed!(self, parse_view_box(v, vcx));
                 if v == "none" {
                     self.accept_declaration();
                 }
             }
             "object-position" => {
-                self.object_position = accept_parsed!(self, Some(parse_pos_words(v)));
+                self.object_position = accept_parsed!(self, Some(parse_pos_words(v, vcx)));
             }
             // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
             // одна ось, вторая не трогается.
@@ -146,10 +146,10 @@ impl Computed {
                     "left" | "top" => Some(Len::Pct(0.0)),
                     "center" => Some(Len::Pct(0.5)),
                     "right" | "bottom" => Some(Len::Pct(1.0)),
-                    other => Len::parse(other),
+                    other => Len::parse(other, vcx),
                 };
                 self.note_parsed(&val);
-                self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val);
+                self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val, vcx);
             }
             "background-attachment" => {
                 // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается

@@ -2,27 +2,16 @@
 
 use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
-use std::cell::Cell;
 
-thread_local! {
-    pub(crate) static HEIGHT: Cell<Option<f32>> = const { Cell::new(None) };
-}
-
-pub(crate) struct Guard(Option<f32>);
-
-impl Drop for Guard {
-    fn drop(&mut self) {
-        HEIGHT.set(self.0);
-    }
-}
-
-pub(crate) fn enter(st: &Computed, width: Option<f32>, viewport: f32) -> Guard {
-    let previous = HEIGHT.get();
-    HEIGHT.set(inner(st, previous, width, viewport));
-    Guard(previous)
-}
-
-fn inner(st: &Computed, outer: Option<f32>, width: Option<f32>, viewport: f32) -> Option<f32> {
+/// Definite content height of a block container with style `st` for its
+/// children (`LayoutCx::avail_h`); `outer` — its own container's, `width` —
+/// its own container's available width (percentage padding/borders).
+pub(crate) fn inner(
+    st: &Computed,
+    outer: Option<f32>,
+    width: Option<f32>,
+    viewport: f32,
+) -> Option<f32> {
     match st.display {
         Some(Display::Contents) => return outer,
         None | Some(Display::Block | Display::ListItem | Display::InlineBlock) => {}

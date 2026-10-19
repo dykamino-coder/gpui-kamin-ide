@@ -1,5 +1,6 @@
 //! Покраска: фон, рамки, двойная рамка, слой рамки (apply_paint).
 
+use crate::document::state::ValueCx;
 use crate::paint::apply::*;
 use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
@@ -11,7 +12,7 @@ use borders::paint_border_colors;
 pub(crate) use borders::{border_layer, double_border};
 use shadows::paint_shadows;
 
-pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
+pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     d.style().css_border_snap = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
     // for floats; css-flexbox-1 §5.4 and css-grid-1 §9: flex and grid items
@@ -49,9 +50,9 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
     // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
-    if c.color_clip().is_none()
+    if c.color_clip(vcx).is_none()
         && !crate::style::computed::single_corner::eligible(c)
-        && crate::paint::effects::corner_clip::insets(c).is_none()
+        && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
         if let Some(g) = &c.gradient {
             // Градиенту с размером/повтором/позицией нужна механика плитки —
@@ -67,7 +68,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
             d = d.bg(gpui::Background::from(bg.to_hsla()));
         }
     }
-    d = paint_border_colors(d, c);
+    d = paint_border_colors(d, c, vcx);
     if c.border_dashed == Some(true) {
         d = d.border_dashed();
     }
@@ -75,7 +76,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed) -> Div {
         d.style().border_style = Some(gpui::BorderStyle::Dotted);
     }
     if let Some(o) = c.opacity
-        && crate::paint::effects::corner_clip::insets(c).is_none()
+        && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {
         d = d.opacity(o);
     }

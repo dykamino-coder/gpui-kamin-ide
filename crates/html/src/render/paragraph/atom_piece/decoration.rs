@@ -1,5 +1,6 @@
 //! Обёртки atomic inline для transform, выравнивания и порядка краски.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::paint::effects::grouped::grouped;
@@ -17,6 +18,8 @@ pub(crate) fn decorate_atom(
     inherited: &Computed,
     original_margin: crate::style::computed::Sides,
     abs_cb: bool,
+    line_box: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
+    vcx: ValueCx<'_>,
 ) -> inline::Piece {
     // `mix-blend-mode` на ЗАМЕЩАЕМОМ атоме строки: блочный путь,
     // атом с коробкой и флоат смешивают через `grouped`, а `<svg>`,
@@ -30,7 +33,7 @@ pub(crate) fn decorate_atom(
             blend: e.style.blend,
             ..Default::default()
         };
-        grouped(el, &only)
+        grouped(el, &only, vcx)
     } else {
         el
     };
@@ -70,7 +73,7 @@ pub(crate) fn decorate_atom(
     };
     let el = match self_align {
         Some(a) => {
-            let mut w = crate::paint::apply::margins(div().flex_shrink_0(), &original_margin);
+            let mut w = crate::paint::apply::margins(div().flex_shrink_0(), &original_margin, vcx);
             w.style().align_self = Some(a);
             // Доля куска считается от его КОНТЕЙНЕРА, а обёртка встаёт
             // между ним и рядом: без своей ширины она сжимается по
@@ -119,13 +122,15 @@ pub(crate) fn decorate_atom(
             el,
             inline::OverlayAt {
                 edges: abs_cb,
-                line_probe: !abs_cb
-                    && (crate::layout::positioned::predicates::edge_set(e.style.inset.left)
-                        || crate::layout::positioned::predicates::edge_set(e.style.inset.right))
-                        != (crate::layout::positioned::predicates::edge_set(e.style.inset.top)
-                            || crate::layout::positioned::predicates::edge_set(
-                                e.style.inset.bottom,
-                            )),
+                line_probe: line_box.filter(|_| {
+                    !abs_cb
+                        && (crate::layout::positioned::predicates::edge_set(e.style.inset.left)
+                            || crate::layout::positioned::predicates::edge_set(e.style.inset.right))
+                            != (crate::layout::positioned::predicates::edge_set(e.style.inset.top)
+                                || crate::layout::positioned::predicates::edge_set(
+                                    e.style.inset.bottom,
+                                ))
+                }),
                 ..Default::default()
             },
         );

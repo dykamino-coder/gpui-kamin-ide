@@ -1,10 +1,12 @@
 //! Typed coverage masks and colored rings of border-shape contours.
 
 use super::border_scene::Contour;
+use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
 
 /// The nine-number header describes reference-box outsets, stroke width and
 /// compositing outsets. Negative stroke contracts the inner overflow clip.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn border_shape_mask_scene(
     spec: &str,
     bw: f32,
@@ -13,6 +15,7 @@ pub(crate) fn border_shape_mask_scene(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Scene> {
     let (head, raw) = spec.split_once(':')?;
     let v: Vec<f32> = head
@@ -22,7 +25,7 @@ pub(crate) fn border_shape_mask_scene(
     if v.len() != 9 {
         return None;
     }
-    let contour = Contour::place((raw, [v[0], v[1], v[2], v[3]]), bw, bh, dx, dy)?;
+    let contour = Contour::place((raw, [v[0], v[1], v[2], v[3]]), bw, bh, dx, dy, vcx)?;
     Some(Scene::new(cw, ch, contour.offset(true, v[4] / 2.0)))
 }
 
@@ -40,13 +43,14 @@ pub(crate) fn border_shape_ring_scene(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Scene> {
-    let outer = Contour::place(outer, bw, bh, dx, dy)?;
+    let outer = Contour::place(outer, bw, bh, dx, dy, vcx)?;
     if outer.is_empty() {
         return None;
     }
     let root = if let Some(inner) = inner {
-        let inner = Contour::place(inner, bw, bh, dx, dy)?;
+        let inner = Contour::place(inner, bw, bh, dx, dy, vcx)?;
         masked(
             cw,
             ch,

@@ -1,5 +1,6 @@
 //! Computed background-position expression and its cascade-only font resolution.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::resolve::image_lengths::lengths;
 use crate::style::values::value::LengthExpression;
 
@@ -11,7 +12,7 @@ pub(crate) struct PositionExpression {
 }
 
 impl PositionExpression {
-    pub(super) fn parse(raw: &str) -> Option<Self> {
+    pub(super) fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let low = raw.to_ascii_lowercase();
         if !low.contains('%')
             || !["min(", "max(", "clamp("]
@@ -21,7 +22,7 @@ impl PositionExpression {
             return None;
         }
         let typed = lengths(raw, 16.0, 16.0, 8.0, 8.0, 16.0);
-        let expression = LengthExpression::parse(&typed)?;
+        let expression = LengthExpression::parse(&typed, vcx)?;
         Some(Self {
             expression,
             pending: (raw.contains("lh") || crate::style::computed::has_font_units(raw))
@@ -40,10 +41,18 @@ impl PositionExpression {
         self.pending.is_some()
     }
 
-    pub(crate) fn resolve_font(&mut self, font: f32, rem: f32, ex: f32, ch: f32, line: f32) {
+    pub(crate) fn resolve_font(
+        &mut self,
+        font: f32,
+        rem: f32,
+        ex: f32,
+        ch: f32,
+        line: f32,
+        vcx: ValueCx<'_>,
+    ) {
         if let Some(raw) = self.pending.take()
             && let Some(expression) =
-                LengthExpression::parse(&lengths(&raw, font, rem, ex, ch, line))
+                LengthExpression::parse(&lengths(&raw, font, rem, ex, ch, line), vcx)
         {
             self.expression = if self.from_end {
                 expression.offset_from_end()

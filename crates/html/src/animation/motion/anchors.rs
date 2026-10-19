@@ -1,6 +1,7 @@
 //! Позиции и точки привязки преобразования motion path.
 
 use super::{Cb, angle_rad};
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -35,13 +36,13 @@ pub(super) fn rotation(c: &Computed, tangent: f32) -> f32 {
 /// `<position>` в коробке `rb` (css-values-4 §position): слова, длины, доли.
 /// Одно значение задаёт X, второе — Y; горизонтальное слово всегда идёт в X,
 /// как бы ни стояло в записи (`at top left` — это `left top`).
-pub(super) fn position_in(toks: &[&str], rb: (f32, f32, f32, f32)) -> (f32, f32) {
+pub(super) fn position_in(toks: &[&str], rb: (f32, f32, f32, f32), vcx: ValueCx<'_>) -> (f32, f32) {
     let axis = |t: &str, base: f32| -> f32 {
         match t {
             "left" | "top" => 0.0,
             "right" | "bottom" => base,
             "center" => base / 2.0,
-            _ => match Len::parse(t) {
+            _ => match Len::parse(t, vcx) {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) => k * base,
                 _ => base / 2.0,
@@ -70,6 +71,7 @@ pub(super) fn start_of(
     c: &Computed,
     cb: Option<&Cb>,
     rb: Option<(f32, f32, f32, f32)>,
+    vcx: ValueCx<'_>,
 ) -> (f32, f32) {
     let v = super::motion_style(c)
         .offset_position
@@ -80,7 +82,7 @@ pub(super) fn start_of(
     match (v, rb) {
         ("auto", _) => own,
         ("normal", Some(rb)) => (rb.0 + rb.2 / 2.0, rb.1 + rb.3 / 2.0),
-        (_, Some(rb)) => position_in(&v.split_whitespace().collect::<Vec<_>>(), rb),
+        (_, Some(rb)) => position_in(&v.split_whitespace().collect::<Vec<_>>(), rb, vcx),
         // Опорной коробки нет: точку в ней не выразить, остаётся своё начало.
         _ => own,
     }
@@ -95,7 +97,7 @@ pub(super) fn start_of(
 /// «The anchor point is the same as the transform-origin») — хвостовой сдвиг
 /// `O − Anchor` тогда нулевой и не пишется вовсе, и строка для сегодняшних
 /// зелёных не меняется ни байтом.
-pub(super) fn origin_shift(c: &Computed, p: (f32, f32), rot: f32) -> String {
+pub(super) fn origin_shift(c: &Computed, p: (f32, f32), rot: f32, vcx: ValueCx<'_>) -> String {
     let (ofx, ofy) = c.transform_origin.unwrap_or((0.5, 0.5));
     let (opx, opy) = c.transform_origin_px;
     let mut css = format!("translate({}px, {}px)", p.0, p.1);
@@ -116,7 +118,7 @@ pub(super) fn origin_shift(c: &Computed, p: (f32, f32), rot: f32) -> String {
     // Хвост пишется В СИСТЕМЕ ПОВЁРНУТОЙ коробки — так же, как это делают
     // эталоны набора (`offset-path-shape-rect-001-ref`:
     // `translate(520px,142px) rotate(90deg) translate(40px,40px)`).
-    if let Some(((axp, axc), (ayp, ayc))) = anchor_point(c) {
+    if let Some(((axp, axc), (ayp, ayc))) = anchor_point(c, vcx) {
         let oxp = opx.unwrap_or(0.0);
         let oyp = opy.unwrap_or(0.0);
         let oxc = if opx.is_none() { ofx * 100.0 } else { 0.0 };
@@ -141,7 +143,7 @@ pub(super) fn origin_shift(c: &Computed, p: (f32, f32), rot: f32) -> String {
 /// the width and the height of the element's reference box», а собственный
 /// размер коробки известен только на отрисовке — там же, где `transform`
 /// решает `translateX(%)`.
-pub(super) fn anchor_point(c: &Computed) -> Option<((f32, f32), (f32, f32))> {
+pub(super) fn anchor_point(c: &Computed, vcx: ValueCx<'_>) -> Option<((f32, f32), (f32, f32))> {
     let v = super::motion_style(c)
         .offset_anchor
         .as_deref()
@@ -155,7 +157,7 @@ pub(super) fn anchor_point(c: &Computed) -> Option<((f32, f32), (f32, f32))> {
             "left" | "top" => (0.0, 0.0),
             "right" | "bottom" => (0.0, 100.0),
             "center" => (0.0, 50.0),
-            _ => match Len::parse(t) {
+            _ => match Len::parse(t, vcx) {
                 Some(Len::Px(x)) => (x, 0.0),
                 Some(Len::Pct(k)) => (0.0, k * 100.0),
                 _ => (0.0, 50.0),

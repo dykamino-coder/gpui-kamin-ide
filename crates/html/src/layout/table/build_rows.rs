@@ -1,5 +1,6 @@
 //! Цикл рядов с полосами колонок и групп: подготовка аргументов table_rows.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::table::columns::{col_elements, colgroup_elements, push_col_bands};
 use crate::layout::table::rows::*;
@@ -43,8 +44,9 @@ pub(super) fn table_rows_with_bands(
     outer_win: [f32; 4],
     table_is_vertical: bool,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let (grp_els, col_els, grp_rects, col_rects, have_rows) =
-        column_bands(e, cols, &mut under, &row_elements);
+        column_bands(e, cols, &mut under, &row_elements, vcx);
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
     // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
@@ -146,6 +148,7 @@ pub(super) fn column_bands<'a>(
     cols: u16,
     under: &mut Vec<AnyElement>,
     row_elements: &[&Element],
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<Option<&'a Element>>,
     Vec<Option<&'a Element>>,
@@ -160,8 +163,8 @@ pub(super) fn column_bands<'a>(
     let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
         vec![None; cols as usize];
     let have_rows = !row_elements.is_empty();
-    push_col_bands(&grp_els, have_rows, &mut grp_rects, under);
-    push_col_bands(&col_els, have_rows, &mut col_rects, under);
+    push_col_bands(&grp_els, have_rows, &mut grp_rects, under, vcx);
+    push_col_bands(&col_els, have_rows, &mut col_rects, under, vcx);
     (grp_els, col_els, grp_rects, col_rects, have_rows)
 }
 

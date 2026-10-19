@@ -1,6 +1,7 @@
 //! Cascade generated pseudo-elements and derive their inherited styles.
 
 use super::initial_pseudos;
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Rule};
 use crate::style::select::matching::matches_ignoring_pseudo;
@@ -16,6 +17,7 @@ pub(super) fn pseudo_styles(
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
+    vcx: ValueCx<'_>,
 ) -> (
     Option<Computed>,
     Option<Computed>,
@@ -35,13 +37,14 @@ pub(super) fn pseudo_styles(
     let hover = (!hovered.is_empty()).then(|| {
         let mut merged = style.clone();
         for rule in hovered.iter() {
-            merged.apply_decls_with_vars(&rule.decls, vars);
+            merged.apply_decls_with_vars(&rule.decls, vars, vcx);
         }
         merged
     });
     // Псевдоэлементы первой буквы и первой строки — тем же слоем
     // поверх базового стиля: они меняют начертание куска, а не блок.
-    let layer = |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base);
+    let layer =
+        |name, base| initial_pseudos::resolve(name, rules, vars, &me, path, sibs, base, vcx);
     let first_letter = layer("first-letter", Some(&style));
     let first_line = layer("first-line", Some(&style));
     let first_line_own = layer("first-line", None).map(Box::new);
@@ -75,7 +78,7 @@ pub(super) fn pseudo_styles(
                 m.bidi_isolate = Some(true);
             }
             for rule in found.iter() {
-                m.apply_decls_with_vars(&rule.decls, vars);
+                m.apply_decls_with_vars(&rule.decls, vars, vcx);
             }
             m
         })

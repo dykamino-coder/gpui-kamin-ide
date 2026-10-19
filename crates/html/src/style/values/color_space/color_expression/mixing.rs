@@ -1,6 +1,7 @@
 //! Color-mix operands, percentages and interpolation method retained as numbers.
 
 use super::{Color, ColorExpression, mix};
+use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -12,7 +13,7 @@ pub struct ColorMix {
 }
 
 impl ColorMix {
-    pub(super) fn parse(body: &str) -> Option<Self> {
+    pub(super) fn parse(body: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let mut it = crate::style::css::split_args(body).into_iter();
         let head = it.next()?.trim().to_ascii_lowercase();
         let method = head.strip_prefix("in ").unwrap_or("");
@@ -58,7 +59,7 @@ impl ColorMix {
                 }
                 None => (raw, None),
             };
-            let color = ColorExpression::parse(color)?;
+            let color = ColorExpression::parse(color, vcx)?;
             // Relative functions are not accepted as color-mix operands yet.
             if matches!(color, ColorExpression::Relative(_)) {
                 return None;

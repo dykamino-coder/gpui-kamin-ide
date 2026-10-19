@@ -122,8 +122,10 @@ mod tests {
 
     #[test]
     fn integer_repeat_cycles_after_expansion_and_reverses_used_values() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut style = Computed::default();
-        style.apply_one("column-rule-width", "repeat(2, 1px, 2px), 3px");
+        style.apply_one("column-rule-width", "repeat(2, 1px, 2px), 3px", vcx);
         let list = style.column_rule_widths.as_ref().unwrap();
         let slots = assign(&[7], false, true, false);
         let got: Vec<_> = slots[0].iter().map(|s| s.value(list).unwrap()).collect();

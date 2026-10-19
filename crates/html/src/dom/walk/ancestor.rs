@@ -1,7 +1,6 @@
 //! Element passports keep DOM selector metadata separate from recursive walking.
 
-use crate::dom::slot_of;
-use crate::style::select::has::has_marks_of;
+use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 
@@ -13,6 +12,7 @@ pub(super) fn element_ancestor(
     html_attrs: bool,
     spot: Spot,
     sibs: Sibs,
+    tree: &TreeIndex,
 ) -> Ancestor {
     let id = attrs
         .iter()
@@ -30,8 +30,8 @@ pub(super) fn element_ancestor(
         content_none: None,
         tag: tag.to_string(),
         html_attrs,
-        id: id.clone(),
-        classes: classes.clone(),
+        id,
+        classes,
         attrs: attrs.clone(),
         spot,
         href: attrs
@@ -45,10 +45,10 @@ pub(super) fn element_ancestor(
                 _ => None,
             }
         }),
-        has_marks: has_marks_of(handle),
+        has_marks: tree.has_marks_of(handle),
         shadow_has_marks: vec![],
         featureless: None,
-        slot: slot_of(handle),
+        slot: tree.slot_of(handle),
         peers: sibs
             .is_elem
             .then_some(sibs.rc)
@@ -66,4 +66,22 @@ pub(super) fn element_ancestor(
     };
 
     me
+}
+
+/// The element's attributes as `(name, value)`; `xml:base` keeps its prefix
+/// (the only namespaced attribute the engine reads).
+pub(super) fn element_attrs(attrs: &[html5ever::Attribute]) -> Vec<(String, String)> {
+    attrs
+        .iter()
+        .map(|a| {
+            let key = if &*a.name.local == "base"
+                && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+            {
+                "xml:base".to_owned()
+            } else {
+                a.name.local.to_string()
+            };
+            (key, a.value.to_string())
+        })
+        .collect()
 }

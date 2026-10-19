@@ -1,6 +1,7 @@
 //! Подготовка ряда и ячейки в цикле table_rows: пробы полос ряда/группы, дорожка пустого ряда,
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
@@ -68,6 +69,7 @@ pub(super) fn row_band_probes(
         Option<crate::style::values::value::Color>,
         Option<&Element>,
     ),
+    vcx: ValueCx<'_>,
 ) -> (
     Option<crate::layout::table::paint::RowRects>,
     Option<crate::layout::table::paint::RowRects>,
@@ -90,7 +92,7 @@ pub(super) fn row_band_probes(
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
         );
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
@@ -126,7 +128,7 @@ pub(super) fn row_band_probes(
             band_style.background = None;
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style).hooked(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
         );
     }
     (row_rects, grp_band)
@@ -164,9 +166,14 @@ pub(super) fn push_empty_row_track(
     }
 }
 
-pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Element) -> Computed {
-    let mut cm = inherit(row_style, &cell.style);
-    pseudo_line_layers::install(cell, &mut cm);
+pub(super) fn cell_cascaded_style(
+    e: &Element,
+    row_style: &Computed,
+    cell: &Element,
+    vcx: ValueCx<'_>,
+) -> Computed {
+    let mut cm = inherit(row_style, &cell.style, vcx);
+    pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
     // `th` take their row's value, through the UA rule
     // `vertical-align: inherit` (HTML §15.3.9). A generic
@@ -213,8 +220,13 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
     cm
 }
 
-pub(super) fn hides_empty_cell(e: &Element, row_style: &Computed, cell: &Element) -> bool {
-    inherit(row_style, &cell.style).empty_cells_hide == Some(true)
+pub(super) fn hides_empty_cell(
+    e: &Element,
+    row_style: &Computed,
+    cell: &Element,
+    vcx: ValueCx<'_>,
+) -> bool {
+    inherit(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
         && e.style.border_collapse != Some(true)
         && {
             let mut текст = String::new();

@@ -4,6 +4,7 @@ use super::super::area::physical_area;
 use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
+use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
 use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
 
@@ -15,6 +16,7 @@ impl AnchorPlan {
     pub(in crate::layout::positioned::anchor) fn of(
         own: &Computed,
         inherited: &Computed,
+        vcx: ValueCx<'_>,
     ) -> Option<AnchorPlan> {
         if !matches!(
             own.position,
@@ -31,7 +33,7 @@ impl AnchorPlan {
         ];
         let side = |l: Option<Len>, margin: f32| -> Option<SidePlan> {
             let Some(Len::Anchor(i)) = l else { return None };
-            let f = anchor_get(i)?;
+            let f = anchor_get(i, vcx)?;
             // `anchor-size()` во вставке — величина, не край: сдвига не даёт.
             if f.size.is_some() {
                 return None;

@@ -1,15 +1,15 @@
 //! Computed::apply_effects, хвост цепочки: container-type, content-visibility, contain-intrinsic-*, mix-blend-mode, isolation, user-select. Ветви в исходном порядке после apply_effects_timing.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_effects_containment(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             "container-type" => {
@@ -103,7 +103,7 @@ impl Computed {
                 let nums: Vec<f32> = v
                     .split_whitespace()
                     .filter(|w| *w != "auto")
-                    .filter_map(|w| match Len::parse(w) {
+                    .filter_map(|w| match Len::parse(w, vcx) {
                         Some(Len::Px(px)) => Some(px),
                         _ => None,
                     })
@@ -121,7 +121,7 @@ impl Computed {
                 if matches!(v, "none" | "auto none") {
                     self.accept_declaration();
                 }
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
                     self.contain_intrinsic.0 = accept_parsed!(self, Some(w));
                 }
             }
@@ -129,18 +129,18 @@ impl Computed {
                 if matches!(v, "none" | "auto none") {
                     self.accept_declaration();
                 }
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
                     self.contain_intrinsic.1 = accept_parsed!(self, Some(h));
                 }
             }
             "contain-intrinsic-block-size" => {
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
                     self.accept_declaration();
                     self.logical().ci_block = Some(h);
                 }
             }
             "contain-intrinsic-inline-size" => {
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
                     self.accept_declaration();
                     self.logical().ci_inline = Some(w);
                 }

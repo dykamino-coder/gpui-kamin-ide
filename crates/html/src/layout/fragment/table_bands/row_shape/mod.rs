@@ -1,6 +1,7 @@
 //! Форма рядов таблицы при фрагментации: вырезы между рядами, подписи.
 
 use super::{RowRef, TableBands, table_row_cuts};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 mod captions;
@@ -27,6 +28,7 @@ pub(super) fn row_band_shape(
     caps_bot: Vec<&Element>,
     parts: Vec<(u8, &Element)>,
     rows: Vec<RowRef<'_>>,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::layout::fragment::Shape> {
     let mut cuts: Vec<(f32, f32)> = Vec::new();
     let mut forced: Vec<f32> = Vec::new();
@@ -72,6 +74,7 @@ pub(super) fn row_band_shape(
         force_next,
         &mut spans,
         &mut row_box,
+        vcx,
     )?;
     bands.spacing = spacing;
     // Сверка охватов (см. `spans`): ячейка выше суммы своих рядов с зазорами
@@ -192,6 +195,6 @@ pub(super) fn row_band_shape(
     // `None` в списке — сама коробка рядов; поля у неё НУЛЕВЫЕ, поля таблицы
     // носит обёртка (они уже в `mt`/`mb` и возвращаются наружу).
     caption_slots_shape(
-        depth, cx, bands, mt, mb, caps_top, caps_bot, cuts, forced, solid, h_box,
+        depth, cx, bands, mt, mb, caps_top, caps_bot, cuts, forced, solid, h_box, vcx,
     )
 }

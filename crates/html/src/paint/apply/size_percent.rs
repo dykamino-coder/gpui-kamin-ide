@@ -1,6 +1,7 @@
 //! Minimum calc sizes retain their length term when percentages are cyclic.
 //! CSS Sizing 3 §5.2.1 resolves cyclic percentages in minimum contributions to zero.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, calc_get};
 
@@ -8,10 +9,11 @@ pub(super) fn resolve_cyclic_size_percentage(
     style: &Computed,
     value: Len,
     field: u8,
+    vcx: ValueCx<'_>,
 ) -> Option<Len> {
     let (percentage, length) = match value {
         Len::Pct(p) => (p, 0.0),
-        Len::Calc(index) => match calc_get(index).pct_px() {
+        Len::Calc(index) => match calc_get(index, vcx).pct_px() {
             Some(terms) => terms,
             None => return Some(value),
         },

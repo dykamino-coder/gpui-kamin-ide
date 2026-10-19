@@ -1,4 +1,6 @@
 //! Scroll target: scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
+
+use crate::document::state::ValueCx;
 mod stationary;
 use crate::dom::Element;
 use crate::style::computed::{Computed, Sides};
@@ -93,7 +95,7 @@ impl InteractiveElement for NativeScrollBox {
 }
 impl StatefulInteractiveElement for NativeScrollBox {}
 
-pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
+pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // The CSS box owns both sizing and scroll state. An anonymous viewport
     // loses percentage, intrinsic, baseline and flex/grid sizing constraints.
     let target = TARGET.with(|slot| {
@@ -113,7 +115,7 @@ pub(crate) fn attach(mut div: Div, e: &Element, c: &Computed) -> Div {
     let Some((handle, horizontal, vertical, margin)) = target else {
         return div;
     };
-    div = crate::paint::apply::margins(div, &margin);
+    div = crate::paint::apply::margins(div, &margin, vcx);
     div.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     div.interactivity().element_id = Some(ElementId::Integer(e.node_id + 1));
     let mut stateful = NativeScrollBox(div).track_scroll(&handle);
@@ -156,6 +158,8 @@ mod tests {
 
     #[test]
     fn native_scroll_target_preserves_css_box_and_restores_nested_scope() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut e = crate::layout::table::anon::anon_element("div", vec![]);
         e.node_id = 7;
         let c = Computed {
@@ -170,11 +174,11 @@ mod tests {
         let handle = ScrollHandle::default();
         let (_, matched) = build(7, &handle, true, false, margin, || {
             let (_, child_matched) = build(8, &handle, false, true, Sides::default(), || {
-                let mut d = attach(div(), &e, &c);
+                let mut d = attach(div(), &e, &c, vcx);
                 assert_eq!(d.style().overflow.x, None);
             });
             assert!(!child_matched);
-            let mut d = attach(div(), &e, &c);
+            let mut d = attach(div(), &e, &c, vcx);
             assert_eq!(gpui::Element::id(&d), Some(ElementId::Integer(8)));
             assert_eq!(d.style().overflow.x, Some(Overflow::Hidden));
             assert_eq!(
@@ -182,16 +186,18 @@ mod tests {
                 Some([Some(CssSizingKeyword::FitContent), None])
             );
             assert_eq!(d.style().margin.left, Some(px(10.0).into()));
-            let mut second = attach(div(), &e, &c);
+            let mut second = attach(div(), &e, &c, vcx);
             assert_eq!(second.style().overflow.x, None);
         });
         assert!(matched);
-        let mut after = attach(div(), &e, &c);
+        let mut after = attach(div(), &e, &c, vcx);
         assert_eq!(after.style().overflow.x, None);
     }
 
     #[test]
     fn colored_numeric_scrollport_tracks_the_css_box() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut e = crate::layout::table::anon::anon_element("div", vec![]);
         e.node_id = 7;
         let mut c = Computed {
@@ -199,15 +205,15 @@ mod tests {
             width: Some(Len::Px(100.0)),
             ..Computed::default()
         };
-        c.apply_one("scrollbar-color", "red blue");
+        c.apply_one("scrollbar-color", "red blue", vcx);
         let handle = ScrollHandle::default();
         let (_, matched) = build(7, &handle, false, true, Sides::default(), || {
-            let mut d = attach(div(), &e, &c);
+            let mut d = attach(div(), &e, &c, vcx);
             assert_eq!(d.style().overflow.y, Some(Overflow::Hidden));
             assert_eq!(d.style().sizing_keywords, Some([None, None]));
         });
         assert!(matched);
-        let mut d = attach(div(), &e, &c);
+        let mut d = attach(div(), &e, &c, vcx);
         assert_eq!(d.style().overflow.y, None);
     }
 }

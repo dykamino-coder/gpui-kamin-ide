@@ -1,6 +1,7 @@
 //! Border-shape shadows composed from typed paths, luminance masks and blur.
 
 use super::border_scene::Contour;
+use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
 
 /// css-borders-4 border-shape-shadow-interaction: expand/contract the caster,
@@ -22,14 +23,15 @@ pub(crate) fn border_shape_shadow_scene(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Scene> {
-    let outside = Contour::place(outer, bw, bh, dx, dy)?;
+    let outside = Contour::place(outer, bw, bh, dx, dy, vcx)?;
     if outside.is_empty() {
         return None;
     }
     let half = if inner.is_some() { 0.0 } else { stroke / 2.0 };
     let inside = match inner {
-        Some(inner) => Contour::place(inner, bw, bh, dx, dy)?,
+        Some(inner) => Contour::place(inner, bw, bh, dx, dy, vcx)?,
         None => outside.clone(),
     };
     let mut body = Vec::new();

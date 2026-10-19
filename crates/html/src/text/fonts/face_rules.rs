@@ -1,10 +1,11 @@
 //! Font descriptors and source lists use the shared CSS rule and value tokenizers.
 
+use crate::document::state::ValueCx;
 use crate::style::css;
 
-pub(super) fn faces(css: &str) -> Vec<String> {
+pub(super) fn faces(css: &str, vcx: ValueCx<'_>) -> Vec<String> {
     // `@font-face` под `@media` решает носитель текущего документа.
-    css::resource_rules::resources(css, crate::document::state::current().media())
+    css::resource_rules::resources(css, vcx.doc.media(), vcx)
         .into_iter()
         .filter(|rule| rule.name == "font-face")
         .map(|rule| rule.body)

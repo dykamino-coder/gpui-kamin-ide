@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::hooks::Hooks;
-use crate::layout::fragment::types::{Frag, Kid, RepeatGeom};
+use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 mod paint;
@@ -33,29 +33,7 @@ impl Hooks for ColumnStack {
         };
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        let heights: Vec<Kid> = self
-            .children
-            .iter()
-            .map(|c| Kid {
-                h: c.h,
-                mt: c.mt,
-                mb: c.mb,
-                monolith: c.monolith,
-                cuts: c.cuts.clone(),
-                force_before: c.force_before,
-                force_after: c.force_after,
-                avoid_before: c.avoid_before,
-                avoid_after: c.avoid_after,
-                forced: c.forced.clone(),
-                solid: c.solid.clone(),
-                span: c.span,
-                over: c.over,
-                clone_dec: c.clone_dec,
-                overflow_top: c.overflow_top,
-                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
-                par: c.par,
-            })
-            .collect();
+        let heights = self.kid_geoms();
         let (_, lines, plan, spans) = self.balance(&heights);
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;

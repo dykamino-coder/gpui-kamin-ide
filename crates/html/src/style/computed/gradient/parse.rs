@@ -1,6 +1,7 @@
 //! Разбор linear-/radial-gradient(): направление, пространство интерполяции, стопы с позициями.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `linear-gradient(90deg, #000, #fff)`. Направления словами приводим к углу.
 /// `linear-gradient(...)` и `radial-gradient(...)`.
@@ -25,9 +26,8 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
     })
 }
 
-pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
+pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Option<Gradient> {
     let authored = v;
-    let v = v.strip_prefix("repeating-").unwrap_or(v);
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
     // повторение делает растеризатор, заворачивая долю точки.
@@ -100,7 +100,7 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
-    let (angle, direction_idx) = gradient_direction(head, radial, idx)?;
+    let (angle, direction_idx) = gradient_direction(head, radial, idx, vcx)?;
     idx = direction_idx;
 
     // Color operands align with both positions of a double-position stop.
@@ -116,7 +116,7 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
         let words = split_outside_parens(p);
         let Some(expression) = words
             .first()
-            .and_then(|w| crate::style::values::color_space::ColorExpression::parse(w))
+            .and_then(|w| crate::style::values::color_space::ColorExpression::parse(w, vcx))
         else {
             continue;
         };
@@ -141,18 +141,18 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
                 any_pct = true;
                 raw.push((colour, Some(n / 100.0)));
                 raw_px.push((colour, None));
-            } else if let Some(Len::Px(v)) = Len::parse(t) {
+            } else if let Some(Len::Px(v)) = Len::parse(t, vcx) {
                 // Позиция в точках: долей не выразить, длина оси известна
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if let Some((pct, px)) = pct_px_pair(t) {
+            } else if let Some((pct, px)) = pct_px_pair(t, vcx) {
                 // Percentage and pixels remain paired until the axis is known.
                 any_pct = true;
                 raw.push((colour, Some(pct)));
                 raw_px.push((colour, Some(px)));
             } else if !t.trim().is_empty()
-                && Len::parse(t).is_none()
+                && Len::parse(t, vcx).is_none()
                 && t.trim().parse::<f32>().is_err()
             {
                 continue;
@@ -200,9 +200,9 @@ pub(super) fn parse_gradient(v: &str, current: Color) -> Option<Gradient> {
         GradSpace::Oklab
     });
     let polar =
-        crate::style::values::color_space::DirectGradient::new(authored, stops.len(), space);
+        crate::style::values::color_space::DirectGradient::new(authored, stops.len(), space, vcx);
     Some(Gradient {
-        shape: GradientShape::parse(authored)?,
+        shape: GradientShape::parse(authored, vcx)?,
         polar,
         angle_deg: angle,
         radial,

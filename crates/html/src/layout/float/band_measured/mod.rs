@@ -79,6 +79,7 @@ pub(super) fn band_host_m(
     i: usize,
     em: f32,
     lead: &[Node],
+    cb: Option<f32>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
@@ -162,7 +163,7 @@ pub(super) fn band_host_m(
     {
         return None;
     }
-    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes)
+    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes, cb)
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.

@@ -1,6 +1,7 @@
 //! Направление линейного градиента из первой части записи (угол, `to <сторона>`, форма радиального): угол и номер первого стопа.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// CSS Images 3 §3.1: a corner direction is perpendicular to the diagonal
 /// between the two adjacent corners, rather than a fixed 45-degree bearing.
@@ -8,7 +9,8 @@ use super::*;
 /// concrete image size before constructing its endpoints.
 #[cfg(test)]
 fn corner_angle(raw: &str, (width, height): (f32, f32)) -> Option<f32> {
-    GradientShape::parse(raw)?.corner_angle((width, height))
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    GradientShape::parse(raw, doc.values())?.corner_angle((width, height))
 }
 
 pub(in crate::style::computed) fn corner_direction(raw: &str) -> Option<(f32, f32)> {
@@ -27,7 +29,12 @@ pub(in crate::style::computed) fn corner_direction(raw: &str) -> Option<(f32, f3
     })
 }
 
-pub(super) fn gradient_direction(head: &str, radial: bool, mut idx: usize) -> Option<(f32, usize)> {
+pub(super) fn gradient_direction(
+    head: &str,
+    radial: bool,
+    mut idx: usize,
+    vcx: ValueCx<'_>,
+) -> Option<(f32, usize)> {
     let angle = match head {
         a if a.ends_with("deg") => {
             idx = 1;
@@ -83,7 +90,7 @@ pub(super) fn gradient_direction(head: &str, radial: bool, mut idx: usize) -> Op
                 && split_outside_parens(first)
                     .first()
                     .and_then(|color| {
-                        crate::style::values::color_space::ColorExpression::parse(color)
+                        crate::style::values::color_space::ColorExpression::parse(color, vcx)
                     })
                     .is_none() =>
         {

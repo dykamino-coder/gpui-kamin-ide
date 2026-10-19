@@ -5,28 +5,20 @@ use crate::dom::Node;
 use crate::render::{RenderOpts, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
-use crate::text::line_trim::Trim;
+use crate::text::line_trim::{Trim, TrimRequest};
 use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
-/// Узлы-владельцы первой и последней строки, которым контейнер адресовал
-/// срез (`line_trim::request`) до раскладки детей.
-pub(super) struct Requests {
-    start: Option<u64>,
-    end: Option<u64>,
-}
-
-/// Записать запросы среза для абзацев, держащих первую/последнюю строку.
+/// Запросы среза для абзацев, держащих первую/последнюю строку: их узлы-
+/// владельцы получают запрос через контекст детей контейнера.
 pub(super) fn register(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
     ordered_context: bool,
-) -> Requests {
-    let mut req = Requests {
-        start: None,
-        end: None,
-    };
+) -> Vec<TrimRequest> {
+    let vcx = opts.cx.vcx();
+    let mut req = vec![];
     if ordered_context {
         return req;
     }
@@ -38,18 +30,15 @@ pub(super) fn register(
             continue;
         }
         if let Some((line_style, owner)) =
-            text_box_line_style(nodes, inherited, start, inherited.self_node)
+            text_box_line_style(nodes, inherited, start, inherited.self_node, vcx)
         {
             let over = if start {
                 root_top(&first_line_root(&line_style), opts) - root_top(&line_style, opts)
             } else {
                 0.0
             };
-            crate::text::line_trim::request(owner, start, over);
-            if start {
-                req.start = Some(owner);
-            } else {
-                req.end = Some(owner);
+            if owner != 0 {
+                req.push(TrimRequest { owner, start, over });
             }
         }
     }
@@ -103,16 +92,6 @@ fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
     (line - (ascent + descent)) / 2.0 + ascent
 }
 
-/// Снять незабранные запросы (строка ушла путём без `blocks_flow`).
-pub(super) fn release(req: Requests) {
-    if let Some(o) = req.start {
-        crate::text::line_trim::cancel(o, true);
-    }
-    if let Some(o) = req.end {
-        crate::text::line_trim::cancel(o, false);
-    }
-}
-
 /// После `rest` строк больше нет: только пробелы, невидимые и вынесенные из
 /// потока узлы — абзац перед ними держит последнюю строку блока.
 pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
@@ -142,11 +121,12 @@ pub(super) fn apply(
     inherited: &Computed,
     opts: &RenderOpts,
 ) {
+    let vcx = opts.cx.vcx();
     let vertical = inherited.wm().vertical();
     let rl = inherited.wm().block_rl();
     if inherited.text_box_trim_start
         && let Some((line_style, _)) =
-            text_box_line_style(nodes, inherited, true, inherited.self_node)
+            text_box_line_style(nodes, inherited, true, inherited.self_node, vcx)
     {
         let trim = text_box_trim_px(&first_line_root(&line_style), true, opts);
         if trim > 0.0 {
@@ -164,7 +144,7 @@ pub(super) fn apply(
     }
     if inherited.text_box_trim_end
         && let Some((line_style, _)) =
-            text_box_line_style(nodes, inherited, false, inherited.self_node)
+            text_box_line_style(nodes, inherited, false, inherited.self_node, vcx)
     {
         let trim = text_box_trim_px(&line_style, false, opts);
         if trim > 0.0 {

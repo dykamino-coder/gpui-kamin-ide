@@ -1,5 +1,6 @@
 //! Filtered replaced resources share Img layout, then filter their concrete object.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::Source;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -12,13 +13,15 @@ pub(super) struct FilteredImage {
     image: Img,
     source: Source,
     style: Computed,
+    values: crate::document::state::ValueDoc,
 }
 impl FilteredImage {
-    pub(super) fn new(image: Img, source: Source, style: Computed) -> Self {
+    pub(super) fn new(image: Img, source: Source, style: Computed, vcx: ValueCx<'_>) -> Self {
         Self {
             image,
             source,
             style,
+            values: vcx.keep(),
         }
     }
     fn object_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
@@ -98,6 +101,7 @@ impl Element for FilteredImage {
         let Some(image) = self.source.sampled_raster(
             (object.size.width.into(), object.size.height.into()),
             self.style.image_pixelated == Some(true),
+            self.values.vcx(),
         ) else {
             return;
         };

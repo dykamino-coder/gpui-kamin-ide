@@ -1,17 +1,18 @@
 //! Lift floats from undecorated inline containers into their block's float layout.
 //! Text fragments retain the inline's inherited style on both sides of each float.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
-pub(super) fn lift(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     if parent.wm().vertical() {
         return nodes;
     }
     nodes
         .into_iter()
-        .flat_map(|node| split(node, parent))
+        .flat_map(|node| split(node, parent, vcx))
         .collect()
 }
 
@@ -56,15 +57,15 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && s.rtl.is_none()
 }
 
-fn split(node: Node, parent: &Computed) -> Vec<Node> {
+fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     let Node::Element(e) = &node else {
         return vec![node];
     };
     if !transparent(e) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
-    let style = inherit(parent, &e.style);
-    let children = lift(e.children.clone(), &style);
+    let style = inherit(parent, &e.style, vcx);
+    let children = lift(e.children.clone(), &style, vcx);
     if !children.iter().any(floated) {
         return vec![node];
     }
@@ -111,8 +112,8 @@ fn split(node: Node, parent: &Computed) -> Vec<Node> {
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
-            let containing = inherit(parent, &float.style);
-            float.style = inherit(&style, &float.style).into();
+            let containing = inherit(parent, &float.style, vcx);
+            float.style = inherit(&style, &float.style, vcx).into();
             float.style.cb_height_def = containing.cb_height_def;
             float.style.quirk_pct_base = containing.quirk_pct_base;
             output.push(Node::Element(float));

@@ -178,7 +178,7 @@ pub fn minimap(
             // scroll_position). Зеркало собственных листенеров не ставит.
             let input = input.clone();
             let sync = sync.clone();
-            let origin_scroll = origin.clone();
+            let origin_scroll = origin;
             move |e: &gpui::ScrollWheelEvent, _, cx| {
                 let dy = f32::from(e.delta.pixel_delta(px(ED_LINE_H)).y);
                 // Высота ВЬЮПОРТА минимапы, а не строки: раньше сюда шло 20.0,

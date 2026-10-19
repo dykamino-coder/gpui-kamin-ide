@@ -20,6 +20,8 @@ mod oof;
 use oof::{column_stack_div, finish_column_stack, place_oof_statics};
 mod spanner;
 pub(crate) use spanner::multicol_spanner_segments;
+mod fixed_height;
+use fixed_height::fixed_column_height;
 
 #[allow(clippy::too_many_arguments, clippy::needless_return)]
 pub(crate) fn multicol_column_stack(
@@ -47,6 +49,7 @@ pub(crate) fn multicol_column_stack(
     nested_whole: std::cell::RefCell<Vec<u64>>,
     measured_kids: std::cell::RefCell<Vec<(u64, f32)>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Копии: без рядов `cols`, с рядами — по высоте, исключая спаннеры.
     let copies = match rows {
         Some(r) => {
@@ -79,7 +82,9 @@ pub(crate) fn multicol_column_stack(
     // в вертикальном письме их нет (следующий шаг).
     let (kid_parent, kid_starts, kid_par, kids) =
         crate::layout::fragment::with_lines(&merged, line_col_w, opts, || {
-            column_kids(&merged, kids, cols, used_gap, col_vert, rows, copies, fixed)
+            column_kids(
+                &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, vcx,
+            )
         });
     // `box-decoration-break: clone`: геометрия фрагментов —
     // ДО сборки копий: каждая копия такой коробки строится
@@ -88,7 +93,7 @@ pub(crate) fn multicol_column_stack(
     // потоком соседей (та же мера, что у `StackChild` ниже):
     // иначе план соседа с потоком разошёлся бы с укладкой.
     // Без `clone` среди детей не считается вовсе.
-    let clone_plan = clone_plan_of(cols, col_vert, rows, copies, fixed, &kid_par, &kids);
+    let clone_plan = clone_plan_of(cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx);
     let rule = column_rule_of(e, &merged, opts);
     // С рядами линейки (`column-rule` со втяжкой/разрывом,
     // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
@@ -123,8 +128,9 @@ pub(crate) fn multicol_column_stack(
     // копии (CSS 2.1 §10.1 п.3, css-transforms-1 §transform-rendering;
     // Blink `fixedpos_containing_block`, out_of_flow_layout_part.cc).
     // Слой берёт только `fixed`: абсолюты копий режутся колонками на месте.
-    let fixed_layer = fixed_cb_layer_box(&merged)
-        .then(crate::layout::positioned::layer_scope::LayerScope::fixed_only);
+    let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.positioning)
+    });
     let children = stack_children(
         e,
         &merged,
@@ -169,7 +175,7 @@ pub(crate) fn multicol_column_stack(
     // от ПРАВОГО края (`flex_row_reverse`), там начало
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
-    let painter = gap_items.clone().zip(gap_spec.clone());
+    let painter = gap_items.clone().zip(gap_spec);
     let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).hooked()));
     let mut d = column_stack_div(
         d,
@@ -213,36 +219,4 @@ pub(crate) fn multicol_column_stack(
     // 50%` без `top`). Пересчитываем в точки заранее, когда
     // высота многоколоночника известна в точках.
     finish_column_stack(e, merged, opts, col_vert, oof_static, oof_spots, d)
-}
-
-fn fixed_column_height(
-    e: &Element,
-    col_vert: bool,
-    col_h: Option<f32>,
-    nest_rows: Option<f32>,
-) -> Option<f32> {
-    if let Some(hh) = nest_rows {
-        (e.style.column_fill_auto == Some(true)).then_some(hh)
-    } else if e.style.column_fill_auto == Some(true) {
-        col_h.or(
-            match if col_vert {
-                e.style.width
-            } else {
-                e.style.height
-            } {
-                Some(Len::Px(h)) => Some(h),
-                // Высота авто при заданном `max-height`: колонки заполняются
-                // подряд до него (css-multicol-1 §column-fill `auto`; Blink
-                // `ConstrainColumnBlockSize` берёт `LogicalMaxHeight()`), как
-                // в текстовом пути `column_flow` (`columnfill-auto-max-height-003`).
-                None | Some(Len::Auto) if !col_vert => match e.style.max_height {
-                    Some(Len::Px(m)) if m > 0.0 => Some(m),
-                    _ => None,
-                },
-                _ => None,
-            },
-        )
-    } else {
-        None
-    }
 }

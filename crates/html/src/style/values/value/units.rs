@@ -10,6 +10,7 @@
 //! equivalent»). Поэтому `svh`/`lvh`/`dvh` — тот же `vh`.
 
 use super::{Len, Sum};
+use crate::document::state::ValueCx;
 
 /// Номер единицы в `Sum::ext`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,7 +175,7 @@ impl Len {
     /// `Computed::resolve_viewport`. Потребители на отрисовке (позиция и
     /// радиусы градиента) базы не знают — для них такая длина как прежде
     /// не разобрана, а не молча равна нулю.
-    pub fn needs_unit_context(self) -> bool {
-        matches!(self, Len::Calc(i) if super::calc_get(i).ext.iter().any(|v| *v != 0.0))
+    pub fn needs_unit_context(self, vcx: ValueCx<'_>) -> bool {
+        matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext.iter().any(|v| *v != 0.0))
     }
 }

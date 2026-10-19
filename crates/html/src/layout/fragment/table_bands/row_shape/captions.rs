@@ -1,6 +1,7 @@
 //! Формы подписей таблицы вокруг сетки рядов.
 
 use super::super::TableBands;
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
@@ -22,6 +23,7 @@ pub(crate) fn caption_slots_shape(
     mut forced: Vec<f32>,
     mut solid: Vec<(f32, f32)>,
     h_box: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::layout::fragment::Shape> {
     let mut cap_slots: Vec<Option<&Element>> =
         Vec::with_capacity(caps_top.len() + caps_bot.len() + 1);
@@ -57,7 +59,7 @@ pub(crate) fn caption_slots_shape(
                     cuts: ccuts,
                     forced: cforced,
                     solid: csolid,
-                } = shape_full(cap, depth - 1, cx)?;
+                } = shape_full(cap, depth - 1, cx, vcx)?;
                 // Монолитная подпись (`contain: size`, `break-inside: avoid`,
                 // прокрутка, замещаемая) — сплошной диапазон во всю высоту,
                 // как у любого ребёнка блочной стопки (`shape_full`, ветка

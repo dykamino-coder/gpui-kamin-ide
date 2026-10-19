@@ -36,6 +36,11 @@ pub struct HostConfig {
 
 /// Один запуск: спавн, ready-парсинг, ожидание смерти.
 /// true = хост хотя бы раз стал ready (сброс бюджета рестартов).
+#[allow(
+    clippy::print_stderr,
+    clippy::disallowed_methods,
+    reason = "process supervisor forwards child diagnostics and reads the profiling switch"
+)]
 pub fn run_once(
     config: &HostConfig,
     state: &HostState,

@@ -1,6 +1,8 @@
 //! Live keyframes rebuild the actual formatting node, rather than sizing an extra box.
+
 use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::paint::effects::transform::transformed;
 use crate::render::{RenderOpts, element};
@@ -30,17 +32,19 @@ fn sample_live(
     frames: &[(f32, Computed)],
     spec: &AnimSpec,
     elapsed: f64,
+    vcx: ValueCx<'_>,
 ) -> Element {
-    sample_at(frames, spec, elapsed)
+    sample_at(frames, spec, elapsed, vcx)
         .map(|frame| animation_frame::sample(source, &frame, true))
         .unwrap_or_else(|| source.clone())
 }
 
 pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.animation.clone()) else {
         return painted(e, inherited, opts);
     };
-    if let Some(frozen) = bake_frozen(e, false) {
+    if let Some(frozen) = bake_frozen(e, false, vcx) {
         return painted(&frozen, inherited, opts);
     }
     if spec.frozen() {
@@ -54,7 +58,8 @@ pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> 
     let timeline = animation(&spec);
     let period = timeline.duration.as_secs_f64();
     gpui::AnimationExt::with_animation(base, id, timeline, move |_, delta| {
-        let sampled = sample_live(&source, &frames, &spec, f64::from(delta) * period);
+        let vcx = opts.cx.vcx();
+        let sampled = sample_live(&source, &frames, &spec, f64::from(delta) * period, vcx);
         painted(&sampled, &inherited, &opts)
     })
     .into_any_element()
@@ -100,22 +105,24 @@ mod tests {
 
     #[test]
     fn live_sample_reaches_layout_and_transform_and_expires_without_fill() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         use crate::style::values::value::Len;
 
         let mut source = crate::layout::table::anon::anon_element("div", vec![]);
-        source.style.apply_one("animation", "move 1s linear");
+        source.style.apply_one("animation", "move 1s linear", vcx);
         let spec = source.style.animation.as_ref().unwrap();
         let mut start = (*source.style).clone();
-        start.apply_one("margin", "0px");
-        start.apply_one("transform", "translateX(0px)");
+        start.apply_one("margin", "0px", vcx);
+        start.apply_one("transform", "translateX(0px)", vcx);
         let mut end = (*source.style).clone();
-        end.apply_one("margin", "200px");
-        end.apply_one("transform", "translateX(200px)");
+        end.apply_one("margin", "200px", vcx);
+        end.apply_one("transform", "translateX(200px)", vcx);
         let frames = [(0.0, start), (1.0, end)];
         let period = animation(spec).duration.as_secs_f64();
         for (ms, x) in [(0, 0.0), (250, 50.0), (500, 100.0), (750, 150.0)] {
             let delta = (f64::from(ms) / 1000.0 / period) as f32;
-            let sampled = sample_live(&source, &frames, spec, f64::from(delta) * period);
+            let sampled = sample_live(&source, &frames, spec, f64::from(delta) * period, vcx);
             assert_eq!(sampled.style.margin.left, Some(Len::Px(x)));
             assert_eq!(sampled.style.margin.top, Some(Len::Px(x)));
             assert_eq!(sampled.style.margin.right, Some(Len::Px(x)));
@@ -123,7 +130,7 @@ mod tests {
             assert_eq!(sampled.style.transform.unwrap().translate.0, x);
         }
         // GPUI clamps a completed one-shot to delta=1, including at 1500 ms.
-        let expired = sample_live(&source, &frames, spec, period);
+        let expired = sample_live(&source, &frames, spec, period, vcx);
         assert_eq!(expired.style.margin, source.style.margin);
         assert_eq!(expired.style.transform, source.style.transform);
     }

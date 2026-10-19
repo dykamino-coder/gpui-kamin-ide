@@ -27,6 +27,7 @@ pub(super) fn place_shape_float(
     host_side: i32,
     f: &Element,
 ) {
+    let vcx = opts.cx.vcx();
     let side = f
         .style
         .float
@@ -60,7 +61,7 @@ pub(super) fn place_shape_float(
         && let Some(raw0) = f.style.shape_outside.as_deref()
         && raw0.contains("url(")
         && let Some(u) = crate::style::computed::parse_url(raw0)
-        && let Some((w, h)) = crate::paint::background::intrinsic_px(&u)
+        && let Some((w, h)) = crate::paint::background::intrinsic_px(&u, vcx)
     {
         // Своя величина, а не размер растра: SVG растрируется вдвое
         // плотнее (`background::intrinsic_px`).
@@ -142,6 +143,7 @@ pub(super) fn place_shape_float(
         off,
         sm,
         vert_rl,
+        vcx,
     );
     let mut shape = shape;
     if fy > 0.0 {

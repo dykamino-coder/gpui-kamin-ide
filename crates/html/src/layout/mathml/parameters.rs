@@ -94,12 +94,13 @@ pub(super) fn kind(e: &Element, style: &Computed, opts: &RenderOpts) -> Kind {
 }
 
 pub(super) fn length_px(raw: &str, style: &Computed, opts: &RenderOpts) -> Option<f32> {
-    let value = crate::dom::mathml::parse_mathml_length(raw)?;
+    let vcx = opts.cx.vcx();
+    let value = crate::dom::mathml::parse_mathml_length(raw, vcx)?;
     let own = Computed {
         width: Some(value),
         ..Computed::default()
     };
-    let mut resolved = inherit(style, &own);
-    resolved.resolve_viewport(opts.viewport);
+    let mut resolved = inherit(style, &own, vcx);
+    resolved.resolve_viewport(opts.viewport, vcx);
     px_strict(resolved.width)
 }

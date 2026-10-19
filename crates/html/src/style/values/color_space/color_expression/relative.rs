@@ -1,6 +1,7 @@
 //! Relative color channels and alpha, parsed independently of the current color.
 
 use super::Color;
+use crate::document::state::ValueCx;
 use crate::style::values::color_space::{hsl_to_rgb, rgb_to_hsl};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,7 +24,7 @@ enum Model {
 }
 
 impl RelativeColor {
-    pub(super) fn parse(expr: &str) -> Option<Self> {
+    pub(super) fn parse(expr: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let open = expr.find('(')?;
         let name = expr[..open].trim();
         let rest = expr[open + 1..]
@@ -36,7 +37,7 @@ impl RelativeColor {
         let base = if base_token.eq_ignore_ascii_case("currentcolor") {
             None
         } else {
-            Some(Color::parse(base_token)?)
+            Some(Color::parse(base_token, vcx)?)
         };
         let mut alpha = None;
         let mut channels = Vec::new();

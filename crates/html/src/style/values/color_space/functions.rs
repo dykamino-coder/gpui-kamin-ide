@@ -1,9 +1,10 @@
 //! Функция color() с предопределёнными пространствами и относительный синтаксис цвета (`rgb(from …)`).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `color(<пространство> c1 c2 c3[/A])` (§10).
-pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
+pub(super) fn color_fn(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
     let (list, a) = parts(body);
     if list.len() < 4 {
         return None;
@@ -68,7 +69,7 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         "xyz-d50" => mul(D50_TO_D65, c),
         // Своё пространство из `@color-profile --имя { src: url(…) }`.
         custom if custom.starts_with("--") => {
-            let profile = profile(custom)?;
+            let profile = profile(custom, vcx)?;
             let (r, g, b) = icc_to_srgb(&profile, c)?;
             return Some((r, g, b, a));
         }
@@ -85,8 +86,9 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
 pub(crate) fn resolve_relative(
     expr: &str,
     current: crate::style::values::value::Color,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
-    match ColorExpression::parse(expr)? {
+    match ColorExpression::parse(expr, vcx)? {
         ColorExpression::Color(_) => None,
         expression => Some(expression.resolve(current)),
     }

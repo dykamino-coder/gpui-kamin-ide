@@ -1,7 +1,7 @@
 //! Flatten for shadow; split out to keep the owning module within 250 lines.
 
-use super::{FlatCtx, SlotInfo, is_slot, node_key};
-use crate::dom::*;
+use super::{FlatCtx, SlotInfo, is_slot};
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::select::census_of;
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
@@ -12,19 +12,21 @@ use std::rc::Rc;
 /// рекурсивно. Глубина ограничена: цикла распределений в дереве быть не
 /// может, но стража дешевле доказательства.
 pub(super) fn flatten_slot(
-    key: usize,
-    drafts: &HashMap<usize, SlotInfo>,
+    key: &NodeKey,
+    drafts: &HashMap<NodeKey, SlotInfo>,
+    tree: &TreeIndex,
     depth: usize,
     out: &mut Vec<Option<FlatCtx>>,
 ) {
-    let Some(info) = drafts.get(&key) else { return };
+    let Some(info) = drafts.get(key) else { return };
     if depth > 32 {
         return;
     }
     if !info.assigned.is_empty() {
         for s in &info.assigned {
-            if is_slot(&s.node) && drafts.contains_key(&node_key(&s.node)) {
-                flatten_slot(node_key(&s.node), drafts, depth + 1, out);
+            let nested = NodeKey::of(&s.node);
+            if is_slot(&s.node) && drafts.contains_key(&nested) {
+                flatten_slot(&nested, drafts, tree, depth + 1, out);
             } else {
                 out.push(s.anc.clone().map(|anc| FlatCtx {
                     node: s.node.clone(),
@@ -38,14 +40,15 @@ pub(super) fn flatten_slot(
         return;
     }
     let kids: Vec<Handle> = info.slot.children.borrow().clone();
-    let (_, all) = census_of(&kids);
+    let (_, all) = census_of(&kids, tree);
     let all = Rc::new(all);
     let mut pos = 0usize;
     for kid in &kids {
         match &kid.data {
             NodeData::Element { .. } => {
-                if is_slot(kid) && drafts.contains_key(&node_key(kid)) {
-                    flatten_slot(node_key(kid), drafts, depth + 1, out);
+                let nested = NodeKey::of(kid);
+                if is_slot(kid) && drafts.contains_key(&nested) {
+                    flatten_slot(&nested, drafts, tree, depth + 1, out);
                 } else {
                     out.push(Some(FlatCtx {
                         node: kid.clone(),
@@ -64,22 +67,19 @@ pub(super) fn flatten_slot(
 }
 
 /// Досчитать плоские списки и выложить слоты на склад.
-pub(crate) fn finish_slots(mut drafts: HashMap<usize, SlotInfo>) {
-    let keys: Vec<usize> = drafts.keys().copied().collect();
-    let mut flats: HashMap<usize, Vec<Option<FlatCtx>>> = HashMap::new();
+pub(crate) fn finish_slots(mut drafts: HashMap<NodeKey, SlotInfo>, tree: &mut TreeIndex) {
+    let keys: Vec<NodeKey> = drafts.keys().cloned().collect();
+    let mut flats: HashMap<NodeKey, Vec<Option<FlatCtx>>> = HashMap::new();
     for key in &keys {
         let mut flat = vec![];
-        flatten_slot(*key, &drafts, 0, &mut flat);
-        flats.insert(*key, flat);
+        flatten_slot(key, &drafts, tree, 0, &mut flat);
+        flats.insert(key.clone(), flat);
     }
-    SLOTS.with(|m| {
-        let mut m = m.borrow_mut();
-        for key in keys {
-            if let Some(mut info) = drafts.remove(&key) {
-                info.flattened = flats.remove(&key).unwrap_or_default();
-                m.insert(key, Rc::new(info));
-            }
+    for key in keys {
+        if let Some(mut info) = drafts.remove(&key) {
+            info.flattened = flats.remove(&key).unwrap_or_default();
+            tree.slots.insert(key, Rc::new(info));
         }
-    });
-    super::slotted::register_all();
+    }
+    super::slotted::register_all(tree);
 }

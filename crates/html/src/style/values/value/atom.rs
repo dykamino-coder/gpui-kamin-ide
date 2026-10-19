@@ -3,6 +3,7 @@
 use super::{
     Len, Sum, calc_store, css_number, root_font_px, root_font_unit, root_font_view, root_line_px,
 };
+use crate::document::state::ValueCx;
 
 pub(super) struct Atom {
     nature: u8,
@@ -10,7 +11,7 @@ pub(super) struct Atom {
 }
 
 impl Atom {
-    pub(super) fn parse(s: &str) -> Option<Self> {
+    pub(super) fn parse(s: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let split = s
             .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == '%')
             .len();
@@ -50,17 +51,17 @@ impl Atom {
             return Some(atom(nature, value / 100.0));
         }
         if unit.eq_ignore_ascii_case("rem") {
-            return Some(match root_font_view() {
+            return Some(match root_font_view(vcx) {
                 Some((high, k)) => atom(if high { 8 } else { 9 }, value * k),
-                None => atom(0, value * root_font_px()),
+                None => atom(0, value * root_font_px(vcx)),
             });
         }
         if unit.eq_ignore_ascii_case("rlh") {
-            return Some(atom(0, value * root_line_px()));
+            return Some(atom(0, value * root_line_px(vcx)));
         }
         for name in ["rcap", "rch", "rex", "ric"] {
             if unit.eq_ignore_ascii_case(name) {
-                return Some(atom(0, value * root_font_unit(&name[1..])));
+                return Some(atom(0, value * root_font_unit(&name[1..], vcx)));
             }
         }
         None
@@ -70,7 +71,7 @@ impl Atom {
         Sum::of_nature(self.nature, self.value)
     }
 
-    pub(super) fn length(&self) -> Len {
+    pub(super) fn length(&self, vcx: ValueCx<'_>) -> Len {
         let v = self.value;
         match self.nature {
             0 => Len::Px(v),
@@ -82,7 +83,7 @@ impl Atom {
             7 => Len::Lh(v),
             8 => Len::Vh(v),
             9 => Len::Vw(v),
-            _ => Len::Calc(calc_store(self.sum())),
+            _ => Len::Calc(calc_store(self.sum(), vcx)),
         }
     }
 }

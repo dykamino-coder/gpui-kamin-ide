@@ -2,6 +2,7 @@
 
 use super::probe::{Entry, record};
 use super::{CB, CB_PARENT};
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Pixels, Window};
 
 /// Строчный содержащий блок `node` (CSS 2.1 §10.1 п.4: край отбивки от
@@ -41,10 +42,11 @@ pub fn prepare_inline_abs(
     merged: &mut crate::style::computed::Computed,
     e: &crate::dom::Element,
     inherited: &crate::style::computed::Computed,
+    vcx: ValueCx<'_>,
 ) {
     merged.self_node = e.node_id;
     merged.anchor_seq = super::next_seq();
     merged.anchor_key = super::key_of(e);
-    super::resolve::apply_chosen(merged);
-    super::resolve::resolve_sizes(merged, inherited);
+    super::resolve::apply_chosen(merged, vcx);
+    super::resolve::resolve_sizes(merged, inherited, vcx);
 }

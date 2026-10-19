@@ -86,6 +86,8 @@ mod tests {
 
     #[test]
     fn own_vertical_flex_items_keep_the_parent_central_synthesis_policy() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for (rl, sideways, flags) in [
             (false, false, 6),
             (true, false, 7),
@@ -99,7 +101,8 @@ mod tests {
                 )),
                 ..Computed::default()
             };
-            let effective = crate::style::cascade::inherit::inherit(&parent, &Computed::default());
+            let effective =
+                crate::style::cascade::inherit::inherit(&parent, &Computed::default(), vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -109,6 +112,8 @@ mod tests {
 
     #[test]
     fn horizontal_flex_items_inherit_vertical_parent_baseline_synthesis() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for (rl, sideways, flags) in [
             (false, false, 2),
             (true, false, 3),
@@ -131,7 +136,7 @@ mod tests {
                 ),
                 ..Computed::default()
             };
-            let effective = crate::style::cascade::inherit::inherit(&parent, &own);
+            let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement::default();
             project_wrapper(&mut wrapper, &effective);
@@ -141,6 +146,8 @@ mod tests {
 
     #[test]
     fn flex_items_and_wrappers_preserve_own_vertical_baseline_orientation() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let parent = Computed {
             display: Some(Display::Flex),
             ..Computed::default()
@@ -152,7 +159,7 @@ mod tests {
                 )),
                 ..Computed::default()
             };
-            let effective = crate::style::cascade::inherit::inherit(&parent, &own);
+            let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
             let mut wrapper = gpui::StyleRefinement {
                 align_self: Some(gpui::AlignItems::End),
@@ -165,7 +172,8 @@ mod tests {
         assert_eq!(
             baseline_x_flags(&crate::style::cascade::inherit::inherit(
                 &parent,
-                &Computed::default()
+                &Computed::default(),
+                vcx
             )),
             None
         );
@@ -173,6 +181,8 @@ mod tests {
 
     #[test]
     fn lanes_wrapper_retains_inherited_item_orientation() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let parent = Computed {
             display: Some(Display::GridLanes),
             ..Computed::default()
@@ -185,7 +195,7 @@ mod tests {
             justify_self_last: true,
             ..Computed::default()
         };
-        let effective = crate::style::cascade::inherit::inherit(&parent, &own);
+        let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         let mut wrapper = gpui::StyleRefinement::default();
         project_wrapper(&mut wrapper, &effective);
         assert_eq!(wrapper.baseline_x_flags, Some(5));

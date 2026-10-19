@@ -1,7 +1,6 @@
 //! @page (селекторы страниц, поля), @property, @position-try.
 
 use crate::style::css::*;
-use std::collections::HashMap;
 
 /// Селектор страницы (css-page-3 §page-selectors): имя типа страницы и
 /// счётчики псевдоклассов. `:blank` хранится ради специфичности — пустых
@@ -52,11 +51,8 @@ pub const MARGIN_BOXES: [&str; 16] = [
 /// Дописать правило `@page` в реестр текущего документа: правила хранятся
 /// в порядке появления, с псевдоклассами и именами; хост забирает их
 /// `Document::page_rules` и собирает объявления листа `page_decls_in`.
-pub(crate) fn push_page_rule(rule: PageRule) {
-    crate::document::state::current()
-        .page_rules
-        .borrow_mut()
-        .push(rule);
+pub(crate) fn push_page_rule(doc: &crate::document::state::DocState, rule: PageRule) {
+    doc.page_rules.borrow_mut().push(rule);
 }
 
 /// Голова `@page` → список селекторов; `None` — голова неверна, и правило
@@ -181,11 +177,8 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
 /// (css-anchor-position-1 §fallback-rule) в реестр текущего документа:
 /// имя → объявления, читается на сборке кадра (`anchor::place`). Повтор
 /// имени перекрывает — «the last one in document order wins».
-pub(crate) fn insert_try_rule(name: &str, decls: Decls) {
-    crate::document::state::current()
-        .try_rules
-        .borrow_mut()
-        .insert(name.to_string(), decls);
+pub(crate) fn insert_try_rule(doc: &crate::document::state::DocState, name: &str, decls: Decls) {
+    doc.try_rules.borrow_mut().insert(name.to_string(), decls);
 }
 
 /// Зарегистрированное свойство `@property` (css-properties-values-api-1 §3):
@@ -199,29 +192,13 @@ pub struct Registered {
 
 /// Зарегистрировать `@property` в текущем документе; первая действительная
 /// регистрация имени остаётся.
-pub(crate) fn register_property(name: &str, reg: Registered) {
-    crate::document::state::current()
-        .property_rules
+pub(crate) fn register_property(
+    doc: &crate::document::state::DocState,
+    name: &str,
+    reg: Registered,
+) {
+    doc.property_rules
         .borrow_mut()
         .entry(name.to_string())
         .or_insert(reg);
-}
-
-/// Копия реестра `@property` текущего документа — его читает сборка
-/// переменных узла.
-pub fn property_rules() -> HashMap<String, Registered> {
-    crate::document::state::current()
-        .property_rules
-        .borrow()
-        .clone()
-}
-
-/// Объявления правила `@position-try` текущего документа по имени (`--x`),
-/// копией.
-pub fn try_rule(name: &str) -> Option<Decls> {
-    crate::document::state::current()
-        .try_rules
-        .borrow()
-        .get(name)
-        .cloned()
 }

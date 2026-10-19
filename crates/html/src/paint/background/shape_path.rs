@@ -1,5 +1,6 @@
 //! Контуры фигур: shape_to_path, border-shape (путь, маска, кольцо, тень, обводка), rrect.
 
+use crate::document::state::ValueCx;
 mod border_outline;
 mod border_scene;
 pub(crate) use border_outline::border_shape_outline_scene;
@@ -24,13 +25,19 @@ use crate::svg::path_commands::{Command, Sink};
 /// Команды идут через точку с запятой (запятые заменил разбор свойств —
 /// по запятым верхнего уровня режутся слои маски). Доли резолвятся здесь:
 /// x — от ширины коробки, y — от высоты.
-pub fn shape_to_path(args: &str, bw: f32, bh: f32) -> Option<String> {
+pub fn shape_to_path(args: &str, bw: f32, bh: f32, vcx: ValueCx<'_>) -> Option<String> {
     let mut d = String::new();
-    shape_commands(args, bw, bh, &mut d)?;
+    shape_commands(args, bw, bh, &mut d, vcx)?;
     (!d.is_empty()).then(|| d.trim_end().to_string())
 }
 
-pub(crate) fn shape_commands(args: &str, bw: f32, bh: f32, d: &mut impl Sink) -> Option<()> {
+pub(crate) fn shape_commands(
+    args: &str,
+    bw: f32,
+    bh: f32,
+    d: &mut impl Sink,
+    vcx: ValueCx<'_>,
+) -> Option<()> {
     let val = |t: &str, side: f32| -> Option<f32> {
         // Края коробки словами (hline to right; §2.4.3).
         match t {
@@ -42,14 +49,14 @@ pub(crate) fn shape_commands(args: &str, bw: f32, bh: f32, d: &mut impl Sink) ->
         // Смесь долей и точек (`of calc(10px + 15%)`): `Len::parse` её
         // отбрасывает, и прежде `?` ронял ВЕСЬ контур — элемент рисовался
         // без обрезки (clip-path-shape-011 и его эталон: 6.83).
-        if let Some((p, add)) = crate::style::values::value::calc_pct_px(t) {
+        if let Some((p, add)) = crate::style::values::value::calc_pct_px(t, vcx) {
             return Some(p * side + add);
         }
-        match crate::style::values::value::Len::parse(t)? {
+        match crate::style::values::value::Len::parse(t, vcx)? {
             crate::style::values::value::Len::Px(v) => Some(v),
             crate::style::values::value::Len::Pct(p) => Some(p * side),
             // Шрифтовые единицы — от запасного кегля (`FontCx::FALLBACK`).
-            l => l.to_px(None, FontCx::FALLBACK),
+            l => l.to_px(None, FontCx::FALLBACK, vcx),
         }
     };
     // Пара координат из токенов: позиционные слова идут в любом порядке

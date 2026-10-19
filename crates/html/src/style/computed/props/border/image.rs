@@ -1,6 +1,7 @@
 //! Рамка-картинка: разбор пяти свойств border-image* в одну запись BorderImage (Computed::set_border_image).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     /// Толщина рамки, как её видит модель коробки. Начальный `border-style`
@@ -11,7 +12,7 @@ impl Computed {
     /// Сокращение несёт до трёх частей через косую: `<источник> <срез> /
     /// <ширина> / <вылет>` и укладку в конце. Отдельные свойства дополняют ту
     /// же запись, поэтому она заводится по первому же из них.
-    pub(crate) fn set_border_image(&mut self, name: &str, v: &str) {
+    pub(crate) fn set_border_image(&mut self, name: &str, v: &str, vcx: ValueCx<'_>) {
         // CSS Backgrounds 3 §6.7: the shorthand resets omitted longhands.
         if name == "border-image" {
             self.border_image = None;
@@ -40,7 +41,8 @@ impl Computed {
                     // растрирует её загрузчик картинок.
                     image.src = value.to_string();
                     accepted = true;
-                } else if crate::style::computed::filter_image::parse_filter_image(value).is_some()
+                } else if crate::style::computed::filter_image::parse_filter_image(value, vcx)
+                    .is_some()
                 {
                     accepted = true;
                     image.src = value.to_string();
@@ -81,7 +83,7 @@ impl Computed {
                     if let Ok(k) = t.parse::<f32>() {
                         return Some(BorderImageWidth::Times(k));
                     }
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) => Some(BorderImageWidth::Px(v)),
                         _ => None,
                     }
@@ -99,7 +101,7 @@ impl Computed {
                     if let Ok(k) = t.parse::<f32>() {
                         return (k >= 0.0).then_some(BorderImageWidth::Times(k));
                     }
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) if v >= 0.0 => Some(BorderImageWidth::Px(v)),
                         _ => None,
                     }

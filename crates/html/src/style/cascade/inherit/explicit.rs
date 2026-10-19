@@ -1,8 +1,14 @@
 //! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы, размеры, inset, фон и background_rcs.
 
 use super::*;
+use crate::document::state::ValueCx;
 
-pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_explicit(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    _vcx: ValueCx<'_>,
+) {
     // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
     // умолчание или роняло объявление.

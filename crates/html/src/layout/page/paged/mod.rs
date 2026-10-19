@@ -10,7 +10,6 @@ use crate::layout::page::names::{
     PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers,
 };
 use crate::layout::page::{page_boxes, page_counters};
-use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -54,6 +53,7 @@ pub fn render_paged_select(
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
@@ -62,10 +62,7 @@ pub fn render_paged_select(
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize();
-    IFRAME_DEPTH.with(|d| d.set(0));
-    crate::document::state::current()
-        .paint
-        .begin(nodes, opts.viewport);
+    vcx.doc.paint.begin(nodes, opts.viewport, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
@@ -79,12 +76,13 @@ pub fn render_paged_select(
         &mut right,
         &mut top,
         &mut root_page,
+        vcx,
     );
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
     // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
     if !root.wm().vertical() {
-        hoist_named_wrappers(&mut nodes);
+        hoist_named_wrappers(&mut nodes, vcx);
     }
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
         std::rc::Rc::new(move |i, name: &str| {

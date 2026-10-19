@@ -1,6 +1,7 @@
 //! Фоновые компоненты одного слоя: разбираются каскадом, копируются при отрисовке.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BgLayer {
@@ -17,7 +18,12 @@ pub(crate) struct BgLayer {
 }
 
 impl BgLayer {
-    pub(super) fn parse(prop: BgListProp, raw: &str, metrics: Option<(f32, f32, f32)>) -> Self {
+    pub(super) fn parse(
+        prop: BgListProp,
+        raw: &str,
+        metrics: Option<(f32, f32, f32)>,
+        vcx: ValueCx<'_>,
+    ) -> Self {
         let relative = has_font_units(raw);
         let value = if relative {
             let (font, ex, ch) = metrics.unwrap_or((16.0, 8.0, 8.0));
@@ -26,7 +32,7 @@ impl BgLayer {
             raw.to_string()
         };
         let mut c = Computed::default();
-        c.apply_one(prop.key(), &value);
+        c.apply_one(prop.key(), &value, vcx);
         // A multi-layer gradient always takes the image-tile path. Extract
         // its function here, rather than scanning the shorthand during paint.
         if c.bg_image.is_none()

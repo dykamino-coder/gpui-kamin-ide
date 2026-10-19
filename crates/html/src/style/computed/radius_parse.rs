@@ -1,18 +1,19 @@
 //! Preserve both border-radius axes until their length and percentage bases are known.
 
 use super::{Computed, Corners};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
 impl Computed {
-    pub(super) fn apply_radius_shorthand(&mut self, raw: &str) {
+    pub(super) fn apply_radius_shorthand(&mut self, raw: &str, vcx: ValueCx<'_>) {
         let Some((horizontal, vertical)) = axes(raw) else {
             return;
         };
-        let Some(h) = shorthand(horizontal) else {
+        let Some(h) = shorthand(horizontal, vcx) else {
             return;
         };
         let v = match vertical {
-            Some(raw) => match shorthand(raw) {
+            Some(raw) => match shorthand(raw, vcx) {
                 Some(v) => v,
                 None => return,
             },
@@ -35,11 +36,11 @@ impl Computed {
         self.radius_ell = ell.iter().any(Option::is_some).then_some(ell);
     }
 
-    pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str) {
+    pub(super) fn apply_radius_corner(&mut self, key: &str, raw: &str, vcx: ValueCx<'_>) {
         let tokens = crate::style::css::value_tokens::split_top(raw);
         let (x, y) = match tokens.as_slice() {
-            [x] => (length(x), length(x)),
-            [x, y] => (length(x), length(y)),
+            [x] => (length(x, vcx), length(x, vcx)),
+            [x, y] => (length(x, vcx), length(y, vcx)),
             _ => return,
         };
         if x.is_none() || y.is_none() {
@@ -118,16 +119,19 @@ fn axes(raw: &str) -> Option<(&str, Option<&str>)> {
     })
 }
 
-fn length(raw: &str) -> Option<Len> {
-    match super::size_range::parse_nonnegative_size(raw)? {
+fn length(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
+    match super::size_range::parse_nonnegative_size(raw, vcx)? {
         Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
         length => Some(length),
     }
 }
 
-fn shorthand(raw: &str) -> Option<Corners> {
+fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Option<Corners> {
     let tokens = crate::style::css::value_tokens::split_top(raw);
-    let values: Vec<Len> = tokens.into_iter().map(length).collect::<Option<_>>()?;
+    let values: Vec<Len> = tokens
+        .into_iter()
+        .map(|s| length(s, vcx))
+        .collect::<Option<_>>()?;
     let [tl, tr, br, bl] = match values.as_slice() {
         [a] => [*a; 4],
         [a, b] => [*a, *b, *a, *b],

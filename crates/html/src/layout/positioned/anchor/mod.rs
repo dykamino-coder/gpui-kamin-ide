@@ -202,6 +202,8 @@ pub struct AnchorPlace {
     order: u8,
     key: u64,
     visibility: u8,
+    /// Values of the document the plans' `anchor()` lengths come from.
+    values: crate::document::state::ValueDoc,
 }
 
 #[cfg(test)]

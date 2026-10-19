@@ -20,6 +20,7 @@ pub(super) fn non_inline_columns(
     stretch: Option<f32>,
     all_inline: bool,
 ) -> Option<Option<AnyElement>> {
+    let vcx = opts.cx.vcx();
     if !all_inline {
         // Один-единственный блок с текстом — это тот же поток, только в своей
         // коробке: колонки режут его строки, а не обходят стороной. Разметка
@@ -46,7 +47,7 @@ pub(super) fn non_inline_columns(
         if nested_rows_box(only) {
             return Some(None);
         }
-        let inside = inherit(inherited, &only.style);
+        let inside = inherit(inherited, &only.style, vcx);
         return Some(column_flow_in(
             only,
             &inside,

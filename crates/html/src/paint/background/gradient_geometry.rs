@@ -16,8 +16,15 @@ pub(super) enum Geometry {
     },
 }
 
+use crate::document::state::ValueCx;
+
 impl Geometry {
-    pub(super) fn new(g: &Gradient, size: (f32, f32), angle: f32) -> Option<Self> {
+    pub(super) fn new(
+        g: &Gradient,
+        size: (f32, f32),
+        angle: f32,
+        vcx: ValueCx<'_>,
+    ) -> Option<Self> {
         let GradientShape::Radial {
             position,
             circle,
@@ -36,11 +43,14 @@ impl Geometry {
                 length: (size.0 * direction.0).abs() + (size.1 * direction.1).abs(),
             });
         };
-        let center = (len_px(position.x, size.0)?, len_px(position.y, size.1)?);
+        let center = (
+            len_px(position.x, size.0, vcx)?,
+            len_px(position.y, size.1, vcx)?,
+        );
         let radii = if let RadialSize::Explicit(first, second) = radial_size {
-            let x = len_px(Some(*first), size.0)?.max(0.0);
+            let x = len_px(Some(*first), size.0, vcx)?.max(0.0);
             let y = second
-                .map_or(Some(x), |v| len_px(Some(v), size.1))?
+                .map_or(Some(x), |v| len_px(Some(v), size.1, vcx))?
                 .max(0.0);
             (x, y)
         } else {
@@ -121,23 +131,28 @@ mod tests {
 
     #[test]
     fn radial_extent_uses_center_and_ellipse_ratio() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let size = (300.0, 200.0);
         let g = Geometry::new(
             &crate::style::computed::parse_gradient(
                 "radial-gradient(closest-side at 25% 50%, red, blue)",
+                vcx,
             )
             .unwrap(),
             size,
             0.0,
+            vcx,
         )
         .unwrap();
         assert_eq!(g.length(), 75.0);
         assert_eq!(g.at((150.0, 100.0), size), 1.0);
         assert_eq!(g.at((75.0, 0.0), size), 1.0);
         let g = Geometry::new(
-            &crate::style::computed::parse_gradient("radial-gradient(red, blue)").unwrap(),
+            &crate::style::computed::parse_gradient("radial-gradient(red, blue)", vcx).unwrap(),
             size,
             0.0,
+            vcx,
         )
         .unwrap();
         assert!((g.at((300.0, 200.0), size) - 1.0).abs() < 0.00001);

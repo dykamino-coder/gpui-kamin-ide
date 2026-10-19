@@ -1,5 +1,6 @@
 //! CSS image() URL and color arguments; fallback is resolved by the image loader.
 
+use crate::document::state::ValueCx;
 use crate::style::{css, values::value::Color};
 
 pub(crate) struct Arguments<'a> {
@@ -8,14 +9,14 @@ pub(crate) struct Arguments<'a> {
     pub color: Option<&'a str>,
 }
 
-pub(crate) fn arguments(raw: &str) -> Option<Arguments<'_>> {
+pub(crate) fn arguments<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<Arguments<'a>> {
     let raw = raw.trim();
     if !raw.get(..6)?.eq_ignore_ascii_case("image(") || !raw.ends_with(')') {
         return None;
     }
     let parts = css::split_args(&raw[6..raw.len() - 1]);
     let first = parts.first()?.trim();
-    if parts.len() == 1 && is_color(first) {
+    if parts.len() == 1 && is_color(first, vcx) {
         return Some(Arguments {
             url: None,
             raw_url: None,
@@ -25,7 +26,7 @@ pub(crate) fn arguments(raw: &str) -> Option<Arguments<'_>> {
     let url = source(first)?;
     let color = match parts.as_slice() {
         [_] => None,
-        [_, color] if is_color(color.trim()) => Some(color.trim()),
+        [_, color] if is_color(color.trim(), vcx) => Some(color.trim()),
         _ => return None,
     };
     Some(Arguments {
@@ -35,8 +36,8 @@ pub(crate) fn arguments(raw: &str) -> Option<Arguments<'_>> {
     })
 }
 
-fn is_color(raw: &str) -> bool {
-    raw.eq_ignore_ascii_case("currentcolor") || Color::parse(raw).is_some()
+fn is_color(raw: &str, vcx: ValueCx<'_>) -> bool {
+    raw.eq_ignore_ascii_case("currentcolor") || Color::parse(raw, vcx).is_some()
 }
 
 fn source(raw: &str) -> Option<String> {
@@ -62,8 +63,8 @@ fn source(raw: &str) -> Option<String> {
     }
 }
 
-pub(crate) fn color_only(raw: &str) -> Option<&str> {
-    let args = arguments(raw)?;
+pub(crate) fn color_only<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
+    let args = arguments(raw, vcx)?;
     args.url.is_none().then_some(args.color).flatten()
 }
 
@@ -73,11 +74,13 @@ mod tests {
 
     #[test]
     fn image_arguments_preserve_fallback_until_loading() {
-        let image = arguments(r#"image("missing.png", currentColor)"#).unwrap();
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let image = arguments(r#"image("missing.png", currentColor)"#, vcx).unwrap();
         assert_eq!(image.url.as_deref(), Some("missing.png"));
         assert_eq!(image.color, Some("currentColor"));
-        assert!(arguments("image(red)").unwrap().url.is_none());
-        assert!(arguments("image(url(a.png))").unwrap().color.is_none());
+        assert!(arguments("image(red)", vcx).unwrap().url.is_none());
+        assert!(arguments("image(url(a.png))", vcx).unwrap().color.is_none());
         for raw in [
             "image()",
             "image(red, blue)",
@@ -85,7 +88,7 @@ mod tests {
             r#"image("a" trailing, red)"#,
             "image(url(a), red, blue)",
         ] {
-            assert!(arguments(raw).is_none(), "{raw}");
+            assert!(arguments(raw, vcx).is_none(), "{raw}");
         }
     }
 }

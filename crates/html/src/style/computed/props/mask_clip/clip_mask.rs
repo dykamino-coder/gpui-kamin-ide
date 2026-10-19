@@ -1,11 +1,11 @@
 //! Ветвь clip-path / mask / mask-image из Computed::apply_mask_clip: сокращение mask, маска-изображение, опорная коробка, url(#id); базовые фигуры — в basic_shape.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_clip_mask(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
-        if key == "mask" && mask_shorthand::apply(self, v) {
+    pub(super) fn apply_clip_mask(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
+        if key == "mask" && mask_shorthand::apply(self, v, vcx) {
             self.accept_declaration();
             return;
         }
@@ -115,7 +115,7 @@ impl Computed {
         {
             self.clip_shape = accept_parsed!(self, Some(format!("clipref:{id}")));
         }
-        self.clip_basic_shape(v);
+        self.clip_basic_shape(v, vcx);
     }
 }
 

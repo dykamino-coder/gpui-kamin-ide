@@ -1,6 +1,7 @@
 //! MathML Core: namespace-aware cascade defaults and presentation hints.
 
 pub(crate) use super::mathml_lengths::parse_mathml_length;
+use crate::document::state::ValueCx;
 use crate::style::css::{Rule, Selector, parse_decls};
 use markup5ever_rcdom::{Handle, NodeData};
 
@@ -11,7 +12,7 @@ pub(super) fn is_mathml(handle: &Handle) -> bool {
 
 /// Keep hints below author rules, including layered declarations. Construct
 /// declarations directly: an attribute value cannot inject extra properties.
-pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
+pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_>) -> Vec<Rule> {
     if !is_mathml(handle) {
         return vec![];
     }
@@ -24,9 +25,9 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
     };
     for (name, value) in attrs {
         let property = match name.as_str() {
-            "mathcolor" if valid_color(value) => "color",
-            "mathbackground" if valid_color(value) => "background-color",
-            "mathsize" if valid_size(value) => "font-size",
+            "mathcolor" if valid_color(value, vcx) => "color",
+            "mathbackground" if valid_color(value, vcx) => "background-color",
+            "mathsize" if valid_size(value, vcx) => "font-size",
             // Core §3.2.1.1: only `normal` on <mi> is mapped (to text-transform: none).
             "mathvariant"
                 if value.eq_ignore_ascii_case("normal")
@@ -43,11 +44,11 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
         && let NodeData::Element { name, .. } = &handle.data
     {
         if &*name.local == "mspace" {
-            rule.decls.extend(super::mathml_lengths::hints(attrs));
+            rule.decls.extend(super::mathml_lengths::hints(attrs, vcx));
         } else if &*name.local == "mpadded"
             && let Some((_, value)) = attrs
                 .iter()
-                .find(|(k, v)| k == "width" && parse_mathml_length(v).is_some())
+                .find(|(k, v)| k == "width" && parse_mathml_length(v, vcx).is_some())
         {
             rule.decls.insert("width".into(), value.clone());
         }
@@ -73,18 +74,18 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)]) -> Vec<Rule> {
     vec![rule]
 }
 
-fn valid_color(value: &str) -> bool {
+fn valid_color(value: &str, vcx: ValueCx<'_>) -> bool {
     value.trim().eq_ignore_ascii_case("currentcolor")
-        || crate::style::values::value::Color::parse(value).is_some()
+        || crate::style::values::value::Color::parse(value, vcx).is_some()
 }
 
-fn valid_size(value: &str) -> bool {
+fn valid_size(value: &str, vcx: ValueCx<'_>) -> bool {
     use crate::style::values::value::Len;
     let value = value.trim();
     if value.parse::<f32>().is_ok_and(|n| n != 0.0) {
         return false;
     }
-    matches!(Len::parse(value), Some(Len::Px(v) | Len::Em(v) | Len::Pct(v)
+    matches!(Len::parse(value, vcx), Some(Len::Px(v) | Len::Em(v) | Len::Pct(v)
         | Len::Ex(v) | Len::Ch(v) | Len::Ic(v) | Len::Lh(v) | Len::Vw(v) | Len::Vh(v)) if v >= 0.0)
 }
 
@@ -106,6 +107,8 @@ mod tests {
     }
     #[test]
     fn hints_are_namespace_scoped_and_below_author_css() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let nodes = parse(
             r#"<span id="html" mathcolor="red" mathsize="200%"></span>
             <math><mtext id="hint" mathcolor="red" mathsize="200%">x</mtext>
@@ -115,10 +118,10 @@ mod tests {
         );
         assert_eq!(find(&nodes, "html").style.font_size, None);
         assert_eq!(find(&nodes, "html").style.color, None);
-        assert_eq!(find(&nodes, "hint").style.color, Color::parse("red"));
+        assert_eq!(find(&nodes, "hint").style.color, Color::parse("red", vcx));
         assert_eq!(find(&nodes, "hint").style.font_size, Some(Len::Pct(2.0)));
         assert_eq!(find(&nodes, "css").style.font_size, Some(Len::Px(30.0)));
-        assert_eq!(find(&nodes, "css").style.color, Color::parse("green"));
+        assert_eq!(find(&nodes, "css").style.color, Color::parse("green", vcx));
     }
     #[test]
     fn invalid_mathsize_and_injected_declarations_are_rejected() {

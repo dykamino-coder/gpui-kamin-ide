@@ -80,22 +80,20 @@ impl Layers {
     }
 }
 
-thread_local! { static BASE: RefCell<Option<Rc<Layers>>> = const { RefCell::new(None) }; }
-
-pub(crate) fn current() -> Option<Rc<Layers>> {
-    BASE.with(|base| base.borrow().clone())
+/// Options for a ruby base column: nested ruby annotations inside stack on
+/// `layers` (`LayoutCx::ruby_layers`).
+pub(crate) fn based(
+    opts: &crate::render::RenderOpts,
+    layers: Rc<Layers>,
+) -> Box<crate::render::RenderOpts> {
+    opts.inner(|cx| cx.ruby_layers = Some(layers))
 }
 
-pub(crate) fn with_base<T>(layers: Rc<Layers>, build: impl FnOnce() -> T) -> T {
-    let saved = BASE.with(|base| base.replace(Some(layers)));
-    let result = build();
-    BASE.with(|base| base.replace(saved));
-    result
-}
-
-pub(crate) fn without_base<T>(build: impl FnOnce() -> T) -> T {
-    let saved = BASE.with(|base| base.replace(None));
-    let result = crate::text::paragraph::without_ruby_base_sink(build);
-    BASE.with(|base| base.replace(saved));
-    result
+/// Options for an independent inline context inside a ruby (an annotation,
+/// an atomic inline): no base layers and no base-width sink.
+pub(crate) fn independent(opts: &crate::render::RenderOpts) -> Box<crate::render::RenderOpts> {
+    opts.inner(|cx| {
+        cx.ruby_layers = None;
+        cx.ruby_base = None;
+    })
 }

@@ -1,6 +1,7 @@
 //! color-mix(): смешение в прямоугольных и полярных пространствах, интерполяция оттенка.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `color-mix(in <пространство> [<дуга> hue]?, <цвет> <доля>?, <цвет> <доля>?)`
 /// (css-color-5 §2).
@@ -8,16 +9,16 @@ use super::*;
 /// Смешение идёт В ЗАЯВЛЕННОМ пространстве и заявленной дугой тона — тем же
 /// `mix_in`, что считает точки градиента: смесь-стоп эталона и точка
 /// градиента теста сходятся по построению.
-pub(super) fn color_mix(body: &str) -> Option<(f32, f32, f32, f32)> {
-    color_mix_impl(body, true)
+pub(super) fn color_mix(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, true, vcx)
 }
 
-pub(super) fn color_mix_unmapped(body: &str) -> Option<(f32, f32, f32, f32)> {
-    color_mix_impl(body, false)
+pub(super) fn color_mix_unmapped(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
+    color_mix_impl(body, false, vcx)
 }
 
-fn color_mix_impl(body: &str, mapped: bool) -> Option<(f32, f32, f32, f32)> {
-    super::color_expression::absolute_mix(body, mapped)
+fn color_mix_impl(body: &str, mapped: bool, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
+    super::color_expression::absolute_mix(body, mapped, vcx)
 }
 
 /// Смешать два цвета в заданном пространстве интерполяции (css-color-4 §12).

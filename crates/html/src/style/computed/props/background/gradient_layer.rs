@@ -1,9 +1,10 @@
 //! Слой-градиент в сокращении background (`linear-gradient(…) 1ch 0 / 4ch 1ch no-repeat green`): функция, положение, размер, повтор и цвет нижнего слоя. Тело ветви градиента из Computed::apply_background_shorthand.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    pub(super) fn background_gradient_layer(&mut self, top: &str, bottom: &str) {
+    pub(super) fn background_gradient_layer(&mut self, top: &str, bottom: &str, vcx: ValueCx<'_>) {
         // Слой сокращения — функция градиента И положение, размер,
         // повтор за ней (`linear-gradient(green, green) 1ch 0 /
         // 4ch 1ch no-repeat`). Вся запись целиком градиентом не
@@ -27,12 +28,12 @@ impl Computed {
                     "repeat-y" => self.bg_repeat = Some(BgRepeat::RepeatY),
                     "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                     "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                    t if Self::background_position_length(t) => pos.push(token.clone()),
+                    t if Self::background_position_length(t, vcx) => pos.push(token.clone()),
                     _ => {}
                 }
             }
             if !pos.is_empty() {
-                self.set_background_position(&pos.join(" "));
+                self.set_background_position(&pos.join(" "), vcx);
                 tiled = true;
             }
             if let Some(size) = size_part {
@@ -45,22 +46,22 @@ impl Computed {
                         "repeat" => self.bg_repeat = Some(BgRepeat::Repeat),
                         "cover" => self.bg_size = BgSize::Cover,
                         "contain" => self.bg_size = BgSize::Contain,
-                        t if Len::parse_mixed(t).is_some() || t == "auto" => {
+                        t if Len::parse_mixed(t, vcx).is_some() || t == "auto" => {
                             lens.push(token.clone())
                         }
                         _ => {}
                     }
                 }
                 if !lens.is_empty() {
-                    let w = lens.first().and_then(|t| Len::parse_mixed(t));
-                    let h = lens.get(1).and_then(|t| Len::parse_mixed(t));
+                    let w = lens.first().and_then(|t| Len::parse_mixed(t, vcx));
+                    let h = lens.get(1).and_then(|t| Len::parse_mixed(t, vcx));
                     self.bg_size = BgSize::Fixed(w, h);
                 }
                 tiled = true;
             }
             tiled |= self.bg_repeat.is_some();
         }
-        self.gradient = record_parsed!(self, parse_gradient(top));
+        self.gradient = record_parsed!(self, parse_gradient(top, vcx));
         self.gradient_current = self
             .gradient
             .as_ref()
@@ -89,7 +90,7 @@ impl Computed {
             if token.contains('(') {
                 continue;
             }
-            if let Some(c) = Color::parse(&token) {
+            if let Some(c) = Color::parse(&token, vcx) {
                 self.background = Some(c);
             }
         }

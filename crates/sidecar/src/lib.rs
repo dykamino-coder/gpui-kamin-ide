@@ -35,6 +35,10 @@ impl HostState {
 
 /// Запуск супервизора в фоновом потоке. `on_endpoint` дёргается на каждый
 /// ready (шелл переподключает WS-клиента — аналог kamin://host-endpoint).
+#[allow(
+    clippy::print_stderr,
+    reason = "preserve supervisor failure diagnostics until a logger is injected"
+)]
 pub fn start(
     config: HostConfig,
     state: HostState,

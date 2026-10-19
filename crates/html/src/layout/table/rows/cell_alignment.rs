@@ -75,6 +75,8 @@ mod tests {
 
     #[test]
     fn block_positions_distinguish_default_safe_from_explicit_unsafe() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for (value, safe) in [
             ("center", true),
             ("safe end", true),
@@ -82,7 +84,7 @@ mod tests {
             ("unsafe end", false),
         ] {
             let mut cm = Computed::default();
-            cm.apply_one("align-content", value);
+            cm.apply_one("align-content", value, vcx);
             let mut cell = apply(&cm, div());
             assert_eq!(cell.style().safe_alignment.unwrap().3, safe, "{value}");
         }
@@ -90,6 +92,8 @@ mod tests {
 
     #[test]
     fn one_subject_uses_distribution_and_baseline_fallbacks() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for (value, expected) in [
             ("space-between", JustifyContent::Start),
             ("stretch", JustifyContent::Start),
@@ -98,7 +102,7 @@ mod tests {
             ("last baseline", JustifyContent::End),
         ] {
             let mut cm = Computed::default();
-            cm.apply_one("align-content", value);
+            cm.apply_one("align-content", value, vcx);
             let mut cell = apply(&cm, div());
             assert_eq!(cell.style().justify_content, Some(expected), "{value}");
             assert!(cell.style().safe_alignment.unwrap().3);

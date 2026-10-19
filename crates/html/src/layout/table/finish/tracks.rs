@@ -1,7 +1,6 @@
 //! Дорожки колонок таблицы: ширины первого ряда и список дорожек сетки.
 
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::CB_WIDTH;
 use crate::layout::table::columns::track_list_collapsed;
 use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
@@ -21,6 +20,7 @@ pub(super) fn table_tracks(
     mut col_widths: Vec<(Option<f32>, Option<f32>)>,
     cols_collapsed: Vec<bool>,
     cols_pct: Vec<Option<f32>>,
+    cb_px: Option<f32>,
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
     let vertical = e.style.wm().vertical();
     let inline_size = if vertical {
@@ -66,7 +66,7 @@ pub(super) fn table_tracks(
         // рамок − 75 зазоров = 400).
         match match inline_size {
             Some(Len::Px(v)) => Some(v),
-            Some(Len::Pct(k)) if !vertical => CB_WIDTH.get().filter(|v| *v > 0.0).map(|cb| cb * k),
+            Some(Len::Pct(k)) if !vertical => cb_px.filter(|v| *v > 0.0).map(|cb| cb * k),
             _ => None,
         } {
             Some(v) => {

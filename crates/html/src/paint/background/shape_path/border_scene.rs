@@ -1,6 +1,7 @@
 //! Resolved border contours and their ordered luminance coverage paths.
 
 use super::border_geometry::{border_commands, miter_limit};
+use crate::document::state::ValueCx;
 use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::*;
 use std::sync::Arc;
@@ -21,6 +22,7 @@ impl Contour {
         bh: f32,
         dx: f32,
         dy: f32,
+        vcx: ValueCx<'_>,
     ) -> Option<Self> {
         let mut geometry = Geometry::default();
         let rule = border_commands(
@@ -28,6 +30,7 @@ impl Contour {
             (bw + l + r).max(0.0),
             (bh + t + b).max(0.0),
             &mut geometry,
+            vcx,
         )?;
         Some(Self {
             data: geometry.finish(),

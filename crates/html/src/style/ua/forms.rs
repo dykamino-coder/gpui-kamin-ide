@@ -1,5 +1,6 @@
 //! Native control metrics, independent of the embedding application's UI.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
@@ -23,7 +24,7 @@ pub(crate) fn size(kind: ControlKind) -> [f32; 2] {
 /// HTML rendering: text entry widgets cannot use a line-height below normal,
 /// including when appearance is none. Resolve normal on both paths, so it
 /// cannot accidentally inherit a shorter GPUI line-height from a wrapper.
-pub(crate) fn text_style(style: &Computed) -> Computed {
+pub(crate) fn text_style(style: &Computed, vcx: ValueCx<'_>) -> Computed {
     let mut c = style.clone();
     let font = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -33,7 +34,7 @@ pub(crate) fn text_style(style: &Computed) -> Computed {
     let normal = crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font);
     let line = c
         .line_height
-        .and_then(|l| l.to_px(None, FontCx::new(family, font)))
+        .and_then(|l| l.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or(normal);
     c.line_height = Some(Len::Px(line.max(normal)));
     c
@@ -53,14 +54,16 @@ mod tests {
 
     #[test]
     fn text_entry_clamps_only_short_lines() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed {
             font_size: Some(Len::Px(60.)),
             ..Computed::default()
         };
-        let normal = text_style(&c).line_height;
+        let normal = text_style(&c, vcx).line_height;
         c.line_height = Some(Len::Px(1.));
-        assert_eq!(text_style(&c).line_height, normal);
+        assert_eq!(text_style(&c, vcx).line_height, normal);
         c.line_height = Some(Len::Px(200.));
-        assert_eq!(text_style(&c).line_height, c.line_height);
+        assert_eq!(text_style(&c, vcx).line_height, c.line_height);
     }
 }

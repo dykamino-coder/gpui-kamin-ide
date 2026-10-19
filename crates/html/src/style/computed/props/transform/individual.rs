@@ -1,17 +1,17 @@
 //! Computed::apply_transform, хвост цепочки: rotate/scale, transform-origin, backface-visibility, perspective*, transform-style, transform-box, vector-effect. Ветви в исходном порядке после ветвей offset-* и transform.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 mod perspective;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_transform_individual(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
@@ -101,19 +101,19 @@ impl Computed {
                         "left" | "top" => 0.0,
                         "center" => 0.5,
                         "right" | "bottom" => 1.0,
-                        other => match Len::parse(other) {
+                        other => match Len::parse(other, vcx) {
                             Some(Len::Pct(p)) => p,
                             // Точки заданы — доля НОЛЬ, а не центр: отрисовка
                             // складывает долю с точками (css-transforms-1 §5.2).
                             Some(Len::Px(_)) => 0.0,
-                            _ => pct_px_pair(other).map_or(default, |(p, _)| p),
+                            _ => pct_px_pair(other, vcx).map_or(default, |(p, _)| p),
                         },
                     }
                 };
                 let px_axis = |t: &str| -> Option<f32> {
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) => Some(v),
-                        _ => pct_px_pair(t).map(|(_, x)| x),
+                        _ => pct_px_pair(t, vcx).map(|(_, x)| x),
                     }
                 };
                 // Ключевые слова несут СВОЮ ось (css-transforms-1 §5.2):
@@ -143,7 +143,7 @@ impl Computed {
                 // `10px 30px -10px`).
                 self.transform_origin_z = free.next().and_then(px_axis);
             }
-            _ => self.apply_transform_perspective(key, val, v, hit),
+            _ => self.apply_transform_perspective(key, v, hit, vcx),
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Цвет CSS (Color): разбор hex/rgb/hsl и функций цвета, тёмная схема.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Цвет в формате GPUI (`Rgba` → `Hsla` конвертируется на месте применения).
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
@@ -22,7 +23,7 @@ impl Color {
         .into()
     }
 
-    pub fn parse(raw: &str) -> Option<Self> {
+    pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         // `light-dark(светлый, тёмный)` (css-color-5 §light-dark): вариант по
         // используемой схеме узла. Прежде функция не разбиралась, и
@@ -33,7 +34,7 @@ impl Color {
         {
             let args = crate::style::css::split_args(&s[11..s.len() - 1]);
             if args.len() == 2 {
-                return Self::parse(args[usize::from(dark_scheme())]);
+                return Self::parse(args[usize::from(dark_scheme())], vcx);
             }
             return None;
         }
@@ -67,7 +68,7 @@ impl Color {
         // Записи CSS Color 4 (`lab`, `oklch`, `color()`, `color-mix()` и
         // родня) — своим разбором: они задают цвет в других системах
         // координат, и без настоящего преобразования не приблизить.
-        if let Some((r, g, b, a)) = crate::style::values::color_space::parse(s) {
+        if let Some((r, g, b, a)) = crate::style::values::color_space::parse(s, vcx) {
             return Some(Color {
                 r: r.clamp(0.0, 1.0),
                 g: g.clamp(0.0, 1.0),
