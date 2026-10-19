@@ -8,7 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { config, DEFAULT_SESSION_MODEL } from '../config'
+import { config } from '../config'
 import { debugLog, warnLog } from '../logging'
 import { getUserSyncDir, getProjectSyncDir } from '../sync/routes'
 import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
@@ -127,7 +127,6 @@ export function writeSessionSettings(
   sessionId: string,
   settingsDir: string,
   mcpToken: string,
-  sessionModel?: string,
   userCwd?: string,
   bearerHash?: string,
 ): void {
@@ -202,12 +201,15 @@ export function writeSessionSettings(
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
 
   // ─── 3. Local settings → .claude/settings.local.json ───
+  // Launch models belong exclusively to buildClaudeArgs (--model / native
+  // transcript restore). A second pin here outlives a live /model switch and
+  // makes the CLI falsely warn that the old model will return on restart.
+  // Rewriting this generated file also removes pins from older Bridge builds.
   // fallbackModel НЕ задаётся сознательно: без настроенной цепочки CLI при
   // недоступности модели честно роняет запрос вместо ТИХОГО перехода на более
   // слабую модель (решение пользователя: качество ответа важнее живучести;
   // раньше цепочка opus→sonnet→haiku подменяла модель незаметно).
   const localSettings = {
-    model: sessionModel || DEFAULT_SESSION_MODEL,
     skipDangerousModePermissionPrompt: true,
     env: {
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',
