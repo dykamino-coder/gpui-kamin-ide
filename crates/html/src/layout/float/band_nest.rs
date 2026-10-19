@@ -9,10 +9,8 @@ use crate::layout::float::band_flow_host::{
     band_flow_rest, band_kids, band_orthogonal, trimmed_clear,
 };
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
-use crate::layout::float::band_measured::band_float_m;
-use crate::render::{
-    RenderOpts, block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag,
-};
+use crate::layout::float::band_measured::{band_float_m, lead_probes};
+use crate::render::{RenderOpts, block_level_in_flow, is_blank, own_context, replaced_tag};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
@@ -114,7 +112,13 @@ pub(super) fn band_nest(
         collapse_margins(&c.children, false, cb),
         &merged,
     );
-    let seq = band_seq(children, inner_em, wm, cb)?;
+    let seq = band_seq(
+        children,
+        inner_em,
+        wm,
+        cb,
+        merged.preserve_newlines == Some(true),
+    )?;
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
     Some(crate::layout::float::band_flow::Nest {
         kids,
@@ -130,16 +134,18 @@ pub(super) fn band_nest(
 
 /// Дети `Kind::Nest`: как хвост хоста (`band_flow_rest`), но флоаты стоят
 /// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
-/// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
-/// «верхом текущей строки») — не наш случай, отказ.
+/// предыдущего блока). Внутри абзаца тот же LeadProbe, что у хоста,
+/// передаёт правилу 6 верх текущей строки, не разрывая сам абзац.
 pub(super) fn band_seq(
     nodes: Vec<Node>,
     em: f32,
     wm: WritingMode,
     cb: Option<f32>,
+    preserve: bool,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
+    let mut probes = vec![];
     for n in nodes {
         let float = matches!(&n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0));
         if !float {
@@ -149,28 +155,41 @@ pub(super) fn band_seq(
         let Node::Element(f) = &n else {
             continue;
         };
-        // Строчное содержимое ДО флоата и ПОСЛЕ — один прогон: флоат
-        // посреди строки, отказ.
-        let open_run = chunk
-            .iter()
-            .rev()
-            .find(|m| !is_blank(m))
-            .is_some_and(|m| match m {
-                Node::Text(_) => true,
-                Node::Element(e) => !block_level_in_flow(e) && !out_of_flow(&e.style),
-            });
         // CSS 2.1 section 9.5: floats in nested flow blocks participate in
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
-        if open_run
-            || (f.style.wm().vertical() && band_float_m(f, em, wm).is_none())
+        if (f.style.wm().vertical() && band_float_m(f, em, wm).is_none())
             || band_margins(&f.style, em).is_none()
         {
             return None;
         }
-        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm, cb)?);
+        // Flush completed blocks, retaining the inline prefix: the text on
+        // either side of this float belongs to one anonymous paragraph.
+        let end = chunk
+            .iter()
+            .rposition(|n| matches!(n, Node::Element(c) if block_level_in_flow(c)))
+            .map_or(0, |i| i + 1);
+        let line = chunk.split_off(end);
+        out.extend(band_flow_rest(
+            std::mem::replace(&mut chunk, line),
+            em,
+            wm,
+            cb,
+        )?);
+        if chunk.iter().any(|n| !is_blank(n)) {
+            probes.extend(lead_probes(
+                chunk.clone(),
+                out.len(),
+                out.len() + 1,
+                preserve,
+            ));
+        }
         out.push(n);
     }
     out.extend(band_flow_rest(chunk, em, wm, cb)?);
+    out.extend(probes);
     Some(out)
 }
+
+#[cfg(test)]
+mod tests;

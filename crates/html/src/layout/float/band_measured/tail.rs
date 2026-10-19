@@ -7,7 +7,6 @@ use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::band_flow_rest_lift;
 use crate::render::is_blank;
-use crate::style::computed::Computed;
 
 /// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
 #[allow(clippy::too_many_arguments)]
@@ -29,30 +28,7 @@ pub(super) fn band_host_m_tail(
     let lead_probe = (!lead.is_empty()).then_some(());
     let probe_nodes: Vec<Node> = probes
         .into_iter()
-        .flat_map(|(a, b, pre)| {
-            let (base, line) = super::lead::split(pre, cb.preserve_newlines);
-            let probe = |children: Vec<Node>, base: bool| {
-                Node::Element(Element::synthetic(
-                    "div",
-                    Computed::default(),
-                    crate::dom::Marks {
-                        anon: true,
-                        lead: Some(crate::dom::LeadProbe {
-                            base,
-                            from: a,
-                            to: b,
-                        }),
-                        ..Default::default()
-                    },
-                    children,
-                ))
-            };
-            let mut v = vec![probe(line, false)];
-            if let Some(base) = base {
-                v.push(probe(base, true));
-            }
-            v
-        })
+        .flat_map(|(a, b, pre)| super::lead_probes(pre, a, b, cb.preserve_newlines))
         .collect();
     let rest = if lead.is_empty() {
         rest

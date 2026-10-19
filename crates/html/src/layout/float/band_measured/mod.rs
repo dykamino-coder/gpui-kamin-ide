@@ -10,6 +10,7 @@ use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, rep
 use crate::style::computed::Display;
 use crate::style::computed::writing_mode::WritingMode;
 mod lead;
+pub(super) use lead::probes as lead_probes;
 mod tail;
 use tail::band_host_m_tail;
 mod nested;

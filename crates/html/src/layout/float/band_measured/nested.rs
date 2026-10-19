@@ -81,7 +81,13 @@ pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode, cb: Option<f32
     let Some(inner_em) = band_em(&c.style, em) else {
         return false;
     };
-    let Some(seq) = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb) else {
+    let Some(seq) = band_seq(
+        collapse_margins(&c.children, false, cb),
+        inner_em,
+        wm,
+        cb,
+        c.style.preserve_newlines == Some(true),
+    ) else {
         return false;
     };
     seq.iter().all(|n| match n {
