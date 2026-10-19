@@ -58,6 +58,7 @@ pub(super) fn place_float(
         };
     }
     let (bw, bh) = probe(kid, cbw, avail, None, p);
+    let geometry = p.last_geometry.clone();
     // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
     // потока (Servo `set_ceiling_from_non_floats`,
     // `flow/float.rs:371`). У пробега хоста `y` — ноль.
@@ -88,7 +89,9 @@ pub(super) fn place_float(
             ceil += height_of(lead, bands, p);
         }
     }
-    bands.set_flow_ceiling(ceil);
+    // Fragmentation moves only the float, leaving preceding normal-flow lines
+    // in their fragmentainer (CSS Break 3 section 3, parallel flows).
+    bands.set_flow_ceiling(ceil + kid.pagination_offset);
     // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
     // `bands.add_float`.
     let (fx, fy) = if letter {
@@ -101,8 +104,10 @@ pub(super) fn place_float(
         at
     };
     slots[k] = Slot {
+        geometry,
         x: fx + ml,
         y: fy + mt,
+        float_margins: [mt, mb],
         avail,
         b: bh,
         ..Slot::default()

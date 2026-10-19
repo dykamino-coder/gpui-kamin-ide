@@ -5,6 +5,7 @@ pub(super) use columns::column_plan;
 
 mod child_borrow;
 mod children;
+pub(crate) use children::child_probes;
 pub(super) use children::generic_children;
 
 // owner: A

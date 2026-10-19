@@ -24,7 +24,9 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
             inline_level(c)
                 && band_piece(n) != Some(BandPiece::Atom)
                 && !replaced_tag(c)
-                && subtree_has_text(c)
+                // The paragraph also owns whitespace-only inline fragments on either
+                // side of a floated child (CSS 2.1 sections 9.2.1.1, 9.5).
+                && (subtree_has_text(c) || c.children.iter().all(is_blank))
         }
     }) || run
         .iter()

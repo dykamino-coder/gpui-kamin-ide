@@ -245,4 +245,5 @@ pub struct Paragraph {
     pub(super) first_strut: Option<super::first_line::Strut>,
     /// Границы строк в байтах для замера и отрисовки.
     pub(super) lines: Vec<Line>,
+    pub(super) fragment: Option<crate::layout::fragment::flow::FlowNode>,
 }

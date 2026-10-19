@@ -1,4 +1,4 @@
-//! Selection for paint; split out to keep the owning module within 250 lines.
+//! Selection runs and mouse tracking over a paragraph layout snapshot.
 
 use super::Selection;
 use crate::text::paragraph::*;
@@ -52,6 +52,7 @@ impl Paragraph {
         }
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
+            fragment: None,
             scroll_owner: None,
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,

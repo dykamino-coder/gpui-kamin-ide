@@ -19,6 +19,9 @@ pub(in crate::layout::float) use lift::trimmed_clear;
 mod kids;
 pub(super) use kids::band_kids;
 mod build_kid;
+mod float_box;
+#[cfg(test)]
+mod tests;
 use build_kid::build_band_kid;
 
 /// Письмо коробки отличается от письма содержащего блока хоста —
@@ -33,21 +36,22 @@ pub(super) fn band_orthogonal(c: &Computed, wm: WritingMode) -> bool {
                 .is_some_and(|r| r != (wm.vertical() && wm.block_rl())))
 }
 
-/// A float that lays its content out as a flex or grid container: the
+/// A float with flex, grid or multicol layout: the
 /// probe frame does not shrink such a box to fit (CSS 2.1 §10.3.5), so the
 /// host sizes it from its intrinsic sizes.
 pub(super) fn own_layout_mode(c: &Computed) -> bool {
-    matches!(
-        c.display,
-        Some(Display::Flex)
-            | Some(Display::InlineFlex)
-            | Some(Display::Grid)
-            | Some(Display::InlineGrid)
-            | Some(Display::GridLanes)
-    )
+    crate::layout::multicol::spanner::multicol_container(c)
+        || matches!(
+            c.display,
+            Some(Display::Flex)
+                | Some(Display::InlineFlex)
+                | Some(Display::Grid)
+                | Some(Display::InlineGrid)
+                | Some(Display::GridLanes)
+        )
 }
 
-/// CSS 2.1 §10.3.5: an auto-width float is shrink-to-fit. A flex or grid
+/// CSS 2.1 §10.3.5: an auto-width float is shrink-to-fit. A flex, grid or multicol
 /// container does not shrink in the probe frame by itself: it gets the
 /// border-box inline size `avail` the host computed from its intrinsic sizes
 /// (zero only while those are being measured). `width` keeps the box's own
@@ -122,16 +126,29 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         inherited.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
+    let parent = opts.frag.watch.as_ref().map(|w| w.flow.clone());
+    let watched = crate::layout::fragment::paginate::watch::Watched::for_lines();
+    let probes = watched.flow.clone();
+    let mut child_opts = opts.clone();
+    child_opts.frag.watch = parent.as_ref().map(|_| watched);
     let kids = band_kids(
         &e.children,
         count,
         inherited,
-        opts,
+        &child_opts,
         em,
         e.marks.adjoining_start,
         host.wm,
     );
     let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
+    let flow = match parent {
+        Some(parent) => flow.fragment_flow(
+            parent,
+            probes,
+            crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+        ),
+        None => flow,
+    };
     if inherited.wm().vertical() {
         return flow.vertical(inherited.wm().block_rl()).hooked();
     }

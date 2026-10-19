@@ -7,8 +7,8 @@ use crate::render::out_of_flow;
 use crate::style::computed::Display;
 
 /// Gate of the path: a block-level, non-monolithic child of a horizontal
-/// multicol that is (or contains) a flex container and has at least one
-/// candidate. Everything else keeps the shape-estimate path.
+/// multicol containing a flex container or measured float candidates.
+/// Everything else keeps the shape-estimate path.
 pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool) -> bool {
     refusal(c, col_w, auto_fill).is_none()
 }
@@ -50,9 +50,6 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     {
         return Some("box");
     }
-    if !has_flex(c, 4) {
-        return Some("no-flex");
-    }
     // Lines opened as parallel flows keep that model: it fixes the line
     // breaking before fragmentation (css-flexbox-1 §12), a strut would rewrap.
     if auto_fill && crate::layout::fragment::flex_lines::explodes(c, col_w) {
@@ -63,6 +60,11 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     }
     match candidates(c) {
         None => Some("subtree"),
+        Some(v)
+            if !has_flex(c, 4) && !v.iter().any(|x| matches!(x.1, super::Cand::Float { .. })) =>
+        {
+            Some("no-flex-or-float")
+        }
         // Row gaps alone keep the old path: this path paints gap decorations
         // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/
         // 031), and a test with rules must take the same path as its ref.

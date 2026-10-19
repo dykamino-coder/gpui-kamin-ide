@@ -18,6 +18,7 @@ pub struct BandFlow {
     /// Письмо хоста: `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr`.
     pub(super) vert: Option<bool>,
     pub(super) contain_floats: bool,
+    pub(super) fragment: Option<super::fragment::FragmentFlow>,
 }
 
 impl BandFlow {
@@ -28,6 +29,7 @@ impl BandFlow {
             built: Vec::new(),
             vert: None,
             contain_floats,
+            fragment: None,
         }
     }
 
@@ -45,6 +47,7 @@ impl Hooks for BandFlow {
     fn request_layout(&mut self, window: &mut Window, _cx: &mut App) -> (LayoutId, Self::Layout) {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
+        let fragment = self.fragment.clone();
         let style = gpui::Style {
             flex_shrink: 0.0,
             ..Default::default()
@@ -79,11 +82,7 @@ impl Hooks for BandFlow {
                     (None, AvailableSpace::Definite(w)) => {
                         let w = f32::from(w);
                         let (mn, mx) = window.with_nested_layout(|window| {
-                            let p = &mut Probe {
-                                window,
-                                cx,
-                                vert: v,
-                            };
+                            let p = &mut Probe::new(window, cx, v, fragment.as_ref());
                             (
                                 intrinsic_width(&kids, false, p),
                                 intrinsic_width(&kids, true, p),
@@ -93,17 +92,16 @@ impl Hooks for BandFlow {
                         mx.max(mn).min(mn.max(w))
                     }
                     (None, a) => window.with_nested_layout(|window| {
-                        let p = &mut Probe {
-                            window,
-                            cx,
-                            vert: v,
-                        };
+                        let p = &mut Probe::new(window, cx, v, fragment.as_ref());
                         intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
                     }),
                 };
                 if let Some(p) = cache.borrow().as_ref()
                     && (p.width - cb).abs() < COORD_EPS
                 {
+                    if let Some(f) = &fragment {
+                        f.publish(p, &kids);
+                    }
                     return phys(cb, p.height);
                 }
                 let p = window.with_nested_layout(|window| {
@@ -111,18 +109,20 @@ impl Hooks for BandFlow {
                         &kids,
                         cb,
                         contain_floats,
-                        &mut Probe {
-                            window,
-                            cx,
-                            vert: v,
-                        },
+                        &mut Probe::new(window, cx, v, fragment.as_ref()),
                     )
                 });
+                if let Some(f) = &fragment {
+                    f.publish(&p, &kids);
+                }
                 let h = p.height;
                 *cache.borrow_mut() = Some(p);
                 phys(cb, h)
             }
         });
+        if let Some(f) = &self.fragment {
+            f.node.record(id);
+        }
         (id, id)
     }
 
@@ -156,11 +156,7 @@ impl Hooks for BandFlow {
             None => {
                 let kids = self.kids.clone();
                 window.with_nested_layout(|window| {
-                    let p = &mut Probe {
-                        window,
-                        cx,
-                        vert: vert.is_some(),
-                    };
+                    let p = &mut Probe::new(window, cx, vert.is_some(), self.fragment.as_ref());
                     plan(&kids, cb, contain_floats, p)
                 })
             }

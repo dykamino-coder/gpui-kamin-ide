@@ -1,9 +1,9 @@
 //! Fragmentainer frame of a paginated child and its measuring layout.
 
 use crate::layout::fragment::paginate::solve::Geom;
-use crate::layout::fragment::paginate::{Paginate, Struts};
+use crate::layout::fragment::paginate::{Cand, Paginate, Struts};
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{App, AvailableSpace, Window, px, size};
+use gpui::{App, AvailableSpace, Window, point, px, size};
 
 impl ColumnStack {
     /// Column height and the child's offset in its first column, plus the
@@ -58,8 +58,24 @@ impl ColumnStack {
         );
         c.h = f32::from(sz.height);
         c.over = c.h.max(f32::from(content.height));
+        let measured = p
+            .watched
+            .flow
+            .at(point(px(0.0), px(0.0)), sz, self.axis, window);
         let mut geoms = Vec::with_capacity(p.cands.len());
         for &(id, cand) in &p.cands {
+            if matches!(cand, Cand::Float { .. }) {
+                let g = measured.floats.iter().find(|g| g.id == id)?;
+                // Float margins are unbreakable and never truncated (Blink
+                // floats_utils.cc, CreateConstraintSpace and initial balancing).
+                geoms.push(Geom {
+                    id,
+                    cand,
+                    top: g.top - g.margins[0],
+                    bottom: g.bottom + g.margins[1],
+                });
+                continue;
+            }
             let lid = p.watched.seen(id)?;
             let o = window.layout_origin_unrounded(lid);
             let s = window.layout_size_unrounded(lid);

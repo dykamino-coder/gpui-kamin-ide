@@ -34,6 +34,8 @@ pub(super) fn paginate_of(
         cands,
         watched,
         rebuild: Box::new(move |struts, n| {
+            let mut opts = opts.clone();
+            opts.frag.float_struts = std::rc::Rc::new(struts.clone());
             let mut c2 = copy.clone();
             if !apply(&mut c2, struts) {
                 return None;

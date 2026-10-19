@@ -21,22 +21,6 @@ pub(super) fn band_host_m_tail(
     probes: Vec<(usize, usize, Vec<Node>)>,
     cb: FloatCb,
 ) -> Option<(Element, usize, Vec<Node>)> {
-    // A lone float with nothing after it stays a box of the flow when
-    // columns are involved: in a column fragmentainer the monolithic host
-    // cannot be fragmented by the column stack (`multicol-fill-balance-032`),
-    // and a multi-column float needs the element pipeline (spanner hoisting,
-    // balancing) that the host's float frame does not run
-    // (`multicol-span-all-margin-nested-firstchild-001`, `intrinsic-size-001`).
-    if floaters.len() < 2
-        && rest.iter().all(is_blank)
-        && lead.is_empty()
-        && (cb.in_multicol
-            || floaters
-                .iter()
-                .any(|f| crate::layout::multicol::spanner::multicol_container(&f.style)))
-    {
-        return None;
-    }
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).
     let mut lifted: Vec<Node> = vec![];
@@ -46,16 +30,7 @@ pub(super) fn band_host_m_tail(
     let probe_nodes: Vec<Node> = probes
         .into_iter()
         .flat_map(|(a, b, pre)| {
-            // Последний `<br>` верхнего уровня делит набранное: до него —
-            // основание (`lead-base`), после — строка флоата (`lead-for`).
-            let cut = pre
-                .iter()
-                .rposition(|n| matches!(n, Node::Element(c) if c.tag == "br"))
-                .map(|p| p + 1);
-            let (base, line) = match cut {
-                Some(p) => (Some(pre[..p].to_vec()), pre[p..].to_vec()),
-                None => (None, pre),
-            };
+            let (base, line) = super::lead::split(pre, cb.preserve_newlines);
             let probe = |children: Vec<Node>, base: bool| {
                 Node::Element(Element::synthetic(
                     "div",

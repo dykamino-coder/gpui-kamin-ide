@@ -41,6 +41,7 @@ mod flow_kid;
 use float_kid::{place_float, place_nest};
 use flow_kid::place_flow;
 mod element;
+mod fragment;
 pub use element::BandFlow;
 mod tap;
 use tap::Tap;
@@ -78,10 +79,13 @@ impl Edge {
 /// ребёнок строится заново в `prepaint`).
 #[derive(Clone, Debug, Default)]
 struct Slot {
+    geometry: crate::layout::fragment::flow::FlowGeometry,
     x: f32,
     y: f32,
     avail: f32,
     shapes: Option<Shapes>,
+    /// Resolved block margins of a float, preserved by fragmentation.
+    float_margins: [f32; 2],
     /// Высота содержимого `Kind::Nest`.
     h: Option<f32>,
     /// Места детей `Kind::Nest`.
@@ -102,6 +106,8 @@ pub(super) struct Probe<'a> {
     pub(super) window: &'a mut Window,
     pub(super) cx: &'a mut App,
     pub(super) vert: bool,
+    fragment: Option<fragment::FragmentFlow>,
+    last_geometry: crate::layout::fragment::flow::FlowGeometry,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -64,6 +64,12 @@ pub struct Nest {
 
 pub struct Kid {
     pub kind: Kind,
+    /// Source identity for the canonical pagination recorder.
+    pub node_id: u64,
+    /// Independent float displacement returned by the pagination solver.
+    pub pagination_offset: f32,
+    /// CSS Break 3 section 4.1: an indivisible box, independent of its height.
+    pub monolithic: bool,
     /// `clear` куска или блока потока (шаг F6): верх его border-box не выше
     /// низа флоатов названной стороны (§9.5.2). У флоата `clear` живёт в
     /// `Kind::Float`.

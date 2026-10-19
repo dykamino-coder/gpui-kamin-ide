@@ -211,6 +211,10 @@ pub(crate) fn native_paragraph(
                 over: 0.0,
             },
         ));
+    let para = para.fragment_flow(
+        opts.frag.watch.as_ref().map(|w| w.flow.clone()),
+        crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+    );
     let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
@@ -226,12 +230,9 @@ pub(crate) fn native_paragraph(
     )
 }
 
-/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
-/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
-/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
-/// sends the line axis (+x) to screen-down and the block axis (+y) to
-/// screen-left; `sideways-lr` turns the other way.
-// Rotation preserves each span's text range and two-axis displacements.
+/// CSS 2.1 §9.4.3 offsets are physical. Express them in the flat frame
+/// before the Writing Modes 4 §7.1 turn: clockwise maps +x down and +y
+/// left; sideways-lr turns the other way. Text ranges stay unchanged.
 #[allow(clippy::type_complexity)]
 fn rotate_rel_spans(
     spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,

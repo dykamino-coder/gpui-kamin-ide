@@ -99,16 +99,10 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // line-left — низ, и плана для него нет.
     let vert_host =
         inherited.wm().vertical() && (!inherited.wm().sideways() || inherited.wm().block_rl());
-    // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
-    // `line-clamp` (точка среза считает строки и флоаты за ней —
-    // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
-    // ряд `float_flow` для этого и заведён) и на печатных листах (монолитная
-    // коробка хоста не режется между страницами —
-    // `monolithic-overflow-020-print`).
+    // Page stacks still need the measured host's break opportunities before
+    // they can fragment it (CSS Break 3 section 4.1). Deferred clamp children
+    // retain the counting scope, including the float's independent BFC.
     let measured_ok = !flex_ctx
-        && inherited.line_clamp.is_none()
-        && crate::text::clamp::clamp_context().is_none()
-        && opts.paged_build().is_none()
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)

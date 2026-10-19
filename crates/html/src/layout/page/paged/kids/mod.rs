@@ -15,7 +15,6 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn page_kids_from_groups(
     opts: &RenderOpts,
@@ -52,16 +51,20 @@ pub(super) fn page_kids_from_groups(
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        let build = |band: bool, slot: &mut Vec<AnyElement>, fixed_slot: &mut Vec<AnyElement>| {
+        let watched = crate::layout::fragment::paginate::watch::Watched::new(&[]);
+        let build = |main: bool,
+                     band: bool,
+                     slot: &mut Vec<AnyElement>,
+                     fixed_slot: &mut Vec<AnyElement>| {
+            let mut opts = opts.clone();
+            opts.frag.watch = main.then(|| watched.clone());
             crate::layout::positioned::containing_block::icb_open();
             opts.clear_paged_fixed();
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
-            // A vertical root (`Some(rl)`) flows blocks along x like a
-            // vertical block (`render/generic_box.rs`): row, reversed for
-            // `vertical-rl`. Its inline-start (top) edge repeats on every
-            // page; the block-start edge (right for `rl`, left for `lr`)
-            // shows on the first page only (css-break-3 §5.4 slice).
+            // Writing Modes 4: vertical blocks advance along x. Repeat the
+            // inline-start padding; slice block-start decoration on later pages
+            // (CSS Break 3 section 5.4).
             let mut wrap = match vertical {
                 Some(rl) => {
                     // Inline size: the page area's height (a block's `auto`
@@ -93,26 +96,21 @@ pub(super) fn page_kids_from_groups(
                 Vec::new()
             };
             let source = if band { band_group.as_slice() } else { group };
-            let el = wrap.children(blocks(source, root, opts)).into_any_element();
+            let el = wrap
+                .children(blocks(source, root, &opts))
+                .into_any_element();
             slot.extend(layer(
                 crate::layout::positioned::containing_block::icb_close(),
             ));
             fixed_slot.extend(layer(opts.take_paged_fixed()));
             el
         };
-        let el = build(false, &mut icb_copies[0], &mut fixed_copies[0]);
+        let el = build(true, false, &mut icb_copies[0], &mut fixed_copies[0]);
         let frags: Vec<AnyElement> = (1..PAGE_COPIES)
-            .map(|i| build(false, &mut icb_copies[i], &mut fixed_copies[i]))
+            .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
             .collect();
-        // Анонимный блок вокруг текста/строчного — коробка в потоке со
-        // значением `page` родителя; флоат и внепоточный в сравнении имён
-        // не участвуют (свойство к ним не применяется, §named pages п.2).
-        // Коробка класса A — по `display`, не по тегу (`page-name-img-004`:
-        // `<img style="display: block; page: b">` шла анонимным блоком с
-        // именем корня и рвала страницу). Разрыв первого/последнего ребёнка
-        // передаётся коробке (css-break-4 §break-propagation; Blink
-        // `InitialBreakBefore`): `block-page-break-inside-avoid-8-ref` —
-        // `<div><p style="page-break-before: always">` рвал не перед `div`.
+        // CSS Paged Media: anonymous runs inherit the page name; floats
+        // and out-of-flow boxes do not pass a name to subsequent pages.
         let (fb, fa, monolith, renamed, start_name) =
             group_break_names(&root_page, &mut prev_end, &floated, group, n);
         // Мера поддерева — те же точки разреза, что у колонок. Обёртка
@@ -161,10 +159,15 @@ pub(super) fn page_kids_from_groups(
                 .is_none()
                 .then(|| {
                     repeat::sections(group, ah, shape_cx, pad_top, PAGE_COPIES, || {
-                        build(true, &mut Vec::new(), &mut Vec::new())
+                        build(false, true, &mut Vec::new(), &mut Vec::new())
                     })
                 })
                 .flatten(),
+            flow: Some(watched.flow.clone()),
+            float_id: match n {
+                Node::Element(e) if floated(n) => Some(e.node_id),
+                _ => None,
+            },
             reach,
             end: Default::default(),
             el,

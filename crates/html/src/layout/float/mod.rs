@@ -42,8 +42,8 @@ pub(crate) struct FloatCb {
     pub(crate) height: Option<f32>,
     /// The containing block is the initial containing block.
     pub(crate) icb: bool,
-    /// The containing block's content is fragmented into columns.
-    pub(crate) in_multicol: bool,
+    /// Preserved segment breaks end the line preceding a float.
+    pub(crate) preserve_newlines: bool,
 }
 
 impl FloatCb {
@@ -53,7 +53,7 @@ impl FloatCb {
             width: px_strict(cb.width),
             height: px_strict(cb.height),
             icb: cb.icb,
-            in_multicol: cb.in_multicol || crate::layout::multicol::spanner::multicol_container(cb),
+            preserve_newlines: cb.preserve_newlines.unwrap_or(false),
         }
     }
 }

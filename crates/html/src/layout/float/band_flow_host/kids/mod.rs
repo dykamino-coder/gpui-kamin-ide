@@ -10,7 +10,9 @@ use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
+mod deferred;
 mod parts;
+use deferred::deferred;
 pub(super) use parts::band_kid_kind;
 
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
@@ -54,10 +56,12 @@ pub(crate) fn band_kids(
         let p = p.clone();
         let inherited = inherited.clone();
         let opts = opts.clone();
-        std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-            let _depth = DepthScope::enter(depth);
-            element(&p, &inherited, &opts)
-        })
+        let build: crate::layout::float::band_flow::Build =
+            std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
+                let _depth = DepthScope::enter(depth);
+                element(&p, &inherited, &opts)
+            });
+        deferred(build, false)
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.
     let nowrap_probe: Option<crate::layout::float::band_flow::Build> = (nowrap && has_lead)
@@ -154,6 +158,7 @@ pub(crate) fn band_kids(
             node.first_line = first_layer.map(Into::into);
         }
         let inherited = inherited.clone();
+        let pagination_offset = opts.frag.float_struts.get(&c.node_id).map_or(0.0, |s| s.by);
         let opts = opts.clone();
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
@@ -166,6 +171,7 @@ pub(crate) fn band_kids(
                     cb_block_w, cb, avail, shapes, height,
                 )
             });
+        let build = deferred(build, !is_nest);
         let clear = if float { None } else { c.style.clear };
         // css-shapes-1 §2: the float's shape shortens the lines next to it.
         let shape: Option<crate::layout::float::band_flow::ShapeOf> =
@@ -179,6 +185,9 @@ pub(crate) fn band_kids(
             });
         kids.push(Kid {
             kind,
+            node_id: c.node_id,
+            pagination_offset,
+            monolithic: crate::layout::fragment::clone::monolith_box(c),
             clear,
             margin,
             build,

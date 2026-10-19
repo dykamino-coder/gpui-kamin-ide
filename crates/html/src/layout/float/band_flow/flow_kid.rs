@@ -48,6 +48,7 @@ pub(super) fn place_flow(
         y: top,
         avail,
         shapes: Some(shapes),
+        geometry: p.last_geometry.clone(),
         b: bh,
         ..Slot::default()
     };

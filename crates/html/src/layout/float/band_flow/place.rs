@@ -131,6 +131,7 @@ pub(super) fn place_seq(
                 slots[k] = Slot {
                     x,
                     y: t,
+                    geometry: p.last_geometry.clone(),
                     avail,
                     b: bh,
                     ..Slot::default()

@@ -99,7 +99,7 @@ pub(crate) fn child_probes(
             Some(Len::Lh(k)) => Some(k * lh),
             _ => None,
         };
-        let end_margin = if in_flow_block {
+        let end_margin = if in_flow_block || merged.float.is_some_and(|f| f != 0) {
             len_px(merged.margin.bottom).unwrap_or(0.0)
         } else {
             0.0

@@ -9,6 +9,7 @@ use crate::layout::float::band_host::{BandPiece, band_margins, band_piece};
 use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
 use crate::style::computed::Display;
 use crate::style::computed::writing_mode::WritingMode;
+mod lead;
 mod tail;
 use tail::band_host_m_tail;
 mod nested;
@@ -194,13 +195,6 @@ pub(super) fn band_float_m(next: &Element, em: f32, wm: WritingMode) -> Option<(
         {
             return None;
         }
-        // Флоат с трансформацией — на прежнем пути: трансформацию даёт
-        // сборка узла `element`, а каркас флоата хоста её не несёт
-        // (`transform-scale-test`). Буквица — своим исключением строки
-        // (шаг F11, `Kind::Float { letter }`).
-        if next.style.transform.is_some() {
-            return None;
-        }
         band_margins(&next.style, em)?;
     }
     Some(())
@@ -217,3 +211,6 @@ fn has_flow_float(c: &Element) -> bool {
         }
     })
 }
+
+#[cfg(test)]
+mod tests;

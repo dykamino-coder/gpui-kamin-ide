@@ -5,15 +5,13 @@ use crate::hooks::IntoHooked;
 use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
-use crate::layout::replaced::image::image;
 use crate::layout::writing_mode::native_vertical;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::paint_scope::DepthScope;
-use crate::render::{RenderOpts, blocks, content_wrapper, element, replaced_tag, styled_div_with};
-use crate::style::cascade::inherit::inherit;
+use crate::render::{RenderOpts, content_wrapper, element, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement};
+use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_band_kid(
@@ -37,6 +35,7 @@ pub(super) fn build_band_kid(
     height: Option<f32>,
 ) -> AnyElement {
     let _depth = DepthScope::enter(depth);
+    let _clamp_bfc = float.then(crate::text::clamp::ClampGuard::enter_bfc);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным
     // детям куска — ширина окна (`AVAIL_W`).
@@ -54,7 +53,7 @@ pub(super) fn build_band_kid(
     // самой коробке они сдвинули бы её ещё раз — как у
     // статического хоста.
     copy.style.float = None;
-    copy.style.floated_box = true;
+    copy.style.floated_box |= float;
     copy.style.band_kid = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();
@@ -192,24 +191,15 @@ pub(super) fn build_band_kid(
     if float && !vertical {
         super::fit_own_layout(&mut copy.style, inherited, avail, cb);
     }
-    if float && !table && !replaced && !vertical && !own_vertical && !list_item {
+    // CSS Multicol 1: a floated multicol still balances and hoists spanners
+    // through element(), then contributes its measured outer box to bands.
+    let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style);
+    if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
-        let mut merged = inherit(inherited, &copy.style);
-        merged.self_node = copy.node_id;
-        merged.margin = crate::style::computed::Sides::default();
-        if copy.tag == "img" {
-            grouped(image(&copy), &copy.style)
-        } else {
-            grouped(
-                styled_div_with(&copy, &merged)
-                    .children(blocks(&copy.children, &merged, opts))
-                    .into_any_element(),
-                &copy.style,
-            )
-        }
+        super::float_box::float_box(&copy, node, cb, inherited, opts)
     } else {
         // Общий путь отрисовки узла — тот же, что в потоке:
         // таблица, замещаемый, список строятся своими ветками
