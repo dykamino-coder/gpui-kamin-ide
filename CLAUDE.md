@@ -206,7 +206,8 @@ maintainer сверяет BR/INC backlog в `main` и открытые PR; са�
 - Запускать применимые fmt, lint, clippy, test и UI-проверки из
   `CONTRIBUTING.md`.
 - Не заявлять незапущенную проверку как успешную; назвать ограничение среды.
-- `Windows Rust tests and installer build (no GUI acceptance)` и общий зелёный
+- `Windows Rust tests (no GUI acceptance)`,
+  `Windows installer build (no GUI acceptance)` и общий зелёный
   `required quality gate` не подтверждают живой Windows/CEF-сценарий. Если
   исходная BR/INC-карточка требует Windows runtime merge gate, до merge
   проверить task-specific evidence на точном кандидате по
@@ -252,6 +253,12 @@ maintainer сверяет BR/INC backlog в `main` и открытые PR; са�
   `ready/change` допускается только для ещё не сделанной части bounded задачи;
   оставшуюся приёмку указать как `verify` с конкретным gate, а `done` требует
   подтверждённой приёмки. Перед release сверить этот реестр и scope пачки.
+- После merge/release сверять также затронутые INC-карточки и строки
+  `RUNTIME_BACKLOG.md`: implementation PR, фактическую доставку, остаточный gate,
+  owner и следующий artifact. Записанный published fix проверять по Git ancestry
+  и GitHub Release (§5 `CONTRIBUTING.md`); публикация не заменяет acceptance.
+  Старый handoff сохранять как датированную историю, текущий следующий шаг
+  не должен предлагать уже принятую реализацию повторно.
 
 ## Завершение поручения и связанные PR
 

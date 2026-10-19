@@ -313,8 +313,10 @@ npm --prefix extensions/claude-bridge/webview run build
 
 Workflow `.github/workflows/pr-checks.yml` автоматически выполняет этот контур
 для затронутых частей каждого PR. Job `required quality gate` имеет стабильное
-имя и проходит только когда все применимые Node, Bridge и Rust jobs успешны;
-docs-only PR в этом workflow ограничивается проверкой scope и whitespace.
+имя и проходит только когда все применимые Node, Bridge, Rust, Windows installer
+и release dry-run jobs успешны;
+docs-only PR в этом workflow ограничивается scope, whitespace и проверкой
+явных записей доставки ниже.
 Независимый workflow `.github/workflows/pr-metadata.yml` проверяет заголовок и
 описание каждого PR в `main`, включая docs-only, job-ом
 `PR title and description` по §5. Перед merge оба checks должны быть зелёными.
@@ -322,6 +324,12 @@ Workflow использует
 только read-only `GITHUB_TOKEN`, не получает production secrets и ничего не
 публикует. Ручные Windows и deployment-only gates ниже остаются отдельными и не
 подменяются CI.
+
+Scope также проверяет явные `Published fix` записи runtime-карточек: указанный
+commit должен входить в tag существующего опубликованного GitHub Release.
+Для локальной проверки нужны полный Git history/tags и read-only `gh` access:
+`node scripts/ci/runtime-delivery.mjs`. Этот check не подтверждает истинность
+ручного evidence, работу на deployment или отсутствие соседних дефектов.
 
 Jobs `Windows Rust tests (no GUI acceptance)` и `Windows installer build (no
 GUI acceptance)` параллельно выполняют компиляцию с Rust tests и, при
@@ -433,6 +441,34 @@ maintainer agent не считается падением теста. Это и�
 проверенной до отчёта владельца.
 
 ## 5. Коммиты и PR
+
+### Актуальность результата после merge и release
+
+После проверки реализации в свежем `origin/main` обновить текущие поля
+затронутой BR/INC-карточки и её строку `RUNTIME_BACKLOG.md`: merged PR,
+принятые gates, оставшийся сценарий, owner и следующий artifact. Общий BR-реестр
+обновляется coordination PR по maintainer flow. После публикации проверить
+GitHub Release и вхождение fix commit в его tag; только тогда добавлять в
+INC-карточку одну строку на принятый implementation PR в следующем формате:
+
+```markdown
+- **Published fix:** `kaminide-v<app-version>`; commit `<full merge SHA>`; [#<PR>](https://github.com/<owner>/<repo>/pull/<PR>).
+```
+
+Это факт доставки кода, не статус acceptance и не утверждение о первой версии.
+Проверка CI намеренно сверяет только явные записи, а не выводит закрытие задачи
+из свободного текста, PR title или release notes. Она проверяет публикацию и
+Git ancestry; правильность связи PR/commit и acceptance проверяет maintainer.
+Старые карточки без этого поля не получают автоматически выдуманную версию.
+
+Уже принятый Windows gate не повторять только ради исправления устаревшего
+статуса: сослаться на exact candidate, сценарий, результат и immutable evidence
+из принятого PR. Непроведённый gate сохранить как `verify`; deployment-only
+остаток — как observation с владельцем. Если нужен только docs close-out,
+сделать его без нового product fix или release. Датированные historical findings
+сохранить, но текущие `Status`/`Next step` и обзор не должны им противоречить.
+
+### Формат PR
 
 Заголовок PR и итогового squash-коммита следует Conventional Commits и пишется
 по-английски:
@@ -833,3 +869,5 @@ checks `required quality gate` и `PR title and description` обязатель�
 Правка workflow сама не меняет Settings/rulesets: эту одноразовую настройку
 выполняет владелец repository. Иначе зелёный check виден, но GitHub
 технически не запрещает merge с красной или незапущенной матрицей.
+Готовый API payload и порядок проверки/применения владельцем:
+[MAIN_RULESET.md](docs/MAIN_RULESET.md). Наличие JSON в Git само защиту не включает.
