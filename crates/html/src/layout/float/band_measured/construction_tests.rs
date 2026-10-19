@@ -139,3 +139,38 @@ fn inline_ruby_remains_in_the_measured_paragraph_across_breaks() {
         );
     }
 }
+
+#[test]
+fn orthogonal_inline_float_roots_use_native_claims_but_block_children_stay_guarded() {
+    for mode in ["vertical-lr", "vertical-rl", "sideways-lr"] {
+        for (content, admitted) in [
+            ("<span>first second</span>", true),
+            ("<div>first</div><div>second</div>", false),
+            (r#"<span style="float:left">nested</span>"#, false),
+        ] {
+            let markup = format!(
+                r#"<div id="source"><div style="float:left;writing-mode:{mode}">{content}</div><div style="float:right;writing-mode:{mode}">{content}</div></div>"#
+            );
+            let tree = parse(&markup, "");
+            let nodes = &find(&tree, "source").expect("source").children;
+            let measured = band_host_m(
+                nodes,
+                0,
+                16.,
+                &[],
+                FloatCb::of(&crate::style::computed::Computed::default()),
+            );
+            if !admitted {
+                assert!(measured.is_none(), "block children require root sizing");
+            } else {
+                let (host, end, lifted) = measured.expect("inline root owns its fit-content claim");
+                assert_eq!(end, nodes.len());
+                assert!(lifted.is_empty());
+                assert_eq!(
+                    host.marks.shape_flow.expect("host").bands,
+                    Some(BandPath::Measured)
+                );
+            }
+        }
+    }
+}

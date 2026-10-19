@@ -162,14 +162,18 @@ pub(super) fn band_host_m(
         rest.push(nodes[j].clone());
         j += 1;
     }
-    // An orthogonal float-only run still obtains its shared intrinsic inline
-    // size from the row. Independent band probes do not preserve that contract
-    // yet; use them when the floats actually interact with normal-flow content.
+    // Orthogonal floats with native block children share their intrinsic
+    // inline size at the root, as do nested floats. Plain inline paragraphs retain
+    // their native fit-content claim when measured independently.
     if lead.is_empty()
         && rest.iter().all(is_blank)
-        && floaters
-            .iter()
-            .any(|f| band_orthogonal(&f.style, wm) && subtree_has_text(f))
+        && floaters.iter().any(|f| {
+            band_orthogonal(&f.style, wm)
+                && subtree_has_text(f)
+                && (crate::layout::writing_mode::native_vertical::has_in_flow_block_children(
+                    &f.children,
+                ) || !crate::layout::float::band_flow_host::flow_interior_plain(f))
+        })
     {
         return None;
     }

@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 /// коробка своего контекста внешних флоатов не увидели бы вовсе — им нужен
 /// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
 /// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
-pub(super) fn flow_interior_plain(c: &Element) -> bool {
+pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
