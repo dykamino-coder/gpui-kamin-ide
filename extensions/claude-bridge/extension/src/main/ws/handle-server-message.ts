@@ -215,12 +215,17 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     }
 
     case 'jsonl:status': {
+      // Older servers announce replay start with bare `watching`. Index and
+      // progress updates use the same status but must not restart that replay.
+      const startsLegacyReplay = msg.status === 'watching'
+        && (msg.compacted || (!msg.segmentIndex && !msg.replayProgress))
+      const replayComplete = msg.replayComplete ?? (startsLegacyReplay ? false : undefined)
       const statusData = {
         status: (msg as any).status,
         filePath: (msg as any).filePath,
         error: (msg as any).error,
         compacted: (msg as any).compacted,
-        replayComplete: (msg as any).replayComplete,
+        replayComplete,
         // Live byte-progress of the historical replay → the renderer's "loading
         // history … N%". Transient like `compacted`: NOT cached below, or a
         // renderer reload would replay a frozen bar at whatever % it last saw.
@@ -273,7 +278,12 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       // own, since a replay that aborts (reap / reattach / next switchToFile)
       // returns without ever sending the `replayComplete` that would replace it.
       const { compacted: _oneShot, replayProgress: _transient, ...cacheableStatus } = statusData
-      ctx.setCachedJsonlStatus(cacheableStatus)
+      // A reveal replays this cached lifecycle state after the cached rows.
+      // Replacing it with index/progress metadata would strand the new renderer
+      // without the completion (or reset a replay still being assembled).
+      if (statusData.status !== 'watching' || replayComplete !== undefined) {
+        ctx.setCachedJsonlStatus(cacheableStatus)
+      }
       ctx.window.webContents.send('jsonl-status', ctx.tabId, statusData)
       break
     }
