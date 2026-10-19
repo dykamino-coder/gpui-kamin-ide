@@ -56,6 +56,8 @@ pub(super) const ELLIPSIS: &str = "…";
 /// Строка: что рисовать и сколько она занимает.
 #[derive(Clone, Debug)]
 pub(crate) struct Line {
+    /// Float avoidance before this real line; excluded from the line count.
+    pub(crate) clearance: gpui::Pixels,
     /// Байтовый отрезок исходного текста.
     pub(crate) range: std::ops::Range<usize>,
     /// Ширина без хвостовых пробелов — по ней идёт выключка.

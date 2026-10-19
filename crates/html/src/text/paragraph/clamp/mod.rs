@@ -32,7 +32,7 @@ impl Paragraph {
         };
         // The marker shares the line's float exclusions and text indent
         // (CSS Overflow 4 section 5.2), just like its remaining text.
-        let limit = self.clamp_line_limit(lines.len(), last.indent, limit);
+        let limit = self.clamp_line_limit(&lines, &last, limit);
         let segs = self.measure(window);
         let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
@@ -100,6 +100,7 @@ impl Paragraph {
                 px(0.)
             };
         lines.push(Line {
+            clearance: last.clearance,
             range: head..end,
             width,
             ellipsis: true,
@@ -113,11 +114,16 @@ impl Paragraph {
 
     fn clamp_line_limit(
         &self,
-        row: usize,
-        indent: Pixels,
+        before: &[Line],
+        last: &Line,
         limit: Option<Pixels>,
     ) -> Option<Pixels> {
-        limit.map(|w| w - indent - px(self.flow_cut(row).1))
+        limit.map(|w| {
+            w - last.indent
+                - px(self
+                    .candidate_cut(before, last.range.clone(), last.clearance)
+                    .1)
+        })
     }
 }
 
@@ -143,14 +149,26 @@ mod tests {
                 h: 20.,
                 w: 30.,
             });
+        let line = |clearance| Line {
+            range: 0..1,
+            clearance: px(clearance),
+            indent: px(25.),
+            width: px(10.),
+            ellipsis: false,
+            clamped: false,
+            vis_cut: None,
+            hyphen: false,
+        };
+        // Newly broken lines are not yet installed in paragraph.lines.
+        let before = [line(0.)];
         assert_eq!(
-            paragraph.clamp_line_limit(1, px(25.), Some(px(100.))),
+            paragraph.clamp_line_limit(&before, &line(0.), Some(px(100.))),
             Some(px(45.))
         );
         assert_eq!(
-            paragraph.clamp_line_limit(2, px(25.), Some(px(100.))),
+            paragraph.clamp_line_limit(&before, &line(20.), Some(px(100.))),
             Some(px(75.))
         );
-        assert_eq!(paragraph.clamp_line_limit(1, px(25.), None), None);
+        assert_eq!(paragraph.clamp_line_limit(&before, &line(0.), None), None);
     }
 }

@@ -78,6 +78,7 @@ mod tests {
         );
         paragraph.lines = (0..4)
             .map(|index| Line {
+                clearance: gpui::px(0.),
                 range: index..index + 1,
                 width: px(10.0),
                 ellipsis: false,

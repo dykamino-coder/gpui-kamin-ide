@@ -20,14 +20,14 @@ impl Paragraph {
             // CSS Break 3 section 4.1: break between line boxes. The same
             // padding accounts for atoms, emphasis and ruby in the box size.
             let mut geometry = FlowGeometry::lines(pads.iter().map(|(a, b)| height + a + b));
-            // CSS 2.1 section 9.5: an empty float-avoidance step moves the
-            // next line down; it is not itself an indivisible line box.
-            let mut index = 0;
-            geometry.solid.retain(|_| {
-                let line = &self.lines[index];
-                index += 1;
-                !line.range.is_empty() || index == self.lines.len()
-            });
+            // CSS 2.1 section 9.5: avoidance is free space before a real
+            // line, so a fragment cut may lie at the end of that space.
+            for (solid, line) in geometry.solid.iter_mut().zip(&self.lines) {
+                solid.0 += f32::from(line.clearance);
+                if line.clearance > gpui::px(0.) {
+                    geometry.cuts.push((solid.0, solid.0));
+                }
+            }
             *node.geometry.borrow_mut() = geometry;
         }
     }
@@ -49,16 +49,18 @@ mod tests {
             Align::Left,
             Wrap::default(),
         );
-        paragraph.lines = [0..1, 1..1, 1..1, 1..2, 2..2]
+        paragraph.lines = [0..1, 1..2]
             .into_iter()
-            .map(|range| Line {
+            .enumerate()
+            .map(|(i, range)| Line {
+                clearance: px(if i == 1 { 32. } else { 0. }),
                 range,
-                width: px(0.0),
+                width: px(0.),
                 ellipsis: false,
                 clamped: false,
                 vis_cut: None,
                 hyphen: false,
-                indent: px(0.0),
+                indent: px(0.),
             })
             .collect();
         let node = FlowNode::new(
@@ -66,18 +68,11 @@ mod tests {
             StackAxis::Horizontal,
         );
         paragraph.fragment = Some(node.clone());
-        paragraph.publish_fragment_lines(&[(0.0, 0.0); 5], 16.0);
+        paragraph.publish_fragment_lines(&[(0., 0.), (32., 0.)], 16.);
         let geometry = node.geometry.borrow();
-        assert_eq!(geometry.solid, [(0.0, 16.0), (48.0, 64.0), (64.0, 80.0)]);
-        assert_eq!(
-            geometry.cuts,
-            [
-                (16.0, 16.0),
-                (32.0, 32.0),
-                (48.0, 48.0),
-                (64.0, 64.0),
-                (80.0, 80.0)
-            ]
-        );
+        assert_eq!(geometry.solid, [(0., 16.), (48., 64.)]);
+        assert!(geometry.cuts.contains(&(48., 48.)));
+        assert!(geometry.cuts.contains(&(16., 16.)));
+        assert!(geometry.cuts.contains(&(64., 64.)));
     }
 }

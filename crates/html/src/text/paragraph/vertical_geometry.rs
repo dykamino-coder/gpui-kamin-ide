@@ -71,6 +71,7 @@ mod tests {
         let mut paragraph = Paragraph::empty().reversed_lines(true);
         paragraph.line_height = px(10.0);
         paragraph.lines = vec![Line {
+            clearance: gpui::px(0.),
             range: 0..0,
             width: px(20.0),
             ellipsis: false,
@@ -100,6 +101,7 @@ mod tests {
         let mut paragraph = Paragraph::empty().reversed_lines(true);
         paragraph.line_height = px(17.71875);
         paragraph.lines = vec![Line {
+            clearance: gpui::px(0.),
             range: 0..0,
             width: px(20.0),
             ellipsis: false,

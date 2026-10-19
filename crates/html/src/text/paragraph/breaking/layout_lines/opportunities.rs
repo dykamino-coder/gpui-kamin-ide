@@ -1,4 +1,4 @@
-//! Opportunities for layout_lines; split out to keep the owning module within 250 lines.
+//! Break opportunities, candidate widths and the final formatted line.
 
 use crate::text::paragraph::*;
 use gpui::px;
@@ -76,6 +76,7 @@ impl Paragraph {
         first_part: bool,
         segs: &[Seg],
         limit: Option<gpui::Pixels>,
+        mut clearance: gpui::Pixels,
     ) {
         let end = part_end;
         // Тот же довод, что и в цикле: висеть пробелу можно только за
@@ -88,25 +89,19 @@ impl Paragraph {
         };
         let head = start + self.hang_first(start);
         let tail = tail - self.hang_last(tail, true, true);
-        let (mut fl, mut fr) = self.flow_cut(out.len());
+        let (mut fl, mut fr) = self.candidate_cut(out, start..end, clearance);
         // The same §9.5 shift for the last line (see the loop above).
         if let Some(w) = limit {
             let bare = self.span(segs, head, tail) - self.tail_spacing(tail);
             let ind0 = self.indent_of(head_of_part, first_part, limit);
+            let mut shifts = 0;
             while (fl > 0.0 || fr > 0.0)
-                && out.len() < 4096
+                && shifts < 4096
                 && f32::from(bare) > f32::from(w - ind0 - px(fl) - px(fr)) + 0.01
             {
-                out.push(Line {
-                    range: start..start,
-                    width: px(0.),
-                    ellipsis: false,
-                    clamped: false,
-                    vis_cut: None,
-                    hyphen: false,
-                    indent: ind0 + px(fl),
-                });
-                (fl, fr) = self.flow_cut(out.len());
+                clearance += self.line_height.max(px(1.));
+                shifts += 1;
+                (fl, fr) = self.candidate_cut(out, start..end, clearance);
             }
         }
         let indent = self.indent_of(head_of_part, first_part, limit) + px(fl);
@@ -116,6 +111,7 @@ impl Paragraph {
         let room = limit.map(|w| w - indent - px(fr));
         let bare = self.span(segs, head, tail) - self.tail_spacing(tail);
         out.push(Line {
+            clearance,
             range: start..end,
             width: self.conditional_width(segs, head, end, bare, room),
             ellipsis: false,
