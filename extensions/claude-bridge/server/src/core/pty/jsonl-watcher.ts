@@ -179,6 +179,7 @@ export class JsonlWatcher {
   private startedAt = 0
   private filePath: string | null = null
   private lastOffset = 0
+  private fileIdentity: string | null = null
   private reading = false
   // Fast re-check after a backpressure DROP (offset not advanced) so recovery
   // doesn't wait on the 10s safety poll.
@@ -714,7 +715,8 @@ export class JsonlWatcher {
         const filePath = this.filePath
         if (!filePath || this.stopped) return
         const all: JsonlEntry[] = []
-        const live = () => !this.stopped && this.filePath === filePath
+        const gen = this.replayGen
+        const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
         try {
           await this.readEntriesStreaming(
             filePath,
@@ -736,6 +738,7 @@ export class JsonlWatcher {
       } while (this.rebuildIndexAgain && !this.stopped)
     } finally {
       this.rebuildingIndex = false
+      if (this.rebuildIndexAgain && !this.stopped) void this.rebuildSegmentIndex()
     }
   }
 
@@ -826,6 +829,7 @@ export class JsonlWatcher {
 
   private async readInitialContent(): Promise<void> {
     if (this.stopped || !this.filePath) return
+    const filePath = this.filePath
     // Capture the generation: any switchToFile/stop/replayAll after this point
     // invalidates this run at the next await boundary.
     const gen = ++this.replayGen
@@ -843,6 +847,7 @@ export class JsonlWatcher {
       const stat = await fsp.stat(this.filePath)
       this.timing('readInitialContent.stat', `${String(Math.round(stat.size / 1024))}KB`)
       if (!live()) return
+      this.fileIdentity = `${stat.dev}:${stat.ino}`
       if (stat.size === 0) {
         this.lastOffset = 0
         this.startPolling()
@@ -882,6 +887,14 @@ export class JsonlWatcher {
         live,
       )
       if (!live()) return
+      // An atomic replacement can happen while the old descriptor is parsed.
+      // Never commit its offset as the cursor of the replacement file.
+      const currentStat = await fsp.stat(filePath)
+      if (!live()) return
+      if (`${currentStat.dev}:${currentStat.ino}` !== this.fileIdentity || currentStat.size < endPos) {
+        this.replayRewrittenFile(filePath)
+        return
+      }
       this.timing('fullParse.done', `${String(all.length)} records`)
       const base = globalOrdCounter
       all.forEach((e, i) => {
@@ -1001,7 +1014,8 @@ export class JsonlWatcher {
     // from "this file was rewritten, drop what you have". Without it the mirror
     // has nothing to prove its copy is still valid, so it could never be
     // trusted — and would be pointless.
-    const fp = await fingerprintTranscript(this.filePath!)
+    const fp = await fingerprintTranscript(filePath)
+    if (!live()) return
     this.sendStatus({
       status: 'watching',
       filePath: this.filePath!,
@@ -1040,6 +1054,9 @@ export class JsonlWatcher {
       clearTimeout(this.tailRetryTimer)
       this.tailRetryTimer = null
     }
+    // The new replay owns subsequent reads. An old tail continuation must not
+    // keep the new poller locked or clear its lock on eventual completion.
+    this.reading = false
     // Субагенты ТОЖЕ с нуля: живой watcher — skip в scanSubagents (его реплей
     // не повторится), завершённый — retired через 5 мин. В обоих случаях
     // реаттачнутый клиент открывал агента на «No messages from this agent
@@ -1050,6 +1067,15 @@ export class JsonlWatcher {
     this.retiredSubagents.clear()
     void this.scanSubagents()
     void this.readInitialContent()
+  }
+
+  private replayRewrittenFile(filePath: string): void {
+    if (this.stopped || this.filePath !== filePath) return
+    // Reuse the existing cache/mirror reset event, without changing the
+    // conversation identity: a same-path repair still belongs to this chat.
+    this.sendStatus({ status: 'watching', filePath, compacted: true, replayComplete: false })
+    this.lastOffset = 0
+    this.replayAll()
   }
 
   private startPolling(): void {
@@ -1134,12 +1160,30 @@ export class JsonlWatcher {
     // into a double read of the same range.
     if (this.reading) return
     this.reading = true
+    const filePath = this.filePath
+    const gen = this.replayGen
+    const live = () => !this.stopped && this.filePath === filePath && this.replayGen === gen
 
     try {
-      const stat = await fsp.stat(this.filePath)
+      const stat = await fsp.stat(filePath)
+      if (!live()) return
+      if (stat.size < this.lastOffset || (this.fileIdentity && `${stat.dev}:${stat.ino}` !== this.fileIdentity)) {
+        this.replayRewrittenFile(filePath)
+        return
+      }
       if (stat.size <= this.lastOffset) return
 
-      const { entries, endPos } = await this.readEntriesFromOffset(this.filePath, this.lastOffset)
+      const { entries, endPos } = await this.readEntriesFromOffset(filePath, this.lastOffset)
+      if (!live()) return
+      const currentStat = await fsp.stat(filePath)
+      if (!live()) return
+      if (
+        currentStat.size < endPos ||
+        (this.fileIdentity && `${currentStat.dev}:${currentStat.ino}` !== this.fileIdentity)
+      ) {
+        this.replayRewrittenFile(filePath)
+        return
+      }
 
       if (entries.length === 0) {
         // Only a torn trailing line (no complete entries yet) — advance past the
@@ -1182,7 +1226,7 @@ export class JsonlWatcher {
     } catch {
       // File might be temporarily unavailable, ignore
     } finally {
-      this.reading = false
+      if (live()) this.reading = false
     }
   }
 
