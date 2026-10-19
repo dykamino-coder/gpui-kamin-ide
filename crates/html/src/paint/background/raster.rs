@@ -190,7 +190,7 @@ pub(super) fn rasterize_gradient(
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
 pub(super) fn angle_fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
-    angle::fraction(token, vcx)
+    crate::style::values::value::angle::fraction(token, vcx)
 }
 
 pub(crate) use crate::style::computed::place_stops;

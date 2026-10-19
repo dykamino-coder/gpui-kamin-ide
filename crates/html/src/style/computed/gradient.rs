@@ -7,6 +7,8 @@ use crate::style::values::value::{Color, Len};
 mod current_color;
 mod direction;
 mod image_set;
+mod interpolation;
+pub(super) use interpolation::{interpolation_method, legacy_srgb_color};
 mod lengths;
 mod parse;
 pub(crate) mod stops;

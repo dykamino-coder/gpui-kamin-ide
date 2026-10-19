@@ -54,41 +54,6 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         }
         None => (parts[0].trim(), None),
     };
-    // Дуга тона нужна ЛЮБОМУ полярному пространству, не только `hsl`
-    // (css-color-4 §12.4); умолчание — shorter.
-    let hue_arc: u8 = interp.map_or(0, |i| {
-        if i.contains("longer") {
-            1
-        } else if i.contains("increasing") {
-            2
-        } else if i.contains("decreasing") {
-            3
-        } else {
-            0
-        }
-    });
-    let named_space: Option<GradSpace> =
-        interp
-            .and_then(|i| i.split_whitespace().next())
-            .and_then(|s| match s {
-                "srgb" => Some(GradSpace::Srgb),
-                "srgb-linear"
-                | "xyz"
-                | "xyz-d50"
-                | "xyz-d65"
-                | "display-p3-linear"
-                | "rec2020-linear"
-                | "a98-rgb-linear"
-                | "prophoto-rgb-linear" => Some(GradSpace::Linear),
-                "oklab" => Some(GradSpace::Oklab),
-                "oklch" => Some(GradSpace::Oklch),
-                "lab" => Some(GradSpace::Lab),
-                "lch" => Some(GradSpace::Lch),
-                "hsl" => Some(GradSpace::Hsl),
-                "hwb" => Some(GradSpace::Hwb),
-                // Other encoded RGB spaces retain the legacy sRGB route.
-                _ => None,
-            });
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
@@ -114,7 +79,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
             continue;
         };
         let colour = expression.resolve_for_interpolation(current);
-        all_legacy &= legacy_srgb_color(words[0].as_str())
+        all_legacy &= super::legacy_srgb_color(words[0].as_str())
             && !matches!(
                 expression,
                 crate::style::values::color_space::ColorExpression::Relative(_)
@@ -189,11 +154,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         .zip(raw_px.iter())
         .map(|((c, f), (_, p))| (*c, *f, *p))
         .collect();
-    let space = named_space.unwrap_or(if all_legacy {
-        GradSpace::Srgb
-    } else {
-        GradSpace::Oklab
-    });
+    let (space, hue_arc) = super::interpolation_method(interp, all_legacy);
     let polar =
         crate::style::values::color_space::DirectGradient::new(authored, stops.len(), space, vcx);
     Some(Gradient {
@@ -226,25 +187,3 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
     })
 }
 
-/// Записан ли цвет УСТАРЕВШЕЙ формой sRGB: имя, `#hex`, `rgb()`, `rgba()`,
-/// `hsl()`, `hsla()`, `hwb()` и их формы с прозрачностью (css-color-4 §12.2).
-/// От ответа зависит пространство интерполяции по умолчанию.
-fn legacy_srgb_color(token: &str) -> bool {
-    let t = token.trim().to_ascii_lowercase();
-    if t.starts_with('#') {
-        return true;
-    }
-    match t.split_once('(') {
-        // `rgb()` с `none` устаревшей записью не выражается: Blink вычисляет
-        // его в `color(srgb …)`, и умолчание смешения становится OKLab
-        // (`gradient-analogous-missing-components-004`, `gradient-eval-004`).
-        // У `hsl()`/`hwb()` пространство и с `none` остаётся устаревшим.
-        Some((name, body)) => match name.trim() {
-            "rgb" | "rgba" => !body.contains("none"),
-            "hsl" | "hsla" | "hwb" => true,
-            _ => false,
-        },
-        // Имя цвета, `transparent` и `currentcolor` — тоже устаревшие формы.
-        None => true,
-    }
-}

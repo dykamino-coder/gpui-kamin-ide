@@ -44,7 +44,6 @@ mod mask_composite;
 mod mask_luminance;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
 pub(crate) use mask_luminance::luminance_mask_image;
-mod angle;
 mod clip;
 mod conic;
 mod sources;
