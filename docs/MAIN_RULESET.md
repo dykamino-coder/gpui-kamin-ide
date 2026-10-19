@@ -6,10 +6,17 @@ threads и два CI checks на актуальной базе; запрещае
 author-registration/self-merge flow. Содержательное review и task-specific
 acceptance по `CONTRIBUTING.md` остаются обязанностью мейнтейнера.
 
+Единственный обход — роль repository admin в режиме `pull_request`: администратор
+может смержить PR при недоступных checks (например, сбой hosted runner), но
+прямой push в `main` и force push запрещены и ему. Это аварийный выход владельца,
+а не обычный путь: обычный merge идёт только с зелёными обязательными checks.
+
 Файл — конфигурация для применения, **не доказательство включённой защиты**.
 Он не содержит repository-specific IDs, credentials или сведений о deployment.
-Обычный push файла и правка workflow не меняют GitHub Settings. У исполнявшего
-сверку 2026-10-19 агента есть push, но нет admin/maintain; настройка не применена.
+Обычный push файла и правка workflow не меняют GitHub Settings. Владелец
+применил этот ruleset 2026-10-19 (с admin-обходом через PR); effective rules
+`main` проверены: `deletion`, `non_fast_forward`, `pull_request`, оба checks со
+strict policy.
 
 Владелец с repository administration permission выполняет из checkout:
 

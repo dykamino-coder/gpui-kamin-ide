@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-test("owner ruleset requires the actual stable workflow checks without a bypass", () => {
+test("owner ruleset requires the actual stable workflow checks with only the admin PR bypass", () => {
   const ruleset = JSON.parse(readFileSync(".github/main-ruleset.json", "utf8"));
   assert.equal(ruleset.enforcement, "active");
   assert.deepEqual(ruleset.conditions.ref_name, { include: ["~DEFAULT_BRANCH"], exclude: [] });
-  assert.deepEqual(ruleset.bypass_actors, []);
+  // Repository admins (role 5) may bypass only through a pull request, never by direct push.
+  assert.deepEqual(ruleset.bypass_actors, [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "pull_request" }]);
   const rules = Object.fromEntries(ruleset.rules.map((rule) => [rule.type, rule.parameters]));
   assert.ok(Object.hasOwn(rules, "non_fast_forward"));
   assert.ok(Object.hasOwn(rules, "deletion"));
