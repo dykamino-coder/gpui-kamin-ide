@@ -52,10 +52,16 @@ export class SubagentJsonlWatcher {
   private tailWatcher: fs.FSWatcher | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(agentToolUseId: string, filePath: string, sendEntries: (entries: JsonlEntry[]) => boolean | void) {
+  constructor(
+    agentToolUseId: string,
+    filePath: string,
+    sendEntries: (entries: JsonlEntry[]) => boolean | void,
+    private options: { startOffset?: number } = {},
+  ) {
     this.agentToolUseId = agentToolUseId
     this.filePath = filePath
     this.sendEntries = sendEntries
+    this.lastOffset = options.startOffset ?? 0
   }
 
   async start(): Promise<void> {
@@ -96,6 +102,10 @@ export class SubagentJsonlWatcher {
     return this.lastActivityAt
   }
 
+  getLastOffset(): number {
+    return this.lastOffset
+  }
+
   stop(): void {
     this.stopped = true
     if (this.discoveryTimer) {
@@ -125,26 +135,27 @@ export class SubagentJsonlWatcher {
   private async startTailing(): Promise<void> {
     if (this.stopped) return
 
-    try {
-      const stat = await fsp.stat(this.filePath)
-      if (stat.size > 0) {
-        const entries = await this.readEntries(0)
-        for (let i = 0; i < entries.length; i += REPLAY_CHUNK) {
-          if (this.stopped) return
-          const chunk = entries.slice(i, i + REPLAY_CHUNK)
-          // Same deliver-then-advance rule as the tail below: a dropped chunk
-          // must NOT be counted as consumed. Leave lastOffset where it is and
-          // bail — the tail poll re-reads from there and re-sends the rest.
-          if (chunk.length > 0 && this.sendEntries(chunk) === false) return
-          if (i + REPLAY_CHUNK < entries.length) {
-            await new Promise((r) => setTimeout(r, REPLAY_CHUNK_DELAY_MS))
+    if (this.options.startOffset === undefined)
+      try {
+        const stat = await fsp.stat(this.filePath)
+        if (stat.size > 0) {
+          const entries = await this.readEntries(0)
+          for (let i = 0; i < entries.length; i += REPLAY_CHUNK) {
+            if (this.stopped) return
+            const chunk = entries.slice(i, i + REPLAY_CHUNK)
+            // Same deliver-then-advance rule as the tail below: a dropped chunk
+            // must NOT be counted as consumed. Leave lastOffset where it is and
+            // bail — the tail poll re-reads from there and re-sends the rest.
+            if (chunk.length > 0 && this.sendEntries(chunk) === false) return
+            if (i + REPLAY_CHUNK < entries.length) {
+              await new Promise((r) => setTimeout(r, REPLAY_CHUNK_DELAY_MS))
+            }
           }
+          this.lastOffset = stat.size
         }
-        this.lastOffset = stat.size
+      } catch {
+        /* file may be empty or briefly locked */
       }
-    } catch {
-      /* file may be empty or briefly locked */
-    }
 
     // Prefer native fs.watch + lazy poll fallback; see main-session watcher above.
     try {
@@ -190,6 +201,9 @@ export class SubagentJsonlWatcher {
       },
       this.tailWatcher ? WATCH_SAFETY_POLL_MS : SUBAGENT_POLL_MS,
     )
+    // Resumed files use the normal deliver-then-advance tail path, including
+    // its backpressure retry; never replay the already consumed prefix.
+    if (this.options.startOffset !== undefined) await this.checkForNew()
   }
 
   private async checkForNew(): Promise<void> {
