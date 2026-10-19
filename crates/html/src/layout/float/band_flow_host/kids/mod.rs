@@ -5,8 +5,6 @@ use crate::dom::{Element, Node};
 use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::shape_exclusion::measured_shape;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
@@ -28,7 +26,6 @@ pub(crate) fn band_kids(
     wm: WritingMode,
 ) -> Vec<crate::layout::float::band_flow::Kid> {
     use crate::layout::float::band_flow::{Kid, Nest};
-    let depth = defer_depth();
     let mut kids: Vec<Kid> = vec![];
     // Письмо содержащего блока: план хоста — в логических осях, поля
     // переводятся в (block-start, inline-end, block-end, inline-start)
@@ -58,7 +55,6 @@ pub(crate) fn band_kids(
         let opts = opts.clone();
         let build: crate::layout::float::band_flow::Build =
             std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-                let _depth = DepthScope::enter(depth);
                 element(&p, &inherited, &opts)
             });
         deferred(build, false)
@@ -169,8 +165,8 @@ pub(crate) fn band_kids(
         let build: crate::layout::float::band_flow::Build =
             std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
                 build_band_kid(
-                    depth, float, &node, &inherited, &opts, is_nest, vertical, cb_height,
-                    cb_block_w, cb, avail, shapes, height,
+                    float, &node, &inherited, &opts, is_nest, vertical, cb_height, cb_block_w, cb,
+                    avail, shapes, height,
                 )
             });
         let build = deferred(build, !is_nest);

@@ -7,8 +7,6 @@ pub(crate) use frozen::{bake_frozen, sample_at};
 // owner: A
 
 use crate::dom::Element;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -28,9 +26,7 @@ pub(crate) fn transitioned(
     let node = e.clone();
     let inherited = inherited.clone();
     let opts = opts.clone();
-    let depth = defer_depth();
     let build = std::rc::Rc::new(move |k: f32| {
-        let _depth = DepthScope::enter(depth);
         let mut mixed = node.clone();
         mixed.style = node.style.blend(&hover, k).into();
         // Слой наведения снят: его роль уже сыграла доля перехода, иначе

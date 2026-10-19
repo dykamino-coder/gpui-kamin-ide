@@ -3,7 +3,6 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, measure_font};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -171,7 +170,6 @@ fn column_flow_in(
     let nodes = e.children.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
-    let depth = defer_depth();
     let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels) -> AnyElement> =
         std::rc::Rc::new(move |cuts: &[usize], used: usize, width: gpui::Pixels| {
             build_text_columns(
@@ -184,7 +182,6 @@ fn column_flow_in(
                 &nodes,
                 &inherited_owned,
                 &opts_owned,
-                depth,
                 cuts,
                 used,
                 width,

@@ -3,8 +3,6 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{
     RenderOpts, blocks, gather_text, is_blank, measure_font, split_nodes, styled_div_with,
 };
@@ -85,10 +83,8 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let row_node = row.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
-    let depth = defer_depth();
     let build: crate::layout::float::split_flow::Split =
         std::rc::Rc::new(move |split: usize, width: gpui::Pixels| {
-            let _depth = DepthScope::enter(depth);
             let (beside, below) = split_nodes(&rest, split);
             let mut side = column_style.clone();
             side.display = Some(Display::Block);

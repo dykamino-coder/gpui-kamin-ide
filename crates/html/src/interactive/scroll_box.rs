@@ -5,8 +5,6 @@ use hoisting::hoist_from_scroll;
 // owner: A
 
 use crate::dom::Element;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element, in_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -60,11 +58,9 @@ pub(crate) fn scrollable(
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
     let (inherited, opts) = (inherited.clone(), opts.clone());
-    let depth = defer_depth();
     let build = std::rc::Rc::new(
         move |handle: &gpui::ScrollHandle, h: bool, v: bool, frame| -> AnyElement {
             let vcx = opts.cx.vcx();
-            let _depth = DepthScope::enter(depth);
             // Keep CSS overflow on the native box; `scroller` only prevents
             // recursive adapters while its ScrollHandle is attached.
             let mut inner = node.clone();
@@ -224,9 +220,7 @@ pub(crate) fn resizable(
     };
     let node = e.clone();
     let (inherited, opts) = (inherited.clone(), opts.clone());
-    let depth = defer_depth();
     let build = std::rc::Rc::new(move |w: Option<f32>, h: Option<f32>| {
-        let _depth = DepthScope::enter(depth);
         // Заданный мышью размер побеждает разметку — как и в браузере, где
         // он пишется в инлайн-стиль элемента.
         let mut mixed = node.clone();

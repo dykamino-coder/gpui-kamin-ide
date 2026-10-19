@@ -15,6 +15,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Paint-order and deferred-geometry boundaries of the box being built.
+    pub(crate) paint_depth: crate::paint::effects::paint_scope::Depth,
     /// Scrollable overflow owner captured by probes and deferred text elements.
     pub(crate) scroll_frame: Option<crate::interactive::scroll_extent::Frame>,
     /// Native scroll handle offered to this CSS box by its scroll-area builder.

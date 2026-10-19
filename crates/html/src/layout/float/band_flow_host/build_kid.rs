@@ -6,7 +6,6 @@ use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
 use crate::layout::writing_mode::native_vertical;
 use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::paint_scope::DepthScope;
 use crate::render::{RenderOpts, content_wrapper, element, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -14,7 +13,6 @@ use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_band_kid(
-    depth: crate::paint::effects::paint_scope::Depth,
     float: bool,
     node: &Element,
     inherited: &Computed,
@@ -34,7 +32,6 @@ pub(super) fn build_band_kid(
     height: Option<f32>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let _depth = DepthScope::enter(depth);
     let _clamp_bfc = float.then(crate::text::clamp::ClampGuard::enter_bfc);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным

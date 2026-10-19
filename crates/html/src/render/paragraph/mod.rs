@@ -20,8 +20,6 @@ pub(super) use edges::own_size;
 
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -79,12 +77,10 @@ fn paragraph_routed(
             let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;
             let for_build = first.clone();
-            let depth = defer_depth();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
             // среза строк (`LayoutCx::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
-                    let _depth = DepthScope::enter(depth);
                     let mut styled = base.clone();
                     styled.first_line = Some(for_build.clone());
                     let mut para =
