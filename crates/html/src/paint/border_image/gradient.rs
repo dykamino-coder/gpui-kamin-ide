@@ -14,13 +14,13 @@ pub(super) fn paint(
     (dx, dy, dw, dh): (f32, f32, f32, f32),
     vcx: ValueCx<'_>,
 ) -> bool {
-    let Source::Gradient { raw } = source else {
+    let Source::Gradient { image: value } = source else {
         return false;
     };
-    let Some(g) = crate::style::computed::parse_gradient(raw, vcx) else {
+    let Some((g, repeating)) = value.gradient() else {
         return false;
     };
-    if g.radial || raw.starts_with("repeating-") {
+    if g.radial || repeating {
         return false;
     }
     let (kx, ky) = (dw / sw, dh / sh);

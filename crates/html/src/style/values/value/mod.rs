@@ -14,8 +14,8 @@ mod calc_tests;
 #[cfg(test)]
 mod units_tests;
 
-pub(crate) mod angle;
 mod anchor;
+pub(crate) mod angle;
 mod atom;
 mod calc;
 mod calc_arguments;

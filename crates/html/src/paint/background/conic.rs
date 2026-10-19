@@ -1,109 +1,28 @@
 //! Conic gradient rays in CSS coordinates, sampled at device pixel centers.
 
-use super::{Source, angle_fraction, len_px, place_stops, split_top, wrap_repeat};
+use super::{Source, len_px, wrap_repeat};
 use crate::document::state::ValueCx;
-use crate::style::computed::parse_pos_words;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
 use std::sync::Arc;
-
-pub(super) fn is_conic(raw: &str) -> bool {
-    raw.strip_prefix("repeating-")
-        .unwrap_or(raw)
-        .starts_with("conic-gradient(")
-}
 
 /// CSS Images 4 §conic-gradients: positions translate the ray origin;
 /// aspect ratio does not distort angles. Sampling in device pixels avoids
 /// a second interpolation across hard color stops at fractional DPI.
 pub(super) fn rasterize(
-    raw: &str,
+    g: &crate::style::computed::ConicGradient,
     size: (f32, f32),
     density: f32,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    let repeating = raw.starts_with("repeating-");
-    let raw = raw.strip_prefix("repeating-").unwrap_or(raw);
-    let inner = raw.strip_prefix("conic-gradient(")?.strip_suffix(')')?;
-    let parts = crate::style::css::split_args(inner);
-    let mut idx = 0;
-    let mut from = 0.0;
-    let mut center = (size.0 * 0.5, size.1 * 0.5);
-    let mut interpolation = String::new();
-    if let Some(head) = parts.first() {
-        let words = split_top(head.trim());
-        if words
-            .first()
-            .is_some_and(|w| matches!(*w, "from" | "at" | "in"))
-        {
-            idx = 1;
-            let mut i = 0;
-            while i < words.len() {
-                match words[i] {
-                    "from" => {
-                        // Preserve the existing fallback for angle calculations not yet parsed.
-                        from = angle_fraction(words.get(i + 1)?, vcx).unwrap_or(0.0);
-                        i += 2;
-                    }
-                    "at" | "in" => {
-                        let kind = words[i];
-                        let start = i + 1;
-                        i = start;
-                        while i < words.len() && !matches!(words[i], "from" | "at" | "in") {
-                            i += 1;
-                        }
-                        let value = words[start..i].join(" ");
-                        if kind == "at" {
-                            let position = parse_pos_words(&value, vcx);
-                            center = (
-                                len_px(position.x, size.0, vcx)?,
-                                len_px(position.y, size.1, vcx)?,
-                            );
-                        } else {
-                            interpolation = format!("in {value}, ");
-                        }
-                    }
-                    _ => return None,
-                }
-            }
-        }
-    }
-    let mut colors = Vec::new();
-    let mut raw_stops = Vec::new();
-    let mut hints = Vec::new();
-    for part in &parts[idx..] {
-        let words = crate::style::computed::split_outside_parens(part);
-        let Some(color) = words
-            .first()
-            .and_then(|w| crate::style::values::color_space::interpolation_color(w, vcx))
-        else {
-            if words.len() == 1
-                && let Some(at) = angle_fraction(&words[0], vcx)
-            {
-                hints.push((raw_stops.len(), at));
-            }
-            continue;
-        };
-        colors.push(words[0].clone());
-        let positions: Vec<f32> = words[1..]
-            .iter()
-            .filter_map(|w| angle_fraction(w, vcx))
-            .collect();
-        if positions.is_empty() {
-            raw_stops.push((color, None));
-        } else {
-            raw_stops.extend(positions.into_iter().map(|p| (color, Some(p))));
-        }
-    }
-    if raw_stops.is_empty() {
-        return None;
-    }
-    // Reuse interpolation-space selection and hue rules for all gradient kinds.
-    let method = crate::style::computed::parse_gradient(
-        &format!("linear-gradient({interpolation}{})", colors.join(", ")),
-        vcx,
-    )?;
-    let stops = place_stops(raw_stops);
+    let repeating = g.repeating;
+    let from = g.from;
+    let center = (
+        len_px(g.position.x, size.0, vcx)?,
+        len_px(g.position.y, size.1, vcx)?,
+    );
+    let stops = &g.stops;
+    let hints = &g.hints;
     let hard_stops: Vec<f32> = stops
         .windows(2)
         .filter(|pair| pair[0].1 == pair[1].1)
@@ -119,7 +38,7 @@ pub(super) fn rasterize(
             let dx = (x as f32 + 0.5) * size.0 / w as f32 - center.0;
             let dy = (y as f32 + 0.5) * size.1 / h as f32 - center.1;
             let t = (dx.atan2(-dy) / std::f32::consts::TAU - from).rem_euclid(1.0);
-            let mut t = if repeating { wrap_repeat(t, &stops) } else { t };
+            let mut t = if repeating { wrap_repeat(t, stops) } else { t };
             if !repeating {
                 // CSS Images 4 sections 3.3 and 3.5.2: the finite sweep ends
                 // on the starting ray, and coincident stops jump clockwise.
@@ -133,7 +52,7 @@ pub(super) fn rasterize(
             }
             // CSS Images 3 §3.4.2: a transition hint places the 50% mix
             // at the hint and uses an exponential curve between the stops.
-            for &(index, hint) in &hints {
+            for &(index, hint) in hints {
                 if index == 0 || index >= stops.len() {
                     continue;
                 }
@@ -150,7 +69,10 @@ pub(super) fn rasterize(
                     t = a + (b - a) * mix;
                 }
             }
-            let color = colour_at(&stops, t, method.space, method.hue);
+            let color = g.polar.as_ref().map_or_else(
+                || colour_at(stops, t, g.space, g.hue),
+                |p| p.colour_at(stops, t, g.hue),
+            );
             bytes.extend_from_slice(&[
                 (color.b * 255.0).round() as u8,
                 (color.g * 255.0).round() as u8,
@@ -169,7 +91,10 @@ pub(super) fn tile(
     vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     match source {
-        Source::Gradient { raw } if is_conic(raw) => rasterize(raw, size, density, vcx),
+        Source::Gradient { image } => match image.as_ref() {
+            crate::style::computed::ImageSource::Conic(g) => rasterize(g, size, density, vcx),
+            _ => source.raster(size, vcx),
+        },
         _ => source.raster(size, vcx),
     }
 }

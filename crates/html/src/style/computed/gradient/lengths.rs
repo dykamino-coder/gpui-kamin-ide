@@ -5,6 +5,28 @@ use crate::document::state::ValueCx;
 use crate::style::values::value::calc_get;
 
 impl Gradient {
+    pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
+        let needs_line = |length: &Option<Len>| match length {
+            Some(Len::Lh(_) | Len::LhPx(..)) => true,
+            Some(Len::Calc(id)) => calc_get(*id, vcx).lh != 0.0,
+            _ => false,
+        };
+        self.stop_lengths.iter().any(needs_line)
+            || match &self.shape {
+                GradientShape::Radial { position, size, .. } => {
+                    needs_line(&position.x)
+                        || needs_line(&position.y)
+                        || match size {
+                            RadialSize::Explicit(first, second) => {
+                                needs_line(&Some(*first)) || needs_line(second)
+                            }
+                            _ => false,
+                        }
+                }
+                _ => false,
+            }
+    }
+
     pub(crate) fn resolve_lengths(&mut self, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
         if !self.stop_lengths.is_empty() {
             for (length, stop) in self.stop_lengths.iter_mut().zip(&mut self.stops_raw) {
@@ -65,30 +87,15 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>),
         vcx: ValueCx<'_>,
     ) {
-        let needs_line = |length: &Option<Len>| match length {
-            Some(Len::Lh(_) | Len::LhPx(..)) => true,
-            Some(Len::Calc(id)) => calc_get(*id, vcx).lh != 0.0,
-            _ => false,
-        };
-        let uses_line = [self.gradient.as_ref(), self.gradient_current.as_ref()]
-            .into_iter()
-            .flatten()
-            .any(|gradient| {
-                gradient.stop_lengths.iter().any(needs_line)
-                    || match &gradient.shape {
-                        GradientShape::Radial { position, size, .. } => {
-                            needs_line(&position.x)
-                                || needs_line(&position.y)
-                                || match size {
-                                    RadialSize::Explicit(first, second) => {
-                                        needs_line(&Some(*first)) || needs_line(second)
-                                    }
-                                    _ => false,
-                                }
-                        }
-                        _ => false,
-                    }
-            });
+        let uses_line = self
+            .border_image
+            .as_ref()
+            .and_then(|border| border.src.as_ref())
+            .is_some_and(|image| image.needs_line_height(vcx))
+            || [self.gradient.as_ref(), self.gradient_current.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|g| g.needs_line_height(vcx));
         let line = if uses_line {
             self.image_font_metrics().3
         } else {
@@ -105,6 +112,13 @@ impl Computed {
             .flatten()
         {
             gradient.resolve_lengths(&fix, vcx);
+        }
+        if let Some(image) = self
+            .border_image
+            .as_mut()
+            .and_then(|border| border.src.as_mut())
+        {
+            image.resolve_lengths(&fix, vcx);
         }
     }
 }

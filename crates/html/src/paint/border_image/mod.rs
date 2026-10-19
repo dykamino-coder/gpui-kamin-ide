@@ -26,7 +26,7 @@ use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 /// Слой рамки-картинки поверх коробки.
 pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let values = vcx.keep();
-    let image = c.border_image.clone().filter(|bi| !bi.src.is_empty())?;
+    let image = c.border_image.clone().filter(|bi| bi.src.is_some())?;
     let family = c.font_family.clone().unwrap_or_default();
     let size = match c.font_size {
         Some(Len::Px(v)) => v,
@@ -44,19 +44,17 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
         px_of(border.left),
     ];
     let outset = std::array::from_fn::<_, 4, _>(|i| image.outset[i].px(base[i], 0.0));
-    // `image-orientation` действует и на рамку-картинку (css-images-3 §5.4,
-    // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
-    // готовая строка, а не стиль.
-    let src = crate::paint::background::key_exif(&image.src, c, vcx);
+    let src = crate::paint::background::computed_source(
+        image.src.as_ref()?,
+        c.image_orient_none != Some(true),
+    )?;
     let pixelated = c.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
                 let vcx = values.vcx();
-                let Some(found) = crate::paint::background::source(&src, vcx) else {
-                    return;
-                };
+                let found = &src;
                 let area = Bounds {
                     origin: gpui::point(
                         bounds.origin.x - px(base[3] + outset[3]),

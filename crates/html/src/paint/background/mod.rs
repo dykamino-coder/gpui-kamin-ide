@@ -47,6 +47,7 @@ pub(crate) use mask_luminance::luminance_mask_image;
 mod clip;
 mod conic;
 mod sources;
+pub(crate) use sources::computed_source;
 pub use sources::{key, key_exif, source};
 mod gradient_geometry;
 mod gradient_raster;
@@ -96,7 +97,7 @@ pub fn load(src: &str, vcx: ValueCx<'_>) -> Option<Arc<RenderImage>> {
             let (w, h) = default_size(size, (300.0, 150.0));
             crate::svg::raster::rasterize(&markup, w, h)
         }
-        Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150, vcx),
+        Source::Gradient { image } => rasterize_gradient(&image, 300, 150, vcx),
         Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0, vcx),
     }
 }

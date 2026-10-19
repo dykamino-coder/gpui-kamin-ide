@@ -96,15 +96,13 @@ pub(crate) fn paint_gradient(
     source: &super::Source,
     vcx: ValueCx<'_>,
 ) -> bool {
-    let super::Source::Gradient { raw } = source else {
+    let super::Source::Gradient { image } = source else {
         return false;
     };
-    if !raw.contains("gradient(") || super::conic::is_conic(raw) {
-        return false;
-    }
-    let Some(mut gradient) = crate::style::computed::parse_gradient(raw, vcx) else {
+    let Some((value, repeating)) = image.gradient() else {
         return false;
     };
+    let mut gradient = value.clone();
     if let Some(angle) = gradient
         .shape
         .corner_angle((f32::from(bounds.size.width), f32::from(bounds.size.height)))
@@ -122,7 +120,7 @@ pub(crate) fn paint_gradient(
     let extended = gradient.stops.iter().any(|(_, t)| !(0.0..=1.0).contains(t));
     if extended
         || gradient.radial
-        || raw.starts_with("repeating-")
+        || repeating
         || gradient.stops.len() > 4
         || !matches!(
             gradient.space,
@@ -146,7 +144,7 @@ pub(crate) fn paint_gradient(
                 .round()
                 .clamp(1.0, 4096.0) as u32,
         );
-        if let Some(image) = super::gradient_raster::tile(raw, w, h, css, vcx) {
+        if let Some(image) = super::gradient_raster::tile(image, w, h, css, vcx) {
             let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit()
             {
                 ImageSampling::LinearSnapped

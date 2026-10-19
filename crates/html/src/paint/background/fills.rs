@@ -43,8 +43,8 @@ pub(super) fn flat_colour(
 ) -> Option<crate::style::values::value::Color> {
     let image = match source(src, vcx)? {
         Source::Raster(image) => image,
-        Source::Gradient { raw } => {
-            let gradient = crate::style::computed::parse_gradient(&raw, vcx)?;
+        Source::Gradient { image } => {
+            let (gradient, _) = image.gradient()?;
             let color = gradient.from;
             // An identical polar color can still travel around a longer hue arc.
             let constant = gradient.hue != 1

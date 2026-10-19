@@ -28,6 +28,13 @@ pub(crate) fn parse_gradient_with_current(
 /// the descendant's color (CSS Color 4 §6.4), including relative colors.
 impl Computed {
     pub(crate) fn resolve_gradient_current_color(&mut self, _vcx: ValueCx<'_>) {
+        if let Some(image) = self
+            .border_image
+            .as_mut()
+            .and_then(|border| border.src.as_mut())
+        {
+            image.resolve_colors(self.color.unwrap_or(BLACK));
+        }
         if (self.gradient.is_some()
             || self.background_all_inherit
             || self.inherit_bits & super::inh::BG_IMAGE != 0)

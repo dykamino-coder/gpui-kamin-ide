@@ -186,4 +186,3 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         },
     })
 }
-

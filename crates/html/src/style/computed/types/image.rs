@@ -83,7 +83,7 @@ pub enum GradSpace {
 /// этого разбора, лежит здесь, а рисование — в `border_image`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BorderImage {
-    pub src: String,
+    pub src: Option<crate::style::computed::ImageSource>,
     /// Срезы образа: верх, право, низ, лево.
     pub slice: [BorderImageSlice; 4],
     /// `fill` — рисовать и середину.

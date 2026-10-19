@@ -71,49 +71,16 @@ pub fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
-    } else if let Some(image) = crate::style::computed::image_function::arguments(src_plain, vcx) {
-        image
-            .url
-            .as_deref()
-            .and_then(|url| load_url(url, orient))
-            .or_else(|| {
-                image
-                    .color
-                    .and_then(|c| crate::style::values::value::Color::parse(c, vcx))
-                    .map(|color| Source::Gradient {
-                        raw: color_image(color),
-                    })
-            })
-    } else if let Some((url, list)) = super::filter_image::parse_filter_image(src_plain, vcx) {
-        // Filter Effects 1 §13 `filter()`: the filtered raster is its own
-        // image, keyed by the whole function so each list caches apart.
-        let key = if orient {
-            url
-        } else {
-            format!("exif-none|{url}")
-        };
-        source(&key, vcx).map(|image| Source::Filtered {
-            image: Box::new(image),
-            list,
-        })
-    } else if src_plain.starts_with("linear-gradient(")
-        || src_plain.starts_with("radial-gradient(")
-        || src_plain.starts_with("conic-gradient(")
-        // Повторяющиеся градиенты — те же записи (css-images-3 §4):
-        // растеризатор ниже их понимает, а опознание пропускало
-        // (`shape-outside-linear-gradient-004`).
-        || src_plain.starts_with("repeating-linear-gradient(")
-        || src_plain.starts_with("repeating-radial-gradient(")
-        || src_plain.starts_with("repeating-conic-gradient(")
-        || src_plain.starts_with("cross-fade(")
-    {
-        Some(Source::Gradient {
-            raw: src_plain.to_string(),
-        })
+    } else if let Some(image) = crate::style::computed::ImageSource::parse(src_plain, vcx) {
+        computed_source(&image, orient)
     } else {
         load_url(src_plain, orient)
     };
-    if let Ok(mut map) = cache.lock() {
+    if matches!(
+        found,
+        Some(Source::Raster(_) | Source::Vector { .. } | Source::Shape { .. }) | None
+    ) && let Ok(mut map) = cache.lock()
+    {
         if map.len() >= CACHE_CAP {
             map.clear();
         }
@@ -134,30 +101,51 @@ fn color_image(c: crate::style::values::value::Color) -> String {
     format!("image({color})")
 }
 
-/// Color image samples use straight alpha, as expected by GPUI's image shader.
-pub(super) fn raster_color(
-    raw: &str,
-    w: u32,
-    h: u32,
-    vcx: ValueCx<'_>,
-) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let color = crate::style::computed::parse_image_color(raw, vcx)
-        .and_then(|c| crate::style::values::value::Color::parse(c, vcx))?;
-    let pixel = [
-        (color.b * 255.0).round() as u8,
-        (color.g * 255.0).round() as u8,
-        (color.r * 255.0).round() as u8,
-        (color.a * 255.0).round() as u8,
-    ];
-    let bytes = pixel
-        .into_iter()
-        .cycle()
-        .take((w * h * 4) as usize)
-        .collect();
-    gpui::bgra_bytes_to_image(w, h, bytes)
+/// Resource selection from computed operands never re-enters a CSS parser.
+pub(crate) fn computed_source(
+    image: &crate::style::computed::ImageSource,
+    orient: bool,
+) -> Option<Source> {
+    use crate::style::computed::ImageSource;
+    match image {
+        ImageSource::Url(url) => load_url(url, orient),
+        ImageSource::Invalid => None,
+        ImageSource::Fallback { url, color } => load_url(url, orient).or_else(|| {
+            color.as_ref().map(|c| Source::Gradient {
+                image: std::sync::Arc::new(ImageSource::Color(c.clone())),
+            })
+        }),
+        ImageSource::Filter { image, program } => Some(Source::Filtered {
+            image: Box::new(computed_source(image, orient)?),
+            list: program.clone(),
+        }),
+        _ => Some(Source::Gradient {
+            image: std::sync::Arc::new(image.clone()),
+        }),
+    }
 }
 
 fn load_url(src: &str, orient: bool) -> Option<Source> {
+    let key = if orient {
+        src.to_owned()
+    } else {
+        format!("exif-none|{src}")
+    };
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(found) = cache.lock().ok().and_then(|map| map.get(&key).cloned()) {
+        return found;
+    }
+    let found = decode_url(src, orient);
+    if let Ok(mut map) = cache.lock() {
+        if map.len() >= CACHE_CAP {
+            map.clear();
+        }
+        map.insert(key, found.clone());
+    }
+    found
+}
+
+fn decode_url(src: &str, orient: bool) -> Option<Source> {
     // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
     // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
     // разбора путь с `#` не читался вовсе, и фон пропадал
@@ -211,11 +199,14 @@ mod tests {
             ..Computed::default()
         };
         let src = key("image('data:text/plain,invalid', currentColor)", &c, vcx);
-        let Some(Source::Gradient { raw }) = source(&src, vcx) else {
+        let Some(Source::Gradient { image }) = source(&src, vcx) else {
             panic!("fallback missing")
         };
         assert_eq!(
-            crate::style::computed::parse_image_color(&raw, vcx).and_then(|c| Color::parse(c, vcx)),
+            match image.as_ref() {
+                crate::style::computed::ImageSource::Color(c) => Some(c.value),
+                _ => None,
+            },
             c.color
         );
     }
