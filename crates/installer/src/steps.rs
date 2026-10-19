@@ -177,16 +177,30 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
         let _ = quiet("taskkill", &["/F", "/IM", image]);
     }
     // taskkill возвращается раньше, чем процесс выгрузит свои DLL.
-    let gone = crate::unlock::wait_processes_gone(20);
+    // 2026-10-14: measured 22.4 s from `taskkill /F` until the last
+    // kaminide-gpui.exe disappeared (CEF/GPU teardown); 20 s was too short and
+    // the install fell back to the old version.
+    let gone = crate::unlock::wait_processes_gone(30);
     klog(&format!("taskkill done (processes gone: {gone})"));
     remove_legacy_tauri(dir);
     progress(8);
 
+    let cleaned = crate::unlock::remove_aside(dir);
+    if cleaned > 0 {
+        klog(&format!(
+            "removed {cleaned} files moved aside by an earlier update"
+        ));
+    }
+
     // Реальное освобождение файлов (DLP держит хэндлы): каждый exe/dll должен
-    // открываться на запись, до 20×1с. Переименование главного exe не годится —
+    // открываться на запись. Переименование главного exe не годится как проба —
     // Windows разрешает его и у работающего процесса (см. `unlock`).
+    // 2026-10-14 (acceptance 1.0.70): a killed IDE stayed alive > 90 s with
+    // chrome_elf.dll mapped, so waiting can never be enough. Wait a little for
+    // the normal case, then go on: `payload::unpack_to` moves a busy file aside
+    // and writes the new one.
     let mut locked = None;
-    for attempt in 1..=20u32 {
+    for attempt in 1..=15u32 {
         locked = crate::unlock::first_locked(dir);
         if locked.is_none() {
             klog(&format!("unlocked on attempt {attempt}"));
@@ -195,7 +209,10 @@ pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
     if let Some(p) = locked {
-        bail!("files still locked after 20s: {}", p.display());
+        klog(&format!(
+            "still locked after 15s, moving busy files aside: {}",
+            p.display()
+        ));
     }
     progress(15);
 

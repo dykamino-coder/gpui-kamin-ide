@@ -6,6 +6,8 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
+    // Fragment painting shares the column geometry and the active GPUI context.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_frags(
         &mut self,
         window: &mut Window,
@@ -30,7 +32,14 @@ impl ColumnStack {
             // Маска — устройство `slice`. Фрагмент `clone` самодостаточен:
             // содержимое режет его внутренняя обёртка (`clone_fragment`), а
             // тень/контур обязаны выходить за колонку (`clone-009`).
-            let split = parts[f.kid] > 1 && self.children[f.kid].clone_dec.is_none();
+            // Единственный кусок, оборванный в усечённом хвостовом поле
+            // (`fill_pieces`: от ребёнка за разрезом осталось одно поле), —
+            // тоже срез: коробка кончается краем колонки.
+            let tail_cut = {
+                let k = &self.children[f.kid];
+                f.from + f.h < k.h - 0.01 && k.cuts.iter().any(|&(_, nf)| nf >= k.h - 0.01)
+            };
+            let split = (parts[f.kid] > 1 || tail_cut) && self.children[f.kid].clone_dec.is_none();
             // Срез `slice` (css-break-3 §4) — поперёк БЛОЧНОЙ оси. Вбок колонка
             // переполнение не режет: css-multicol-1 §8.1 «content that extends
             // outside column boxes visibly overflows and is not clipped to the column
@@ -75,22 +84,10 @@ impl ColumnStack {
                         mask_scale,
                     )
                 };
-                if f.head > 0.01
-                    && f.copy > 0
-                    && let Some(el) = r.head_els.get_mut(f.copy - 1)
-                {
-                    window.with_content_mask(Some(band_mask(-f.head, f.head)), |window| {
-                        el.paint(window, cx)
-                    });
-                }
-                if f.foot > 0.01
-                    && let Some((_, bh)) = r.foot
-                    && let Some(el) = r.foot_els.get_mut(f.copy)
-                {
-                    window.with_content_mask(Some(band_mask(f.h + f.foot - bh, bh)), |window| {
-                        el.paint(window, cx)
-                    });
-                }
+                r.paint_bands(&f, |el, top, h| {
+                    window
+                        .with_content_mask(Some(band_mask(top, h)), |window| el.paint(window, cx));
+                });
             }
             // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
             if let Some(bg) = kid.slack
@@ -138,13 +135,10 @@ impl ColumnStack {
                     ));
                 }
             }
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             // Маска и режет: копия нарисована во всю свою высоту, видна
             // только полоса своей колонки (css-break-3 §4, вид `slice`).

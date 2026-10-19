@@ -7,12 +7,14 @@
 
 use std::collections::HashMap;
 
-pub(super) mod selector_tokens;
+pub(crate) mod resource_rules;
+pub(crate) mod selector_tokens;
 mod stylesheet_tokens;
 use crate::style::css::stylesheet_tokens::find_matching;
 pub(crate) use stylesheet_tokens::next_piece;
 mod component_tokens;
 mod font_family_values;
+pub(crate) mod value_tokens;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use crate::style::css::priority_tokens::top_level_bang;
@@ -23,12 +25,15 @@ pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
+pub(crate) use decls::split_top_level;
 pub(super) mod sheet;
 pub use crate::style::css::sheet::*;
 mod media;
 pub use crate::style::css::media::*;
 pub(crate) mod supports;
 pub(crate) use crate::style::css::supports::*;
+// The separately maintained at-rule registry exposes its heterogeneous CSS records.
+#[allow(clippy::type_complexity)]
 pub(super) mod at_rules;
 pub use crate::style::css::at_rules::*;
 pub(super) mod keyframes;
@@ -86,9 +91,11 @@ mod media_probe {
     /// молча становилась `<general-enclosed>`.
     #[test]
     fn media_without_space_before_paren() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let m = Media::default();
-        assert!(m.matches("@media(min-width:0px)"), "no-space form");
-        assert!(m.matches("@media (min-width:0px)"), "spaced form");
-        assert!(m.matches("@media"), "empty query");
+        assert!(m.matches("@media(min-width:0px)", vcx), "no-space form");
+        assert!(m.matches("@media (min-width:0px)", vcx), "spaced form");
+        assert!(m.matches("@media", vcx), "empty query");
     }
 }

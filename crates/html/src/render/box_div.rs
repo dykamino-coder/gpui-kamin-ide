@@ -11,21 +11,27 @@ use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
 use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::native_intrinsic;
+use crate::paint::apply::{apply, apply_hover};
 use crate::paint::decorations::decorations;
 use crate::paint::effects::mask::mask_def;
 use crate::render::*;
-use crate::style::apply::{apply, apply_hover};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{ParentElement, Styled, div, px};
 
 /// Базовый стиль элемента плюс слой наведения и дорисовка того, чего в
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
-pub(crate) fn styled_div(e: &Element) -> gpui::Div {
-    styled_div_with(e, &e.style)
+/// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
+pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    styled_div_with(e, &e.style, cx)
 }
 
-pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
+pub(crate) fn styled_div_with(
+    e: &Element,
+    style: &Computed,
+    cx: &crate::layout::cx::LayoutCx,
+) -> gpui::Div {
+    let vcx = cx.vcx();
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
     // же, гаснет только СВОЯ краска — иначе ранний возврат из отрисовки
     // уносит и потомка (`visufx/visibility-005`).
@@ -69,12 +75,13 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
         c
     };
     let auto_height = margin_height::used_style(e, paint);
-    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint));
+    let mut d = apply(div(), auto_height.as_ref().unwrap_or(paint), vcx);
     if native_intrinsic::eligible(e) {
-        d.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(c));
+        d.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
     }
-    d = crate::interactive::scroll_target::attach(d, e, c);
-    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c) {
+    d = crate::interactive::scroll_target::attach(d, e, c, vcx);
+    if let Some(probe) = crate::interactive::scroll_extent::probe(e.node_id, c, cx.sticky.as_ref())
+    {
         d = d.child(probe);
     }
     // Проба якоря (css-anchor-position-1 §anchor-name) и содержащего блока
@@ -90,7 +97,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     {
         d = d.child(probe);
     }
-    if let Some(probe) = absolute_overflow::probe(c) {
+    if let Some(probe) = absolute_overflow::probe(c, &cx.positioning, vcx) {
         d = d.child(probe);
     }
     // `pointer-events: none` — элемент не реагирует на курсор, значит и слой
@@ -111,6 +118,12 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // заданная `height`/`min-height` остаётся, строки после среза прячет
     // бюджет абзаца (`line-clamp-010`, `webkit-line-clamp-040`).
     let sized = e.style.height.is_some() || e.style.min_height.is_some();
+    // A box fragmented at a line-clamp point ends there (css-overflow-4
+    // §5.3): content after the point no longer sizes it (`line-clamp-024/
+    // 025`: margins of boxes after the point).
+    if !sized && let Some(h) = crate::text::clamp::clamp_box_height(e.node_id) {
+        d = d.max_h(px(h));
+    }
     // В многоколоночнике `continue: collapse` ведёт себя как `auto`
     // (css-overflow-4 §5.2): срез не действует (`line-clamp-039`).
     let multicol = multicol_container(&e.style);
@@ -120,10 +133,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     // вертикальных паддингов и рамок самого контейнера коробка выходила ниже
     // на их сумму и резала последнюю строку (`line-clamp-auto-002`: 128
     // вместо 1+4+128+4+1 = 138).
-    let side = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let side = px_lossy_zero;
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
@@ -131,6 +141,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             crate::text::clamp::clamp_cut(e.node_id).filter(|c| !sized && c.is_finite())
         {
             d = d.max_h(px(cut + mbp_y));
+            crate::text::clamp::extend_clip(d.style(), e.node_id, cut, side(c.padding.bottom));
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
         // оставленные строки по строчной оси переполняют коробку как
@@ -159,7 +170,21 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             _ => 1.2 * font,
         };
         let cut = crate::text::clamp::clamp_cut(e.node_id).unwrap_or(n as f32 * line);
-        if !sized && cut.is_finite() {
+        // The clamp point only replaces the AUTOMATIC height: a tighter
+        // `max-height` still sizes the box and the kept lines overflow it
+        // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
+        // box is border-box here, the style value content-box unless
+        // `box-sizing: border-box`.
+        let style_max = px_strict(c.max_height);
+        let style_max = style_max.map(|m| {
+            if c.border_box == Some(true) {
+                m
+            } else {
+                m + mbp_y
+            }
+        });
+        let tighter = style_max.filter(|m| cut.is_finite() && *m < cut + mbp_y);
+        if !sized && cut.is_finite() && tighter.is_none() {
             d = d.max_h(px(cut + mbp_y));
         }
         // Счётный кламп прячет только то, что ЗА точкой среза; сами
@@ -179,6 +204,16 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
             if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
                 d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
             }
+            if !sized {
+                crate::text::clamp::extend_clip(d.style(), e.node_id, cut, pad_bottom);
+            }
+            // Lines before the clamp point overflowing a tighter
+            // `max-height` stay visible: the clip edge is the clamp point.
+            if let Some(m) = tighter.filter(|_| !sized) {
+                let reach = cut + mbp_y - pad_bottom - m;
+                let clip = d.style().overflow_clip_offset.get_or_insert([0.0; 4]);
+                clip[2] = clip[2].max(reach);
+            }
         }
     }
     let empty = !e.children.iter().any(|n| !is_blank(n));
@@ -195,7 +230,7 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     } else {
         c
     };
-    for extra in decorations(c, empty) {
+    for extra in decorations(c, empty, vcx) {
         d = d.child(extra);
     }
     d

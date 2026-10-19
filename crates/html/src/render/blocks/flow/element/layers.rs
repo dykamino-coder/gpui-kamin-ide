@@ -5,7 +5,7 @@ use crate::paint::stacking::{layered, stacking_context, z_index_applies};
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
@@ -28,14 +28,15 @@ pub(crate) fn finish_element(
     record_root: bool,
     opts: &RenderOpts,
 ) {
+    let vcx = opts.cx.vcx();
     let below_cb_axis = e.style.position == Some(crate::style::computed::Position::Absolute)
         && e.style.z_index.is_some_and(|z| z < 0)
         && y_set
         && !x_set
         && !e.inline
-        && inherited.rtl != Some(true)
-        && inherited.vertical != Some(true)
-        && e.style.vertical != Some(true)
+        && !inherited.wm().rtl()
+        && !inherited.wm().vertical()
+        && !e.style.wm().vertical()
         && matches!(
             inherited.position,
             Some(crate::style::computed::Position::Relative)
@@ -71,6 +72,7 @@ pub(crate) fn finish_element(
             &mut below.zs,
             below.start,
             below.end,
+            &opts.cx,
         );
         return;
     }
@@ -78,16 +80,13 @@ pub(crate) fn finish_element(
     // Замещаемому дорожка по содержимому не нужна: его размер по
     // ключевому слову — природный, считается в `image_with`.
     let layered_built = layered(built, &e.style, inherited, layer_ok, under_tf);
-    let mut done = content_wrapper::for_element(layered_built, e, inherited, placement);
+    let mut done = content_wrapper::for_element(layered_built, e, inherited, placement, vcx);
     // Тело под корнем-донором фона холста при `vertical-rl`: записать
     // левый край коробки корня для отрисовки холста (см. `canvas_paint`).
     // Корень по содержимому = margin-box тела плюс рамка и отбивка
     // корня слева.
     if record_root {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let root_b = inherited.borders();
         let offset = side(e.style.margin.left) + side(inherited.padding.left) + side(root_b.left);
         done = crate::text::vertical::record_root_left(done, opts.doc_salt, offset);
@@ -102,9 +101,7 @@ pub(crate) fn finish_element(
     // остаётся обычным блоком в потоке горизонтального корня и к
     // правому краю окна не жмётся
     // (contain-body-w-m-001..004, contain-html-w-m-001..004).
-    if matches!(e.tag.as_str(), "html" | "body")
-        && e.style.vertical_rl == Some(true)
-        && !e.style.wm_contained
+    if matches!(e.tag.as_str(), "html" | "body") && e.style.wm().block_rl() && !e.style.wm_contained
     {
         if e.style.bg_image.is_none() {
             done = div()
@@ -143,15 +140,17 @@ pub(crate) fn finish_element(
     if e.style.z_index.is_some_and(|z| z < 0)
         && e.style.position == Some(crate::style::computed::Position::Relative)
         && e.tag != "body"
-        && !stacking_context(inherited)
+        && !crate::paint::stacking::nested_context(inherited)
     {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Абсолют с `z-index < 0`, оставленный на месте (`below_cb_axis`):
     // краска — шаг 3 корневого контекста, под потоком родителя, как и
     // у держателя на распорке выше.
     if below_cb_axis {
-        done = crate::paint::effects::underlay::Underlay::new(done).into_any_element();
+        done =
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(done));
     }
     // Позиционированный блок с `z-index: auto | 0` рисуется на шаге 8
     // приложения E CSS 2.1 — ПОСЛЕ блоков и строк потока, — а у нас
@@ -169,7 +168,7 @@ pub(crate) fn finish_element(
             | Some(crate::style::computed::Position::Sticky)
     ) && e.style.z_index.unwrap_or(0) == 0
         && !matches!(e.tag.as_str(), "html" | "body")
-        && paint_last_ok(e, &nodes[idx + 1..]);
+        && paint_last_ok(e, &nodes[idx + 1..], &opts.cx);
     // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что
     // позиционированные с `z-index: 0` (css-color-4 §opacity: «painted
     // on the same layer … as positioned elements with stacking order
@@ -196,7 +195,7 @@ pub(crate) fn finish_element(
                 || e.style.blend.is_some_and(|b| b != 0))
             && !e.style.z_index.is_some_and(|z| z > 0 && z_index_applies(&e.style, inherited))
             && !matches!(e.tag.as_str(), "html" | "body")
-            && paint_last_ok(e, &nodes[idx + 1..]));
+            && paint_last_ok(e, &nodes[idx + 1..], &opts.cx));
     if step8 {
         done = gpui::PaintLast::new(done).key(paint_key).into_any_element();
     }

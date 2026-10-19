@@ -1,3 +1,12 @@
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 // GUI-subsystem в release: console-subsystem дарил packaged-приложению чёрное
 // консольное окно. В dev (debug_assertions) консоль остаётся — туда идут логи
 // сайдкара при запуске из терминала.
@@ -298,7 +307,13 @@ fn main() {
             if let Some(view) = view_slot {
                 while let Ok(event) = rx.recv().await {
                     view.update(cx, |v, cx| {
+                        // Имя — до `apply`, который забирает событие: в `[why]`
+                        // видно, какое событие хоста заказало кадр окна.
+                        let event_name = crate::web::diag_event_name::name(&event);
                         let needs_frame = v.apply(event, cx);
+                        if needs_frame {
+                            crate::web::diag_why::tick(event_name);
+                        }
                         // Пропсы компонентов обновляем ЗДЕСЬ, а не в
                         // рендере: `notify` из фазы отрисовки не помечает
                         // окно грязным и нового кадра не заказывает
@@ -306,10 +321,10 @@ fn main() {
                         // проверка изменений молча не работала.
                         v.sync_panels(cx);
                         // Холостые события (вывод терминала, доставка
-                        // страницам) кадра не заказывают: раньше каждое
-                        // будило полную пересборку RootView.
+                        // страницам) кадра не заказывают; остальные — через
+                        // насос, в общем ритме кадров (`frame_rhythm`).
                         if needs_frame {
-                            cx.notify();
+                            crate::web::repaint_requested();
                         }
                     });
                 }

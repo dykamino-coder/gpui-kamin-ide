@@ -1,5 +1,7 @@
 //! Physical classic gutters (CSS Overflow 3 §4.2), including stable and both-edges.
 //! Grid axis reversal is not the Windows scrollbar-side policy.
+
+use crate::document::state::ValueCx;
 pub(crate) mod positioned;
 use crate::style::computed::{Computed, Display, Overflow};
 use gpui::{AbsoluteLength, DefiniteLength, Div, Length, Styled, px};
@@ -31,7 +33,7 @@ impl Model {
             model.used[if left { 0 } else { 2 }] = width;
             model.native[if native_left { 0 } else { 2 }] = width;
         }
-        let vertical = c.vertical == Some(true);
+        let vertical = c.wm().vertical();
         let overflow = if vertical { c.overflow_x } else { c.overflow_y };
         if !c.scroll.viewport_root
             && c.scroll.gutter.is_some_and(|v| v != 0)
@@ -61,23 +63,23 @@ impl Model {
         ]
     }
 }
-fn add(value: DefiniteLength, delta: f32) -> DefiniteLength {
+fn add(value: DefiniteLength, delta: f32, vcx: ValueCx<'_>) -> DefiniteLength {
     match value {
         DefiniteLength::Absolute(AbsoluteLength::Pixels(v)) => px(f32::from(v) + delta).into(),
         // Resolve the HTML fallback padding using the document root font.
         DefiniteLength::Absolute(AbsoluteLength::Rems(v)) => {
-            px(v.0 * crate::style::values::value::root_font_px() + delta).into()
+            px(v.0 * crate::style::values::value::root_font_px(vcx) + delta).into()
         }
         DefiniteLength::Fraction(v) => DefiniteLength::Calc(delta, v),
         DefiniteLength::Calc(px, pct) => DefiniteLength::Calc(px + delta, pct),
     }
 }
-fn subtract(value: &mut Option<Length>, extra: f32) {
+fn subtract(value: &mut Option<Length>, extra: f32, vcx: ValueCx<'_>) {
     if let Some(Length::Definite(v)) = value {
-        *v = add(*v, -extra);
+        *v = add(*v, -extra, vcx);
     }
 }
-pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
+pub(crate) fn apply(mut div: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let model = super::scroll_extent::classic::model(c.self_node, c);
     let style = div.style();
     let difference: [f32; 4] = std::array::from_fn(|side| model.used[side] - model.native[side]);
@@ -91,7 +93,7 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
     .zip(difference)
     {
         if extra != 0.0 {
-            *side = Some(add(side.unwrap_or_else(|| px(0.0).into()), extra));
+            *side = Some(add(side.unwrap_or_else(|| px(0.0).into()), extra, vcx));
         }
     }
     if style.content_box == Some(true) {
@@ -105,13 +107,13 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
                 continue;
             }
             if axis == 0 {
-                subtract(&mut style.size.width, extra);
-                subtract(&mut style.min_size.width, extra);
-                subtract(&mut style.max_size.width, extra);
+                subtract(&mut style.size.width, extra, vcx);
+                subtract(&mut style.min_size.width, extra, vcx);
+                subtract(&mut style.max_size.width, extra, vcx);
             } else {
-                subtract(&mut style.size.height, extra);
-                subtract(&mut style.min_size.height, extra);
-                subtract(&mut style.max_size.height, extra);
+                subtract(&mut style.size.height, extra, vcx);
+                subtract(&mut style.min_size.height, extra, vcx);
+                subtract(&mut style.max_size.height, extra, vcx);
             }
         }
     }
@@ -127,20 +129,10 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
 
 /// Physical axes whose CSS scroll origin is at their far edge.
 pub(crate) fn reversed(c: &Computed) -> [bool; 2] {
-    let vertical = c.vertical == Some(true);
-    let sideways = c.sideways == Some(true);
-    let rtl = c.rtl == Some(true) && !(vertical && !sideways && c.upright == Some(true));
-    if vertical {
-        [
-            c.vertical_rl == Some(true),
-            rtl != (sideways && c.vertical_rl != Some(true)),
-        ]
-    } else {
-        [rtl, false]
-    }
+    c.wm().reversed_axes()
 }
 
 /// Blink ComputedStyle::ShouldPlaceBlockDirectionScrollbarOnLogicalLeft.
 pub(crate) fn on_left(c: &Computed) -> bool {
-    c.vertical != Some(true) && c.rtl == Some(true)
+    !c.wm().vertical() && c.wm().rtl()
 }

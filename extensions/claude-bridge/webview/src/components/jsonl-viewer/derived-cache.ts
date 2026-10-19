@@ -27,6 +27,7 @@ import {
   mergeAssistantEntriesByMessageId,
   mergeConsecutiveCliEntries,
   groupConsecutiveToolCalls,
+  surfaceNarrationThinking,
   NON_RENDERING_ENTRY_TYPES,
 } from './utils'
 import { getToolResults, dropToolResults, type ToolResultMap } from '../../lib/tool-result-cache'
@@ -89,7 +90,7 @@ function computeModel(
     ? currentEntries.slice(segFrom, segTo)
     : currentEntries
   const merged = scopedEntries.length > 0
-    ? groupConsecutiveToolCalls(mergeConsecutiveCliEntries(mergeAssistantEntriesByMessageId(scopedEntries)))
+    ? groupConsecutiveToolCalls(mergeConsecutiveCliEntries(surfaceNarrationThinking(mergeAssistantEntriesByMessageId(scopedEntries))))
     : []
   // toolResults stays over the FULL history — a tool_use in the active segment
   // can reference a tool_result outside it (looked up by tool_use_id). Shared

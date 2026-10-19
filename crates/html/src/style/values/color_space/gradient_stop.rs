@@ -1,5 +1,6 @@
 //! Retain extended RGB coordinates for CIE/OK gradient stop interpolation.
 
+use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
 
 pub(super) fn components(body: &str, ok: bool, polar: bool) -> Option<(f32, f32, f32, f32)> {
@@ -28,14 +29,14 @@ pub(super) fn components(body: &str, ok: bool, polar: bool) -> Option<(f32, f32,
     Some((r, g, b, alpha))
 }
 
-pub(crate) fn parse(raw: &str) -> Option<Color> {
+pub(crate) fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Color> {
     let text = raw.trim();
     let lower = text.to_ascii_lowercase();
     if lower.starts_with("color-mix(") && text.ends_with(')') {
         // CSS Color 5 §color-mix: the result remains in the mixing space.
         // Mapping an intermediate stop to sRGB changes the next interpolation
         // (CSS Color 4 §12). Only the final displayed pixel is gamut mapped.
-        let (r, g, b, a) = super::mix::color_mix_unmapped(&text[10..text.len() - 1])?;
+        let (r, g, b, a) = super::mix::color_mix_unmapped(&text[10..text.len() - 1], vcx)?;
         return Some(Color { r, g, b, a });
     }
     for (name, ok, polar) in [
@@ -52,7 +53,7 @@ pub(crate) fn parse(raw: &str) -> Option<Color> {
             return Some(Color { r, g, b, a });
         }
     }
-    Color::parse(text)
+    Color::parse(text, vcx)
 }
 
 fn display(color: Color) -> Color {
@@ -122,13 +123,15 @@ mod tests {
 
     #[test]
     fn intermediate_mix_retains_extended_components() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let raw = "color-mix(in lch longer hue, red, blue)";
-        let stop = parse(raw).unwrap();
+        let stop = parse(raw, vcx).unwrap();
         assert!(out_of_gamut(stop));
-        let painted = Color::parse(raw).unwrap();
+        let painted = Color::parse(raw, vcx).unwrap();
         assert!(!out_of_gamut(painted));
-        let red = Color::parse("red").unwrap();
-        let blue = Color::parse("blue").unwrap();
+        let red = Color::parse("red", vcx).unwrap();
+        let blue = Color::parse("blue", vcx).unwrap();
         let space = crate::style::computed::GradSpace::Lch;
         let direct = colour_at(&[(red, 0.0), (blue, 1.0)], 0.25, space, 1);
         let split = colour_at(&[(red, 0.0), (stop, 0.5), (blue, 1.0)], 0.25, space, 0);

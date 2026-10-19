@@ -1,12 +1,14 @@
 //! Select the raster corner mask when circular quad radii cannot express the CSS shape.
 
 use super::{Computed, Overflow};
-use crate::style::values::value::Len;
+use crate::document::state::ValueCx;
+use crate::style::computed::FontCx;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 impl Computed {
     /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
-    pub fn radius_masked(&self) -> bool {
-        if crate::paint::background::single_corner::eligible(self) {
+    pub fn radius_masked(&self, vcx: ValueCx<'_>) -> bool {
+        if crate::style::computed::single_corner::eligible(self) {
             return false;
         }
         // CSS Backgrounds 3 §5.1: each percentage resolves against its own
@@ -22,7 +24,7 @@ impl Computed {
         // the two box axes happen to be equal.
         let calculated = radii.iter().any(|r| match r {
             Some(Len::Calc(i)) => {
-                let sum = crate::style::values::value::calc_get(*i);
+                let sum = crate::style::values::value::calc_get(*i, vcx);
                 sum.has_percentage || sum.pct != 0.0
             }
             _ => false,
@@ -32,12 +34,7 @@ impl Computed {
             .any(|r| matches!(r, Some(Len::Pct(p)) if *p > 0.0));
         let square = match (self.width, self.height) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => {
-                let sides = |s: super::Sides| {
-                    [s.top, s.right, s.bottom, s.left].map(|v| match v {
-                        Some(Len::Px(v)) => v,
-                        _ => 0.0,
-                    })
-                };
+                let sides = |s: super::Sides| [s.top, s.right, s.bottom, s.left].map(px_lossy_zero);
                 let [pt, pr, pb, pl] = sides(self.padding);
                 let [bt, br, bb, bl] = sides(self.borders());
                 let extra = if self.border_box == Some(true) {
@@ -79,7 +76,7 @@ impl Computed {
         // там нет, снимать скругление квада нельзя.
         let font_len = |l: Option<Len>| match l {
             Some(Len::Pct(p)) => Some(p),
-            Some(l) => crate::text::metrics::fallback_len_px(l, "", 16.0),
+            Some(l) => l.to_px(None, FontCx::FALLBACK, vcx),
             None => None,
         };
         if self.contain_paint == Some(true)
@@ -109,10 +106,7 @@ impl Computed {
                 return true;
             }
         }
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let round = [
             side(self.radius.tl),
             side(self.radius.tr),

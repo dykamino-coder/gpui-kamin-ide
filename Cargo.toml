@@ -1,10 +1,39 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# Keep upstream formatting in path dependencies outside workspace-wide rustfmt.
+exclude = [
+  "vendor/gpui",
+  "vendor/gpui-windows",
+  "vendor/gpui-base",
+  "vendor/gpui-component",
+  "vendor/taffy",
+  "vendor/html5ever",
+  "vendor/markup5ever_rcdom",
+  "vendor/resvg",
+  "vendor/usvg",
+]
 
 [workspace.package]
-version = "1.0.67"
+version = "1.0.76"
 edition = "2024"
+
+# Keep fallible results visible at every workspace boundary.
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+redundant_clone = "deny"
+declare_interior_mutable_const = "deny"
+disallowed_methods = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+# As in GPUI, preserve the established DSL spelling; correctness lints
+# and explicit denies above still apply independently of style suggestions.
+style = { level = "allow", priority = -1 }
 
 [workspace.dependencies]
 # Пакет на crates.io — `gpui-pre` (снимок zed@279fe07), библиотека — `gpui`.

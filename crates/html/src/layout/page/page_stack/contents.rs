@@ -84,13 +84,18 @@ impl PageStack {
                         bounds: rect(sx + ax, sy + ay + f.y, g.area.0, f.h).intersect(&area),
                     };
                     let kid = &mut self.kids[f.kid];
-                    let el = if f.copy == 0 {
-                        &mut kid.el
-                    } else {
-                        match kid.frags.get_mut(f.copy - 1) {
-                            Some(e) => e,
-                            None => continue,
-                        }
+                    kid.paint_sections(
+                        &f,
+                        |top, h| rect(sx + ax, sy + ay + f.y + top, g.area.0, h).intersect(&area),
+                        window,
+                        cx,
+                    );
+                    let Some(el) = crate::layout::fragment::types::frag_copy(
+                        &mut kid.el,
+                        &mut kid.frags,
+                        f.copy,
+                    ) else {
+                        continue;
                     };
                     window.with_content_mask(Some(mask), |window| el.paint(window, cx));
                 }

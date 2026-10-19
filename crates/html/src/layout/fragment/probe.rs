@@ -61,7 +61,7 @@ pub(crate) fn stacked_flex_tree(c: &Element, depth: u8) -> bool {
         && matches!(s.flex_dir, None | Some(FlexDir::Row))
         && s.flex_wrap == Some(true)
         && s.flex_wrap_reverse != Some(true)
-        && s.vertical != Some(true)
+        && !s.wm().vertical()
         && s.gap.is_none()
         && !flex_gap_rules(s);
     if !flex_stack

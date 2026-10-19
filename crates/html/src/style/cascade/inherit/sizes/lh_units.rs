@@ -29,7 +29,7 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         _ => {
             let f = crate::text::metrics::normal_line(&parent_family);
             if f > 0.0 {
-                f * parent_font
+                crate::text::metrics::normal_px(f, parent_font)
             } else {
                 1.2 * parent_font
             }
@@ -79,7 +79,11 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,
         _ => {
             let f = crate::text::metrics::normal_line(&family);
-            if f > 0.0 { f * font } else { 1.2 * font }
+            if f > 0.0 {
+                crate::text::metrics::normal_px(f, font)
+            } else {
+                1.2 * font
+            }
         }
     };
     let fix = |l: &mut Option<crate::style::values::value::Len>| match *l {
@@ -109,12 +113,35 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
     }
     // `background-size: 100px 1lh` — та же единица и та же база
     // (`lh-unit-same-element-*`). Чинится ЗДЕСЬ, а не в `background.rs`:
-    // там доступен только запасной кегль 16 (`fallback_len_px` даёт
+    // там доступен только запасной кегль 16 (`FontCx::FALLBACK` даёт
     // 1.2 × 16 = 19.2 — ровно то, что видно на снимке), а сплошной
     // перевод единиц в самом `background.rs` уже ЗАМЕРЕН в минус
     // (★ `background.rs:2577`, CSS2 4614 → 4610).
+    // `em` in `background-size`/`background-position` is the element's own
+    // computed font size (css-values-4 §6.1.1); the painter only knows a
+    // 16px fallback (`table-cell-align-002`: `.5em .5em` at 20px).
+    // Only with a known own font size: a still relative `font-size`
+    // (`1.25em`, resolved later in `inherit_stage`) would read as the 16px
+    // fallback here (`multicol-fill-auto-003`); the painter then resolves
+    // against the computed size as before.
+    let font_known = matches!(
+        c.font_size,
+        None | Some(crate::style::values::value::Len::Px(_))
+    );
+    let em = |l: &mut Option<crate::style::values::value::Len>| {
+        if !font_known {
+            return;
+        }
+        if let Some(crate::style::values::value::Len::Em(k)) = *l {
+            *l = Some(crate::style::values::value::Len::Px(k * font));
+        }
+    };
     if let crate::style::computed::BgSize::Fixed(w, h) = &mut c.bg_size {
         fix(w);
         fix(h);
+        em(w);
+        em(h);
     }
+    em(&mut c.bg_pos.x);
+    em(&mut c.bg_pos.y);
 }

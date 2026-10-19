@@ -1,12 +1,13 @@
 //! Horizontal compositions apply only in vertical writing modes, with no letter spacing.
 //! CSS Writing Modes 4 §9.1 and §9.1.2 preserve font settings inside the composition.
+
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::render::{RenderOpts, gather_text, paragraph};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, TextTransform};
 use crate::style::values::value::Len;
 use crate::text::inline;
-use gpui::IntoElement;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) fn piece(
@@ -14,13 +15,11 @@ pub(crate) fn piece(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
-    if inherited.rotated_line != Some(true)
-        || inherited.sideways == Some(true)
-        || element.style.display.is_some()
-    {
+    let vcx = opts.cx.vcx();
+    if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
         return None;
     }
-    let mut merged = inherit(inherited, &element.style);
+    let mut merged = inherit(inherited, &element.style, vcx);
     let count = merged.combine_upright?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);
@@ -71,7 +70,7 @@ pub(crate) fn piece(
     };
     let inner = paragraph(nodes, &merged, opts);
     Some(inline::Piece::Atom(
-        crate::text::vertical::CombinedUpright::new(inner, em).into_any_element(),
+        crate::text::vertical::CombinedUpright::new(inner, em).hooked(),
     ))
 }
 

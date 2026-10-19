@@ -77,7 +77,7 @@ fn rail_tile(
         .justify_center()
         .rounded(px(m::RADIUS_SM))
         .cursor_pointer()
-        .tooltip(crate::ui::tooltip::tooltip(label.clone()))
+        .tooltip(crate::ui::tooltip::tooltip(label))
         // `.btnActive:hover` держит accent → ховер только у неактивной
         .when(!is_active, |t| t.hover(move |s| s.bg(hover_bg)))
         .on_mouse_down(

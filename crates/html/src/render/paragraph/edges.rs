@@ -58,7 +58,7 @@ pub(crate) fn edge_pieces(
     // A rotated vertical paragraph is laid out in its pre-rotation frame,
     // whose top is the line-over side (css-writing-modes-4 §line-relative
     // directions), so `top`/`bottom` keep their meaning there.
-    if inherited.vertical == Some(true) {
+    if inherited.wm().vertical() {
         return out;
     }
     let mut at = 0usize;
@@ -91,7 +91,7 @@ pub(crate) fn edge_pieces(
             let h = match style.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => size * normal_fraction(style, opts),
+                _ => crate::text::metrics::normal_px(normal_fraction(style, opts), size),
             };
             match out.last_mut() {
                 // Соседние куски одного края — одна коробка (`<span>` с

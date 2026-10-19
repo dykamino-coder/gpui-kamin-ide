@@ -1,11 +1,12 @@
 //! Div фрагмента копии: стиль, ширина колонки, линейки промежутков.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::fragment::grid_bands::grid_rows_px;
 use crate::render::styled_div_with;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{IntoElement, Styled, px};
+use gpui::{Styled, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn frag_box_div(
@@ -19,8 +20,9 @@ pub(super) fn frag_box_div(
     frag_gap_key: Option<u64>,
     kids: Vec<Node>,
     body: &mut Vec<gpui::AnyElement>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
-    let mut d = styled_div_with(src, src_inner);
+    let mut d = styled_div_with(src, src_inner, cx);
     // Ось блочного потока ВНУТРИ копии — горизонтальная
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`
@@ -60,8 +62,7 @@ pub(super) fn frag_box_div(
                 && matches!(k.style.width, None | Some(Len::Auto))
                 && matches!(k.style.height, Some(Len::Px(_))))
     };
-    if src.style.display.is_none() && src_inner.vertical != Some(true) && kids.iter().any(ratio_kid)
-    {
+    if src.style.display.is_none() && !src_inner.wm().vertical() && kids.iter().any(ratio_kid) {
         d = d.flex().flex_col();
     }
     // Для ЛЮБОЙ flex/grid-копии, не только с линейками:
@@ -133,7 +134,7 @@ pub(super) fn frag_box_div(
                 crate::paint::gap_rules::gap_items_for(key),
                 spec,
             )
-            .into_any_element(),
+            .hooked(),
         );
     }
     d

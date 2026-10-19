@@ -40588,6 +40588,37 @@ var ResyncTracker = class {
   }
 };
 
+// src/deferred-replies.ts
+var MAX_DEFERRED_REPLIES_PER_VIEW = 256;
+var DeferredReplies = class {
+  byView = /* @__PURE__ */ new WeakMap();
+  /** Hold a refused reply. Returns the oldest entry when the cap evicts one. */
+  defer(view, entry) {
+    const list = this.byView.get(view) ?? [];
+    list.push(entry);
+    this.byView.set(view, list);
+    return list.length > MAX_DEFERRED_REPLIES_PER_VIEW ? list.shift() : void 0;
+  }
+  /** Remove and return everything held for the view, oldest first. */
+  take(view) {
+    const list = this.byView.get(view) ?? [];
+    this.byView.delete(view);
+    return list;
+  }
+  /** Put entries a flush could not deliver back in front of newer ones. */
+  restore(view, entries2) {
+    if (entries2.length === 0) return;
+    const list = this.byView.get(view) ?? [];
+    this.byView.set(view, [...entries2, ...list].slice(-MAX_DEFERRED_REPLIES_PER_VIEW));
+  }
+  forget(view) {
+    this.byView.delete(view);
+  }
+  size(view) {
+    return this.byView.get(view)?.length ?? 0;
+  }
+};
+
 // src/bridge-host.ts
 init_host_compat();
 
@@ -41546,6 +41577,11 @@ function handleServerMessage(msg, ctx) {
         description: msg.description
       });
       break;
+    case "session:usage": {
+      const usage = msg.usage;
+      if (usage && typeof usage === "object") ctx.window.webContents.send("session:usage", ctx.tabId, usage);
+      break;
+    }
     case "session:title": {
       const title = msg.title;
       if (title) {
@@ -51040,14 +51076,25 @@ var InvokeDiagnostics = class {
     record("host-received");
     return {
       handler: (outcome) => record(`handler-${outcome}`),
+      /** `refused` = postMessage returned false (hidden view); the caller may
+       *  hold the reply and send it on reveal (`DeferredReplies`). */
       reply: async (send) => {
         if (state.detached) record("reply-source-disposed");
         if (state.documentRef !== documentRef) record("reply-document-replaced");
         try {
-          record(await send() ? "reply-accepted" : "reply-false");
+          const accepted = await send();
+          record(accepted ? "reply-accepted" : "reply-false");
+          return accepted ? "accepted" : "refused";
         } catch {
           record("reply-rejected");
+          return "rejected";
         }
+      },
+      /** A refused reply is being held until the view is shown; the returned
+       *  callback records the outcome of that later send. */
+      deferred: () => {
+        record("reply-deferred");
+        return (accepted) => record(accepted ? "reply-flushed" : "reply-flush-false");
       }
     };
   }
@@ -51084,6 +51131,9 @@ var BridgeHost = class {
   // Resync-on-reveal state, per webview — see ResyncTracker for why the gap is
   // recorded at the dropped send rather than inferred from working-state.
   resync = new ResyncTracker();
+  // Invoke replies a hidden view refused, sent when it is shown (INC-2026-0065):
+  // a request's reply is not an event resync can regenerate.
+  deferredReplies = new DeferredReplies();
   onResyncNeeded;
   disposed = false;
   sink;
@@ -51339,6 +51389,7 @@ var BridgeHost = class {
         this.webviews.delete(webview);
         this.invokeDiagnostics.detach(webview);
         this.resync.forget(webview);
+        this.deferredReplies.forget(webview);
         if (this.webviewRoles.get(webview) === "chat") clearDisplayedTab();
         this.webviewRoles.delete(webview);
       }
@@ -51353,7 +51404,25 @@ var BridgeHost = class {
    *  recorded gap (see ResyncTracker.setVisible). */
   setWebviewVisible(webview, visible) {
     this.invokeDiagnostics.setHidden(webview, !visible);
+    if (visible) void this.flushDeferredReplies(webview);
     if (this.resync.setVisible(webview, visible)) this.onResyncNeeded?.();
+  }
+  /** Send the invoke replies this view refused while it was hidden, oldest
+   *  first. A reply the view still refuses stays held for the next reveal. */
+  async flushDeferredReplies(webview) {
+    const pending = this.deferredReplies.take(webview);
+    for (let i = 0; i < pending.length; i++) {
+      let accepted = false;
+      try {
+        accepted = await webview.postMessage(pending[i].frame);
+      } catch {
+      }
+      pending[i].flushed(accepted);
+      if (!accepted) {
+        this.deferredReplies.restore(webview, pending.slice(i));
+        return;
+      }
+    }
   }
   /** Read-only view of the external-MCP manager — for the status-bar
    *  connected/error count. Narrowed so this accessor can't be used to mutate
@@ -51394,6 +51463,13 @@ var BridgeHost = class {
       void wv.postMessage(msg);
     }
   }
+  deferReply(source, entry) {
+    const evicted = this.deferredReplies.defer(source, entry);
+    if (evicted) {
+      console.warn("[claude-bridge] deferred invoke replies over the cap; oldest dropped");
+      evicted.flushed(false);
+    }
+  }
   async onMessage(msg, source) {
     if (msg?.kind === "invoke-diagnostic") {
       this.invokeDiagnostics.renderer(source, msg);
@@ -51407,7 +51483,11 @@ var BridgeHost = class {
     }
     if (msg.kind === "invoke") {
       const trace = this.invokeDiagnostics.begin(source, msg.id, msg.channel, msg.generation);
-      const reply = (frame) => trace.reply(() => source.postMessage({ kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }));
+      const reply = async (frame) => {
+        const full = { kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame };
+        const outcome = await trace.reply(() => source.postMessage(full));
+        if (outcome === "refused") this.deferReply(source, { frame: full, flushed: trace.deferred() });
+      };
       try {
         const result = await ipcMain.invokeHandler(msg.channel, this.event, ...args);
         trace.handler("resolved");
@@ -51820,6 +51900,12 @@ function activate(context) {
         if (trackVisibility) {
           host.setWebviewVisible(view.webview, view.visible);
           const vis = view.onDidChangeVisibility(() => host.setWebviewVisible(view.webview, view.visible));
+          view.onDidDispose(() => vis.dispose());
+          context.subscriptions.push(vis);
+        } else {
+          const vis = view.onDidChangeVisibility(() => {
+            if (view.visible) void host.flushDeferredReplies(view.webview);
+          });
           view.onDidDispose(() => vis.dispose());
           context.subscriptions.push(vis);
         }

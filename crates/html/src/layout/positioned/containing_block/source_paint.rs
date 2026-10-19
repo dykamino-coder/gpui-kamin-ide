@@ -1,0 +1,62 @@
+//! Keep positioned painting in tree order while laying out at the containing block.
+
+use super::{LatePlace, SpotCell};
+use crate::hooks::{Hooks, IntoHooked};
+use gpui::{
+    AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, div, point, px,
+};
+use std::{cell::RefCell, rc::Rc};
+
+/// CSS 2 Appendix E orders painting independently of the containing block.
+/// Only the layout half belongs to the CB; the source half owns prepaint/paint.
+pub(crate) fn split(spot: SpotCell, child: AnyElement) -> (AnyElement, AnyElement) {
+    let child = Rc::new(RefCell::new(LatePlace { child, spot }.hooked()));
+    let layout = SourcePaint {
+        child: child.clone(),
+        placeholder: None,
+    };
+    let paint = SourcePaint {
+        child,
+        placeholder: Some(div().absolute().w_0().h_0().into_any_element()),
+    };
+    (layout.hooked(), paint.hooked())
+}
+
+struct SourcePaint {
+    child: Rc<RefCell<AnyElement>>,
+    placeholder: Option<AnyElement>,
+}
+
+impl Hooks for SourcePaint {
+    type Layout = ();
+    type Prepaint = ();
+
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+        let layout = match self.placeholder.as_mut() {
+            Some(placeholder) => placeholder.request_layout(window, cx),
+            None => self.child.borrow_mut().request_layout(window, cx),
+        };
+        (layout, ())
+    }
+
+    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+        if self.placeholder.is_some() {
+            self.child
+                .borrow_mut()
+                .prepaint_at(point(px(0.0), px(0.0)), window, cx);
+        }
+    }
+
+    fn paint(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if self.placeholder.is_some() {
+            gpui::paint_reopen(|| self.child.borrow_mut().paint(window, cx));
+        }
+    }
+}

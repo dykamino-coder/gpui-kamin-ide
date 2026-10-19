@@ -1,6 +1,7 @@
 //! Разбор linear-/radial-gradient(): направление, пространство интерполяции, стопы с позициями.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `linear-gradient(90deg, #000, #fff)`. Направления словами приводим к углу.
 /// `linear-gradient(...)` и `radial-gradient(...)`.
@@ -25,7 +26,7 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
     })
 }
 
-pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
+pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
     // повторение делает растеризатор, заворачивая долю точки.
@@ -102,7 +103,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
-    let (angle, direction_idx) = gradient_direction(head, radial, idx)?;
+    let (angle, direction_idx) = gradient_direction(head, radial, idx, vcx)?;
     idx = direction_idx;
 
     // Стоп несёт до ДВУХ позиций (css-images-4 §3.4.1): `yellow 0% 25%` — это
@@ -119,7 +120,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
         let words = split_outside_parens(p);
         let Some(colour) = words
             .first()
-            .and_then(|w| crate::style::values::color_space::interpolation_color(w))
+            .and_then(|w| crate::style::values::color_space::interpolation_color(w, vcx))
         else {
             continue;
         };
@@ -137,12 +138,12 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 any_pct = true;
                 raw.push((colour, Some(n / 100.0)));
                 raw_px.push((colour, None));
-            } else if let Some(Len::Px(v)) = Len::parse(t) {
+            } else if let Some(Len::Px(v)) = Len::parse(t, vcx) {
                 // Позиция в точках: долей не выразить, длина оси известна
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if let Some((pct, px)) = pct_px_pair(t) {
+            } else if let Some((pct, px)) = pct_px_pair(t, vcx) {
                 // `calc(100% - 10px)` (css-images-4 §3.4.1: `<color-stop-length>`
                 // = `<length-percentage>{1,2}`): доля и точки едут ПАРОЙ в
                 // `stops_raw`, растр сложит их по длине оси. Прежде такой стоп
@@ -152,7 +153,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
                 raw.push((colour, Some(pct)));
                 raw_px.push((colour, Some(px)));
             } else if !t.trim().is_empty()
-                && Len::parse(t).is_none()
+                && Len::parse(t, vcx).is_none()
                 && t.trim().parse::<f32>().is_err()
             {
                 continue;
@@ -181,7 +182,7 @@ pub(crate) fn parse_gradient(v: &str) -> Option<Gradient> {
     // без позиции — поровну между соседями С позициями (а не по номеру в
     // списке). Тот же расклад, что у растра.
     let last = raw.len() - 1;
-    let stops: Vec<(Color, f32)> = crate::paint::background::place_stops(raw.clone());
+    let stops: Vec<(Color, f32)> = crate::style::computed::place_stops(raw.clone());
     // TODO(gradient): `in hsl longer hue` — дуга тона синтетическими стопами
     // (css-images-4 §3.4.1.1) была за отладочным флагом HSL_ARC, замерена в
     // минус (−13/+2) и удалена; вернуться с точной математикой полос.

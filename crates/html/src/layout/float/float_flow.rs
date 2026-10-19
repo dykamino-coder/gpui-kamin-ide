@@ -2,6 +2,7 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::paint::effects::paint_scope::DepthScope;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{
@@ -9,7 +10,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
@@ -21,10 +22,11 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 /// плавающего блока не заданы явно, резать нечем — тогда ряд остаётся прежним:
 /// две колонки до конца абзаца.
 pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Ряд без разреза — прежнее поведение: две колонки до конца абзаца.
     // Стиль берётся СЛИТЫЙ: у ряда своя раскладка, и без неё дети встают
     // друг под другом вместо колонок.
-    let merged = inherit(inherited, &row.style);
+    let merged = inherit(inherited, &row.style, vcx);
     // Ряд обтекания ФИЗИЧЕСКИЙ: левые флоаты собраны в начало, правые — в
     // конец (сборка `float_runs`), а `float: left/right` от письма не
     // зависят (CSS 2.1 §9.5.1). Унаследованное `direction: rtl` разворачивало
@@ -33,11 +35,11 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // `flexbox-align-self-vert-rtl-*-ref`). Письмо снимается только с самой
     // коробки ряда — дети наследуют прежнее `merged`.
     let mut row_layout = merged.clone();
-    if row_layout.vertical != Some(true) {
+    if !row_layout.wm().vertical() {
         row_layout.rtl = Some(false);
     }
     let plain_row = |nodes: &[Node]| -> AnyElement {
-        styled_div_with(row, &row_layout)
+        styled_div_with(row, &row_layout, &opts.cx)
             .children(blocks(nodes, &merged, opts))
             .into_any_element()
     };
@@ -66,10 +68,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     } else {
         return plain_row(&row.children);
     };
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px_of = px_strict;
     let (Some(fw), Some(fh)) = (px_of(floater.style.width), px_of(floater.style.height)) else {
         return plain_row(&row.children);
     };
@@ -94,6 +93,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
             let mut side = column_style.clone();
             side.display = Some(Display::Block);
             let column_el = Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,
@@ -112,7 +112,9 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 vec![Node::Element(column_el), Node::Element(floater.clone())]
             };
             let mut top = row_node.clone();
+            // An ordinary flex row now: no second pass through `float_flow`.
             top.tag = "div".into();
+            top.marks.float_row = false;
             top.children = row_children;
             let mut all = vec![Node::Element(top)];
             all.extend(below);
@@ -134,7 +136,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
-        _ => size * normal_fraction(inherited, opts),
+        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size),
     };
     let flow = crate::layout::float::split_flow::FloatFlow::new(
         build,
@@ -144,7 +146,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
         size,
         line,
     )
-    .into_any_element();
+    .hooked();
     // Ряд обтекания строится ОТЛОЖЕННО: `build` зовёт `FloatFlow::prepaint`
     // (`float.rs:211`), когда сторож клэмп-контейнера уже снят, поэтому ни
     // флоат, ни строки рядом с ним проб не пишут, и `ClampCut` ряда не видит.
@@ -169,8 +171,12 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
                 skip,
                 false,
                 0.0,
+                crate::text::clamp::BoxEnds::default(),
                 None,
                 None,
+                None,
+                0.0,
+                false,
             ))
             .into_any_element(),
         _ => flow,

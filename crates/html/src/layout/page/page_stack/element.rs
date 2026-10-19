@@ -1,32 +1,16 @@
 //! PageStack как элемент gpui: раскладка листов (prepaint) и их краска (paint).
 
 use super::{PageGeom, PageStack};
+use crate::hooks::Hooks;
+use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::Frag;
-use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-    point, px, size,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
-impl Element for PageStack {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for PageStack {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         // Стопка занимает РОДИТЕЛЯ целиком (окно стенда): число страниц
         // становится известно только после меры детей в `prepaint`, а размер
         // листов подгоняется масштабом, не размером стопки. Измеряемая
@@ -42,13 +26,11 @@ impl Element for PageStack {
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         // Первый лист — по имени первой коробки (css-page-3 §using-named-pages,
         // п. 3: «the first page … is given the start page value of the root»):
         // его page area — начальный содержащий блок и ширина меры.
@@ -61,7 +43,10 @@ impl Element for PageStack {
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
-        let (kids, limit) = self.page_kids(window, cx, aw);
+        let (kids, limit) = self.page_kids(window, cx, self.area_logical(&g).0.max(1.0));
+        for (pk, k) in self.kids.iter().zip(&kids) {
+            pk.end.set(k.h);
+        }
         // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
         // высота page area решает разрезы, а имя листа — от первой коробки на
         // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
@@ -93,15 +78,13 @@ impl Element for PageStack {
         for _ in 0..4 {
             let tail = names.last().cloned().unwrap_or_default();
             let at = |c: usize| -> f32 {
-                geoms
+                let g = geoms
                     .get(c)
                     .copied()
-                    .unwrap_or_else(|| (self.geom_for)(c, &tail))
-                    .area
-                    .1
-                    .max(1.0)
+                    .unwrap_or_else(|| (self.geom_for)(c, &tail));
+                self.area_logical(&g).1.max(1.0)
             };
-            let (pages, _, plan) = ColumnStack::fill_at(&kids, &at, limit, true);
+            let (pages, _, plan) = plan::fill_at(&kids, &at, Space::pages(limit));
             let new_names = names_of(&plan, pages);
             let stable = new_names == names;
             names = new_names;
@@ -115,7 +98,7 @@ impl Element for PageStack {
                 break;
             }
         }
-        let (pages, plan) = result.unwrap_or_default();
+        let (pages, mut plan) = result.unwrap_or_default();
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.
@@ -124,7 +107,20 @@ impl Element for PageStack {
         } else {
             ((self.icb_reach / ah).ceil().max(0.0) as usize).min(self.icb.len())
         };
-        let pages = pages.max(icb_pages).max(1);
+        // Monolithic overflow reserves pages past the box (`PageKid::reach`).
+        let block = self.area_logical(&g).1.max(1.0);
+        let reach_pages = plan
+            .iter()
+            .filter(|f| f.copy == 0)
+            .filter_map(|f| {
+                let r = self.kids[f.kid].reach?;
+                Some(f.col + ((f.y + r) / block - 0.01).ceil().max(1.0) as usize)
+            })
+            .max()
+            .unwrap_or(0)
+            .min(self.kids.first().map_or(1, |k| k.frags.len() + 1));
+        let pages = pages.max(icb_pages).max(reach_pages).max(1);
+        self.spill_overflow(&mut plan, pages, block);
         // Листы сверх плана (досягаемость абсолютов) — с именем последнего.
         let tail = names.last().cloned().unwrap_or_default();
         while geoms.len() < pages {
@@ -167,6 +163,7 @@ impl Element for PageStack {
         //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
         //    100px — 50, на листах 320px — 160).
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
+        self.prepaint_canvas(bounds, window, cx, &geoms);
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
         self.margin_els.clear();
         self.prepaint_margins(bounds, window, cx, &geoms, names, pages, tail);
@@ -176,11 +173,9 @@ impl Element for PageStack {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {

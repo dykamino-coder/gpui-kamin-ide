@@ -2,10 +2,8 @@
 
 use super::edge_segments::{Seg, collect_cands, draw_cands};
 use super::{CellEdges, GRID_BOX};
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Window,
-};
+use crate::hooks::Hooks;
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 /// Слой сросшихся кромок: рисует рамки всех ячеек таблицы, центрируя
 /// каждую на границе ячейки. Совпадающие кромки соседей ложатся друг на
@@ -33,48 +31,32 @@ impl EdgePainter {
     }
 }
 
-impl Element for EdgePainter {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for EdgePainter {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         (window.request_layout(style, [], cx), ())
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
@@ -177,13 +159,5 @@ impl Element for EdgePainter {
             };
             window.paint_quad(gpui::fill(rect, colour.to_hsla()));
         }
-    }
-}
-
-impl IntoElement for EdgePainter {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

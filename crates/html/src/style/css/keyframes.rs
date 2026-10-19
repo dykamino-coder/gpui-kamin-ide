@@ -1,5 +1,6 @@
 //! @keyframes: разбор кадров и условных групп.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 use std::collections::HashMap;
 
@@ -11,8 +12,8 @@ pub type Keyframes = Vec<(f32, Decls)>;
 /// Разбираются отдельно от правил: у `@keyframes` тело состоит не из
 /// объявлений, а из вложенных блоков, и общий разборщик такое телом правила
 /// не считает.
-pub fn parse_keyframes(css: &str) -> HashMap<String, Keyframes> {
-    parse_keyframes_in(css, None)
+pub fn parse_keyframes(css: &str, vcx: ValueCx<'_>) -> HashMap<String, Keyframes> {
+    parse_keyframes_in(css, None, vcx)
 }
 
 /// Лежит ли место `at` таблицы внутри группы `@media`/`@supports`, чьё
@@ -20,7 +21,7 @@ pub fn parse_keyframes(css: &str) -> HashMap<String, Keyframes> {
 /// и `@font-face`, и `@keyframes`, а не только правила стиля:
 /// `at-media-content-002/003`, `at-supports-content-002/003`).
 /// Стек заголовков открытых блоков считается по скобкам, строки пропускаются.
-pub(crate) fn in_false_group(css: &str, at: usize, media: Media) -> bool {
+pub(crate) fn in_false_group(css: &str, at: usize, media: Media, vcx: ValueCx<'_>) -> bool {
     let end = at.min(css.len());
     let b = css.as_bytes();
     let mut heads: Vec<(usize, usize)> = Vec::new();
@@ -49,20 +50,24 @@ pub(crate) fn in_false_group(css: &str, at: usize, media: Media) -> bool {
     heads.iter().any(|&(s, e)| {
         let head = css[s..e].trim();
         let low = head.to_ascii_lowercase();
-        (low.starts_with("@media") && !media.matches(&low))
-            || (low.starts_with("@supports") && !supports(&head[9..]))
+        (low.starts_with("@media") && !media.matches(&low, vcx))
+            || (low.starts_with("@supports") && !supports(&head[9..], vcx))
     })
 }
 
 /// Наборы кадров таблицы. `media` — условия окружения: с ними кадры ложной
 /// группы не берутся; `None` (лист агента) — берутся все, как прежде.
-pub fn parse_keyframes_in(css: &str, media: Option<Media>) -> HashMap<String, Keyframes> {
+pub fn parse_keyframes_in(
+    css: &str,
+    media: Option<Media>,
+    vcx: ValueCx<'_>,
+) -> HashMap<String, Keyframes> {
     let cleaned = strip_comments(css);
     let mut out: HashMap<String, Keyframes> = HashMap::new();
     let mut rest = cleaned.as_str();
     while let Some(at) = rest.find("@keyframes") {
         let pos = cleaned.len() - rest.len() + at;
-        let skip = media.is_some_and(|m| in_false_group(&cleaned, pos, m));
+        let skip = media.is_some_and(|m| in_false_group(&cleaned, pos, m, vcx));
         rest = &rest[at + "@keyframes".len()..];
         let Some(brace) = rest.find('{') else { break };
         let name = rest[..brace].trim().to_string();
@@ -124,8 +129,11 @@ mod keyframe_tests {
 
     #[test]
     fn keyframes_are_read_with_their_stops() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let k = parse_keyframes(
             "@keyframes pulse { from { opacity: 0 } 50% { opacity: 1 } to { opacity: 0 } }",
+            vcx,
         );
         let frames = k.get("pulse").expect("набор кадров по имени");
         assert_eq!(frames.len(), 3);
@@ -135,6 +143,8 @@ mod keyframe_tests {
 
     #[test]
     fn a_stylesheet_without_keyframes_gives_nothing() {
-        assert!(parse_keyframes(".a { color: red }").is_empty());
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        assert!(parse_keyframes(".a { color: red }", vcx).is_empty());
     }
 }

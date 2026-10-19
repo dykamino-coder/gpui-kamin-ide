@@ -1,6 +1,7 @@
 //! Сегменты правил промежутков сетки с учётом занятых ячеек.
 
-use super::{Crossing, GAP_EPS, GapItem, GapRun};
+use super::assignment::RuleSlot;
+use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::tracks::gaps_of;
 use crate::paint::gap_rules::geometry::tracks::template_tracks;
@@ -11,7 +12,7 @@ pub(super) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
         match out.last_mut() {
-            Some(last) if lo <= last.1 + GAP_EPS => last.1 = last.1.max(hi),
+            Some(last) if lo <= last.1 + GAP_RULE_EPS => last.1 = last.1.max(hi),
             _ => out.push((lo, hi)),
         }
     }
@@ -21,14 +22,14 @@ pub(super) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
 pub(crate) fn subtract(parts: Vec<(f32, f32)>, (lo, hi): (f32, f32)) -> Vec<(f32, f32)> {
     let mut out = vec![];
     for (s, e) in parts {
-        if hi <= s + GAP_EPS || lo >= e - GAP_EPS {
+        if hi <= s + GAP_RULE_EPS || lo >= e - GAP_RULE_EPS {
             out.push((s, e));
             continue;
         }
-        if lo > s + GAP_EPS {
+        if lo > s + GAP_RULE_EPS {
             out.push((s, lo));
         }
-        if hi < e - GAP_EPS {
+        if hi < e - GAP_RULE_EPS {
             out.push((hi, e));
         }
     }
@@ -49,7 +50,7 @@ pub(super) fn occupied(
     if visibility < 2 {
         return true;
     }
-    let near = 2.0 * GAP_EPS;
+    let near = 2.0 * GAP_RULE_EPS;
     let before = items
         .iter()
         .any(|i| i.covers_b(lo, hi) && ((i.a1 - g0).abs() <= near || i.spans_a(g0, g1)));
@@ -68,6 +69,8 @@ pub(super) fn occupied(
 /// поперечный зазор не перекрыт спаном (Blink: `kIntersection` идёт дальше
 /// только при blocked-before И blocked-after); стык (`joins`) — если там есть
 /// видимая поперечная линейка.
+// Both grid axes contribute gap geometry and intersection metadata.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub(crate) fn grid_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
@@ -77,6 +80,7 @@ pub(crate) fn grid_runs(
     tpl_a: Option<&[f32]>,
     tpl_b: Option<&[f32]>,
     abs: Option<(&[(f32, f32)], &[(f32, f32)])>,
+    reverse: (bool, bool),
 ) -> Vec<GapRun> {
     let flipped: Vec<GapItem> = items.iter().map(GapItem::flipped).collect();
     // Дорожки раскладки сильнее всего: это и есть коллекция дорожек сетки
@@ -86,8 +90,8 @@ pub(crate) fn grid_runs(
     // отсчёта, и тогда остаётся прежний счёт по элементам и шаблону.
     let on_lines = |tracks: &[(f32, f32)], items: &[GapItem]| {
         items.iter().all(|i| {
-            tracks.iter().any(|t| (t.0 - i.a0).abs() <= GAP_EPS)
-                && tracks.iter().any(|t| (t.1 - i.a1).abs() <= GAP_EPS)
+            tracks.iter().any(|t| (t.0 - i.a0).abs() <= GAP_RULE_EPS)
+                && tracks.iter().any(|t| (t.1 - i.a1).abs() <= GAP_RULE_EPS)
         })
     };
     if let Some((ta, tb)) = abs
@@ -96,7 +100,15 @@ pub(crate) fn grid_runs(
         && on_lines(ta, items)
         && on_lines(tb, &flipped)
     {
-        return grid_runs_on(items, &flipped, ta.to_vec(), tb.to_vec(), rule, cross);
+        return grid_runs_on(
+            items,
+            &flipped,
+            ta.to_vec(),
+            tb.to_vec(),
+            rule,
+            cross,
+            reverse,
+        );
     }
     // Дорожки шаблона сильнее выведенных из коробок (css-gaps-1 §gap-grid;
     // Blink `BuildGridTrackGapData` строит геометрию из коллекции дорожек).
@@ -108,7 +120,7 @@ pub(crate) fn grid_runs(
     let tb = tpl_b
         .and_then(|t| template_tracks(t, gap_b, &flipped))
         .unwrap_or_else(|| tracks_a(&flipped, gap_b));
-    grid_runs_on(items, &flipped, ta, tb, rule, cross)
+    grid_runs_on(items, &flipped, ta, tb, rule, cross, reverse)
 }
 
 pub(super) fn grid_runs_on(
@@ -118,6 +130,7 @@ pub(super) fn grid_runs_on(
     tb: Vec<(f32, f32)>,
     rule: &GapAxisRule,
     cross: Option<&GapAxisRule>,
+    reverse: (bool, bool),
 ) -> Vec<GapRun> {
     let ga = gaps_of(&ta);
     let gb = gaps_of(&tb);
@@ -144,8 +157,9 @@ pub(super) fn grid_runs_on(
                 .iter()
                 .enumerate()
                 .map(|(j, &(lo, hi))| {
+                    let slot = RuleSlot::new(j, gb.len(), reverse.1);
                     let mut breaks = false;
-                    let mut joins = false;
+                    let mut joins = rule.visibility != 3;
                     for side in sides.iter().flatten() {
                         let blocked_here = flipped
                             .iter()
@@ -155,13 +169,12 @@ pub(super) fn grid_runs_on(
                         }
                         if let Some(c) = cross
                             && !blocked_here
-                            && c.styles.at(j, gb.len()).unwrap_or(false)
                             && occupied(flipped, lo, hi, side.0, side.1, c.visibility)
                         {
                             joins = true;
                         }
                     }
-                    let cross_w = cross.and_then(|c| c.widths.at(j, gb.len())).unwrap_or(0.0);
+                    let cross_w = cross.and_then(|c| slot.value(&c.widths)).unwrap_or(0.0);
                     Crossing {
                         lo,
                         hi,
@@ -181,9 +194,12 @@ pub(super) fn grid_runs_on(
                 hidden,
                 start_edge: None,
                 end_edge: None,
-                index: k,
+                index: RuleSlot::new(k, n, reverse.0).index,
                 count: n,
             }
         })
         .collect()
 }
+
+#[cfg(test)]
+mod junction_tests;

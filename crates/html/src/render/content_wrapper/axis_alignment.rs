@@ -3,7 +3,7 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
 pub(super) fn fills_width(style: &Computed) -> bool {
-    style.vertical != Some(true)
+    !style.wm().vertical()
         && style.inline_display != Some(true)
         && style.float.unwrap_or(0) == 0
         && matches!(style.width, None | Some(Len::Auto))

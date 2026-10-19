@@ -150,3 +150,6 @@ optional = true
 
 [dev-dependencies.once_cell]
 version = "1.21"
+
+[dependencies.url]
+version = "2"

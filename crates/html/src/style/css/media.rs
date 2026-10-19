@@ -1,7 +1,13 @@
-//! Медиазапросы: Media, сравнения диапазонов, PRINT_MEDIA.
+//! Медиазапросы: Media (носитель задаёт документ), сравнения диапазонов.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 
+mod calc;
+mod comparison;
+pub(crate) use comparison::MqCmp;
+mod custom;
+pub(crate) use custom::custom_media_of;
 mod features;
 mod query;
 use features::{mq_and, mq_base, mq_or};
@@ -21,18 +27,18 @@ pub struct Media {
     pub print: bool,
 }
 
-/// Носитель по умолчанию — печать? Ставит стенд для `*-print`-тестов;
-/// приложение всегда экран.
-pub static PRINT_MEDIA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 impl Default for Media {
     fn default() -> Self {
-        let print = PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed);
-        // Печатный носитель меряется ЛИСТОМ, а не окном (mediaqueries-4
-        // §width: «For paged media, this is the width of the page box»).
-        // Лист WPT по умолчанию — 5in x 3in = 480x288, и `@page { size }`
-        // запрос не меняет (csswg#5437; `media-queries-001-print`: запрос
-        // 4in..5in x 2in..3in при `@page { size: 10in }` обязан сработать).
+        Media::for_medium(false)
+    }
+}
+
+impl Media {
+    /// Экран или печать (`Document::new_media`; печать — `*-print`-тесты).
+    pub fn for_medium(print: bool) -> Self {
+        // Печать меряется ЛИСТОМ (mediaqueries-4 §width: «the width of the page
+        // box»): лист WPT 5in x 3in = 480x288, `@page { size }` запрос не меняет
+        // (csswg#5437; `media-queries-001-print` при `size: 10in`).
         let (width, height) = if print {
             (480.0, 288.0)
         } else {
@@ -43,40 +49,6 @@ impl Default for Media {
             height,
             dark: true,
             print,
-        }
-    }
-}
-
-/// Сравнение в диапазонной записи медиа-фичи (mediaqueries-5 §3.3).
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum MqCmp {
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    Eq,
-}
-
-impl MqCmp {
-    /// Перевернуть на другую сторону: в `(100px < width)` фича СПРАВА, и
-    /// отношение к ней обратное.
-    pub(crate) fn flip(self) -> Self {
-        match self {
-            MqCmp::Lt => MqCmp::Gt,
-            MqCmp::Le => MqCmp::Ge,
-            MqCmp::Gt => MqCmp::Lt,
-            MqCmp::Ge => MqCmp::Le,
-            MqCmp::Eq => MqCmp::Eq,
-        }
-    }
-
-    pub(crate) fn holds(self, a: f32, b: f32) -> bool {
-        match self {
-            MqCmp::Lt => a < b,
-            MqCmp::Le => a <= b,
-            MqCmp::Gt => a > b,
-            MqCmp::Ge => a >= b,
-            MqCmp::Eq => a == b,
         }
     }
 }
@@ -113,15 +85,16 @@ fn take_parens(s: &str) -> Option<(&str, &str)> {
 /// вырожденном `0/0` деление даёт NaN, и Blink считает крест, см.
 /// `media_query_evaluator.cc::CompareAspectRatioValue`). Так `0/0`
 /// сравнивается как `0 >= 0`, то есть истинно (`aspect-ratio-003`).
-fn mq_operand(raw: &str) -> Option<(f32, f32)> {
+fn mq_operand(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     let s = raw.trim();
     // `calc(a / b)` — отношение внутри calc (`mq-calc-008`).
     let body = s
         .strip_prefix("calc(")
         .and_then(|r| r.strip_suffix(')'))
+        .filter(|b| balanced(b))
         .unwrap_or(s);
-    if let Some((a, b)) = body.split_once('/')
-        && let (Some(a), Some(b)) = (mq_scalar(a), mq_scalar(b))
+    if let Some((a, b)) = split_top_slash(body)
+        && let (Some(a), Some(b)) = (mq_scalar(a, vcx), mq_scalar(b, vcx))
     {
         // Вырожденное отношение с НУЛЕВЫМ знаменателем — бесконечность.
         // `0/0` спека обращает в `1/0` (css-values-4 §7.2 «degenerate
@@ -133,12 +106,17 @@ fn mq_operand(raw: &str) -> Option<(f32, f32)> {
         }
         return Some((a, b));
     }
-    mq_scalar(s).map(|v| (v, 1.0))
+    mq_scalar(s, vcx).map(|v| (v, 1.0))
 }
 
 /// Скаляр: длина в точках, разрешение в dppx или голое число.
-fn mq_scalar(raw: &str) -> Option<f32> {
+fn mq_scalar(raw: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let s = raw.trim();
+    // `calc()`/`sign()`/… — значение признака может быть любым выражением
+    // (mediaqueries-4 §1.3, `mq-calc-sign-function-*`, `mq-calc-resolution`).
+    if let Some((v, _)) = calc::eval(s) {
+        return Some(v);
+    }
     // Разрешение: `dppx` и его короткая запись `x`. Проверять надо ИМЕННО
     // через разбор остатка: `0px` тоже кончается на `x`, и жадное отрезание
     // давало «0p», разбор которого проваливался, а ранний возврат гасил всю
@@ -150,13 +128,19 @@ fn mq_scalar(raw: &str) -> Option<f32> {
     {
         return Some(v);
     }
+    // Разрешение внутри выражения (`calc(-1dppx * sign(…))`): `dppx` —
+    // каноническая единица <resolution>, арифметика над ней та же, что над
+    // числом (css-values-4 §7.4).
+    if s.contains('(') && s.contains("dppx") {
+        return crate::style::values::value::number(&s.replace("dppx", ""), vcx);
+    }
     if let Some(n) = s.strip_suffix("dpi") {
         return n.trim().parse::<f32>().ok().map(|v| v / 96.0);
     }
     if let Some(n) = s.strip_suffix("dpcm") {
         return n.trim().parse::<f32>().ok().map(|v| v * 2.54 / 96.0);
     }
-    match crate::style::values::value::Len::parse(s) {
+    match crate::style::values::value::Len::parse(s, vcx) {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         Some(crate::style::values::value::Len::Em(k)) => Some(k * 16.0),
         // Единицы шрифта в медиа-запросе берутся от НАЧАЛЬНОГО шрифта, а не
@@ -169,7 +153,7 @@ fn mq_scalar(raw: &str) -> Option<f32> {
             Some(k * crate::text::metrics::ch_ex_px("", 16.0).0)
         }
         Some(crate::style::values::value::Len::Calc(id)) => {
-            let sum = crate::style::values::value::calc_get(id);
+            let sum = crate::style::values::value::calc_get(id, vcx);
             let rest = crate::style::values::value::Sum {
                 px: 0.0,
                 em: 0.0,
@@ -181,34 +165,30 @@ fn mq_scalar(raw: &str) -> Option<f32> {
                 None
             }
         }
-        _ => s.parse::<f32>().ok(),
+        // Число, в том числе `calc(2 * sign(…))` (css-values-4 §10).
+        _ => crate::style::values::value::number(s, vcx),
     }
 }
 
-impl Media {
-    /// Выполняется ли условие `@media` — mediaqueries-5 §3 «Media Queries»
-    /// и §3.1 «Error Handling».
-    ///
-    /// Логика ТРЁХЗНАЧНАЯ. Нераспознанная скобка — это `<general-enclosed>`,
-    /// и её значение «неизвестно», а не «ложь»: `not (unknown)` обязано
-    /// остаться «неизвестно» (то есть на верхнем уровне ложью), тогда как
-    /// прежний двухзначный разбор переворачивал ложь в истину и применял
-    /// правило (`at-media-002`, `negation-001`, `mq-gamut-003`).
-    pub fn matches(&self, query: &str) -> bool {
-        let q = query.trim();
-        let q = q.strip_prefix("@media").unwrap_or(q).trim();
-        // Пустой список запросов равен `all` (mediaqueries-5 §2.1:
-        // «An empty media query list evaluates to true»): пробел после
-        // `@media` необязателен, и `@media{ ... }` обязано примениться
-        // (`at-media-whitespace-optional-001/002`).
-        if q.is_empty() {
-            return true;
+/// Скобки сбалансированы: `a) / calc(b` — это не тело одного `calc()`.
+fn balanced(s: &str) -> bool {
+    let mut depth = 0i32;
+    s.bytes().all(|c| {
+        depth += i32::from(c == b'(') - i32::from(c == b')');
+        depth >= 0
+    }) && depth == 0
+}
+
+/// `a / b` по косой ВНЕ скобок: `calc(x / y) / calc(z)` делится на две части.
+fn split_top_slash(s: &str) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+    for (i, c) in s.bytes().enumerate() {
+        match c {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b'/' if depth == 0 => return Some((&s[..i], &s[i + 1..])),
+            _ => {}
         }
-        // Список запросов через запятую — «или». Негодный запрос НЕ валит
-        // список целиком (§3.1: он заменяется на `not all`), поэтому каждая
-        // часть считается сама по себе.
-        split_top_level(q, ',')
-            .into_iter()
-            .any(|alt| self.mq_query(alt) == SupTri::True)
     }
+    None
 }

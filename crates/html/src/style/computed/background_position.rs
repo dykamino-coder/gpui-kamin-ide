@@ -1,13 +1,14 @@
 //! Resolve background position comparisons against concrete image free space.
 
+use crate::document::state::ValueCx;
 mod expressions;
 use super::{Computed, parse_pos_words};
 use crate::style::values::value::Len;
-use expressions::{capture, math, resolve};
+use expressions::{capture, math, resolve_position_math};
 
 impl Computed {
-    pub(crate) fn set_background_position(&mut self, raw: &str) {
-        self.bg_position_math = capture(raw);
+    pub(crate) fn set_background_position(&mut self, raw: &str, vcx: ValueCx<'_>) {
+        self.bg_position_math = capture(raw, vcx);
         // A valid mixed comparison cannot yet become a linear Len. Keep a
         // placeholder for axis/edge classification; its used value comes from
         // the retained expression, so the other axis still parses correctly.
@@ -18,18 +19,21 @@ impl Computed {
         let words: Vec<String> = super::split_outside_parens(first)
             .into_iter()
             .map(|v| {
-                if Len::parse_mixed(&v).is_none() && math(&v).is_some() {
+                if Len::parse_mixed(&v, vcx).is_none() && math(&v, vcx).is_some() {
                     "0px".into()
                 } else {
                     v
                 }
             })
             .collect();
-        self.bg_pos = parse_pos_words(&words.join(" "));
+        self.bg_pos = parse_pos_words(&words.join(" "), vcx);
+        if self.bg_pos.x.is_some() || self.bg_pos.y.is_some() {
+            self.accept_declaration();
+        }
     }
 
-    pub(crate) fn background_position_length(raw: &str) -> bool {
-        Len::parse_mixed(raw).is_some() || math(raw).is_some()
+    pub(crate) fn background_position_length(raw: &str, vcx: ValueCx<'_>) -> bool {
+        Len::parse_mixed(raw, vcx).is_some() || math(raw, vcx).is_some()
     }
 
     pub(crate) fn set_background_position_axis(
@@ -37,9 +41,11 @@ impl Computed {
         axis: usize,
         raw: &str,
         value: Option<Len>,
+        vcx: ValueCx<'_>,
     ) {
-        let expression = math(raw);
+        let expression = math(raw, vcx);
         if value.is_some() || expression.is_some() {
+            self.accept_declaration();
             let value = value.or_else(|| expression.as_ref().map(|_| Len::Px(0.0)));
             if axis == 0 {
                 self.bg_pos.x = value.or(self.bg_pos.x);
@@ -57,6 +63,7 @@ impl Computed {
         &self,
         fallback: (f32, f32),
         free: (f32, f32),
+        vcx: ValueCx<'_>,
     ) -> (f32, f32) {
         if self.bg_position_math.iter().all(Option::is_none) {
             return fallback;
@@ -84,12 +91,12 @@ impl Computed {
                 let raw = super::resolve::image_lengths::lengths(
                     raw,
                     font,
-                    crate::style::values::value::root_font_px(),
+                    crate::style::values::value::root_font_px(vcx),
                     ex,
                     ch,
                     line,
                 );
-                if let Some(value) = resolve(&raw, [free.0, free.1][i]) {
+                if let Some(value) = resolve_position_math(&raw, [free.0, free.1][i], vcx) {
                     used[i] = value;
                 }
             }
@@ -103,42 +110,46 @@ mod tests {
     use super::*;
     #[test]
     fn negative_free_space_changes_comparison_order_and_axis_overrides() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.set_background_position("min(0%, 100%) max(0%, 100%)");
+        c.set_background_position("min(0%, 100%) max(0%, 100%)", vcx);
         assert_eq!(
-            c.background_position_used((123.0, 123.0), (-50.0, -50.0)),
+            c.background_position_used((123.0, 123.0), (-50.0, -50.0), vcx),
             (-50.0, 0.0)
         );
         assert_eq!(
-            c.background_position_used((123.0, 123.0), (50.0, 50.0)),
+            c.background_position_used((123.0, 123.0), (50.0, 50.0), vcx),
             (0.0, 50.0)
         );
-        c.set_background_position_axis(0, "5px", Some(Len::Px(5.0)));
+        c.set_background_position_axis(0, "5px", Some(Len::Px(5.0)), vcx);
         assert_eq!(
-            c.background_position_used((5.0, 123.0), (-50.0, -50.0)),
+            c.background_position_used((5.0, 123.0), (-50.0, -50.0), vcx),
             (5.0, 0.0)
         );
-        c.set_background_position("right min(100%, 10px) bottom max(100%, 10px)");
+        c.set_background_position("right min(100%, 10px) bottom max(100%, 10px)", vcx);
         assert_eq!(
-            c.background_position_used((0.0, 0.0), (-50.0, -50.0)),
+            c.background_position_used((0.0, 0.0), (-50.0, -50.0), vcx),
             (0.0, -60.0)
         );
     }
 
     #[test]
     fn computed_relative_lengths_survive_a_different_inherited_font() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut parent = Computed {
             font_size: Some(Len::Px(20.0)),
             line_height: Some(Len::Pct(2.0)),
             ..Computed::default()
         };
-        parent.set_background_position("min(100%, 1em) max(100%, 1lh)");
-        parent.resolve_image_lengths();
+        parent.set_background_position("min(100%, 1em) max(100%, 1lh)", vcx);
+        parent.resolve_image_lengths(vcx);
         let mut child = parent.clone();
         child.font_size = Some(Len::Px(80.0));
         child.line_height = Some(Len::Px(200.0));
         assert_eq!(
-            child.background_position_used((0.0, 0.0), (50.0, 50.0)),
+            child.background_position_used((0.0, 0.0), (50.0, 50.0), vcx),
             (20.0, 50.0)
         );
     }

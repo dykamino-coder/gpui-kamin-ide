@@ -8,31 +8,7 @@ use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-/// Stacking contexts isolate descendant paint order (CSS2 Appendix E).
-pub(crate) fn stacking_context(c: &Computed) -> bool {
-    // CSS Will Change §2.1; CSS Containment 2 §§3.2/3.3 also create contexts.
-    c.will_change & crate::style::computed::wc::STACK != 0
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
-        || c.transform.is_some()
-        // css-transforms-2 §transform-style-property: `preserve-3d` establishes
-        // a stacking context (`transform-style-stacking-context`).
-        || c.preserve_3d == Some(true)
-        || c.translate.is_some()
-        || c.opacity.is_some_and(|o| o < 1.0)
-        // Compositing 1 §mix-blend-mode: non-normal blending creates a context.
-        || c.blend.is_some_and(|b| b != 0)
-        || c.isolate == Some(true)
-        || c.filter.is_some()
-        || (c.z_index.is_some()
-            && matches!(
-                c.position,
-                Some(crate::style::computed::Position::Relative)
-                    | Some(crate::style::computed::Position::Absolute)
-                    | Some(crate::style::computed::Position::Fixed)
-                    | Some(crate::style::computed::Position::Sticky)
-            ))
-}
+pub(crate) use crate::style::computed::stacking::{nested_context, stacking_context};
 
 /// Есть ли в поддереве смешивание (`mix-blend-mode` ≠ normal).
 ///
@@ -94,6 +70,7 @@ pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
         || c.preserve_3d == Some(true)
         || c.contain_layout == Some(true)
         || c.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(c)
         || c.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 
@@ -155,14 +132,14 @@ pub(crate) fn layered(
                 cell: cell.clone(),
                 child: el,
             };
-            let deferred = gpui::deferred(inner)
+            let deferred = gpui::deferred(crate::hooks::IntoHooked::into_hooked(inner))
                 .with_priority(z as usize)
                 .into_any_element();
-            crate::paint::effects::mask::element::MaskKeep {
+            let keep = crate::paint::effects::mask::element::MaskKeep {
                 cell,
                 child: deferred,
-            }
-            .into_any_element()
+            };
+            crate::hooks::IntoHooked::hooked(keep)
         }
         // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
         // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло

@@ -1,10 +1,14 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
 use crate::layout::positioned::static_position::at_static_position;
 use crate::render::{is_blank, real_inline};
-use crate::style::values::value::Len;
+use crate::style::cascade::inherit::inherit_unpainted;
+use crate::style::computed::Computed;
+use crate::style::values::value::{Len, px_strict};
 
 /// Абсолют с краями по ОБЕИМ осям внутри НЕпозиционированного строчного —
 /// наружу, соседом этого строчного на блочном уровне. Его содержащий блок —
@@ -18,7 +22,7 @@ use crate::style::values::value::Len;
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -37,39 +41,27 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
     // содержащего блока иначе (трансформ, `contain`, фильтр — css-transforms-1
     // §3, css-contain-2 §3.2).
     fn passable(e: &Element) -> bool {
-        // И без своих НАСЛЕДУЕМЫХ свойств: вынесенный абсолют наследовал бы уже
-        // от блока, мимо строчного (`contain-layout-004/005`: `::after` с
-        // кеглем Ahem 100px от `rtc` выходил мелким, красное видно).
-        let s = &e.style;
-        let own_inherited = s.font_size.is_some()
-            || s.font_family.is_some()
-            || s.font_weight.is_some()
-            || s.italic.is_some()
-            || s.line_height.is_some()
-            || s.color.is_some()
-            || s.letter_spacing.is_some()
-            || s.word_spacing.is_some()
-            || s.text_transform.is_some()
-            || s.hidden.is_some()
-            || s.rtl.is_some()
-            || s.vertical.is_some()
-            || s.nowrap.is_some()
-            || s.keep_spaces.is_some();
-        !own_inherited
-            && real_inline(e)
+        real_inline(e)
             && e.style.position.is_none()
             && e.style.transform.is_none()
             && e.style.contain_layout != Some(true)
             && e.style.contain_paint != Some(true)
             && !crate::text::inline::establishes_cb(&e.style)
     }
-    fn take(e: &mut Element, out: &mut Vec<Node>) {
+    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed, vcx: ValueCx<'_>) {
+        let parent = inherit_unpainted(inherited, &e.style, vcx);
         let kids = std::mem::take(&mut e.children);
         for n in kids {
             match n {
-                Node::Element(k) if movable(&k) => out.push(Node::Element(k)),
+                Node::Element(mut k) if movable(&k) => {
+                    // Hoisting changes the layout parent, never the CSS
+                    // inheritance parent (CSS Cascade 4 §7). Resolve inherited
+                    // values before passing through the inline ancestor.
+                    k.style = inherit_unpainted(&parent, &k.style, vcx).into();
+                    out.push(Node::Element(k));
+                }
                 Node::Element(mut k) if passable(&k) => {
-                    take(&mut k, out);
+                    take(&mut k, out, &parent, vcx);
                     e.children.push(Node::Element(k));
                 }
                 other => e.children.push(other),
@@ -94,7 +86,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node]) -> Vec<Node> {
             Node::Element(e) if passable(e) && has(e) => {
                 let mut e = e.clone();
                 let mut moved = Vec::new();
-                take(&mut e, &mut moved);
+                take(&mut e, &mut moved, inherited, vcx);
                 out.push(Node::Element(e));
                 out.extend(moved);
             }
@@ -120,10 +112,7 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
     if e.style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
-    let basis = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let basis = px_strict;
     let (bw, bh) = parent.map_or((None, None), |p| {
         (basis(p.style.width), basis(p.style.height))
     });

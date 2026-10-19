@@ -1,17 +1,17 @@
 //! Computed::apply_transform, хвост цепочки: rotate/scale, transform-origin, backface-visibility, perspective*, transform-style, transform-box, vector-effect. Ветви в исходном порядке после ветвей offset-* и transform.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 mod perspective;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_transform_individual(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
@@ -57,6 +57,9 @@ impl Computed {
                         .parse::<f32>()
                         .is_ok();
                 self.rotate_prop = angle_only.then_some(t.rotate_rad);
+                if angle_only || v == "none" {
+                    self.accept_declaration();
+                }
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();
@@ -69,6 +72,9 @@ impl Computed {
                     })
                     .collect();
                 let x = nums.first().copied().unwrap_or(1.0);
+                if !nums.is_empty() || v == "none" {
+                    self.accept_declaration();
+                }
                 t.scale = (x, nums.get(1).copied().unwrap_or(x));
                 self.transform = Some(t);
                 // …и отдельным полем для матрицы отрисовки (css-transforms-2
@@ -95,19 +101,19 @@ impl Computed {
                         "left" | "top" => 0.0,
                         "center" => 0.5,
                         "right" | "bottom" => 1.0,
-                        other => match Len::parse(other) {
+                        other => match Len::parse(other, vcx) {
                             Some(Len::Pct(p)) => p,
                             // Точки заданы — доля НОЛЬ, а не центр: отрисовка
                             // складывает долю с точками (css-transforms-1 §5.2).
                             Some(Len::Px(_)) => 0.0,
-                            _ => pct_px_pair(other).map_or(default, |(p, _)| p),
+                            _ => pct_px_pair(other, vcx).map_or(default, |(p, _)| p),
                         },
                     }
                 };
                 let px_axis = |t: &str| -> Option<f32> {
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) => Some(v),
-                        _ => pct_px_pair(t).map(|(_, x)| x),
+                        _ => pct_px_pair(t, vcx).map(|(_, x)| x),
                     }
                 };
                 // Ключевые слова несут СВОЮ ось (css-transforms-1 §5.2):
@@ -129,14 +135,15 @@ impl Computed {
                 let first = xs.or_else(|| free.next()).unwrap_or("center");
                 let second = ys.or_else(|| free.next()).unwrap_or("center");
                 self.transform_origin_px = (px_axis(first), px_axis(second));
-                self.transform_origin = Some((axis(first, 0.5), axis(second, 0.5)));
+                self.transform_origin =
+                    accept_parsed!(self, Some((axis(first, 0.5), axis(second, 0.5))));
                 // Третье значение — только <length>, z точки отсчёта
                 // (css-transforms-2 §transform-origin); видна лишь объёмному
                 // пути (transform3d-translate3d-001: `0 0 0` против эталона
                 // `10px 30px -10px`).
                 self.transform_origin_z = free.next().and_then(px_axis);
             }
-            _ => self.apply_transform_perspective(key, val, v, hit),
+            _ => self.apply_transform_perspective(key, v, hit, vcx),
         }
     }
 }

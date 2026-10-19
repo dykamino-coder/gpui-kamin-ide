@@ -2,13 +2,14 @@
 // owner: A
 
 use crate::dom::Node;
+use crate::hooks::IntoHooked;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::inline_display;
+use crate::layout::fragment::types::StackAxis;
 use crate::layout::page::names::{
     PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers,
 };
 use crate::layout::page::{page_boxes, page_counters};
-use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
 use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::computed::Display;
@@ -19,24 +20,14 @@ mod root;
 use root::{Run, group_runs, resolve_root_page};
 mod overflow;
 pub(crate) use overflow::visible_overflow;
+use root::root_axis;
 
 /// Копий ребёнка в стопке страниц — потолок числа страниц, на которые может
 /// растянуться один блок верхнего уровня (в `css-page` не больше шести).
 const PAGE_COPIES: usize = 12;
 
-thread_local! {
-    /// Строится стопка страниц. Абсолют корня БЕЗ заданных сторон тоже уходит
-    /// в слой ICB: на месте он остаётся внутри обёртки кида и режется маской
-    /// её фрагмента (`monolithic-overflow-013`: четыре пустых листа). Экрану
-    /// это не нужно — там статическая позиция и есть место в потоке.
-    pub(crate) static PAGED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// Слой `position: fixed` текущей сборки кида — по копии на лист без
-    /// сдвига (`flow::PageStack::fixed`). В слой ICB ему нельзя: тот
-    /// поднимается на `p` page area и показывает фиксированный только на
-    /// первом листе (`fixedpos-007..009`).
-    pub(crate) static FIXED_LAYER: std::cell::RefCell<Vec<AnyElement>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-}
+mod build;
+pub(crate) use build::PagedBuild;
 
 /// Постраничная отрисовка (css-page-3): блоки верхнего уровня документа —
 /// дети стопки страниц, page area каждой страницы — фрагментаинер.
@@ -63,33 +54,36 @@ pub fn render_paged_select(
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
     let mut none = false;
     let mut canvas: Option<gpui::Hsla> = None;
+    let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize();
-    IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    collect_mask_defs(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
     resolve_root_page(
         &mut none,
         &mut canvas,
+        &mut canvas_img,
         &mut root,
         &mut nodes,
         &mut left,
         &mut right,
         &mut top,
         &mut root_page,
+        vcx,
     );
     fill_used_page(&mut nodes, &root_page);
     // Обёртка в ином режиме письма — ортогональный поток, монолит (css-break-3
     // §4.1): снимать её нельзя, и у вертикального корня обёртки не снимаются.
-    if root.vertical != Some(true) {
-        hoist_named_wrappers(&mut nodes);
+    if !root.wm().vertical() {
+        hoist_named_wrappers(&mut nodes, vcx);
     }
     let geom_for: crate::layout::page::page_stack::PageGeomFn =
         std::rc::Rc::new(move |i, name: &str| {
@@ -109,6 +103,7 @@ pub fn render_paged_select(
     // `resolve_viewport` работает на копии внутри `element()`).
     let shape_cx = ShapeCx {
         paged: true,
+        legacy_oof: false,
         viewport: Some(opts.viewport),
         cell_pad: None,
         unclamped: false,
@@ -121,7 +116,13 @@ pub fn render_paged_select(
     let mut kids: Vec<crate::layout::page::page_stack::PageKid> = Vec::new();
     let prev_end: Option<String> = None;
     let first = true;
-    PAGED.with(|p| p.set(true));
+    // Сборка детей стопки страниц (`FragCx::paged`) — до конца этой функции.
+    let paged = PagedBuild::begin();
+    let paged_opts = {
+        let mut o = opts.clone();
+        o.frag.paged = Some(paged.clone());
+        o
+    };
     // Слой — коробка размером с page area: `layout_as_root` кладёт корень в
     // `(0, 0)` (taffy `compute_root_layout`, `location: Point::ZERO`), и
     // `top`/`bottom` абсолюта без обёртки пропадали (эталоны `fixedpos-*`:
@@ -190,7 +191,7 @@ pub fn render_paged_select(
         }
     }
     page_kids_from_groups(
-        opts,
+        &paged_opts,
         &root,
         left,
         right,
@@ -207,8 +208,9 @@ pub fn render_paged_select(
         layer,
         floated,
         groups,
+        root_axis(&root).map(|a| a == StackAxis::VerticalRl),
     );
-    PAGED.with(|p| p.set(false));
+    paged.end();
     // Марджин-боксы: наследуют от контекста страницы, а тот — от корня
     // (css-page-3 §page-properties; Blink `StyleForPage` от documentElement).
     let margin_for =
@@ -222,5 +224,11 @@ pub fn render_paged_select(
         margin_for,
     )
     .with_select(select)
-    .into_any_element()
+    .with_axis(root_axis(&root).unwrap_or(StackAxis::Horizontal))
+    .with_canvas_layer(
+        canvas_img
+            .filter(|_| !none)
+            .map(|l| crate::layout::page::page_stack::canvas_builder(l, root, opts.clone())),
+    )
+    .hooked()
 }

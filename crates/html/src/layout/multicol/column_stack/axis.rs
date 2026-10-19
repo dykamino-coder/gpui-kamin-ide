@@ -43,13 +43,10 @@ impl ColumnStack {
                 full_h,
             );
             let kid = &mut self.children[f.kid];
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             // Строчный размер блока `auto` — во всю колонку (CSS 2.1 §10.3.3
             // в логических осях; css-writing-modes-4 §7.3): у вертикальной
@@ -200,13 +197,10 @@ impl ColumnStack {
                 window.scale_factor(),
             );
             let kid = &mut self.children[f.kid];
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             if split {
                 window.with_content_mask(Some(mask), |window| el.paint(window, cx));

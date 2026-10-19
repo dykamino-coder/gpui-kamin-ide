@@ -1,5 +1,6 @@
 //! Resolve proven block heights and height-constrained margin separation.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
 use crate::render::{in_flow, inline_level_box, out_of_flow, own_context, replaced_inline};
@@ -142,7 +143,7 @@ pub(super) fn raises(e: &Element) -> bool {
 /// CSS 2.1 §10.6.3 ignores floats in ordinary blocks' auto content height.
 /// Borders and padding stop margin collapse but do not make floats in-flow.
 /// Prove only zero-height block content; unknown line boxes stay on layout.
-fn zero_inflow(e: &Element, inherited: &Computed) -> bool {
+fn zero_inflow(e: &Element, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
     if !in_flow(&e.style)
         || own_context(e)
         || inline_level_box(e)
@@ -157,11 +158,11 @@ fn zero_inflow(e: &Element, inherited: &Computed) -> bool {
     {
         return false;
     }
-    let merged = inherit(inherited, &e.style);
-    merged.vertical != Some(true) && e.children.iter().all(|node| zero_child(node, &merged))
+    let merged = inherit(inherited, &e.style, vcx);
+    !merged.wm().vertical() && e.children.iter().all(|node| zero_child(node, &merged, vcx))
 }
 
-fn zero_child(node: &Node, inherited: &Computed) -> bool {
+fn zero_child(node: &Node, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
     let e = match node {
         Node::Text(text) => {
             return blank_text(text)
@@ -179,8 +180,8 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
         return true;
     }
     let b = e.style.borders();
-    let merged = inherit(inherited, &e.style);
-    merged.vertical != Some(true)
+    let merged = inherit(inherited, &e.style, vcx);
+    !merged.wm().vertical()
         && !inline_level_box(e)
         && matches!(e.style.display, None | Some(Display::Block))
         && e.list_item.is_none()
@@ -201,11 +202,11 @@ fn zero_child(node: &Node, inherited: &Computed) -> bool {
         .all(zero_len)
         && e.style.keep_spaces != Some(true)
         && e.style.preserve_newlines != Some(true)
-        && e.children.iter().all(|node| zero_child(node, &merged))
+        && e.children.iter().all(|node| zero_child(node, &merged, vcx))
 }
 
 /// Apply the zero-content proof with the real parent's inherited white-space.
-pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
+pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed, vcx: ValueCx<'_>) {
     if matches!(
         inherited.position,
         Some(crate::style::computed::Position::Absolute)
@@ -221,8 +222,8 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
         });
         // Our float host carries floats to later boxes and to the formatting
         // root only through this block's height (see `dom::float_tail`).
-        if has_float && e.style.float_tail && zero_inflow(e, inherited) {
-            e.attrs.push(("auto-zero-height".into(), "1".into()));
+        if has_float && e.style.float_tail && zero_inflow(e, inherited, vcx) {
+            e.marks.auto_zero_height = true;
         }
     }
 }
@@ -230,8 +231,8 @@ pub(crate) fn zero_float_blocks(nodes: &mut [Node], inherited: &Computed) {
 /// Keep the computed height auto: percentages still need an indefinite basis
 /// (CSS 2.1 §10.5). Only the native box receives the proven used height.
 pub(crate) fn used_style(e: &Element, style: &Computed) -> Option<Computed> {
-    if e.attr("auto-zero-height") != Some("1")
-        || style.vertical == Some(true)
+    if !e.marks.auto_zero_height
+        || style.wm().vertical()
         || !matches!(style.height, None | Some(Len::Auto))
     {
         return None;

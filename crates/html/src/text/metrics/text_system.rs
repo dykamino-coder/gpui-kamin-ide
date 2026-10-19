@@ -16,13 +16,32 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
         let system = cell.borrow();
         if let Some(system) = system.as_ref() {
             let id = system.resolve_font(font);
-            (
-                f32::from(system.ascent(id, gpui::px(size))),
-                f32::from(system.descent(id, gpui::px(size))).abs(),
+            crate::text::fonts::metric_overrides::extents(
+                font,
+                size,
+                (
+                    f32::from(system.ascent(id, gpui::px(size))),
+                    f32::from(system.descent(id, gpui::px(size))).abs(),
+                ),
             )
         } else {
             let (ascent, descent, _) = super::vmetrics_px(&font.family, size);
             (ascent, descent)
+        }
+    })
+}
+
+/// MathML fallback constants use the math face's x-height and rule thickness.
+pub(crate) fn math_metrics(font: &gpui::Font, size: f32) -> (f32, f32) {
+    FONT_SYSTEM.with(|cell| {
+        if let Some(system) = cell.borrow().as_ref() {
+            let id = system.resolve_font(font);
+            (
+                f32::from(system.x_height(id, gpui::px(size))),
+                f32::from(system.underline_thickness(id, gpui::px(size))),
+            )
+        } else {
+            (size / 2.0, 0.0)
         }
     })
 }
@@ -91,8 +110,9 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
         // шрифта: подъём плюс спуск (и зазор строк, если он есть). У Ahem она
         // ровно кегль, у текстовых шрифтов около 1.15–1.3 — из-за постоянной
         // 1.31 соседние коробки одной страницы расходились по высоте строк.
-        let line =
-            f32::from(text_system.ascent(id, size)) - f32::from(text_system.descent(id, size));
+        let line = f32::from(text_system.ascent(id, size))
+            - f32::from(text_system.descent(id, size))
+            + f32::from(text_system.line_gap(id, size));
         // `ic` — продвижение знака `水`. Шрифт без него отдаёт запасной глиф,
         // и такой замер отбрасывается в пользу целого кегля.
         // A font without `水` must not answer with its .notdef advance

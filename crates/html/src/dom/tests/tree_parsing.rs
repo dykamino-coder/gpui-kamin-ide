@@ -2,6 +2,19 @@
 
 use super::*;
 
+#[test]
+fn generated_content_inherits_through_ordinary_elements() {
+    let html = r#"<style>
+        section { content: 'PASS'; }
+        div { content: inherit; }
+        div::after { content: inherit; }
+        span::after { content: inherit; }
+        i::after { content: 'own'; content: inherit; content: none; }
+        b::after { content: inherit; content: 'override'; }
+        </style><section><div></div><span></span><i></i><b></b></section>"#;
+    assert_eq!(pseudo_texts(html), ["PASS", "override"]);
+}
+
 /// Цвета детей по порядку — короткая запись для проверок каскада.
 pub(super) fn child_colors(html: &str) -> Vec<Option<crate::style::values::value::Color>> {
     fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
@@ -69,8 +82,10 @@ pub(super) fn list_item_counter_is_implicit() {
 
 #[test]
 pub(super) fn has_relational_pseudo() {
-    let red = crate::style::values::value::Color::parse("red");
-    let green = crate::style::values::value::Color::parse("green");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
+    let green = crate::style::values::value::Color::parse("green", vcx);
     // Предметная позиция: якорь с потомком-предметом.
     let colors = child_colors(
         "<style>div { color: red } div:has(span) { color: green }</style>             <div id=\"box\"><div><span></span></div><div><b></b></div></div>",
@@ -94,8 +109,10 @@ pub(super) fn has_relational_pseudo() {
 
 #[test]
 pub(super) fn nth_child_of_selector_list() {
-    let red = crate::style::values::value::Color::parse("red");
-    let green = crate::style::values::value::Color::parse("green");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
+    let green = crate::style::values::value::Color::parse("green", vcx);
     // Индекс считается среди совпавших с S братьев, а не среди всех:
     // второй `.a` — это :nth-child(2 of .a), хотя среди детей он третий.
     let colors = child_colors(
@@ -111,8 +128,10 @@ pub(super) fn nth_child_of_selector_list() {
 
 #[test]
 pub(super) fn custom_properties_cascade_and_inherit() {
-    let red = crate::style::values::value::Color::parse("red");
-    let blue = crate::style::values::value::Color::parse("blue");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
+    let blue = crate::style::values::value::Color::parse("blue", vcx);
     // Переключение темы классом: у потомка внутри `.dark` своё значение
     // переменной, у остальных — корневое. Пока переменные собирались в
     // один плоский словарь на документ, последнее объявление красило ВЕСЬ
@@ -125,7 +144,9 @@ pub(super) fn custom_properties_cascade_and_inherit() {
 
 #[test]
 pub(super) fn nth_child_selects_by_position() {
-    let red = crate::style::values::value::Color::parse("red");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
         "<style>i:nth-child(2) { color: red }</style>\
              <div id=box><i></i><i></i><i></i></div>",
@@ -135,7 +156,9 @@ pub(super) fn nth_child_selects_by_position() {
 
 #[test]
 pub(super) fn nth_child_understands_an_plus_b() {
-    let red = crate::style::values::value::Color::parse("red");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
         "<style>i:nth-child(2n+1) { color: red }</style>\
              <div id=box><i></i><i></i><i></i><i></i></div>",
@@ -145,7 +168,9 @@ pub(super) fn nth_child_understands_an_plus_b() {
 
 #[test]
 pub(super) fn last_child_counts_from_the_end() {
-    let red = crate::style::values::value::Color::parse("red");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
     let colors = child_colors(
         "<style>i:last-child { color: red }</style>\
              <div id=box><i></i><i></i></div>",
@@ -155,7 +180,9 @@ pub(super) fn last_child_counts_from_the_end() {
 
 #[test]
 pub(super) fn of_type_counts_only_the_same_tag() {
-    let red = crate::style::values::value::Color::parse("red");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let red = crate::style::values::value::Color::parse("red", vcx);
     // Второй `<i>` — четвёртый ребёнок, но второй своего тега.
     let colors = child_colors(
         "<style>i:nth-of-type(2) { color: red }</style>\

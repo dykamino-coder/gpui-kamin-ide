@@ -10,7 +10,7 @@ pub(super) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node])
             .iter()
             .all(|n| is_blank(n) || matches!(n, Node::Element(e) if out_of_flow(&e.style)))
     {
-        host.attrs.push(("adjoining-start".into(), "1".into()));
+        host.marks.adjoining_start = true;
     }
 }
 

@@ -8,7 +8,7 @@ pub use crate::text::inline::runs::wrapped_row::as_wrapped_row;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Color, Len};
 use crate::text::inline::*;
-use gpui::{FontStyle, FontWeight, HighlightStyle, TextRun, TextStyle, UnderlineStyle};
+use gpui::{FontStyle, FontWeight, TextRun, TextStyle, UnderlineStyle};
 
 /// Можно ли собрать всё в один текстовый блок: одинаковый размер шрифта и ни
 /// одного не-текстового куска.
@@ -63,22 +63,25 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
 /// выходила 132 вместо 100, а глиф садился по полулидингу на 16 точек ниже
 /// (§10.8: лидинг тут ноль — содержимое равно `line-height`).
 pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32) -> f32 {
-    pieces.iter().fold(strut * fraction, |acc, p| match p {
-        Piece::Text { style, .. } => {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * em_base,
-                _ => strut,
-            };
-            let own = match style.line_height {
-                Some(Len::Px(v)) => v,
-                Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => size * fraction,
-            };
-            acc.max(own)
-        }
-        Piece::Atom(_) | Piece::Overlay(..) => acc,
-    })
+    pieces.iter().fold(
+        crate::text::metrics::normal_px(fraction, strut),
+        |acc, p| match p {
+            Piece::Text { style, .. } => {
+                let size = match style.font_size {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Em(k)) => k * em_base,
+                    _ => strut,
+                };
+                let own = match style.line_height {
+                    Some(Len::Px(v)) => v,
+                    Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
+                    _ => crate::text::metrics::normal_px(fraction, size),
+                };
+                acc.max(own)
+            }
+            Piece::Atom(_) | Piece::Overlay(..) => acc,
+        },
+    )
 }
 
 /// Один `StyledText` с прогонами — честный перенос по словам сквозь границы
@@ -122,7 +125,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_stretch(family, style.font_stretch)
+        font.family = crate::text::fonts::alias_for(family, style)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
@@ -151,7 +154,11 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
     let color = if style.hidden == Some(true) {
         gpui::hsla(0.0, 0.0, 0.0, 0.0)
     } else {
-        style.color.map(Color::to_hsla).unwrap_or(base.color)
+        style
+            .text_shadow_ink
+            .or(style.color)
+            .map(Color::to_hsla)
+            .unwrap_or(base.color)
     };
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).
@@ -186,6 +193,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
             .map(|(c, w)| (c.to_hsla(), w.map(gpui::px))),
         background_pad: style.inline_pad.unwrap_or_default().map(gpui::px),
         background_radius: gpui::px(style.inline_radius.unwrap_or(0.0)),
+        background_line_gap: true,
         underline: style.underline.unwrap_or(false).then(|| UnderlineStyle {
             thickness: gpui::px(1.),
             color: Some(color),
@@ -198,16 +206,5 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
                 thickness: gpui::px(1.),
                 color: Some(color),
             }),
-    }
-}
-
-/// Подсветка для куска текста — используется, когда прогоны накладываются на
-/// готовый текст (например, при подсветке кода).
-pub fn highlight_for(style: &Computed) -> HighlightStyle {
-    HighlightStyle {
-        color: style.color.map(Color::to_hsla),
-        font_weight: style.font_weight.map(|w| FontWeight(w as f32)),
-        font_style: style.italic.and_then(|i| i.then_some(FontStyle::Italic)),
-        ..Default::default()
     }
 }

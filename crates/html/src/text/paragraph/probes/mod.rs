@@ -4,14 +4,11 @@ mod baseline_probe;
 mod ruby_extents;
 pub(super) use crate::text::paragraph::probes::baseline_probe::BaselineProbe;
 pub(super) use crate::text::paragraph::probes::baseline_probe::LayoutTap;
+pub(crate) use crate::text::paragraph::probes::ruby_extents::RubyBaseOffer;
 pub use crate::text::paragraph::probes::ruby_extents::RubyExtents;
 pub use crate::text::paragraph::probes::ruby_extents::RubyOverhangInfo;
-pub use crate::text::paragraph::probes::ruby_extents::collect_ruby_extents;
 pub use crate::text::paragraph::probes::ruby_extents::ruby_base_with_overhang;
-pub use crate::text::paragraph::probes::ruby_extents::ruby_extent;
-pub(super) use crate::text::paragraph::probes::ruby_extents::take_ruby_base_sink;
 pub(crate) use ruby_extents::ruby_layer;
-pub(crate) use ruby_extents::without_ruby_base_sink;
 
 use gpui::{AnyElement, LayoutId};
 

@@ -140,11 +140,54 @@ export function isToolOnlyAssistantEntry(entry: JsonlEntryData): boolean {
   for (const b of content as ContentBlock[]) {
     if (b.type === 'tool_use') { hasTool = true; continue }
     if (b.type === 'text' && b.text && b.text.trim()) return false
-    // Thinking blocks are invisible in the current viewer — they don't add
-    // a visual line, so an entry "thinking + tool_use" still reads to the
-    // user as tool-only and should join the group.
+    // Thinking WITH text renders (ThinkingBlock, or prose for narration — see
+    // surfaceNarrationThinking), so it is not tool-only: folding it into a
+    // group hid the only copy of that text (INC-2026-0063). Empty thinking
+    // (signature only) adds no visual line and still joins the group.
+    if (b.type === 'thinking' && b.thinking && b.thinking.trim()) return false
   }
   return hasTool
+}
+
+/** CLI `thinkingDisplay: "updates"` marks thinking the TUI prints as visible
+ *  narration ("Building now, then fixing the header…") between tool calls.
+ *  The Bridge Console shows it as assistant speech, so the chat must too. */
+export function isNarrationThinkingEntry(entry: JsonlEntryData): boolean {
+  return entry.type === 'assistant' && entry.thinkingDisplay === 'updates'
+}
+
+/** Render-copy pass: in narration entries, non-empty thinking blocks become
+ *  prose `text` blocks so they render like the console instead of a collapsed
+ *  "Thinking" teaser, and prose/tool splitting puts them in their own bubble.
+ *
+ *  INC-2026-0063: CLI 2.1.x writes such a turn as thinking(empty, signature
+ *  only) + thinking(narration) + tool_use under one message.id; after the
+ *  msg-id merge the entry looked tool-only and the narration vanished into the
+ *  tool group. Entries without narration (and live streaming stubs, whose
+ *  identity the derived-cache stub patch relies on) are returned unchanged —
+ *  never mutated, since this runs over committed store objects. */
+export function surfaceNarrationThinking(entries: JsonlEntryData[]): JsonlEntryData[] {
+  let out: JsonlEntryData[] | null = null
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i]!
+    if (e.__streaming !== undefined || !isNarrationThinkingEntry(e)) continue
+    const content = e.message?.content
+    if (!Array.isArray(content)) continue
+    const blocks = content as ContentBlock[]
+    if (!blocks.some((b) => b?.type === 'thinking' && b.thinking && b.thinking.trim())) continue
+    out ??= entries.slice()
+    out[i] = {
+      ...e,
+      message: {
+        ...e.message!,
+        content: blocks.map((b) =>
+          b?.type === 'thinking' && b.thinking && b.thinking.trim()
+            ? ({ type: 'text', text: b.thinking } as ContentBlock)
+            : b),
+      },
+    }
+  }
+  return out ?? entries
 }
 
 /**
@@ -261,7 +304,11 @@ function splitProseFromTools(
   if (!Array.isArray(content)) return null
   const blocks = content as ContentBlock[]
   const hasTool = blocks.some((b) => b.type === 'tool_use')
-  const hasText = blocks.some((b) => b.type === 'text' && b.text && b.text.trim())
+  // Non-empty thinking is visible too (collapsed ThinkingBlock); without it in
+  // the prose half, a "thinking + tool_use" message was swallowed by the group.
+  const hasText = blocks.some((b) =>
+    (b.type === 'text' && b.text && b.text.trim()) ||
+    (b.type === 'thinking' && b.thinking && b.thinking.trim()))
   if (!hasTool || !hasText) return null
   const clone = (keep: (b: ContentBlock) => boolean): JsonlEntryData =>
     ({ ...e, message: { ...e.message, content: blocks.filter(keep) } }) as JsonlEntryData

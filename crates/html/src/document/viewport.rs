@@ -1,10 +1,16 @@
 //! HTML viewport scroll ownership (CSS Overflow 3 §3.3, Scrollbars 1 §2).
 //! Colors come from the root; body overflow propagates through an uncontained root.
+
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display, Overflow};
+#[cfg(test)]
 use crate::style::values::value::Len;
 
-pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
+mod wrapper;
+pub(super) use wrapper::wrap;
+
+pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
     let root = nodes.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "html" => Some(e),
         _ => None,
@@ -13,7 +19,7 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         return None;
     }
     let mut c =
-        crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style);
+        crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style, vcx);
     // This is a computed viewport policy, not another currentColor declaration.
     c.scroll.current = [false; 2];
     c.scroll.inherit_width = false;
@@ -38,10 +44,16 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) {
-        let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style);
+        let body_style = crate::style::cascade::inherit::inherit_unpainted(&c, &body.style, vcx);
         c.rtl = body_style.rtl;
-        c.vertical = body_style.vertical;
-        c.vertical_rl = body_style.vertical_rl;
+        // The viewport takes the block flow of the body's mode, not `sideways`.
+        c.writing_mode = body_style.writing_mode.map(|m| {
+            crate::style::computed::writing_mode::WritingModeKw::new(
+                m.is_vertical(),
+                m.is_rl(),
+                false,
+            )
+        });
         if visible(c.overflow_x)
             && visible(c.overflow_y)
             && !matches!(body.style.display, Some(Display::None | Display::Contents))
@@ -57,44 +69,22 @@ pub(super) fn policy(nodes: &[Node]) -> Option<Computed> {
     Some(c)
 }
 
-pub(super) fn wrap(nodes: Vec<Node>, policy: Option<Computed>) -> Vec<Node> {
-    let Some(c) = policy else { return nodes };
-    fn maximum_id(nodes: &[Node]) -> u64 {
-        nodes
-            .iter()
-            .filter_map(|node| match node {
-                Node::Element(e) => Some(e.node_id.max(maximum_id(&e.children))),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0)
-    }
-    let id = maximum_id(&nodes) + 1;
-    let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
-    viewport.node_id = id;
-    viewport.style = Computed {
-        display: Some(Display::Block),
-        width: Some(Len::Vw(1.0)),
-        height: Some(Len::Vh(1.0)),
-        border_box: Some(true),
-        overflow_x: c.overflow_x,
-        overflow_y: c.overflow_y,
-        rtl: c.rtl,
-        vertical: c.vertical,
-        vertical_rl: c.vertical_rl,
-        scroll: c.scroll,
-        viewport_unit_insets: c.viewport_unit_insets,
-        ..Computed::default()
-    };
-    vec![Node::Element(viewport)]
-}
-
-pub(super) fn prepare_embedded(nodes: Vec<Node>, responsive: bool) -> Vec<Node> {
-    let viewport = policy(&nodes);
-    let (nodes, _) = super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
-        super::propagate_writing_mode(super::viewport_overflow(nodes)),
-    )));
-    let mut nodes = wrap(nodes, viewport);
+pub(super) fn prepare_embedded(
+    nodes: Vec<Node>,
+    responsive: bool,
+    owner_dark: Option<bool>,
+    vcx: ValueCx<'_>,
+) -> Vec<Node> {
+    let canvas = canvas_backing(&nodes, owner_dark);
+    let viewport = policy(&nodes, vcx).or_else(|| canvas.map(|_| Computed::default()));
+    let (nodes, _) = super::unwrap_document(
+        super::mark_canvas_background(super::resolve_logical(
+            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+            vcx,
+        )),
+        vcx,
+    );
+    let mut nodes = wrap(nodes, viewport, canvas);
     if responsive
         && let [Node::Element(root)] = nodes.as_mut_slice()
         && root.tag == "html-viewport"
@@ -105,18 +95,134 @@ pub(super) fn prepare_embedded(nodes: Vec<Node>, responsive: bool) -> Vec<Node> 
 }
 
 // Keep document preparation identical for initial, updated, and embedded markup.
-pub(super) fn prepare(nodes: Vec<Node>) -> (Vec<Node>, Computed) {
-    let viewport = policy(&nodes).filter(|c| {
-        c.scroll.colors.flatten().is_some()
-            || c.scroll.forced.into_iter().any(|v| v)
-            || c.scroll.gutter.is_some_and(|v| v != 0)
-    });
-    let (nodes, root) =
-        super::unwrap_document(super::mark_canvas_background(super::resolve_logical(
-            super::propagate_writing_mode(super::viewport_overflow(nodes)),
-        )));
-    (wrap(nodes, viewport), root)
+pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Computed) {
+    let canvas = canvas_backing(&nodes, None);
+    let viewport = policy(&nodes, vcx)
+        .or_else(|| canvas.map(|_| Computed::default()))
+        .filter(|c| {
+            canvas.is_some()
+                || c.scroll.colors.flatten().is_some()
+                || c.scroll.forced.into_iter().any(|v| v)
+                || c.scroll.gutter.is_some_and(|v| v != 0)
+        });
+    let (nodes, root) = super::unwrap_document(
+        super::mark_canvas_background(super::resolve_logical(
+            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+            vcx,
+        )),
+        vcx,
+    );
+    (wrap(nodes, viewport, canvas), root)
+}
+
+fn canvas_backing(
+    nodes: &[Node],
+    owner: Option<bool>,
+) -> Option<crate::style::values::value::Color> {
+    let dark = nodes.iter().find_map(|n| match n {
+        Node::Element(e) if e.tag == "html" => Some(e.style.dark_color_scheme),
+        _ => None,
+    })?;
+    if owner.map_or(!dark, |owner| owner == dark) {
+        return None;
+    }
+    Some(crate::style::values::value::system_color(
+        crate::style::values::value::SystemColor::Canvas,
+        dark,
+    ))
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Regression checks for viewport ownership across html and body.
+    use super::*;
+
+    #[test]
+    fn viewport_units_use_root_unconditional_gutters_only() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        for (css, expected) in [
+            ("html { overflow: scroll }", [15.0, 15.0]),
+            (
+                "html { overflow-y: scroll; scrollbar-width: thin }",
+                [10.0, 0.0],
+            ),
+            ("html { overflow: auto }", [0.0, 0.0]),
+            (
+                "html { overflow: scroll } html::-webkit-scrollbar { width: 300px }",
+                [0.0, 0.0],
+            ),
+            (
+                "html { overflow: scroll } body::-webkit-scrollbar { width: 300px }",
+                [15.0, 15.0],
+            ),
+            (
+                "html { overflow: scroll } html.unmatched::-webkit-scrollbar { width: 300px }",
+                [15.0, 15.0],
+            ),
+            ("body { overflow: scroll }", [0.0, 0.0]),
+            ("html { scrollbar-gutter: stable both-edges }", [30.0, 0.0]),
+            (
+                "html { overflow: scroll; scrollbar-width: none }",
+                [0.0, 0.0],
+            ),
+        ] {
+            let nodes = crate::dom::parse(&format!("<style>{css}</style>"), "");
+            let c = policy(&nodes, vcx).unwrap();
+            assert_eq!(c.viewport_unit_insets, Some(expected), "{css}");
+            let mut child = crate::style::cascade::inherit::inherit_unpainted(
+                &c,
+                &Computed {
+                    width: Some(Len::Vw(1.0)),
+                    height: Some(Len::Vh(1.0)),
+                    ..Computed::default()
+                },
+                vcx,
+            );
+            child.resolve_viewport((800.0, 600.0), vcx);
+            assert_eq!(child.width, Some(Len::Px(800.0 - expected[0])));
+            assert_eq!(child.height, Some(Len::Px(600.0 - expected[1])));
+            let mut image = crate::layout::table::anon::anon_element("img", vec![]);
+            image.style.width = Some(Len::Vw(1.0));
+            let mut image = crate::layout::replaced::image::pct_height_to_px(&image, &c);
+            image.style.resolve_viewport((800.0, 600.0), vcx);
+            assert_eq!(image.style.width, Some(Len::Px(800.0 - expected[0])));
+        }
+    }
+
+    #[test]
+    fn body_colors_do_not_propagate_to_the_viewport() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let nodes = crate::dom::parse(
+            "<style>body { scrollbar-color: red blue; overflow: scroll }</style>",
+            "",
+        );
+        assert!(
+            policy(&nodes, vcx)
+                .unwrap()
+                .scroll
+                .colors
+                .flatten()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn root_width_and_computed_color_survive_body_propagation() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let nodes = crate::dom::parse(
+            "<style>html { color: red; scrollbar-color: currentColor currentColor; scrollbar-width: none } body { color: blue; scrollbar-width: thin; overflow: scroll }</style>",
+            "",
+        );
+        let c = policy(&nodes, vcx).unwrap();
+        assert_eq!(
+            c.scroll.colors.flatten().unwrap(),
+            [crate::style::values::value::Color::parse("red", vcx).unwrap(); 2]
+        );
+        assert_eq!(c.scroll.width, Some(2));
+        assert_eq!(c.scroll.current, [false; 2]);
+        assert_eq!(c.scroll.forced, [true; 2]);
+    }
+}

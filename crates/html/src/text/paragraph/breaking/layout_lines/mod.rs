@@ -1,6 +1,7 @@
 //! Layout lines for breaking; split out to keep the owning module within 250 lines.
 
 mod opportunities;
+mod phrase_fallback;
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, px};
@@ -44,7 +45,17 @@ impl Paragraph {
         let mut i = 0usize;
         while i < opportunities.len() {
             let Stop { at, mandatory } = opportunities[i];
-            if at <= start {
+            // Once the consecutive-line limit is reached, ignore conditional
+            // opportunities until an ordinary line break resets the count.
+            let limited = self.hyphen_limit_lines != usize::MAX
+                && out.iter().rev().take_while(|line| line.hyphen).count()
+                    >= self.hyphen_limit_lines;
+            if at <= start
+                || (!mandatory
+                    && at < part.end
+                    && limited
+                    && self.text[..at].ends_with(SOFT_HYPHEN))
+            {
                 i += 1;
                 continue;
             }
@@ -122,6 +133,9 @@ impl Paragraph {
                     // anywhere` посреди неразрывного ряда не касается ни его
                     // начала, ни конца (`overflow-wrap-anywhere-inline-002/004`:
                     // ряд «X<span>XX</span>XX» уходил одной строкой за край).
+                    if !limited && let Some(cut) = self.phrase_hyphen_cut(start, at, limit, segs) {
+                        return cut;
+                    }
                     if self.emergency_ok(start)
                         || self.emergency_ok(at.saturating_sub(1))
                         || self.emergency_inside(start, at)

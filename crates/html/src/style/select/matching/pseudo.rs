@@ -67,6 +67,12 @@ pub(super) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
     {
         return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
     }
+    if let Some(ok) = is_holds(pseudo, me, path, sibs) {
+        return ok;
+    }
+    if pseudo == "empty" {
+        return me.empty;
+    }
     if pseudo == "link" || pseudo == "visited" {
         let Some(href) = &me.href else { return false };
         let visited = href.is_empty() || href.starts_with('#');
@@ -81,6 +87,9 @@ pub(super) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs:
             .or_else(|| path.iter().rev().find_map(|a| a.dir))
             .unwrap_or(false);
         return want.trim().eq_ignore_ascii_case("rtl") == rtl;
+    }
+    if pseudo == "target-current" {
+        return me.target_current;
     }
     if pseudo == "root" {
         return me.tag == "html";
@@ -163,4 +172,20 @@ pub(super) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
         };
         list.iter().any(|s| matches(s, &c.anc, &c.path[..], sibs))
     })
+}
+
+/// `:is()`/`:where()` (и устаревшие `:matches()`/`:any()`): узел совпадает
+/// хоть с одним ГОДНЫМ селектором списка; негодные части прощаются
+/// (selectors-4 §4.2 «forgiving selector list»). `None` — не этот псевдокласс.
+pub(super) fn is_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> Option<bool> {
+    let (name, arg) = pseudo.split_once('(')?;
+    if !matches!(name, "is" | "where" | "matches" | "any") {
+        return None;
+    }
+    let arg = arg.strip_suffix(')')?;
+    Some(
+        crate::style::css::default_ns::is_args(arg)
+            .into_iter()
+            .any(|inner| matches(&inner, me, path, sibs)),
+    )
 }

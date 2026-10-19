@@ -1,7 +1,7 @@
 //! Построитель ребёнка полос: раскладка узла при заданной ширине и вырезах.
 
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
 use crate::layout::replaced::image::image;
@@ -35,24 +35,25 @@ pub(super) fn build_band_kid(
     >,
     height: Option<f32>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let _depth = DepthScope::enter(depth);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
-    // без размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным
-    // детям куска — ширина окна (`AVAIL_W`).
-    let cb_prev = CB_WIDTH.get();
-    let avail_prev = AVAIL_W.get();
-    if cb > 0.0 {
-        CB_WIDTH.set(Some(cb));
-    }
-    AVAIL_W.set((avail > 0.0).then_some(avail));
-    let _cb_guard = scopeguard_cb(cb_prev);
-    let _avail_guard = AvailWGuard(avail_prev);
+    // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
+    // детям куска — ширина окна (`LayoutCx::avail_w`).
+    let opts = &*opts.inner(|cx| {
+        if cb > 0.0 {
+            cx.cb_width = Some(cb);
+        }
+        cx.avail_w = (avail > 0.0).then_some(avail);
+    });
     let mut copy = node.clone();
     cont_indent(&mut copy, inherited);
     // Сторону, очистку и поля несёт хост (позиция от полос), на
     // самой коробке они сдвинули бы её ещё раз — как у
     // статического хоста.
     copy.style.float = None;
+    copy.style.floated_box = true;
+    copy.style.band_kid = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();
     // Флоат заводит свой контекст форматирования (§9.4.1), а
@@ -116,20 +117,17 @@ pub(super) fn build_band_kid(
     // CSS Writing Modes §3.2: changing writing-mode establishes an independent
     // formatting context. Blink block_layout_algorithm.cc:1545 clears its
     // exclusion space; parent bands use different axes and cannot cut its lines.
-    let child_vertical = copy.style.vertical.unwrap_or(vertical);
+    let child_vertical = copy.style.vertical_decl().unwrap_or(vertical);
     let same_writing_mode = child_vertical == vertical
         && (!vertical
-            || copy
-                .style
-                .vertical_rl
-                .unwrap_or(inherited.vertical_rl == Some(true))
-                == (inherited.vertical_rl == Some(true)))
+            || copy.style.rl_decl().unwrap_or(inherited.wm().block_rl())
+                == (inherited.wm().block_rl()))
         && (!vertical
             || copy
                 .style
-                .sideways
-                .unwrap_or(inherited.sideways == Some(true))
-                == (inherited.sideways == Some(true)));
+                .sideways_decl()
+                .unwrap_or(inherited.wm().sideways())
+                == (inherited.wm().sideways()));
     if shapes.is_some() && same_writing_mode {
         copy.style.flow_shapes = shapes;
     }
@@ -138,7 +136,7 @@ pub(super) fn build_band_kid(
             copy.style.display,
             Some(Display::Table) | Some(Display::InlineTable)
         );
-    if copy.attr("atoms") == Some("1") {
+    if copy.marks.atoms {
         // Прогон атомов: `FlowRow` режет строки вырезами полос.
         let atoms: Vec<crate::layout::fragment::types::FlowChild> = copy
             .children
@@ -153,12 +151,8 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        return crate::layout::fragment::types::FlowRow::new(
-            atoms,
-            shapes,
-            inherited.rtl == Some(true),
-        )
-        .into_any_element();
+        return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl())
+            .hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со
@@ -180,23 +174,24 @@ pub(super) fn build_band_kid(
     // Writing Modes 4 §7.3: the float's own formatting context determines its
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
-    let own_vertical = copy.style.vertical.or(inherited.vertical) == Some(true);
+    let own_vertical = copy.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
     if float && !table && !replaced && !vertical && !own_vertical && !list_item {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
-        let mut merged = inherit(inherited, &copy.style);
+        let mut merged = inherit(inherited, &copy.style, vcx);
         merged.self_node = copy.node_id;
         merged.margin = crate::style::computed::Sides::default();
         if copy.tag == "img" {
-            grouped(image(&copy), &copy.style)
+            grouped(image(&copy, &opts.cx), &copy.style, vcx)
         } else {
             grouped(
-                styled_div_with(&copy, &merged)
+                styled_div_with(&copy, &merged, &opts.cx)
                     .children(blocks(&copy.children, &merged, opts))
                     .into_any_element(),
                 &copy.style,
+                vcx,
             )
         }
     } else {
@@ -211,9 +206,9 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(el, &copy.style)
+            grouped(el, &copy.style, vcx)
         } else {
-            content_wrapper::for_element(el, &copy, inherited, (None, None))
+            content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
         }
     }
 }

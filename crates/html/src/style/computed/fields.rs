@@ -5,6 +5,10 @@ use crate::style::values::value::{Color, Len};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
+    /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
+    pub(crate) text_shadow_ink: Option<Color>,
+    /// Winning explicit-inherit longhands, consumed before effective zoom.
+    pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
     /// Счётчик объявлений этого узла: порядок каскада между логическими и
@@ -144,6 +148,12 @@ pub struct Computed {
 
     pub padding: Sides,
     pub margin: Sides,
+    /// The box's own margins as cascaded, kept before block layout rewrites
+    /// `margin` for collapsing (CSS 2.1 §8.3.1). The `margin-box` reference
+    /// box of `clip-path` is the border box outset by THESE margins
+    /// (css-masking-1 §1.3.1.1, Blink `LayoutBox::MarginBoxRect`): a collapsed
+    /// top margin shrank it (`clip-path-polygon-008`). Set only for `margin-box`.
+    pub own_margin: Option<Sides>,
     pub border_width: Sides,
     pub border_color: Option<Color>,
     pub radius: Corners,
@@ -252,17 +262,6 @@ pub struct Computed {
     pub(crate) height_inherit: bool,
     /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
     pub(crate) minmax_inherit: [bool; 4],
-    /// Сторона письма СОДЕРЖАЩЕГО БЛОКА: избыточный край выбирается по ней,
-    /// а не по своей (§9.4.3). Ставится при наследовании.
-    pub(crate) cb_rtl: bool,
-    /// Письмо СОДЕРЖАЩЕГО БЛОКА: вертикальное ли (в том числе повёрнутый
-    /// абзац, чей стиль собран горизонтальным клоном с `rotated_line`), идут ли
-    /// блоки справа налево, `sideways-*` ли. По ним у переопределённой оси
-    /// абсолюта выбирается отбрасываемый край (css-writing-modes-4 §7.1).
-    /// Ставится при наследовании, как `cb_rtl`.
-    pub(crate) cb_vertical: bool,
-    pub(crate) cb_vertical_rl: bool,
-    pub(crate) cb_sideways: bool,
     /// top/right/bottom/left.
     pub(crate) inset_inherit: [bool; 4],
     pub gradient: Option<Gradient>,
@@ -281,6 +280,10 @@ pub struct Computed {
     /// §font-style-matching) — от выбранного лица зависит `size-adjust`
     /// (`fonts::size_adjust`, `italic-oblique-fallback`).
     pub oblique: Option<bool>,
+    /// Requested oblique angle in degrees, inherited with font-style.
+    pub font_oblique_angle: Option<f32>,
+    /// Synthesis is allowed for oblique requests, but not italic fallback.
+    pub font_oblique_only: Option<bool>,
     pub underline: Option<bool>,
     pub line_through: Option<bool>,
     pub line_height: Option<Len>,
@@ -451,10 +454,17 @@ pub struct Computed {
     /// противопоказана (`grid-lanes/.../column-explicit-placement-002`
     /// 0.00 -> 10.02 при общем флаге).
     pub hug_claim: bool,
+    /// Ортогональный (вертикальный) блок в потоке горизонтального блочного
+    /// контейнера: baseline-набор родителя его не берёт (css-writing-modes-4
+    /// §4.3, css-align-3 §9.1 «baseline-export»; Blink пропускает
+    /// ортогональных детей). Ставится сборщиком детей контейнера.
+    pub baseline_orthogonal: bool,
     /// `order`: визуальный порядок в гибкой строке. Раскладка под нами его не
     /// знает, поэтому детей переставляет сам сборщик дерева.
     pub order: Option<i32>,
     pub align_content: Option<Justify>,
+    /// Content baseline preference; false is first, true is last (CSS Align 3 §9).
+    pub align_content_baseline: Option<bool>,
     /// Задано ли `align-content` значением, ОТЛИЧНЫМ от `normal`
     /// (css-align-3 §align-block). Отдельно от `align_content`, потому что
     /// `parse_justify` роняет в `None` два разных случая: `normal`
@@ -532,6 +542,9 @@ pub struct Computed {
     /// место, а не под всё уже уложенное: дыры, оставленные многолуночными
     /// соседями, заполняются следующими элементами.
     pub lanes_dense: bool,
+    /// Alignment properties declared with `flow-start`/`flow-end`, one bit
+    /// per property (`cascade::inherit::flow_align`).
+    pub align_flow: u8,
     /// `display: inline grid-lanes` — контейнер лунок строчного уровня:
     /// ширина по дорожкам, не на всю строку.
     pub lanes_inline: bool,
@@ -578,6 +591,8 @@ pub struct Computed {
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
     pub gradient_raw: Option<String>,
+    /// Authored currentColor expression, independent of background tiling.
+    pub(crate) gradient_current: Option<String>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
     pub(crate) background_blend: Option<String>,
     /// Resolved opaque, constant background stacks retain their clip regions.
@@ -650,6 +665,8 @@ pub struct Computed {
     /// `word-break: keep-all` — иероглифическое письмо переносится ТОЛЬКО по
     /// пробелам, между знаками разрыв запрещён.
     pub keep_all: Option<bool>,
+    /// `word-break: auto-phrase`: normal fallback with conditional hyphenation.
+    pub auto_phrase: Option<bool>,
     /// `white-space: break-spaces` — сохранённый пробел НЕ свисает за край:
     /// он занимает место в строке, и после каждого такого пробела разрешён
     /// перенос. Отличие от `pre-wrap`, где хвостовые пробелы висят снаружи.
@@ -686,6 +703,10 @@ pub struct Computed {
     pub hyphen_char: Option<String>,
     /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
     pub hyphens_auto: Option<bool>,
+    /// Minimum word, prefix and suffix lengths; None components mean auto.
+    pub hyphen_limit_chars: Option<[Option<usize>; 3]>,
+    /// Maximum consecutive hyphenated lines; usize::MAX means no-limit.
+    pub hyphen_limit_lines: Option<usize>,
     /// Язык узла (атрибут `lang`): по нему выбираются образцы слогораздела.
     pub lang: Option<String>,
     /// `vertical-align` внутри строки и ячейки таблицы.
@@ -727,6 +748,8 @@ pub struct Computed {
     pub text_shadow_none: bool,
     /// `animation` — ссылка на набор кадров.
     pub animation: Option<AnimSpec>,
+    /// Easing also applies when declared on a keyframe.
+    pub animation_easing: Option<crate::animation::easing::Easing>,
     /// `transition` — длительность перехода в секундах.
     pub transition: Option<f32>,
     /// `direction: rtl` — письмо справа налево.
@@ -752,6 +775,9 @@ pub struct Computed {
     pub offset_anchor: Option<String>,
     /// `offset-position` как записано: `normal | auto | <position>`.
     pub offset_position: Option<String>,
+    /// Offset-трансформ откладывается до отрисовки: содержащий блок элемента —
+    /// начальный (его размер знает только сборщик, `animation::motion`).
+    pub offset_icb: bool,
     /// `backface-visibility: hidden`.
     pub backface_hidden: Option<bool>,
     /// `transform-origin` в долях размера элемента.
@@ -768,6 +794,10 @@ pub struct Computed {
     /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
     /// of its absolute-position descendants, fixed-position descendants»).
     pub transform_ancestor: bool,
+    /// Transformed ancestor in the strict css-transforms-1 sense (a transform,
+    /// not containment or filters): `background-attachment: fixed` below it
+    /// behaves as `scroll` (css-transforms-1 §6 Transform Rendering Model).
+    pub(crate) transformed_ancestor: bool,
     pub transform_origin_raw: Option<String>,
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.
@@ -811,6 +841,9 @@ pub struct Computed {
     pub float: Option<i8>,
     /// Unemitted adjoining margin at the float's source position (CSS 2.1 §9.5.1).
     pub(crate) float_margin_offset: Option<f32>,
+    /// The box is a float whose `float` a float row/host cleared for layout:
+    /// it never gives an enclosing inline-block its baseline (CSS 2.1 §10.8.1).
+    pub(crate) floated_box: bool,
     /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub(crate) clear_inherit: bool,
     /// `background-attachment: fixed` — плитка считается от области
@@ -820,24 +853,20 @@ pub struct Computed {
     /// -1 слева, 1 справа, 0 с обеих. Стороны различаются, потому что
     /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
     pub clear: Option<i8>,
-    /// `writing-mode`: вертикальное письмо — блоки идут по горизонтали.
-    pub vertical: Option<bool>,
-    /// `writing-mode: vertical-rl` — блоки идут справа налево.
-    pub vertical_rl: Option<bool>,
-    /// `writing-mode: sideways-*`: глифы повёрнуты, а у `sideways-lr` строка
-    /// идёт СНИЗУ вверх — содержимое прижимается к нижнему краю.
-    pub sideways: Option<bool>,
     /// `text-combine-upright`: сколько знаков сжимается в один кегль
     /// (0 — `all`, 2..=4 — `digits N`). Наследуется.
     pub combine_upright: Option<u8>,
-    /// Служебное: абзац собран для ПОВЁРНУТОЙ отрисовки вертикального
-    /// письма — местам с `text-combine-upright` нужен контр-поворот.
-    pub rotated_line: Option<bool>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
     /// момент раскладки ребёнка предков уже не видно.
     pub ortho_limit: Option<f32>,
+    /// Содержимое ближайшего предка — контейнера запросов размера — по
+    /// физическим осям (ширина, высота): база единиц `cqw`/`cqh`/`cqi`/…
+    /// (css-conditional-5 §container-lengths). Ось без такого контейнера
+    /// (или с неизвестным размером) — `None`, и единица берёт малое окно.
+    /// Наследуется вниз: контейнер ищется ВВЕРХ по дереву.
+    pub cq_box: (Option<f32>, Option<f32>),
     /// Nearest ancestor scrollport, including an indefinite nearest scroller.
     pub(crate) orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
     /// Used inline measurement contract of an ordinary orthogonal block.
@@ -907,21 +936,13 @@ pub struct Computed {
     /// `rel_shift` на элементе, чьи подложка и рамка (`inline_bg`,
     /// `inline_border`) у куска: коробка предка едет только его сдвигом.
     pub box_shift: Option<(f32, f32)>,
-    /// `text-orientation: upright` — глифы стоят прямо, а не лежат боком.
-    /// Меняет и меру `ch`: продвижение нуля идёт вдоль оси СТРОКИ, а она в
-    /// вертикальном письме вертикальна, то есть равна кеглю.
-    pub upright: Option<bool>,
-    /// `text-orientation: sideways` — у вертикального текста ДОМИНАНТНАЯ
-    /// базовая алфавитная, а не центральная (css-writing-modes-4 §4.2:
-    /// «In vertical typographic mode, the central baseline is used as the
-    /// dominant baseline when text-orientation is mixed or upright»).
-    /// `upright` этого не различает: `Some(false)` — и `mixed`, и `sideways`.
-    pub text_sideways: Option<bool>,
     /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
     /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
     /// переставляются оси выравнивания вертикальной сетки и пишутся биты
     /// базовой по оси x (`apply.rs`).
     pub(crate) parent_grid: u8,
+    /// Grid content baseline alignment requires a coordinated self alignment.
+    pub(crate) parent_grid_align_items: Option<Align>,
     /// Родитель — гибкий контейнер, сетка или лунки: элемент блокифицирован
     /// (css-display-3 §2.7), хотя `display` в стиле остаётся строчным.
     pub(crate) parent_flex_grid: bool,
@@ -1128,6 +1149,15 @@ pub struct Computed {
     /// внепоточных потомков (§10.1 п.4). Ставится при наследовании: сам
     /// каскад предков не видит.
     pub(crate) cb_ancestor: bool,
+    /// How many ancestors establish a containing block for absolute
+    /// descendants (`establishes_cb`). An absolute box's nearest CB is the
+    /// ancestor with index `cb_depth + establishes_cb(parent)`; strict CB
+    /// layers (`cb_open_strict`) take only boxes whose nearest CB they are.
+    pub(crate) cb_depth: u16,
+    /// Есть ли выше по дереву НЕКОРНЕВОЙ контекст наложения (CSS 2.1 прил. E):
+    /// без него отрицательный `z-index` принадлежит корневому контексту и
+    /// рисуется под всем его потоком. Ставится при наследовании.
+    pub(crate) sc_ancestor: bool,
     /// CSS ancestor clipping inside a continuous fragmentation copy.
     pub(crate) fragment_clip_ancestor: bool,
     /// An ancestor is a multi-column container: the box may be fragmented
@@ -1245,6 +1275,9 @@ pub struct Computed {
     /// ПЕРЕД скроллером (`before`), `Some(false)` — после (`after`), `None` —
     /// `none`. Не наследуется.
     pub scroll_marker_group: Option<bool>,
+    /// `scroll-target-group: auto` (css-overflow-5): links inside are scroll
+    /// markers. Not inherited.
+    pub scroll_target_group: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.
     pub column_span: Option<bool>,
     /// `page: <custom-ident>` — именованная страница (css-page-3 §"Using named
@@ -1324,6 +1357,11 @@ pub struct Computed {
     /// as for borders) — painted as two lines; other styles stay solid.
     pub column_rule_double: bool,
     pub row_rule_double: bool,
+    /// Rule line kinds per gap (§lists): 0 solid-like, 1 `dashed`,
+    /// 2 `dotted`, 3 `double` — painted as the border side of that style
+    /// (Blink `BoxBorderPainter::DrawBoxSide`).
+    pub column_rule_kinds: Option<GapList<u8>>,
+    pub row_rule_kinds: Option<GapList<u8>>,
     pub column_rule_colors: Option<GapList<Option<Color>>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
@@ -1401,11 +1439,13 @@ pub struct Computed {
     pub(crate) object_view_box: Option<(u8, [Len; 4])>,
     /// Сырые СПИСКИ фоновых свойств со слоями через запятую: (свойство,
     /// запись). Поля `bg_*` несут верхний слой; все слои строит `bg_layers`.
-    pub(crate) bg_lists: Vec<(String, String)>,
+    pub(crate) bg_lists: BgLists,
     pub bg_repeat: Option<BgRepeat>,
     /// `content` псевдоэлемента — СПИСОК составляющих (css-content-3 §2):
     /// строки, `counter()`, `counters()`, `attr()` в любом порядке.
     pub content: Option<Vec<ContentItem>>,
+    /// Explicit inheritance is resolved along the DOM before pseudo generation.
+    pub(crate) content_inherit: bool,
     /// `quotes` (css-content-3 §4.1): пары кавычек по уровням вложенности.
     /// `None` inherits; `Some(None)` suppresses marks but keeps nesting depth.
     /// `Some(Some(empty))` is explicit auto; nonempty pairs are a custom system.
@@ -1495,4 +1535,62 @@ pub struct Computed {
     pub caret_color: Option<Color>,
     /// `accent-color` флажков и переключателей.
     pub accent_color: Option<Color>,
+    /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
+    pub appearance: Option<crate::style::computed::Appearance>,
+    /// Element used color scheme, shared by CSS system colours and native controls.
+    pub dark_color_scheme: bool,
+    /// Preferred scheme exposed by this element to an embedded document.
+    pub embedding_dark_scheme: bool,
+    /// Specified initial color, resolved specially for quirks HTML tables.
+    pub(crate) color_initial: bool,
+    /// DOM identity of this decorating box; never inherited.
+    pub decor_box: u64,
+    /// Flex item of a MULTI-line flex container (`flex-wrap` other than `nowrap`):
+    /// its line's cross size comes from the items' hypothetical sizes, so an
+    /// orthogonal item cannot take its inline size from the line. Set with
+    /// `flex_item` by `render::blocks`; not inherited.
+    pub(crate) flex_line_wraps: bool,
+    /// An explicit unsafe overflow position for block content alignment.
+    pub align_content_unsafe: bool,
+    /// Generated inline controls have no bytes in first-line source offsets.
+    pub inline_control: bool,
+    /// Definite content inline size (physical height) of a box in vertical flow: the basis of
+    /// inline-axis percentages of its children (`layout::writing_mode::inline_definite`).
+    /// Set by `render::element`; not inherited.
+    pub(crate) inline_definite: Option<f32>,
+    /// A piece of a float-band host (`layout::float::band_flow_host`): the host resolves its
+    /// percentages against the band layout and places it; not inherited.
+    pub(crate) band_kid: bool,
+    /// Namespace identity and the winning MathML inner display type.
+    pub(crate) mathml: bool,
+    pub(crate) math_layout: Option<Display>,
+    pub(crate) math_compact: Option<bool>,
+    pub(crate) math_shift: Option<bool>,
+    pub(crate) math_depth: Option<super::math_style::Depth>,
+    pub(crate) math_level: i32,
+    pub(crate) math_font_size: bool,
+    pub(crate) math_operator_form: Option<u8>,
+    /// SVG 2 geometry properties `cx`, `cy`, `r`, `rx`, `ry`, `d` from the
+    /// cascade, already in attribute syntax (`svg::serialize::geometry`);
+    /// not inherited.
+    pub svg_geometry: Vec<(&'static str, String)>,
+    /// Parse-time acceptance, armed only for a capability query.
+    pub(crate) declaration_parse: super::ParseResult,
+    /// `writing-mode` (css-writing-modes-4 §3.1): declared on the own style, inherited in
+    /// the merged one; `None` = not declared. Read through `Computed::wm()`.
+    pub(crate) writing_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: the vertical mode whose lines this horizontal clone typesets laid
+    /// flat (turned paragraph, upright stack). Inherited; read through `Computed::wm()`.
+    pub(crate) flat_mode: Option<super::writing_mode::WritingModeKw>,
+    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
+    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
+    pub(crate) turned_line: bool,
+    /// The writing mode of the containing block (the parent's line mode: a turned
+    /// paragraph counts as vertical). Set at inheritance; the overflowing inset and
+    /// alignment edges follow it (css-writing-modes-4 §7.1, CSS 2.1 §9.4.3).
+    pub(crate) cb_wm: super::writing_mode::WritingMode,
+    /// `text-orientation` (css-writing-modes-4 §5.1); `None` = not declared. `upright` also
+    /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
+    /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
+    pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
 }

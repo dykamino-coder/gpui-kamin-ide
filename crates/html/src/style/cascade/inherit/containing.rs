@@ -1,11 +1,19 @@
 //! inherit_stage, этап содержащего блока: bidi-управление, признаки cb_* (многоколонность, подложка, трансформ, письмо), растяжение и определённость высоты.
 
 use super::*;
+use crate::document::state::ValueCx;
 
-pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_containing(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    vcx: ValueCx<'_>,
+) {
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
     bidi_controls::resolve(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
+    c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
+    c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
     c.icb_scroll_insets = own.icb_scroll_insets.or(parent.icb_scroll_insets);
     c.viewport_unit_insets = own.viewport_unit_insets.or(parent.viewport_unit_insets);
     c.cb_scroll_insets = if establishes_cb(parent) {
@@ -76,9 +84,23 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
         || parent.preserve_3d == Some(true)
         || parent.contain_layout == Some(true)
         || parent.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(parent)
         // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства
         // (`will-change-fixpos-cb-*`, `-fixedpos-cb-*`).
         || parent.will_change & crate::style::computed::wc::CB_FIXED != 0;
+    // css-transforms-1 §6: «Fixed backgrounds on the root element are affected
+    // by any transform specified for that element. For all other elements that
+    // are effected by a transform (i.e. have a transform applied to them, or to
+    // any of their ancestor elements), a value of fixed for the
+    // background-attachment property is treated as if it had a value of
+    // scroll.» `will-change: transform` promises the same (Blink/Gecko;
+    // `transform-fixed-bg-008.tentative`).
+    c.transformed_ancestor = parent.transformed_ancestor || transformed(parent);
+    if c.bg_fixed == Some(true)
+        && (c.transformed_ancestor || (transformed(own) && !own.root_box && !c.root_box))
+    {
+        c.bg_fixed = Some(false);
+    }
     // `will-change: z-index` — контекст наложения ровно там, где `z-index`
     // действует: у позиционированной коробки и у элемента flex/grid
     // (css-flexbox-1 §5.4, css-grid-2 §6.2) — `-stacking-context-z-index-2/3`;
@@ -102,13 +124,9 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
     {
         c.will_change |= crate::style::computed::wc::STACK;
     }
-    c.cb_rtl = parent.rtl == Some(true);
-    // Внутри повёрнутого абзаца родитель — горизонтальный клон
-    // (`render.rs: paragraph`, `horizontal.vertical = None`), и о вертикальном
-    // письме содержащего блока говорит только `rotated_line`.
-    c.cb_vertical = parent.vertical == Some(true) || parent.rotated_line == Some(true);
-    c.cb_vertical_rl = parent.vertical_rl == Some(true);
-    c.cb_sideways = parent.sideways == Some(true);
+    // Inside a turned paragraph the parent is the horizontal clone
+    // (`render/paragraph/vertical.rs`); its line mode is the vertical one.
+    c.cb_wm = parent.wm().line();
     // Относительный сдвиг строчного предка КОПИТСЯ вниз (§9.4.3: сдвиг несёт
     // с собой всё содержимое коробки). Куски вне потока его получали
     // (`shift_overlays`), а вложенные куски самой строки — нет: сдвиг
@@ -177,7 +195,19 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
                 // Прежде `.modal {position: fixed; height: stretch}` передавал
                 // ложный признак от `body`, и `height: 100%` цепочки гас
                 // (`intrinsic-height-abspos-stretch-percentage-child`: 25 %).
-                Some(crate::style::values::value::Len::Pct(_)) => {
+                // `calc(100% - 16px)` is a length-percentage: definite exactly when its
+                // percentage basis is (css-values-4 §10.9, CSS 2.1 §10.5).
+                Some(crate::style::values::value::Len::Calc(i))
+                    if crate::style::values::value::calc_get(i, vcx)
+                        .pct_px()
+                        .is_some_and(|(pct, _)| pct == 0.0) =>
+                {
+                    true
+                }
+                Some(
+                    crate::style::values::value::Len::Pct(_)
+                    | crate::style::values::value::Len::Calc(_),
+                ) => {
                     parent.cb_height_def
                         || matches!(
                             parent.position,
@@ -192,3 +222,15 @@ pub(super) fn inherit_containing(parent: &Computed, own: &Computed, c: &mut Comp
                 ),
             });
 }
+
+/// Has the box a transform of its own (or a promised one)?
+fn transformed(s: &Computed) -> bool {
+    s.transform.is_some()
+        || s.translate.is_some()
+        || s.rotate_prop.is_some()
+        || s.scale_prop.is_some()
+        || s.will_change & crate::style::computed::wc::BOX != 0
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,9 +1,11 @@
 //! Полосы колонок и ширины из элементов <col>/<colgroup>.
 
 use super::{col_role, col_span};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use crate::hooks::IntoHooked;
+use crate::style::values::value::{Len, px_strict};
+use gpui::AnyElement;
 
 /// Полоса слоя на каждую красящую дорожку плюс буфер проб по её индексу.
 ///
@@ -11,16 +13,19 @@ use gpui::{AnyElement, IntoElement};
 /// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
 pub(crate) fn push_col_bands(
     els: &[Option<&Element>],
-    salt: u64,
     have_rows: bool,
     rects_by_col: &mut [Option<crate::layout::table::paint::RowRects>],
     cells: &mut Vec<AnyElement>,
+    vcx: ValueCx<'_>,
 ) {
     let mut seen: Vec<u64> = vec![];
+    // Один буфер на элемент: `<col span>` красит несколько дорожек одной
+    // полосой.
+    let mut by_node: std::collections::HashMap<u64, crate::layout::table::paint::RowRects> =
+        Default::default();
     for (i, el) in els.iter().enumerate() {
         let Some(el) = el else { continue };
-        // Полоса красит СВОИ ЯЧЕЙКИ. Ячеек нет — красить нечего, а пустая
-        // полоса ещё и просит перерисовку два кадра подряд впустую
+        // Полоса красит СВОИ ЯЧЕЙКИ. Ячеек нет — красить нечего
         // (`table-column-rendering-001`: колонка сама по себе не рисуется).
         // Дорожка за краем сетки буфера не получает: её пробы не напишет
         // никто.
@@ -33,19 +38,31 @@ pub(crate) fn push_col_bands(
         if !(picture || el.style.background.is_some() || !el.style.shadows.is_empty()) {
             continue;
         }
-        let rects = crate::layout::table::paint::row_rects_for(el.node_id ^ salt);
+        let rects = by_node.entry(el.node_id).or_default().clone();
         rects_by_col[i] = Some(rects.clone());
         if !seen.contains(&el.node_id) {
             seen.push(el.node_id);
-            let mut band_style = el.style.clone();
+            let mut band_style = (*el.style).clone();
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
             cells.push(
-                crate::layout::table::paint::CellsClipped::new(rects, band_style)
-                    .into_any_element(),
+                crate::layout::table::paint::CellsClipped::new(rects, band_style, vcx).hooked(),
             );
         }
+    }
+}
+
+/// Used absolute width of one `<col>` (CSS 2.1 §10.4 over `px` lengths only).
+pub(crate) fn definite_col_px(el: &Element) -> Option<f32> {
+    let px = px_strict;
+    let w = match (px(el.style.width), px(el.style.max_width)) {
+        (Some(v), Some(mx)) => Some(v.min(mx)),
+        (v, _) => v,
+    };
+    match px(el.style.min_width) {
+        Some(mn) => Some(w.map_or(mn, |v| v.max(mn))),
+        None => w,
     }
 }
 
@@ -72,10 +89,7 @@ pub(crate) fn col_element_widths(
     // `track_list`, и отдельная пара (пол, потолок) на дорожку — следующий
     // шаг, не этот.
     let used_w = |el: &Element, w: Option<f32>| -> Option<f32> {
-        let len_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let len_px = px_strict;
         let capped = match (w, len_px(el.style.max_width)) {
             (Some(v), Some(mx)) => Some(v.min(mx)),
             (v, _) => v,
@@ -101,10 +115,7 @@ pub(crate) fn col_element_widths(
                         // сходится с эталоном. Лежачий `ch` (sideways) оставлен
                         // авто-колонке: явный глиф-замер уводил ширину
                         // (ch-units-vrl-007/008 были зелёными на авто).
-                        Some(Len::Ch(k))
-                            if el.style.upright == Some(true)
-                                && el.style.vertical == Some(true) =>
-                        {
+                        Some(Len::Ch(k)) if el.style.wm().upright() && el.style.wm().vertical() => {
                             let base = match el.style.font_size {
                                 Some(Len::Px(v)) => v,
                                 _ => base_font,
@@ -136,13 +147,7 @@ pub(crate) fn col_element_widths(
                     // же — иначе `min-width-applies-to-005` и
                     // `max-width-applies-to-005` (группа вместо колонки)
                     // остались бы красными при зелёных `-006`.
-                    let ww = used_w(
-                        el,
-                        match el.style.width {
-                            Some(Len::Px(v)) => Some(v),
-                            _ => None,
-                        },
-                    );
+                    let ww = used_w(el, px_strict(el.style.width));
                     let pp = match el.style.width {
                         Some(Len::Pct(k)) => Some(k),
                         _ => None,
@@ -163,3 +168,6 @@ pub(crate) fn col_element_widths(
     }
     (widths, collapsed, pcts)
 }
+
+#[cfg(test)]
+mod tests;

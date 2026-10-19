@@ -1,5 +1,7 @@
 //! Вложенные ряды: коробка, форма и ширина вложенной стопки рядов.
 
+use super::nested_kid::{oof_in_plain_kids, plain_block_kid};
+use super::resolved_lengths::resolved_lengths;
 use super::{group_inline_runs, inline_content};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
@@ -12,54 +14,6 @@ use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-
-/// Клон поддерева с длинами коробки в ТОЧКАХ: `em`/`ch`/`ex`/`rem` в
-/// размерах, полях, отбивках, рамках и вставках разрешены по кеглю своего
-/// элемента (тем же `inline::inherit` → `Computed::resolve_em`, что и при
-/// отрисовке). `shape_full` читает голый стиль, и `margin-top: 2em` мерился
-/// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
-/// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
-/// трогаются: число в `line-height` наследуется множителем.
-pub(crate) fn resolved_lengths(c: &Element, parent: &Computed) -> Element {
-    let m = crate::style::cascade::inherit::inherit(parent, &c.style);
-    let mut t = c.clone();
-    // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее
-    // (`None`, `auto`, доли, точки) остаётся как было — `inherit` дописывает
-    // и умолчания, а на `min-height.is_some()` стоят гейты строк flex
-    // (`multi-line-row-flex-fragmentation-018/037`).
-    fn fix(own: &mut Option<Len>, res: Option<Len>) {
-        if own.is_some_and(|l| !matches!(l, Len::Px(_) | Len::Auto | Len::Pct(_)))
-            && matches!(res, Some(Len::Px(_)))
-        {
-            *own = res;
-        }
-    }
-    fn fix_sides(own: &mut crate::style::computed::Sides, res: &crate::style::computed::Sides) {
-        fix(&mut own.top, res.top);
-        fix(&mut own.right, res.right);
-        fix(&mut own.bottom, res.bottom);
-        fix(&mut own.left, res.left);
-    }
-    fix(&mut t.style.width, m.width);
-    fix(&mut t.style.height, m.height);
-    fix(&mut t.style.min_width, m.min_width);
-    fix(&mut t.style.min_height, m.min_height);
-    fix(&mut t.style.max_width, m.max_width);
-    fix(&mut t.style.max_height, m.max_height);
-    fix_sides(&mut t.style.margin, &m.margin);
-    fix_sides(&mut t.style.padding, &m.padding);
-    fix_sides(&mut t.style.border_width, &m.border_width);
-    fix_sides(&mut t.style.inset, &m.inset);
-    t.children = c
-        .children
-        .iter()
-        .map(|n| match n {
-            Node::Element(k) => Node::Element(resolved_lengths(k, &m)),
-            other => other.clone(),
-        })
-        .collect();
-    t
-}
 
 /// Вложенный многоколоночник, который внешняя стопка ведёт РЯДАМИ (`nest_row`):
 /// обычный блок с колонками, высотой в точках, без своих рядов, спаннеров,
@@ -75,10 +29,10 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
                 && s.min_height.is_none()
                 && s.max_height.is_none()))
         && matches!(s.display, None | Some(Display::Block))
-        && s.vertical != Some(true)
+        && !s.wm().vertical()
         && s.float.unwrap_or(0) == 0
         && !has_deep_spanner(c)
-        && !carries_abspos(c, 4)
+        && (!carries_abspos(c, 4) || oof_in_plain_kids(c))
         // Ряды считаются от верха СОДЕРЖИМОГО: блочные рамка и отбивка (и их
         // повтор у `box-decoration-break: clone`) сдвинули бы границы рядов с
         // границ внешних колонок (`box-decoration-break-clone-010`).
@@ -97,7 +51,7 @@ pub(crate) fn nested_rows_box(c: &Element) -> bool {
         && c.children.iter().any(|n| !is_blank(n))
         // Внепоточный потомок — содержащий блок и дотяг рядами не выражены
         // (`out-of-flow-in-multicolumn-019`).
-        && !oof_descendant(c)
+        && (!oof_descendant(c) || oof_in_plain_kids(c))
 }
 
 pub(super) fn oof_descendant(e: &Element) -> bool {
@@ -121,7 +75,8 @@ pub(crate) fn nested_rows_shape(
     cw: f32,
     opts: &RenderOpts,
 ) -> Option<Shape> {
-    let m = inherit(parent, &c.style);
+    let vcx = opts.cx.vcx();
+    let m = inherit(parent, &c.style, vcx);
     let w = nested_box_w(c, cw)?;
     let n = match m.column_count {
         Some(n) if n > 1 => n as usize,
@@ -132,6 +87,7 @@ pub(crate) fn nested_rows_shape(
     }
     let gap = match m.column_gap {
         Some(Len::Px(v)) => v,
+        Some(Len::Pct(k)) => super::layout_unit(k * w), // как `column_plan`
         _ => match m.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
@@ -153,7 +109,7 @@ pub(crate) fn nested_rows_shape(
                 // 031` при блочных детях уходили 0.00 → «красное видно»).
                 Node::Element(k)
                     if !k.inline
-                        && inline_content(k)
+                        && (inline_content(k) || plain_block_kid(k))
                         && !out_of_flow(&k.style)
                         && matches!(
                             k.style.position,
@@ -161,22 +117,25 @@ pub(crate) fn nested_rows_shape(
                         )
                         && k.style.float.unwrap_or(0) == 0 =>
                 {
-                    let k = resolved_lengths(k, &m);
-                    let sh = shape_full(&k, 4, ShapeCx::COLUMNS)?;
+                    let k = resolved_lengths(k, &m, vcx);
+                    let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
+                    if !inline_content(&k) && sh.solid.iter().any(|&(a, b)| b - a > hh + 0.01) {
+                        return None;
+                    }
                     Some(crate::layout::fragment::types::Kid {
-                        h: sh.0,
-                        mt: sh.1,
-                        mb: sh.2,
-                        monolith: solid_box(&k) && !(inline_content(&k) && !sh.3.is_empty()),
-                        cuts: sh.3,
-                        force_before: edge_break(&k, false),
-                        force_after: edge_break(&k, true),
-                        avoid_before: edge_avoid(&k, false),
-                        avoid_after: edge_avoid(&k, true),
-                        forced: sh.4,
-                        solid: sh.5,
+                        h: sh.height,
+                        mt: sh.margin_top,
+                        mb: sh.margin_bottom,
+                        monolith: solid_box(&k) && (!inline_content(&k) || sh.cuts.is_empty()),
+                        cuts: sh.cuts,
+                        force_before: edge_break(&k, false, vcx),
+                        force_after: edge_break(&k, true, vcx),
+                        avoid_before: edge_avoid(&k, false, vcx),
+                        avoid_after: edge_avoid(&k, true, vcx),
+                        forced: sh.forced,
+                        solid: sh.solid,
                         span: false,
-                        over: sh.0,
+                        over: sh.height,
                         clone_dec: None,
                         overflow_top: false,
                         repeat: Default::default(),
@@ -213,14 +172,14 @@ pub(crate) fn nested_rows_shape(
     } else {
         Vec::new()
     };
-    Some((
-        h,
-        0.0,
-        px(&c.style.margin.bottom)?,
-        Vec::new(),
-        Vec::new(),
+    Some(crate::layout::fragment::Shape {
+        height: h,
+        margin_top: 0.0,
+        margin_bottom: px(&c.style.margin.bottom)?,
+        cuts: Vec::new(),
+        forced: Vec::new(),
         solid,
-    ))
+    })
 }
 
 /// Ширина коробки (`width` по её `box-sizing`) ребёнка в колонке `cw`.

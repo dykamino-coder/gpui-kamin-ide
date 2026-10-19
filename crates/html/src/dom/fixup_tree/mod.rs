@@ -2,12 +2,15 @@
 
 mod alignment;
 mod flow_items;
+mod orthogonal_inline;
 mod ruby_boxes;
 pub(crate) mod ruby_normalize;
 pub(super) use crate::dom::fixup_tree::alignment::align_self_from_dom_parent;
 pub(super) use crate::dom::fixup_tree::alignment::grid_table_items_keep_stretch;
 pub(super) use crate::dom::fixup_tree::flow_items::flex_items_lose_float;
 pub(super) use crate::dom::fixup_tree::flow_items::fold_run_ins;
+pub(super) use crate::dom::fixup_tree::orthogonal_inline::orthogonal_inlines_become_flow_roots;
+pub(super) use crate::dom::fixup_tree::ruby_boxes::anonymous_ruby;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::own_containing_block;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::ruby_box_role;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::wrap_misparented_ruby;

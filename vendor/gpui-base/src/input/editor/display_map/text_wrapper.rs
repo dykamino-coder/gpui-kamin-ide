@@ -423,6 +423,7 @@ impl TextWrapper {
                                         font_size: None,
                                         background_pad: Default::default(),
                                         background_radius: Default::default(),
+                                        background_line_gap: false,
                                         background_border: None,
                                         underline: None,
                                         strikethrough: None,
@@ -1116,6 +1117,7 @@ mod tests {
                     font_size: None,
                     background_pad: Default::default(),
                     background_radius: Default::default(),
+                    background_line_gap: false,
                     background_border: None,
                     underline: None,
                     strikethrough: None,
@@ -1265,6 +1267,7 @@ mod tests {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
+            stretch: Default::default(),
             features: FontFeatures::default(),
             fallbacks: None,
         };
@@ -1461,6 +1464,7 @@ mod tests {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
+            stretch: Default::default(),
             features: FontFeatures::default(),
             fallbacks: None,
         }
@@ -1733,6 +1737,7 @@ mod tests {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
+            stretch: Default::default(),
             features: FontFeatures::default(),
             fallbacks: None,
         };

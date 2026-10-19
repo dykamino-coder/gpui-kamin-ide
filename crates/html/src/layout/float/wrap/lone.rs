@@ -22,6 +22,16 @@ pub(super) fn wrap_lone_float(
         {
             let mut lone = floaters.remove(0);
             lone.style.flex_shrink = None;
+            // CSS 2.1 10.6.3 in the physical block axis: floats do not
+            // enlarge an ordinary auto-size block. float_tail proves no
+            // enclosing BFC needs this excluded contribution afterwards.
+            if parent.wm().vertical()
+                && parent.float_tail
+                && matches!(parent.width, None | Some(Len::Auto))
+                && lone.style.vertical_decl() == Some(false)
+            {
+                lone.marks.outside_block = true;
+            }
             // ПРОБОВАЛИ И ОТКАТИЛИ: заодно делать строчный по природе тег
             // блочным при `float: right` (обещание комментария ниже, кода
             // не было). Замерено: приобретено 4, потеряно 5 —
@@ -95,6 +105,7 @@ pub(super) fn wrap_lone_float(
                 let mut children = vec![Node::Element(lone)];
                 children.extend(row);
                 out.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
@@ -102,7 +113,8 @@ pub(super) fn wrap_lone_float(
                     style: Computed {
                         display: Some(Display::Flex),
                         ..Computed::default()
-                    },
+                    }
+                    .into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -120,6 +132,7 @@ pub(super) fn wrap_lone_float(
                 lone.style.margin.left = Some(Len::Auto);
                 row.push(Node::Element(lone));
                 out.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
@@ -127,7 +140,8 @@ pub(super) fn wrap_lone_float(
                     style: Computed {
                         display: Some(Display::Flex),
                         ..Computed::default()
-                    },
+                    }
+                    .into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -142,9 +156,8 @@ pub(super) fn wrap_lone_float(
             }
             // `sideways-lr`: line-left — НИЗ (css-writing-modes-4 §6.3),
             // и `float: left` прижимается к нижнему краю колонки.
-            let line_left_bottom = parent.vertical == Some(true)
-                && parent.vertical_rl != Some(true)
-                && parent.sideways == Some(true);
+            let line_left_bottom =
+                parent.wm().vertical() && !parent.wm().block_rl() && parent.wm().sideways();
             lone.style.align_self = Some(if (side < 0) != line_left_bottom {
                 Align::Start
             } else {

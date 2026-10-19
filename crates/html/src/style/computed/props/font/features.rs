@@ -1,20 +1,31 @@
 //! Computed::apply_font, продолжение цепочки: font-synthesis, font-kerning, font-feature-settings, font-variant*. Ветви в исходном порядке; не совпавший ключ уходит в apply_font_metrics.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_font_features(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_font_features(
+        &mut self,
+        key: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
-            "font" => font_shorthand::apply(self, v),
+            "font" => font_shorthand::apply(self, v, vcx),
             "font-synthesis"
             | "font-synthesis-weight"
             | "font-synthesis-style"
             | "font-synthesis-small-caps" => {
+                self.accept_declaration();
                 // css-fonts-4 §6.5: `auto` разрешает подмену, `none`
                 // запрещает; у сокращения перечислены разрешённые части.
+                if matches!(key, "font-synthesis" | "font-synthesis-style") {
+                    self.font_oblique_only =
+                        Some(key == "font-synthesis-style" && v == "oblique-only");
+                }
                 let allow = |what: &str| match key {
                     "font-synthesis" => v.contains(what),
                     _ => v.trim() != "none",
@@ -53,6 +64,7 @@ impl Computed {
                 }
                 // Негодный список роняет объявление целиком (§4.2).
                 if let Some(list) = feature_list(v) {
+                    self.accept_declaration();
                     self.font_settings = Some(list);
                 }
             }
@@ -73,7 +85,7 @@ impl Computed {
                     else {
                         return;
                     };
-                    self.font_alternates = Some(alternates);
+                    self.font_alternates = accept_parsed!(self, Some(alternates));
                 }
                 // Значения разделяются ПРОБЕЛОМ (css-fonts-4 §6); каждое
                 // свойство сперва чистит СВОЮ подгруппу тегов — повтор и
@@ -102,9 +114,8 @@ impl Computed {
                     _ => &[CAPS, NUMERIC, LIGA, EAST, POS, ALT],
                 };
                 self.font_features.retain(|(t, _)| {
-                    !groups.iter().any(|g| g.contains(&t.as_str()))
-                        && !(matches!(key, "font-variant" | "font-variant-alternates")
-                            && alt_tag(t))
+                    !(groups.iter().any(|g| g.contains(&t.as_str()))
+                        || matches!(key, "font-variant" | "font-variant-alternates") && alt_tag(t))
                 });
                 for token in v.split_whitespace() {
                     let push: &[(&str, u32)] = match token {
@@ -141,18 +152,25 @@ impl Computed {
                         "ruby" => &[("ruby", 1)],
                         "sub" => &[("subs", 1)],
                         "super" => &[("sups", 1)],
-                        "historical-forms" => &[],
+                        "historical-forms" => {
+                            self.accept_declaration();
+                            &[]
+                        }
                         // `none` выключает лигатуры по умолчанию.
                         "none" => &[("liga", 0), ("clig", 0), ("calt", 0)],
-                        "normal" => &[],
+                        "normal" => {
+                            self.accept_declaration();
+                            &[]
+                        }
                         _ => &[],
                     };
                     for (t, on) in push {
+                        self.accept_declaration();
                         self.font_features.push(((*t).into(), *on));
                     }
                 }
             }
-            _ => self.apply_font_metrics(key, val, v, hit),
+            _ => self.apply_font_metrics(key, v, hit, vcx),
         }
     }
 }

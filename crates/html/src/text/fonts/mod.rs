@@ -15,21 +15,97 @@
 //! Упаковки `woff` и `woff2` — это тот же sfnt: у первой сжаты таблицы, у
 //! второй сверх того перестроены глифы. Распаковку делает крейт `wuff`.
 
+mod face_rules;
 mod font_faces;
 mod loading;
+pub(crate) mod matching;
+pub(crate) mod math;
+pub(crate) use matching::alias_for;
+pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod stretch;
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Tests for fonts.
+
+    use super::loading::range_has_space;
+    use super::*;
+
+    #[test]
+    fn face_rule_gives_family_and_file() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let css = "@font-face { font-family: 'мой'; src: url('/f/a.woff2') format('woff2'), \
+                       url('/f/a.woff') format('woff') } p { color: red }";
+        let block = faces(css, vcx);
+        assert_eq!(block.len(), 1);
+        assert_eq!(
+            declaration(&block[0], "font-family").as_deref(),
+            Some("'мой'")
+        );
+        // Обе упаковки нам по силам, поэтому берётся первая же.
+        assert_eq!(source(&block[0]).as_deref(), Some("/f/a.woff2"));
+    }
+
+    #[test]
+    fn only_font_face_blocks_are_taken() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let css = "p { font-family: 'нет' } @font-face { font-family: 'да'; src: url(a.ttf) }";
+        let block = faces(css, vcx);
+        assert_eq!(block.len(), 1);
+        assert_eq!(
+            declaration(&block[0], "font-family").as_deref(),
+            Some("'да'")
+        );
+    }
+
+    #[test]
+    fn space_decides_the_first_available_font() {
+        // Дескриптора нет — покрыт весь набор знаков.
+        assert!(range_has_space(None));
+        // Одиночный знак и отрезок.
+        assert!(range_has_space(Some("U+20")));
+        assert!(!range_has_space(Some("U+0061")));
+        assert!(range_has_space(Some("U+0-7F")));
+        assert!(!range_has_space(Some("U+0021-00FF")));
+        // Несколько кусков: хватает одного.
+        assert!(range_has_space(Some("U+20,U+41-5A")));
+        assert!(!range_has_space(Some("U+0061, U+0062")));
+        // Маска.
+        assert!(range_has_space(Some("U+00??")));
+        assert!(!range_has_space(Some("U+04??")));
+        // Негодная запись — дескриптор недействителен, умолчание покрывает всё.
+        assert!(range_has_space(Some("мусор")));
+    }
+
+    #[test]
+    fn data_url_source_survives_its_separators() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        // `;` и `,` внутри адреса `data:` не режут ни правило, ни список `src`.
+        let css = "@font-face { font-family: 'd'; \
+                   src: url(data:font/woff2;charset=utf-8;base64,d09GMg==) format('woff2'); \
+                   font-weight: normal }";
+        let block = faces(css, vcx);
+        assert_eq!(
+            source(&block[0]).as_deref(),
+            Some("data:font/woff2;charset=utf-8;base64,d09GMg==")
+        );
+        assert_eq!(
+            declaration(&block[0], "font-weight").as_deref(),
+            Some("normal")
+        );
+    }
+}
 mod windows_names;
-use crate::text::fonts::font_faces::declaration;
-use crate::text::fonts::font_faces::faces;
+use crate::text::fonts::face_rules::{declaration, faces, source};
 use crate::text::fonts::font_faces::is_quote;
 use crate::text::fonts::font_faces::read_font;
-use crate::text::fonts::font_faces::source;
 pub use crate::text::fonts::loading::covers_space;
 pub use crate::text::fonts::loading::load_faces;
 pub use crate::text::fonts::loading::load_faces_additive;
+pub(crate) use crate::text::fonts::loading::load_faces_sheets;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
 use crate::text::fonts::sfnt_metrics::sfnt_romn_baseline;
@@ -55,7 +131,7 @@ thread_local! {
     /// `font-stretch` (отрезок процентов) и имя в системе. Одного слота мало:
     /// правил `@font-face` на одно имя бывает много, и выбор между ними ведёт
     /// css-fonts-4 §font-matching, а не «кто объявлен последним».
-    static FACES: RefCell<HashMap<String, Vec<((f32, f32), String)>>> =
+    static FACES: RefCell<HashMap<String, Vec<matching::Face>>> =
         RefCell::new(HashMap::new());
     /// Придуманное имя → есть ли в семействе знак U+0020. Семейство собирают
     /// из нескольких правил (подмножества знаков), и пробел у него есть,
@@ -110,7 +186,13 @@ pub fn alias(family: &str) -> Option<String> {
 }
 
 /// Возможности из дескриптора `font-feature-settings` правила `@font-face`.
-pub fn face_features(family: &str) -> Vec<(String, u32)> {
+pub fn face_features(
+    family: &str,
+    request: &crate::style::computed::Computed,
+) -> Vec<(String, u32)> {
+    if let Some(features) = matching::features(family, request) {
+        return features;
+    }
     FEATURES.with(|f| {
         f.borrow()
             .get(&family.to_ascii_lowercase())

@@ -1,6 +1,7 @@
 //! Разбор списка дорожек grid-template-*: размеры, minmax(), fit-content(), repeat(), счёт дорожек.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v197, `scout-gridoof-2026-09.md` жила И1,
 /// 8 хунков): `fit-content(N)` теряет функцию дорожки в переводе CSS→gpui и
@@ -14,8 +15,11 @@ use super::*;
 /// Новый вариант перечисления в вендорном `GridTrack` меняет раскладку далеко
 /// за пределами сетки: под него идут ВСЕ дорожечные размеры gpui. Возвращать
 /// только вместе с полным перебором потребителей `GridTrack` и своим сводом.
-pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>> {
-    fn single(t: &str) -> Option<Track> {
+pub(in crate::style::computed) fn parse_tracks(
+    v: &str,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<TrackSize>> {
+    fn single(t: &str, vcx: ValueCx<'_>) -> Option<Track> {
         let t = t.trim();
         // Именованная линия перед дорожкой: `[side] 240px`. Имя не несёт
         // размера, поэтому просто отбрасывается — но НЕ вместе с дорожкой.
@@ -37,7 +41,7 @@ pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>
         if let Some(fr) = t.strip_suffix("fr") {
             return fr.trim().parse().ok().map(Track::Fr);
         }
-        match Len::parse(t) {
+        match Len::parse(t, vcx) {
             Some(Len::Px(px)) => Some(Track::Px(px)),
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
             // Единицы шрифта откладываются: раньше они роняли разбор, а с
@@ -48,11 +52,11 @@ pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>
     }
 
     /// Одна запись списка: `minmax(a, b)` либо одиночная дорожка.
-    fn one(t: &str) -> Option<TrackSize> {
+    fn one(t: &str, vcx: ValueCx<'_>) -> Option<TrackSize> {
         let t = t.trim();
         if let Some(inner) = t.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
             let (lo, hi) = inner.split_once(',')?;
-            return Some(TrackSize::MinMax(single(lo)?, single(hi)?));
+            return Some(TrackSize::MinMax(single(lo, vcx)?, single(hi, vcx)?));
         }
         // `fit-content(N)` — дорожка по содержимому, но НЕ ШИРЕ N: раньше
         // сводилась к `Px(N)`, и потолок работал полом
@@ -67,14 +71,14 @@ pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>
             .strip_prefix("fit-content(")
             .and_then(|r| r.strip_suffix(')'))
         {
-            let hi = match single(inner).unwrap_or(Track::Auto) {
+            let hi = match single(inner, vcx).unwrap_or(Track::Auto) {
                 Track::Px(v) => Track::FitPx(v),
                 Track::Pct(v) => Track::FitPct(v),
                 other => other,
             };
             return Some(TrackSize::MinMax(Track::Auto, hi));
         }
-        single(t).map(TrackSize::Single)
+        single(t, vcx).map(TrackSize::Single)
     }
 
     // Список дорожек с раскрытием `repeat(N, …)` НА МЕСТЕ. Раньше `repeat`
@@ -91,7 +95,7 @@ pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>
             let count = count.trim();
             let unit: Vec<TrackSize> = tokenize_tracks(rest)
                 .iter()
-                .filter_map(|t| one(t))
+                .filter_map(|t| one(t, vcx))
                 .collect();
             if unit.is_empty() {
                 return None;
@@ -122,7 +126,7 @@ pub(in crate::style::computed) fn parse_tracks(v: &str) -> Option<Vec<TrackSize>
         }
         // Нераспознанная дорожка — повод отказаться от всего списка: тихо
         // укоротить его значит переставить всех детей.
-        out.push(one(&token)?);
+        out.push(one(&token, vcx)?);
     }
     (!out.is_empty()).then_some(out)
 }

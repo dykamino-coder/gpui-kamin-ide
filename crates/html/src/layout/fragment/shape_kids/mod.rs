@@ -2,10 +2,13 @@
 // owner: A
 
 use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::oof_reach::Reach;
 mod cuts;
 use cuts::stack_kid_cuts;
 
 #[allow(clippy::too_many_arguments)]
+// Stacked child records include their geometry and break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn stack_kids(
     kids: Vec<(
         f32,
@@ -16,7 +19,7 @@ pub(crate) fn stack_kids(
         Vec<(f32, f32)>,
         bool,
         bool,
-        f32,
+        Reach,
     )>,
     row_nowrap: bool,
     top: f32,
@@ -34,11 +37,11 @@ pub(crate) fn stack_kids(
     line_inner: Vec<bool>,
     blk_avoid: Vec<(bool, bool)>,
     page_kid: Vec<Option<(std::string::String, std::string::String)>>,
-    mut oof_reach: f32,
+    mut oof_reach: Reach,
     page_prev: Option<String>,
-) -> (Option<(f32, f32, f32)>, f32) {
+    bfc: bool,
+) -> (Option<(f32, f32, f32)>, Reach) {
     let stacked: Option<(f32, f32, f32)>;
-    let inner_h: Vec<f32> = kids.iter().map(|k| k.0).collect();
     // Ряд flex БЕЗ переноса: дети стоят бок о бок, и
     // каждый фрагментируется СВОИМИ точками (Blink
     // `flex_layout_algorithm.cc`: элементу строки
@@ -49,9 +52,14 @@ pub(crate) fn stack_kids(
     // объявлялся монолитом целиком, и разреза не было
     // никогда (`single-line-row-flex-fragmentation-*`).
     if row_nowrap {
-        let tallest = inner_h.iter().copied().fold(0.0f32, f32::max);
+        // Поля элементов flex не схлопываются и сквозь край контейнера не
+        // уходят (css-flexbox-1 §4.2): строка — по внешним краям полей
+        // (`single-line-row-flex-fragmentation-039`: `margin-bottom: 20px`
+        // элемента входит в высоту контейнера).
+        let tallest = kids.iter().map(|k| k.1 + k.0 + k.2).fold(0.0f32, f32::max);
         for k in &kids {
-            let start = top;
+            let start = top + k.1;
+            oof_reach.merge(k.8, start);
             for (need, nf) in &k.3 {
                 cuts.push((start + need, start + nf));
             }
@@ -121,6 +129,7 @@ pub(crate) fn stack_kids(
             blk_prev_cut,
             flex_open_ok,
             flex_chain,
+            bfc,
         );
         // Сцепка, дожившая до последнего элемента, закрывается его низом.
         if let Some(s) = flex_run {

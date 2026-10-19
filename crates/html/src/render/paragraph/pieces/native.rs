@@ -1,6 +1,6 @@
 //! Построение абзаца с собственной раскладкой строк.
 
-use super::paragraph_spans;
+use super::{paragraph_spans, rotate_rel_spans};
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -9,6 +9,8 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, SharedString};
 
 #[allow(clippy::too_many_arguments)]
+// Paragraph construction consumes the span geometry records used by the probes.
+#[allow(clippy::type_complexity)]
 pub(crate) fn native_paragraph(
     inherited: &Computed,
     opts: &RenderOpts,
@@ -40,11 +42,8 @@ pub(crate) fn native_paragraph(
     // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
     // и от него же считается высота строки в долях.
     //
-    // ПРОБОВАЛИ И ОТКАТИЛИ: считать долю от кегля САМОГО блока
-    // (струт §10.8), раз крупный кусок теперь растит строку каналом
-    // `lh_spans`. Замерено: приобретено 4, потеряно 4 — три пары
-    // `*-applies-to-008` уходят с 0.02 на 0.67. Возвращать вместе с
-    // разбором `vertical-align: top/bottom` на тексте.
+    // Per-run boxes below retain the block strut without changing this
+    // legacy fallback (`*-applies-to-008`).
     // Куски у края строки в её струт не входят (§10.8.1): у
     // `vertical-align-121` строка из 30px текста и прижатого вверх
     // 60px куска — это 30px струта плюс вылет куска вниз, а не 60px
@@ -85,7 +84,8 @@ pub(crate) fn native_paragraph(
         line,
         crate::text::paragraph::align_for(inherited),
         wrap,
-    );
+    )
+    .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)
         .edge_spans(edges)
         .line_boxes(
@@ -97,18 +97,18 @@ pub(crate) fn native_paragraph(
                 )
             }),
         )
-        .rel_spans(inline::rel_spans(&pieces))
+        .rel_spans(rotate_rel_spans(inline::rel_spans(&pieces), inherited))
         .ruby_justify(
             inherited.ruby_justify == Some(true),
             inherited.ruby_unit,
-            inherited.rotated_line == Some(true),
+            inherited.wm().turned(),
             line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
         .justify_chars(inherited.justify_chars.unwrap_or(1))
         .align_last(
             inherited
                 .text_align_last
-                .map(|a| a.physical(inherited.rtl == Some(true)))
+                .map(|a| a.physical(inherited.wm().rtl()))
                 .map(crate::text::paragraph::align_of_value)
                 // `text-justify: none` forbids justification of the last
                 // line too: it aligns as `start` (css-text-3 §7.3,
@@ -117,7 +117,7 @@ pub(crate) fn native_paragraph(
                     crate::text::paragraph::Align::Justify
                         if inherited.no_justify == Some(true) =>
                     {
-                        if inherited.rtl == Some(true) {
+                        if inherited.wm().rtl() {
                             crate::text::paragraph::Align::Right
                         } else {
                             crate::text::paragraph::Align::Left
@@ -149,7 +149,12 @@ pub(crate) fn native_paragraph(
         )
         // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
         // авто-режим — из бюджета, посчитанного по точке среза.
-        .line_clamp(clamp_budget.or_else(|| inherited.clamp_lines().map(|n| n as usize)))
+        .line_clamp(clamp_budget.or_else(|| {
+            (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip)
+                && crate::text::clamp::para_depth() == 0)
+                .then(|| inherited.clamp_lines().map(|n| n as usize))
+                .flatten()
+        }))
         .clamp_marked(clamp_budget.is_some())
         .text_ellipsis(
             inherited.ellipsis == Some(true)
@@ -189,6 +194,7 @@ pub(crate) fn native_paragraph(
                 Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Ex(_)) | Some(Len::Ch(_))
             ),
         )
+        .hyphen_limit_lines(inherited.hyphen_limit_lines)
         .hyphen_char(
             crate::render::paragraph::paragraph_style(inherited)
                 .hyphen_char
@@ -197,7 +203,18 @@ pub(crate) fn native_paragraph(
         .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
         .overlays(inline::overlays(pieces))
         .atoms(line_atoms)
-        .ruby_trim(inherited.text_box_trim_start, inherited.text_box_trim_end);
+        // Срез строки — только у абзаца, держащего первую/последнюю строку
+        // срезающего контейнера (`text::line_trim`).
+        .ruby_trim(
+            crate::text::line_trim::para(opts.cx.trim_para, inherited.self_node).unwrap_or(
+                crate::text::line_trim::Trim {
+                    start: inherited.text_box_trim_start,
+                    end: inherited.text_box_trim_end,
+                    over: 0.0,
+                },
+            ),
+        );
+    let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
     } else {
@@ -206,8 +223,18 @@ pub(crate) fn native_paragraph(
     if native {
         native_request.unwrap().built.set(true);
     }
+    let projection = crate::interactive::scroll_extent::projection(
+        inherited.self_node,
+        None,
+        opts.cx.sticky.as_ref(),
+    );
+    let sticky = projection
+        .as_ref()
+        .map(|p| p.link().clone())
+        .or_else(|| opts.cx.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node).into_any_element(),
-        crate::interactive::scroll_extent::projection(inherited.self_node, None),
+        para.scroll_owner(inherited.self_node, sticky)
+            .into_any_element(),
+        projection,
     )
 }

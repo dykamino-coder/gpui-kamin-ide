@@ -1,14 +1,12 @@
-//! Cut element for clamp; split out to keep the owning module within 250 lines.
+//! Clamp probe element and its layout, prepaint, and plan application lifecycle.
 
 mod layout;
 mod painting;
 mod prepaint;
 
 use super::{ClampEntry, ClampLines, clamp_cut, clamp_para, take_para_rows};
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Window,
-};
+use crate::hooks::Hooks;
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 /// Вычислитель точки среза: абсолютный элемент В КОНЦЕ clamp-контейнера,
 /// его границы — весь контейнер. Считает низ N-й считаемой строки,
@@ -28,59 +26,33 @@ pub struct ClampCut {
     pub(crate) trim_end: f32,
 }
 
-impl Element for ClampCut {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for ClampCut {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        self.request_layout_impl(_id, _inspector_id, window, cx)
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        self.request_layout_impl(window, cx)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
-        self.prepaint_impl(_id, _inspector_id, _bounds, _state, _window, _cx)
+    ) -> Self::Prepaint {
+        self.prepaint_impl(_bounds, _state, _window, _cx)
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
-        self.paint_impl(_id, _inspector_id, bounds, _state, _prepaint, window, _cx)
-    }
-}
-
-impl IntoElement for ClampCut {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
+        self.paint_impl(bounds, _state, _prepaint, window, _cx)
     }
 }
 

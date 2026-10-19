@@ -1,10 +1,10 @@
 //! Абсолютный замещаемый атом: держатель, слой ICB и статическое место.
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::paint::stacking::stacking_context;
 use crate::render::{RenderOpts, inline_abs_paint_last, styled_div_with};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -19,6 +19,7 @@ pub(super) fn replaced_abs_atom(
     inline_cb: bool,
     stretched: bool,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let mut copy = e.clone();
     copy.style.image_orient_none = merged.image_orient_none;
     copy.style.position = None;
@@ -30,17 +31,19 @@ pub(super) fn replaced_abs_atom(
         copy.style.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element(&copy).unwrap_or_else(|| image(&copy))
+        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        image(&copy)
+        image(&copy, &opts.cx)
     };
-    let holder = styled_div_with(e, merged).child(built).into_any_element();
+    let holder = styled_div_with(e, merged, &opts.cx)
+        .child(built)
+        .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped(holder, merged)
+        crate::paint::effects::grouped::grouped_replaced(holder, merged, vcx)
     } else {
         holder
     };
@@ -53,22 +56,27 @@ pub(super) fn replaced_abs_atom(
             next_line: None,
             fixed_axes: (x_set, y_set),
             line_thickness: line_height_px(inherited, opts),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
             ),
             ..Default::default()
         });
-        let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
+        let probe = crate::layout::positioned::containing_block::spot_probe(
+            spot.clone(),
+            false,
+            opts.cx.line_box.clone(),
+        );
         return match inline_replaced_position::push(
             spot,
-            inline_abs_paint_last(e, holder),
+            inline_abs_paint_last(e, holder, &opts.cx),
             &e.style,
             inherited,
+            &opts.cx.positioning,
         ) {
             None => Some(probe),
             Some(kept) => {
@@ -78,25 +86,32 @@ pub(super) fn replaced_abs_atom(
             }
         };
     }
-    let below_icb = e.style.z_index.is_some_and(|z| z < 0) && !stacking_context(inherited);
+    let below_icb = e.style.z_index.is_some_and(|z| z < 0)
+        && !crate::paint::stacking::nested_context(inherited);
+    // Позиционированный предок есть — слой ЕГО содержащего блока
+    // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
+    // блока не знает, и `bottom: 0` отсчитывался от верха строки
+    // (`baseline-shift-bottom-ref`: картинка 60×60 вылезала над блоком).
+    // Отрицательный `z-index` у такого предка остаётся на месте.
+    let positioned_cb = inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited);
     if x_set
         && y_set
         && !inline_cb
         && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
-        && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
+        && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            crate::paint::effects::underlay::Underlay::new(holder).into_any_element()
+            crate::paint::effects::underlay::Underlay::new(holder).hooked()
         } else {
             holder
         };
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (true, true),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -105,8 +120,18 @@ pub(super) fn replaced_abs_atom(
         });
         // Слоя нет — элемент возвращается назад, и рисуем его на
         // месте прежним путём.
-        match crate::layout::positioned::containing_block::icb_push(spot, holder.into_any_element())
-        {
+        let pushed = if positioned_cb {
+            opts.cx.positioning.cb_push(
+                spot,
+                holder.into_any_element(),
+                crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+            )
+        } else {
+            opts.cx
+                .positioning
+                .icb_push(spot, holder.into_any_element())
+        };
+        match pushed {
             None => {
                 return Some(div().w_0().h_0().flex_shrink_0().into_any_element());
             }

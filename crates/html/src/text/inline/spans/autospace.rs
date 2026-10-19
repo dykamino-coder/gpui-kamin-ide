@@ -82,7 +82,9 @@ pub(super) fn autospace_between(left: char, right: char, style: &Computed) -> bo
     let numeric = style.autospace_numeric.unwrap_or(false);
     let pair = |ideo: char, other: char| {
         ideographic(ideo)
-            && ((alpha && other.is_alphabetic() && !ideographic(other))
+            && ((alpha
+                && (other.is_alphabetic() || other.is_ascii_punctuation())
+                && !ideographic(other))
                 || (numeric && other.is_ascii_digit()))
     };
     pair(left, right) || pair(right, left)

@@ -57,7 +57,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         let own_rtl = e.style.rtl.unwrap_or(parent_rtl);
         let edges = e
             .style
-            .vertical
+            .writing_mode
             .is_none()
             .then_some(if own_rtl { (1, 3) } else { (3, 1) });
         // `first`: кусок до первого блока, `last`: после последнего.

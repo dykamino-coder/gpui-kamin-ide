@@ -1,6 +1,7 @@
 //! Тост-стек (Toasts 1:1): фиксирован снизу-справа (bottom 36, right space-4),
-//! flex-col gap space-2, max-w 360. Карточка — полупрозрачный bg-surface 50%,
-//! border bg-surface 70%, r-md, shadow; иконка severity (цвет = severity),
+//! flex-col gap space-2, max-w 360. Карточка — непрозрачный bg-surface,
+//! border bg-surface 70%, r-md, без тени и без размытия подложки (см.
+//! `toast_card` ниже); иконка severity (цвет = severity),
 //! title (600) + message (text-secondary) + action-чипы + dismiss (×).
 //! Severity: info=blue, success=green, warning=yellow, error=red.
 
@@ -193,29 +194,15 @@ fn toast_card(
         .p(px(m::SPACE_3))
         .px(px(m::SPACE_4))
         .rounded(px(m::RADIUS_MD))
-        // Оригинал 1:1: surface 50% + backdrop-filter blur(8). Блюр рисует
-        // канвас-ребёнок ниже (KaminIDE patch paint_backdrop_blur в gpui).
-        .bg(tint(rgba(p.bg_surface), 0.5))
+        // Непрозрачный фон без тени (INC-2026-0001). Оригинальные surface 50%
+        // + backdrop-filter blur(8) + shadow стоили каждому кадру окна, пока
+        // тост на экране: проход размытия копирует и уменьшает ВЕСЬ кадр, а
+        // не площадь карты, — три тоста давали +4 мс GPU и тени ещё +1,4 мс на
+        // кадр (Intel UHD, 1920×1030), и так до закрытия sticky-тостов.
+        .bg(rgba(p.bg_surface))
         .border_1()
         .border_color(tint(rgba(p.bg_surface), 0.7))
-        .shadow(crate::ui::shadows::card_popup())
         .text_size(px(m::FS_SM))
-        .child(
-            // Настоящий backdrop-filter blur(8): рендерный проход в vendored
-            // gpui (paint_backdrop_blur). Рисуется ПОСЛЕ фона карты и ДО
-            // контента: блюрит содержимое под тостом вместе с полупрозрачным
-            // тинтом (линейно эквивалентно blur(фон)+тинт).
-            gpui::canvas(
-                |_, _, _| {},
-                |bounds, _, window, _| {
-                    window.paint_backdrop_blur(bounds, gpui::Corners::all(px(m::RADIUS_MD)));
-                },
-            )
-            .absolute()
-            .top_0()
-            .left_0()
-            .size_full(),
-        )
         .child(
             // `.icon{font-size:var(--fs-md)}` стоит на самом `.codicon` →
             // проигрывает вендорной базе: эффективный кегль 16 (ревью ц.14)

@@ -42,8 +42,13 @@ pub(crate) fn flow_children(
                     // правому краю и вылезает влево (csswg-drafts#5572);
                     // только горизонтальное письмо — в вертикали cross-ось
                     // иная (abs-pos-border-offset-001/002).
-                    if inherited.rtl == Some(true)
-                        && inherited.vertical_rl.is_none()
+                    // Horizontal flow only (in vertical flow the cross axis is the
+                    // other one). The flag is read through `WritingMode`: a
+                    // `horizontal-tb` box under a vertical ancestor still
+                    // carries the inherited `vertical_rl` value, which kept
+                    // the rule off (`abs-pos-vlr-border-001-ref`).
+                    if inherited.wm().rtl()
+                        && !inherited.wm().vertical()
                         && e.style.width.is_some()
                         && e.style.align_self.is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
@@ -69,62 +74,19 @@ pub(crate) fn flow_children(
                     {
                         e.style.align_self = Some(Align::End);
                     }
-                    // `sideways-lr` — единственное письмо, где строчная ось
-                    // идёт СНИЗУ ВВЕРХ: таблица Abstract-Physical Mapping
-                    // (css-writing-modes-4, Overview.bs:1795-1830) даёт ему
-                    // `line-left` = НИЗ, всем прочим вертикальным — верх.
-                    // Значит начало строчной оси содержащего блока — его
-                    // нижний край, и ребёнок с ОПРЕДЕЛЁННЫМ поперечным
-                    // (физически вертикальным) размером стоит там:
-                    // `body { height: 9em }` под корнем `sideways-lr` прижат
-                    // к низу окна (`block-flow-direction-043-ref`: стол
-                    // y 412…591 из 600), квадрат `height: 100px` — в НИЖНЕМ
-                    // левом углу (`wm-propagation-body-035-ref`: y 492…592).
-                    // Растянутого ребёнка правило не касается: `align-self`
-                    // без определённого поперечного размера снимает растяжку.
-                    // ★ ЗАМЕРЕНО: срез всего вертикального письма
-                    // (`target/L-wm-wide.txt`, 1798 пар) 1335 -> 1354,
-                    // +20/−1. Единственная потеря — `abs-pos-border-
-                    // offset-002` 0.45 -> 2.22: там 68 коробок всех
-                    // сочетаний письма и направления, и порог она
-                    // держала не правотой, а усреднением; статическое
-                    // место абсолюта при `sideways-lr` остаётся долгом
-                    // корня WM-OVERCONSTRAINED-AXIS.
-                    if inherited.vertical == Some(true)
-                        && inherited.sideways == Some(true)
-                        && inherited.vertical_rl != Some(true)
-                        && matches!(
-                            e.style.height,
-                            Some(Len::Px(_)) | Some(Len::Em(_)) | Some(Len::Pct(_))
-                        )
-                        && e.style.align_self.is_none()
-                        && !e.inline
-                        && matches!(e.style.display, None | Some(Display::Block))
-                        && !matches!(
-                            e.style.position,
-                            Some(crate::style::computed::Position::Absolute)
-                                | Some(crate::style::computed::Position::Fixed)
-                        )
-                    {
-                        e.style.align_self = Some(Align::End);
-                    }
-                    // `vertical-lr`/`vertical-rl`/`sideways-rl` при
-                    // `direction: rtl`: строчная ось идёт СНИЗУ вверх —
-                    // inline-start содержащего блока у НИЖНЕГО края
-                    // (css-writing-modes-4 §6.4: line-right = низ, rtl
-                    // ставит start на line-right). Переполненная по строчной
-                    // оси коробка стоит у inline-start и вылезает к inline-end
-                    // (CSS 2.2 §10.3.3 в логических осях, §7.1) — то есть
-                    // низом к низу и ВВЕРХ. Без правила тело `height: 100vh`
-                    // с рамками под корнем `vertical-lr; direction: rtl`
-                    // лежало от верха, и красная верхняя рамка оставалась в
-                    // окне (`contain-{body,html}-t-o-*` — ломался и эталон).
-                    // `sideways-lr` исключён: у него line-left = низ, и при rtl
-                    // start — ВЕРХ (правило выше его не касается rtl).
-                    if inherited.vertical == Some(true)
-                        && inherited.rtl == Some(true)
-                        && !(inherited.sideways == Some(true)
-                            && inherited.vertical_rl != Some(true))
+                    // A box with a DEFINITE physical cross size stands at its
+                    // containing block's inline-start (CSS 2.2 §10.3.3 in logical
+                    // axes, css-writing-modes-4 §7.1) and overflows towards
+                    // inline-end. §6.4 Abstract-Physical Mapping puts inline-start
+                    // on the BOTTOM edge for `sideways-lr` (line-left = bottom)
+                    // and, with `direction: rtl`, for the other vertical modes:
+                    // `block-flow-direction-043-ref` (`body { height: 9em }` under a
+                    // `sideways-lr` root at the window bottom),
+                    // `contain-{body,html}-t-o-*` (`height: 100vh` under
+                    // `vertical-lr; direction: rtl`). A stretched child is not
+                    // affected: `align-self` without a definite cross size drops it.
+                    if inherited.wm().inline_start()
+                        == crate::style::computed::writing_mode::Side::Bottom
                         && matches!(
                             e.style.height,
                             Some(Len::Px(_))
@@ -173,7 +135,7 @@ pub(crate) fn flow_children(
                             || (matches!(e.style.height, Some(Len::Pct(_)))
                                 && matches!(inherited.height, Some(Len::Px(_)))))
                         && e.style.align_self.is_none()
-                        && inherited.vertical.is_none()
+                        && inherited.writing_mode.is_none()
                         && !e.inline
                         && !positioned_out
                     {

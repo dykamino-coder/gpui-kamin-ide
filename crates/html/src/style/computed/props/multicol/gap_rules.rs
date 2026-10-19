@@ -1,15 +1,16 @@
 //! Списки линеек промежутков (css-gaps-1): разбор значений по осям (gap_list/gap_rule/gap_*) и запись их в Computed (set_gap_*, gap_rule_shorthand).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Ширина линейки промежутка: ключевые слова css-gaps-1 §width те же, что у
 /// рамок; отрицательная недействительна.
-pub(super) fn gap_width(t: &str) -> Option<Len> {
+pub(super) fn gap_width(t: &str, vcx: ValueCx<'_>) -> Option<Len> {
     match t.trim() {
         "thin" => Some(Len::Px(1.0)),
         "medium" => Some(Len::Px(3.0)),
         "thick" => Some(Len::Px(5.0)),
-        t => Len::parse(t).filter(|l| {
+        t => Len::parse(t, vcx).filter(|l| {
             matches!(l, Len::Px(w) if *w >= 0.0) || matches!(l, Len::Em(k) if *k >= 0.0)
         }),
     }
@@ -27,17 +28,29 @@ pub(super) fn gap_style(t: &str) -> Option<bool> {
     }
 }
 
+/// Line kind of one rule style (css-gaps-1 §color-style-width: styles as
+/// for borders): 1 `dashed`, 2 `dotted`, 3 `double`, 0 the solid-like rest.
+pub(super) fn gap_kind(v: &str) -> Option<u8> {
+    gap_style(v)?;
+    Some(match v.trim().to_ascii_lowercase().as_str() {
+        "dashed" => 1,
+        "dotted" => 2,
+        "double" => 3,
+        _ => 0,
+    })
+}
+
 /// Цвет линейки; `currentcolor` — `None` (цвет текста контейнера).
-pub(super) fn gap_color(t: &str) -> Option<Option<Color>> {
+pub(super) fn gap_color(t: &str, vcx: ValueCx<'_>) -> Option<Option<Color>> {
     let t = t.trim();
     if t.eq_ignore_ascii_case("currentcolor") {
         return Some(None);
     }
-    Color::parse(t).map(Some)
+    Color::parse(t, vcx).map(Some)
 }
 
 /// Втяжка конца (css-gaps-1 §inset): длина/доля или `overlap-join`.
-pub(super) fn gap_inset(t: &str) -> Option<GapInset> {
+pub(super) fn gap_inset(t: &str, vcx: ValueCx<'_>) -> Option<GapInset> {
     let t = t.trim();
     if t == "overlap-join" {
         return Some(GapInset::OverlapJoin);
@@ -45,14 +58,19 @@ pub(super) fn gap_inset(t: &str) -> Option<GapInset> {
     if t == "0" {
         return Some(GapInset::Len(Len::Px(0.0)));
     }
-    Len::parse(t)
+    Len::parse(t, vcx)
         .filter(|l| matches!(l, Len::Px(_) | Len::Pct(_) | Len::Em(_)))
         .map(GapInset::Len)
 }
 
 /// `<gap-rule> = <line-width> || <line-style> || <color>`: любой порядок,
 /// каждая часть не более одного раза; лишний токен — недействительно.
-pub(super) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
+// The shorthand independently omits width, style and color; color also has currentColor.
+#[allow(clippy::type_complexity)]
+pub(super) fn gap_rule(
+    entry: &str,
+    vcx: ValueCx<'_>,
+) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
     let (mut w, mut s, mut c) = (None, None, None);
     for token in split_outside_parens(entry) {
         if s.is_none()
@@ -60,11 +78,11 @@ pub(super) fn gap_rule(entry: &str) -> Option<(Option<Len>, Option<bool>, Option
         {
             s = Some(v);
         } else if w.is_none()
-            && let Some(v) = gap_width(&token)
+            && let Some(v) = gap_width(&token, vcx)
         {
             w = Some(v);
         } else if c.is_none()
-            && let Some(v) = gap_color(&token)
+            && let Some(v) = gap_color(&token, vcx)
         {
             c = Some(v);
         } else {
@@ -165,10 +183,11 @@ impl Computed {
     /// `column-rule`/`row-rule`/`rule` (css-gaps-1 §rule-shorthands): каждая
     /// часть сокращения ставит СВОЙ список; неназванные части сбрасываются в
     /// начальные (`medium`, `none`, `currentcolor`), как у любого сокращения.
-    pub(crate) fn gap_rule_shorthand(&mut self, key: &str, v: &str) {
-        let Some(list) = gap_list(v, gap_rule) else {
+    pub(crate) fn gap_rule_shorthand(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
+        let Some(list) = gap_list(v, |s| gap_rule(s, vcx)) else {
             return;
         };
+        self.accept_declaration();
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
         let colors = list.map(|r| r.2.flatten());
@@ -176,18 +195,52 @@ impl Computed {
             && split_outside_parens(v)
                 .iter()
                 .any(|t| t.trim().eq_ignore_ascii_case("double"));
+        let kinds = gap_list(v, |e| {
+            let toks = split_outside_parens(e);
+            gap_rule(e, vcx).map(|_| toks.iter().find_map(|t| gap_kind(t)).unwrap_or(0))
+        });
         for column in [true, false] {
             if (column && key == "row-rule") || (!column && key == "column-rule") {
                 continue;
             }
             if column {
                 self.column_rule_double = double;
+                self.column_rule_kinds = kinds.clone();
             } else {
                 self.row_rule_double = double;
+                self.row_rule_kinds = kinds.clone();
             }
             self.set_gap_widths(column, &widths);
             self.set_gap_styles(column, &styles);
             self.set_gap_colors(column, &colors);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::style::computed::{Computed, GapList};
+
+    #[test]
+    fn dashed_and_dotted_rule_styles_are_kept_per_axis() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut c = Computed::default();
+        c.apply_one("column-rule", "10px dotted pink", vcx);
+        c.apply_one("row-rule-style", "dashed", vcx);
+        let kind = |l: &Option<GapList<u8>>, k| l.as_ref().and_then(|l| l.at(k, 3));
+        assert_eq!(kind(&c.column_rule_kinds, 0), Some(2));
+        assert_eq!(kind(&c.row_rule_kinds, 0), Some(1));
+        c.apply_one("rule-style", "solid", vcx);
+        assert_eq!(kind(&c.column_rule_kinds, 0), Some(0));
+        c.apply_one("column-rule-style", "solid, dotted, double", vcx);
+        let got: Vec<_> = (0..3).map(|k| kind(&c.column_rule_kinds, k)).collect();
+        assert_eq!(got, [Some(0), Some(2), Some(3)]);
+        c.apply_one(
+            "row-rule",
+            "5px dashed red, repeat(2, blue 1px double)",
+            vcx,
+        );
+        assert_eq!(kind(&c.row_rule_kinds, 2), Some(3));
     }
 }

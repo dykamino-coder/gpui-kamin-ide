@@ -4,7 +4,7 @@ use crate::style::css::*;
 
 mod compound;
 mod pseudo;
-use pseudo::{is_pseudo_element, known_pseudo, pseudo_specificity};
+use pseudo::{is_element_backed, is_pseudo_element, known_pseudo, pseudo_specificity};
 pub(crate) use pseudo::{nth_of_parts, split_selector_list};
 
 /// Простой селектор — ровно то подмножество, которое встречается на практике.
@@ -19,6 +19,7 @@ pub struct Selector {
     pub pseudo: Option<String>,
     /// Остальные псевдоклассы компаунда: `li:first-child:last-child` несёт
     /// в `pseudo` последний, прочие копятся здесь и обязаны выполниться все.
+    /// Element-backed pseudo chains retain their originating pseudo here too.
     pub also: Vec<String>,
     /// Предок для `.a .b` и `.a > .b`. Прямой ли — во втором поле.
     pub ancestor: Option<Box<(Selector, bool)>>,
@@ -98,8 +99,21 @@ impl Selector {
         s
     }
 
+    /// Есть ли псевдоэлемент в предмете селектора: внутри `:is()` такой
+    /// аргумент негоден и прощается (selectors-4 §4.2).
+    pub fn has_pseudo_element(&self) -> bool {
+        self.pseudo.as_deref().is_some_and(is_pseudo_element)
+            || self.also.iter().any(|p| is_pseudo_element(p))
+    }
+
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
     pub fn parse(raw: &str) -> Option<Selector> {
+        Selector::parse_in(raw, &SelectorCx::default())
+    }
+
+    /// `parse` inside a stylesheet: type selectors see its `@namespace`
+    /// prologue (`cx`).
+    pub(crate) fn parse_in(raw: &str, cx: &SelectorCx) -> Option<Selector> {
         // Разбивка на составные части и комбинаторы МЕЖДУ ними. Внутри скобок
         // `+` и `~` — не комбинаторы, а часть записи `2n+1` в `:nth-child()`.
         // Пробел — комбинатор потомка, если рядом нет знакового.
@@ -176,13 +190,13 @@ impl Selector {
         }
         // Сборка слева направо: у `.a > .b + .c` предметом остаётся `.c`,
         // его сосед — `.b`, а предок соседа — `.a`.
-        let mut sel = Selector::parse_compound(&compounds[0])?;
+        let mut sel = Selector::parse_compound(&compounds[0], cx)?;
         for (comp, comb) in compounds[1..].iter().zip(&combs) {
             // A pseudo-element must end the complex selector (Selectors §3.1).
-            if sel.pseudo.as_deref().is_some_and(is_pseudo_element) {
+            if sel.has_pseudo_element() {
                 return None;
             }
-            let mut next = Selector::parse_compound(comp)?;
+            let mut next = Selector::parse_compound(comp, cx)?;
             match comb {
                 0 => next.ancestor = Some(Box::new((sel, false))),
                 1 => next.ancestor = Some(Box::new((sel, true))),

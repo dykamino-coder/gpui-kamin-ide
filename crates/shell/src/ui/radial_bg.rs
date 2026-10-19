@@ -191,7 +191,14 @@ impl RadialBg {
     }
 
     /// Два свечения; центры на 20%/10% и 90%/90% вьюпорта.
+    ///
+    /// Без видеокарты (WARP, `web::software_render`) свечение не
+    /// рисуется: это ~22 почти прозрачных квада размером с окно, и каждый кадр
+    /// процессор закрашивает их целиком ради пятна в 4–5 % (INC-2026-0001).
     pub fn layers(&self, viewport: Bounds<Pixels>) -> AnyElement {
+        if crate::web::software_render() {
+            return div().into_any_element();
+        }
         let vw = f32::from(viewport.size.width);
         let vh = f32::from(viewport.size.height);
         let purple = self.purple;

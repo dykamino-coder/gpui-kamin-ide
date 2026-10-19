@@ -12,6 +12,8 @@ use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
+// A table cell returns its element and row/column placement metadata together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_cell(
     row_ix: i16,
     occupied: &mut [u16],
@@ -60,10 +62,11 @@ pub(super) fn table_cell(
     col_ix: &mut usize,
     cell: &Element,
 ) {
+    let vcx = opts.cx.vcx();
     // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
     // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
     // ни текста, ни элементов-детей.
-    let прячем_пустую = hides_empty_cell(e, row_style, cell);
+    let прячем_пустую = hides_empty_cell(e, row_style, cell, vcx);
     // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
     // она держать не может — дорожки под них нет (§17.5.2.1).
     let cell = &if прячем_пустую {
@@ -94,7 +97,7 @@ pub(super) fn table_cell(
     } else {
         cell.clone()
     };
-    let mut cm = cell_cascaded_style(e, row_style, cell);
+    let mut cm = cell_cascaded_style(e, row_style, cell, vcx);
     let (span_cols, span_rows, spans_collapsed, clipped) =
         cell_spans(row_ix, rows_left, cols_collapsed, *col_ix, cell);
     let mut cell = cell.clone();

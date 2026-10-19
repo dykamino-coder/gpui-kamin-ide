@@ -1,3 +1,5 @@
+#[cfg(feature = "tree-sitter")]
+mod capture_cache;
 mod language_name;
 pub use gpui_base::input::{
     Diagnostic, DiagnosticEntry, DiagnosticRelatedInformation, DiagnosticSet, DiagnosticSeverity,

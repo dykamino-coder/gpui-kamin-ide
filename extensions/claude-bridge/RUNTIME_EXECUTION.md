@@ -5,7 +5,7 @@
 [`runtime-issues/INC-*.md`](runtime-issues/). Подробные факты, причины,
 ограничения и acceptance остаются в исходных карточках и здесь не дублируются.
 
-Сверка всей очереди на 2026-10-12 и handoff каждого остатка:
+Сверка доставки на 2026-10-19 и handoff каждого остатка:
 [RUNTIME_BACKLOG.md](RUNTIME_BACKLOG.md). Сводка не начинает новую пачку,
 не принимает runtime outcomes и не меняет историю прежних запусков. Новые
 incidents после её source snapshot остаются входными данными следующей сверки.
@@ -208,7 +208,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown) | done | observation | teardown | BR-17 для остаточной причины | PR #20 в `main`; trigger классифицируется по новым logs |
 | [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | ready | verify | local hooks | BR-18 relay fix merged | Bounded local SessionEnd outcome/contract artifact; functional fix отдельно |
 | [BR-19](RUNTIME_RELIABILITY.md#br-19--treat-shell-disconnect-as-lifecycle-cancellation-not-extension-crash) | ready | verify | lifecycle RPC | PR #146 merged | Живой Windows disconnect/reconnect без ложного crash; task-specific evidence |
-| [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | done | none | account usage | none | PR #202 in `main`; authenticated Podman CLI/dashboard/Account gate passed on exact head |
+| [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows) | done | none | account usage | none | PR #202 in `main`; authenticated Podman CLI/dashboard/Account gate passed on exact head; follow-up #307 in `main` reuses BR-20 `parseStatusline` for the chat input limits row (no change to BR-20 scope or status) |
 | [BR-21](RUNTIME_RELIABILITY.md#br-21--define-and-reconcile-dashboard-analytics-semantics) | ready | research | analytics | none | Сначала metric-contract decision PR; child PR ниже |
 | [BR-22](RUNTIME_RELIABILITY.md#br-22--keep-live-chat-render-window-populated-by-drawable-rows) | ready | research | chat history | none для source/synthetic research; paired dumps для historical attribution | Current drawable-path classification; BR-16 ждёт результат, Windows fix gate сохранён |
 | [BR-23](RUNTIME_RELIABILITY.md#br-23--make-session-complete-notifications-transient-and-turn-scoped) | ready | change | notifications | PR #161 и regression fix #164 merged | Отдельный explicit transient host contract; текущий toast всё ещё закрывается вручную |

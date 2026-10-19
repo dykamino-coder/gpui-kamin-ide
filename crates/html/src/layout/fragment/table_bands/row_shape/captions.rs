@@ -1,12 +1,16 @@
 //! Формы подписей таблицы вокруг сетки рядов.
 
 use super::super::TableBands;
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
+// Caption slots carry their offsets and fragmentation flags together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn caption_slots_shape(
     depth: u8,
     cx: ShapeCx,
@@ -19,7 +23,8 @@ pub(crate) fn caption_slots_shape(
     mut forced: Vec<f32>,
     mut solid: Vec<(f32, f32)>,
     h_box: f32,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
+    vcx: ValueCx<'_>,
+) -> Option<crate::layout::fragment::Shape> {
     let mut cap_slots: Vec<Option<&Element>> =
         Vec::with_capacity(caps_top.len() + caps_bot.len() + 1);
     cap_slots.extend(caps_top.iter().copied().map(Some));
@@ -47,7 +52,14 @@ pub(crate) fn caption_slots_shape(
                 false,
             ),
             Some(cap) => {
-                let (ch, cmt, cmb, ccuts, cforced, csolid) = shape_full(cap, depth - 1, cx)?;
+                let crate::layout::fragment::Shape {
+                    height: ch,
+                    margin_top: cmt,
+                    margin_bottom: cmb,
+                    cuts: ccuts,
+                    forced: cforced,
+                    solid: csolid,
+                } = shape_full(cap, depth - 1, cx, vcx)?;
                 // Монолитная подпись (`contain: size`, `break-inside: avoid`,
                 // прокрутка, замещаемая) — сплошной диапазон во всю высоту,
                 // как у любого ребёнка блочной стопки (`shape_full`, ветка
@@ -107,7 +119,14 @@ pub(crate) fn caption_slots_shape(
         wfirst = false;
     }
     let h = wy;
-    wcuts.retain(|&(need, _)| need > 0.01 && need < h - 0.01);
-    wforced.retain(|&f| f > 0.01 && f < h - 0.01);
-    Some((h, mt.max(through), mb.max(last_mb), wcuts, wforced, wsolid))
+    wcuts.retain(|&(need, _)| need > COORD_EPS && need < h - COORD_EPS);
+    wforced.retain(|&f| f > COORD_EPS && f < h - COORD_EPS);
+    Some(crate::layout::fragment::Shape {
+        height: h,
+        margin_top: mt.max(through),
+        margin_bottom: mb.max(last_mb),
+        cuts: wcuts,
+        forced: wforced,
+        solid: wsolid,
+    })
 }

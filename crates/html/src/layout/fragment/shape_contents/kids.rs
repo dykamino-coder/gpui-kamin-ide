@@ -1,16 +1,20 @@
 //! Форма содержимого по детям: флаги разрывов детей и сборка формы из их вырезов.
 
 use super::{finish_shape_cuts, kid_shapes, shaped_height};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
+use crate::layout::fragment::oof_reach::{Measure, Reach};
 use crate::layout::fragment::shape_kids::stack_kids;
 use crate::layout::page::names::page_names;
 use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// The shape pass returns fragments alongside their offsets and break flags.
+#[allow(clippy::type_complexity)]
 pub(super) fn shape_from_kids(
     c: &Element,
     depth: u8,
@@ -36,8 +40,9 @@ pub(super) fn shape_from_kids(
     grid_rows_stack: bool,
     row_gap: f32,
     no_descent: bool,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
-    let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent);
+    vcx: ValueCx<'_>,
+) -> Option<Measure> {
+    let inner = kid_shapes(c, depth, &px_or, cx, &kids, flex_col, no_descent, vcx);
     let mut cuts: Vec<(f32, f32)> = Vec::new();
     let mut forced: Vec<f32> = Vec::new();
     let mut solid: Vec<(f32, f32)> = Vec::new();
@@ -52,7 +57,7 @@ pub(super) fn shape_from_kids(
     // Самый нижний край внепоточных потомков, отсчитанный
     // от верха ЭТОЙ коробки. В поток не входит, высоту
     // соседей не двигает — нужен только фрагментации.
-    let mut oof_reach = 0.0f32;
+    let mut oof_reach = Reach::default();
     if let Some(kids) = inner.filter(|k| !k.is_empty()) {
         (stacked, oof_reach) = stack_kids(
             kids,
@@ -74,6 +79,7 @@ pub(super) fn shape_from_kids(
             page_kid,
             oof_reach,
             page_prev,
+            super::height::bfc_root(c),
         );
     }
     // Заданная высота — в точках или (для страниц) в единицах окна.
@@ -92,9 +98,10 @@ pub(super) fn shape_from_kids(
         &mut forced,
         &mut solid,
         stacked,
+        vcx,
     ) {
         Ok(value) => value,
-        Err(value) => return value,
+        Err(value) => return value.map(Measure::plain),
     };
     // Содержащий блок обязан дотянуться до низа своих
     // внепоточных потомков — только тогда фрагментация
@@ -106,15 +113,18 @@ pub(super) fn shape_from_kids(
     // НЕ является, дотяг принадлежит кому-то выше и здесь
     // не учитывается — он всплывёт там.
     finish_shape_cuts(
-        c, unclamp, cx, top, bot, cuts, forced, solid, stacked, oof_reach, h, mt, mb,
+        c, unclamp, cx, top, bot, cuts, forced, solid, stacked, oof_reach, h, mt, mb, vcx,
     )
 }
 
+// Break flags consume the same fragment records as the shape pass.
+#[allow(clippy::type_complexity)]
 pub(super) fn kid_break_flags(
     c: &Element,
     cx: ShapeCx,
     kids: &Vec<&Node>,
     flex_items: bool,
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<bool>,
     Vec<bool>,
@@ -154,7 +164,7 @@ pub(super) fn kid_break_flags(
     // `wrap-reverse` кладёт строки с другого края, а стопка — в порядке DOM
     // (`multi-line-row-flex-fragmentation-050`).
     let avoid_chains = flex_items
-        && c.style.vertical != Some(true)
+        && !c.style.wm().vertical()
         && matches!(
             c.style.flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
@@ -165,7 +175,9 @@ pub(super) fn kid_break_flags(
     let avoid_kid: Vec<(bool, bool)> = kids
         .iter()
         .map(|n| match n {
-            Node::Element(k) if avoid_chains => (edge_avoid(k, false), edge_avoid(k, true)),
+            Node::Element(k) if avoid_chains => {
+                (edge_avoid(k, false, vcx), edge_avoid(k, true, vcx))
+            }
             _ => (false, false),
         })
         .collect();
@@ -195,7 +207,7 @@ pub(super) fn kid_break_flags(
         .iter()
         .map(|n| match n {
             Node::Element(k) if !flex_items && !out_of_flow(&k.style) => {
-                (edge_avoid(k, false), edge_avoid(k, true))
+                (edge_avoid(k, false, vcx), edge_avoid(k, true, vcx))
             }
             _ => (false, false),
         })

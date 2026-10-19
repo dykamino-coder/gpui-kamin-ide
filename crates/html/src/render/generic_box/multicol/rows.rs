@@ -90,7 +90,7 @@ pub(crate) fn row_plan(
             _ => None,
         }
     });
-    // Вложенный многоколоночник во внешней колонке (`flow::OUTER_ROW`):
+    // Вложенный многоколоночник во внешней колонке (`FragCx::outer_row`):
     // ряды высотой во внешний фрагментаинер без зазора — граница
     // ряда совпадает с границей внешней колонки (css-break-4 §2.1;
     // Blink `ConstrainColumnBlockSize`, `LayoutLine` :1009-1026
@@ -111,15 +111,13 @@ pub(crate) fn row_plan(
         None => rows,
     };
     let rows = rows.or_else(|| {
-        (cap_h.is_some()
-            && e.style.column_fill_auto != Some(true)
-            && !crate::layout::fragment::types::in_stack())
-        .then_some(crate::layout::fragment::types::Rows {
-            h: cap_h,
-            gap: row_gap,
-            wrap: false,
-            cap: true,
-        })
+        (cap_h.is_some() && e.style.column_fill_auto != Some(true) && !opts.frag.in_stack_copy)
+            .then_some(crate::layout::fragment::types::Rows {
+                h: cap_h,
+                gap: row_gap,
+                wrap: false,
+                cap: true,
+            })
     });
     RowPlan {
         col_w_px,

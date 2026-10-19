@@ -90,13 +90,54 @@ impl Paragraph {
             self.lines = balanced;
         }
         self.place_atoms(*state, window, _cx);
+        // The clamp point of THIS frame needs this frame's rows: `ClampCut`
+        // computes it in paint, and paint order inside the container does
+        // not put every paragraph before it, but prepaint of the whole tree
+        // precedes any paint (css-overflow-4 §5.3; one frame per relayout
+        // step, like Blink's measure-then-relayout pass).
+        if !self.vertical && !crate::text::vertical::in_rotated_frame() {
+            let pads = self.line_padding();
+            let lh = self.line_height;
+            let step = |i: usize| -> Pixels {
+                let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+                lh + px(a + b)
+            };
+            self.publish_rows(bounds, self.lines.len(), &step);
+        }
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {
             let segs = self.measure(window);
             let mut placed = std::mem::take(&mut self.overlays);
+            // End of the text kept by `line-clamp`: an inline containing
+            // block starting at or after it follows the clamp point, and
+            // its absolute boxes are hidden with it (css-overflow-4 §5.3;
+            // `line-clamp-with-abspos-015/017`). One displaced by the
+            // ellipsis counts as after the point too.
+            let clamp_end = self
+                .lines
+                .last()
+                .filter(|l| l.clamped && l.range.end < self.text.len())
+                .map(|l| l.range.end);
+            self.overlay_hidden = placed
+                .iter()
+                .map(|(at, _, how)| {
+                    clamp_end.is_some_and(|end| {
+                        how.cb
+                            .as_ref()
+                            .is_some_and(|cb| (*at as isize + cb.start).max(0) as usize >= end)
+                    })
+                })
+                .collect();
             let rotated = crate::text::vertical::in_rotated_frame();
             let scale = window.scale_factor().max(0.01);
+            // Строчные якоря и содержащие блоки — до куска внутри них:
+            // носитель краёв стоит в конце коробки, а абсолют — раньше.
+            for (at, _, how) in placed.iter() {
+                if let Some(b) = how.inline_box.filter(|_| !rotated) {
+                    self.register_inline_box(&segs, *at, b, bounds, window);
+                }
+            }
             for (at, el, how) in placed.iter_mut() {
                 // Абсолют от строчного содержащего блока: края считает
                 // раскладка от коробки размером в этот блок (`inline_cb_rect`).
@@ -125,7 +166,18 @@ impl Paragraph {
                         continue;
                     }
                 }
-                let next = &how.next_line;
+                // An inline-level box after a forced break with nothing after
+                // it: its hypothetical box is alone on the NEXT line, which
+                // the paragraph never formed (CSS 2.1 §10.6.4;
+                // `hypothetical-inline-alone-on-second-line`).
+                let past_break = !rotated
+                    && !self.wrap.rtl
+                    && self.lines.last().is_some_and(|l| *at >= l.range.end)
+                    && self.text.get(..*at).is_some_and(|t| {
+                        t.trim_end_matches([' ', '\u{feff}', '\u{200b}'])
+                            .ends_with('\n')
+                    });
+                let next = &(how.next_line || past_break);
                 let origin = if *next {
                     self.next_line_point(*at, bounds)
                 } else {
@@ -163,7 +215,30 @@ impl Paragraph {
                 } else {
                     origin
                 };
-                el.prepaint_at(origin, window, _cx);
+                if let Some(slot) = how.line_probe.as_ref().filter(|_| !rotated) {
+                    // The line box height over its inline boxes (CSS 2.1
+                    // §10.8.1), not the paragraph's uniform pitch: an inline
+                    // ancestor's taller `line-height` grows the line.
+                    let row = self
+                        .lines
+                        .iter()
+                        .position(|l| *at < l.range.end)
+                        .unwrap_or(self.lines.len().saturating_sub(1));
+                    let (lh, start) = match self.lines.get(row) {
+                        Some(l) => {
+                            let (a, b) = self.line_extents(&l.range.clone());
+                            let start = self.point_of(&segs, l.range.start, bounds).x;
+                            (px(a + b).max(self.line_height), start)
+                        }
+                        None => (self.line_height, bounds.origin.x),
+                    };
+                    let line = (origin.y, lh, start);
+                    crate::layout::positioned::containing_block::with_line_box(slot, line, || {
+                        el.prepaint_at(origin, window, _cx);
+                    });
+                } else {
+                    el.prepaint_at(origin, window, _cx);
+                }
             }
             self.overlays = placed;
         }

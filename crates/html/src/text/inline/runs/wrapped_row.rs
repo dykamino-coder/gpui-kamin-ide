@@ -26,6 +26,8 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// строка перенести не может — он неделим, и раскладка ужимает его до самого
 /// узкого слова: текст вставал столбиком и налезал на следующий абзац.
 /// Поэтому куски режутся на слова: перенос идёт по ним, как в строке.
+// Inline construction consumes the independently cascaded text and box properties.
+#[allow(clippy::too_many_arguments)]
 pub fn as_wrapped_row(
     pieces: Vec<Piece>,
     align: Option<crate::style::computed::Align>,
@@ -45,6 +47,9 @@ pub fn as_wrapped_row(
     // Block flow of a turned vertical line (`Some(vertical-rl)`): an
     // out-of-flow box's static position hangs from the block-start side.
     turned: Option<bool>,
+    // Слои содержащих блоков сборки (`LayoutCx::positioning`): куда уходят
+    // внепоточные куски строки.
+    positioning: &crate::layout::positioned::containing_block::Positioning,
 ) -> AnyElement {
     use crate::style::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
@@ -173,8 +178,12 @@ pub fn as_wrapped_row(
             for p in group {
                 glued = match p {
                     Piece::Atom(el) => glued.child(el),
-                    Piece::Overlay(_, how) if how.cb_marker.is_some() => glued,
-                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned)),
+                    Piece::Overlay(_, how)
+                        if how.cb_marker.is_some() || how.box_marker.is_some() =>
+                    {
+                        glued
+                    }
+                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned, positioning)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -187,8 +196,10 @@ pub fn as_wrapped_row(
                     line_empty = false;
                     row.child(el)
                 }
-                Piece::Overlay(_, how) if how.cb_marker.is_some() => row,
-                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned)),
+                Piece::Overlay(_, how) if how.cb_marker.is_some() || how.box_marker.is_some() => {
+                    row
+                }
+                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned, positioning)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {

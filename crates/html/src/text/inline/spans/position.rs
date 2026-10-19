@@ -8,6 +8,8 @@ use crate::text::inline::*;
 ///
 /// Отдельно от `shift_spans`: тот растит строчную коробку, а относительный
 /// сдвиг на поток не влияет вовсе (CSS 2.1 §9.4.3).
+// Each relative span retains its text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
 pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -112,7 +114,7 @@ pub fn shift_spans(
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
-                let vertical = style.vertical == Some(true) || style.rotated_line == Some(true);
+                let vertical = style.wm().vertical() || style.wm().turned();
                 // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
                 // half-leading comes from its computed line-height. The line's
                 // strut is not that box (Blink inline_box_state.cc:144-150).
@@ -122,9 +124,10 @@ pub fn shift_spans(
                     match style.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                        None | Some(Len::Auto) => {
-                            size * crate::text::text_box::normal_fraction(style, opts)
-                        }
+                        None | Some(Len::Auto) => crate::text::metrics::normal_px(
+                            crate::text::text_box::normal_fraction(style, opts),
+                            size,
+                        ),
                         _ => line_px,
                     }
                 } else {

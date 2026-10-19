@@ -17,6 +17,8 @@ pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
     std::array::from_fn(|axis| overflow[axis] == Some(Overflow::Scroll) && selected[axis])
 }
 
+// The painter consumes the scroll geometry and the GPUI paint context together.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn paint(
     c: &Computed,
     handle: &ScrollHandle,

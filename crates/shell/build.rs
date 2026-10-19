@@ -5,6 +5,16 @@
 //! 620 записей лежали сгенерированным `.rs` на 2.5 тысячи строк и ломали
 //! правило «файл ≤250 строк» без всякой пользы.
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "Cargo build script emits directives and build diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
+
 use std::fmt::Write as _;
 use std::path::Path;
 

@@ -1,4 +1,7 @@
 //! Computes the [flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) layout algorithm on [`TaffyTree`](crate::TaffyTree) according to the [spec](https://www.w3.org/TR/css-flexbox-1/)
+#[path = "content_size_limits.rs"]
+mod content_size_limits;
+
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
 #[path = "flex_baseline_x.rs"]
 mod column_baselines;
@@ -6,6 +9,8 @@ mod column_baselines;
 mod containment;
 #[path = "flex_cross_keyword.rs"]
 mod cross_keyword;
+#[path = "flex_intrinsic_limits.rs"]
+mod intrinsic_limits;
 #[path = "flex_intrinsic_floor.rs"]
 mod intrinsic_floor;
 #[path = "flex_main_keyword.rs"]
@@ -115,9 +120,18 @@ struct FlexItem {
     last_baseline_from_end: f32,
     /// Last y baseline after final physical placement, from container top.
     last_baseline_pos: f32,
+    /// KaminIDE: the item's own layout exported a first / last y baseline (not synthesized).
+    has_first_baseline: bool,
+    has_last_baseline: bool,
     /// KaminIDE: the item exports no baseline to an enclosing `inline-block`
     /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
     no_inline_block_baseline: bool,
+    /// KaminIDE: the item hides every baseline from an enclosing `inline-block`
+    /// (a float or a table; `LayoutOutput::inline_block_last_y` is `Some(None)`).
+    hides_inline_block_baseline: bool,
+    /// KaminIDE: the last baseline the item exports to an enclosing `inline-block`,
+    /// from container top; `None` when it has no line box at all.
+    inline_block_last_pos: Option<f32>,
     /// First x baseline after final physical placement, from container left.
     baseline_x_pos: Option<f32>,
     baseline_x_flags: u8,
@@ -187,6 +201,8 @@ struct AlgoConstants {
     is_column: bool,
     /// Is wrapping enabled (in either direction)
     is_wrap: bool,
+    /// KaminIDE: block-container baselines (`Style::block_baselines`), column containers only
+    block_baselines: bool,
     /// Is the wrap direction inverted
     is_wrap_reverse: bool,
     /// Physical sides trimmed before flexible lengths are resolved.
@@ -351,16 +367,16 @@ pub fn compute_flexbox_layout(
         Size::ZERO
     };
 
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
     let clamped_style_size = if inputs.sizing_mode == SizingMode::InherentSize {
         style
             .size()
@@ -578,6 +594,8 @@ fn compute_preliminary(
         parent_size,
         available_space,
     );
+    constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
+    constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
 
     // Anonymous rows supply their parent's percentage-height basis only when
     // actual percentage-dependent descendants need that transparent basis.
@@ -625,78 +643,7 @@ fn compute_preliminary(
         }
     }
 
-    // KaminIDE patch: `max-width`/`max-height: min-content | max-content` on a
-    // flex item (css-sizing-3 §3.2: as a maximum size the keyword is the box's
-    // min-/max-content size in that axis). `maybe_resolve` treats a keyword as
-    // `none`, so the limit was lost (`flex-item-max-height-min-content`,
-    // `flex-item-max-width-min-content`). The block axis has a single content
-    // size at the item's width: a known width, or the stretched line width of a
-    // column container.
-    for item in flex_items.iter_mut() {
-        let keywords = tree.get_flexbox_child_style(item.node).max_size_keywords();
-        let (kw_w, kw_h) = (keywords.width, keywords.height);
-        if kw_w.is_none() && kw_h.is_none() {
-            continue;
-        }
-        let stretched_width = (constants.is_column
-            && item.align_self.keyword == AlignItemsKeyword::Stretch
-            && !item.margin_is_auto.left
-            && !item.margin_is_auto.right)
-            .then(|| {
-                constants
-                    .node_inner_size
-                    .width
-                    .maybe_sub(item.margin.horizontal_axis_sum())
-            })
-            .flatten();
-        if let Some(space) = kw_w {
-            let width = tree.measure_child_size(
-                item.node,
-                Size {
-                    width: None,
-                    height: item.size.height,
-                },
-                constants.node_inner_size,
-                Size {
-                    width: space,
-                    height: constants
-                        .node_inner_size
-                        .height
-                        .map(AvailableSpace::Definite)
-                        .unwrap_or(AvailableSpace::MaxContent),
-                },
-                SizingMode::ContentSize,
-                crate::geometry::AbsoluteAxis::Horizontal,
-                Line::FALSE,
-            );
-            item.max_size.width = Some(width);
-        }
-        if kw_h.is_some() {
-            let known_width = item.size.width.or(stretched_width).map(|w| {
-                w.maybe_min(item.max_size.width)
-                    .maybe_max(item.min_size.width)
-            });
-            let height = tree.measure_child_size(
-                item.node,
-                Size {
-                    width: known_width,
-                    height: None,
-                },
-                constants.node_inner_size,
-                Size {
-                    width: known_width
-                        .or(constants.node_inner_size.width)
-                        .map(AvailableSpace::Definite)
-                        .unwrap_or(AvailableSpace::MaxContent),
-                    height: AvailableSpace::MaxContent,
-                },
-                SizingMode::ContentSize,
-                crate::geometry::AbsoluteAxis::Vertical,
-                Line::FALSE,
-            );
-            item.max_size.height = Some(height);
-        }
-    }
+    intrinsic_limits::resolve(tree, &constants, &mut flex_items);
 
     // 9.2. Line Length Determination
 
@@ -929,6 +876,15 @@ fn compute_preliminary(
         flex_lines.first()
     };
     let first_vertical_baseline = first_line.and_then(|line| {
+        if constants.block_baselines {
+            // CSS 2.1 10.8.1 / css-align-3 9.1: a block container's first baseline is that
+            // of its first in-flow child that has one; children without one are skipped.
+            return line
+                .items
+                .iter()
+                .find(|child| child.has_first_baseline)
+                .map(|child| child.baseline);
+        }
         if constants.is_column {
             // For column containers the baseline is generated from the startmost item in the line,
             // which for reverse-direction containers is the last item in flex order.
@@ -956,6 +912,14 @@ fn compute_preliminary(
         flex_lines.last()
     };
     let last_vertical_baseline = last_line.and_then(|line| {
+        if constants.block_baselines {
+            return line
+                .items
+                .iter()
+                .rev()
+                .find(|child| child.has_last_baseline)
+                .map(|child| child.last_baseline_pos);
+        }
         if constants.is_column {
             let child = if constants.dir.is_reverse() {
                 line.items.first()
@@ -1002,12 +966,23 @@ fn compute_preliminary(
     );
     // An anonymous flex wrapper whose every item is a table (wrapper) box hides
     // the table baseline from an enclosing inline-block as the table itself does.
-    let mut items = flex_lines
-        .iter()
-        .flat_map(|line| line.items.iter())
-        .peekable();
-    if items.peek().is_some() && items.all(|item| item.no_inline_block_baseline) {
-        output.inline_block_last_y = Some(None);
+    // Likewise a float (CSS 2.1 §10.8.1: only in-flow line boxes give an
+    // inline-block its baseline): the enclosing inline-block takes the last
+    // baseline of the endmost item that has one and does not hide it.
+    let mut items = flex_lines.iter().flat_map(|line| line.items.iter());
+    if items.any(|item| item.hides_inline_block_baseline) {
+        let shown = |line: &FlexLine<'_>| {
+            line.items
+                .iter()
+                .rev()
+                .filter(|item| !item.hides_inline_block_baseline)
+                .find_map(|item| item.inline_block_last_pos)
+        };
+        output.inline_block_last_y = Some(if constants.is_wrap_reverse {
+            flex_lines.iter().find_map(shown)
+        } else {
+            flex_lines.iter().rev().find_map(shown)
+        });
     }
     output.oof_candidates = candidates;
     output.oof_positioning_area = Some(OofPositioningArea {
@@ -1143,6 +1118,7 @@ fn compute_constants(
         is_row,
         is_column,
         is_wrap,
+        block_baselines: is_column && style.block_baselines(),
         is_wrap_reverse,
         margin_trim: style.margin_trim(),
         #[cfg(feature = "flexbox_balance")]
@@ -1363,7 +1339,11 @@ fn generate_anonymous_flex_items(
                 baseline: 0.0,
                 last_baseline_from_end: 0.0,
                 last_baseline_pos: 0.0,
+                has_first_baseline: false,
+                has_last_baseline: false,
                 no_inline_block_baseline: false,
+                hides_inline_block_baseline: false,
+                inline_block_last_pos: None,
                 baseline_x_pos: None,
                 baseline_x_flags: child_style.baseline_x_flags(),
                 column_baseline: None,
@@ -1770,7 +1750,17 @@ fn determine_flex_base_size(
                 child_known_dimensions,
                 child_parent_size,
                 child_available_space,
-                SizingMode::ContentSize,
+                // A block-axis or wrapped probe still needs its own limits
+                // for line formation and aspect-ratio transfers. Restrict the
+                // unconstrained basis probe to a single-line inline axis.
+                if dir.is_row()
+                    && child.aspect_ratio.is_none()
+                    && tree.get_flexbox_container_style(child.node).flex_wrap() == crate::style::FlexWrap::NoWrap
+                {
+                    SizingMode::IntrinsicSize
+                } else {
+                    SizingMode::ContentSize
+                },
                 dir.main_axis(),
                 Line::FALSE,
             );
@@ -3849,10 +3839,17 @@ fn calculate_flex_item(
         last_y
     };
     item.last_baseline_pos = baseline_origin_y + last_y;
+    item.has_first_baseline = layout_output.baselines.first.is_some();
+    item.has_last_baseline = layout_output.last_or_first_y().is_some();
     // Only an item that HAS a baseline but hides it from inline-blocks counts:
     // an item without any baseline still synthesizes one in the flex container.
     item.no_inline_block_baseline = layout_output.inline_block_last_y == Some(None)
         && layout_output.last_or_first_y().is_some();
+    item.hides_inline_block_baseline = layout_output.inline_block_last_y == Some(None);
+    item.inline_block_last_pos = layout_output.inline_block_last_y().map(|y| {
+        let y = if item.overflow.y.is_scroll_container() { y.min(size.height).max(0.0) } else { y };
+        baseline_origin_y + y
+    });
     // x follows the local physical-position contract and retains both channels.
     // Clamp scroll-container baseline offsets to its own border box as for y.
     let baseline_x = |baseline: f32| {

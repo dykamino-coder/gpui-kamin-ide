@@ -8,7 +8,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { config, DEFAULT_SESSION_MODEL } from '../config'
+import { config } from '../config'
 import { debugLog, warnLog } from '../logging'
 import { getUserSyncDir, getProjectSyncDir } from '../sync/routes'
 import { mergeAllHooks, rewriteHooksForCli } from '../hooks'
@@ -17,6 +17,8 @@ import type { HookMatcher } from '../hooks/types'
 import { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 import { getDisallowedBuiltinTools } from './session-env'
 import { replaceSkillsOverlay } from './skills-snapshot'
+import { preModelSwitchAllowMatcher } from './live-switch'
+import { writeStatusLineScript } from './session-statusline'
 
 export { BRIDGE_DEFAULT_CLAUDE_MD } from './bridge-default-claude-md'
 
@@ -125,7 +127,6 @@ export function writeSessionSettings(
   sessionId: string,
   settingsDir: string,
   mcpToken: string,
-  sessionModel?: string,
   userCwd?: string,
   bearerHash?: string,
 ): void {
@@ -187,18 +188,28 @@ export function writeSessionSettings(
   const settings: Record<string, unknown> = {
     permissions: { deny: settingsDenyRules() },
   }
-  if (Object.keys(rewrittenHooks).length > 0) {
-    settings.hooks = rewrittenHooks
-  }
+  // Bridge-owned PreModelSwitch `allow`: a model picked in the chat UI is
+  // applied live without the CLI's cache-warning dialog in the Console panel
+  // (see live-switch.ts). Appended after user/plugin hooks, which still win
+  // with `ask`/`deny`. Not relayed: it runs in the container and needs no
+  // client round-trip, so it is added after the rewrite.
+  const cliHooks: Record<string, unknown[]> = { ...(rewrittenHooks as Record<string, unknown[]>) }
+  cliHooks.PreModelSwitch = [...(cliHooks.PreModelSwitch ?? []), preModelSwitchAllowMatcher()]
+  settings.hooks = cliHooks
+  // Live subscription limits / context fill for the chat (session-statusline.ts).
+  settings.statusLine = writeStatusLineScript(claudeDir)
   fs.writeFileSync(path.join(claudeDir, 'settings.json'), JSON.stringify(settings, null, 2))
 
   // ─── 3. Local settings → .claude/settings.local.json ───
+  // Launch models belong exclusively to buildClaudeArgs (--model / native
+  // transcript restore). A second pin here outlives a live /model switch and
+  // makes the CLI falsely warn that the old model will return on restart.
+  // Rewriting this generated file also removes pins from older Bridge builds.
   // fallbackModel НЕ задаётся сознательно: без настроенной цепочки CLI при
   // недоступности модели честно роняет запрос вместо ТИХОГО перехода на более
   // слабую модель (решение пользователя: качество ответа важнее живучести;
   // раньше цепочка opus→sonnet→haiku подменяла модель незаметно).
   const localSettings = {
-    model: sessionModel || DEFAULT_SESSION_MODEL,
     skipDangerousModePermissionPrompt: true,
     env: {
       CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '92',

@@ -1,9 +1,10 @@
 //! Expand a single mask layer into the existing mask longhand representation.
 
 use super::{Computed, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
+pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) -> bool {
     // Layer-specific size, origin, clip and mode lists need their own computed
     // representation. Keep the existing multi-layer route until it has one.
     if crate::style::css::split_args(value).len() != 1 {
@@ -29,7 +30,11 @@ pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
     let (mut after_slash, mut no_clip) = (false, false);
     for word in &words {
         let t = word.as_str();
-        if t == "none" || t.starts_with("url(") || t.contains("-gradient(") {
+        if t == "none"
+            || t.starts_with("url(")
+            || t.starts_with("filter(")
+            || t.contains("-gradient(")
+        {
             if image.replace(t).is_some() {
                 return false;
             }
@@ -62,12 +67,12 @@ pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
             }
             after_slash = true;
         } else if after_slash
-            && (matches!(t, "auto" | "contain" | "cover") || Len::parse(t).is_some())
+            && (matches!(t, "auto" | "contain" | "cover") || Len::parse(t, vcx).is_some())
         {
             size.push(t);
         } else if !after_slash
             && (matches!(t, "left" | "right" | "top" | "bottom" | "center")
-                || Len::parse(t).is_some())
+                || Len::parse(t, vcx).is_some())
         {
             position.push(t);
         } else {
@@ -101,8 +106,8 @@ pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
         let vertical = |t| matches!(t, "top" | "bottom");
         if !((horizontal(position[0]) && vertical(position[2]))
             || (vertical(position[0]) && horizontal(position[2])))
-            || Len::parse(position[1]).is_none()
-            || Len::parse(position[3]).is_none()
+            || Len::parse(position[1], vcx).is_none()
+            || Len::parse(position[3], vcx).is_none()
         {
             return false;
         }
@@ -154,7 +159,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) -> bool {
         ("mask-mode", mode.unwrap_or("match-source").to_string()),
         ("mask-composite", composite.unwrap_or("add").to_string()),
     ] {
-        style.apply_one(key, &value);
+        style.apply_one(key, &value, vcx);
     }
     true
 }

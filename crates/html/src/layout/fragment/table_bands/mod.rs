@@ -1,9 +1,12 @@
 //! Полосы таблицы при фрагментации.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
+pub(crate) mod parts;
 mod row_geometry;
 pub(crate) use row_geometry::row_geometry;
 mod row_cuts;
@@ -12,6 +15,7 @@ use row_cuts::{RowRef, table_row_cuts};
 mod shape_bands;
 use shape_bands::table_shape_bands;
 mod serial;
+use crate::tolerance::COORD_EPS;
 pub(crate) use serial::serial_table_parallel;
 
 /// Табличная коробка — по тегу или по `display`.
@@ -40,8 +44,8 @@ pub(crate) fn table_box(c: &Element) -> bool {
 /// сросшиеся рамки, вертикальное письмо, монолит при раздаче surplus рядам
 /// и неизмеримая ячейка — `None`: таблица идёт цельным куском измеренной
 /// высоты без точек, как прежде.
-pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
-    table_shape_bands(c, depth, cx, &mut TableBands::default())
+pub(super) fn table_shape(c: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Option<Shape> {
+    table_shape_bands(c, depth, cx, &mut TableBands::default(), vcx)
 }
 
 /// Полосы первой шапки и первого подвала таблицы в координатах её меры:
@@ -80,18 +84,32 @@ pub(crate) fn repeat_bands(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    vcx: ValueCx<'_>,
 ) -> Option<RepeatSpec> {
     let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
+    repeat_bands_in(c, per, ShapeCx::COLUMNS, vcx)
+}
+
+/// Known page and column fragmentainers share the repeat reservation algorithm.
+pub(crate) fn repeat_bands_in(
+    c: &Element,
+    per: f32,
+    cx: ShapeCx,
+    vcx: ValueCx<'_>,
+) -> Option<RepeatSpec> {
+    if !table_box(c) {
+        return None;
+    }
     let mut b = TableBands::default();
-    table_shape_bands(c, 4, ShapeCx::COLUMNS, &mut b)?;
+    table_shape_bands(c, 4, cx, &mut b, vcx)?;
     let max = per / 4.0;
     let head = b
         .head
-        .filter(|&(_, h)| b.head_avoid && h > 0.01 && h <= max + 0.01)
+        .filter(|&(_, h)| b.head_avoid && h > COORD_EPS && h <= max + COORD_EPS)
         .map(|(at, h)| (at, h + b.spacing));
     let foot = b
         .foot
-        .filter(|&(_, h)| b.foot_avoid && h > 0.01 && h <= max + 0.01)
+        .filter(|&(_, h)| b.foot_avoid && h > COORD_EPS && h <= max + COORD_EPS)
         .map(|(at, h)| (at - b.spacing, h + b.spacing));
     if head.is_none() && foot.is_none() {
         return None;
@@ -114,6 +132,7 @@ pub(crate) fn repeat_leads(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::RepeatGeom {
-    repeat_bands(c, fixed, rows).map_or_else(Default::default, |r| r.2)
+    repeat_bands(c, fixed, rows, vcx).map_or_else(Default::default, |r| r.2)
 }

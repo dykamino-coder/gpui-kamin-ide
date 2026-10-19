@@ -1,17 +1,27 @@
 //! Запись числа пользовательским стилем счётчика: начальные системы, графемы, маркеры.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Начальное представление по системе (§cyclic … §additive).
-fn initial(algo: &Algo, v: i64) -> Option<String> {
+fn initial(algo: &Algo, v: i128, context: Context) -> Option<String> {
     match algo {
-        Algo::Builtin(name) => builtin_initial(name, u64::try_from(v).ok()?),
+        Algo::Builtin(name) => context.disclosure(name).map(str::to_owned).or_else(|| {
+            let magnitude = if matches!(name.as_str(), "disc" | "circle" | "square") {
+                0 // Cyclic systems represent every integer, including negative values.
+            } else {
+                u64::try_from(v).ok()?
+            };
+            builtin_initial(name, magnitude)
+        }),
         Algo::Own(sys, syms, add) => {
-            let n = syms.len() as i64;
+            let n = syms.len() as i128;
             match sys {
-                System::Cyclic => Some(syms[(v - 1).rem_euclid(n) as usize].clone()),
+                System::Cyclic => {
+                    Some(syms[(v.rem_euclid(n) + n - 1).rem_euclid(n) as usize].clone())
+                }
                 System::Fixed(first) => {
-                    let i = v.checked_sub(*first)?;
+                    let i = v.checked_sub(i128::from(*first))?;
                     (0..n).contains(&i).then(|| syms[i as usize].clone())
                 }
                 System::Symbolic => {
@@ -86,11 +96,23 @@ fn graphemes(s: &str) -> usize {
 }
 
 /// §counter-style-generate для стиля `name` (уже нормализованного).
-fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> String {
-    let Some(r) = (depth < 16).then(|| resolve(rules, name, 0)).flatten() else {
-        let v = v.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+fn generate(
+    rules: &HashMap<String, Raw>,
+    v: i64,
+    name: &str,
+    depth: usize,
+    context: Context,
+    vcx: ValueCx<'_>,
+) -> String {
+    // Keep builtin fallback in this document's registry; re-entering repr()
+    // would lose this map and recursively acquire the public registry mutex.
+    let resolved = || {
+        resolve_counter_style(rules, name, 0)
+            .or_else(|| builtin(name).map(|_| super::resolve::builtin_resolved(name)))
+    };
+    let Some(r) = (depth < 16).then(resolved).flatten() else {
         return if depth < 16 {
-            builtin_repr(v, name)
+            builtin_repr_in(v, name, context, vcx)
         } else {
             v.to_string()
         };
@@ -100,14 +122,18 @@ fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> S
         if depth >= 15 || fb == name {
             v.to_string()
         } else {
-            generate(rules, v, &fb, depth + 1)
+            generate(rules, v, &fb, depth + 1, context, vcx)
         }
     };
     if !in_range(&r, v) {
         return fallback(rules);
     }
     let neg = v < 0 && uses_negative(&r.algo);
-    let Some(mut body) = initial(&r.algo, if neg { v.saturating_neg() } else { v }) else {
+    let Some(mut body) = initial(
+        &r.algo,
+        if neg { -i128::from(v) } else { i128::from(v) },
+        context,
+    ) else {
         return fallback(rules);
     };
     if let Some((width, sym)) = &r.pad {
@@ -127,11 +153,11 @@ fn generate(rules: &HashMap<String, Raw>, v: i64, name: &str, depth: usize) -> S
 
 /// Представление значения стилем, заданным правилом документа; `None` —
 /// такого правила нет (решает предопределённый путь).
-pub fn custom_repr(v: i64, name: &str) -> Option<String> {
-    let guard = RULES.lock().unwrap();
-    let empty = HashMap::new();
-    let rules = guard.as_ref().unwrap_or(&empty);
-    (rules.contains_key(name) || anonymous(name).is_some()).then(|| generate(rules, v, name, 0))
+pub fn custom_repr(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
+    let guard = vcx.doc.counter_styles.borrow();
+    let rules = &*guard;
+    (rules.contains_key(name) || anonymous(name).is_some())
+        .then(|| generate(rules, v, name, 0, context, vcx))
 }
 
 /// Анонимный стиль `symbols()` (css-counter-styles-3 §symbols-function):
@@ -189,11 +215,14 @@ pub fn valid_symbols_fn(text: &str) -> bool {
 /// Строка маркера: `prefix`, представление, `suffix` (§counter-style-prefix).
 /// Префикс и суффикс берутся у самого стиля, даже если значение ушло в
 /// резервный.
-pub fn custom_marker(v: i64, name: &str) -> Option<String> {
-    let guard = RULES.lock().unwrap();
-    let empty = HashMap::new();
-    let rules = guard.as_ref().unwrap_or(&empty);
-    let r = resolve(rules, name, 0)?;
-    let body = generate(rules, v, name, 0);
+pub fn custom_marker(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
+    let guard = vcx.doc.counter_styles.borrow();
+    let rules = &*guard;
+    let r = resolve_counter_style(rules, name, 0)?;
+    let body = generate(rules, v, name, 0, context, vcx);
     Some(format!("{}{body}{}", r.prefix, r.suffix))
 }
+
+#[cfg(test)]
+#[path = "generate_tests.rs"]
+mod tests;

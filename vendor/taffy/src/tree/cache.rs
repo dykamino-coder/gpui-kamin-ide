@@ -160,6 +160,8 @@ struct CacheMode(u8);
 impl CacheMode {
     /// Set if the sizing mode is `SizingMode::InherentSize`
     const INHERENT_SIZE_BIT: u8 = 0b001;
+    /// Set for a probe that ignores own min/max constraints.
+    const INTRINSIC_SIZE_BIT: u8 = 0b1000;
     /// Set if the node's top margin is collapsible
     const COLLAPSIBLE_START_MARGIN_BIT: u8 = 0b010;
     /// Set if the node's bottom margin is collapsible
@@ -174,9 +176,11 @@ impl From<&LayoutInput> for CacheMode {
     #[inline(always)]
     fn from(input: &LayoutInput) -> Self {
         let inherent_size = matches!(input.sizing_mode, SizingMode::InherentSize) as u8;
+        let intrinsic_size = matches!(input.sizing_mode, SizingMode::IntrinsicSize) as u8;
         let collapsible = input.vertical_margins_are_collapsible;
         Self(
             (inherent_size * Self::INHERENT_SIZE_BIT)
+                | (intrinsic_size * Self::INTRINSIC_SIZE_BIT)
                 | (collapsible.start as u8 * Self::COLLAPSIBLE_START_MARGIN_BIT)
                 | (collapsible.end as u8 * Self::COLLAPSIBLE_END_MARGIN_BIT),
         )

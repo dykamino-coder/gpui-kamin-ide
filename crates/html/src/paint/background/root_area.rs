@@ -3,13 +3,13 @@
 use gpui::{Bounds, Pixels, px};
 
 /// Слой фоновой картинки: канвас, рисующий плитки внутри своих границ.
-/// Коробка ПОЗИЦИОНИРОВАНИЯ корня — отступы её краёв от краёв холста.
-///
-/// Хранится отступами, а не готовым прямоугольником: при `width: auto` (а так
-/// во всей семье `background-root-*`) размер известен только на отрисовке,
-/// когда виден холст.
-#[derive(Clone, Copy, Default)]
+/// Коробка позиционирования берётся из раскладки корня перед рисованием.
+/// Отступы и заданные размеры остаются запасной геометрией, если замер ещё
+/// недоступен: автоматическую высоту нельзя восстанавливать по высоте холста.
+#[derive(Clone, Default)]
 pub struct RootArea {
+    /// Geometry of the real root box, recorded before the canvas is painted.
+    pub(crate) measured: Option<super::root_box::Measurement>,
     /// Поле плюс рамка корня с этой стороны.
     pub left: f32,
     pub top: f32,
@@ -30,6 +30,9 @@ pub struct RootArea {
 
 impl RootArea {
     pub(crate) fn rect(&self, clip: Bounds<Pixels>) -> Bounds<Pixels> {
+        if let Some(bounds) = self.measured.as_ref().and_then(|area| area.get()) {
+            return bounds;
+        }
         let (cw, ch) = (f32::from(clip.size.width), f32::from(clip.size.height));
         let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
         let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);

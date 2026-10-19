@@ -77,6 +77,8 @@ export interface PtySession {
   /** True while the PTY is held at the tiny idle-console size (opt-in shrink);
    *  cleared the moment a real client resize restores the viewport. */
   consoleShrunk: boolean
+  /** Watcher of the status-line result file (live limits / context fill). */
+  statusLineWatcher?: { stop(): void }
   /** JSONL file watcher for streaming session logs */
   jsonlWatcher?: {
     stop(): void

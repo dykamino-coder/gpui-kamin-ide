@@ -68,9 +68,13 @@ mod prompts;
 mod image_sampling;
 mod natural_image;
 mod absolute_transformation;
+mod scene_capture;
 mod line_baselines;
 mod css_text_background;
 mod css_fill_transform;
+mod plane3d;
+mod render_context;
+pub use plane3d::PlaneSpec;
 pub use image_sampling::ImageSampling;
 
 pub use a11y::A11ySubtreeBuilder;
@@ -983,6 +987,8 @@ pub(crate) struct DeferredDraw {
     parent_node: DispatchNodeId,
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
+    render_contexts: render_context::Snapshot,
     content_mask: Option<ContentMask<Pixels>>,
     rem_size: Pixels,
     element: Option<AnyElement>,
@@ -1192,6 +1198,8 @@ pub struct Window {
     pub(crate) root: Option<AnyView>,
     pub(crate) element_id_stack: SmallVec<[ElementId; 32]>,
     pub(crate) text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: typed host context belongs to this window and traversal.
+    render_contexts: render_context::RenderContexts,
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
     /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
@@ -1223,6 +1231,8 @@ pub struct Window {
     /// рисуется её содержимое: маски детей переводятся ею в координаты окна
     /// (см. `with_content_mask`). None — маски как есть.
     mask_map: Option<TransformationMatrix>,
+    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
+    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -1562,6 +1572,8 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 pub(crate) struct PaintCtx {
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: Vec<TextStyleRefinement>,
+    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
+    render_contexts: render_context::Snapshot,
     rendered_entity_stack: Vec<EntityId>,
     element_offset_stack: Vec<Point<Pixels>>,
     exact_element_offset_depth: u32,
@@ -2155,6 +2167,7 @@ impl Window {
             root: None,
             element_id_stack: SmallVec::default(),
             text_style_stack: Vec::new(),
+            render_contexts: Default::default(),
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             exact_element_offset_depth: 0,
@@ -2165,6 +2178,7 @@ impl Window {
             transformation_stack: Vec::new(),
             mask_scale: None,
             mask_map: None,
+            plane_contexts: Vec::new(),
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             requested_autoscroll: None,
@@ -2398,8 +2412,11 @@ impl Window {
     }
 
     /// Mark the window as dirty, scheduling it to be redrawn on the next frame.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn refresh(&mut self) {
         if self.invalidator.not_drawing() {
+            crate::dirty_sources::note("refresh", std::panic::Location::caller());
             self.refreshing = true;
             self.invalidator.set_dirty(true);
         }
@@ -2741,7 +2758,10 @@ impl Window {
     }
 
     /// Schedule the given closure to be run directly after the current frame is rendered.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn on_next_frame(&self, callback: impl FnOnce(&mut Window, &mut App) + 'static) {
+        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
         RefCell::borrow_mut(&self.next_frame_callbacks).push(Box::new(callback));
         self.platform_window.schedule_frame();
         // Next-frame callbacks create frame demand without dirtying the
@@ -2761,6 +2781,8 @@ impl Window {
     /// which automatically respects [`App::reduce_motion`]. When using this
     /// method directly for decorative motion, check [`App::reduce_motion`]
     /// and skip the frame request when it is set.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn request_animation_frame(&self) {
         let entity = self.current_view();
         self.on_next_frame(move |_, cx| cx.notify(entity));
@@ -3991,6 +4013,9 @@ impl Window {
             traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
+                let _render_scope = self.render_contexts.enter_snapshot(
+                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
+                );
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
@@ -4045,6 +4070,8 @@ impl Window {
         let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
         for deferred_draw_ix in traversal_order {
             let mut deferred_draw = &mut deferred_draws[deferred_draw_ix];
+            let _render_scope = self.render_contexts
+                .enter_snapshot(deferred_draw.render_contexts.clone());
             self.element_id_stack
                 .clone_from(&deferred_draw.element_id_stack);
             self.next_frame
@@ -4129,6 +4156,7 @@ impl Window {
                     parent_node: reused_subtree.refresh_node_id(deferred_draw.parent_node),
                     element_id_stack: deferred_draw.element_id_stack.clone(),
                     text_style_stack: deferred_draw.text_style_stack.clone(),
+                    render_contexts: deferred_draw.render_contexts.clone(),
                     content_mask: deferred_draw.content_mask,
                     rem_size: deferred_draw.rem_size,
                     priority: deferred_draw.priority,
@@ -4198,6 +4226,25 @@ impl Window {
             range.start.scene_index..range.end.scene_index,
             &self.rendered_frame.scene,
         );
+    }
+
+    /// KaminIDE patch: read the host context of type `T` for this traversal.
+    /// Values belong to this window; callers retain ownership through `Rc`.
+    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
+        self.render_contexts.get()
+    }
+
+    /// KaminIDE patch: run descendants with a typed host context.
+    /// `None` hides this type's outer value. Nested scopes restore it on return
+    /// or unwind. Paint/deferred snapshots clone each `Rc`; interior mutations
+    /// remain shared with the original value.
+    pub fn with_render_context<T: 'static, R>(
+        &mut self,
+        context: Option<Rc<T>>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let _scope = self.render_contexts.enter(context);
+        f(self)
     }
 
     /// Push a text style onto the stack, and call a function with that style active.
@@ -4290,6 +4337,7 @@ impl Window {
         PaintCtx {
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
+            render_contexts: self.render_contexts.snapshot(),
             rendered_entity_stack: self.rendered_entity_stack.clone(),
             element_offset_stack: self.element_offset_stack.clone(),
             exact_element_offset_depth: self.exact_element_offset_depth,
@@ -4325,6 +4373,8 @@ impl Window {
             std::mem::swap(&mut w.content_mask_stack, &mut c.content_mask_stack);
             std::mem::swap(&mut w.image_cache_stack, &mut c.image_cache_stack);
         }
+        let _render_scope = self.render_contexts
+            .enter_snapshot(std::mem::take(&mut ctx.render_contexts));
         swap_all(self, &mut ctx);
         let r = f(self);
         swap_all(self, &mut ctx);
@@ -4646,13 +4696,14 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v122, `scout-transforms-2026-09d.md`
-        // шаг 3): порядок `outer·inner` вместо `inner·outer`. css-transforms
-        // +2/−1 (`transform-compound-001`, `transform3d-sorting-002`), но
-        // css-writing-modes −9: весь `text-combine-upright-*` (вертикальный
-        // текст рисуется вложенными `with_transformation`, и наш порядок
-        // подобран под них). Менять только вместе с `lines.rs`/`flow.rs`.
-        let combined = transformation.compose(self.current_transformation());
+        // KaminIDE patch: вложение `outer · inner` (css-transforms-1
+        // §transform-rendering: матрица предка применяется ПОСЛЕ своей; Blink
+        // GeometryMapper перемножает parent·local). Прежний `inner · outer`
+        // ломал вложенные поворот/скос (`transform-compound-001`); вертикальный
+        // `CombinedUpright` переводит свою четверть оборота в локальные точки
+        // строки (`combined_geometry::in_local_space`). При пустом стеке
+        // (`current` = unit) результат побайтно прежний: 1·a + 0·c = a.
+        let combined = self.current_transformation().compose(transformation);
         self.transformation_stack.push(combined);
         // KaminIDE patch: обычное вложение маски не переводит — ни своё, ни
         // унаследованное от `with_transformation_masked` снаружи: вертикальный
@@ -4680,7 +4731,7 @@ impl Window {
         transformation: TransformationMatrix,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let combined = transformation.compose(self.current_transformation());
+        let combined = self.current_transformation().compose(transformation);
         let r = combined.rotation_scale;
         let keeps_axes = (r[0][1].abs() < 1e-4 && r[1][0].abs() < 1e-4)
             || (r[0][0].abs() < 1e-4 && r[1][1].abs() < 1e-4);
@@ -4918,6 +4969,7 @@ impl Window {
             parent_node,
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
+            render_contexts: self.render_contexts.snapshot(),
             content_mask,
             rem_size: self.rem_size(),
             priority,
@@ -5793,7 +5845,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
-        let bounds = bounds.scale(scale_factor);
+        let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
         self.next_frame.scene.insert_primitive(PaintSurface {
             order: 0,
@@ -5804,8 +5856,35 @@ impl Window {
             group: 0,
             opacity: 1.0,
             color_matrix: None,
+            fragment: 0,
         });
     }
+    /// KaminIDE patch: backdrop surfaces have no transformation of their own
+    /// (they read the frame), so an axis-aligned scale/translate of the
+    /// current transformation is applied to their device bounds here, the
+    /// way quads apply it in the vertex shader (Filter Effects 2
+    /// §backdrop-filter: the filtered region is the transformed border box).
+    fn backdrop_device_bounds(
+        &self,
+        bounds: Bounds<ScaledPixels>,
+    ) -> Bounds<ScaledPixels> {
+        let m = self.current_transformation();
+        let [[a, b], [c, d]] = m.rotation_scale;
+        if m == TransformationMatrix::unit() || b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
+            return bounds;
+        }
+        Bounds {
+            origin: point(
+                ScaledPixels(bounds.origin.x.0 * a + m.translation[0]),
+                ScaledPixels(bounds.origin.y.0 * d + m.translation[1]),
+            ),
+            size: size(
+                ScaledPixels(bounds.size.width.0 * a),
+                ScaledPixels(bounds.size.height.0 * d),
+            ),
+        }
+    }
+
 
     /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
@@ -5828,7 +5907,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
 
         let scale_factor = self.scale_factor();
-        let bounds = bounds.scale(scale_factor);
+        let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
         let opacity = self.element_opacity();
         let surface = PaintSurface {
@@ -5840,12 +5919,39 @@ impl Window {
             group: 0,
             opacity,
             color_matrix: Some(color_matrix),
+            fragment: 0,
         };
         if hoist && self.next_frame.scene.in_group {
             self.next_frame.scene.hoisted_backdrops.push(surface);
         } else {
             self.next_frame.scene.insert_primitive(surface);
         }
+    }
+
+    /// KaminIDE patch: группа, видимая СНАРУЖИ многоугольника (до восьми
+    /// вершин) — покрытие `1 − c` того же шейдера, что режет
+    /// `clip-path: polygon()`, поэтому край совпадает с ним бит в бит.
+    pub fn paint_group_outside_polygon<R>(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        polygon: &[Point<Pixels>],
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let result = self.paint_group(
+            bounds,
+            Corners::default(),
+            0.0,
+            1.0,
+            0,
+            polygon,
+            None,
+            None,
+            f,
+        );
+        if let Some(group) = self.next_frame.scene.groups.last_mut() {
+            group.polygon_inverse = true;
+        }
+        result
     }
 
     /// KaminIDE patch: нарисовать поддерево в отдельный буфер и положить в
@@ -5914,10 +6020,13 @@ impl Window {
             blur_radius: blur_radius * scale_factor,
             blend,
             polygon: polygon.iter().map(|p| p.scale(scale_factor)).collect(),
+            polygon_inverse: false,
             mask,
             mask_bounds,
             mask_once,
             mask_clip,
+            projection: None,
+            fragments: Vec::new(),
         });
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
@@ -5938,6 +6047,7 @@ impl Window {
             group: index + 1,
             opacity,
             color_matrix: None,
+            fragment: 0,
         });
         result
     }

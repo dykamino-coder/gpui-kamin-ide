@@ -21,6 +21,7 @@ import { InputControls } from './InputControls'
 import { SlashAutocomplete } from './SlashAutocomplete'
 import { ScrollDownPill } from './ScrollDownPill'
 import { ActiveFileStatusBar } from './ActiveFileStatusBar'
+import { UsageLimitsRow } from './UsageLimitsRow'
 import { useTabSend } from './useTabSend'
 import { useAutoFocusOnTabSwitch } from './useAutoFocusOnTabSwitch'
 import { useAppendToInputBridge } from './useAppendToInputBridge'
@@ -211,6 +212,7 @@ export function InputBar(): JSX.Element {
         </div>
         <InputControls />
       </div>
+      <UsageLimitsRow />
       <SlashAutocomplete
         query={slashState.query}
         matches={slashState.matches}

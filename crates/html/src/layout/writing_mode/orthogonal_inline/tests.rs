@@ -20,7 +20,9 @@ fn parallel_table_column_uses_its_track_measure() {
 #[test]
 fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
     let mut child = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         height: Some(Len::Pct(0.5)),
         ..Computed::default()
     };
@@ -54,7 +56,9 @@ fn nearest_indefinite_scroller_replaces_an_outer_fixed_scroller() {
     resolve(&mut inner, &outer, (800.0, 600.0), false);
     assert_eq!(inner.orthogonal_scrollport.unwrap()[1].size, None);
     let mut child = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         ..Computed::default()
     };
     resolve(&mut child, &inner, (800.0, 600.0), false);
@@ -70,12 +74,16 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
         max: None,
     };
     let parent = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         orthogonal_inline: Some(c),
         ..Computed::default()
     };
     let mut child = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         ..Computed::default()
     };
     resolve(&mut child, &parent, (800.0, 600.0), false);
@@ -96,7 +104,9 @@ fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
         ..Computed::default()
     };
     let mut child = Computed {
-        vertical: Some(true),
+        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true, false, false,
+        )),
         ..Computed::default()
     };
     child.margin.top = Some(Len::Pct(0.1));

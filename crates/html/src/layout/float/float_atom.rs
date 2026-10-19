@@ -17,12 +17,13 @@ pub(super) fn band_atom(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<crate::layout::fragment::types::FlowChild> {
+    let vcx = opts.cx.vcx();
     let (w, h) = px_margin_box(&c.style)?;
     let (ml, mt) = (
         px_margin(&c.style.margin.left).unwrap_or(0.0),
         px_margin(&c.style.margin.top).unwrap_or(0.0),
     );
-    let mut merged = inherit(inherited, &c.style);
+    let mut merged = inherit(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
     merged.self_node = c.node_id;
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already
@@ -34,9 +35,10 @@ pub(super) fn band_atom(
         image_with(
             &with_inherited_font(&inner, inherited),
             Some(atom_base_font(inherited, opts)),
+            &opts.cx,
         )
     } else {
-        styled_div_with(&inner, &merged)
+        styled_div_with(&inner, &merged, &opts.cx)
             .children(blocks(&inner.children, &merged, opts))
             .into_any_element()
     };

@@ -2,14 +2,19 @@ import type { JSX, ComponentChildren } from 'preact'
 import kaminoidRaw from '../../assets/kaminoid.svg?raw'
 
 // The ONE loading visual — the same brand loader the KaminIDE shell draws for
-// its panel skeletons and the chat switch cover: the K mark with a breathing
+// its panel skeletons and the chat switch cover: the K mark with a static
 // radial glow over a running progress bar. Every panel-scale wait (boot
 // restore, conversation load, console connect) renders THIS, so loading reads
 // as one system state instead of a zoo of different placeholders.
+//
+// Only the bar moves, in steps (INC-2026-0001). The host composites each new
+// CEF frame into a full window redraw, so a continuously animated loader kept
+// the window at ~60 frames/s for the whole load (measured: 57 CEF frames/s).
+// The glow breathe and logo float are gone (the glow rests at the midpoint of
+// the former 0.5→1 breathe), and `steps(12)` moves the bar ~10 times a second:
+// between steps nothing changes, so Chromium sends no frame at all.
 
 const STYLE = `
-@keyframes kamin-breathe { 0%,100% { opacity:.5; transform:scale(.94) } 50% { opacity:1; transform:scale(1.06) } }
-@keyframes kamin-float { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-4px) } }
 @keyframes kamin-sweep { 0% { transform:translateX(-100%) } 100% { transform:translateX(100%) } }
 .kamin-loader-logo svg { width:100%; height:100%; display:block }
 `
@@ -29,10 +34,10 @@ export function LoadingCue({ title, sub, pct, compact, children }: {
     <>
       <style>{STYLE}</style>
       <div style={`position:relative;width:${String(brand)}px;height:${String(brand)}px`}>
-        <div style="position:absolute;inset:-28%;border-radius:50%;background:radial-gradient(circle, color-mix(in srgb, var(--accent-primary) 26%, transparent) 0%, transparent 66%);animation:kamin-breathe 2.4s ease-in-out infinite" />
+        <div style="position:absolute;inset:-28%;border-radius:50%;background:radial-gradient(circle, color-mix(in srgb, var(--accent-primary) 26%, transparent) 0%, transparent 66%);opacity:.75" />
         <div
           class="kamin-loader-logo"
-          style={`position:absolute;left:50%;top:50%;width:${String(logo)}px;height:${String(logo)}px;margin-left:-${String(logo / 2)}px;margin-top:-${String(logo / 2)}px;animation:kamin-float 2.4s ease-in-out infinite`}
+          style={`position:absolute;left:50%;top:50%;width:${String(logo)}px;height:${String(logo)}px;margin-left:-${String(logo / 2)}px;margin-top:-${String(logo / 2)}px`}
           dangerouslySetInnerHTML={{ __html: kaminoidRaw }}
         />
       </div>
@@ -43,7 +48,7 @@ export function LoadingCue({ title, sub, pct, compact, children }: {
         {pct !== undefined ? (
           <div style={`width:${String(pct)}%;height:100%;background:var(--accent-primary);transition:width .2s`} />
         ) : (
-          <div style="width:100%;height:100%;background:linear-gradient(90deg, transparent, var(--accent-primary), transparent);animation:kamin-sweep 1.15s ease-in-out infinite" />
+          <div style="width:100%;height:100%;background:linear-gradient(90deg, transparent, var(--accent-primary), transparent);animation:kamin-sweep 1.15s steps(12) infinite" />
         )}
       </div>
       {sub && (

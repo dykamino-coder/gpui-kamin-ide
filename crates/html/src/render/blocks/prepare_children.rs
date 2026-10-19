@@ -11,15 +11,16 @@ use crate::layout::table::anon::wrap_anon_tables;
 use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_children(
     nodes: &[Node],
     inherited: &Computed,
-    _opts: &RenderOpts,
+    opts: &RenderOpts,
     _cell_bfc: bool,
 ) -> (Vec<Node>, bool, bool) {
+    let vcx = opts.cx.vcx();
     let stripped: Vec<Node>;
     let nodes = if nodes.iter().any(
         |n| matches!(n, Node::Element(e) if e.style.skip_content == Some(true) && !e.children.is_empty()),
@@ -56,6 +57,7 @@ pub(crate) fn prepare_children(
         || inherited.transform.is_some()
         || inherited.contain_layout == Some(true)
         || inherited.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(inherited)
         || inherited.will_change & crate::style::computed::wc::CB_FIXED != 0;
     let ordered_context = matches!(
         inherited.display,
@@ -82,8 +84,8 @@ pub(crate) fn prepare_children(
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
         crate::render::inline_splits::split_block_in_inline_dir(
-            &hoist_inset_abs(&wrap_anon_tables(nodes)),
-            inherited.rtl == Some(true),
+            &hoist_inset_abs(&wrap_anon_tables(nodes), inherited, vcx),
+            inherited.wm().rtl(),
         )
     };
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-flex-2026-09e.md` патч №1):
@@ -119,7 +121,7 @@ pub(crate) fn prepare_children(
                 Node::Element(mut e)
                     if in_flow(&e.style)
                         && !inline_level_box(&e)
-                        && inherited.vertical != Some(true)
+                        && !inherited.wm().vertical()
                         && matches!(
                             e.style.justify_self,
                             Some(Align::Start) | Some(Align::Center) | Some(Align::End)
@@ -134,7 +136,7 @@ pub(crate) fn prepare_children(
                         e.style.width = Some(Len::FitContent);
                     }
                     if !auto(e.style.margin.left) && !auto(e.style.margin.right) {
-                        let rtl = inherited.rtl == Some(true);
+                        let rtl = inherited.wm().rtl();
                         match (e.style.justify_self, rtl) {
                             (Some(Align::Center), _) => {
                                 e.style.margin.left = Some(Len::Auto);
@@ -150,6 +152,10 @@ pub(crate) fn prepare_children(
                 }
                 Node::Element(mut e)
                     if in_flow(&e.style)
+                        // Orthogonal auto block size fits content; its margins
+                        // position it in the containing block (WM 4 section 7.3).
+                        && (e.style.vertical_decl().or(inherited.vertical_decl()) == Some(true))
+                            == (inherited.wm().vertical())
                         && matches!(e.style.width, None | Some(Len::Auto))
                         && (e.style.margin.left == Some(Len::Auto)
                             || e.style.margin.right == Some(Len::Auto)) =>
@@ -181,15 +187,12 @@ pub(crate) fn prepare_children(
         // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
         // считаются от ширины содержащего блока, схлопывание — по уже
         // разрешённым значениям). Известна только заданная в точках.
-        let cb_w = match inherited.width {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        };
+        let cb_w = px_strict(inherited.width);
         let prev_w = COLLAPSE_CB_WIDTH_PX.with(|c| c.replace(cb_w));
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`inline::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
-        let cb_h_def = inherit(inherited, &Computed::default()).cb_height_def;
+        let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
         let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
         let mut out = collapse_margins(
             nodes,
@@ -198,8 +201,9 @@ pub(crate) fn prepare_children(
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ),
+            opts.cx.cb_width,
         );
-        margin_height::zero_float_blocks(&mut out, inherited);
+        margin_height::zero_float_blocks(&mut out, inherited, vcx);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
         COLLAPSE_CB_HEIGHT_DEF.with(|c| c.set(prev_h));

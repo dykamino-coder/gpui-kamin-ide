@@ -1,9 +1,10 @@
 //! Сетка таблицы (ряды, высоты) и рамка таблицы в сросшейся модели.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::{ParentElement, Styled, div, px};
 
 pub(super) fn table_grid_box(
@@ -12,23 +13,18 @@ pub(super) fn table_grid_box(
     row_elements: Vec<&Element>,
     tracks: Vec<gpui::GridTrack>,
     table_tall: bool,
+    vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let row_tracks: Option<Vec<gpui::GridTrack>> = match table_tall {
-        true if e.style.vertical != Some(true) => Some(
+        true if !e.style.wm().vertical() => Some(
             row_elements
                 .iter()
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
-                        Node::Element(cell) if is_cell(cell) => match cell.style.height {
-                            Some(Len::Px(v)) => Some(v),
-                            _ => None,
-                        },
+                        Node::Element(cell) if is_cell(cell) => px_strict(cell.style.height),
                         _ => None,
                     };
-                    let own = match row.style.height {
-                        Some(Len::Px(v)) => Some(v),
-                        _ => None,
-                    };
+                    let own = px_strict(row.style.height);
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))
@@ -52,7 +48,7 @@ pub(super) fn table_grid_box(
     // `1fr` с `flex_grow`, и ряды растягивались на высоту растянутого стола;
     // здесь авто-ряд остаётся `auto`, а пол — только у ряда с высотой.
     let row_floors: Option<Vec<gpui::GridTrack>> = (row_tracks.is_none()
-        && e.style.vertical != Some(true)
+        && !e.style.wm().vertical()
         && row_elements
             .iter()
             .any(|r| matches!(r.style.height, Some(Len::Px(h)) if h > 0.0)))
@@ -69,7 +65,7 @@ pub(super) fn table_grid_box(
             .collect()
     });
 
-    if e.style.vertical == Some(true) {
+    let mut grid = if e.style.wm().vertical() {
         // Ряд таблицы — КОЛОНКА сетки: заполнение идёт сверху вниз, ряд за
         // рядом поперёк (css-writing-modes-3 §8, table-progression-*).
         let mut g = div().grid().grid_template_rows(tracks);
@@ -100,7 +96,9 @@ pub(super) fn table_grid_box(
             g = g.flex_grow_1();
         }
         g
-    }
+    };
+    grid.style().table_collapsed_tracks = collapsed_tracks(e, vcx);
+    grid
 }
 
 pub(super) fn paint_table_border(
@@ -156,7 +154,7 @@ pub(super) fn paint_table_border(
             outer_win[3] / 2.0,
         ];
         outer = outer.child(crate::layout::table::paint::edge_probe(
-            table_edges.clone(),
+            table_edges,
             bw,
             colors,
             styles,
@@ -166,4 +164,59 @@ pub(super) fn paint_table_border(
         ));
     }
     outer
+}
+
+fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
+    // CSS 2.2 section 17.2.1: anonymous rows precede track indexing.
+    // Keep the same normalization and header/footer order as table().
+    let fixed = crate::layout::table::anon::fixup_table_children(&e.children, vcx);
+    let fixed = crate::layout::table::setup::table_rows_fixed(fixed);
+    let mut logical_rows = Vec::new();
+    crate::layout::table::anon::collect_rows(
+        &fixed,
+        Some(e),
+        (0.0, 0.0, None, None),
+        &mut logical_rows,
+    );
+    let collapsed: Vec<u16> = logical_rows
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (row, carry))| {
+            let collapse = crate::layout::table::anon::row_collapsed(row, carry.3);
+            collapse.then_some(if e.style.wm().vertical() && e.style.wm().block_rl() {
+                (logical_rows.len() - i - 1) as u16
+            } else {
+                i as u16
+            })
+        })
+        .collect();
+    (!collapsed.is_empty()).then_some((e.style.wm().vertical(), collapsed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::table::anon::anon_element;
+
+    #[test]
+    fn collapse_indices_follow_anonymous_rows_and_group_order() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
+        let mut group = anon_element("tbody", vec![Node::Element(block)]);
+        group.style.collapsed = Some(true);
+        group.node_id = 1;
+        let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
+        header.node_id = 2;
+        let mut table = anon_element("table", vec![Node::Element(group)]);
+        assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![0])));
+        table.children.push(Node::Element(header));
+        assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![1])));
+        table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            true,
+            table.style.wm().sideways(),
+        ));
+        assert_eq!(collapsed_tracks(&table, vcx), Some((true, vec![0])));
+    }
 }

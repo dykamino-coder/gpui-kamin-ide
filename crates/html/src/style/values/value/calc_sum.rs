@@ -1,6 +1,7 @@
 //! Arithmetic length terms preserve unresolved percentage dependencies.
 
 use super::{Len, calc_get, calc_store};
+use crate::document::state::ValueCx;
 
 /// Length arithmetic retains each unit until its resolution basis is available.
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
@@ -20,10 +21,13 @@ pub struct Sum {
     pub cap: f32,
     pub vh: f32,
     pub vw: f32,
+    /// Единицы окна и контейнера без своего варианта `Len` (`vmin`, `vi`,
+    /// `cqw`…) — индексы `super::units::Ext`, решаются в `fold_viewport`.
+    pub ext: [f32; super::units::EXT_N],
 }
 
 impl Sum {
-    pub(super) fn from_len(len: Len) -> Option<Self> {
+    pub(super) fn from_len(len: Len, vcx: ValueCx<'_>) -> Option<Self> {
         let mut s = Sum::default();
         match len {
             Len::Px(v) => s.px = v,
@@ -46,7 +50,7 @@ impl Sum {
             }
             Len::Vh(v) => s.vh = v,
             Len::Vw(v) => s.vw = v,
-            Len::Calc(i) => s = calc_get(i),
+            Len::Calc(i) => s = calc_get(i, vcx),
             // Якорная вставка в арифметику не входит: её довесок уже внутри
             // `AnchorFn::add`, а сама она решается на подготовке кадра.
             Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => {
@@ -69,6 +73,7 @@ impl Sum {
             cap: self.cap * k,
             vh: self.vh * k,
             vw: self.vw * k,
+            ext: self.ext.map(|v| v * k),
         }
     }
 
@@ -85,6 +90,7 @@ impl Sum {
             cap: self.cap + sign * other.cap,
             vh: self.vh + sign * other.vh,
             vw: self.vw + sign * other.vw,
+            ext: std::array::from_fn(|i| self.ext[i] + sign * other.ext[i]),
         }
     }
 
@@ -92,10 +98,7 @@ impl Sum {
     /// ноль в точках. Две и больше природ — `None`: такие доводы `min()`/`max()`
     /// сравнимы только на раскладке.
     pub(super) fn nature(self) -> Option<(u8, f32)> {
-        let f = [
-            self.px, self.pct, self.em, self.ch, self.ex, self.ic, self.cap, self.lh, self.vh,
-            self.vw,
-        ];
+        let f = self.natures();
         let mut alive = f
             .iter()
             .enumerate()
@@ -110,7 +113,7 @@ impl Sum {
     /// Свёртка в длину: сокращение слагаемых учтено, поэтому
     /// `calc(100% + 6em + 50%*4 - 12em/2)` даёт чистые 300 % — `em` в нём
     /// взаимно уничтожаются.
-    pub fn collapse(self) -> Option<Len> {
+    pub fn collapse(self, vcx: ValueCx<'_>) -> Option<Len> {
         // Even a cancelled percentage needs a definite basis. Dropping it turns
         // an auto block height into a length before CSS 2.1 §10.5 can apply.
         if self.has_percentage && self.pct == 0.0 {
@@ -121,7 +124,7 @@ impl Sum {
             return Some(if length == Self::default() {
                 Len::Pct(0.0)
             } else {
-                Len::Calc(calc_store(self))
+                Len::Calc(calc_store(self, vcx))
             });
         }
         // Живая `cap` своего варианта `Len` не имеет — сумма доживает
@@ -129,8 +132,9 @@ impl Sum {
         // кегль. Ранний возврат, а НЕ правка веток ниже: те ветки замерены
         // (★ `gap-003-ltr` 0.00 → 4.12), и трогать их из-за новой природы
         // нельзя.
-        if self.cap != 0.0 && self.pct == 0.0 {
-            return Some(Len::Calc(calc_store(self)));
+        // Доля в смеси с ними живёт только через `collapse_mixed`.
+        if self.cap != 0.0 || self.ext.iter().any(|v| *v != 0.0) {
+            return (self.pct == 0.0).then(|| Len::Calc(calc_store(self, vcx)));
         }
         let rel = [
             (self.pct, Len::Pct as fn(f32) -> Len),
@@ -158,7 +162,7 @@ impl Sum {
             }),
             // Font and viewport terms resolve in the cascade. Percentage mixtures
             // require the layout basis and are retained by collapse_mixed.
-            _ if self.pct == 0.0 => Some(Len::Calc(calc_store(self))),
+            _ if self.pct == 0.0 => Some(Len::Calc(calc_store(self, vcx))),
             _ => None,
         }
     }
@@ -167,9 +171,9 @@ impl Sum {
     /// для потребителей с известным размером коробки (`Len::parse_mixed`).
     /// `collapse` отдаёт `None` ровно в одном случае — доля вместе с другой
     /// природой, — и только он сюда и попадает.
-    pub fn collapse_mixed(self) -> Option<Len> {
-        self.collapse()
-            .or_else(|| Some(Len::Calc(calc_store(self))))
+    pub fn collapse_mixed(self, vcx: ValueCx<'_>) -> Option<Len> {
+        self.collapse(vcx)
+            .or_else(|| Some(Len::Calc(calc_store(self, vcx))))
     }
 
     /// Return length-percentage terms, including an unresolved zero percentage.
@@ -187,13 +191,13 @@ impl Sum {
     /// Свёртка для межбуквенного и межсловного интервала: там и доля, и `em`
     /// считаются от кегля, поэтому смешанное `calc(400% + 1em)` складывается
     /// вместо того чтобы пропасть.
-    pub(super) fn collapse_spacing(self) -> Option<Len> {
+    pub(super) fn collapse_spacing(self, vcx: ValueCx<'_>) -> Option<Len> {
         Sum {
             pct: 0.0,
             has_percentage: false,
             em: self.em + self.pct,
             ..self
         }
-        .collapse()
+        .collapse(vcx)
     }
 }

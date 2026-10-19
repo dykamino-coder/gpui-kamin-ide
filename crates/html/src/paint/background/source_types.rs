@@ -2,6 +2,7 @@
 
 use super::{conic, gradient_raster, rasterize_shape};
 use super::{rasterize_gradient, with_viewport};
+use crate::document::state::ValueCx;
 
 use super::Intrinsic;
 use gpui::RenderImage;
@@ -15,6 +16,11 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub enum Source {
     Raster(Arc<RenderImage>),
+    /// Filter after resolving the input image at its concrete object size.
+    Filtered {
+        image: Box<Source>,
+        list: String,
+    },
     Vector {
         markup: String,
         size: Intrinsic,
@@ -32,19 +38,24 @@ pub enum Source {
 }
 
 impl Source {
-    pub(crate) fn mask_raster(&self, tile: (f32, f32), scale: f32) -> Option<Arc<RenderImage>> {
+    pub(crate) fn mask_raster(
+        &self,
+        tile: (f32, f32),
+        scale: f32,
+        vcx: ValueCx<'_>,
+    ) -> Option<Arc<RenderImage>> {
         if let Source::Gradient { raw } = self
             && conic::is_conic(raw)
         {
             // CSS Masking §7.8 uses the same concrete gradient as a background.
             // Sample the angular discontinuity on the device grid, before a
             // mask is composited; resizing a CSS-sized mask blurs hard rays.
-            return conic::rasterize(raw, tile, scale);
+            return conic::rasterize(raw, tile, scale, vcx);
         }
         if let Source::Gradient { raw } = self
             && !raw.starts_with("cross-fade(")
             // Color images have their own straight-alpha raster path.
-            && crate::style::computed::parse_image_color(raw).is_none()
+            && crate::style::computed::parse_image_color(raw, vcx).is_none()
         {
             // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
             // at device pixel centres. Avoid resizing a CSS-resolution alpha
@@ -52,9 +63,22 @@ impl Source {
             let css = (tile.0.clamp(1.0, 2048.0), tile.1.clamp(1.0, 2048.0));
             let w = (css.0 * scale).round().clamp(1.0, 4096.0) as u32;
             let h = (css.1 * scale).round().clamp(1.0, 4096.0) as u32;
-            return gradient_raster::raster(raw, w, h, css, true);
+            return gradient_raster::raster(raw, w, h, css, true, vcx);
         }
-        self.raster(tile)
+        self.raster(tile, vcx)
+    }
+
+    pub(crate) fn sampled_raster(
+        &self,
+        tile: (f32, f32),
+        pixelated: bool,
+        vcx: ValueCx<'_>,
+    ) -> Option<Arc<RenderImage>> {
+        if let Source::Filtered { image, list } = self {
+            super::filtered_raster::raster(image, list, tile, pixelated, vcx)
+        } else {
+            self.raster(tile, vcx)
+        }
     }
 
     /// Своя величина картинки.
@@ -69,6 +93,7 @@ impl Source {
                     ratio: Some(w / h),
                 }
             }
+            Source::Filtered { image, .. } => image.intrinsic(),
             Source::Vector { size, .. } => *size,
             Source::Gradient { .. } | Source::Shape { .. } => Intrinsic {
                 w: None,
@@ -79,11 +104,14 @@ impl Source {
     }
 
     /// Растр под нужный размер плитки.
-    pub fn raster(&self, tile: (f32, f32)) -> Option<Arc<RenderImage>> {
+    pub fn raster(&self, tile: (f32, f32), vcx: ValueCx<'_>) -> Option<Arc<RenderImage>> {
         match self {
             Source::Raster(image) => Some(image.clone()),
+            Source::Filtered { image, list } => {
+                super::filtered_raster::raster(image, list, tile, false, vcx)
+            }
             Source::Vector { markup, .. } => {
-                if let Some(color) = super::flat_vector::color(markup, tile) {
+                if let Some(color) = super::flat_vector::color(markup, tile, vcx) {
                     return gpui::bgra_bytes_to_image(
                         1,
                         1,
@@ -121,7 +149,7 @@ impl Source {
                     tile.0.clamp(1.0, LIMIT).round() as u32,
                     tile.1.clamp(1.0, LIMIT).round() as u32,
                 );
-                rasterize_gradient(raw, w, h)
+                rasterize_gradient(raw, w, h, vcx)
             }
             Source::Shape { raw } => {
                 const LIMIT: f32 = 2048.0;
@@ -129,7 +157,7 @@ impl Source {
                     tile.0.clamp(1.0, LIMIT).round() as u32,
                     tile.1.clamp(1.0, LIMIT).round() as u32,
                 );
-                rasterize_shape(raw, w, h, 1.0)
+                rasterize_shape(raw, w, h, 1.0, vcx)
             }
         }
     }

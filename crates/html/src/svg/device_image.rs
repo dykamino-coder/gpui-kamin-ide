@@ -58,7 +58,7 @@ pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
                         }
                         None => {
                             bounds.size = gpui::size(px(w), px(h));
-                            paint(window, bounds, image.clone());
+                            paint(window, bounds, image);
                         }
                     }
                 },
@@ -69,7 +69,7 @@ pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
     )
 }
 
-fn paint(
+pub(super) fn paint(
     window: &mut gpui::Window,
     bounds: gpui::Bounds<gpui::Pixels>,
     image: std::sync::Arc<gpui::RenderImage>,

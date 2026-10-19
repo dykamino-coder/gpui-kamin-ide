@@ -1,9 +1,10 @@
 // The CLI's system prompt for a remote Bridge session.
 //
-// Kept in its own module with NO imports: session-env pulls in the config and
+// Kept in its own module with only dependency-free text imports: session-env pulls in the config and
 // proxy layers (and through them a TLS/cert stack), which made this pure string
 // builder impossible to unit-test — and it went untested long enough to ship a
 // parameter that was accepted and never read.
+import { RUNTIME_SETTINGS_CONTEXT } from './runtime-settings-context'
 
 export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcriptMirrorDir?: string): string {
   const lines: string[] = []
@@ -26,13 +27,23 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
   lines.push('')
   lines.push('## MCP Tool Routing')
   lines.push('')
-  lines.push('All file and shell operations execute on the USER\'s local machine via MCP tools (user-tools server), not on this server.')
-  lines.push('The MCP tools available are: Read, Write, Edit, Glob, Grep, Bash, NotebookEdit, WebFetch, EnterWorktree, AskUserQuestion. Use the mcp__user-tools__ prefixed versions of these tools for all operations.')
-  lines.push('The current server-side directory is a temporary session directory — do NOT access files directly on the server filesystem.')
+  lines.push(
+    "All file and shell operations execute on the USER's local machine via MCP tools (user-tools server), not on this server.",
+  )
+  lines.push(
+    'Use the mcp__user-tools__ prefixed file and shell tools exposed in this session: for example Read, Write, Edit, Glob, Grep, Bash and PowerShell. For client background shells use BashOutput and KillShell with the returned bash_id; native TaskOutput does not track these processes. Other native CLI tools, such as Agent and SendMessage, retain their own routing.',
+  )
+  lines.push(
+    "The current server-side directory is a Bridge-managed session directory, not the user's project directory — do NOT access files directly on the server filesystem.",
+  )
+  lines.push('')
+  lines.push(RUNTIME_SETTINGS_CONTEXT)
   lines.push('')
   lines.push('## Interactive Questions')
   lines.push('')
-  lines.push('ALWAYS use AskUserQuestion (mcp__user-tools__AskUserQuestion) when asking the user ANY question — quizzes, polls, confirmations, choices, clarifications, or anything that expects a user response. NEVER print questions as plain text. The tool shows an interactive widget with clickable option buttons, which is much better UX than text.')
+  lines.push(
+    'ALWAYS use AskUserQuestion (mcp__user-tools__AskUserQuestion) when asking the user ANY question — quizzes, polls, confirmations, choices, clarifications, or anything that expects a user response. NEVER print questions as plain text. The tool shows an interactive widget with clickable option buttons, which is much better UX than text.',
+  )
 
   // Point Claude at its own full transcript. Your file tools run on the USER's
   // machine (user-tools MCP), and that same machine mirrors the complete
@@ -44,9 +55,13 @@ export function buildSystemPrompt(userCwd?: string, basePrompt?: string, transcr
     lines.push('')
     lines.push('## Conversation History (full transcript)')
     lines.push('')
-    lines.push(`Your COMPLETE transcript for this session — including earlier turns that a /compact has since summarized out of your active context — is mirrored on the user's machine at:`)
+    lines.push(
+      `Bridge mirrors conversation history on the user's machine, including turns that a /compact has summarized out of your active context, at:`,
+    )
     lines.push(`  ${mirrorDir}`)
-    lines.push(`Each conversation is one JSONL file there named <conversationId>.jsonl (one JSON entry per line); the most-recently-modified file is the current session. Read it with mcp__user-tools__Read (or Bash) whenever you need to recall something from earlier in this conversation that is no longer in your context — it runs on the user's machine, where this mirror lives.`)
+    lines.push(
+      `This directory is shared by multiple conversations. Each JSONL file is named <conversationId>.jsonl (one JSON entry per line). Use the current conversationId when known and verify that the file belongs to this conversation before reading history; modification time alone does not identify the current session. Read with mcp__user-tools__Read (or Bash/PowerShell). The mirror may still be catching up after reconnect: report missing history rather than assuming it is complete or using another conversation.`,
+    )
     lines.push(`It is append-only history: read it, never write to or delete it.`)
   }
 

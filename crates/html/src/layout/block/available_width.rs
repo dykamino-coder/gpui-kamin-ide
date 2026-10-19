@@ -21,7 +21,7 @@ pub(crate) fn inner(st: &Computed, outer: Option<f32>) -> Option<f32> {
         None | Some(Display::Block) | Some(Display::ListItem) => {}
         _ => return None,
     }
-    if st.vertical == Some(true) || st.column_count.is_some() || st.column_width.is_some() {
+    if st.wm().vertical() || st.column_count.is_some() || st.column_width.is_some() {
         return None;
     }
     let b = st.borders();

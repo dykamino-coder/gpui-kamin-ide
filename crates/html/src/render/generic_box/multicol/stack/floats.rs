@@ -4,11 +4,19 @@ use crate::dom::{Element, Node};
 use crate::render::is_blank;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::tolerance::COORD_EPS;
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn block_floats(
     ge: &Element,
     positioned: impl Fn(&Computed) -> bool,
+    col_w: Option<f32>,
+) -> Option<Element> {
+    floats_in(ge, &positioned, col_w)
+}
+
+fn floats_in(
+    ge: &Element,
+    positioned: &dyn Fn(&Computed) -> bool,
     col_w: Option<f32>,
 ) -> Option<Element> {
     // Плавающий прямой ребёнок во всю ширину колонки рядом с
@@ -20,7 +28,7 @@ pub(crate) fn block_floats(
     // соседом стопки одним куском).
     let zero_m = |l: &Option<Len>| match l {
         None => true,
-        Some(Len::Px(v)) => v.abs() < 0.01,
+        Some(Len::Px(v)) => v.abs() < COORD_EPS,
         _ => false,
     };
     // Во всю ширину — `width: 100%` или точечная ширина не уже колонки.
@@ -29,7 +37,7 @@ pub(crate) fn block_floats(
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
     // (`spanner-in-child-after-parallel-flow-001`: флоат 50px в колонке
     // 50px, дальше только пустой обломок предка спаннера).
-    let wide_px = |c: &Element| matches!((c.style.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - 0.01);
+    let wide_px = |c: &Element| matches!((c.style.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {
@@ -70,17 +78,73 @@ pub(crate) fn block_floats(
         .enumerate()
         .map(|(i, n)| matches!(n, Node::Element(c) if full_float(i, c)))
         .collect();
-    full.iter().any(|f| *f).then(|| {
+    // Простая блочная обёртка (без высоты, отбивок, рамок, полей и
+    // позиционирования) сама в колонку не режется иначе, чем её дети:
+    // флоат во всю ширину внутри неё — тот же случай, что у прямого
+    // ребёнка (`float-in-self-collapsing-block-000`: обёртка из одного
+    // флоата 100% рисовала его одним куском поверх разрыва колонки,
+    // а замер стопки — `block_like_float` в `kid_shapes` — уже резал).
+    let nested: Vec<Option<Element>> = ge
+        .children
+        .iter()
+        .map(|n| match n {
+            Node::Element(c) if plain_wrapper(c, positioned) => floats_in(c, positioned, col_w),
+            _ => None,
+        })
+        .collect();
+    (full.iter().any(|f| *f) || nested.iter().any(Option::is_some)).then(|| {
         let mut g = ge.clone();
-        for (n, f) in g.children.iter_mut().zip(&full) {
-            if let Node::Element(c) = n
-                && *f
-            {
-                c.style.float = None;
-                c.style.clear = None;
-                c.attrs.push(("kamin-float-block".into(), "1".into()));
+        for ((n, f), w) in g.children.iter_mut().zip(&full).zip(nested) {
+            if let Node::Element(c) = n {
+                if *f {
+                    c.style.float = None;
+                    c.style.clear = None;
+                    c.marks.float_block = true;
+                } else if let Some(w) = w {
+                    *c = w;
+                }
             }
         }
         g
     })
+}
+
+/// Блок потока, прозрачный для разреза колонок: ни высоты, ни отбивок,
+/// рамок и вертикальных полей, ни флоата и позиционирования, ни нового
+/// контекста форматирования (`overflow`/`display`).
+fn plain_wrapper(c: &Element, positioned: &dyn Fn(&Computed) -> bool) -> bool {
+    let s = &c.style;
+    let none = |l: &Option<Len>| match l {
+        None => true,
+        Some(Len::Px(v)) => v.abs() < COORD_EPS,
+        _ => false,
+    };
+    let b = s.borders();
+    !c.inline
+        && matches!(
+            s.display,
+            None | Some(crate::style::computed::Display::Block)
+        )
+        && s.float.unwrap_or(0) == 0
+        && s.clear.is_none()
+        && !positioned(s)
+        && s.position.is_none()
+        && matches!(s.height, None | Some(Len::Auto))
+        && s.min_height.is_none()
+        && s.max_height.is_none()
+        && crate::layout::page::paged::visible_overflow(s)
+        && [
+            &s.margin.top,
+            &s.margin.bottom,
+            &s.padding.top,
+            &s.padding.bottom,
+            &s.padding.left,
+            &s.padding.right,
+            &b.top,
+            &b.bottom,
+            &b.left,
+            &b.right,
+        ]
+        .into_iter()
+        .all(none)
 }

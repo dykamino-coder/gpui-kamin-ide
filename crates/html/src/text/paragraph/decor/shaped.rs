@@ -32,6 +32,8 @@ impl Paragraph {
 impl Paragraph {
     /// Decorations of one painted shaped run (`run` — bytes of the paragraph,
     /// `at` — the run's line-box origin, as given to `ShapedLine::paint`).
+    // Shaped decorations share the run geometry and active paint context.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_decor_shaped(
         &self,
         run: &std::ops::Range<usize>,

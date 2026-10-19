@@ -1,6 +1,7 @@
 //! Рамка-картинка: разбор пяти свойств border-image* в одну запись BorderImage (Computed::set_border_image).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     /// Толщина рамки, как её видит модель коробки. Начальный `border-style`
@@ -11,7 +12,7 @@ impl Computed {
     /// Сокращение несёт до трёх частей через косую: `<источник> <срез> /
     /// <ширина> / <вылет>` и укладку в конце. Отдельные свойства дополняют ту
     /// же запись, поэтому она заводится по первому же из них.
-    pub(crate) fn set_border_image(&mut self, name: &str, v: &str) {
+    pub(crate) fn set_border_image(&mut self, name: &str, v: &str, vcx: ValueCx<'_>) {
         // CSS Backgrounds 3 §6.7: the shorthand resets omitted longhands.
         if name == "border-image" {
             self.border_image = None;
@@ -24,10 +25,12 @@ impl Computed {
             outset: [BorderImageWidth::Px(0.0); 4],
             repeat: (Tiling::None, Tiling::None),
         });
+        let mut accepted = false;
         let mut set = |part: &str, value: &str| match part {
             "border-image-source" => {
                 let value = value.trim();
                 if value == "none" {
+                    accepted = true;
                     image.src.clear();
                 } else if value.starts_with("linear-gradient(")
                     || value.starts_with("radial-gradient(")
@@ -37,7 +40,14 @@ impl Computed {
                     // (css-backgrounds-3 §6.1). Запись хранится как есть:
                     // растрирует её загрузчик картинок.
                     image.src = value.to_string();
+                    accepted = true;
+                } else if crate::style::computed::filter_image::parse_filter_image(value, vcx)
+                    .is_some()
+                {
+                    accepted = true;
+                    image.src = value.to_string();
                 } else if let Some(url) = parse_url(value) {
+                    accepted = true;
                     image.src = url;
                 }
             }
@@ -52,6 +62,7 @@ impl Computed {
                     None => t.parse().ok().map(BorderImageSlice::Px),
                 };
                 if let Some(sides) = four(&nums, one) {
+                    accepted = true;
                     image.slice = sides;
                 }
             }
@@ -72,13 +83,14 @@ impl Computed {
                     if let Ok(k) = t.parse::<f32>() {
                         return Some(BorderImageWidth::Times(k));
                     }
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) => Some(BorderImageWidth::Px(v)),
                         _ => None,
                     }
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();
                 if let Some(sides) = four(&words, one) {
+                    accepted = true;
                     image.width = sides;
                 }
             }
@@ -89,13 +101,14 @@ impl Computed {
                     if let Ok(k) = t.parse::<f32>() {
                         return (k >= 0.0).then_some(BorderImageWidth::Times(k));
                     }
-                    match Len::parse(t) {
+                    match Len::parse(t, vcx) {
                         Some(Len::Px(v)) if v >= 0.0 => Some(BorderImageWidth::Px(v)),
                         _ => None,
                     }
                 };
                 let words: Vec<&str> = value.split_whitespace().collect();
                 if let Some(sides) = four(&words, one) {
+                    accepted = true;
                     image.outset = sides;
                 }
             }
@@ -109,6 +122,7 @@ impl Computed {
                 };
                 let mut it = value.split_whitespace();
                 if let (Some(x), y) = (it.next().and_then(one), it.next().and_then(one)) {
+                    accepted = true;
                     image.repeat = (x, y.unwrap_or(x));
                 }
             }
@@ -142,6 +156,7 @@ impl Computed {
             let words = split_outside_parens(head);
             let (urls, rest): (Vec<&String>, Vec<&String>) = words.iter().partition(|w| {
                 w.starts_with("url(")
+                    || w.starts_with("filter(")
                     || w.starts_with("linear-gradient(")
                     || w.starts_with("radial-gradient(")
                     || w.starts_with("conic-gradient(")
@@ -193,6 +208,9 @@ impl Computed {
         // картинка), и рамка рисовалась четырьмя сжатыми копиями образа.
         // Не рисовать и не подавлять обычную рамку при пустом источнике —
         // забота потребителей.
+        if accepted {
+            self.accept_declaration();
+        }
         self.border_image = Some(image);
     }
 }

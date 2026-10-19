@@ -48,6 +48,9 @@ export interface JsonlEntryData {
   /** For assistant entries */
   model?: string
   usage?: MessageUsage
+  /** CLI thinking display mode for this assistant row; `"updates"` = the TUI
+   *  prints the thinking text as visible narration (INC-2026-0063). */
+  thinkingDisplay?: string
   isSidechain?: boolean
   /** Owning teammate/subagent for a sidechain STREAM stub — the CLI's
    *  `x-claude-code-agent-id` (`<name>-<n>@<team>`), stamped by the MITM. Lets the

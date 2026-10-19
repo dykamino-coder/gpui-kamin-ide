@@ -2,13 +2,15 @@
 
 use crate::layout::page::margin_box_size;
 use crate::layout::page::page_stack::{MarginBox, PageGeom};
-use gpui::{AnyElement, App, Window, px, size};
+use gpui::{AnyElement, App, AvailableSpace, Window};
 
 /// Раскладка марджин-боксов одного листа (css-page-3 §margin-dimension; Blink
 /// `PageContainerLayoutAlgorithm::LayoutAllMarginBoxes`): прямоугольник border
 /// box каждой коробки в точках листа и её элемент. Мера — по содержимому
 /// (`probe`): главная ось стороны верха/низа — min/max-content ширина, боковых
 /// — высота при уже решённой ширине (Blink `EdgeMarginNodePreferredSize`).
+// Margin boxes share the page's geometry and generated-content callbacks.
+#[allow(clippy::type_complexity)]
 pub(super) fn layout_margin_boxes(
     boxes: Vec<MarginBox>,
     g: &PageGeom,
@@ -94,36 +96,33 @@ pub(super) fn layout_margin_boxes(
             });
             let (min, max) = match spec {
                 Some(v) => (v, v),
-                None if horiz => {
-                    let lo = b.probe.layout_as_root(
-                        size(
-                            gpui::AvailableSpace::MinContent,
-                            gpui::AvailableSpace::MaxContent,
-                        ),
-                        window,
-                        cx,
-                    );
-                    let hi = b.probe.layout_as_root(
-                        size(
-                            gpui::AvailableSpace::MaxContent,
-                            gpui::AvailableSpace::MaxContent,
-                        ),
-                        window,
-                        cx,
-                    );
-                    (f32::from(lo.width), f32::from(hi.width))
-                }
                 None => {
-                    let w = cross(b);
-                    let s = b.probe.layout_as_root(
-                        size(
-                            gpui::AvailableSpace::Definite(px(w)),
-                            gpui::AvailableSpace::MaxContent,
-                        ),
+                    let other = if horiz == b.vertical {
+                        Some(cross(b))
+                    } else {
+                        None
+                    };
+                    let max = margin_box_size::measure(
+                        b,
+                        horiz,
+                        other,
+                        AvailableSpace::MaxContent,
                         window,
                         cx,
                     );
-                    (f32::from(s.height), f32::from(s.height))
+                    let min = if horiz != b.vertical {
+                        margin_box_size::measure(
+                            b,
+                            horiz,
+                            other,
+                            AvailableSpace::MinContent,
+                            window,
+                            cx,
+                        )
+                    } else {
+                        max
+                    };
+                    (min, max)
                 }
             };
             prefs[i] = Some(Pref {

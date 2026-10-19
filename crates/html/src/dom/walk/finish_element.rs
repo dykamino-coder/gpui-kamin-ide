@@ -1,5 +1,6 @@
-//! Finish element for walk; split out to keep the owning module within 250 lines.
+//! Final element assembly: direction, pseudo boxes, ruby and authored node state.
 
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
@@ -11,13 +12,14 @@ pub(super) fn finish_element(
     tag: String,
     attrs: Vec<(String, String)>,
     anim: Option<Vec<(f32, Computed)>>,
-    list_item: Option<i32>,
+    list_item: Option<i64>,
     node_id: u64,
     hover: Option<Computed>,
     first_letter: Option<Computed>,
     first_line: Option<Computed>,
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
+    vcx: ValueCx<'_>,
 ) {
     let ruby_parent = ruby_box_role(&tag, &style);
     if ruby_parent.is_some() {
@@ -29,9 +31,17 @@ pub(super) fn finish_element(
     // разбор двунаправленности, но он берёт сторону абзаца, а не
     // куска: строка `1;234;56א;` внутри `<span dir=auto>` выходила
     // слева направо (`empty-span-001`).
-    if attrs
-        .iter()
-        .any(|(k, v)| k == "dir" && v.eq_ignore_ascii_case("auto"))
+    // HTML §4.5.24: `<bdi>` без допустимого `dir` ведёт себя как `dir=auto`
+    // (и по UA-листу §15.3.4 изолирован): «the bdi element … the dir
+    // attribute … defaults to the auto state» (`bdi-neutral-*`).
+    let bdi_auto = tag == "bdi"
+        && !attrs.iter().any(|(k, v)| {
+            k == "dir" && matches!(v.to_ascii_lowercase().as_str(), "ltr" | "rtl" | "auto")
+        });
+    if bdi_auto
+        || attrs
+            .iter()
+            .any(|(k, v)| k == "dir" && v.eq_ignore_ascii_case("auto"))
     {
         // `dir="auto"` в HTML — это `unicode-bidi: plaintext`: сторона
         // решается для КАЖДОГО абзаца между жёсткими разрывами, а не
@@ -79,25 +89,14 @@ pub(super) fn finish_element(
     let children = if style.display == Some(Display::Block)
         && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
     {
-        vec![Node::Element(Element {
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            inline: true,
-            tag: "ruby".to_string(),
-            style: Computed::default(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children,
-            attrs: vec![],
-        })]
+        vec![anonymous_ruby(children)]
     } else {
         children
     };
     let children = wrap_misparented_ruby(children, ruby_parent);
     let inline = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
     style.block_tag = !inline;
+    style.decor_box = node_id;
     // Замена элемента (css-content-3 §content-property: «a single
     // <image>» на самом элементе): коробка становится замещаемой
     // картинкой, содержимое не рисуется. Уровень коробки остаётся от
@@ -106,27 +105,31 @@ pub(super) fn finish_element(
     // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
     let (tag, children, attrs) = match style.content.as_deref() {
         Some([crate::style::computed::ContentItem::Image(src)])
-            if tag != "html" && content_image_src(src).is_some() =>
+            if tag != "html" && content_image_src(src, vcx).is_some() =>
         {
             let mut attrs: Vec<(String, String)> = attrs
                 .into_iter()
                 .filter(|(k, _)| k != "src" && k != "srcset")
                 .collect();
-            attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
+            attrs.push((
+                "src".into(),
+                content_image_src(src, vcx).unwrap_or_default(),
+            ));
             ("img".to_string(), vec![], attrs)
         }
         _ => (tag, children, attrs),
     };
     out.push(Node::Element(Element {
+        marks: Default::default(),
         list_item,
         node_id: node_id,
-        anim,
+        anim: anim.map(std::rc::Rc::new),
         inline,
         tag,
-        style,
-        hover,
-        first_letter,
-        first_line,
+        style: style.into(),
+        hover: hover.map(Into::into),
+        first_letter: first_letter.map(Into::into),
+        first_line: first_line.map(Into::into),
         children,
         attrs,
     }));

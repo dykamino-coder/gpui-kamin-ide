@@ -1,22 +1,24 @@
 //! Parse mask dimensions without duplicating a single value into both axes.
+
 use super::Computed;
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn apply(style: &mut Computed, value: &str) {
+pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
     let (size, fit) = match value.trim() {
         "contain" => (None, 1),
         "cover" => (None, 2),
         "auto" | "auto auto" => (None, 0),
         value => {
-            let words = crate::paint::background::split_top(value);
+            let words = crate::style::css::value_tokens::split_top(value);
             if !(1..=2).contains(&words.len()) {
                 return;
             }
-            let Some(width) = Len::parse(words[0]) else {
+            let Some(width) = Len::parse(words[0], vcx) else {
                 return;
             };
             let height = if let Some(word) = words.get(1) {
-                let Some(height) = Len::parse(word) else {
+                let Some(height) = Len::parse(word, vcx) else {
                     return;
                 };
                 height
@@ -27,6 +29,7 @@ pub(super) fn apply(style: &mut Computed, value: &str) {
             (Some((width, height)), 0)
         }
     };
+    style.accept_declaration();
     style.mask_size = size;
     style.mask_fit = Some(fit);
 }

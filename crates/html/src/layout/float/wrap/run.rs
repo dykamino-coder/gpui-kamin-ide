@@ -56,7 +56,7 @@ pub(super) fn strut_for_next(
     // `-009` и `nested-clearance-new-formatting-context` — все три
     // потери держит распорка `0 × остаток поля`, прошедшая гейт
     // `covered_flow_tail`, потому что ширины у неё нет, а
-    // `px_of2(None) = 0`).
+    // `px_missing_zero(None) = 0`).
     let mut clearance_strut = false;
     clearance_before_next(
         cb_top_open,
@@ -130,6 +130,7 @@ pub(super) fn gather_floaters(
         let mut floater = next.clone();
         native_vertical::claim_float_inline_size(&mut floater.style, parent, &floater.children);
         floater.style.float = None;
+        floater.style.floated_box = true;
         // ПРОБОВАЛИ И ОТКАТИЛИ: помечать плавающий кусок блочным
         // (`display: block` + `inline = false`), как велит CSS 2.1 §9.7.
         // Замер: css-text 1003 → 998, flexbox 318 → 319 — итог в минус.
@@ -211,6 +212,7 @@ pub(super) fn clearance_before_next(
         let adjoining = cb_top_open && out.iter().all(is_blank) && rest.iter().all(is_blank);
         if !adjoining && laid_out {
             rest.push(Node::Element(Element {
+                marks: Default::default(),
                 list_item: None,
                 node_id: 0,
                 anim: None,
@@ -219,7 +221,8 @@ pub(super) fn clearance_before_next(
                     display: Some(Display::Block),
                     height: Some(Len::Px(top)),
                     ..Computed::default()
-                },
+                }
+                .into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,

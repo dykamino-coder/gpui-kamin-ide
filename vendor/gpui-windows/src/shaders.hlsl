@@ -1452,6 +1452,7 @@ struct BlurQuad {
     float4 poly[4];       // вершины парами: (x0, y0, x1, y1)
     float4 mask_rect;     // плитка маски: угол x, y + размер w, h (device px)
     float4 mask_clip;     // коробка окраски маски; нулевой размер — нет клипа
+    float4 proj[3];       // KaminIDE: обратная гомография плоскости; proj[2].w > 0.5 — вкл.
 };
 
 StructuredBuffer<BlurQuad> blur_quads: register(t1);
@@ -1599,6 +1600,24 @@ float4 backdrop_matrix(BlurQuad q, float4 c) {
                            dot(q.poly[2], u), dot(q.poly[3], u)) + q.mask_rect);
 }
 
+// KaminIDE patch: tap of the backdrop-filter blur (passes 0 and 1). Filter
+// Effects 2 §backdrop-filter clips the backdrop to the border box and Blink
+// blurs it with SkTileMode::kMirror (cc RenderSurfaceFilters backdrop
+// bounds): taps beyond the source region reflect back into it instead of
+// reading neighbouring frame pixels. Group blurs (pass 2) are unchanged.
+float4 blur_tap(BlurQuad q, float2 uv, float2 off) {
+    float2 u = uv + off;
+    if (q.blur_pass < 1.5) {
+        float2 lo = q.src_origin;
+        float2 hi = q.src_origin + q.src_scale;
+        u = u < lo ? 2.0 * lo - u : u;
+        u = u > hi ? 2.0 * hi - u : u;
+        float2 h = min(0.5 * q.texel, 0.5 * (hi - lo));
+        u = clamp(u, lo + h, hi - h);
+    }
+    return t_sprite.Sample(s_sprite, u);
+}
+
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     BlurQuad q = blur_quads[input.quad_id];
     float2 t = q.texel;
@@ -1623,7 +1642,26 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     // нельзя размазывать, поэтому выборка одна, а маска скруглений и
     // прозрачность группы гасят и цвет, и альфу (цвет премультиплирован).
     if (q.blur_pass > 2.5) {
-        float4 src = t_sprite.Sample(s_sprite, input.uv);
+        float4 src;
+        // KaminIDE patch: plane of a 3D rendering context — map the frame
+        // pixel back through the inverse homography (perspective-correct
+        // sampling, css-transforms-2 §3d-transform-rendering); behind the
+        // eye or outside the buffer nothing is drawn.
+        if (q.proj[2].w > 0.5) {
+            float3 sp = float3(input.position.xy, 1.0);
+            float3 h = float3(dot(q.proj[0].xyz, sp), dot(q.proj[1].xyz, sp),
+                              dot(q.proj[2].xyz, sp));
+            float2 rp = h.z > 1e-6 ? h.xy / h.z : float2(-1.0, -1.0);
+            float2 ruv = rp * q.texel;
+            // Nearest texel: the raster map is the plane's tangent affine, so
+            // texels stay ~1:1 with frame pixels; a bilinear tap would blur
+            // every edge already antialiased in the buffer a second time.
+            src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
+                ? t_sprite.Load(int3(int2(floor(rp)), 0))
+                : float4(0.0, 0.0, 0.0, 0.0);
+        } else {
+            src = t_sprite.Sample(s_sprite, input.uv);
+        }
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float corner = saturate(0.5 - distance);
         // KaminIDE patch: rounded composite (clip-path `round`) — the same
@@ -1633,8 +1671,20 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
             corner = round(corner * 255.0) / 255.0;
         }
         float mask = corner * q.pad;
-        if (q.poly_count >= 3u) {
-            mask *= saturate(0.5 - poly_sdf(q.poly, q.poly_count, input.position.xy));
+        // KaminIDE patch: bit 16 of poly_count inverts the polygon clip
+        // (border ring outside the inner contour, 1 - coverage).
+        uint poly_n = q.poly_count & 15u;
+        if (poly_n >= 3u) {
+            float pd = poly_sdf(q.poly, poly_n, input.position.xy);
+            if (q.proj[0].w > 0.5) {
+                // KaminIDE patch: BSP piece of a 3D plane - cut edges are hard
+                // (viz draws split polygons without edge AA): two pieces meeting
+                // on a cut must not both fade and let the backdrop through.
+                mask *= pd <= 0.0 ? 1.0 : 0.0;
+            } else {
+                float poly_cover = saturate(0.5 - pd);
+                mask *= (q.poly_count & 16u) != 0u ? 1.0 - poly_cover : poly_cover;
+            }
         }
         // Маска-изображение: плитка лежит от угла коробки своим размером и
         // повторяется по обеим осям (`mask-repeat: repeat` — начальное
@@ -1672,6 +1722,11 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
         // прозрачность, а результат умножается обратно уже целиком.
         float4 dst = t_backdrop.Sample(s_sprite, input.uv);
+        // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
+        // This Porter-Duff operator does not use the source-over blend formula.
+        if (q.blend_mode == 16u) {
+            return saturate(src + dst);
+        }
         float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
         float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
         float3 mixed;
@@ -1691,15 +1746,15 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         return float4(co, src.a + dst.a * (1.0 - src.a));
     }
     // Tent 3x3: с билинейкой и каскадом /2 → мягкое размытие без колец.
-    float4 c = t_sprite.Sample(s_sprite, input.uv) * 0.25;
-    c += t_sprite.Sample(s_sprite, input.uv + float2(-t.x, 0.0)) * 0.125;
-    c += t_sprite.Sample(s_sprite, input.uv + float2( t.x, 0.0)) * 0.125;
-    c += t_sprite.Sample(s_sprite, input.uv + float2(0.0, -t.y)) * 0.125;
-    c += t_sprite.Sample(s_sprite, input.uv + float2(0.0,  t.y)) * 0.125;
-    c += t_sprite.Sample(s_sprite, input.uv + float2(-t.x, -t.y)) * 0.0625;
-    c += t_sprite.Sample(s_sprite, input.uv + float2( t.x, -t.y)) * 0.0625;
-    c += t_sprite.Sample(s_sprite, input.uv + float2(-t.x,  t.y)) * 0.0625;
-    c += t_sprite.Sample(s_sprite, input.uv + float2( t.x,  t.y)) * 0.0625;
+    float4 c = blur_tap(q, input.uv, float2(0.0, 0.0)) * 0.25;
+    c += blur_tap(q, input.uv, float2(-t.x, 0.0)) * 0.125;
+    c += blur_tap(q, input.uv, float2( t.x, 0.0)) * 0.125;
+    c += blur_tap(q, input.uv, float2(0.0, -t.y)) * 0.125;
+    c += blur_tap(q, input.uv, float2(0.0,  t.y)) * 0.125;
+    c += blur_tap(q, input.uv, float2(-t.x, -t.y)) * 0.0625;
+    c += blur_tap(q, input.uv, float2( t.x, -t.y)) * 0.0625;
+    c += blur_tap(q, input.uv, float2(-t.x,  t.y)) * 0.0625;
+    c += blur_tap(q, input.uv, float2( t.x,  t.y)) * 0.0625;
     if (q.blur_pass < 0.5) {
         float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
         float mask = saturate(0.5 - distance);

@@ -1,5 +1,6 @@
 //! Preserve tile pixel boundaries and paint supported gradients analytically.
 
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
 
@@ -10,14 +11,15 @@ pub(super) fn paint_tile(
     image: Arc<RenderImage>,
     source_kind: &super::Source,
     pixelated: bool,
+    vcx: ValueCx<'_>,
 ) {
-    if super::flat_vector::paint(window, bounds, corners, source_kind) {
+    if super::flat_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
-    if paint_gradient(window, bounds, corners, source_kind) {
+    if paint_gradient(window, bounds, corners, source_kind, vcx) {
         return;
     }
-    if super::oriented_vector::paint(window, bounds, corners, source_kind) {
+    if super::oriented_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
     let source = image.size(0);
@@ -25,7 +27,10 @@ pub(super) fn paint_tile(
         (source.width.0 as f32, source.height.0 as f32),
         (f32::from(bounds.size.width), f32::from(bounds.size.height)),
         window.current_transformation().rotation_scale,
-        matches!(source_kind, super::Source::Raster(_)),
+        matches!(
+            source_kind,
+            super::Source::Raster(_) | super::Source::Filtered { .. }
+        ),
     );
     if sampling == ImageSampling::Nearest
         && window.current_transformation() == gpui::TransformationMatrix::unit()
@@ -35,7 +40,12 @@ pub(super) fn paint_tile(
     }
     // css-images-3 §image-rendering: a `pixelated` raster is scaled by
     // nearest neighbour; edges still snap like any untransformed tile.
-    if pixelated && matches!(source_kind, super::Source::Raster(_)) {
+    if pixelated
+        && matches!(
+            source_kind,
+            super::Source::Raster(_) | super::Source::Filtered { .. }
+        )
+    {
         let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit() {
             ImageSampling::NearestSnapped
         } else {
@@ -59,7 +69,9 @@ pub(super) fn paint_tile(
         && window.current_transformation() == gpui::TransformationMatrix::unit()
         && matches!(
             source_kind,
-            super::Source::Vector { .. } | super::Source::Raster(_)
+            super::Source::Vector { .. }
+                | super::Source::Raster(_)
+                | super::Source::Filtered { .. }
         ) {
         // CSS Images 3 §image-rendering permits bilinear smooth scaling.
         // Filtering straight RGB darkens an opaque color beside transparent
@@ -82,6 +94,7 @@ pub(crate) fn paint_gradient(
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
     source: &super::Source,
+    vcx: ValueCx<'_>,
 ) -> bool {
     let super::Source::Gradient { raw } = source else {
         return false;
@@ -89,7 +102,7 @@ pub(crate) fn paint_gradient(
     if !raw.contains("gradient(") || super::conic::is_conic(raw) {
         return false;
     }
-    let Some(mut gradient) = crate::style::computed::parse_gradient(raw) else {
+    let Some(mut gradient) = crate::style::computed::parse_gradient(raw, vcx) else {
         return false;
     };
     if let Some(angle) = crate::style::computed::corner_angle(
@@ -99,10 +112,16 @@ pub(crate) fn paint_gradient(
         gradient.angle_deg = angle;
     }
     let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    if let Some(geometry) = super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg) {
+    if let Some(geometry) =
+        super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg, vcx)
+    {
         gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
     }
-    if gradient.radial
+    // Extended stop ranges lose the visible colour variation in the analytic
+    // shader and expose its dithering. Quantize device-grid samples instead.
+    let extended = gradient.stops.iter().any(|(_, t)| !(0.0..=1.0).contains(t));
+    if extended
+        || gradient.radial
         || raw.starts_with("repeating-")
         || gradient.stops.len() > 4
         || !matches!(
@@ -127,7 +146,7 @@ pub(crate) fn paint_gradient(
                 .round()
                 .clamp(1.0, 4096.0) as u32,
         );
-        if let Some(image) = super::gradient_raster::tile(raw, w, h, css) {
+        if let Some(image) = super::gradient_raster::tile(raw, w, h, css, vcx) {
             let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit()
             {
                 ImageSampling::LinearSnapped
@@ -150,7 +169,7 @@ pub(crate) fn paint_gradient(
         gpui::point(edge(bounds.left()), edge(bounds.top())),
         gpui::point(edge(bounds.right()), edge(bounds.bottom())),
     );
-    let mut quad = gpui::fill(bounds, crate::style::apply::fill(&gradient));
+    let mut quad = gpui::fill(bounds, crate::paint::apply::fill(&gradient));
     quad.corner_radii = corners;
     window.paint_quad(quad);
     true

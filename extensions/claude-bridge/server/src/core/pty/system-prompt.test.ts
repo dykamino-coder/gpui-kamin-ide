@@ -26,6 +26,33 @@ describe('buildSystemPrompt', () => {
     expect(out).toContain(CWD)
   })
 
+  it('distinguishes CLI runtime settings from files visible through user tools', () => {
+    const out = buildSystemPrompt(CWD)
+    expect(out).toContain('Native /model and /status commands run in the server container')
+    expect(out).toContain('Settings paths mentioned by the CLI refer to that container')
+    expect(out).toContain('not the home directory reached by your MCP tools')
+    expect(out).toContain('Bridge restores each conversation')
+    expect(out).toContain('Do not infer the active model from Windows settings or earlier assistant replies')
+  })
+
+  it('routes client background processes separately from native agent tasks', () => {
+    const out = buildSystemPrompt(CWD)
+    expect(out).toContain('Bash and PowerShell')
+    expect(out).toContain('BashOutput and KillShell')
+    expect(out).toContain('native TaskOutput does not track these processes')
+    expect(out).toContain('Agent and SendMessage')
+    expect(out).not.toContain('temporary session directory')
+  })
+
+  it("does not identify a conversation by another session's mirror modification time", () => {
+    const out = buildSystemPrompt(CWD, undefined, 'C:/mirror/transcripts')
+    expect(out).toContain('shared by multiple conversations')
+    expect(out).toContain('modification time alone does not identify the current session')
+    expect(out).toContain('mirror may still be catching up after reconnect')
+    expect(out).not.toContain('most-recently-modified file is the current session')
+    expect(out).toContain('read it, never write to or delete it')
+  })
+
   it('adds no section when there is no instruction', () => {
     for (const empty of [undefined, '', '   ', '\n\t ']) {
       expect(buildSystemPrompt(CWD, empty)).not.toContain('## User Instructions')

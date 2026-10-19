@@ -39,6 +39,8 @@ pub(crate) struct FontInfo {
     pub is_bgr: bool,
 }
 
+mod scene_capture;
+
 pub(crate) struct DirectXRenderer {
     hwnd: HWND,
     atlas: Arc<DirectXAtlas>,
@@ -71,12 +73,19 @@ pub(crate) struct DirectXRenderer {
 
     width: u32,
     height: u32,
+    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
+    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
+    backdrop: Option<[f32; 4]>,
 
     /// Whether we want to skip drwaing due to device lost events.
     ///
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
+    gpu_timer: batch_cost::GpuTimer,
+    /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
+    timing_main: bool,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -103,6 +112,9 @@ struct BlurScratch {
     /// нулевой размер — без клипа. Живёт отдельно от текстуры: старый
     /// `clip` режет и группу БЕЗ маски-изображения.
     group_clip: Vec<[f32; 4]>,
+    /// KaminIDE patch: гомография плоскости и BSP-куски каждой группы.
+    group_proj: Vec<[[f32; 4]; 3]>,
+    group_frags: Vec<Vec<([[f32; 4]; 4], u32)>>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
     mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
@@ -139,6 +151,23 @@ struct BlurQuad {
     mask_rect: [f32; 4],
     /// Коробка окраски маски: вне её маска пуста; нулевой размер — нет клипа.
     mask_clip: [f32; 4],
+    /// KaminIDE patch: обратная гомография плоскости (точка кадра → точка
+    /// буфера), строки xyz; `proj[2][3] > 0.5` — включена.
+    proj: [[f32; 4]; 3],
+}
+
+/// KaminIDE patch: вершины многоугольника парами (до восьми; больше — без
+/// обрезки) для `BlurQuad::poly`.
+fn pack_poly(points: &[gpui::Point<gpui::ScaledPixels>]) -> ([[f32; 4]; 4], u32) {
+    let mut poly = [[0.0f32; 4]; 4];
+    if points.len() > 8 {
+        return (poly, 0);
+    }
+    for (i, point) in points.iter().enumerate() {
+        poly[i / 2][(i % 2) * 2] = point.x.0;
+        poly[i / 2][(i % 2) * 2 + 1] = point.y.0;
+    }
+    (poly, points.len() as u32)
 }
 
 /// KaminIDE patch: матрица 4×5 подложки в поля `BlurQuad`, свободные в
@@ -292,6 +321,7 @@ fn blur_down_pass(
         poly: [[0.0; 4]; 4],
         mask_rect: [0.0; 4],
         mask_clip: [0.0; 4],
+        proj: [[0.0; 4]; 3],
     };
     pipeline.update_buffer(device, dc, &[quad])?;
     unsafe {
@@ -461,12 +491,15 @@ impl DirectXRenderer {
             disable_direct_composition,
             font_info: Self::get_font_info(),
             blur: BlurScratch::default(),
+            gpu_timer: batch_cost::GpuTimer::default(),
+            timing_main: false,
             group_target: None,
             group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
             width: 1,
             height: 1,
+            backdrop: None,
             skip_draws: false,
         })
     }
@@ -510,6 +543,7 @@ impl DirectXRenderer {
     }
 
     fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
+        let clear_color = self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
             .devices
@@ -716,14 +750,21 @@ impl DirectXRenderer {
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
+        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
         self.pre_draw(&match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
         })?;
+        let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
+        self.gpu_timer.begin(&device, &ctx);
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
         // от них остаётся метка, по которой готовый буфер и композитится.
         if let Err(e) = self.render_groups(scene) {
             log::warn!("paint group failed: {e}");
+        }
+        if !scene.groups.is_empty() {
+            batch_cost::count(8, scene.groups.len(), 0.0);
+            self.gpu_timer.mark(&device, &ctx, 8);
         }
         // Цель — снова кадр, даже если проход группы оборвался ошибкой.
         unsafe {
@@ -731,7 +772,12 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
         }
-        self.draw_scene(scene)
+        gpui::batch_cost::quad_detail(&scene.quads);
+        self.timing_main = true;
+        let drawn = self.draw_scene(scene);
+        self.timing_main = false;
+        self.gpu_timer.end(&ctx);
+        drawn
     }
 
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.
@@ -750,6 +796,7 @@ impl DirectXRenderer {
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
         for batch in scene.batches() {
+            let cost = self.timing_main.then(|| batch_area(scene, &batch));
             let _annotation = annotation
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
@@ -787,6 +834,11 @@ impl DirectXRenderer {
                     scene.surfaces.len(),
                 )
             })?;
+            if let Some((kind, prims, area)) = cost {
+                batch_cost::count(kind, prims, area);
+                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
+                self.gpu_timer.mark(&device, &ctx, kind);
+            }
         }
         Ok(())
     }
@@ -805,6 +857,8 @@ impl DirectXRenderer {
             self.blur.group_poly.clear();
             self.blur.group_mask.clear();
             self.blur.group_clip.clear();
+            self.blur.group_proj.clear();
+            self.blur.group_frags.clear();
             return Ok(());
         }
         let device = self.dev().device.clone();
@@ -831,6 +885,8 @@ impl DirectXRenderer {
         self.blur.group_poly.clear();
         self.blur.group_mask.clear();
         self.blur.group_clip.clear();
+        self.blur.group_proj.clear();
+        self.blur.group_frags.clear();
         // Кэш текстур масок не растёт без предела: смена страницы рождает
         // новые `ImageId`, старые записи никому не нужны.
         if self.blur.mask_cache.len() > 64 {
@@ -866,7 +922,18 @@ impl DirectXRenderer {
             }
             self.blur
                 .group_poly
-                .push((poly, group.polygon.len().min(8) as u32));
+                .push((
+                    poly,
+                    group.polygon.len().min(8) as u32
+                        | if group.polygon_inverse { 16 } else { 0 },
+                ));
+            self.blur.group_proj.push(match group.projection {
+                Some(h) => [[h[0], h[1], h[2], 0.0], [h[3], h[4], h[5], 0.0], [h[6], h[7], h[8], 1.0]],
+                None => [[0.0; 4]; 3],
+            });
+            self.blur
+                .group_frags
+                .push(group.fragments.iter().map(|f| pack_poly(f)).collect());
             let mask = group.mask.as_ref().and_then(|img| {
                 let srv = match self.blur.mask_cache.get(&img.id) {
                     Some(srv) => srv.clone(),
@@ -962,6 +1029,7 @@ impl DirectXRenderer {
             poly: [[0.0; 4]; 4],
             mask_rect: [0.0; 4],
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1127,7 +1195,6 @@ impl DirectXRenderer {
     /// goes through MetalRenderer; this is the Windows analogue). Draws into
     /// the existing render target, copies it into a `D3D11_USAGE_STAGING`
     /// texture, maps it, and converts BGRA to RGBA.
-    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn render_to_image(
         &mut self,
         scene: &Scene,
@@ -1318,6 +1385,13 @@ impl DirectXRenderer {
     }
 
     fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
+        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
+        // групп очищаются прозрачным — там первый квад рисуется как есть.
+        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
+            (1, len.saturating_sub(1))
+        } else {
+            (start, len)
+        };
         if len == 0 {
             return Ok(());
         }
@@ -1578,8 +1652,10 @@ impl DirectXRenderer {
         // размывается. 8 — прежнее умолчание, от него и считаем.
         let strength = (s.blur_radius / 8.0).clamp(0.25, 6.0);
         // Область + поля под радиус размытия, кламп в кадр.
-        let margin: f32 = 24.0 * strength;
-        let margin = margin.min(96.0);
+        // Filter Effects 2 §backdrop-filter: the backdrop is clipped to the
+        // border box; edges are mirrored in the shader (blur_tap), so the
+        // cascade reads no pixels beyond the element.
+        let margin: f32 = 0.0;
         let bx = (s.bounds.origin.x.0 - margin).max(0.0).floor();
         let by = (s.bounds.origin.y.0 - margin).max(0.0).floor();
         let bx1 = (s.bounds.origin.x.0 + s.bounds.size.width.0 + margin)
@@ -1674,6 +1750,7 @@ impl DirectXRenderer {
             poly: s.color_matrix.map_or([[0.0; 4]; 4], |m| matrix_rows(&m).0),
             mask_rect: s.color_matrix.map_or([0.0; 4], |m| matrix_rows(&m).1),
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1767,6 +1844,7 @@ impl DirectXRenderer {
             poly,
             mask_rect: shift,
             mask_clip: [0.0; 4],
+            proj: [[0.0; 4]; 3],
         };
         self.pipelines
             .blur_pipeline
@@ -1813,6 +1891,27 @@ impl DirectXRenderer {
             .get(s.group as usize - 1)
             .copied()
             .unwrap_or(([[0.0; 4]; 4], 0));
+        // KaminIDE patch: кусок плоскости после BSP-разреза — свой многоугольник.
+        let (poly, poly_count) = match s.fragment {
+            0 => (poly, poly_count),
+            k => self
+                .blur
+                .group_frags
+                .get(s.group as usize - 1)
+                .and_then(|f| f.get(k as usize - 1))
+                .copied()
+                .unwrap_or((poly, poly_count)),
+        };
+        let mut group_proj = self
+            .blur
+            .group_proj
+            .get(s.group as usize - 1)
+            .copied()
+            .unwrap_or([[0.0; 4]; 3]);
+        // Кусок BSP-разреза: края многоугольника жёсткие (см. shaders.hlsl).
+        if s.fragment > 0 {
+            group_proj[0][3] = 1.0;
+        }
         let mask = self
             .blur
             .group_mask
@@ -1901,6 +2000,7 @@ impl DirectXRenderer {
             poly,
             mask_rect,
             mask_clip,
+            proj: group_proj,
         };
         self.pipelines
             .blur_pipeline
@@ -3312,7 +3412,35 @@ mod dxgi {
     }
 }
 
+mod backdrop;
 mod recovery;
+mod batch_cost;
+
+/// KaminIDE patch (INC-2026-0001, диагностика): вид пачки, число примитивов
+/// и их площадь в пикселях с учётом маски содержимого.
+fn batch_area(scene: &Scene, batch: &PrimitiveBatch) -> (usize, usize, f64) {
+    fn area(b: &Bounds<ScaledPixels>, m: &ContentMask<ScaledPixels>, grow: f32) -> f64 {
+        let b = Bounds {
+            origin: point(b.origin.x - ScaledPixels(grow), b.origin.y - ScaledPixels(grow)),
+            size: size(b.size.width + ScaledPixels(2.0 * grow), b.size.height + ScaledPixels(2.0 * grow)),
+        };
+        let i = b.intersect(&m.bounds);
+        (i.size.width.0.max(0.0) * i.size.height.0.max(0.0)) as f64
+    }
+    fn sum<T>(items: &[T], f: impl Fn(&T) -> f64) -> f64 {
+        items.iter().map(f).sum()
+    }
+    match batch {
+        PrimitiveBatch::Shadows(r) => (0, r.len(), sum(&scene.shadows[r.clone()], |s| area(&s.bounds, &s.content_mask, 3.0 * s.blur_radius.0))),
+        PrimitiveBatch::Quads(r) => (1, r.len(), sum(&scene.quads[r.clone()], |q| area(&q.bounds, &q.content_mask, 0.0))),
+        PrimitiveBatch::Paths(r) => (2, r.len(), sum(&scene.paths[r.clone()], |p| area(&p.bounds, &p.content_mask, 0.0))),
+        PrimitiveBatch::Underlines(r) => (3, r.len(), sum(&scene.underlines[r.clone()], |u| area(&u.bounds, &u.content_mask, 0.0))),
+        PrimitiveBatch::MonochromeSprites { range: r, .. } => (4, r.len(), sum(&scene.monochrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::SubpixelSprites { range: r, .. } => (5, r.len(), sum(&scene.subpixel_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::PolychromeSprites { range: r, .. } => (6, r.len(), sum(&scene.polychrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::Surfaces(r) => (7, r.len(), sum(&scene.surfaces[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+    }
+}
 
 #[cfg(test)]
 mod recovery_tests;

@@ -111,7 +111,7 @@ pub fn render_modal(
             }
         })
         .on_mouse_up(gpui::MouseButton::Left, {
-            let down = scrim_down.clone();
+            let down = scrim_down;
             move |ev: &gpui::MouseUpEvent, w, cx| {
                 let started_outside = down.take().is_some();
                 let inside_dialog = crate::probe::registry::bounds_of("modal-dialog").is_some_and(
@@ -188,7 +188,7 @@ pub fn render_modal(
                     )
                 })
                 // `.error` — только когда валидатор вернул текст
-                .when_some(error.clone(), |d, err| {
+                .when_some(error, |d, err| {
                     d.child(
                         div()
                             .mt(px(m::SPACE_2))

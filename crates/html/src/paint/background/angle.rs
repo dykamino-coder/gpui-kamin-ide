@@ -1,8 +1,9 @@
 //! Resolve CSS angle-percentage calculations in turns before stop fixup.
 
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn fraction(token: &str) -> Option<f32> {
+pub(super) fn fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let token = token.trim();
     if token.starts_with("calc(") || token.starts_with("min(") || token.starts_with("max(") {
         // CSS Values 4 §angle-percentage: 100% is one turn. Map both
@@ -22,7 +23,7 @@ pub(super) fn fraction(token: &str) -> Option<f32> {
                     at += 1;
                 }
                 if at > end {
-                    expression.push_str(&format!("{}px", fraction(&token[start..at])?));
+                    expression.push_str(&format!("{}px", fraction(&token[start..at], vcx)?));
                 } else {
                     expression.push_str(&token[start..at]);
                 }
@@ -31,7 +32,7 @@ pub(super) fn fraction(token: &str) -> Option<f32> {
                 at += 1;
             }
         }
-        return match Len::parse(&expression)? {
+        return match Len::parse(&expression, vcx)? {
             Len::Px(v) => Some(v),
             _ => None,
         };
@@ -56,8 +57,10 @@ mod tests {
 
     #[test]
     fn angles_and_percentages_share_a_turn_basis() {
-        assert_eq!(fraction("calc(90deg + 50%)"), Some(0.75));
-        assert_eq!(fraction("calc(2 * (100grad - 10%))"), Some(0.3));
-        assert_eq!(fraction("calc(1px + 90deg)"), None);
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        assert_eq!(fraction("calc(90deg + 50%)", vcx), Some(0.75));
+        assert_eq!(fraction("calc(2 * (100grad - 10%))", vcx), Some(0.3));
+        assert_eq!(fraction("calc(1px + 90deg)", vcx), None);
     }
 }

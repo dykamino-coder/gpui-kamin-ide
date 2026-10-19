@@ -3,8 +3,9 @@
 use super::kid::{Kid, Kind};
 use super::tap::Tap;
 use super::{Build, Shapes, frame};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_flow::VERT;
-use gpui::{App, AvailableSpace, IntoElement, LayoutId, Window, px, size};
+use gpui::{App, AvailableSpace, LayoutId, Window, px, size};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -70,7 +71,7 @@ pub(super) fn intrinsic_of(build: &Build, window: &mut Window, cx: &mut App) -> 
         inner: build(0.0, 0.0, None, None),
         id: tap.clone(),
     }
-    .into_any_element();
+    .hooked();
     let vert = VERT.with(Cell::get).is_some();
     let mut w = |a: AvailableSpace, window: &mut Window| {
         if vert {

@@ -39,7 +39,8 @@ impl Paragraph {
         let trim = |at: usize| {
             let mut e = at;
             for (i, ch) in self.text[head..at].char_indices().rev() {
-                let kept = matches!(ch, ' ' | '\t') && self.wrap_at(head + i).keep_spaces;
+                let wrap = self.wrap_at(head + i);
+                let kept = hangs(ch) && (wrap.break_spaces || (wrap.keep_spaces && wrap.nowrap));
                 if !kept && ch != '\u{feff}' && (hangs(ch) || zero_width(ch)) {
                     e = head + i;
                 } else {
@@ -82,8 +83,14 @@ impl Paragraph {
                 .unwrap_or(head);
         }
         let hyphen = !self.hyphen.is_empty() && shy_at(end);
+        // The block-ellipsis does not contribute to intrinsic sizes: with no
+        // available width (min/max-content measure) the line is as wide as
+        // its text, and the marker later takes room from it at the used
+        // width (`webkit-line-clamp-024`: an inline-box sized to «Line 1»
+        // shows «Line…»).
+        let ell_w = if limit.is_some() { ell } else { px(0.) };
         let width = self.span(&segs, head, end)
-            + ell
+            + ell_w
             + if hyphen {
                 self.hyphen_width(end)
             } else {

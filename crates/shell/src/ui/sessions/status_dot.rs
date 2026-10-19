@@ -1,6 +1,7 @@
 //! Точка статуса сессии слева от имени.
 //!
-//! Вынесено из `row.rs` без изменения поведения (`plan/100-refactor-250.md`).
+//! Вынесено из `row.rs` (`plan/100-refactor-250.md`). Работающая сессия —
+//! статичная точка и время работы, обновляемое раз в секунду (INC-2026-0001).
 
 use crate::colors::rgba;
 use gpui::prelude::*;
@@ -49,34 +50,55 @@ pub(crate) fn status_dot(s: &Session, is_active: bool, tab_color: Rgba, p: &Pale
         .when_some(status_tip, |d, tip| {
             d.tooltip(crate::ui::tooltip::tooltip(tip))
         });
-    // Под RDP вечный пульс = непрерывный поток кадров в сеть; статичная
-    // синяя точка доносит статус не хуже.
-    if !working || crate::win_integration::reduce_motion() {
+    if !working {
+        forget_working(&s.id);
         return dot.into_any_element();
     }
-    // working: keyframes `bridgeWorkingPulse` 1.1s — opacity 0.5→1→0.5,
-    // scale 1→1.5→1. transform в gpui нет, поэтому «масштаб» — абсолютный
-    // внутренний кружок в боксе фиксированных 6px: лейаут не дёргается.
-    use gpui::AnimationExt as _;
+    // working: статичная точка и время работы рядом. Подпись меняется раз в
+    // секунду по общему такту (`anim_tick`): все таймеры — в одном кадре, а
+    // прежний пульс `bridgeWorkingPulse` перерисовывал окно на каждой
+    // развёртке, пока Claude работает (INC-2026-0001).
+    let _ = crate::ui::anim_tick::step(1000);
+    let since = working_since(&s.id);
+    let label =
+        crate::ui::anim_tick::elapsed_label(crate::ui::anim_tick::now().saturating_sub(since));
     div()
         .flex_shrink_0()
-        .relative()
-        .w(px(dot_size))
-        .h(px(dot_size))
-        .child(dot.absolute().with_animation(
-            SharedString::from(format!("sdot-pulse-{}", s.id)),
-            gpui::Animation::new(std::time::Duration::from_millis(1100)).repeat(),
-            move |d, delta| {
-                crate::web::diag_why::tick("animation/status-dot");
-                let f = (std::f32::consts::PI * delta).sin();
-                let sz = dot_size * (1.0 + 0.5 * f);
-                let off = (dot_size - sz) / 2.0;
-                d.left(px(off))
-                    .top(px(off))
-                    .w(px(sz))
-                    .h(px(sz))
-                    .opacity(0.5 + 0.5 * f)
-            },
-        ))
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .child(dot)
+        .child(
+            div()
+                .text_size(px(kamin_metrics::FS_XS))
+                .text_color(rgba(p.text_muted))
+                .child(label),
+        )
         .into_any_element()
+}
+
+/// Когда сессия начала работать (мс общих часов `anim_tick`). В метаданных
+/// только флаг `bridgeWorking`, поэтому момент — первый рендер с флагом.
+static WORKING_SINCE: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, u64>>,
+> = std::sync::LazyLock::new(Default::default);
+
+fn working_since(id: &str) -> u64 {
+    let mut map = WORKING_SINCE.lock().unwrap_or_else(|e| e.into_inner());
+    *map.entry(id.to_string())
+        .or_insert_with(crate::ui::anim_tick::now)
+}
+
+/// Забыть момент старта у сессий, которых больше нет в списке (удалённых).
+pub(crate) fn retain_known<'a>(ids: impl IntoIterator<Item = &'a str>) {
+    let known: std::collections::HashSet<&str> = ids.into_iter().collect();
+    if let Ok(mut map) = WORKING_SINCE.lock() {
+        map.retain(|id, _| known.contains(id.as_str()));
+    }
+}
+
+fn forget_working(id: &str) {
+    if let Ok(mut map) = WORKING_SINCE.lock() {
+        map.remove(id);
+    }
 }

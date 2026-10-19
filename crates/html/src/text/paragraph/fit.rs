@@ -32,7 +32,12 @@ impl Paragraph {
         };
         let plain =
             |c: char| !word_separator(c) && !invisible(c) && !matches!(c, '\t' | '\n' | '\u{3000}');
-        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) {
+        // CSS Text 3 §1.4: justification units use extended grapheme
+        // clusters. SA-class dependent vowels are not standalone letters.
+        let unit_edge = unicode_segmentation::GraphemeCursor::new(at, self.text.len(), true)
+            .is_boundary(&self.text, 0)
+            .unwrap_or(false);
+        if !plain(a) || !plain(b) || !cluster_edge(&self.text, at) || !unit_edge {
             return false;
         }
         if self.justify_chars == 1 {
@@ -120,7 +125,7 @@ impl Paragraph {
         if (k - 1.0).abs() < 0.001 {
             return;
         }
-        remember_fit(self.measure_key(), k);
+        remember_fit(self.fit_key(), k);
         self.scale_by(k);
     }
 
@@ -134,7 +139,7 @@ impl Paragraph {
         if self.fit.is_none() {
             return;
         }
-        let key = self.measure_key();
+        let key = self.fit_key();
         if let Some(k) = FITTED.with(|c| {
             c.borrow()
                 .iter()
@@ -144,6 +149,20 @@ impl Paragraph {
             self.scale_by(k);
         }
         self.fit = None;
+    }
+
+    /// Key of the fitted multiplier: the measure key plus the `text-fit`
+    /// value, so equal paragraphs with different targets do not share one
+    /// multiplier (`text-fit/shrink-per-line-all`: `75%` beside no limit).
+    fn fit_key(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.measure_key().hash(&mut h);
+        if let Some(f) = self.fit {
+            (f.grow, f.shrink, f.per_line, f.all).hash(&mut h);
+            f.target.map(f32::to_bits).hash(&mut h);
+        }
+        h.finish()
     }
 
     /// Помножить всё, что задаёт размер набора.
@@ -167,5 +186,25 @@ impl Paragraph {
                 run.font_size = Some(px(f32::from(size) * k));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn justification_preserves_khmer_syllables() {
+        let mut p = Paragraph::new(
+            "សាហា".into(),
+            vec![],
+            px(16.),
+            px(16.),
+            Align::Left,
+            Wrap::default(),
+        );
+        p.justify_chars = 2;
+        assert!(!p.justify_boundary(0, 3));
+        assert!(p.justify_boundary(0, 6));
+        assert!(!p.justify_boundary(0, 9));
     }
 }

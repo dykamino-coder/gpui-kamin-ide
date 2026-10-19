@@ -5,6 +5,10 @@ use crate::style::computed::Computed;
 pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
     let mut inner = e.clone();
     let style = &mut inner.style;
+    style.margin.top = frame.margin.top.or(style.margin.top);
+    style.margin.right = frame.margin.right.or(style.margin.right);
+    style.margin.bottom = frame.margin.bottom.or(style.margin.bottom);
+    style.margin.left = frame.margin.left.or(style.margin.left);
     if frame.opacity.is_some() {
         style.opacity = frame.opacity;
     }
@@ -16,6 +20,9 @@ pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
     }
     if frame.width.is_some() {
         style.width = frame.width;
+    }
+    if frame.font_size.is_some() {
+        style.font_size = frame.font_size;
     }
     if frame.height.is_some() {
         style.height = frame.height;

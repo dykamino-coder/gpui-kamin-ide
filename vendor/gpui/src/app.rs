@@ -1234,7 +1234,10 @@ impl App {
 
     /// Schedules all windows in the application to be redrawn. This can be called
     /// multiple times in an update cycle and still result in a single redraw.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn refresh_windows(&mut self) {
+        crate::dirty_sources::note("refresh-all", std::panic::Location::caller());
         self.pending_effects.push_back(Effect::RefreshWindows);
     }
 
@@ -2929,7 +2932,10 @@ impl App {
     }
 
     /// Tell GPUI that an entity has changed and observers of it should be notified.
+    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
+    #[track_caller]
     pub fn notify(&mut self, entity_id: EntityId) {
+        let caller = std::panic::Location::caller();
         let window_invalidators = mem::take(
             self.window_invalidators_by_entity
                 .entry(entity_id)
@@ -2950,6 +2956,10 @@ impl App {
             .map(|(_, invalidator)| invalidator.clone())
             .collect();
 
+        crate::dirty_sources::note(
+            if live_invalidators.is_empty() { "notify-deferred" } else { "notify" },
+            caller,
+        );
         if live_invalidators.is_empty() {
             if self.pending_notifications.insert(entity_id) {
                 self.pending_effects

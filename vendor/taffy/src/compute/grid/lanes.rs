@@ -1193,7 +1193,12 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 first_in_track[t] = Some(index);
             }
         }
-        cursor = if lanes.track_reverse { s } else { e };
+        // css-grid-3 §grid-lanes-layout-algorithm: only auto-placed items
+        // update the auto-placement cursor; a definite grid-axis position is
+        // used as is (WPT `grid-lanes-item-placement-002/004/005`).
+        if child.definite.is_none() {
+            cursor = if lanes.track_reverse { s } else { e };
+        }
         placed.push(Placed {
             node: child.node,
             start: s,
@@ -1488,7 +1493,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         // upgrade; with GPUI every node is positioned, so such candidates are always claimed
         // below this container.
         let mut bubbled = crate::tree::OofCandidates::new();
-        let (content_size_contribution, _, _, _, _) = super::alignment::align_and_position_item(
+        let (content_size_contribution, _, _, _, _, _) = super::alignment::align_and_position_item(
             tree,
             child,
             order,
@@ -1497,6 +1502,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 width: grid_area.right - grid_area.left,
                 height: grid_area.bottom - grid_area.top,
             },
+            None,
             InBothAbsAxis {
                 horizontal: container_align.horizontal.unwrap_or(AlignItems::NORMAL),
                 vertical: container_align.vertical.unwrap_or(AlignItems::NORMAL),
@@ -1504,7 +1510,15 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             Rect::ZERO,
             false,
             0,
-            if flow.width {
+            // The static position follows the grid axis' track order and the stacking axis'
+            // fill order: `fill-reverse` starts the stacking axis at its far edge (css-grid-3
+            // grid lanes; WPT `*-grid-lanes-oof-fill-reverse-*`).
+            if flow.width != (rows && lanes.fill_reverse) {
+                Direction::Rtl
+            } else {
+                Direction::Ltr
+            },
+            if flow.height != (!rows && lanes.fill_reverse) {
                 Direction::Rtl
             } else {
                 Direction::Ltr

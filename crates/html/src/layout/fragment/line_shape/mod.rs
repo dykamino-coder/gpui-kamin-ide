@@ -12,10 +12,13 @@ use crate::style::values::value::Len;
 mod run;
 pub(super) use run::line_run_shape;
 mod nested;
+mod nested_kid;
+mod resolved_lengths;
 pub(crate) use nested::nested_box_w;
 pub(crate) use nested::nested_rows_box;
 pub(crate) use nested::nested_rows_shape;
-pub(crate) use nested::resolved_lengths;
+pub(crate) use nested_kid::layout_unit;
+pub(crate) use resolved_lengths::resolved_lengths;
 mod inline_runs;
 pub(crate) use inline_runs::group_inline_runs;
 pub(crate) use inline_runs::side_margin_wrap;
@@ -83,7 +86,7 @@ pub(super) fn basis_sized(c: &Element, k: &Element) -> Option<Element> {
     if k.inline
         || s.display != Some(Display::Flex)
         || s.webkit_box == Some(true)
-        || s.vertical == Some(true)
+        || s.wm().vertical()
         || s.flex_wrap == Some(true)
         || !matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse))
         || !matches!(s.height, None | Some(Len::Auto))
@@ -141,7 +144,7 @@ pub(super) fn items_kind(c: &Element) -> u8 {
         Some(Display::Flex) => {
             let col = matches!(s.flex_dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
             let stretch = matches!(s.align_items, None | Some(Align::Stretch));
-            if col && stretch && s.vertical != Some(true) {
+            if col && stretch && !s.wm().vertical() {
                 1
             } else {
                 2

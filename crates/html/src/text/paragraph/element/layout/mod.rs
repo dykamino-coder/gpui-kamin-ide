@@ -32,12 +32,18 @@ impl Paragraph {
             if let Some((font, size)) = self.strut_run.clone() {
                 let ts = window.text_system();
                 let id = ts.resolve_font(&font);
-                self.strut_box = (
-                    f32::from(ts.ascent(id, size)),
-                    f32::from(ts.descent(id, size)).abs(),
+                self.strut_box = crate::text::fonts::metric_overrides::extents(
+                    &font,
+                    f32::from(size),
+                    (
+                        f32::from(ts.ascent(id, size)),
+                        f32::from(ts.descent(id, size)).abs(),
+                    ),
                 );
             }
         }
+        self.measure_first_strut(window);
+        let first_strut = self.first_strut.clone();
         let atom_boxes = self.atom_boxes.clone();
         let edge_spans = self.edge_spans.clone();
         let ruby_trim = self.ruby_trim;
@@ -131,6 +137,7 @@ impl Paragraph {
                 probe.emph_spans = emph_spans.clone();
                 probe.box_spans = box_spans.clone();
                 probe.strut_box = strut_box;
+                probe.first_strut = first_strut.clone();
                 probe.run_metrics = run_metrics.clone();
                 probe.strut = strut;
                 probe.spacers = spacers.clone();

@@ -67,7 +67,7 @@ impl RootView {
             cx.notify();
         }))
         // Contributed keybindings после action-биндингов и фокусных инпутов.
-        .capture_key_down(|_, _, _| crate::web::diag_why::tick("input/key"))
+        .capture_key_down(|_, _, _| crate::web::frame_rhythm::input("input/key"))
         .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, _, cx| {
             if this.tree_key(ev, cx) {
                 return;

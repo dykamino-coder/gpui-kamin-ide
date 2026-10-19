@@ -6,7 +6,6 @@ use crate::interactive::sticky::sticky_wrap;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::transform::transformed;
 use crate::paint::stacking::{blends_inside, stacking_context};
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
@@ -33,6 +32,7 @@ pub(crate) fn position_element(
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     record_root: bool,
 ) {
+    let vcx = opts.cx.vcx();
     let kw_len = |l: Option<Len>| {
         matches!(
             l,
@@ -53,7 +53,7 @@ pub(crate) fn position_element(
     // Содержимое выше растяжения держатель не зажмёт — приближение.
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let holder_axis = if positioned_out
-        && e.style.vertical.is_none()
+        && e.style.writing_mode.is_none()
         && auto_len(e.style.height)
         && kw_len(e.style.max_height)
         && edge_set(e.style.inset.top)
@@ -78,6 +78,15 @@ pub(crate) fn position_element(
     } else {
         None
     };
+    // Липкая коробка сдвигает своё поддерево на подготовке: щупы внутри
+    // вычитают сдвиг (`ShiftLink`), поэтому звено заводится ДО сборки.
+    let sticky_link = (e.style.position == Some(crate::style::computed::Position::Sticky))
+        .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
+    let sticky_opts = sticky_link
+        .as_ref()
+        .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
+    let outer_opts = opts;
+    let opts = sticky_opts.as_deref().unwrap_or(opts);
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
     } else if stacking_context(&e.style)
@@ -93,18 +102,18 @@ pub(crate) fn position_element(
         // `PaintLayer::HasNonIsolatedDescendantWithBlendMode`.
         let mut iso = e.style.clone();
         iso.isolate = Some(true);
-        grouped(
-            transformed(animated(e, inherited, opts), &e.style, inherited),
-            &iso,
-        )
+        grouped(animated(e, inherited, opts), &iso, vcx)
     } else {
-        grouped(
-            transformed(animated(e, inherited, opts), &e.style, inherited),
-            &e.style,
-        )
+        grouped(animated(e, inherited, opts), &e.style, vcx)
+    };
+    let built = if e.style.root_box && e.style.canvas_bg {
+        crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())
+    } else {
+        built
     };
     let built = vertical_hug(built, e, inherited);
-    let built = sticky_wrap(built, &e.style, frame, layer_ok);
+    let built = sticky_wrap(built, &e.style, frame, layer_ok, sticky_link);
+    let opts = outer_opts;
     // Таблица сжимается по содержимому (§17.5.2.2), и выражено это у
     // нас гибким рядом. В контейнере с БЛОЧНОЙ раскладкой гибкого
     // ряда нет, `align_self` мёртв, и таблица растягивалась на всю

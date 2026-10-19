@@ -4,6 +4,7 @@
 pub mod clamp;
 pub mod fonts;
 pub mod inline;
+pub(crate) mod line_trim;
 pub mod metrics;
 pub mod paragraph;
 pub mod ruby;

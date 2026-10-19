@@ -1,6 +1,7 @@
 //! Цвет CSS (Color): разбор hex/rgb/hsl и функций цвета, тёмная схема.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Цвет в формате GPUI (`Rgba` → `Hsla` конвертируется на месте применения).
 #[derive(Default, Clone, Copy, Debug, PartialEq)]
@@ -22,7 +23,7 @@ impl Color {
         .into()
     }
 
-    pub fn parse(raw: &str) -> Option<Self> {
+    pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         // `light-dark(светлый, тёмный)` (css-color-5 §light-dark): вариант по
         // используемой схеме узла. Прежде функция не разбиралась, и
@@ -33,7 +34,7 @@ impl Color {
         {
             let args = crate::style::css::split_args(&s[11..s.len() - 1]);
             if args.len() == 2 {
-                return Self::parse(args[usize::from(dark_scheme())]);
+                return Self::parse(args[usize::from(dark_scheme())], vcx);
             }
             return None;
         }
@@ -67,7 +68,7 @@ impl Color {
         // Записи CSS Color 4 (`lab`, `oklch`, `color()`, `color-mix()` и
         // родня) — своим разбором: они задают цвет в других системах
         // координат, и без настоящего преобразования не приблизить.
-        if let Some((r, g, b, a)) = crate::style::values::color_space::parse(s) {
+        if let Some((r, g, b, a)) = crate::style::values::color_space::parse(s, vcx) {
             return Some(Color {
                 r: r.clamp(0.0, 1.0),
                 g: g.clamp(0.0, 1.0),
@@ -127,75 +128,10 @@ impl Color {
 
     /// `hsl(210 40% 50% / 80%)` и `hsl(210, 40%, 50%)`.
     pub(super) fn parse_hsl(inner: &str) -> Option<Self> {
-        // Компонент `calc(<число><ед.> * <число>)` и родня — сворачивается
-        // заранее (css-values-4 §10: «calc() … can be used wherever <angle>,
-        // <percentage> … are allowed»): `hsl(calc(50deg * 2) 100% 50%)` после
-        // подстановки `sibling-index()` (`conic-gradient-color-with-sibling-index`).
-        let folded = fold_simple_calc(inner);
-        let inner = folded.as_str();
-        // `none` — отсутствующий компонент, при счёте он ноль
-        // (CSS Color 4 §4.4).
-        let cleaned = inner.replace('/', " ").replace("none", "0");
-        let parts: Vec<&str> = cleaned
-            .split([',', ' '])
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .collect();
-        if parts.len() < 3 {
-            return None;
-        }
-        // Тон — угол в любых угловых единицах (CSS Color 4 §7.1).
-        let h = {
-            let t = parts[0];
-            if let Some(n) = t.strip_suffix("grad") {
-                n.parse::<f32>().ok()? / 400.0
-            } else if let Some(n) = t.strip_suffix("rad") {
-                n.parse::<f32>().ok()? / std::f32::consts::TAU
-            } else if let Some(n) = t.strip_suffix("turn") {
-                n.parse::<f32>().ok()?
-            } else {
-                t.trim_end_matches("deg").parse::<f32>().ok()? / 360.0
-            }
-        }
-        // Оборот сверх круга заворачивается: `600deg` = 240deg, а зажим в
-        // границы делал из него красный.
-        .rem_euclid(1.0);
-        let s_ = parts[1].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
-        let l = parts[2].trim_end_matches('%').parse::<f32>().ok()? / 100.0;
-        let a = parts.get(3).map_or(Some(1.0), |p| {
-            if let Some(pct) = p.strip_suffix('%') {
-                pct.parse::<f32>().ok().map(|v| v / 100.0)
-            } else {
-                p.parse::<f32>().ok()
-            }
-        })?;
-        let rgba: gpui::Rgba = gpui::hsla(h, s_, l, a).into();
-        Some(Color {
-            r: rgba.r,
-            g: rgba.g,
-            b: rgba.b,
-            a: rgba.a,
-        })
+        color_hsl::parse(inner)
     }
 
     pub(super) fn parse_rgb(inner: &str) -> Option<Self> {
         color_channels::rgb(inner)
     }
-}
-
-thread_local! {
-    /// Используемая схема цвета узла, чей каскад идёт сейчас (css-color-adjust-1
-    /// §color-scheme-prop): по ней `light-dark()` выбирает вариант. Ставит
-    /// обход дерева (`dom::walk`) на время узла и его потомков.
-    static DARK_SCHEME: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Тёмная ли схема у текущего узла.
-pub fn dark_scheme() -> bool {
-    DARK_SCHEME.with(|c| c.get())
-}
-
-/// Поставить схему текущего узла; возвращает прежнюю.
-pub fn set_dark_scheme(dark: bool) -> bool {
-    DARK_SCHEME.with(|c| c.replace(dark))
 }

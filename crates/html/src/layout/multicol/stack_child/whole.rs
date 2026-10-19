@@ -1,6 +1,6 @@
 //! Дети копии и цельная коробка копии: вложенный ряд, неразрезаемый ребёнок, таблица.
 
-use super::fixed::{drop_viewport_fixed, fixed_cb_box};
+use super::fixed::{drop_uncontained_oof, drop_viewport_fixed, fixed_cb_box};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
@@ -10,31 +10,31 @@ use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-pub(super) fn copy_kids(e: &Element, copy: &Element, first: bool, src: &Element) -> Vec<Node> {
+pub(super) fn copy_kids(copy: &Element, first: bool, src: &Element, band: bool) -> Vec<Node> {
     let kids: Vec<Node> = if first {
         src.children.clone()
     } else {
-        // Семя — только коробка многоколоночника
-        // и корень копии. `e` считается наравне
-        // с предками внутри копии: содержащий
-        // блок `fixed` на самой коробке контекста
-        // фрагментации — это Blink
-        // `fixedpos_containing_block`
-        // (`out_of_flow_layout_part.cc:1369`),
-        // фрагментаинерный потомок, а не
-        // повторяемая коробка. Предки ВЫШЕ `e`
-        // не в счёт: их содержащий блок вне
-        // контекста. `hoist_relative` выше
-        // снимает лишь ВСТАВКИ,
-        // `transform`/`contain` остаются на
-        // месте — проверка по `copy.style`
-        // законна.
-        let fixed_cb_root = fixed_cb_box(&e.style) || fixed_cb_box(&copy.style);
+        // Семя — только корень копии. Содержащий блок `fixed` на самой
+        // коробке многоколоночника забирает слой контейнера
+        // (`cb_open_fixed_only`) из копии 0 — повтор в копиях ≥ 1 дал бы
+        // столько коробок, сколько колонок. Предки ВЫШЕ `e` не в счёт: их
+        // содержащий блок вне контекста. `hoist_relative` снимает лишь
+        // ВСТАВКИ, `transform`/`contain` остаются — проверка по
+        // `copy.style` законна.
+        let fixed_cb_root = fixed_cb_box(&copy.style);
         src.children
             .iter()
             .filter_map(|n| drop_viewport_fixed(n, fixed_cb_root))
             .collect()
     };
+    if band {
+        let fixed = fixed_cb_box(&copy.style);
+        let abs = fixed || crate::text::inline::establishes_cb(&copy.style);
+        return kids
+            .iter()
+            .filter_map(|n| drop_uncontained_oof(n, abs, fixed))
+            .collect();
+    }
     kids
 }
 
@@ -70,6 +70,12 @@ pub(super) fn copy_whole_box(
             && let Some(w) = line_col_w.and_then(|cw| nested_box_w(&mc, cw))
         {
             mc.style.width = Some(Len::Px(w));
+        } else if let (Some(Len::Pct(k)), Some(cw)) = (mc.style.width, line_col_w) {
+            // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
+            // доля `column-gap` коробки (`column_plan`).
+            mc.style.width = Some(Len::Px(crate::layout::fragment::line_shape::layout_unit(
+                k * cw,
+            )));
         }
         // `height: auto` — высота из меры рядами
         // (`nested_rows_shape`): стопка с рядами
@@ -86,10 +92,11 @@ pub(super) fn copy_whole_box(
             mc.style.border_box = None;
         }
         drop(frag_gap_guard.take());
-        crate::layout::fragment::types::set_outer_row(Some((hh, nest_phase_k)));
-        let el = element(&mc, merged, opts);
-        crate::layout::fragment::types::set_outer_row(None);
-        return Some(el);
+        return Some(element(
+            &mc,
+            merged,
+            &opts.with_outer_row((hh, nest_phase_k)),
+        ));
     }
     if whole {
         let mut mc = copy.clone();

@@ -122,16 +122,28 @@ pub(super) fn align_and_position_item(
     // Percentage basis for the item's styles. Grid passes the grid area size; grid lanes (css-grid-3) items
     // have the container's content box as their containing block in the stacking axis.
     containing_block_size: Size<f32>,
+    table_cell_axis: Option<crate::geometry::AbstractAxis>,
     container_alignment_styles: InBothAbsAxis<AlignItems>,
     shims: Rect<f32>,
     x_end: bool,
     margin_trim: u8,
     direction: Direction,
+    // KaminIDE patch: the vertical counterpart of `direction`. Grid lanes with a reversed
+    // stacking (or grid) axis place static-position abspos children from the physical bottom
+    // (css-grid-3 §grid-lanes: the static position is reversed with the content).
+    y_direction: Direction,
     container_border_box_width: f32,
     container_border: Rect<f32>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
     bubbled_candidates: &mut OofCandidates,
-) -> (Rect<f32>, f32, f32, Option<f32>, Option<f32>) {
+) -> (
+    Rect<f32>,
+    f32,
+    f32,
+    Option<f32>,
+    Option<f32>,
+    Line<Option<f32>>,
+) {
     let grid_area_size = Size {
         width: grid_area.right - grid_area.left,
         height: grid_area.bottom - grid_area.top,
@@ -145,6 +157,9 @@ pub(super) fn align_and_position_item(
     let scrollbar_width = style.scrollbar_width();
     let aspect_ratio = style.aspect_ratio();
     let is_replaced = style.is_replaced();
+    // KaminIDE: the item's own writing mode is vertical (`baseline_x_flags` bit 4), so its
+    // inline axis is physical y.
+    let inline_is_y = style.baseline_x_flags() & 4 != 0;
     // Fall back to the container's justify-items/align-items if unset (`None`), and then resolve
     // writing-mode-relative self-start/self-end keywords against the item's own direction.
     // The horizontal axis is the inline axis (Taffy only supports horizontal-tb); the vertical
@@ -275,6 +290,13 @@ pub(super) fn align_and_position_item(
         max_size.height = None;
     }
 
+    // A table cell fills its final row area. Authored block sizes constrain
+    // intrinsic row sizing, not the box left after visibility collapse.
+    if let Some(axis) = table_cell_axis.filter(|_| !position.is_out_of_flow()) {
+        inherent_size.set(axis, Some(grid_area_size.get(axis)));
+        min_size.set(axis, Some(0.0));
+        max_size.set(axis, None);
+    }
     // Resolve `normal` alignment (the default if alignment is set on neither the parent or the node itself)
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched
     // and the then height is calculated from the width according the aspect ratio
@@ -581,6 +603,47 @@ pub(super) fn align_and_position_item(
     } else {
         width
     };
+    // KaminIDE: the same fit-content rule in the item's INLINE axis when that axis is y
+    // (vertical item): an auto inline size that is not stretched is
+    // min(max-content, max(min-content, area)) (css-grid-2 §6.6, css-sizing-3 §3.1;
+    // Blink lays the item out with kFitContent). Without it an orthogonal item in a
+    // smaller area squeezed an unbreakable line below its length (grid-self-baseline-002-b).
+    let height = if height.is_none() && inline_is_y && !position.is_out_of_flow() {
+        let min_content = tree.measure_child_size(
+            node,
+            Size {
+                width,
+                height: None,
+            },
+            containing_block_size.map(Option::Some),
+            Size {
+                width: AvailableSpace::Definite(available_border_box.width),
+                height: AvailableSpace::MinContent,
+            },
+            SizingMode::InherentSize,
+            AbsoluteAxis::Vertical,
+            Line::FALSE,
+        );
+        let max_content = tree.measure_child_size(
+            node,
+            Size {
+                width,
+                height: None,
+            },
+            containing_block_size.map(Option::Some),
+            Size {
+                width: AvailableSpace::Definite(available_border_box.width),
+                height: AvailableSpace::MaxContent,
+            },
+            SizingMode::InherentSize,
+            AbsoluteAxis::Vertical,
+            Line::FALSE,
+        );
+        let floor = min_content.min(max_content);
+        Some(max_content.min(floor.max(grid_area_minus_item_margins_size.height)))
+    } else {
+        height
+    };
 
     // Clamp size by min and max width/height
     let Size { width, height } = Size { width, height }.maybe_clamp(min_size, max_size);
@@ -664,7 +727,7 @@ pub(super) fn align_and_position_item(
         margin.vertical_components(),
         shims.top,
         shims.bottom,
-        Direction::Ltr,
+        y_direction,
     );
 
     let scrollbar_size = Size {
@@ -743,6 +806,15 @@ pub(super) fn align_and_position_item(
         height,
         layout_output.baselines.first,
         layout_output.last_or_first_y(),
+        // KaminIDE: physical-x baselines of vertical content, in the container's coordinates.
+        Line {
+            start: layout_output.baselines_x.first.map(|b| x + b),
+            end: layout_output
+                .baselines_x
+                .last
+                .or(layout_output.baselines_x.first)
+                .map(|b| x + b),
+        },
     )
 }
 

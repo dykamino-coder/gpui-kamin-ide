@@ -69,122 +69,26 @@ pub fn codicon(glyph: &'static str, font_px: f32) -> Div {
         .child(glyph)
 }
 
-/// `codicon-loading` + `codicon-modifier-spin`: тот же глиф, но SVG-ассетом —
-/// текст в gpui не поворачивается, а `svg()` умеет `with_transformation`.
-/// Кадры дискретные, как у оригинала: `animation: codicon-spin 1.5s steps(30)`
-/// (`codicon.css:35-40`), то есть 30 положений по 12°.
+/// Спиннер загрузки (`codicon-loading` оригинала): глиф-спиннер с общего
+/// такта (`glyph_spinner`) вместо вращающейся иконки — вращение на редких
+/// кадрах дёргалось, а на частых перерисовывало всё окно (INC-2026-0001).
 pub fn spinner(
-    id: impl Into<gpui::ElementId>,
+    _id: impl Into<gpui::ElementId>,
     size_px: f32,
     color: gpui::Rgba,
 ) -> gpui::AnyElement {
-    use gpui::{Animation, AnimationExt as _, Transformation, percentage};
-    // `codicon.css:35-39` задаёт `codicon-spin 1.5s steps(30) infinite`, но
-    // `:50-53` перебивает ИМЕННО для `.codicon-loading`:
-    // `animation-duration: 1s !important` +
-    // `animation-timing-function: cubic-bezier(.53,.21,.29,.67) !important`.
-    // `!important` бьёт шорткат, значит шагов НЕТ и период 1000 мс —
-    // мы крутили 1500 мс дискретно по 30 шагов (ревью ц.25).
-    const PERIOD_MS: u64 = 1000;
-    let spinner = gpui::svg()
-        .path("icons/codicon-loading.svg")
-        .w(px(size_px))
-        .h(px(size_px))
-        .flex_shrink_0()
-        .text_color(color);
-    super::loading_motion::select(
-        crate::win_integration::reduce_motion(),
-        spinner,
-        |e| e.into_any_element(),
-        |spinner| {
-            spinner
-                .with_animation(
-                    id,
-                    Animation::new(std::time::Duration::from_millis(PERIOD_MS))
-                        .repeat()
-                        .with_easing(cubic_bezier_53_21_29_67),
-                    |el, delta| {
-                        crate::web::diag_why::tick("animation/spinner");
-                        el.with_transformation(Transformation::rotate(percentage(delta)))
-                    },
-                )
-                .into_any_element()
-        },
-    )
+    super::glyph_spinner::glyph_spinner(size_px, color).into_any_element()
 }
 
-/// `cubic-bezier(0.53, 0.21, 0.29, 0.67)` спиннера кодиконов: по x решаем
-/// уравнение Безье методом бисекции (аналитического обратного нет), по y —
-/// подставляем найденный параметр. 12 итераций дают точность ~2e-4.
-fn cubic_bezier_53_21_29_67(x: f32) -> f32 {
-    const X1: f32 = 0.53;
-    const Y1: f32 = 0.21;
-    const X2: f32 = 0.29;
-    const Y2: f32 = 0.67;
-    fn bezier(t: f32, p1: f32, p2: f32) -> f32 {
-        let u = 1.0 - t;
-        3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t
-    }
-    let x = x.clamp(0.0, 1.0);
-    let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
-    for _ in 0..12 {
-        let mid = 0.5 * (lo + hi);
-        if bezier(mid, X1, X2) < x {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    bezier(0.5 * (lo + hi), Y1, Y2)
-}
-
-/// `.spinner` вебвью-лоадера: кольцо `border: 2.5px` цвета text-primary 16 %
-/// с верхней четвертью accent-action, вращение `.7s linear infinite`
-/// (`WebviewPanelView.module.css:33-40`). Кольцо статично, крутится только
-/// дуга — в gpui поворачивается лишь `svg()`.
+/// `.spinner` вебвью-лоадера: тот же глиф-спиннер цветом дуги (кольцо
+/// оригинала не рисуется — вращения больше нет).
 pub fn spinner_ring(
-    id: impl Into<gpui::ElementId>,
+    _id: impl Into<gpui::ElementId>,
     size_px: f32,
-    ring: gpui::Rgba,
+    _ring: gpui::Rgba,
     arc: gpui::Rgba,
 ) -> Div {
-    use gpui::{Animation, AnimationExt as _, Transformation, percentage};
-    const PERIOD_MS: u64 = 700;
-    const BORDER: f32 = 2.5;
-    let arc = gpui::svg()
-        .path("icons/spinner-arc.svg")
-        .absolute()
-        // Дуга и рамка имеют общий радиус и бокс без границ.
-        .top(px(-BORDER))
-        .left(px(-BORDER))
-        .w(px(size_px))
-        .h(px(size_px))
-        .text_color(arc);
-    let arc = super::loading_motion::select(
-        crate::win_integration::reduce_motion(),
-        arc,
-        |e| e.into_any_element(),
-        |arc| {
-            arc.with_animation(
-                id,
-                Animation::new(std::time::Duration::from_millis(PERIOD_MS)).repeat(),
-                |el, delta| {
-                    crate::web::diag_why::tick("animation/spinner");
-                    el.with_transformation(Transformation::rotate(percentage(delta)))
-                },
-            )
-            .into_any_element()
-        },
-    );
-    div()
-        .relative()
-        .w(px(size_px))
-        .h(px(size_px))
-        .flex_shrink_0()
-        .rounded_full()
-        .border(px(BORDER))
-        .border_color(ring)
-        .child(arc)
+    super::glyph_spinner::glyph_spinner(size_px, arc)
 }
 
 /// `data:image/<fmt>;base64,<...>` → картинка для `gpui::img`.

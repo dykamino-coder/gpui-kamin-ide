@@ -1,5 +1,7 @@
 //! Table grid indices are logical; borders and layout boxes remain physical.
 //! Follow Blink TableBorders::MergeBorders, which converts with the table's writing direction.
+
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 
@@ -9,25 +11,9 @@ pub(super) struct Axes([usize; 4]);
 impl Axes {
     /// Block start, inline end, block end, inline start, in physical side indices.
     pub(super) fn new(style: &Computed) -> Self {
-        let mut sides = if style.vertical == Some(true) {
-            if style.vertical_rl == Some(true) {
-                [1, 2, 3, 0]
-            } else {
-                [3, 2, 1, 0]
-            }
-        } else {
-            [0, 1, 2, 3]
-        };
-        let upwards = style.vertical == Some(true)
-            && style.sideways == Some(true)
-            && style.vertical_rl != Some(true);
-        if (style.rtl == Some(true)
-            && (style.vertical != Some(true) || style.upright != Some(true)))
-            != upwards
-        {
-            sides.swap(1, 3);
-        }
-        Self(sides)
+        let wm = style.wm().used_direction();
+        let (block, inline) = (wm.block_start(), wm.inline_start());
+        Self([block, inline.opposite(), block.opposite(), inline].map(|side| side.index()))
     }
 
     pub(super) fn logical<T: Copy>(self, physical: [T; 4]) -> [T; 4] {
@@ -50,29 +36,26 @@ impl Axes {
     }
 }
 
-pub(super) fn inherited(e: &Element, parent: &Computed) -> Option<Element> {
-    let style = crate::style::cascade::inherit::inherit(parent, &e.style);
+pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Option<Element> {
+    let style = crate::style::cascade::inherit::inherit(parent, &e.style, vcx);
     if (
-        e.style.vertical,
-        e.style.vertical_rl,
-        e.style.sideways,
+        e.style.writing_mode,
+        e.style.flat_mode,
         e.style.rtl,
-        e.style.upright,
+        e.style.text_orientation,
     ) == (
-        style.vertical,
-        style.vertical_rl,
-        style.sideways,
+        style.writing_mode,
+        style.flat_mode,
         style.rtl,
-        style.upright,
+        style.text_orientation,
     ) {
         return None;
     }
     let mut copy = e.clone();
-    copy.style.vertical = style.vertical;
-    copy.style.vertical_rl = style.vertical_rl;
-    copy.style.sideways = style.sideways;
+    copy.style.writing_mode = style.writing_mode;
+    copy.style.flat_mode = style.flat_mode;
     copy.style.rtl = style.rtl;
-    copy.style.upright = style.upright;
+    copy.style.text_orientation = style.text_orientation;
     Some(copy)
 }
 
@@ -90,9 +73,9 @@ mod tests {
             (true, true, false, true, [1, 0, 3, 2]),
         ] {
             let axes = Axes::new(&Computed {
-                vertical: Some(vertical),
-                vertical_rl: Some(rl),
-                sideways: Some(sideways),
+                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                    vertical, rl, sideways,
+                )),
                 rtl: Some(rtl),
                 ..Computed::default()
             });

@@ -16,8 +16,50 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
         (Some(hole), Some(line)) if now.vertical => {
             gpui::point(hole.origin.x + px(line) - bounds.origin.x, px(0.0))
         }
+        // Horizontal block-level box in a line (Blink `InlineLayoutAlgorithm::
+        // PlaceOutOfFlowObjects`): its static position is the line's start and
+        // the line's TOP when no in-flow content precedes it on the line, the
+        // line's bottom otherwise (`static-inside-inline-001..003`). A probe
+        // in a row of words spans its line (`spot_probe`); a text paragraph
+        // hands its overlay probes the line box (`with_line_box`).
+        // Self-alignment uses the inline parent's static-position
+        // rectangle: zero-thick along the line at the static point, the line
+        // box across it (Blink `AddOutOfFlowInlineChildCandidate`;
+        // `align-self-static-position-003/007`).
         (Some(hole), Some(line)) => {
-            gpui::point(px(0.0), hole.origin.y + px(line) - bounds.origin.y)
+            let (line_top, lh, line_start) = now.line_box.unwrap_or((
+                hole.origin.y,
+                if hole.size.height > px(0.0) {
+                    hole.size.height
+                } else {
+                    px(line)
+                },
+                bounds.origin.x,
+            ));
+            let preceded = now.rtl || hole.origin.x - line_start > px(0.5);
+            let top = line_top + if preceded { lh } else { px(0.0) };
+            match now.self_align.filter(|_| now.line_rect) {
+                Some((kx, ky)) => gpui::point(
+                    -bounds.size.width * kx,
+                    top + (lh - bounds.size.height) * ky - bounds.origin.y,
+                ),
+                None => gpui::point(px(0.0), top - bounds.origin.y),
+            }
+        }
+        // Static-position rectangle with `justify-self`/`align-self`
+        // (`Spot::self_align`, physical fractions): the block strut is the
+        // parent's content box along the inline axis and zero-thick across
+        // it, so one formula serves both writing modes (horizontal: the hole
+        // has no height; vertical: no width). Ahead of the rtl/vertical arms
+        // — `render::static_self_align` already chose the side
+        // (`align-self-static-position-001/002/006/008`,
+        // `justify-self-static-position-001`).
+        (Some(hole), None) if now.block_strut && now.self_align.is_some() => {
+            let (kx, ky) = now.self_align.unwrap_or_default();
+            gpui::point(
+                hole.origin.x + (hole.size.width - bounds.size.width) * kx - bounds.origin.x,
+                hole.origin.y + (hole.size.height - bounds.size.height) * ky - bounds.origin.y,
+            )
         }
         // Начало строчной оси при письме справа налево — правый край:
         // поперёк потока заместителя уже выровняла обёртка (justify_end /
@@ -31,7 +73,18 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
             } else {
                 hole.origin.x
             };
-            gpui::point(x - bounds.origin.x, hole.origin.y - bounds.origin.y)
+            // `direction: rtl` turns the vertical inline axis bottom-to-top
+            // (css-writing-modes-4 §6.4): the block strut spans the parent's
+            // content box along it, and the box hangs from its BOTTOM end by
+            // its inline-start (bottom) edge (Blink `absolute_utils.cc`
+            // `GetStaticPositionInsetBias` → `InsetBias::kEnd`;
+            // `abs-pos-border-offset-001`).
+            let y = if now.rtl && now.block_strut {
+                hole.origin.y + hole.size.height - bounds.size.height
+            } else {
+                hole.origin.y
+            };
+            gpui::point(x - bounds.origin.x, y - bounds.origin.y)
         }
         // Письмо справа налево: заместитель вешается ПРАВЫМ краем на
         // начало строчной оси (CSS 2.1 §10.3.7: статическая позиция в rtl
@@ -76,13 +129,6 @@ pub(crate) fn late_shift(bounds: Bounds<Pixels>, now: Spot) -> gpui::Point<Pixel
         // посчитал `render::static_self_align` (при rtl `start` — доля 1,
         // та же формула, что у рукава ниже) (`align-self-static-position-
         // 001/006/008`, `justify-self-static-position-001`).
-        (Some(hole), None) if now.block_strut && now.self_align.is_some() => {
-            let (kx, ky) = now.self_align.unwrap_or_default();
-            gpui::point(
-                hole.origin.x + (hole.size.width - bounds.size.width) * kx - bounds.origin.x,
-                hole.origin.y - bounds.size.height * ky - bounds.origin.y,
-            )
-        }
         (Some(hole), None) if now.rtl && now.block_strut => gpui::point(
             hole.origin.x + hole.size.width * now.line_align.unwrap_or(1.0)
                 - bounds.size.width

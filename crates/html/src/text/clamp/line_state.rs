@@ -25,6 +25,21 @@ pub struct ClampEntry {
     /// (css-overflow-4 §5.3): на них укорачивается бюджет строк и на них же
     /// удлиняется итоговый срез. Для строчных проб — ноль.
     pub bp_after: f32,
+    /// Bottom margin of a box probe in points: an ancestor fragmented at
+    /// the clamp point keeps its end margin, collapsing with the end
+    /// margins of nested ancestors unless border/padding separates them
+    /// (css-overflow-4 §5.3; Blink `LineClampAncestorChain`).
+    pub end_margin: f32,
+    /// Minimum border-box height of a box probe (`min-height`) from its
+    /// border-box top, 0 when none: fragmented at the clamp point it still
+    /// ends no earlier (Blink clamps the chain size to min/max).
+    pub min_end: f32,
+    /// Box probe with a `max-height`: once its content overflows it, its
+    /// size no longer depends on the content and it is as monolithic as a
+    /// box with a definite height (`line-clamp-auto-044/063`).
+    pub capped: bool,
+    /// Node of a box probe (0 for paragraph probes).
+    pub node: u64,
     /// Порядковый номер абзаца ВНУТРИ клэмп-контейнера, выданный при
     /// построении. `None` — проба коробки, а не абзаца: знак обрыва на
     /// неё не садится. Номер, а не совпадение по геометрии, потому что
@@ -40,6 +55,24 @@ pub struct ClampEntry {
     /// Пустая поточная блочная коробка (без содержимого): сама по себе —
     /// возможная точка среза МЕЖДУ блоками (css-overflow-4 §5.3).
     pub empty: bool,
+    /// Box probe: paragraph numbers `[first, end)` built inside the box
+    /// (its descendants in box-tree order).
+    pub span: Option<(u32, u32)>,
+    /// Top border of a box probe: the probe measures the padding box, a
+    /// cut above the box goes above its border.
+    pub bt_before: f32,
+    /// Absolutely positioned box: not hidden by the clamp (Blink keeps
+    /// out-of-flow boxes painted), its overflow stays visible.
+    pub positioned: bool,
+}
+
+/// End edges of a box probe beyond its padding box (see `ClampEntry`).
+#[derive(Clone, Copy, Default)]
+pub struct BoxEnds {
+    pub margin: f32,
+    pub min_end: f32,
+    pub capped: bool,
+    pub node: u64,
 }
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
@@ -59,6 +92,22 @@ thread_local! {
     /// Абзац в контейнере ровно один — тот, на чьей последней строке
     /// перед точкой среза стоит знак (css-overflow-4 §5.3).
     pub(super) static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Low edge (from the container's content top) of the content placed
+    /// BEFORE the clamp point in box-tree order: css-overflow-4 §5.3 hides
+    /// only what follows the clamp point, so lines overflowing an earlier
+    /// fixed-height block stay visible below the cut (Blink hides the
+    /// following boxes for paint instead of clipping the container).
+    pub(super) static CLAMP_EXTENT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Clamp point BETWEEN blocks (no paragraph carries the ellipsis):
+    /// container key → number of the first paragraph after the point.
+    pub(super) static CLAMP_NEXT: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+    /// Boxes fragmented at a clamp point: node → used border-box height
+    /// (the content ends at the point; css-overflow-4 §5.3, Blink sizes
+    /// every box of the `LineClampAncestorChain`).
+    pub(super) static CLAMP_BOXES: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
     /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
     pub(super) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
@@ -82,6 +131,27 @@ pub fn clamp_next_seq(key: u64) -> u32 {
     })
 }
 
+/// Number the next paragraph of the clamp container would get.
+pub fn clamp_peek_seq(key: u64) -> u32 {
+    CLAMP_SEQ.with(|m| m.borrow().get(&key).copied().unwrap_or(0))
+}
+
+/// Paragraph-number span of a box being built inside a clamp container:
+/// opened before its children, closed after them.
+pub type ClampSpan = std::rc::Rc<std::cell::Cell<(u32, u32)>>;
+
+pub fn open_clamp_span() -> Option<ClampSpan> {
+    let (key, _) = clamp_context()?;
+    let first = clamp_peek_seq(key);
+    Some(std::rc::Rc::new(std::cell::Cell::new((first, u32::MAX))))
+}
+
+pub fn close_clamp_span(span: Option<ClampSpan>) {
+    if let (Some(span), Some((key, _))) = (span, clamp_context()) {
+        span.set((span.get().0, clamp_peek_seq(key)));
+    }
+}
+
 pub fn clamp_cut(key: u64) -> Option<f32> {
     CLAMP_CUTS.with(|m| m.borrow().get(&key).copied())
 }
@@ -92,11 +162,29 @@ pub fn clamp_para(key: u64) -> Option<(u32, usize)> {
     CLAMP_PARA.with(|m| m.borrow().get(&key).copied())
 }
 
+/// Used border-box height of a box fragmented at a clamp point.
+pub fn clamp_box_height(node: u64) -> Option<f32> {
+    CLAMP_BOXES.with(|m| m.borrow().get(&node).copied())
+}
+
+/// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).
+pub fn clamp_next(key: u64) -> Option<u32> {
+    CLAMP_NEXT.with(|m| m.borrow().get(&key).copied())
+}
+
+/// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
+pub fn clamp_extent(key: u64) -> Option<f32> {
+    CLAMP_EXTENT.with(|m| m.borrow().get(&key).copied())
+}
+
 pub fn forget_clamp_buffers() {
+    CLAMP_EXTENT.with(|m| m.borrow_mut().clear());
     CLAMP_LINES.with(|m| m.borrow_mut().clear());
     CLAMP_CUTS.with(|m| m.borrow_mut().clear());
     CLAMP_STACK.with(|st| st.borrow_mut().clear());
     CLAMP_PARA.with(|m| m.borrow_mut().clear());
+    CLAMP_NEXT.with(|m| m.borrow_mut().clear());
+    CLAMP_BOXES.with(|m| m.borrow_mut().clear());
     CLAMP_SEQ.with(|m| m.borrow_mut().clear());
     PARA_BUDGET.with(|c| c.set(None));
     PARA_ROWS.with(|m| m.borrow_mut().clear());
@@ -104,7 +192,7 @@ pub fn forget_clamp_buffers() {
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
-pub struct ClampGuard(pub(crate) bool);
+pub struct ClampGuard(pub(crate) bool, Option<u32>);
 
 impl ClampGuard {
     /// Вход в сам clamp-контейнер.
@@ -116,7 +204,10 @@ impl ClampGuard {
         CLAMP_SEQ.with(|m| {
             m.borrow_mut().insert(key, 0);
         });
-        ClampGuard(true)
+        // A clamp container is its own count root even when it is an
+        // atomic inline of another paragraph (`display: inline-block` /
+        // `-webkit-inline-box`): the atom nesting restarts inside it.
+        ClampGuard(true, Some(super::paragraph_rows::swap_para_depth(0)))
     }
 
     /// Вход в элемент с собственным контекстом форматирования: строки
@@ -132,12 +223,15 @@ impl ClampGuard {
                 _ => false,
             }
         });
-        ClampGuard(pushed)
+        ClampGuard(pushed, None)
     }
 }
 
 impl Drop for ClampGuard {
     fn drop(&mut self) {
+        if let Some(depth) = self.1 {
+            super::paragraph_rows::swap_para_depth(depth);
+        }
         if self.0 {
             CLAMP_STACK.with(|st| {
                 st.borrow_mut().pop();

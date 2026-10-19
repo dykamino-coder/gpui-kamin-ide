@@ -1,13 +1,20 @@
 # Runtime backlog: что осталось и как продолжать
 
-**Сверка 2026-10-12:** public `origin/main` `d54de40bfcd5621f155b870ca88b9af7ac74c8c2`,
-private `origin/main` `25c6af31ebfc84e7f674330d4a9cdec78ffcddac`.
-Последний опубликованный immutable release — KaminIDE **1.0.64 / server 6.3.141**.
-Октябрьские merged fixes ещё не означают доставку пользователю этой версии.
+**Сверка доставки 2026-10-19:** public `origin/main`
+`5790ee05ab3fd2b348db0f9fc7f160ca77f45b4b`; последний опубликованный immutable
+release — KaminIDE **1.0.76 / server 6.3.153** (2026-10-19),
+[#373](https://github.com/dykamino-coder/gpui-kamin-ide/pull/373).
+HTML/WPT/cleanup commits сами по себе не означают миграцию production CEF.
+Private evidence здесь не переаудировано целиком: metadata/link audit от
+2026-10-12 и его базы сохранены ниже; для INC-0065 сверены merged #347,
+immutable acceptance link и merged private #109. INC-0066 отдельно принят по
+source/native-CLI контракту #369 и private #110; его доставка в 1.0.76 проверена
+по immutable Release, installer provenance и Docker revision/digest.
 
-На этом snapshot: **24 незавершённых BR из 32**, **32 незакрытых INC из 59**.
-Приняты **8 BR**, **26 INC resolved** и **1 INC rejected** в своей доказанной области.
-56 открытых записей — не 56 независимых багов: связи и prerequisites ниже.
+На этом snapshot: **24 незавершённых BR из 32**, **34 незакрытых INC из 63**.
+Приняты **8 BR**, **28 INC resolved** и **1 INC rejected** в своей доказанной области.
+58 открытых записей — не 58 независимых багов: связи и prerequisites ниже.
+INC-0065 приведён к уже принятому outcome #347; новых UI-прогонов эта сверка не заявляет.
 BR-21A–E — планируемые children после decision, а не пять уже зарегистрированных задач.
 Private storage IDs INC-0030/0035/0036 не создают дополнительные public задачи.
 
@@ -43,7 +50,8 @@ verification-пачка, не список всей октябрьской ра�
    В конце оставить по каждому остаточному ID actionable handoff, а не общий
    ответ «не хватает логов». Docs-only reconciliation release не вызывает.
 
-Аудит проверил наличие private packages/manifest metadata и доступность 82
+Аудит 2026-10-12 (public `d54de40bfcd5621f155b870ca88b9af7ac74c8c2`,
+private `25c6af31ebfc84e7f674330d4a9cdec78ffcddac`) проверил наличие private packages/manifest metadata и доступность 82
 ссылок из карточек (80 по локальным Git objects, 2 через GitHub API). Это не
 повторная проверка checksum каждого raw файла и не повторная runtime acceptance.
 Выбранный evidence packet мейнтейнер проверяет по его provenance/SHA256SUMS.
@@ -81,7 +89,7 @@ GPUI/gpui-component и DirectX recovery. Native layout/editor/GPU сценари
 
 | ID | Маршрут | Что уже есть | Что делать / чего не хватает для закрытия |
 | --- | --- | --- | --- |
-| [INC-0001](runtime-issues/INC-2026-0001.md#maintainer-handoff) | `observation` | Private CPU captures; #187 merged, Windows WARP/software acceptance recorded. | Сравнить простой и активный Claude на одной актуальной RDP/WARP сборке после доставки #187. **Граница:** Полевой A/B с одинаковой нагрузкой и renderer attribution; историческая единственная причина не доказана. **Owner:** field owner @ToToshka45. |
+| [INC-0001](runtime-issues/INC-2026-0001.md#maintainer-handoff) | `observation` | Private CPU captures; #187 (1.0.65), #261 (1.0.72) and follow-ups in 1.0.74 published; controlled Windows gates recorded. | Сравнить простой и активный Claude на одной актуальной RDP/WARP сборке с опубликованными #187/#261 и follow-ups 1.0.74; #261 gate уже принят, partial redraw отдельно INC-0064. **Граница:** Полевой A/B с одинаковой нагрузкой и renderer attribution; историческая единственная причина не доказана. **Owner:** field owner @ToToshka45. |
 | [INC-0002](runtime-issues/INC-2026-0002.md#maintainer-handoff) | `verify` | Private reveal baseline; BR-31/#147 merged. | R6: reveal Agents без pointer/forced repaint; строки и invoke reply ≤ 1 с, затем BR-25 completion. **Граница:** Windows CEF R6 artifact на актуальном кандидате. **Owner:** maintainer/test operator. |
 | [INC-0015](runtime-issues/INC-2026-0015.md#maintainer-handoff) | `verify` | Private source finding; #170 merged, deferred-response tests. | Изолированный dashboard: смена диапазона, старый ответ после нового, error/loading и unmount. **Граница:** Runtime outcome текущего dashboard; не повторять request-ownership fix. **Owner:** maintainer. |
 | [INC-0016](runtime-issues/INC-2026-0016.md#maintainer-handoff) | `verify` | Private API finding; #169 merged with isolated DuckDB/API tests. | Сверить #169 с каждым пунктом acceptance: GET/DELETE identity, pages/filters, errors, nonmatching events/metrics и auth. **Граница:** Документированный acceptance outcome; повторить только непокрытые isolated cases. BR-21 decision отдельно. **Owner:** maintainer. |
@@ -99,8 +107,8 @@ GPUI/gpui-component и DirectX recovery. Native layout/editor/GPU сценари
 | [INC-0038](runtime-issues/INC-2026-0038.md#maintainer-handoff) | `research` | Private screenshot; native Projects scroll/layout source. | Synthetic sparse/dense Projects: content bounds, viewport, collapse/expand и пустой scroll tail. **Граница:** Measured geometry и current reproduction; не объявлять duplicate BR-28 без совпадения механизма. **Owner:** maintainer. |
 | [INC-0039](runtime-issues/INC-2026-0039.md#maintainer-handoff) | `research` | Private server report, screenshot and JSON state; AgentTeams/report code. | Разделить delivered report, idle и next-action; synthetic lifecycle плюс current real-CLI trace в isolated account. **Граница:** Versioned report/idle contract; #197 status fix не доказывает управление/доставку отчётов. **Owner:** maintainer/test operator. |
 | [INC-0040](runtime-issues/INC-2026-0040.md#maintainer-handoff) | `research` | Two private server research documents; public marketplace/tool source audit. | Inventory destructive entry points; disposable fake marker checkout для pull/auth/add/remove/no-.git/concurrency. **Граница:** Нет deletion command/ancestry, old bundle provenance и pre-loss inventory. Исторический инициатор unknown; не выбирать backup/re-clone fix по догадке. **Owner:** maintainer; reporter only for a future operation trace. |
-| [INC-0041](runtime-issues/INC-2026-0041.md#maintainer-handoff) | `observation` | #158 shipped 1.0.64; Windows runtime acceptance recorded; private package exists. | Owner сообщает redacted outcome background/manual refresh в действующей remote integration после обычной доставки. **Граница:** Deployment-only observation; не повторять accepted result/error propagation fix и не запрашивать credentials. **Owner:** deployment owner. |
-| [INC-0042](runtime-issues/INC-2026-0042.md#maintainer-handoff) | `research` | Private server report; source-confirmed plugin/catalog synchronization gap. | Synthetic plugin add/update + supported CLI: runtime/MCP catalog convergence и bounded recovery contract. **Граница:** Source-to-runtime trace и catalog acceptance; не расширять reconnect budgets без evidence. **Owner:** maintainer/test operator. |
+| [INC-0041](runtime-issues/INC-2026-0041.md#maintainer-handoff) | `observation` | #158 published in 1.0.61; Windows runtime acceptance recorded; private package exists. | Owner сообщает redacted outcome background/manual refresh в действующей remote integration после обычной доставки. **Граница:** Deployment-only observation; не повторять accepted result/error propagation fix и не запрашивать credentials. **Owner:** deployment owner. |
+| [INC-0042](runtime-issues/INC-2026-0042.md#maintainer-handoff) | `verify` | #302 open (conflicts, Windows gate pending); #304 AGENTS.md split published in 1.0.68. | Проверить оставшийся MCP diff #302 от свежей базы, затем synthetic plugin add/update + supported CLI: catalog convergence и bounded recovery; не начинать параллельный fix. **Граница:** Source-to-runtime trace и catalog acceptance; не расширять reconnect budgets без evidence. **Owner:** maintainer/test operator. |
 | [INC-0043](runtime-issues/INC-2026-0043.md#maintainer-handoff) | `research` | Private screenshot, host/incident logs and session/layout JSON from manual restart. | Synthetic active CLI while client restarts: mirror → replay → Chat projection; найти first divergence, сохранить server activity. **Граница:** Correlated current replay/projection artifact; старый серверный trace/provenance неполон, truncation fix не предрешён. **Owner:** maintainer. |
 | [INC-0044](runtime-issues/INC-2026-0044.md#maintainer-handoff) | `observation` | #198 merged, private exact-head Windows pointer-free startup acceptance passed. | После доставки owner подтверждает startup cache/installed/UI convergence в действующей remote integration. **Граница:** Deployment-only outcome; historical attribution unknown. Manual Update/no-pointer остаётся BR-06/31. **Owner:** deployment owner. |
 | [INC-0046](runtime-issues/INC-2026-0046.md#maintainer-handoff) | `research` | Historical sanitized note and submit/queue source; original packet absent. | Synthetic new-session/agent startup с immediate follow-up; trace ready/submit/queued/CLI accepted ordering. **Граница:** Текущая reproduction; поздний fix требует automated ordering + real CLI/Windows. Старый transcript не prerequisite. **Owner:** maintainer. |
@@ -109,10 +117,12 @@ GPUI/gpui-component и DirectX recovery. Native layout/editor/GPU сценари
 | [INC-0049](runtime-issues/INC-2026-0049.md#maintainer-handoff) | `decision` | Historical sanitized note; identity source map and clarification plan #206. | Описать поддержанные consumers: conversation resume, live PTY attach, server directory; проверить reachable UI/API. **Граница:** Reporter выбирает intended receiving operation до UX fix. Не нужны реальные ID/папки/токены. **Owner:** maintainer for map; reporter for consumer decision. |
 | [INC-0050](runtime-issues/INC-2026-0050.md#maintainer-handoff) | `research` | Historical sanitized note; CEF key/focus routing, DOM and native focus source. | Synthetic embedded controls/modal: Tab/Shift+Tab, host focus и DOM traversal; сверить already fixed transport. **Граница:** Точный affected element/current failure; заявленный fix требует Windows focus/keyboard gate. **Owner:** maintainer. |
 | [INC-0051](runtime-issues/INC-2026-0051.md#maintainer-handoff) | `verify` | #172 merged, Markdown/link regression tests; private screenshot. | Valid synthetic emphasis/autolink/punctuation cases → DOM href → actual Windows link activation. **Граница:** Exact Windows GPUI/CEF activation artifact; no old private URL needed. **Owner:** maintainer with Windows runtime. |
-| [INC-0053](runtime-issues/INC-2026-0053.md#maintainer-handoff) | `verify` | #160 merged; private before/after and rejection screenshots; model-selection source/tests. | Current pinned CLI: accept/reject/pending, idle/stream, Console hidden, reconnect/respawn before next response и token isolation. **Граница:** Real CLI + Windows artifact. Pending prompt in Chat и isolation исследовать bounded, не переключать старые сессии насильно. **Owner:** maintainer/test operator with isolated test account. |
-| [INC-0054](runtime-issues/INC-2026-0054.md#maintainer-handoff) | `observation` | #159 shipped 1.0.64; private Windows resume/expiry acceptance recorded. | Read-only effective cleanupPeriodDays, mounts/storage и file metadata на deployment. **Граница:** Field deletion attribution/retention observation; accepted resume behavior отдельно, не считать DB indexing причиной. **Owner:** deployment owner. |
+| [INC-0053](runtime-issues/INC-2026-0053.md#maintainer-handoff) | `verify` | #160 published in 1.0.61; #303 live model/effort follow-up in 1.0.68 (isolated CLI 2.1.296, no Windows CEF acceptance); private screenshots and tests. | Current pinned CLI: accept/reject/pending, idle/stream, Console hidden, reconnect/respawn before next response и token isolation. **Граница:** Real CLI + Windows artifact. Pending prompt in Chat и isolation исследовать bounded, не переключать старые сессии насильно. **Owner:** maintainer/test operator with isolated test account. |
+| [INC-0054](runtime-issues/INC-2026-0054.md#maintainer-handoff) | `observation` | #159 published in 1.0.61; private Windows resume/expiry acceptance recorded. | Read-only effective cleanupPeriodDays, mounts/storage и file metadata на deployment. **Граница:** Field deletion attribution/retention observation; accepted resume behavior отдельно, не считать DB indexing причиной. **Owner:** deployment owner. |
 | [INC-0055](runtime-issues/INC-2026-0055.md#maintainer-handoff) | `verify` | #168 merged; private diagnostic ZIP and IPC/queue tests. | Controlled Windows IPC send failure во время stream/subagents: process lifetime, queue depth, outcomes/recovery/disconnection. **Граница:** Windows acceptance no false delivery/unresolved posts; old write UNKNOWN root cause remains unknown. Recovery policy отдельный bounded child. **Owner:** maintainer with Windows runtime. |
 | [INC-0062](runtime-issues/INC-2026-0062.md#maintainer-handoff) | `verify` | #233 merged; PR records unit/CI and Podman TLS matrix, no Windows GUI gate. | Сверить accepted policy и #233 evidence с baseline 502, default success, verified reject/root success и CLI CA bundle. **Граница:** Оформить remaining acceptance/closure decision по существующему evidence, повторять только uncovered cases; deployment observation отдельно. **Owner:** maintainer; deployment owner for production observation. |
+| [INC-0063](runtime-issues/INC-2026-0063.md#accepted-delivery--2026-10-19-reconciliation) | `observation` | #331 accepted and published in 1.0.73; render-model replay and rebuilt chat bundle. | Owner compares narration between tool groups in Chat/Console on a deployed build containing #331. No missing raw transcript blocks another implementation: the implementation is already accepted. **Owner:** @dykamino-coder. |
+| [INC-0064](runtime-issues/INC-2026-0064.md) | `research` | Source-confirmed full-window painting; #261/1.0.74 cost reductions do not implement partial redraw. | Design damage tracking before implementation. Implementation waits for the owner's WPT prerequisite; research does not close the incident. **Gate:** Windows WARP/GPU painted-area and visual acceptance. **Owner:** maintainer, scheduling decision by owner. |
 
 ## Открытые BR: зависимости и следующий результат
 
@@ -156,32 +166,34 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | INC | Принятый результат | Доставка на snapshot |
 | --- | --- | --- |
 | [INC-0003](runtime-issues/INC-2026-0003.md) | rejected: sibling reflow not reproduced; no fix | N/A (diagnostic) |
-| [INC-0004](runtime-issues/INC-2026-0004.md) | resolved; [#184](https://github.com/dykamino-coder/gpui-kamin-ide/pull/184) | merged, not published yet |
-| [INC-0005](runtime-issues/INC-2026-0005.md) | resolved; [#154](https://github.com/dykamino-coder/gpui-kamin-ide/pull/154) | 1.0.64 / 6.3.141 |
-| [INC-0006](runtime-issues/INC-2026-0006.md) | resolved; [#155](https://github.com/dykamino-coder/gpui-kamin-ide/pull/155) | 1.0.64 / 6.3.141 |
-| [INC-0007](runtime-issues/INC-2026-0007.md) | resolved; [#190](https://github.com/dykamino-coder/gpui-kamin-ide/pull/190) | merged, not published yet |
-| [INC-0008](runtime-issues/INC-2026-0008.md) | resolved; [#191](https://github.com/dykamino-coder/gpui-kamin-ide/pull/191) | merged, not published yet |
-| [INC-0009](runtime-issues/INC-2026-0009.md) | resolved; [#192](https://github.com/dykamino-coder/gpui-kamin-ide/pull/192) | merged, not published yet |
-| [INC-0010](runtime-issues/INC-2026-0010.md) | resolved; [#193](https://github.com/dykamino-coder/gpui-kamin-ide/pull/193) | merged, not published yet |
-| [INC-0011](runtime-issues/INC-2026-0011.md) | resolved; [#153](https://github.com/dykamino-coder/gpui-kamin-ide/pull/153) | 1.0.64 / 6.3.141 |
-| [INC-0012](runtime-issues/INC-2026-0012.md) | resolved; [#194](https://github.com/dykamino-coder/gpui-kamin-ide/pull/194) | merged, not published yet |
-| [INC-0013](runtime-issues/INC-2026-0013.md) | resolved; [#195](https://github.com/dykamino-coder/gpui-kamin-ide/pull/195) | merged, not published yet |
-| [INC-0014](runtime-issues/INC-2026-0014.md) | resolved; [#188](https://github.com/dykamino-coder/gpui-kamin-ide/pull/188) | merged, not published yet |
-| [INC-0017](runtime-issues/INC-2026-0017.md) | resolved; [#183](https://github.com/dykamino-coder/gpui-kamin-ide/pull/183) | merged, not published yet |
-| [INC-0018](runtime-issues/INC-2026-0018.md) | resolved; [#196](https://github.com/dykamino-coder/gpui-kamin-ide/pull/196) | merged, not published yet |
-| [INC-0021](runtime-issues/INC-2026-0021.md) | resolved; [#185](https://github.com/dykamino-coder/gpui-kamin-ide/pull/185) | merged, not published yet |
-| [INC-0022](runtime-issues/INC-2026-0022.md) | resolved; [#186](https://github.com/dykamino-coder/gpui-kamin-ide/pull/186) | merged, not published yet |
-| [INC-0024](runtime-issues/INC-2026-0024.md) | resolved; [#182](https://github.com/dykamino-coder/gpui-kamin-ide/pull/182) | merged, not published yet |
-| [INC-0026](runtime-issues/INC-2026-0026.md) | resolved; [#157](https://github.com/dykamino-coder/gpui-kamin-ide/pull/157) | 1.0.64 / 6.3.141 |
-| [INC-0027](runtime-issues/INC-2026-0027.md) | resolved; [#156](https://github.com/dykamino-coder/gpui-kamin-ide/pull/156) | 1.0.64 / 6.3.141 |
-| [INC-0045](runtime-issues/INC-2026-0045.md) | resolved; [#199](https://github.com/dykamino-coder/gpui-kamin-ide/pull/199) | merged, not published yet |
-| [INC-0052](runtime-issues/INC-2026-0052.md) | resolved; [#117](https://github.com/dykamino-coder/gpui-kamin-ide/pull/117) | 1.0.56 / 6.3.133 |
-| [INC-0056](runtime-issues/INC-2026-0056.md) | resolved; [#197](https://github.com/dykamino-coder/gpui-kamin-ide/pull/197) | merged, not published yet |
-| [INC-0057](runtime-issues/INC-2026-0057.md) | resolved; [#189](https://github.com/dykamino-coder/gpui-kamin-ide/pull/189) | merged, not published yet |
-| [INC-0058](runtime-issues/INC-2026-0058.md) | resolved; [#181](https://github.com/dykamino-coder/gpui-kamin-ide/pull/181) | merged, not published yet |
-| [INC-0059](runtime-issues/INC-2026-0059.md) | resolved; [#211](https://github.com/dykamino-coder/gpui-kamin-ide/pull/211) | merged, not published yet |
-| [INC-0060](runtime-issues/INC-2026-0060.md) | resolved; [#212](https://github.com/dykamino-coder/gpui-kamin-ide/pull/212) | merged, not published yet |
-| [INC-0061](runtime-issues/INC-2026-0061.md) | resolved; [#213](https://github.com/dykamino-coder/gpui-kamin-ide/pull/213) | merged, not published yet |
+| [INC-0004](runtime-issues/INC-2026-0004.md) | resolved; [#184](https://github.com/dykamino-coder/gpui-kamin-ide/pull/184) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0005](runtime-issues/INC-2026-0005.md) | resolved; [#154](https://github.com/dykamino-coder/gpui-kamin-ide/pull/154) | published [1.0.61](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.61) |
+| [INC-0006](runtime-issues/INC-2026-0006.md) | resolved; [#155](https://github.com/dykamino-coder/gpui-kamin-ide/pull/155) | published [1.0.61](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.61) |
+| [INC-0007](runtime-issues/INC-2026-0007.md) | resolved; [#190](https://github.com/dykamino-coder/gpui-kamin-ide/pull/190) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0008](runtime-issues/INC-2026-0008.md) | resolved; [#191](https://github.com/dykamino-coder/gpui-kamin-ide/pull/191) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0009](runtime-issues/INC-2026-0009.md) | resolved; [#192](https://github.com/dykamino-coder/gpui-kamin-ide/pull/192) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0010](runtime-issues/INC-2026-0010.md) | resolved; [#193](https://github.com/dykamino-coder/gpui-kamin-ide/pull/193) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0011](runtime-issues/INC-2026-0011.md) | resolved; [#153](https://github.com/dykamino-coder/gpui-kamin-ide/pull/153) | published [1.0.61](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.61) |
+| [INC-0012](runtime-issues/INC-2026-0012.md) | resolved; [#194](https://github.com/dykamino-coder/gpui-kamin-ide/pull/194) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0013](runtime-issues/INC-2026-0013.md) | resolved; [#195](https://github.com/dykamino-coder/gpui-kamin-ide/pull/195) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0014](runtime-issues/INC-2026-0014.md) | resolved; [#188](https://github.com/dykamino-coder/gpui-kamin-ide/pull/188) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0017](runtime-issues/INC-2026-0017.md) | resolved; [#183](https://github.com/dykamino-coder/gpui-kamin-ide/pull/183) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0018](runtime-issues/INC-2026-0018.md) | resolved; [#196](https://github.com/dykamino-coder/gpui-kamin-ide/pull/196) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0021](runtime-issues/INC-2026-0021.md) | resolved; [#185](https://github.com/dykamino-coder/gpui-kamin-ide/pull/185) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0022](runtime-issues/INC-2026-0022.md) | resolved; [#186](https://github.com/dykamino-coder/gpui-kamin-ide/pull/186) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0024](runtime-issues/INC-2026-0024.md) | resolved; [#182](https://github.com/dykamino-coder/gpui-kamin-ide/pull/182) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0026](runtime-issues/INC-2026-0026.md) | resolved; [#157](https://github.com/dykamino-coder/gpui-kamin-ide/pull/157) | published [1.0.61](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.61) |
+| [INC-0027](runtime-issues/INC-2026-0027.md) | resolved; [#156](https://github.com/dykamino-coder/gpui-kamin-ide/pull/156) | published [1.0.61](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.61) |
+| [INC-0045](runtime-issues/INC-2026-0045.md) | resolved; [#199](https://github.com/dykamino-coder/gpui-kamin-ide/pull/199) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0052](runtime-issues/INC-2026-0052.md) | resolved; [#117](https://github.com/dykamino-coder/gpui-kamin-ide/pull/117) | published [1.0.56](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.56) |
+| [INC-0056](runtime-issues/INC-2026-0056.md) | resolved; [#197](https://github.com/dykamino-coder/gpui-kamin-ide/pull/197) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0057](runtime-issues/INC-2026-0057.md) | resolved; [#189](https://github.com/dykamino-coder/gpui-kamin-ide/pull/189) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0058](runtime-issues/INC-2026-0058.md) | resolved; [#181](https://github.com/dykamino-coder/gpui-kamin-ide/pull/181) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0059](runtime-issues/INC-2026-0059.md) | resolved; [#211](https://github.com/dykamino-coder/gpui-kamin-ide/pull/211) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0060](runtime-issues/INC-2026-0060.md) | resolved; [#212](https://github.com/dykamino-coder/gpui-kamin-ide/pull/212) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0061](runtime-issues/INC-2026-0061.md) | resolved; [#213](https://github.com/dykamino-coder/gpui-kamin-ide/pull/213) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
+| [INC-0065](runtime-issues/INC-2026-0065.md#accepted-outcome--2026-10-19-reconciliation) | resolved; [#347](https://github.com/dykamino-coder/gpui-kamin-ide/pull/347), exact-head 8/8 GPU + 8/8 WARP accepted | published [1.0.75](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.75) |
+| [INC-0066](runtime-issues/INC-2026-0066.md#accepted-result--2026-10-19) | resolved; [#369](https://github.com/dykamino-coder/gpui-kamin-ide/pull/369), generated model pin and runtime instructions; automated + isolated native CLI acceptance | published [1.0.76](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.76) |
 
 BR `done`: [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics), [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable), [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown), [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows), [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically), [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition), [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover), [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation). Их остаточные observations и соседние child tasks читаются по карточкам; первичный fix не повторять.
 
@@ -234,6 +246,6 @@ owner и условие продолжения. Отсутствие старо�
   Если Windows/test account отсутствует, сохранить ID, exact candidate и непроведённый
   сценарий; продолжить независимый research, не объявлять всю очередь исчерпанной.
 
-Ни одна карточка этой сверкой не закрыта и ни одна гипотеза не объявлена причиной.
+Сверкой **2026-10-12** ни одна карточка не закрыта и ни одна гипотеза не объявлена причиной.
 Для следующего прохода достаточен стабильный общий prompt выше; новые задачи
 регистрируются обычным flow и попадут в следующий finite snapshot без изменения команды.

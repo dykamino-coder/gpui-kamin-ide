@@ -1,6 +1,7 @@
 //! Раскладка и окраска плиток после определения областей фона.
 
-use super::{origin, rounded, tile_size};
+use super::{area_corners, origin, rounded, tile_size};
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use crate::style::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
 use crate::style::values::value::Len;
@@ -21,6 +22,7 @@ pub(crate) fn draw_tiles(
     fixed_area: bool,
     border: crate::style::computed::Sides,
     px_of: impl Fn(Option<Len>) -> f32,
+    vcx: ValueCx<'_>,
 ) {
     let bounds = exact_layer::positioning(bounds);
     // Место под фон: свой край по `background-origin`.
@@ -35,7 +37,7 @@ pub(crate) fn draw_tiles(
         ),
     };
     let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    let tile = tile_size(found.intrinsic(), box_size, size);
+    let tile = tile_size(found.intrinsic(), box_size, size, vcx);
     // CSS Backgrounds 3 §3.9: cover may require a tile much larger than
     // the painting area. Cap the allocated raster, never this concrete size,
     // its aspect ratio, or the free space used by background-position.
@@ -104,8 +106,9 @@ pub(crate) fn draw_tiles(
         window,
     );
     let start = c.background_position_used(
-        origin(pos, box_size, tile),
+        origin(pos, box_size, tile, vcx),
         (box_size.0 - tile.0, box_size.1 - tile.1),
+        vcx,
     );
     let shift = (
         f64::from(f32::from(bounds.origin.x)) - f64::from(f32::from(clip.origin.x)),
@@ -146,59 +149,15 @@ pub(crate) fn draw_tiles(
         ys = ys.into_iter().step_by(k).collect();
         tile = (tile.0 * k as f32, tile.1 * k as f32);
     }
-    let Some(image) = conic::tile(&found, tile, window.scale_factor()) else {
+    let raster = if matches!(found, super::super::Source::Filtered { .. }) {
+        found.sampled_raster(tile, c.image_pixelated == Some(true), vcx)
+    } else {
+        conic::tile(&found, tile, window.scale_factor(), vcx)
+    };
+    let Some(image) = raster else {
         return;
     };
-    // Скругление — у ОБЛАСТИ краски (css-backgrounds-3 §5.3: фон режется
-    // кривой края коробки), а не у каждой плитки: угол плитки скругляется
-    // радиусом своего угла коробки, только когда он и есть угол области
-    // краски (`origin-border-box_with_radius`: плитка 160 в коробке 514×288
-    // скруглялась всеми четырьмя углами).
-    let r = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v.max(0.0),
-        _ => 0.0,
-    };
-    let radii = [
-        r(c.radius.tl),
-        r(c.radius.tr),
-        r(c.radius.br),
-        r(c.radius.bl),
-    ];
-    let near = |a: f32, b: f32| (a - b).abs() < 0.5;
-    let (pl, pt) = (f32::from(clip.origin.x), f32::from(clip.origin.y));
-    let (pr, pb) = (
-        pl + f32::from(clip.size.width),
-        pt + f32::from(clip.size.height),
-    );
-    let corners_of = |cell: Bounds<Pixels>| {
-        let (l, t) = (f32::from(cell.origin.x), f32::from(cell.origin.y));
-        let (rr, b) = (
-            l + f32::from(cell.size.width),
-            t + f32::from(cell.size.height),
-        );
-        gpui::Corners {
-            top_left: px(if near(l, pl) && near(t, pt) {
-                radii[0]
-            } else {
-                0.0
-            }),
-            top_right: px(if near(rr, pr) && near(t, pt) {
-                radii[1]
-            } else {
-                0.0
-            }),
-            bottom_right: px(if near(rr, pr) && near(b, pb) {
-                radii[2]
-            } else {
-                0.0
-            }),
-            bottom_left: px(if near(l, pl) && near(b, pb) {
-                radii[3]
-            } else {
-                0.0
-            }),
-        }
-    };
+    let corners_of = area_corners::corners(c, clip);
     let pixelated = c.image_pixelated == Some(true);
     // Собственная обрезка коробки (`overflow` ≠ visible) режет по её
     // padding-box, а фон по `background-clip` живёт до border-box: маска
@@ -235,7 +194,15 @@ pub(crate) fn draw_tiles(
                         size: gpui::size(px(tile.0), px(tile.1)),
                     };
                     let corners = corners_of(cell);
-                    sampling::paint_tile(window, cell, corners, image.clone(), &found, pixelated);
+                    sampling::paint_tile(
+                        window,
+                        cell,
+                        corners,
+                        image.clone(),
+                        &found,
+                        pixelated,
+                        vcx,
+                    );
                 }
             }
         });

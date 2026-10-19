@@ -1,10 +1,11 @@
 //! inherit_stage, этап размеров: процентная высота в режиме quirks, цвет, длины от кегля родителя, inherit у теней, рамок, отступов, выравнивания.
 
 use super::*;
+use crate::document::state::ValueCx;
 mod lh_units;
 use lh_units::inherit_lh_units;
 
-pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
     // Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
     // quirks содержащий блок для ДОЛИ высоты ищется циклом — предки с
     // `height: auto` пропускаются, пока не найдётся предок с заданной
@@ -15,7 +16,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
     // `float-percentage-resolution-quirks-mode`). Blink:
     // `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
     // (`SkipContainingBlockForPercentHeightCalculation`).
-    if crate::style::select::quirks() {
+    if vcx.doc.quirks() {
         use crate::style::computed::Display as D;
         use crate::style::computed::Position as P;
         use crate::style::values::value::Len as L;
@@ -29,6 +30,12 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
         {
             c.height = Some(L::Px(k * base));
         }
+        // Only block containers and table wrappers transmit an indefinite
+        // percentage basis. Flex/grid containers stop the quirks ancestor walk.
+        let blockish = matches!(
+            own.display,
+            None | Some(D::Block | D::InlineBlock | D::ListItem)
+        );
         c.quirk_pct_base = match c.height {
             Some(L::Px(h)) => Some(h),
             // Доля от определённого блока — тоже опора: флоат `height: 50%`
@@ -38,7 +45,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
                 Some(L::Px(h)) => Some(k * h),
                 _ => parent.quirk_pct_base.map(|b| k * b),
             },
-            None | Some(L::Auto) if !out_of_flow && !tabular && !c.root_box => {
+            None | Some(L::Auto) if blockish && !out_of_flow && !tabular && !c.root_box => {
                 parent.quirk_pct_base
             }
             _ => None,
@@ -108,7 +115,9 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
         }
         if on(ainh::ALIGN_CONTENT) {
             c.align_content = parent.align_content;
+            c.align_content_baseline = parent.align_content_baseline;
             c.align_content_safe = parent.align_content_safe;
+            c.align_content_unsafe = parent.align_content_unsafe;
             c.align_content_block = parent.align_content_block;
         }
         if on(ainh::JUSTIFY_CONTENT) {

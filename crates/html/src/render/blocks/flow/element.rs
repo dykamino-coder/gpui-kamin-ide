@@ -39,8 +39,9 @@ pub(crate) fn paint_element(
     out: &mut Vec<AnyElement>,
     below: &mut BelowRun,
 ) {
+    let vcx = opts.cx.vcx();
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
-    let paint_key = next_paint_key();
+    let paint_key = opts.cx.next_paint_key();
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
     let layer_ok = !inside_deferred();
     let geometry_layer_ok = !paint_scope::deferred();
@@ -49,11 +50,14 @@ pub(crate) fn paint_element(
         stacking_context(&e.style),
     );
     // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
-    if e.tag == "kamin-float" {
+    if e.marks.float_row {
         out.push(letter_scope.flow(&e.children, inherited, |s| float_flow(e, s, opts)));
         return;
     }
     if let Some(el) = scrollable(e, inherited, opts) {
+        // CSS Transforms 1: transform the viewport and its bars together;
+        // preserve the parent 3D context, backface and plane as for other boxes.
+        let el = crate::paint::effects::transform::transformed(el, &e.style, inherited);
         out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
         return;
     }
@@ -70,7 +74,7 @@ pub(crate) fn paint_element(
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
     if e.style.display == Some(Display::Contents) {
-        let mut merged = inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
         // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`
@@ -121,7 +125,7 @@ pub(crate) fn paint_element(
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::style::apply::grid_item_placement(&e.style);
+    let placement = crate::paint::apply::grid_item_placement(&e.style);
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());
@@ -173,7 +177,7 @@ pub(crate) fn paint_element(
     // содержимому; её левый край пишется на подготовке тела.
     let record_root = e.tag == "body"
         && inherited.canvas_bg
-        && inherited.vertical_rl == Some(true)
+        && inherited.wm().block_rl()
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
     let e = if canvas_paint {

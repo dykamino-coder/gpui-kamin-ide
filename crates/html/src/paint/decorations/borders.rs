@@ -1,12 +1,13 @@
 //! Слои рамок и цветных сторон коробки.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
-    if let Some((colour, [t, r, b, l])) = crate::style::apply::border_layer(c) {
+pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
+    if let Some((colour, [t, r, b, l])) = crate::paint::apply::border_layer(c, vcx) {
         let mut layer = div()
             .absolute()
             .top(px(-t))
@@ -30,8 +31,8 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
         }
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
-        if !c.radius_masked() && c.border_shape.is_none() {
-            let rad = |l: Option<Len>| crate::style::apply::radius_px(c, l).unwrap_or(0.0);
+        if !c.radius_masked(vcx) && c.border_shape.is_none() {
+            let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
                 .rounded_tl(px(rad(c.radius.tl)))
                 .rounded_tr(px(rad(c.radius.tr)))
@@ -45,7 +46,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     // трети толщины, зазор — остаток (Blink
     // `BorderEdge::GetDoubleBorderStripeWidths`: 50 → 17/16/17, 5 → 2/1/2).
     // Квад и слой рамки её не красят (`apply::double_border`).
-    if let Some((colour, [t, r, b, l])) = crate::style::apply::double_border(c) {
+    if let Some((colour, [t, r, b, l])) = crate::paint::apply::double_border(c, vcx) {
         let third = |w: f32| (w / 3.0).round();
         let (o_t, o_r, o_b, o_l) = (third(t), third(r), third(b), third(l));
         let mut outer = div()
@@ -71,8 +72,8 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
             .border_b(px(o_b))
             .border_l(px(o_l))
             .border_color(colour.to_hsla());
-        if !c.radius_masked() {
-            let rad = |x: Option<Len>| crate::style::apply::radius_px(c, x).unwrap_or(0.0);
+        if !c.radius_masked(vcx) {
+            let rad = |x: Option<Len>| crate::paint::apply::radius_px(c, x, vcx).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer
                 .rounded_tl(px(rad(c.radius.tl)))
@@ -94,66 +95,14 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     // красит (`apply::apply_paint`); слой — цветной растр кольца в
     // border-box, тем же растеризатором, что и маска группы, — контуры
     // совпадают попиксельно. Разные цвета сторон остаются полосами ниже.
-    if c.corner_shaped() {
-        let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-        let uniform = sides
-            .first()
-            .filter(|f| sides.iter().all(|s| s == *f))
-            .map(|f| **f);
-        let mixed = sides.len() > 1 && uniform.is_none();
-        let side_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
-        let bw = c.borders();
-        let widths = [
-            side_px(bw.top),
-            side_px(bw.right),
-            side_px(bw.bottom),
-            side_px(bw.left),
-        ];
-        if !mixed && widths.iter().any(|w| *w > 0.0) {
-            // Без цвета рамка красится цветом текста, без него — чёрным
-            // (начальное `border-color: currentColor`).
-            let colour = uniform.or(c.border_color).or(c.color).unwrap_or(
-                crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                },
-            );
-            let colour = crate::paint::background::border_paint(c, colour);
-            let spec = crate::paint::background::rrect_spec(c, Some(widths));
+    {
+        if let Some((spec, colour, widths)) = super::shaped_ring::spec(c, vcx) {
             let [t, r, b, l] = widths;
             out.push(
                 gpui::canvas(
                     |_, _, _| {},
                     move |bounds, _, window, _| {
-                        let sf = window.scale_factor();
-                        let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-                        let (pw, ph) = (
-                            (w * sf).round().max(1.0) as u32,
-                            (h * sf).round().max(1.0) as u32,
-                        );
-                        let args = spec.trim_start_matches("rrect(").trim_end_matches(')');
-                        if let Some(img) = crate::paint::background::rasterize_ring_at(
-                            args,
-                            pw,
-                            ph,
-                            sf,
-                            colour,
-                            (f32::from(bounds.origin.x), f32::from(bounds.origin.y)),
-                        ) {
-                            let _ = window.paint_image_with_sampling(
-                                bounds,
-                                gpui::Corners::default(),
-                                img,
-                                0,
-                                false,
-                                gpui::ImageSampling::Linear,
-                            );
-                        }
+                        super::shaped_ring::paint(&spec, colour, bounds, window);
                     },
                 )
                 // Абсолютный ребёнок считается от padding-box — кольцо
@@ -170,7 +119,7 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>) {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
+pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (30.09): не класть полосу, когда все ЗАДАННЫЕ
     // стороны одного цвета (квад и так красит их, `apply::apply_paint`
@@ -186,11 +135,10 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
     let uniform = sides.len() == 4 && sides.iter().all(|s| *s == sides[0]);
     // При `border-shape` рамка — один слой цветом relevant side (спека:
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
-    if !sides.is_empty() && !uniform && c.border_shape.is_none() {
-        let side_px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+    // A one-colour `double` border is painted whole by its rings.
+    let rings = crate::paint::apply::double_border(c, vcx).is_some();
+    if !sides.is_empty() && !uniform && !rings && c.border_shape.is_none() {
+        let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (
             side_px(bw.top),
@@ -219,16 +167,30 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>) {
             // Абсолютный ребёнок считается от ВНУТРЕННЕГО края рамки,
             // поэтому кольцо накрывается отрицательными отступами ровно на
             // толщину сторон — иначе полоса ложится внутрь содержимого.
-            let strip = div().absolute().bg(colour.to_hsla());
-            out.push(
-                match i {
-                    0 => strip.top(px(-t)).left(px(-l)).right(px(-r)).h(px(w)),
-                    1 => strip.top(px(-t)).right(px(-r)).bottom(px(-b)).w(px(w)),
-                    2 => strip.bottom(px(-b)).left(px(-l)).right(px(-r)).h(px(w)),
-                    _ => strip.top(px(-t)).left(px(-l)).bottom(px(-b)).w(px(w)),
+            let strip = div().absolute();
+            let mut strip = match i {
+                0 => strip.top(px(-t)).left(px(-l)).right(px(-r)).h(px(w)),
+                1 => strip.top(px(-t)).right(px(-r)).bottom(px(-b)).w(px(w)),
+                2 => strip.bottom(px(-b)).left(px(-l)).right(px(-r)).h(px(w)),
+                _ => strip.top(px(-t)).left(px(-l)).bottom(px(-b)).w(px(w)),
+            };
+            // A dotted/dashed side stays patterned (css-backgrounds-3 §4.2).
+            strip = match c.border_side_styles[i] {
+                Some(s @ (7 | 8)) => {
+                    strip = match i {
+                        0 => strip.border_t(px(w)),
+                        1 => strip.border_r(px(w)),
+                        2 => strip.border_b(px(w)),
+                        _ => strip.border_l(px(w)),
+                    }
+                    .border_color(colour.to_hsla());
+                    let pattern = [gpui::BorderStyle::Dotted, gpui::BorderStyle::Dashed];
+                    strip.style().border_style = Some(pattern[usize::from(s == 8)]);
+                    strip
                 }
-                .into_any_element(),
-            );
+                _ => strip.bg(colour.to_hsla()),
+            };
+            out.push(strip.into_any_element());
         }
     }
 }

@@ -5,6 +5,7 @@ use crate::dom::{Element, Node};
 use gpui::px;
 mod widths;
 pub(super) use widths::col_element_widths;
+pub(super) use widths::definite_col_px;
 pub(super) use widths::push_col_bands;
 
 /// Дорожки таблицы: все по содержимому, последняя забирает остаток строки.
@@ -136,24 +137,7 @@ fn track_list(
         .collect()
 }
 
-/// Ширины колонок из элементов `<col>`/`<colgroup>` (атрибут `span`
-/// повторяет запись): при фиксированной раскладке они СТАРШЕ ячеек первого
-/// ряда (CSS 2.1 §17.5.2.1).
-/// Элементы `<col>` по индексам колонок (повтор на span): фон колонки
-/// рисуется в её ячейках (css-tables-3 §drawing-backgrounds).
-/// Колоночная роль элемента: тег ИЛИ `display` (§17.2.1). `Some(false)` —
-/// колонка, `Some(true)` — группа колонок.
-pub(super) fn col_role(el: &Element) -> Option<bool> {
-    match el.tag.as_str() {
-        "col" => Some(false),
-        "colgroup" => Some(true),
-        _ => match el.style.col_role {
-            Some(0) => Some(false),
-            Some(1) => Some(true),
-            _ => None,
-        },
-    }
-}
+pub(super) use crate::dom::table_boxes::col_role;
 
 /// Пролёт колонки: атрибут `span` — только HTML-ный, у элемента с колоночным
 /// `display` его нет, и пролёт всегда единичный.

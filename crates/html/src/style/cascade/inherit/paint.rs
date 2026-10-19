@@ -1,23 +1,24 @@
 //! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip: text, белые пробелы, курсор, таблицы, caret-color.
 
 use super::*;
+use crate::document::state::ValueCx;
+use crate::style::computed::BgListProp;
+
+mod gradient_filter;
 
 pub(super) fn inherit_paint(
     parent: &Computed,
     own: &Computed,
     c: &mut Computed,
     paint_filter: bool,
+    vcx: ValueCx<'_>,
 ) {
     if c.background_blend.as_deref() == Some("inherit") {
         c.background_blend = parent.background_blend.clone();
-        c.bg_lists.retain(|(k, _)| k != "background-blend-mode");
-        c.bg_lists.extend(
-            parent
-                .bg_lists
-                .iter()
-                .filter(|(k, _)| k == "background-blend-mode")
-                .cloned(),
-        );
+        c.bg_lists.remove(BgListProp::BlendMode);
+        if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
+            c.bg_lists.set(BgListProp::BlendMode, list.to_string());
+        }
     }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
     // применяем к собственным цветам потомка: раньше фильтр действовал только
@@ -53,6 +54,7 @@ pub(super) fn inherit_paint(
                 stop.0 = f.apply(stop.0);
             }
         }
+        gradient_filter::apply(c, own, f, vcx);
         // Растровый градиент (`conic`, `repeating-*`) живёт строкой в
         // `bg_image`: его стопы красятся в самой записи
         // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).
@@ -60,7 +62,7 @@ pub(super) fn inherit_paint(
             && let Some(img) = c.bg_image.as_deref()
             && crate::style::computed::gradient_as_raster(img)
         {
-            c.bg_image = Some(crate::style::computed::filter_gradient_text(img, &f));
+            c.bg_image = Some(crate::style::computed::filter_gradient_text(img, &f, vcx));
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {
@@ -99,7 +101,7 @@ pub(super) fn inherit_paint(
     // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
     // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
     if paint_filter {
-        crate::paint::background::collapse_flat_stack(c);
+        crate::style::computed::flat_background::collapse_flat_stack(c, vcx);
     }
     let black = Color {
         r: 0.0,
@@ -112,11 +114,11 @@ pub(super) fn inherit_paint(
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
     );
-    if let Some(fill) = crate::paint::background::text_clip_fill(c) {
+    if let Some(fill) = crate::style::computed::flat_background::text_clip_fill(c, vcx) {
         let foreground = c.text_clip_raw.or(c.color);
         c.text_clip_raw = foreground;
         c.text_clip_fill = Some(fill);
-        c.color = Some(crate::paint::background::over(
+        c.color = Some(crate::style::values::composite::over(
             foreground.unwrap_or(black),
             fill,
         ));
@@ -130,7 +132,7 @@ pub(super) fn inherit_paint(
         c.text_clip_fill = Some(fill);
         if own.color.is_some() {
             c.text_clip_raw = c.color;
-            c.color = Some(crate::paint::background::over(
+            c.color = Some(crate::style::values::composite::over(
                 c.color.unwrap_or(black),
                 fill,
             ));

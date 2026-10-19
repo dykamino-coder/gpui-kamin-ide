@@ -1,12 +1,19 @@
 //! Доводка вычисленного стиля: логические стороны, единицы окна и шрифта, текстовые и смешанные стили.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
+mod container_units;
+mod decor_inset;
 mod derived;
 mod em;
+mod len_px;
+pub use len_px::FontCx;
 pub(super) mod image_lengths;
 mod logical;
+#[cfg(test)]
+mod mask_tests;
 
 impl Computed {
     // ПРОБОВАЛИ И ОТКАТИЛИ: блокификация под `float` и абсолютным
@@ -71,26 +78,29 @@ impl Computed {
     ///
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
-    pub fn resolve_viewport(&mut self, viewport: (f32, f32)) {
+    pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
+        self.resolve_decor_inset_viewport(viewport, vcx);
         let insets = self.viewport_unit_insets.unwrap_or_default();
         let viewport = (
             (viewport.0 - insets[0]).max(0.0),
             (viewport.1 - insets[1]).max(0.0),
         );
+        let vertical = self.wm().vertical();
+        let container = Some((
+            self.cq_box.0.unwrap_or(viewport.0),
+            self.cq_box.1.unwrap_or(viewport.1),
+        ));
         let fix = |l: &mut Option<Len>| match *l {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
             Some(Len::Calc(i)) => {
-                let mut s = crate::style::values::value::calc_get(i);
+                let mut s = crate::style::values::value::calc_get(i, vcx);
                 // Без слагаемых окна складывать нечего: индекс остаётся
                 // (арена append-only, `resolve_viewport` идёт на каждом
                 // слитом стиле), а `collapse` стёр бы процентную смесь
                 // `calc(50% - 3px)` в `None` уже после разбора.
-                if s.vw != 0.0 || s.vh != 0.0 {
-                    s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                    s.vw = 0.0;
-                    s.vh = 0.0;
-                    *l = s.collapse_mixed();
+                if s.fold_viewport(viewport, vertical, container) {
+                    *l = s.collapse_mixed(vcx);
                 }
             }
             _ => {}
@@ -101,13 +111,10 @@ impl Computed {
                     Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
                     Some(Len::Calc(i)) => {
-                        let mut s = crate::style::values::value::calc_get(i);
+                        let mut s = crate::style::values::value::calc_get(i, vcx);
                         // То же, что у размеров: смесь с долей доживает.
-                        if s.vw != 0.0 || s.vh != 0.0 {
-                            s.px += s.vw * viewport.0 + s.vh * viewport.1;
-                            s.vw = 0.0;
-                            s.vh = 0.0;
-                            *one = s.collapse_mixed();
+                        if s.fold_viewport(viewport, vertical, container) {
+                            *one = s.collapse_mixed(vcx);
                         }
                     }
                     _ => {}
@@ -161,7 +168,10 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::text::fonts::size_adjust(family, slope);
+        let size_adjust = crate::text::fonts::matching::select(family, self).map_or_else(
+            || crate::text::fonts::size_adjust(family, slope),
+            |f| f.adjust,
+        );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
                 match crate::text::metrics::adjust_aspect(family, metric) {
@@ -187,7 +197,7 @@ impl Computed {
     pub fn used_features(&self) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
-            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""));
+            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self);
         // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
         // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
         let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
@@ -203,7 +213,11 @@ impl Computed {
         // `font-variant-ligatures`, младше `font-feature-settings`
         // (`font-feature-resolution-001/002`: `fvl-1 ls-1` — без лигатуры,
         // `ls-1 ffs-1` — с ней).
-        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0) {
+        if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
+            || (self.justify_chars == Some(2)
+                && (self.text_align == Some(TextAlign::Justify)
+                    || self.text_align_last == Some(TextAlign::Justify)))
+        {
             for tag in ["liga", "clig", "dlig", "hlig"] {
                 all.push((tag.to_string(), 0));
             }
@@ -216,6 +230,17 @@ impl Computed {
             out.retain(|(t, _)| *t != tag);
             out.push((tag, value));
         }
+        let slope = if self.oblique == Some(true) {
+            2
+        } else if self.italic == Some(true) {
+            1
+        } else {
+            0
+        };
+        out.extend(crate::text::fonts::metric_overrides::features(
+            self.font_family.as_deref().unwrap_or(""),
+            slope,
+        ));
         out
     }
 }

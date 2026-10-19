@@ -27,6 +27,7 @@ import {
 import { clearSessionInputState, notifySessionAttachmentChanged } from './session-input-coordinator'
 import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_TOKEN_ENV } from '../hooks'
 import { buildSessionEnv as buildEnv, modelForResume } from './session-env'
+import { resendSessionUsage, watchSessionStatusLine } from './session-statusline'
 import { buildSessionClaudeArgs } from './session-plugin-args'
 import {
   SESSIONS_BASE,
@@ -223,7 +224,7 @@ async function createAdmittedSession(
 
   // Create session directory + settings (overwrites existing on restart)
   fs.mkdirSync(settingsDir, { recursive: true })
-  writeSessionSettings(sessionId, settingsDir, mcpToken, config.model, config.cwd, config.bearerHash)
+  writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash)
 
   // Write CLAUDE.md with user's real working directory info
   const userCwd = config.cwd
@@ -246,7 +247,7 @@ async function createAdmittedSession(
   const nodePty = await (nodePtyModule ??= import('node-pty'))
   signal?.throwIfAborted()
 
-  const env = buildEnv(sessionId, userName, config.effort)
+  const env = buildEnv(sessionId, userName)
   // Hook relay credential travels in the process environment, never in the
   // rewritten hook command — see HOOK_RELAY_TOKEN_ENV.
   env[HOOK_RELAY_TOKEN_ENV] = mcpToken
@@ -493,7 +494,7 @@ async function createAdmittedSession(
 
   // Auto-answer interactive startup prompts:
   // 1. "Yes, I trust this folder" (Enter to confirm — option 1 is default)
-  // 2. Effort level selection (already skipped via CLAUDE_CODE_EFFORT_LEVEL env)
+  // 2. Effort level selection (legacy startup prompt; IS_DEMO=1 skips it)
   attachStartupAutoResponder(session)
 
   // Wire PTY output → WS with debounce (same pattern as terminal.ts)
@@ -577,6 +578,9 @@ async function createAdmittedSession(
   )
   session.jsonlWatcher = jsonlWatcher
   jsonlWatcher.start()
+
+  // Live subscription limits + context fill pushed to the chat (statusLine).
+  session.statusLineWatcher = watchSessionStatusLine(session, path.join(settingsDir, '.claude'))
 
   // PTY exit handler
   pty.onExit(({ exitCode }: { exitCode: number }) => {
@@ -707,6 +711,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.ws = ws
   session.lastActivityAt = new Date()
   notifySessionAttachmentChanged(session)
+  resendSessionUsage(session)
 
   for (const [requestId, pe] of session.pendingElicitations) {
     sendToClient(ws, {
@@ -844,6 +849,7 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   // The exiting CLI must not keep a server→client MCP stream (or a pending
   // tools/list_changed) alive past its session.
   closeToolNotificationStream(sessionId)
+  session.statusLineWatcher?.stop()
 
   // Polite kill first; escalate to SIGKILL if the CLI hasn't exited in time
   // (it flushes its JSONL on the way out — a hard kill here is what used to
@@ -973,6 +979,7 @@ export async function restartWithEffort(
 
   // Stop JSONL watcher before killing PTY
   session.jsonlWatcher?.stop()
+  session.statusLineWatcher?.stop()
 
   // Tear down streaming proxy before respawn — new session will start its own.
   if (session.streamingProxy) {
@@ -1033,6 +1040,7 @@ export async function restartWithModel(
 
   // Stop JSONL watcher before killing PTY
   session.jsonlWatcher?.stop()
+  session.statusLineWatcher?.stop()
 
   // Tear down streaming proxy before respawn — new session will start its own.
   if (session.streamingProxy) {
@@ -1166,6 +1174,7 @@ function cleanupSession(sessionId: string): void {
   if (!session) return
 
   session.jsonlWatcher?.stop()
+  session.statusLineWatcher?.stop()
   // Reject this session's in-flight MCP calls so their promises + any
   // long-lived SSE stream/heartbeat (interactive tools never time out) don't
   // leak after the session is gone.

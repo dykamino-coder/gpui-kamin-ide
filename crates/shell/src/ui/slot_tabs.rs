@@ -124,7 +124,7 @@ pub(crate) fn tab(
                 13.0,
                 13.0,
                 icon_color,
-                tab_group.clone(),
+                tab_group,
                 crate::colors::rgba(p.text_primary),
             )
         })

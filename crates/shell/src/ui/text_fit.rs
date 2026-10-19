@@ -29,6 +29,7 @@ pub fn measure(text: &str, size: f32, window: &mut Window) -> f32 {
         font_size: None,
         background_pad: Default::default(),
         background_radius: Default::default(),
+        background_line_gap: false,
         background_border: None,
         underline: None,
         strikethrough: None,

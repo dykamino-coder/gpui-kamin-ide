@@ -82,6 +82,12 @@ export function activate(context: vscode.ExtensionContext): void {
           const vis = view.onDidChangeVisibility(() => host.setWebviewVisible(view.webview, view.visible))
           view.onDidDispose(() => vis.dispose())
           context.subscriptions.push(vis)
+        } else {
+          // Customize pages consume no session data (nothing to resync), but a
+          // request they sent while hidden still has to get its reply on reveal.
+          const vis = view.onDidChangeVisibility(() => { if (view.visible) void host.flushDeferredReplies(view.webview) })
+          view.onDidDispose(() => vis.dispose())
+          context.subscriptions.push(vis)
         }
       },
     }

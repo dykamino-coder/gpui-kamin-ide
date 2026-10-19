@@ -109,7 +109,11 @@ fn last_valid<T>(values: &[String], parse: impl Fn(&[Tok]) -> Option<T>) -> Opti
 
 /// Правило `@counter-style <имя> { … }`. `descs` — пары «дескриптор —
 /// значения в порядке записи».
-pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
+pub fn register(
+    doc: &crate::document::state::DocState,
+    name: &str,
+    descs: &[(String, Vec<String>)],
+) {
     let toks = tokenize(name.trim());
     let [Tok::Ident(name)] = toks.as_slice() else {
         return;
@@ -171,9 +175,5 @@ pub fn register(name: &str, descs: &[(String, Vec<String>)]) {
     if !valid {
         return;
     }
-    RULES
-        .lock()
-        .unwrap()
-        .get_or_insert_with(HashMap::new)
-        .insert(name, raw);
+    doc.counter_styles.borrow_mut().insert(name, raw);
 }

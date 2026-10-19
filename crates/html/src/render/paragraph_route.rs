@@ -34,7 +34,7 @@ pub(super) fn paragraph_probed(
     // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
     // поэтому сопоставление кадров не зависит от порядка обхода на
     // отрисовке.
-    let ctx = crate::text::clamp::clamp_context();
+    let ctx = crate::text::clamp::clamp_context().filter(|_| crate::text::clamp::para_depth() == 0);
     let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key));
     let budget = match (ctx, seq) {
         (Some((key, _)), Some(s)) => match crate::text::clamp::clamp_para(key) {
@@ -52,6 +52,16 @@ pub(super) fn paragraph_probed(
     // достался бы СЛЕДУЮЩЕМУ абзацу.
     crate::text::clamp::set_para_budget(None);
     let para = with_text_shadow(para, inherited, taken, opts);
+    // A paragraph after the clamp point is hidden for paint once the clip
+    // reveals the overflow of earlier content (css-overflow-4 §5.3).
+    let para = match (ctx, seq) {
+        (Some((key, false)), Some(s)) if crate::text::clamp::hidden_after_point(key, s) => {
+            let mut hidden = div().w_full().child(para);
+            hidden.style().visibility = Some(gpui::Visibility::Hidden);
+            hidden.into_any_element()
+        }
+        _ => para,
+    };
     if let Some((key, skip)) = ctx {
         div()
             .relative()
@@ -62,8 +72,12 @@ pub(super) fn paragraph_probed(
                 skip,
                 false,
                 0.0,
+                crate::text::clamp::BoxEnds::default(),
                 seq,
                 budget,
+                None,
+                0.0,
+                false,
             ))
             .into_any_element()
     } else {

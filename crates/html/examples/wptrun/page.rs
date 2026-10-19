@@ -2,7 +2,7 @@
 
 use super::page_box::{PageBoxFn, page_box};
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div, px, rgb};
-use kamin_html::{Document, RenderOpts, render};
+use kamin_html::{Document, RenderOpts};
 use std::rc::Rc;
 
 pub(super) struct Page {
@@ -23,13 +23,17 @@ impl Render for Page {
         // показал 1041 → 1006 по css-text. Метрики системной подстановки
         // (кана в 0.82 кегля) совпадают с эталонами чаще, чем `MS Gothic`.
         text.font_size = px(16.).into();
+        // Правила и значения листа (`Len::parse` в `page_box`) — документа:
+        // `@page` — его правила, значения — его арены (`Document::values`).
+        let values = self.doc.values().keep();
         // Печатная пара: страница WPT по умолчанию 5in x 3in = 480x288
         // точек; `@page` может задать size/margin/фон/рамку. Область
         // просмотра документа = page area (css-page-3 §page-model).
-        // Стопка страниц (css-page-3) — ПО ФЛАГУ `WPT_PAGE`: печатные пары
-        // сегодня зелены ложно (обе стороны рисуются непагинированным
-        // документом), и честная пагинация краснит их, пока не умеет того,
-        // чем пользуются эталоны. ★ ЗАМЕРЕНО (06.09), срез 1303 пары
+        // Стопка страниц (css-page-3) — по умолчанию для печатных пар
+        // (`paged::is_paged`); `WPT_NO_PAGE=1` возвращает непагинированный
+        // документ печатным носителем (для разбора). Прежде стопка была за
+        // флагом `WPT_PAGE`, который ставил только внешний скрипт прогона.
+        // ★ ЗАМЕРЕНО (06.09, тогда ещё за флагом), срез 1303 пары
         // (css-page + все `-print` + css-break): шаг 1 без разрезов внутри
         // детей 475 -> 443 (+2/-34); с разрезами класса A и маской по
         // фрагменту 475 -> 435 (+9/-49). Потери — таблицы (разрыв между
@@ -40,16 +44,14 @@ impl Render for Page {
         // лист, а КРОП снимка: `ink()` при разной длине кадра и разделителя
         // возвращал `usize::MAX`, вердикт умножал его на 8 — переполнение в
         // debug-сборке роняло задачу стенда. Кропа больше нет.
-        let page = (kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed)
-            && std::env::var("WPT_PAGE").is_ok())
-        .then(|| {
+        let page = (self.doc.is_print() && std::env::var_os("WPT_NO_PAGE").is_none()).then(|| {
             // Лист — по своему номеру и имени страницы: каскад `@page`
             // (`:first`, `:left`/`:right`, имена; специфичность (f, g, h),
             // css-page-3 §cascading-and-page-context) решает
             // `css::page_decls_in`. `margin: inherit` — от корневого элемента
             // (§page-properties: «The page context inherits from the root
             // element»; `page-margin-006`).
-            let rules = kamin_html::css::page_rules_snapshot();
+            let rules = self.doc.page_rules();
             let root_margin = self
                 .doc
                 .nodes()
@@ -81,11 +83,8 @@ impl Render for Page {
                     _ => None,
                 })
                 .map(|e| {
-                    (
-                        e.style.vertical == Some(true),
-                        e.style.vertical_rl == Some(true),
-                        e.style.rtl == Some(true),
-                    )
+                    let wm = e.style.wm();
+                    (wm.vertical(), wm.block_rl(), wm.rtl())
                 })
                 .unwrap_or((false, false, false));
             let rtl = root_wm.2;
@@ -95,10 +94,11 @@ impl Render for Page {
                     kamin_html::css::page_decls_in(&rules, i, name, rtl),
                     root_margin,
                     root_wm,
+                    values.vcx(),
                 )
             });
             let margins: kamin_html::render::PageMarginDeclsFn = {
-                let rules = kamin_html::css::page_rules_snapshot();
+                let rules = self.doc.page_rules();
                 std::rc::Rc::new(move |i, name: &str| {
                     (
                         kamin_html::css::page_decls_in(&rules, i, name, rtl),
@@ -116,6 +116,8 @@ impl Render for Page {
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
+            cx: Default::default(),
+            frag: Default::default(),
         };
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
@@ -126,7 +128,7 @@ impl Render for Page {
             eprintln!(
                 "VIEWPORT {:?} print={} page={:?}",
                 opts.viewport,
-                kamin_html::css::PRINT_MEDIA.load(std::sync::atomic::Ordering::Relaxed),
+                self.doc.is_print(),
                 page.as_ref().map(|p| (p.0.size, p.0.area, p.0.margin))
             );
         }
@@ -151,7 +153,7 @@ impl Render for Page {
             });
             let stack = kamin_html::render::render_paged_select(
                 self.doc.nodes(),
-                &opts,
+                &self.doc.frame_opts(&opts),
                 geom_for,
                 Some(margins),
                 self.select.clone(),
@@ -161,11 +163,11 @@ impl Render for Page {
                 .h(px(f32::from(window.viewport_size().height)))
                 .bg(rgb(0xffffff))
                 .text_size(px(16.))
-                .font_family(opts.text.font_family.clone())
-                .child(stack)
+                .font_family(opts.text.font_family)
+                .child(self.doc.scoped(stack))
                 .into_any_element();
         }
-        let children = render(self.doc.nodes(), &opts);
+        let children = self.doc.render(&opts);
         if std::env::var("HTML_VIEWPORT").is_ok() {
             eprintln!("BUILT {} детей", children.len());
         }
@@ -178,7 +180,7 @@ impl Render for Page {
             // своего семейства, нарисованные НЕ текстовым путём абзаца (ряд
             // слов при картинке вне потока, подпись `alt`), брали шрифт
             // интерфейса (Segoe UI) вместо Times (`background-bg-pos-204-ref`).
-            .font_family(opts.text.font_family.clone())
+            .font_family(opts.text.font_family)
             .children(children)
             .into_any_element()
     }

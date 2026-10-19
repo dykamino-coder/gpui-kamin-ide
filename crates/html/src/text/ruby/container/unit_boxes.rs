@@ -78,7 +78,7 @@ pub(super) fn unit_box(nodes: &[Node], style: &Computed, opts: &RenderOpts) -> A
     // CSS Ruby interlinear-block: an empty base container behaves as a
     // single empty base, whose strut still supplies the shared baseline.
     let strut;
-    let nodes = if crate::text::ruby::layers::current().is_some() && !has_inflow(nodes) {
+    let nodes = if opts.cx.ruby_layers.is_some() && !has_inflow(nodes) {
         strut = empty_base(nodes);
         &strut[..]
     } else {

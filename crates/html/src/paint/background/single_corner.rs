@@ -4,11 +4,12 @@
 //! the native quad coverage used by ordinary circular backgrounds.
 
 mod geometry;
+use crate::hooks::IntoHooked;
 use crate::style::computed::{BgClip, Computed};
 use crate::style::values::value::{Color, Len};
 pub(crate) use geometry::eligible;
 use geometry::{inset, square, uniform, virtual_circle};
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, Window, px};
+use gpui::{AnyElement, Bounds, Pixels, Window, px};
 
 fn paint_fill(window: &mut Window, rect: Bounds<Pixels>, i: usize, r: f32, color: Color) {
     let circle = super::sampling::snapped_clip(virtual_circle(rect, i, r), window);
@@ -188,6 +189,6 @@ pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
                 );
             });
         })
-        .into_any_element(),
+        .hooked(),
     )
 }

@@ -1,4 +1,6 @@
 //! Intrinsic sizing wrappers preserve the preferred size seen by their parent.
+
+use crate::document::state::ValueCx;
 use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
@@ -8,7 +10,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, CssSizingKeyword, IntoElement, ParentElement, Styled, div, px};
 
 fn wrapper_width_keyword(style: &Computed) -> Option<CssSizingKeyword> {
-    if style.vertical == Some(true) || style.contains_width() {
+    if style.wm().vertical() || style.contains_width() {
         return None;
     }
     match style.width {
@@ -54,6 +56,7 @@ pub(crate) fn for_element(
     element: &Element,
     parent: &Computed,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
+    vcx: ValueCx<'_>,
 ) -> AnyElement {
     if super::replaced_tag(element) || native_intrinsic::eligible(element) {
         el
@@ -61,7 +64,7 @@ pub(crate) fn for_element(
         content_sized(
             el,
             &element.style,
-            &crate::style::cascade::inherit::inherit(parent, &element.style),
+            &crate::style::cascade::inherit::inherit(parent, &element.style, vcx),
             placement,
         )
     }
@@ -110,7 +113,7 @@ pub(crate) fn content_sized(
     // taffy её не решает и меряет обёртку содержимым, как велит §5.2.1
     // (`fit-content-length-percentage-011/012/014`). Это НЕ пара «max-width =
     // N» из отката в `value.rs`: там довод был потолком, здесь — место.
-    if matches!(c.width, Some(Len::FitContent)) && c.vertical != Some(true) {
+    if matches!(c.width, Some(Len::FitContent)) && !c.wm().vertical() {
         match c.fit_arg[0] {
             Some(Len::Px(v)) => wrap = wrap.w(px(v)),
             Some(Len::Pct(k)) => wrap = wrap.w(gpui::relative(k)),
@@ -172,9 +175,9 @@ pub(crate) fn content_sized(
     // (column-fill-reverse-justify-items-001). В вертикальном письме
     // align-self несёт ось самого движка — перенос ломал ортогональные
     // потоки (three-levels-of-orthogonal-flows).
-    if let Some(a) = c.align_self.filter(|_| c.vertical != Some(true)) {
+    if let Some(a) = c.align_self.filter(|_| !c.wm().vertical()) {
         // `anchor-center` без якоря ведёт себя как `center` (css-anchor-position-1 §5.2).
-        wrap.style().align_self = Some(crate::style::apply::self_align(a, c.align_self_last));
+        wrap.style().align_self = Some(crate::paint::apply::self_align(a, c.align_self_last));
     }
     if let Some(col) = col {
         wrap = wrap.grid_template_cols(vec![col]);
@@ -182,7 +185,7 @@ pub(crate) fn content_sized(
     if let Some(row) = row {
         wrap = wrap.grid_template_rows(vec![row]);
     }
-    crate::style::apply::item_metadata::project_wrapper(wrap.style(), item_style);
+    crate::paint::apply::item_metadata::project_wrapper(wrap.style(), item_style);
     // Размещение элемента в сетке родителя — на обёртке (см. вызов).
     let (location, names) = placement;
     if let Some(location) = location {
@@ -222,7 +225,11 @@ mod tests {
             wrapper_width_keyword(&style),
             Some(CssSizingKeyword::MaxContent)
         );
-        style.vertical = Some(true);
+        style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            style.wm().block_rl(),
+            style.wm().sideways(),
+        ));
         assert_eq!(wrapper_width_keyword(&style), None);
     }
 }

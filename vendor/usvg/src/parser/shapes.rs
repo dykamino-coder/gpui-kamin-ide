@@ -24,7 +24,11 @@ pub(crate) fn convert(node: SvgNode, state: &converter::State) -> Option<Arc<Pat
 }
 
 pub(crate) fn convert_path(node: SvgNode) -> Option<Arc<Path>> {
-    let value: &str = node.attribute(AId::D)?;
+    parse_path(node.attribute(AId::D)?)
+}
+
+/// KaminIDE patch: share SVG path command resolution with typed scene callers.
+pub fn parse_path(value: &str) -> Option<Arc<Path>> {
     let mut builder = tiny_skia_path::PathBuilder::new();
     for segment in svgtypes::SimplifyingPathParser::from(value) {
         let segment = match segment {

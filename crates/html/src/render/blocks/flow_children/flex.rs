@@ -37,7 +37,7 @@ pub(crate) fn flex_child(mut e: crate::dom::Element, inherited: &Computed) -> No
             _ => false,
         };
     if row
-        && inherited.vertical != Some(true)
+        && !inherited.wm().vertical()
         && stretches
         && e.style.contains_height()
         && matches!(e.style.height, None | Some(Len::Auto))
