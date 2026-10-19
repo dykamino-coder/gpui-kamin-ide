@@ -48,7 +48,7 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 
 ## Текущая пачка `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
 
-**Status:** in progress. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
+**Status:** source acceptance complete; publication pending. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
 **Поручение 2026-10-20:** владелец поручил самому завершить fixes со скриншотов,
 прояснить future completion/acceptance flow, выпустить один release и отдельно
 проверить поведение после выкладки. Роль текущего агента — мейнтейнер; разрешены
@@ -61,10 +61,10 @@ commit/push/review/merge и один coordinated release. Доступа к depl
 
 | ID / PR snapshot | State / artifact | Gate и следующий результат |
 | --- | --- | --- |
-| INC-0067 / #377, `42cc9ac0ba40d121fa9498703e02f1c5a79cb122` | ready / verify | Принять dispatcher/listener/cache contract по обновлённой карточке, fresh exact-head CI, merge |
-| INC-0068 / #378, `0fc0827b796bda3a1adcaccb9fb22688f14d8b63` | ready / verify | Принять server watcher shrink/replacement contract, fresh exact-head CI, merge |
-| Completion/acceptance documentation | ready / change | Принять явную точку завершения и решение о классе; без ослабления checks |
-| Один release после двух accepted merges | waiting / change | Проверенные версии/artifacts, main gate, публикация и delivery close-out |
+| INC-0067 / #377 | done / none | Source acceptance: candidate `a6bf138d`, merge `8f8d3bfa`; required CI, 175 host + 288 webview tests/builds. Deployment observation отдельно ниже |
+| INC-0068 / #378 | done / none | Source acceptance: candidate `fbf7b270`, merge `84259a44`; required CI/dry run, 362 server tests + 5 skips, combined probe; same-inode regrowth limit сохраняется |
+| Completion/acceptance documentation / #381 | done / none | Merge `3b7f27cf`: цель/полномочия/класс приёмки; исходные unperformed gates сохранены, CI не ослаблен |
+| Один release после двух accepted merges | ready / change | Источники приняты; нужны новый version PR, Windows candidate/provenance, main gate, публикация и delivery close-out |
 | Field UX observation | waiting / observation | Deployment owner после обычной выкладки по [checklist](../../docs/COMPACT_RELEASE_OBSERVATION.md) |
 
 Порядок: decision/coordination → #377 → повторный fetch → #378 → close-out →
