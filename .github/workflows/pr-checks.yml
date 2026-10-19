@@ -142,6 +142,11 @@ jobs:
           node scripts/ci/runtime-acceptance.mjs \
             --event "$GITHUB_EVENT_PATH" --files "$changed_files"
 
+      - name: Verify recorded runtime deliveries against published releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/runtime-delivery.mjs
+
   root-node:
     name: root Node checks
     needs: scope
@@ -635,6 +640,7 @@ jobs:
             "$EXTENSION_RESULT" \
             "$WEBVIEW_RESULT" \
             "$RUST_RESULT" \
+            "$INSTALLER_RESULT" \
             "$RELEASE_RESULT"; do
             case "$result" in
               success|skipped) ;;
