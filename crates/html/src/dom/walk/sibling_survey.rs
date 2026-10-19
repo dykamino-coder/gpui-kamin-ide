@@ -22,6 +22,7 @@ pub(crate) fn walk_children(
     path: &mut Vec<Ancestor>,
     preserve: bool,
     out: &mut Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     let children = handle.children.borrow();
     // Перепись братьев ЦЕЛИКОМ до обхода: `:nth-last-child(… of S)` смотрит
@@ -40,7 +41,7 @@ pub(crate) fn walk_children(
         };
         build_dom_node(
             child, tree, rules, vars, frames, counter, counters, path, *spot, preserve, sibs,
-            &children, &spots, idx, out,
+            &children, &spots, idx, out, vcx,
         );
         pos += usize::from(is_elem);
     }

@@ -75,7 +75,7 @@ pub(super) fn parse_input(
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;
     }
-    crate::style::values::value::reset_scheme(media.dark);
+    let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
     // documents … always in no-quirks mode»), а мы разбираем и его HTML-
@@ -207,6 +207,7 @@ pub(super) fn parse_input(
         &mut Vec::new(),
         false,
         &mut out,
+        vcx,
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));

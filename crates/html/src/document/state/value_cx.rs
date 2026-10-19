@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
+    pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
 impl DocState {
@@ -24,6 +25,7 @@ impl DocState {
         ValueCx {
             doc: self,
             frame: false,
+            scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
 
@@ -32,6 +34,7 @@ impl DocState {
         ValueCx {
             doc: self,
             frame: true,
+            scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
 }
@@ -50,6 +53,7 @@ impl std::fmt::Debug for ValueCx<'_> {
 pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
+    scheme: crate::style::values::value::Scheme,
 }
 
 impl ValueDoc {
@@ -57,11 +61,16 @@ impl ValueDoc {
         ValueCx {
             doc: &self.doc,
             frame: self.frame,
+            scheme: self.scheme,
         }
     }
 }
 
 impl ValueCx<'_> {
+    pub(crate) fn with_scheme(mut self, scheme: crate::style::values::value::Scheme) -> Self {
+        self.scheme = scheme;
+        self
+    }
     /// Удержать документ контекста. Документ всегда живёт в `Rc`
     /// (`DocState::new`), так что ручка есть, пока жив заимствованный
     /// документ; иначе — пустой документ, и чтение его ручек даёт запасное
@@ -74,6 +83,7 @@ impl ValueCx<'_> {
                 .upgrade()
                 .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
             frame: self.frame,
+            scheme: self.scheme,
         }
     }
 }
