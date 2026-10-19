@@ -120,7 +120,6 @@ impl Document {
         } else {
             base_url::document_base(html, base_url.as_ref())
         };
-        crate::text::clamp::forget_clamp_buffers();
         let (state, nodes, root) =
             parse_document(html, theme_css, effective_base.as_ref(), xml, media);
         Document {

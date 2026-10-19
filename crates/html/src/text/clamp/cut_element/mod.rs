@@ -13,6 +13,7 @@ use gpui::{App, Bounds, LayoutId, Pixels, Window};
 /// поднимает срез к верху пересечённого блока и просит новый кадр, когда
 /// точка изменилась.
 pub struct ClampCut {
+    pub(crate) values: crate::document::state::ValueDoc,
     pub(crate) rows: std::rc::Rc<super::ParagraphRows>,
     pub(crate) key: u64,
     pub(crate) lines: ClampLines,
@@ -58,8 +59,15 @@ impl Hooks for ClampCut {
 }
 
 impl ClampCut {
-    pub fn new(key: u64, lines: ClampLines, limit: Option<u32>, max_h: Option<f32>) -> Self {
+    pub fn new(
+        key: u64,
+        lines: ClampLines,
+        limit: Option<u32>,
+        max_h: Option<f32>,
+        cx: &crate::layout::cx::LayoutCx,
+    ) -> Self {
         ClampCut {
+            values: cx.vcx().keep(),
             rows: Default::default(),
             key,
             lines,

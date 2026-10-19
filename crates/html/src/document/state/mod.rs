@@ -31,6 +31,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Clamp probes and previous-frame cuts belonging to this document.
+    pub(crate) clamp: std::rc::Rc<crate::text::clamp::ClampState>,
     /// Anchor geometry and fallback selection belonging to this document.
     pub(crate) anchor_frame: crate::layout::positioned::anchor::AnchorState,
     /// Font-face descriptors and source caches belonging to this document.

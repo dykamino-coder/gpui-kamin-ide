@@ -1,90 +1,58 @@
-//! Build scope retained by deferred layout children of a clamp container.
-//!
-//! Paragraph numbers are assigned in box-tree order (CSS Overflow 4 section
-//! 5.3). Rebuilding a measured child must reuse those numbers without consuming
-//! the surrounding container's sequence or losing its BFC counting boundary.
+//! Clamp input retained by deferred children and forked for each measurement.
 
-use super::line_state::{CLAMP_SEQ, CLAMP_STACK, clamp_context};
-use std::collections::HashMap;
+use super::ClampBuild;
+use crate::layout::cx::LayoutCx;
 
-#[derive(Clone)]
-pub(crate) struct DeferredClamp {
-    stack: Vec<(u64, bool)>,
-    seq: HashMap<u64, u32>,
-    // Atomic depth, paragraph tag and budget travel in the builder's LayoutCx.
-}
+pub(crate) struct DeferredClamp(ClampBuild);
 
 impl DeferredClamp {
-    pub(crate) fn capture() -> Option<Self> {
-        clamp_context()?;
-        Some(Self::snapshot())
+    pub(crate) fn capture(cx: &LayoutCx) -> Option<Self> {
+        cx.clamp_build.context?;
+        Some(Self(cx.clamp_build.snapshot()))
     }
 
-    fn snapshot() -> Self {
-        Self {
-            stack: CLAMP_STACK.with_borrow(Clone::clone),
-            seq: CLAMP_SEQ.with_borrow(Clone::clone),
-        }
-    }
-
-    fn install(&self) {
-        CLAMP_STACK.with_borrow_mut(|v| v.clone_from(&self.stack));
-        CLAMP_SEQ.with_borrow_mut(|v| v.clone_from(&self.seq));
-    }
-
-    pub(crate) fn enter(&self) -> DeferredClampGuard {
-        let previous = Self::snapshot();
-        self.install();
-        DeferredClampGuard(previous)
-    }
-}
-
-pub(crate) struct DeferredClampGuard(DeferredClamp);
-
-impl Drop for DeferredClampGuard {
-    fn drop(&mut self) {
-        self.0.install();
+    pub(crate) fn build(&self) -> ClampBuild {
+        self.0.snapshot()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::clamp::{ClampGuard, clamp_next_seq};
+    use crate::text::clamp::{clamp_context, clamp_next_seq};
 
     #[test]
-    fn repeated_builds_reuse_paragraph_numbers_and_restore_outer_scope() {
-        let scope = ClampGuard::enter(900);
-        assert_eq!(clamp_next_seq(900), 0);
-        let deferred = DeferredClamp::capture().expect("active container");
-        // Reserve the deferred child's paragraphs during the tree build.
-        assert_eq!(clamp_next_seq(900), 1);
-        assert_eq!(clamp_next_seq(900), 2);
-        drop(scope);
-        let _outer = ClampGuard::enter(901);
-        assert_eq!(clamp_next_seq(901), 0);
+    fn repeated_builds_reuse_numbers_without_consuming_outer_scope() {
+        let mut cx = LayoutCx::default();
+        cx.clamp_build = cx.clamp_build.container(900);
+        assert_eq!(clamp_next_seq(900, &cx), 0);
+        let deferred = DeferredClamp::capture(&cx).expect("active container");
+        assert_eq!(clamp_next_seq(900, &cx), 1);
+        assert_eq!(clamp_next_seq(900, &cx), 2);
+        let mut outer = cx.clone();
+        outer.clamp_build = outer.clamp_build.container(901);
+        assert_eq!(clamp_next_seq(901, &outer), 0);
         for _ in 0..2 {
-            let _build = deferred.enter();
-            assert_eq!(clamp_context(), Some((900, false)));
-            assert_eq!(clamp_next_seq(900), 1);
-            assert_eq!(clamp_next_seq(900), 2);
+            let mut probe = outer.clone();
+            probe.clamp_build = deferred.build();
+            assert_eq!(clamp_context(&probe), Some((900, false)));
+            assert_eq!(clamp_next_seq(900, &probe), 1);
+            assert_eq!(clamp_next_seq(900, &probe), 2);
         }
-        assert_eq!(clamp_context(), Some((901, false)));
-        assert_eq!(clamp_next_seq(901), 1);
-        assert_eq!(super::super::line_state::clamp_peek_seq(900), 3);
+        assert_eq!(clamp_context(&outer), Some((901, false)));
+        assert_eq!(clamp_next_seq(901, &outer), 1);
+        assert_eq!(super::super::line_state::clamp_peek_seq(900, &cx), 3);
     }
 
     #[test]
-    fn deferred_build_retains_bfc_boundary() {
-        let scope = ClampGuard::enter(902);
-        let bfc = ClampGuard::enter_bfc();
-        let deferred = DeferredClamp::capture().expect("active container");
-        drop(bfc);
-        drop(scope);
-        {
-            let _build = deferred.enter();
-            assert_eq!(clamp_context(), Some((902, true)));
-        }
-        assert_eq!(clamp_context(), None);
+    fn deferred_build_retains_bfc_boundary_without_changing_parent() {
+        let mut parent = LayoutCx::default();
+        parent.clamp_build = parent.clamp_build.container(902);
+        let mut inner = parent.clone();
+        inner.clamp_build = inner.clamp_build.bfc();
+        let deferred = DeferredClamp::capture(&inner).expect("active container");
+        inner.clamp_build = deferred.build();
+        assert_eq!(clamp_context(&inner), Some((902, true)));
+        assert_eq!(clamp_context(&parent), Some((902, false)));
     }
 }

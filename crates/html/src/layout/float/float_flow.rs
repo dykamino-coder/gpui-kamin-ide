@@ -157,12 +157,12 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // даёт `ClampCut` признак «за точкой есть содержимое» — потолок снова на
     // низе N-й строки. Авто-режим не трогаем: там пересечённая коробка без
     // считаемых строк внутри ушла бы целиком.
-    match crate::text::clamp::clamp_context() {
+    match crate::text::clamp::clamp_context(&opts.cx) {
         Some((key, skip)) if inherited.line_clamp.is_some() => div()
             .relative()
             .child(flow)
             .child(crate::text::clamp::clamp_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
                 0.0,
                 skip,
                 false,

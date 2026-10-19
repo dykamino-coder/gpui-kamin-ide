@@ -204,9 +204,7 @@ pub(crate) fn dispatch_element(
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
-            let _clamp_bfc = crate::text::clamp::clamp_context()
-                .is_some()
-                .then(crate::text::clamp::ClampGuard::enter_bfc);
+            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
             table(e, &merged, opts)
         }
         // Ряд, группа рядов или ячейка ВНЕ таблицы получают анонимную
@@ -217,16 +215,12 @@ pub(crate) fn dispatch_element(
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
-            let _clamp_bfc = crate::text::clamp::clamp_context()
-                .is_some()
-                .then(crate::text::clamp::ClampGuard::enter_bfc);
+            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
             let wrapper = anon_element("table", vec![Node::Element(e.clone())]);
             table(&wrapper, &merged, opts)
         }
         "table" => {
-            let _clamp_bfc = crate::text::clamp::clamp_context()
-                .is_some()
-                .then(crate::text::clamp::ClampGuard::enter_bfc);
+            let opts = &*opts.inner(|cx| cx.clamp_build = cx.clamp_build.bfc());
             table(e, &merged, opts)
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:

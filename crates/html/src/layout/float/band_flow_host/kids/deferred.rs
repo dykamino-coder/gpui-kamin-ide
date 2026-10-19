@@ -1,20 +1,28 @@
-//! Stable clamp identity for children rebuilt during band measurement.
+//! Stable explicit clamp identity for children rebuilt during band measurement.
 
-use crate::layout::float::band_flow::Build;
+use crate::layout::float::band_flow::{Build, Shapes};
+use crate::render::RenderOpts;
 use crate::text::clamp::DeferredClamp;
+use gpui::AnyElement;
 use std::rc::Rc;
 
-pub(super) fn deferred(build: Build, reserve: bool) -> Build {
-    let Some(scope) = DeferredClamp::capture() else {
-        return build;
-    };
-    // Assign paragraph numbers in tree order, before later siblings are built.
-    // Probe copies reuse this scope; their sequence never escapes the build.
-    if reserve {
-        drop(build(0.0, 0.0, None, None));
+pub(super) fn deferred(
+    opts: &RenderOpts,
+    reserve: bool,
+    build: impl Fn(&RenderOpts, f32, f32, Option<Shapes>, Option<f32>) -> AnyElement + 'static,
+) -> Build {
+    let scope = DeferredClamp::capture(&opts.cx);
+    // Reserve numbers before later siblings, then replay the captured sequence.
+    if scope.is_some() && reserve {
+        drop(build(opts, 0.0, 0.0, None, None));
     }
+    let opts = opts.clone();
     Rc::new(move |cb, avail, shapes, height| {
-        let _scope = scope.enter();
-        build(cb, avail, shapes, height)
+        let probe = opts.inner(|cx| {
+            if let Some(scope) = &scope {
+                cx.clamp_build = scope.build();
+            }
+        });
+        build(&probe, cb, avail, shapes, height)
     })
 }

@@ -28,7 +28,7 @@ pub(super) fn float_box(
     } else {
         let span = open_clamp_span(&opts.cx);
         let mut kids = blocks(&copy.children, &merged, opts);
-        close_clamp_span(span.clone());
+        close_clamp_span(span.clone(), &opts.cx);
         // CSS Overflow 4 section 5.3: its lines belong to an independent BFC,
         // but a float intersecting the clamp point keeps its border-box extent.
         let mut probed = merged.clone();

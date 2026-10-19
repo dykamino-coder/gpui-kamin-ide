@@ -106,16 +106,20 @@ pub(crate) fn generic_children(
             && e.style.clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
+    let clamp_outer = if is_clamp {
+        Some((e.node_id, false))
+    } else {
+        crate::text::clamp::clamp_context(&opts.cx)
+    };
     let child_opts = opts.inner(|cx| {
         if is_clamp {
             cx.clamp_atom_depth = 0;
+            cx.clamp_build = cx.clamp_build.container(e.node_id);
+        } else if makes_bfc {
+            cx.clamp_build = cx.clamp_build.bfc();
         }
     });
     let opts = &child_opts;
-    let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
-    let clamp_outer = crate::text::clamp::clamp_context();
-    let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
-        .then(crate::text::clamp::ClampGuard::enter_bfc);
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
     // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
     // ранний `return` не съел запись. Абсолютные дети дорожек не
@@ -174,7 +178,14 @@ pub(crate) fn generic_children(
     if let Some(scope) = viewport_scope {
         kids.extend(scope.finish());
     }
-    let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
+    let d = crate::text::clamp::hide_box_after_point(
+        d,
+        clamp_outer,
+        clamp_span,
+        &merged,
+        is_clamp,
+        &opts.cx,
+    );
     if let Some(scope) = cb_scope {
         kids.extend(scope.finish());
     }
@@ -209,9 +220,10 @@ pub(crate) fn generic_children(
         kids.push(
             crate::text::clamp::ClampCut::new(
                 e.node_id,
-                crate::text::clamp::clamp_lines_for(e.node_id),
+                crate::text::clamp::clamp_lines_for(e.node_id, opts.cx.vcx()),
                 e.style.clamp_lines(),
                 max_h,
+                &opts.cx,
             )
             .measure_context(&opts.cx)
             .trim_end(clamp_trim)

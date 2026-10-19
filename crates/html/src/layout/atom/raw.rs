@@ -37,15 +37,18 @@ pub(super) fn atom_element_raw(
     // (`line-clamp-032`). Содержимое атома строится ниже голым `blocks()`,
     // мимо сторожа общего пути. `display: inline` после каскада — это
     // `InlineBlock` с `inline_display` — атомом не является.
-    let _clamp_bfc = (matches!(
+    let clamp_bfc = matches!(
         e.style.display,
         Some(Display::InlineBlock)
             | Some(Display::InlineFlex)
             | Some(Display::InlineGrid)
             | Some(Display::InlineTable)
-    ) && e.style.inline_display != Some(true)
-        && crate::text::clamp::clamp_context().is_some())
-    .then(crate::text::clamp::ClampGuard::enter_bfc);
+    ) && e.style.inline_display != Some(true);
+    let opts = &*opts.inner(|cx| {
+        if clamp_bfc {
+            cx.clamp_build = cx.clamp_build.bfc();
+        }
+    });
     // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.

@@ -52,12 +52,9 @@ pub(crate) fn band_kids(
     let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
-        let opts = opts.clone();
-        let build: crate::layout::float::band_flow::Build =
-            std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-                element(&p, &inherited, &opts)
-            });
-        deferred(build, false)
+        deferred(opts, false, move |opts, _cb, _avail, _shapes, _h| {
+            element(&p, &inherited, opts)
+        })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.
     let nowrap_probe: Option<crate::layout::float::band_flow::Build> = (nowrap && has_lead)
@@ -157,19 +154,16 @@ pub(crate) fn band_kids(
         let inherited = inherited.clone();
         let pagination_offset = opts.frag.float_struts.get(&c.node_id).map_or(0.0, |s| s.by);
         let shape_values = opts.cx.vcx().keep();
-        let opts = opts.clone();
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
         let cb_height = inherited.height;
         let cb_block_w = inherited.width;
-        let build: crate::layout::float::band_flow::Build =
-            std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
-                build_band_kid(
-                    float, &node, &inherited, &opts, is_nest, vertical, cb_height, cb_block_w, cb,
-                    avail, shapes, height,
-                )
-            });
-        let build = deferred(build, !is_nest);
+        let build = deferred(opts, !is_nest, move |opts, cb, avail, shapes, height| {
+            build_band_kid(
+                float, &node, &inherited, opts, is_nest, vertical, cb_height, cb_block_w, cb,
+                avail, shapes, height,
+            )
+        });
         let clear = if float { None } else { c.style.clear };
         // css-shapes-1 §2: the float's shape shortens the lines next to it.
         let shape: Option<crate::layout::float::band_flow::ShapeOf> =

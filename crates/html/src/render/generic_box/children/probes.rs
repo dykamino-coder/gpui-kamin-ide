@@ -42,7 +42,7 @@ pub(crate) fn child_probes(
             [bw(merged.margin.right), bw(merged.margin.bottom)],
         ));
     }
-    if let Some((key, skip)) = crate::text::clamp::clamp_context() {
+    if let Some((key, skip)) = crate::text::clamp::clamp_context(&opts.cx) {
         // Строки дают пробы абзацев (paragraph_probed); здесь — только
         // коробка с краской: блок прячется целиком, если срез внутри.
         // Поточная коробка со СВОИМ контекстом форматирования точек
@@ -120,7 +120,7 @@ pub(crate) fn child_probes(
             in_flow_block && (bp_after > 0.0 || end_margin != 0.0 || min_end > 0.0 || capped);
         if !is_clamp && (has_box_style_probe(&e.style) || monolithic || sized || ends) {
             kids.push(crate::text::clamp::clamp_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
                 0.0,
                 skip,
                 // `min-height` alone does not make the box monolithic: it
@@ -170,7 +170,7 @@ pub(crate) fn child_probes(
             && matches!(merged.display, None | Some(Display::Block))
         {
             kids.push(crate::text::clamp::clamp_empty_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
             ));
         }
     }

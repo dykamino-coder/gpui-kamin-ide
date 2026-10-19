@@ -32,11 +32,13 @@ pub(super) fn build_band_kid(
     height: Option<f32>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let _clamp_bfc = float.then(crate::text::clamp::ClampGuard::enter_bfc);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
     // детям куска — ширина окна (`LayoutCx::avail_w`).
     let opts = &*opts.inner(|cx| {
+        if float {
+            cx.clamp_build = cx.clamp_build.bfc();
+        }
         if cb > 0.0 {
             cx.cb_width = Some(cb);
         }
