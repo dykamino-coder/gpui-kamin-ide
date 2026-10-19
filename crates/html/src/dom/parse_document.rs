@@ -60,7 +60,7 @@ pub(super) fn parse_input(
     let xhtml = content::is_xhtml(html);
     // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
     // разбора, `LayerRegistry` ниже).
-    crate::text::fonts::alternates::reset();
+    crate::text::fonts::alternates::reset(vcx);
     // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
     let html = if xml {
         std::borrow::Cow::Borrowed(html)

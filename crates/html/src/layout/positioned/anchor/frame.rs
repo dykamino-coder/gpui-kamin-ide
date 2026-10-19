@@ -48,7 +48,6 @@ pub fn reset() {
     let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
     LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
     CB.with(|m| m.borrow_mut().clear());
-    crate::text::inline::inline_box::clear();
     CB_PARENT.with(|m| m.borrow_mut().clear());
     let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
     AREA_LAST.with(|m| *m.borrow_mut() = area);

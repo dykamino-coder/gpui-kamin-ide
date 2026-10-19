@@ -74,7 +74,7 @@ pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: Valu
     FACES.with(|f| f.borrow_mut().clear());
     HAS_SPACE.with(|s| s.borrow_mut().clear());
     SIZE_ADJUST.with(|s| s.borrow_mut().clear());
-    super::metric_overrides::clear();
+    super::metric_overrides::clear(vcx);
     ROMN.with(|r| r.borrow_mut().clear());
     super::math::clear_aliases();
     load_faces_into(css, base, vcx);
@@ -149,7 +149,7 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
                     .or_default()
                     .push((slope, adjust));
             });
-            super::metric_overrides::register(&name, slope, &block);
+            super::metric_overrides::register(&name, slope, &block, vcx);
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
             let weight =
                 super::matching::range(declaration(&block, "font-weight").as_deref(), 400.0);

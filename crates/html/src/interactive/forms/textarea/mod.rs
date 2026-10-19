@@ -68,7 +68,7 @@ fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {
         .line_height
         .and_then(|v| v.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or_else(|| {
-            crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font)
+            crate::text::metrics::normal_px(crate::text::metrics::normal_line(family, vcx), font)
         });
     let vertical = c.wm().vertical();
     let gutter = gutters(c);

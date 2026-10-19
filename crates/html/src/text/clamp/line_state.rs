@@ -1,7 +1,6 @@
-//! Line state for clamp; split out to keep the owning module within 250 lines.
+//! Clamp container measurements, paragraph numbering, and build traversal scopes.
 
-use super::{PARA_BUDGET, PARA_ROWS};
-use crate::text::clamp::PARA_TAG;
+use super::PARA_ROWS;
 use gpui::{Bounds, Pixels};
 
 /// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
@@ -186,13 +185,11 @@ pub fn forget_clamp_buffers() {
     CLAMP_NEXT.with(|m| m.borrow_mut().clear());
     CLAMP_BOXES.with(|m| m.borrow_mut().clear());
     CLAMP_SEQ.with(|m| m.borrow_mut().clear());
-    PARA_BUDGET.with(|c| c.set(None));
     PARA_ROWS.with(|m| m.borrow_mut().clear());
-    PARA_TAG.with(|c| c.set(None));
 }
 
 /// Сторож стека clamp-контекста на время построения поддерева.
-pub struct ClampGuard(pub(crate) bool, Option<u32>);
+pub struct ClampGuard(pub(crate) bool);
 
 impl ClampGuard {
     /// Вход в сам clamp-контейнер.
@@ -204,10 +201,7 @@ impl ClampGuard {
         CLAMP_SEQ.with(|m| {
             m.borrow_mut().insert(key, 0);
         });
-        // A clamp container is its own count root even when it is an
-        // atomic inline of another paragraph (`display: inline-block` /
-        // `-webkit-inline-box`): the atom nesting restarts inside it.
-        ClampGuard(true, Some(super::paragraph_rows::swap_para_depth(0)))
+        ClampGuard(true)
     }
 
     /// Вход в элемент с собственным контекстом форматирования: строки
@@ -223,15 +217,12 @@ impl ClampGuard {
                 _ => false,
             }
         });
-        ClampGuard(pushed, None)
+        ClampGuard(pushed)
     }
 }
 
 impl Drop for ClampGuard {
     fn drop(&mut self) {
-        if let Some(depth) = self.1 {
-            super::paragraph_rows::swap_para_depth(depth);
-        }
         if self.0 {
             CLAMP_STACK.with(|st| {
                 st.borrow_mut().pop();

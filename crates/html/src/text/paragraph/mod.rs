@@ -229,7 +229,7 @@ mod element;
 pub(crate) mod probes;
 pub use crate::text::paragraph::probes::*;
 pub(super) mod measure;
-pub use crate::text::paragraph::measure::*;
+pub(crate) use crate::text::paragraph::measure::*;
 pub(super) mod breaking;
 pub use crate::text::paragraph::breaking::*;
 pub(crate) mod justify;

@@ -1,5 +1,5 @@
 //! Строчная коробка как якорь (`anchor-name`) и как содержащий блок абсолюта:
-//! метки краёв её содержимого в кусках абзаца и таблица её свойств.
+//! метки краёв её содержимого и принадлежащие потоку свойства коробки.
 //!
 //! css-anchor-position-1 §anchor box: рамка якоря из нескольких фрагментов —
 //! объемлющий прямоугольник их border box (Blink `AnchorMap::Set` объединяет
@@ -7,7 +7,7 @@
 //! содержащий блок строчной коробки — от начала первого фрагмента до конца
 //! последнего. Абзац знает фрагменты только по геометрии строк, поэтому
 //! коробка помечается парой пустых кусков (как `mark_inline_cb`), а свойства
-//! лежат в таблице кадра по номеру метки; абзац на подготовке кадра пишет
+//! передаются конечной меткой и куском-носителем; абзац перед покраской пишет
 //! рамки в общий реестр якорей (`anchor::register_inline`).
 
 use super::{InlineCb, OverlayAt, Piece};
@@ -15,11 +15,10 @@ use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::IntoElement;
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::rc::Rc;
 
 /// Свойства помеченной строчной коробки.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct InlineBoxInfo {
     /// `node_id` элемента.
     pub node: u64,
@@ -36,22 +35,6 @@ pub struct InlineBoxInfo {
     pub border: [f32; 4],
     /// `visibility: hidden` (§position-visibility: anchors-visible).
     pub hidden: bool,
-}
-
-thread_local! {
-    /// Таблица кадра: номер метки → свойства коробки. Чистится `clear`
-    /// в начале кадра (`anchor::reset`).
-    static BOXES: RefCell<HashMap<u32, InlineBoxInfo>> = RefCell::new(HashMap::new());
-}
-
-/// Свойства коробки по номеру метки.
-pub fn info(id: u32) -> Option<InlineBoxInfo> {
-    BOXES.with(|m| m.borrow().get(&id).cloned())
-}
-
-/// Очистить таблицу (новый кадр).
-pub fn clear() {
-    BOXES.with(|m| m.borrow_mut().clear());
 }
 
 fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 4] {
@@ -77,7 +60,7 @@ pub(super) fn mark_inline_box(pieces: Vec<Piece>, e: &Element, merged: &Computed
     let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let b = e.style.borders();
     let p = &e.style.padding;
-    let info = InlineBoxInfo {
+    let info = Rc::new(InlineBoxInfo {
         node: e.node_id,
         names,
         cb,
@@ -86,13 +69,13 @@ pub(super) fn mark_inline_box(pieces: Vec<Piece>, e: &Element, merged: &Computed
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.hidden == Some(true),
-    };
-    BOXES.with(|m| m.borrow_mut().insert(id, info));
+    });
     let marker = |start: bool| {
         Piece::Overlay(
             gpui::Empty.into_any_element(),
             OverlayAt {
                 box_marker: Some((id, start)),
+                inline_box_info: (!start).then(|| info.clone()),
                 ..Default::default()
             },
         )
@@ -111,11 +94,13 @@ pub(super) fn carrier(
     at: usize,
     s: usize,
     e: usize,
+    info: Rc<InlineBoxInfo>,
 ) -> (usize, gpui::AnyElement, OverlayAt) {
     (
         at,
         gpui::Empty.into_any_element(),
         OverlayAt {
+            inline_box_info: Some(info),
             inline_box: Some(InlineCb {
                 id,
                 start: s as isize - at as isize,
@@ -126,4 +111,55 @@ pub(super) fn carrier(
             ..Default::default()
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolved_piece_keeps_its_properties_across_other_paragraphs() {
+        let properties = Rc::new(InlineBoxInfo {
+            node: 1,
+            names: vec!["first".into()],
+            ..Default::default()
+        });
+        let marker = |id, start, info| {
+            Piece::Overlay(
+                gpui::Empty.into_any_element(),
+                OverlayAt {
+                    box_marker: Some((id, start)),
+                    inline_box_info: info,
+                    ..Default::default()
+                },
+            )
+        };
+        let first = super::super::spacers::overlays(vec![
+            marker(1, true, None),
+            Piece::Text {
+                text: "one".into(),
+                style: Default::default(),
+            },
+            marker(1, false, Some(properties.clone())),
+        ]);
+        let other = super::super::spacers::overlays(vec![
+            marker(2, true, None),
+            marker(
+                2,
+                false,
+                Some(Rc::new(InlineBoxInfo {
+                    node: 2,
+                    ..Default::default()
+                })),
+            ),
+        ]);
+        let (_, _, how) = &first[0];
+        assert!(Rc::ptr_eq(
+            how.inline_box_info.as_ref().unwrap(),
+            &properties
+        ));
+        assert_eq!(how.inline_box_info.as_ref().unwrap().names, ["first"]);
+        assert_eq!(how.inline_box.unwrap().start, -3);
+        assert_eq!(other[0].2.inline_box_info.as_ref().unwrap().node, 2);
+    }
 }

@@ -226,7 +226,7 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
                 opts.text.font_family.to_string()
             }
         });
-    let measured = crate::text::metrics::normal_line(&family);
+    let measured = crate::text::metrics::normal_line(&family, opts.cx.vcx());
     if measured > 0.0 {
         measured
     } else {

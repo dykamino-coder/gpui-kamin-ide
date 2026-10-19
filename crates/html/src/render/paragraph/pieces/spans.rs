@@ -97,6 +97,7 @@ pub(crate) fn paragraph_spans(
                 biggest,
                 crate::text::metrics::normal_line(
                     &inherited.font_family.clone().unwrap_or_default(),
+                    opts.cx.vcx(),
                 ),
             );
             v.retain(|(r, _)| !in_edge(edges, r));
@@ -108,14 +109,17 @@ pub(crate) fn paragraph_spans(
         .emph_spans(inline::emphasis_spans(
             pieces,
             biggest,
-            crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+            crate::text::metrics::normal_line(
+                &inherited.font_family.clone().unwrap_or_default(),
+                opts.cx.vcx(),
+            ),
             (inherited.wm().turned() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
             opts.cx.ruby_layers.as_ref(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
-        .decor_spans(inline::decor_spans(pieces, &opts.text))
+        .decor_spans(inline::decor_spans(pieces, &opts.text, opts.cx.vcx()))
 }
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).

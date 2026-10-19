@@ -5,25 +5,9 @@ use crate::hooks::IntoHooked;
 use crate::style::computed::{Computed, Display, Sides};
 use gpui::{IntoElement, ParentElement, Styled};
 
-thread_local! {
-    static HAS_TEXT_TURN: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
-}
-
-pub(crate) fn without_text_turn<R>(build: impl FnOnce() -> R) -> R {
-    struct Restore(bool);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            HAS_TEXT_TURN.with(|cell| cell.set(self.0));
-        }
-    }
-    let _restore = Restore(HAS_TEXT_TURN.with(|cell| cell.replace(false)));
-    build()
-}
-
-/// The paragraph being built is a rotated line that carries text (not the
-/// pure-atom branch of `without_text_turn`).
-pub(crate) fn text_turn() -> bool {
-    HAS_TEXT_TURN.with(|cell| cell.get())
+/// Whether the paragraph's text line is turned around physical atoms.
+pub(crate) fn text_turn(cx: &crate::layout::cx::LayoutCx) -> bool {
+    !cx.pure_atom_paragraph
 }
 
 pub(crate) fn physical(
@@ -35,7 +19,7 @@ pub(crate) fn physical(
     // Atomic formatting contexts keep physical dimensions and their own
     // writing mode, including an explicitly orthogonal mode. Only the
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
-    if !HAS_TEXT_TURN.with(|cell| cell.get())
+    if !text_turn(&opts.cx)
         || !flow.wm().turned()
         || e.style.inline_display == Some(true)
         || !(matches!(
@@ -122,18 +106,14 @@ pub(crate) fn margin(style: &Computed, flow: &Computed) -> Sides {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn pure_atom_construction_restores_the_text_turn_even_after_unwinding() {
-        assert!(HAS_TEXT_TURN.with(|cell| cell.get()));
-        let result = std::panic::catch_unwind(|| {
-            without_text_turn(|| {
-                assert!(!HAS_TEXT_TURN.with(|cell| cell.get()));
-                without_text_turn(|| assert!(!HAS_TEXT_TURN.with(|cell| cell.get())));
-                panic!("aborted atom construction");
-            })
-        });
-        assert!(result.is_err());
-        assert!(HAS_TEXT_TURN.with(|cell| cell.get()));
+    fn atom_build_context_is_local_to_its_branch() {
+        let parent = crate::layout::cx::LayoutCx::default();
+        let mut atoms = parent.clone();
+        atoms.pure_atom_paragraph = true;
+        let sibling = parent.clone();
+        assert!(text_turn(&parent));
+        assert!(!text_turn(&atoms));
+        assert!(text_turn(&sibling));
     }
 }

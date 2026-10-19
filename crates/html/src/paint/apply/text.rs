@@ -42,7 +42,7 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if let Some(pct) = c.font_stretch {
         d.style().text.font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
-    let features = c.used_features();
+    let features = c.used_features(vcx);
     if !features.is_empty() {
         d.style().text.font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }

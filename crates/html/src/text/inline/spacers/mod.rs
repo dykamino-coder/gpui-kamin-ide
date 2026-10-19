@@ -187,8 +187,10 @@ pub fn overlays(pieces: Vec<Piece>) -> Vec<(usize, AnyElement, OverlayAt)> {
                     ..
                 },
             ) => {
-                if let Some(&(_, s)) = boxes.iter().find(|b| b.0 == id) {
-                    let mut c = crate::text::inline::inline_box::carrier(id, at, s, at);
+                if let Some(&(_, s)) = boxes.iter().find(|b| b.0 == id)
+                    && let Some(info) = how.inline_box_info
+                {
+                    let mut c = crate::text::inline::inline_box::carrier(id, at, s, at, info);
                     if let Some(b) = c.2.inline_box.as_mut() {
                         b.shift = (how.rot_dx, how.rot_dy);
                     }

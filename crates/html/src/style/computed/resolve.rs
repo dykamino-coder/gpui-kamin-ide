@@ -194,7 +194,7 @@ impl Computed {
     /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
     /// `apply_font_features` дописывал после них ещё `liga 0`
     /// (`font-features-across-space-3`).
-    pub fn used_features(&self) -> Vec<(String, u32)> {
+    pub fn used_features(&self, vcx: crate::document::state::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
             crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self);
@@ -240,6 +240,7 @@ impl Computed {
         out.extend(crate::text::fonts::metric_overrides::features(
             self.font_family.as_deref().unwrap_or(""),
             slope,
+            vcx,
         ));
         out
     }

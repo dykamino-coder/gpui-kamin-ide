@@ -105,6 +105,12 @@ pub(crate) fn generic_children(
             && e.style.clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
+    let child_opts = opts.inner(|cx| {
+        if is_clamp {
+            cx.clamp_atom_depth = 0;
+        }
+    });
+    let opts = &child_opts;
     let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
     let clamp_outer = crate::text::clamp::clamp_context();
     let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())

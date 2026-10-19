@@ -90,7 +90,11 @@ pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32
 ///
 /// Отдаются отдельно, потому что выделение строит свой элемент из тех же
 /// прогонов, добавляя подложку на выделенный кусок.
-pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<TextRun>)> {
+pub fn text_and_runs(
+    pieces: &[Piece],
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(String, Vec<TextRun>)> {
     let mut text = String::new();
     let mut runs: Vec<TextRun> = vec![];
     for p in pieces {
@@ -100,7 +104,7 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
                     continue;
                 }
                 text.push_str(t);
-                runs.push(run_for(t, style, base));
+                runs.push(run_for(t, style, base, vcx));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
@@ -112,11 +116,20 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
 }
 
 /// Шрифт струта абзаца — тот же, каким набирался бы текст самого блока.
-pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
-    run_for("x", style, base).font
+pub fn strut_font(
+    style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> gpui::Font {
+    run_for("x", style, base, vcx).font
 }
 
-pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
+pub(super) fn run_for(
+    text: &str,
+    style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> TextRun {
     let mut font = base.font();
     font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks);
     // Названное семейство сильнее родового: подстановкой занимается система.
@@ -144,7 +157,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
     if let Some(pct) = style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }
-    let features = style.used_features();
+    let features = style.used_features(vcx);
     if !features.is_empty() {
         font.features = gpui::FontFeatures(std::sync::Arc::new(features));
     }

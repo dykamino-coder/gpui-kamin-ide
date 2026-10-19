@@ -120,7 +120,6 @@ impl Document {
         } else {
             base_url::document_base(html, base_url.as_ref())
         };
-        crate::text::paragraph::forget_measures();
         crate::text::clamp::forget_clamp_buffers();
         crate::text::vertical::forget_vt_measures();
         let (state, nodes, root) =

@@ -29,7 +29,7 @@ pub(crate) fn route_pieces(
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
-        && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
+        && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx())
     {
         // `word-space-transform` смотрит на СОСЕДЕЙ точки переноса, а они
         // сплошь и рядом лежат в других кусках (`あ<wbr>い` — это три куска:

@@ -54,7 +54,7 @@ pub(crate) fn ruby_container_atom(
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
-        let font = crate::text::inline::strut_font(&merged, &opts.text);
+        let font = crate::text::inline::strut_font(&merged, &opts.text, opts.cx.vcx());
         let (asc, desc) = crate::text::metrics::font_extents(&font, size);
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,

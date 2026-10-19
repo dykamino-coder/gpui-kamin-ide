@@ -127,13 +127,17 @@ pub(crate) fn line_box_spans(
 /// Абзац с руби идёт в строку и при `rtl`: иначе он остаётся в
 /// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
-pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
+pub(crate) fn atoms_fit_line(
+    inherited: &Computed,
+    ruby: bool,
+    cx: &crate::layout::cx::LayoutCx,
+) -> bool {
     !inherited.wm().vertical()
         // A rotated paragraph of atoms only is a row whose end edge sits on
         // the end of the paragraph box (`paragraph_routed`, pure-atom
         // branch); a line box would add the strut's descent below the atoms
         // (`wm-propagation-body-035`: the caption image rose by the descent).
-        && (!inherited.wm().turned() || rotated_atom::text_turn())
+        && (!inherited.wm().turned() || rotated_atom::text_turn(cx))
         && (ruby || !inherited.wm().rtl())
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)

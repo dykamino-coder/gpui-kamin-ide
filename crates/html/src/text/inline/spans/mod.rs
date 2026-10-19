@@ -105,7 +105,11 @@ pub fn line_height_spans(
 /// Куски с украшениями (css-text-decor-3 §2.1) и их украшенные прогоны:
 /// смежные куски с тем же украшением на том же месте списка (Blink
 /// `ContinuesDecoratedRun`); атом прогон рвёт. Скрытый кусок не украшается.
-pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
+pub fn decor_spans(
+    pieces: &[Piece],
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
     let mut shadow_inks = Vec::new();
@@ -130,7 +134,7 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                             };
                             DecorItem {
                                 decor: d.clone(),
-                                font: run_for("x", &probe, base).font,
+                                font: run_for("x", &probe, base, vcx).font,
                                 group: at..end,
                             }
                         })

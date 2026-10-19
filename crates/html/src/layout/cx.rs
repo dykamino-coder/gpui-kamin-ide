@@ -15,6 +15,13 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Enclosing atomic inlines relative to this clamp count root.
+    pub(crate) clamp_atom_depth: u32,
+    /// Inputs offered only to the paragraph currently being built.
+    pub(crate) clamp_budget: Option<usize>,
+    pub(crate) clamp_tag: Option<(u64, u32)>,
+    /// Build a physical row of atoms without turning its enclosing text line.
+    pub(crate) pure_atom_paragraph: bool,
     /// Keep scrollbar hover and drag at rest for a static host capture.
     pub freeze_scrollbars: bool,
     /// Containing-block width in px when the parent's style gives it. A

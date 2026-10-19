@@ -33,8 +33,13 @@ pub(crate) fn paragraph_pieces_routed(
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
-    let clamp_budget = crate::text::clamp::take_para_budget();
-    let clamp_tag = crate::text::clamp::take_para_tag();
+    let clamp_budget = opts.cx.clamp_budget;
+    let clamp_tag = opts.cx.clamp_tag;
+    let child_opts = opts.inner(|cx| {
+        cx.clamp_budget = None;
+        cx.clamp_tag = None;
+    });
+    let opts = &child_opts;
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: брать поперечное выравнивание ряда с самих
     // кусков, когда абзац своего не задал (`vertical-align: bottom` у
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
@@ -134,6 +139,7 @@ pub(crate) fn paragraph_pieces_routed(
                 atom_aligns
                     .iter()
                     .any(|a| a.as_ref().is_some_and(|(_, ex)| !ex.is_empty())),
+                &opts.cx,
             )
     };
     if atoms_in_line {
@@ -141,7 +147,7 @@ pub(crate) fn paragraph_pieces_routed(
     } else {
         inline::trim_edge_spaces(&mut pieces);
     }
-    pieces = style_pieces(pieces, inherited, first_line_at, first_line);
+    pieces = style_pieces(pieces, inherited, first_line_at, first_line, opts.cx.vcx());
     // Межсловный интервал и отступ первой строки требуют строки из слов, а
     // единый текстовый блок их не умеет — поэтому решение принимается ДО
     // сборки блока, иначе оба свойства молча пропадали.

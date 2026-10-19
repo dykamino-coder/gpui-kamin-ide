@@ -7,7 +7,7 @@ pub(super) use upright::upright_paragraph;
 use super::{paragraph, paragraph_routed};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::layout::writing_mode::{native_vertical, rotated_atom};
+use crate::layout::writing_mode::native_vertical;
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -72,7 +72,8 @@ pub(crate) fn vertical_paragraph(
         // A single atom cannot wrap, and an orthogonal box with an automatic
         // inline size gets its line length from the parent's layout, which the
         // turned paragraph cannot query; both keep the physical row.
-        let para = rotated_atom::without_text_turn(|| paragraph(nodes, &horizontal, opts));
+        let atom_opts = opts.inner(|cx| cx.pure_atom_paragraph = true);
+        let para = paragraph(nodes, &horizontal, &atom_opts);
         // The row sits at the box's inline-start, which is the BOTTOM for
         // `sideways-lr` and for `direction: rtl` (§6.4 Abstract-Physical
         // Mapping: `wm-propagation-body-035`, `overconstrained-rel-pos-rtl-*`).

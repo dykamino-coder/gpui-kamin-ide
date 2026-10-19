@@ -1,4 +1,4 @@
-//! Split lines for breaking; split out to keep the owning module within 250 lines.
+//! Line breaking, ellipsis, and document-owned split reuse.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};
@@ -18,19 +18,19 @@ impl Paragraph {
         // Подбор кегля мутирует абзац между вызовами — ключ это видит
         // (font_size в ключе замера).
         let key = self.split_key(limit);
-        if let Some(hit) = SPLITS.with(|c| c.borrow().get(&key).cloned()) {
+        if let Some(hit) = self.measures.splits.borrow().get(&key).cloned() {
             return (*hit).clone();
         }
         let lines = self.split_uncached(limit, window);
-        SPLITS.with(|c| {
-            let mut m = c.borrow_mut();
+        {
+            let mut m = self.measures.splits.borrow_mut();
             // Прямолинейный сброс при переполнении: страница с тысячами
             // абзацев дороже промахов одного сброса.
             if m.len() >= 2048 {
                 m.clear();
             }
             m.insert(key, std::rc::Rc::new(lines.clone()));
-        });
+        }
         lines
     }
 }

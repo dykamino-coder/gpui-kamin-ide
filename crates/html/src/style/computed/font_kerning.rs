@@ -33,9 +33,9 @@ mod tests {
         style
     }
 
-    fn kern(style: &Computed) -> Option<u32> {
+    fn kern(style: &Computed, vcx: crate::document::state::ValueCx<'_>) -> Option<u32> {
         style
-            .used_features()
+            .used_features(vcx)
             .into_iter()
             .find(|(tag, _)| tag == "kern")
             .map(|(_, n)| n)
@@ -48,8 +48,8 @@ mod tests {
         let parent = computed("font-kerning: none", vcx);
         let child = computed("font-variant-ligatures: no-common-ligatures", vcx);
         let inherited = inherit(&parent, &child, vcx);
-        assert_eq!(kern(&inherited), Some(0));
-        assert_eq!(kern(&inherited.text_only()), Some(0));
+        assert_eq!(kern(&inherited, vcx), Some(0));
+        assert_eq!(kern(&inherited.text_only(), vcx), Some(0));
     }
 
     #[test]
@@ -59,11 +59,11 @@ mod tests {
         let parent = computed("font-kerning: none", vcx);
         for keyword in ["auto", "initial"] {
             let child = computed(&format!("font-kerning: {keyword}"), vcx);
-            assert_eq!(kern(&inherit(&parent, &child, vcx)), None);
+            assert_eq!(kern(&inherit(&parent, &child, vcx), vcx), None);
         }
         for keyword in ["inherit", "unset"] {
             let child = computed(&format!("font-kerning: {keyword}"), vcx);
-            assert_eq!(kern(&inherit(&parent, &child, vcx)), Some(0));
+            assert_eq!(kern(&inherit(&parent, &child, vcx), vcx), Some(0));
         }
     }
 
@@ -75,7 +75,7 @@ mod tests {
             "font-feature-settings: 'kern' 1; font-kerning: none",
             "font-kerning: none; font-feature-settings: 'kern' 1",
         ] {
-            assert_eq!(kern(&computed(css, vcx)), Some(1));
+            assert_eq!(kern(&computed(css, vcx), vcx), Some(1));
         }
     }
 
@@ -85,7 +85,7 @@ mod tests {
         let vcx = doc.values();
         let mut style = computed("font-kerning: normal", vcx);
         style.set_font_kerning("invalid");
-        assert_eq!(kern(&style), Some(1));
+        assert_eq!(kern(&style, vcx), Some(1));
         assert!(!style.font_features.iter().any(|(tag, _)| tag == "kern"));
     }
 
@@ -95,9 +95,9 @@ mod tests {
         let vcx = doc.values();
         let parent = computed("font-kerning: none", vcx);
         let reset = computed("font-kerning: none; font: 16px serif", vcx);
-        assert_eq!(kern(&inherit(&parent, &reset, vcx)), None);
+        assert_eq!(kern(&inherit(&parent, &reset, vcx), vcx), None);
         let inherited = computed("font: 16px serif; font: inherit", vcx);
-        assert_eq!(kern(&inherit(&parent, &inherited, vcx)), Some(0));
+        assert_eq!(kern(&inherit(&parent, &inherited, vcx), vcx), Some(0));
     }
 
     #[test]
@@ -105,21 +105,21 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         assert_eq!(
-            kern(&computed("font: 16px serif; font-kerning: none", vcx)),
+            kern(&computed("font: 16px serif; font-kerning: none", vcx), vcx),
             Some(0)
         );
         assert_eq!(
-            kern(&computed(
-                "font-kerning: none !important; font: 16px serif",
+            kern(
+                &computed("font-kerning: none !important; font: 16px serif", vcx),
                 vcx
-            )),
+            ),
             Some(0)
         );
         assert_eq!(
-            kern(&computed(
-                "font: 16px serif !important; font-kerning: none",
+            kern(
+                &computed("font: 16px serif !important; font-kerning: none", vcx),
                 vcx
-            )),
+            ),
             None
         );
     }

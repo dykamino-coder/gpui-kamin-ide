@@ -24,7 +24,7 @@ pub(super) fn configure(para: Paragraph, block: &Computed, opts: &RenderOpts) ->
         ),
     };
     para.first_line_box(
-        crate::text::inline::strut_font(first, &opts.text),
+        crate::text::inline::strut_font(first, &opts.text, opts.cx.vcx()),
         gpui::px(size),
         height,
     )

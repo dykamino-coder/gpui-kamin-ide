@@ -34,7 +34,7 @@ impl Computed {
             Some(Len::Px(v)) => v,
             Some(Len::Em(k) | Len::Pct(k)) => k * font,
             _ => {
-                let normal = crate::text::metrics::normal_line(family);
+                let normal = crate::text::metrics::normal_line(family, vcx);
                 if normal > 0.0 {
                     crate::text::metrics::normal_px(normal, font)
                 } else {

@@ -34,7 +34,7 @@ pub(super) fn paragraph_probed(
     // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
     // поэтому сопоставление кадров не зависит от порядка обхода на
     // отрисовке.
-    let ctx = crate::text::clamp::clamp_context().filter(|_| crate::text::clamp::para_depth() == 0);
+    let ctx = crate::text::clamp::clamp_context().filter(|_| opts.cx.clamp_atom_depth == 0);
     let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key));
     let budget = match (ctx, seq) {
         (Some((key, _)), Some(s)) => match crate::text::clamp::clamp_para(key) {
@@ -43,14 +43,11 @@ pub(super) fn paragraph_probed(
         },
         _ => None,
     };
-    crate::text::clamp::set_para_budget(budget);
-    crate::text::clamp::set_para_tag(ctx.zip(seq).map(|((key, _), s)| (key, s)));
-    let para = paragraph(taken, inherited, opts);
-    crate::text::clamp::set_para_tag(None);
-    // Ячейку обязательно опустошить и когда абзац её не забрал
-    // (вертикальное письмо уходит из `paragraph` раньше): иначе бюджет
-    // достался бы СЛЕДУЮЩЕМУ абзацу.
-    crate::text::clamp::set_para_budget(None);
+    let paragraph_opts = opts.inner(|cx| {
+        cx.clamp_budget = budget;
+        cx.clamp_tag = ctx.zip(seq).map(|((key, _), s)| (key, s));
+    });
+    let para = paragraph(taken, inherited, &paragraph_opts);
     let para = with_text_shadow(para, inherited, taken, opts);
     // A paragraph after the clamp point is hidden for paint once the clip
     // reveals the overflow of earlier content (css-overflow-4 §5.3).

@@ -31,6 +31,12 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// CSS font-face metric descriptors, scoped to this document.
+    pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
+    /// Shaped paragraphs and fit results shared only inside this document.
+    pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
+    /// Named font-feature definitions owned by this document.
+    pub(crate) font_alternates: RefCell<crate::text::fonts::alternates::Definitions>,
     /// Rasterized foreignObject layers of this document, bounded by the painter.
     pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// Носитель и область просмотра, которыми разобран документ.

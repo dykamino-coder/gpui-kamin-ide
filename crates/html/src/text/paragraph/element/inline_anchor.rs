@@ -14,12 +14,10 @@ impl Paragraph {
         segs: &[Seg],
         at: usize,
         b: InlineCb,
+        info: &crate::text::inline::inline_box::InlineBoxInfo,
         bounds: Bounds<Pixels>,
         window: &mut Window,
     ) {
-        let Some(info) = crate::text::inline::inline_box::info(b.id) else {
-            return;
-        };
         let s = (at as isize + b.start).max(0) as usize;
         let e = (at as isize + b.end).max(0) as usize;
         let shift = |r: Bounds<Pixels>| Bounds {

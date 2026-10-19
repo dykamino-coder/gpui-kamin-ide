@@ -72,7 +72,7 @@ fn paragraph_routed(
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => size * k,
                 _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
             };
-            let normal_font = crate::text::inline::strut_font(&base, &opts.text);
+            let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;
             let for_build = first.clone();
             let depth = defer_depth();
@@ -91,7 +91,7 @@ fn paragraph_routed(
             // Мерить надо ТЕМ начертанием, каким строка и будет набрана:
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
-            let font = crate::text::inline::strut_font(&first, &opts.text);
+            let font = crate::text::inline::strut_font(&first, &opts.text, opts.cx.vcx());
             let measure_size = match first.font_size {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => k * size,

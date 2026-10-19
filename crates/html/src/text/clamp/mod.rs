@@ -21,12 +21,7 @@ pub use crate::text::clamp::line_state::{ClampSpan, close_clamp_span, open_clamp
 pub use crate::text::clamp::paragraph_rows::clamp_empty_probe;
 pub use crate::text::clamp::paragraph_rows::clamp_probe;
 pub use crate::text::clamp::paragraph_rows::publish_para_rows;
-pub use crate::text::clamp::paragraph_rows::set_para_budget;
-pub use crate::text::clamp::paragraph_rows::set_para_tag;
-pub use crate::text::clamp::paragraph_rows::take_para_budget;
 use crate::text::clamp::paragraph_rows::take_para_rows;
-pub use crate::text::clamp::paragraph_rows::take_para_tag;
-pub use crate::text::clamp::paragraph_rows::{ParaNest, para_depth};
 
 // owner: A
 
@@ -35,7 +30,3 @@ use crate::text::clamp::line_state::CLAMP_CUTS;
 use crate::text::clamp::line_state::CLAMP_PARA;
 
 use crate::text::clamp::paragraph_rows::PARA_ROWS;
-
-use crate::text::clamp::paragraph_rows::PARA_TAG;
-
-use crate::text::clamp::paragraph_rows::PARA_BUDGET;

@@ -1,4 +1,4 @@
-//! Prepaint for element; split out to keep the owning module within 250 lines.
+//! Paragraph prepaint: line geometry, inline anchors, and positioned overlays.
 
 use crate::text::paragraph::*;
 use gpui::{
@@ -16,7 +16,6 @@ impl Paragraph {
         window: &mut Window,
         _cx: &mut App,
     ) -> Option<Hitbox> {
-        // Предел переноса — длина строки по её физической оси.
         self.vertical_layout_origin =
             window.layout_origin_unrounded(*state) - window.element_offset();
         self.width_nudge = {
@@ -134,8 +133,10 @@ impl Paragraph {
             // Строчные якоря и содержащие блоки — до куска внутри них:
             // носитель краёв стоит в конце коробки, а абсолют — раньше.
             for (at, _, how) in placed.iter() {
-                if let Some(b) = how.inline_box.filter(|_| !rotated) {
-                    self.register_inline_box(&segs, *at, b, bounds, window);
+                if let Some(b) = how.inline_box.filter(|_| !rotated)
+                    && let Some(info) = &how.inline_box_info
+                {
+                    self.register_inline_box(&segs, *at, b, info, bounds, window);
                 }
             }
             for (at, el, how) in placed.iter_mut() {

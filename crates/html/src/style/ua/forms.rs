@@ -31,7 +31,8 @@ pub(crate) fn text_style(style: &Computed, vcx: ValueCx<'_>) -> Computed {
         _ => 16.,
     };
     let family = c.font_family.as_deref().unwrap_or("");
-    let normal = crate::text::metrics::normal_px(crate::text::metrics::normal_line(family), font);
+    let normal =
+        crate::text::metrics::normal_px(crate::text::metrics::normal_line(family, vcx), font);
     let line = c
         .line_height
         .and_then(|l| l.to_px(None, FontCx::new(family, font), vcx))

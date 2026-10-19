@@ -194,8 +194,8 @@ pub fn ic_px(family: &str, size_px: f32) -> f32 {
 }
 
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.
-pub fn normal_line(family: &str) -> f32 {
-    crate::text::fonts::metric_overrides::normal_line(family, fractions(family).2)
+pub fn normal_line(family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
+    crate::text::fonts::metric_overrides::normal_line(family, fractions(family).2, vcx)
 }
 
 /// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —

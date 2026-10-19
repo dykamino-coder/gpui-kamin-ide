@@ -6,7 +6,12 @@ use crate::style::values::value::Len;
 use crate::text::metrics;
 use crate::text::paragraph::tabs::TabStops;
 
-pub fn tab_stops(pieces: &[Piece], block: &Computed, base: &gpui::TextStyle) -> TabStops {
+pub fn tab_stops(
+    pieces: &[Piece],
+    block: &Computed,
+    base: &gpui::TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> TabStops {
     let size = match block.font_size {
         Some(Len::Px(v)) => v,
         _ => f32::from(base.font_size.to_pixels(gpui::px(16.0))),
@@ -18,7 +23,7 @@ pub fn tab_stops(pieces: &[Piece], block: &Computed, base: &gpui::TextStyle) -> 
             ""
         }
     });
-    let font = super::strut_font(block, base);
+    let font = super::strut_font(block, base, vcx);
     let space = metrics::space_advance(&font, size)
         .unwrap_or_else(|| metrics::ch_ex_px(family, size).0)
         + metrics::spacing_px(block.letter_spacing, family, size)
@@ -49,6 +54,8 @@ mod tests {
 
     #[test]
     fn numeric_tabs_use_shaped_spaces_with_the_block_font() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
         metrics::install_space_probe(|font, size| {
             assert_eq!(font.weight, gpui::FontWeight(700.0));
             size * 0.25
@@ -69,13 +76,15 @@ mod tests {
                 ..Default::default()
             },
         }];
-        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default());
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
         assert_eq!(stops.default, 40.0);
         assert_eq!(stops.next(0, 0.0), 40.0);
     }
 
     #[test]
     fn generic_monospace_uses_the_same_family_as_the_text_run() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
         let expected = metrics::mono_family_for(None).to_string();
         metrics::install_probe(move |family, size| {
             let ch = if family == expected { 0.75 } else { 0.25 };
@@ -92,7 +101,7 @@ mod tests {
             style: block.clone(),
         }];
         assert_eq!(
-            tab_stops(&pieces, &block, &gpui::TextStyle::default()).next(0, 0.0),
+            tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx).next(0, 0.0),
             30.0
         );
     }
@@ -116,6 +125,8 @@ mod tests {
 
     #[test]
     fn inline_font_does_not_replace_the_block_metrics() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
         let block = Computed {
             font_size: Some(Len::Px(20.0)),
             letter_spacing: Some(Len::Px(2.0)),
@@ -131,7 +142,7 @@ mod tests {
                 ..Default::default()
             },
         }];
-        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default());
+        let stops = tab_stops(&pieces, &block, &gpui::TextStyle::default(), vcx);
         assert_eq!(stops.default, 30.0);
         assert_eq!(stops.next(3, 0.0), 75.0);
     }

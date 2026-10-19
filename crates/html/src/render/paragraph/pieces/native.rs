@@ -85,6 +85,7 @@ pub(crate) fn native_paragraph(
         crate::text::paragraph::align_for(inherited),
         wrap,
     )
+    .measure_context(&opts.cx)
     .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)
         .edge_spans(edges)
@@ -92,7 +93,7 @@ pub(crate) fn native_paragraph(
             boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
             boxes.as_ref().map(|_| {
                 (
-                    inline::strut_font(inherited, &opts.text),
+                    inline::strut_font(inherited, &opts.text, opts.cx.vcx()),
                     gpui::px(own_size(inherited, opts)),
                 )
             }),
@@ -151,7 +152,7 @@ pub(crate) fn native_paragraph(
         // авто-режим — из бюджета, посчитанного по точке среза.
         .line_clamp(clamp_budget.or_else(|| {
             (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip)
-                && crate::text::clamp::para_depth() == 0)
+                && opts.cx.clamp_atom_depth == 0)
                 .then(|| inherited.clamp_lines().map(|n| n as usize))
                 .flatten()
         }))
@@ -200,7 +201,12 @@ pub(crate) fn native_paragraph(
                 .hyphen_char
                 .clone(),
         )
-        .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
+        .tab_stops(inline::tab_stops(
+            &pieces,
+            inherited,
+            &opts.text,
+            opts.cx.vcx(),
+        ))
         .overlays(inline::overlays(pieces))
         .atoms(line_atoms)
         // Срез строки — только у абзаца, держащего первую/последнюю строку

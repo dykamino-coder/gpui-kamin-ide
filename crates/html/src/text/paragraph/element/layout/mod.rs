@@ -1,4 +1,4 @@
-//! Layout for element; split out to keep the owning module within 250 lines.
+//! Paragraph layout probes retain text, geometry, and document measurement ownership.
 
 mod measured_layout;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
@@ -95,6 +95,7 @@ impl Paragraph {
         let atom_fit = self.atom_fit.clone();
         let ruby_base_sink = self.ruby_base_sink.clone();
         let ruby_layers = self.ruby_layers.clone();
+        let measures = self.measures.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -108,6 +109,7 @@ impl Paragraph {
                     align,
                     wrap,
                 );
+                probe.measures = measures.clone();
                 probe.vertical = vertical;
                 probe.lines_reversed = lines_reversed;
                 probe.vertical_central_baseline = vertical_central_baseline;
