@@ -176,7 +176,7 @@ pub(crate) fn edge_inset(
         }
     } else {
         match s.text_box_under {
-            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family) * size,
+            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family, vcx) * size,
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(descent),
             TextEdge::Text | TextEdge::Cap | TextEdge::Ex => 0.0,
         }

@@ -64,7 +64,7 @@ fn inherit_stage(
     inherit_sizes(parent, own, &mut c, vcx);
     inherit_explicit(parent, own, &mut c, vcx);
     inherit_fonts(parent, own, &mut c);
-    crate::style::computed::math_style::inherit(parent, &mut c);
+    crate::style::computed::math_style::inherit(parent, &mut c, vcx);
     inherit_text_layout(parent, own, &mut c);
     flow_align::resolve(parent, &mut c);
     c.resolve_gradient_current_color(vcx);

@@ -11,12 +11,18 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
     let new = "<style>@font-face {font-family: NewUpdate;\
         src: url(data:font/ttf;base64,AAEAADI=)}</style><p>new</p>";
     let mut updated = Document::new_with_base(old, "", "file:///tests/page.html");
-    assert_eq!(fonts::alias("OldUpdate").as_deref(), Some("UpdateFont49"));
+    assert_eq!(
+        fonts::alias("OldUpdate", updated.state.values()).as_deref(),
+        Some("UpdateFont49")
+    );
     let old_salt = updated.salt();
     assert!(updated.update(new, "p {color: red}"));
     assert_ne!(old_salt, updated.salt());
-    assert_eq!(fonts::alias("OldUpdate"), None);
-    assert_eq!(fonts::alias("NewUpdate").as_deref(), Some("UpdateFont50"));
+    assert_eq!(fonts::alias("OldUpdate", updated.state.values()), None);
+    assert_eq!(
+        fonts::alias("NewUpdate", updated.state.values()).as_deref(),
+        Some("UpdateFont50")
+    );
     let fresh = Document::new_with_base(new, "p {color: red}", "file:///tests/page.html");
     assert_eq!(updated.salt(), fresh.salt());
     assert_eq!(updated.node_count(), fresh.node_count());

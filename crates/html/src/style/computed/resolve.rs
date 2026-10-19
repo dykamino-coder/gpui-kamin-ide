@@ -168,8 +168,8 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::text::fonts::matching::select(family, self).map_or_else(
-            || crate::text::fonts::size_adjust(family, slope),
+        let size_adjust = crate::text::fonts::matching::select(family, self, vcx).map_or_else(
+            || crate::text::fonts::size_adjust(family, slope, vcx),
             |f| f.adjust,
         );
         match self.font_size_adjust {
@@ -197,7 +197,7 @@ impl Computed {
     pub fn used_features(&self, vcx: crate::document::state::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
-            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self);
+            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self, vcx);
         // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
         // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
         let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;

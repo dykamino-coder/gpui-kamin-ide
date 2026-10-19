@@ -1,9 +1,6 @@
 //! Load font faces, cache decoded sources and register page-local family aliases.
 
-use super::{
-    ALIASES, declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc,
-};
-use super::{FACES, FEATURES, HAS_SPACE, LOADED, LOADER, ROMN, ROMN_BY_SRC, SIZE_ADJUST};
+use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
 use crate::document::state::ValueCx;
 
 /// Есть ли в семействе знак пробела (U+0020).
@@ -15,13 +12,14 @@ use crate::document::state::ValueCx;
 /// `@font-face` с дескриптором `unicode-range`, где пробел не назван. Про
 /// все прочие имена ответ утвердительный: дескриптора у них нет, а его
 /// умолчание — весь набор знаков.
-pub fn covers_space(family: &str) -> bool {
-    HAS_SPACE.with(|s| {
-        s.borrow()
-            .get(&family.to_ascii_lowercase())
-            .copied()
-            .unwrap_or(true)
-    })
+pub fn covers_space(family: &str, vcx: ValueCx<'_>) -> bool {
+    vcx.doc
+        .font_faces
+        .has_space
+        .borrow()
+        .get(&family.to_ascii_lowercase())
+        .copied()
+        .unwrap_or(true)
 }
 
 /// Покрывает ли дескриптор `unicode-range` знак U+0020.
@@ -69,14 +67,14 @@ pub fn load_faces(css: &str, vcx: ValueCx<'_>) {
 pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
-    ALIASES.with(|a| a.borrow_mut().clear());
-    FEATURES.with(|f| f.borrow_mut().clear());
-    FACES.with(|f| f.borrow_mut().clear());
-    HAS_SPACE.with(|s| s.borrow_mut().clear());
-    SIZE_ADJUST.with(|s| s.borrow_mut().clear());
+    vcx.doc.font_faces.aliases.borrow_mut().clear();
+    vcx.doc.font_faces.features.borrow_mut().clear();
+    vcx.doc.font_faces.faces.borrow_mut().clear();
+    vcx.doc.font_faces.has_space.borrow_mut().clear();
+    vcx.doc.font_faces.size_adjust.borrow_mut().clear();
     super::metric_overrides::clear(vcx);
-    ROMN.with(|r| r.borrow_mut().clear());
-    super::math::clear_aliases();
+    vcx.doc.font_faces.romn.borrow_mut().clear();
+    super::math::clear_aliases(vcx);
     load_faces_into(css, base, vcx);
 }
 
@@ -100,34 +98,42 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
             continue;
         };
         let src = crate::document::resource_url::resolve(&src, base);
-        let real = LOADED.with(|c| c.borrow().get(&src).cloned());
+        let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
         let real = match real {
             Some(hit) => hit,
             None => {
                 let loaded = read_font(&src).and_then(|bytes| {
-                    super::math::remember(&src, &bytes);
+                    super::math::remember(&src, &bytes, vcx);
                     let romn = sfnt_romn_baseline(&bytes);
-                    ROMN_BY_SRC.with(|m| m.borrow_mut().insert(src.clone(), romn));
-                    LOADER.with(|l| l.borrow().as_ref().and_then(|load| load(bytes)))
+                    vcx.doc
+                        .font_faces
+                        .romn_by_src
+                        .borrow_mut()
+                        .insert(src.clone(), romn);
+                    crate::text::metrics::load_font(bytes)
                 });
-                LOADED.with(|c| c.borrow_mut().insert(src.clone(), loaded.clone()));
+                vcx.doc
+                    .font_faces
+                    .loaded
+                    .borrow_mut()
+                    .insert(src.clone(), loaded.clone());
                 loaded
             }
         };
         if let Some(real) = real {
-            super::math::register(&src, &real);
+            super::math::register(&src, &real, vcx);
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
-            if let Some(Some(v)) = ROMN_BY_SRC.with(|m| m.borrow().get(&src).copied()) {
-                ROMN.with(|r| r.borrow_mut().insert(name.clone(), v));
+            if let Some(Some(v)) = vcx.doc.font_faces.romn_by_src.borrow().get(&src).copied() {
+                vcx.doc.font_faces.romn.borrow_mut().insert(name.clone(), v);
             }
             // Правил на одно семейство бывает много: пробел у семейства есть,
             // если его несёт хоть одно из них.
             let space = range_has_space(declaration(&block, "unicode-range").as_deref());
-            HAS_SPACE.with(|s| {
-                let mut s = s.borrow_mut();
+            {
+                let mut s = vcx.doc.font_faces.has_space.borrow_mut();
                 let seen = s.entry(name.clone()).or_insert(false);
                 *seen |= space;
-            });
+            };
             // Лицо запоминается вместе с шириной из дескриптора: выбор между
             // правилами одного семейства ведёт §font-matching.
             // `size-adjust: <percentage [0,∞]>`; без дескриптора — 100%.
@@ -143,12 +149,13 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
                     Some(v) if v.starts_with("oblique") => 2,
                     _ => 0,
                 };
-            SIZE_ADJUST.with(|s| {
-                s.borrow_mut()
-                    .entry(name.clone())
-                    .or_default()
-                    .push((slope, adjust));
-            });
+            vcx.doc
+                .font_faces
+                .size_adjust
+                .borrow_mut()
+                .entry(name.clone())
+                .or_default()
+                .push((slope, adjust));
             super::metric_overrides::register(&name, slope, &block, vcx);
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
             let weight =
@@ -158,26 +165,31 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
             let features = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))
                 .unwrap_or_default();
-            FACES.with(|f| {
-                f.borrow_mut()
-                    .entry(name.clone())
-                    .or_default()
-                    .push(super::matching::Face {
-                        width,
-                        weight,
-                        slope,
-                        angle,
-                        family: real.clone(),
-                        adjust,
-                        features,
-                    });
-            });
+            vcx.doc
+                .font_faces
+                .faces
+                .borrow_mut()
+                .entry(name.clone())
+                .or_default()
+                .push(super::matching::Face {
+                    width,
+                    weight,
+                    slope,
+                    angle,
+                    family: real.clone(),
+                    adjust,
+                    features,
+                });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))
             {
-                FEATURES.with(|f| f.borrow_mut().insert(name.clone(), list));
+                vcx.doc
+                    .font_faces
+                    .features
+                    .borrow_mut()
+                    .insert(name.clone(), list);
             }
-            ALIASES.with(|a| a.borrow_mut().insert(name, real));
+            vcx.doc.font_faces.aliases.borrow_mut().insert(name, real);
         }
     }
 }
@@ -190,9 +202,9 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
 /// курсивное лицо не падает (csswg#9389, `italic-oblique-fallback`). Среди
 /// лиц одного наклона вес и ширину мы не выбираем: расходятся их множители —
 /// 1.0 (`oblique-last-resort-weight-selection`: два oblique-лица, 100% и 50%).
-pub fn size_adjust(family: &str, want: u8) -> f32 {
-    SIZE_ADJUST.with(|s| {
-        let s = s.borrow();
+pub fn size_adjust(family: &str, want: u8, vcx: ValueCx<'_>) -> f32 {
+    {
+        let s = vcx.doc.font_faces.size_adjust.borrow();
         let Some(faces) = s.get(&family.to_ascii_lowercase()) else {
             return 1.0;
         };
@@ -208,5 +220,5 @@ pub fn size_adjust(family: &str, want: u8) -> f32 {
             }
         }
         1.0
-    })
+    }
 }

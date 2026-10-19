@@ -4,9 +4,25 @@ use super::space;
 use super::{INSTALLED, WRAP};
 use crate::document::state::ValueCx;
 
+/// Thread-bound platform handles; CSS aliases and source bytes belong to DocState.
+#[derive(Default)]
+struct PlatformFonts {
+    system: Option<std::sync::Arc<gpui::TextSystem>>,
+    loader: Option<crate::text::fonts::Loader>,
+}
 thread_local! {
-    static FONT_SYSTEM: std::cell::RefCell<Option<std::sync::Arc<gpui::TextSystem>>> =
-        const { std::cell::RefCell::new(None) };
+    static FONT_SYSTEM: std::cell::RefCell<PlatformFonts> = const {
+        std::cell::RefCell::new(PlatformFonts { system: None, loader: None })
+    };
+}
+
+pub(crate) fn install_font_loader(loader: crate::text::fonts::Loader) {
+    FONT_SYSTEM
+        .with(|cell| cell.borrow_mut().loader = Some(super::font_loader::deduplicated(loader)));
+}
+
+pub(crate) fn load_font(bytes: Vec<u8>) -> Option<String> {
+    FONT_SYSTEM.with(|cell| cell.borrow().loader.as_ref().and_then(|load| load(bytes)))
 }
 
 /// Ruby's content edge uses the selected face, including generic family,
@@ -14,7 +30,7 @@ thread_local! {
 pub(crate) fn font_extents(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f32, f32) {
     FONT_SYSTEM.with(|cell| {
         let system = cell.borrow();
-        if let Some(system) = system.as_ref() {
+        if let Some(system) = system.system.as_ref() {
             let id = system.resolve_font(font);
             crate::text::fonts::metric_overrides::extents(
                 font,
@@ -34,7 +50,7 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f
 /// MathML fallback constants use the math face's x-height and rule thickness.
 pub(crate) fn math_metrics(font: &gpui::Font, size: f32) -> (f32, f32) {
     FONT_SYSTEM.with(|cell| {
-        if let Some(system) = cell.borrow().as_ref() {
+        if let Some(system) = cell.borrow().system.as_ref() {
             let id = system.resolve_font(font);
             (
                 f32::from(system.x_height(id, gpui::px(size))),
@@ -51,7 +67,7 @@ pub(crate) fn math_metrics(font: &gpui::Font, size: f32) -> (f32, f32) {
 /// Вызывается один раз при старте приложения, ПОСЛЕ регистрации своих
 /// шрифтов: до неё `Ahem` ещё не найден и замер вернул бы метрики подмены.
 pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
-    FONT_SYSTEM.with(|cell| *cell.borrow_mut() = Some(text_system.clone()));
+    FONT_SYSTEM.with(|cell| cell.borrow_mut().system = Some(text_system.clone()));
     space::use_text_system(text_system.clone());
     let names = text_system.all_font_names();
     // Список семейств из каскада разбирается ДО отрисовки, а выбирать из него
@@ -86,7 +102,7 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
 pub(super) fn horizontal(family: &str, size: f32) -> Option<(f32, f32, f32, f32)> {
     FONT_SYSTEM.with(|cell| {
         let system = cell.borrow();
-        let text_system = system.as_ref()?;
+        let text_system = system.system.as_ref()?;
 
         // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
         // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то
@@ -131,7 +147,7 @@ pub(super) fn horizontal(family: &str, size: f32) -> Option<(f32, f32, f32, f32)
 pub(super) fn vertical(family: &str, size: f32) -> Option<(f32, f32, f32)> {
     FONT_SYSTEM.with(|cell| {
         let system = cell.borrow();
-        let text_system = system.as_ref()?;
+        let text_system = system.system.as_ref()?;
 
         let name: gpui::SharedString = if family.is_empty() {
             crate::style::computed::GENERIC_SANS.into()

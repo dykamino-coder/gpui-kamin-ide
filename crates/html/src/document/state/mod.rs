@@ -31,6 +31,10 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Font-face descriptors and source caches belonging to this document.
+    pub(crate) font_faces: crate::text::fonts::FontFaces,
+    /// Parsed MATH sources and registered native-family data of this document.
+    pub(crate) font_math: crate::text::fonts::math::MathFonts,
     /// Font measurement caches scoped to this document.
     pub(crate) metrics: crate::text::metrics::Metrics,
     /// Vertical paragraph measurements and root paint geometry of this document.

@@ -14,9 +14,19 @@ fn face(name: &str, width: f32, weight: f32, slope: u8, angle: f32) -> Face {
 }
 
 fn chosen(faces: Vec<Face>, request: Computed) -> String {
-    super::super::FACES.with(|f| f.borrow_mut().insert("selection-test".into(), faces));
-    let selected = select("selection-test", &request).unwrap().family;
-    super::super::FACES.with(|f| f.borrow_mut().remove("selection-test"));
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    vcx.doc
+        .font_faces
+        .faces
+        .borrow_mut()
+        .insert("selection-test".into(), faces);
+    let selected = select("selection-test", &request, vcx).unwrap().family;
+    vcx.doc
+        .font_faces
+        .faces
+        .borrow_mut()
+        .remove("selection-test");
     selected
 }
 
@@ -142,20 +152,24 @@ fn oblique_prefers_upright_to_italic_even_without_synthesis() {
 
 #[test]
 fn regular_face_keeps_features_equal_across_synthesized_weight_runs() {
-    super::super::FACES.with(|f| {
-        f.borrow_mut().insert(
-            "selection-test".into(),
-            vec![face("regular", 100.0, 400.0, 0, 0.0)],
-        )
-    });
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    vcx.doc.font_faces.faces.borrow_mut().insert(
+        "selection-test".into(),
+        vec![face("regular", 100.0, 400.0, 0, 0.0)],
+    );
     let regular = Computed::default();
     let bold = Computed {
         font_weight: Some(700),
         ..Default::default()
     };
     assert_eq!(
-        features("selection-test", &regular),
-        features("selection-test", &bold)
+        features("selection-test", &regular, vcx),
+        features("selection-test", &bold, vcx)
     );
-    super::super::FACES.with(|f| f.borrow_mut().remove("selection-test"));
+    vcx.doc
+        .font_faces
+        .faces
+        .borrow_mut()
+        .remove("selection-test");
 }

@@ -1,7 +1,7 @@
-//! Stretch for fonts; split out to keep the owning module within 250 lines.
+//! Select a document font face by its CSS stretch descriptor.
 
-use super::FACES;
 use super::alias;
+use crate::document::state::ValueCx;
 
 /// Ширина из дескриптора `font-stretch` правила `@font-face` — отрезок в
 /// процентах (css-fonts-4 §font-stretch-desc). Одно значение даёт вырожденный
@@ -45,12 +45,14 @@ pub(super) fn stretch_desc(value: Option<&str>) -> (f32, f32) {
 /// с одинаковым (отсутствующим) дескриптором — `unicode-range`,
 /// `first-available-font-*` — не двигаются. Семейство без правил `@font-face`
 /// уходит в прежнюю подмену.
-pub fn alias_stretch(family: &str, want: Option<f32>) -> Option<String> {
+pub fn alias_stretch(family: &str, want: Option<f32>, vcx: ValueCx<'_>) -> Option<String> {
     let key = family.to_ascii_lowercase();
     let want = want.unwrap_or(100.0);
-    let picked = FACES.with(|f| {
-        let faces = f.borrow();
-        let list = faces.get(&key)?;
+    let picked = {
+        let faces = vcx.doc.font_faces.faces.borrow();
+        let Some(list) = faces.get(&key) else {
+            return alias(family, vcx);
+        };
         let rank = |face: &super::matching::Face| -> (u8, f32) {
             let (lo, hi) = face.width;
             let v = want.clamp(lo, hi);
@@ -74,6 +76,6 @@ pub fn alias_stretch(family: &str, want: Option<f32>) -> Option<String> {
             }
         }
         best.map(|(name, _)| name.to_string())
-    });
-    picked.or_else(|| alias(family))
+    };
+    picked.or_else(|| alias(family, vcx))
 }

@@ -16,7 +16,11 @@ pub(crate) fn depth(value: &str) -> Option<Depth> {
         value.parse().ok().map(Depth::Absolute)
     }
 }
-pub(crate) fn inherit(parent: &Computed, c: &mut Computed) {
+pub(crate) fn inherit(
+    parent: &Computed,
+    c: &mut Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     c.math_compact = c.math_compact.or(parent.math_compact);
     c.math_shift = c.math_shift.or(parent.math_shift);
     c.math_operator_form = c.math_operator_form.or(parent.math_operator_form);
@@ -30,8 +34,8 @@ pub(crate) fn inherit(parent: &Computed, c: &mut Computed) {
     };
     if c.math_font_size {
         let family = parent.font_family.as_deref().unwrap_or("");
-        let actual = fonts::alias_for(family, parent).unwrap_or_else(|| family.to_string());
-        let constants = fonts::math::for_family(&actual);
+        let actual = fonts::alias_for(family, parent, vcx).unwrap_or_else(|| family.to_string());
+        let constants = fonts::math::for_family(&actual, vcx);
         let factor = scale(
             parent.math_level,
             c.math_level,

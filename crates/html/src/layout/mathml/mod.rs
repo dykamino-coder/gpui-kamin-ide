@@ -116,6 +116,7 @@ fn build(
         (children, parameters::kind(e, &style, opts))
     };
     let content = Content {
+        values: opts.cx.vcx().keep(),
         children,
         factories,
         operator,

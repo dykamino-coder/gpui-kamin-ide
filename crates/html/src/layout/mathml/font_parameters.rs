@@ -15,7 +15,7 @@ impl FontParameters {
         let font = strut_font(style, &opts.text, opts.cx.vcx());
         let size = px_strict(style.font_size).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size);
-        let constants = math::for_family(&font.family);
+        let constants = math::for_family(&font.family, opts.cx.vcx());
         let c = |index: usize, fallback| {
             constants
                 .as_ref()

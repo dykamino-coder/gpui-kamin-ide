@@ -10,6 +10,7 @@
 //! CSS сам разрешает его, когда нужного глифа в шрифте не нашлось.
 
 mod families;
+mod font_loader;
 mod state;
 use crate::document::state::ValueCx;
 pub(crate) use state::Metrics;
@@ -22,6 +23,7 @@ use crate::text::metrics::families::fractions;
 pub use crate::text::metrics::families::set_doc_family;
 pub use crate::text::metrics::text_system::use_text_system;
 pub(crate) use crate::text::metrics::text_system::{font_extents, math_metrics};
+pub(crate) use text_system::{install_font_loader, load_font};
 
 mod spacing;
 pub use crate::text::metrics::spacing::spacing_px;
@@ -95,7 +97,7 @@ pub fn vmetrics_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32, f
     // получал ПОДСТАНОВОЧНЫЙ шрифт, и полулидинг среза расходился со
     // строкой, которую рисует настоящее лицо (`text-box-trim-start-002`,
     // `-end-003`). `fractions()` разворачивает имя так же.
-    let real = crate::text::fonts::alias(family);
+    let real = crate::text::fonts::alias(family, vcx);
     let family = real.as_deref().unwrap_or(family);
     let key = family.to_ascii_lowercase();
     if let Some(hit) = vcx.doc.metrics.vcache.borrow().get(&key).copied() {

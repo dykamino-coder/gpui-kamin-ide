@@ -2,7 +2,7 @@
 
 use super::{Computed, family_name_ok, generic_family, is_generic, is_quote};
 
-pub(super) fn apply(style: &mut Computed, v: &str) {
+pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::ValueCx<'_>) {
     if v.eq_ignore_ascii_case("inherit") {
         style.font_family = None;
         style.font_families = None;
@@ -85,8 +85,8 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
     // файла — `first-available-font-002/007`, `ex-unit-004`.
     let available = |f: &str| {
-        (crate::text::metrics::font_installed(f) || crate::text::fonts::alias(f).is_some())
-            && crate::text::fonts::covers_space(f)
+        (crate::text::metrics::font_installed(f) || crate::text::fonts::alias(f, vcx).is_some())
+            && crate::text::fonts::covers_space(f, vcx)
     };
     let installed = v
         .split(',')
@@ -183,6 +183,7 @@ pub(crate) fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) 
 pub(crate) fn fallbacks(
     style: &Computed,
     base: Option<gpui::FontFallbacks>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<gpui::FontFallbacks> {
     let Some(families) = &style.font_families else {
         return base.or_else(crate::text::fonts::document_fallbacks);
@@ -194,9 +195,10 @@ pub(crate) fn fallbacks(
         .iter()
         .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
         .filter(|name| {
-            crate::text::metrics::font_installed(name) || crate::text::fonts::alias(name).is_some()
+            crate::text::metrics::font_installed(name)
+                || crate::text::fonts::alias(name, vcx).is_some()
         })
-        .map(|name| crate::text::fonts::alias_for(name, style).unwrap_or_else(|| name.clone()))
+        .map(|name| crate::text::fonts::alias_for(name, style, vcx).unwrap_or_else(|| name.clone()))
         .collect();
     if let Some(document) = crate::text::fonts::document_fallbacks() {
         list.extend(document.fallback_list().iter().cloned());

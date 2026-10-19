@@ -32,7 +32,7 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
     } else {
         family
     };
-    let real = crate::text::fonts::alias(family);
+    let real = crate::text::fonts::alias(family, vcx);
     let family = real.as_deref().unwrap_or(family);
     if let Some(hit) = vcx.doc.metrics.cache.borrow().get(family).copied() {
         return hit;

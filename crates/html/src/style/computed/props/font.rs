@@ -110,7 +110,7 @@ impl Computed {
                 // §font-style-prop): подбор лица различает их.
                 self.oblique = Some(v.starts_with("oblique"));
             }
-            "font-family" => font_family::apply(self, v),
+            "font-family" => font_family::apply(self, v, vcx),
 
             _ => self.apply_font_features(key, v, hit, vcx),
         }

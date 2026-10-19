@@ -137,14 +137,14 @@ pub(super) fn run_for(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> TextRun {
     let mut font = base.font();
-    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks);
+    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks, vcx);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_for(family, style)
+        font.family = crate::text::fonts::alias_for(family, style, vcx)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
