@@ -69,3 +69,31 @@ fn lifted_inline_runs_keep_paragraph_continuation() {
         .collect();
     assert_eq!(marks, [false, true]);
 }
+
+#[test]
+fn orthogonal_block_tail_keeps_its_independent_contents_in_the_measured_host() {
+    for mode in ["vertical-lr", "vertical-rl"] {
+        let markup = format!(
+            r#"<div id="source"><div style="float:right;width:40px;height:120px"></div><div id="tail" style="writing-mode:{mode};width:40px;height:120px"><ruby>base<rt>note</rt></ruby></div></div>"#
+        );
+        let tree = parse(&markup, "");
+        let nodes = &find(&tree, "source").expect("source").children;
+        let (host, end, lifted) = band_host_m(
+            nodes,
+            0,
+            16.,
+            &[],
+            FloatCb::of(&crate::style::computed::Computed::default()),
+        )
+        .expect("orthogonal block owns its line layout");
+        assert_eq!(end, nodes.len());
+        assert!(lifted.is_empty());
+        assert_eq!(
+            host.marks.shape_flow.expect("host").bands,
+            Some(BandPath::Measured)
+        );
+        let tail = find(&host.children, "tail").expect("tail");
+        assert!(tail.children.iter().any(has_ruby));
+        assert_eq!(tail.style.height, Some(Len::Px(120.)));
+    }
+}

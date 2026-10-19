@@ -51,12 +51,17 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
         || (c.inline && c.style.display.is_none())
-        || band_orthogonal(&c.style, wm)
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
         // контекста не заводит, но флоаты не перекрывает (`floats-039`).
-        || !(own_context(c) || c.tag == "table" || (block_level_in_flow(c) && replaced_tag(c)))
+        // Writing Modes 4 section 3.2: an orthogonal block establishes an
+        // independent formatting context. Its measured border box uses the
+        // same opportunity search as other non-overlapping pieces.
+        || !(own_context(c)
+            || band_orthogonal(&c.style, wm)
+            || c.tag == "table"
+            || (block_level_in_flow(c) && replaced_tag(c)))
     {
         return None;
     }
