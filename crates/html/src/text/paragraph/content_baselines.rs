@@ -77,16 +77,7 @@ mod tests {
             Wrap::default(),
         );
         paragraph.lines = (0..4)
-            .map(|index| Line {
-                clearance: gpui::px(0.),
-                range: index..index + 1,
-                width: px(10.0),
-                ellipsis: false,
-                clamped: false,
-                vis_cut: None,
-                hyphen: false,
-                indent: px(0.0),
-            })
+            .map(|index| Line::test(index..index + 1, px(10.0)))
             .collect();
         paragraph.lh_spans = vec![(1..2, px(20.0))];
         assert_eq!(

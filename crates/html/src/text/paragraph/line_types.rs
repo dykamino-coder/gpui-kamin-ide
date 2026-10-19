@@ -93,3 +93,20 @@ pub struct Indent {
     /// `hanging`: отступ получают все строки, КРОМЕ той, что получила бы его.
     pub hanging: bool,
 }
+
+#[cfg(test)]
+impl Line {
+    /// Unclamped, unindented line fixture shared by paragraph geometry tests.
+    pub(super) fn test(range: std::ops::Range<usize>, width: Pixels) -> Self {
+        Self {
+            clearance: gpui::px(0.0),
+            range,
+            width,
+            ellipsis: false,
+            clamped: false,
+            vis_cut: None,
+            hyphen: false,
+            indent: gpui::px(0.0),
+        }
+    }
+}
