@@ -14,3 +14,6 @@ windows = { version = "0.62", features = [
   "Win32_System_JobObjects",
   "Win32_System_Threading",   # IO_COUNTERS внутри JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 ] }
+
+[lints]
+workspace = true

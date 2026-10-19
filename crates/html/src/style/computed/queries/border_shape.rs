@@ -1,6 +1,7 @@
 //! Запросы border-shape к Computed: обводка формы, выносы геометрических коробок, контур, обрезка.
 
 use super::*;
+use crate::style::values::value::px_lossy_zero;
 
 impl Computed {
     /// Обводка `border-shape` по «relevant side» (css-borders-4
@@ -10,9 +11,9 @@ impl Computed {
     /// `RelevantSideForBorderShape`). Физические индексы t/r/b/l = 0..3;
     /// без цвета — цвет текста, без него чёрный (`currentColor`).
     pub fn border_shape_stroke(&self) -> (f32, Color) {
-        let vertical = self.vertical == Some(true);
-        let rl = self.vertical_rl == Some(true);
-        let rtl = self.rtl == Some(true);
+        let vertical = self.wm().vertical();
+        let rl = self.wm().block_rl();
+        let rtl = self.wm().rtl();
         let (block_start, block_end) = match (vertical, rl) {
             (false, _) => (0usize, 2usize),
             (true, true) => (1, 3),
@@ -31,10 +32,7 @@ impl Computed {
             .find(|i| self.border_visible[*i] == Some(true))
             .unwrap_or(block_start);
         let w = self.borders();
-        let width = match [w.top, w.right, w.bottom, w.left][side] {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
         let colour = self.border_colors[side]
             .or(self.border_color)
             .or(self.color)
@@ -52,10 +50,7 @@ impl Computed {
     /// рамку, content-box — на рамку и отбивку, half-border-box — на половину
     /// рамки (Blink `GeometryBoxUtils::ReferenceBoxBorderBoxOutsets`).
     pub fn geometry_outsets(&self, kind: u8) -> [f32; 4] {
-        let px = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px = px_lossy_zero;
         let b = self.borders();
         let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
         let pd = [
@@ -98,15 +93,16 @@ impl Computed {
         } else {
             self.border_shape_stroke().0
         };
-        let spike = if stroke > 0.0 && crate::paint::background::shape_is_linear(&bs.outer) {
-            stroke * 5.0
-        } else {
-            0.0
-        };
+        let spike =
+            if stroke > 0.0 && crate::style::computed::shape_kind::shape_is_linear(&bs.outer) {
+                stroke * 5.0
+            } else {
+                0.0
+            };
         let mut ext = out.map(|o| o.max(0.0) + stroke / 2.0 + spike);
         // Тени повторяют фигуру (css-borders-4 §border-shape-shadow-interaction)
         // и рисуются растром на той же области (`background::
-        // border_shape_shadow_svg`): наружная уходит за border-box на разлёт,
+        // border_shape_shadow_scene`): наружная уходит за border-box на разлёт,
         // смещение и хвост размытия (3σ = 1.5·blur); у внутренней хвост
         // размытия тоже нужен — область фильтра обрезает бросающий
         // прямоугольник, и без запаса край холста просвечивал бы.
@@ -124,7 +120,7 @@ impl Computed {
             }
         }
         // Контур `outline` повторяет фигуру (слой над группой,
-        // `background::border_shape_outline_svg`) — вынос на сдвиг и толщину.
+        // `background::border_shape_outline_scene`) — вынос на сдвиг и толщину.
         if let Some((w, off, _)) = self.shaped_outline() {
             let reach = (off + w).max(0.0) + 1.0;
             for e in &mut ext {
@@ -142,8 +138,14 @@ impl Computed {
     /// иначе чёрный (как у `render::decorations`); `outline-offset: inset` —
     /// минус толщина. Шрифтовые единицы — своим кеглем.
     pub fn shaped_outline(&self) -> Option<(f32, f32, Color)> {
-        let o = self.outline.as_ref()?;
         self.border_shape.as_ref()?;
+        self.contour_outline_params()
+    }
+
+    /// Толщина, сдвиг и цвет сплошного/`auto`/`double` контура по форме
+    /// (`border-shape` либо `corner-shape`).
+    pub fn contour_outline_params(&self) -> Option<(f32, f32, Color)> {
+        let o = self.outline.as_ref()?;
         if !matches!(o.style, Some(1) | Some(2) | Some(OUTLINE_DOUBLE)) {
             return None;
         }

@@ -32,12 +32,7 @@ use crate::dom::Node;
 /// брать нельзя — `blocks` решает по `under_tf`
 /// из `inherit`, и расхождение дало бы коробку и
 /// в копии, и в слое ICB.
-pub(super) fn fixed_cb_box(c: &crate::style::computed::Computed) -> bool {
-    c.transform.is_some()
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
-        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
-}
+pub(super) use crate::layout::positioned::repeat::{drop_uncontained_oof, fixed_cb_box};
 
 /// css-position-3 §abspos-breaking: «User
 /// agents must not paginate the content of

@@ -1,5 +1,6 @@
 //! Корень постраничного режима: поля и имя первой страницы, группы строчных прогонов.
 
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::render::is_blank;
 use crate::style::cascade::inherit::inherit;
@@ -17,12 +18,14 @@ pub(super) enum Run {
 pub(super) fn resolve_root_page(
     none: &mut bool,
     canvas: &mut Option<gpui::Hsla>,
+    canvas_img: &mut Option<Computed>,
     root: &mut Computed,
     nodes: &mut Vec<Node>,
     left: &mut f32,
     right: &mut f32,
     top: &mut f32,
     root_page: &mut String,
+    vcx: ValueCx<'_>,
 ) {
     loop {
         let live: Vec<&Node> = nodes.iter().filter(|n| !is_blank(n)).collect();
@@ -68,6 +71,11 @@ pub(super) fn resolve_root_page(
             if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
                 *canvas = Some(c.to_hsla());
             }
+            // Gradients and images of the propagated background (CSS 2.1 §14.2)
+            // paint the canvas too, above its colour (`page_stack::canvas`).
+            if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style) {
+                *canvas_img = Some(l);
+            }
             break;
         }
         *left += side(&e.style.margin.left) + side(&b.left) + side(&e.style.padding.left);
@@ -76,10 +84,15 @@ pub(super) fn resolve_root_page(
         if let Some(c) = e.style.background.filter(|c| c.a > 0.0) {
             *canvas = Some(c.to_hsla());
         }
+        // Gradients and images of the propagated background (CSS 2.1 §14.2)
+        // paint the canvas too, above its colour (`page_stack::canvas`).
+        if let Some(l) = crate::layout::page::page_stack::image_layers(&e.style) {
+            *canvas_img = Some(l);
+        }
         if let Some(p) = &e.style.page {
             *root_page = p.clone();
         }
-        *root = inherit(&*root, &e.style);
+        *root = inherit(&*root, &e.style, vcx);
         *nodes = e.children;
     }
 }
@@ -119,4 +132,11 @@ pub(super) fn group_runs(
             Run::None
         };
     }
+}
+
+/// Block axis of the root writing mode (css-writing-modes-4 §3.1): the
+/// direction the page stack fragments in; `None` — horizontal.
+pub(super) fn root_axis(root: &Computed) -> Option<crate::layout::fragment::types::StackAxis> {
+    let axis = crate::layout::fragment::types::StackAxis::of(root.wm());
+    axis.is_vertical().then_some(axis)
 }

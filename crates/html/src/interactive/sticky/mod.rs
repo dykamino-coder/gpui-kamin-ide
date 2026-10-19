@@ -1,6 +1,7 @@
 //! Липкие коробки `position: sticky`.
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled};
@@ -43,6 +44,9 @@ pub(crate) fn sticky_wrap(
     c: &Computed,
     frame: &crate::interactive::sticky::element::StickyCell,
     allowed: bool,
+    // The box's link in the shift chain its subtree was built with
+    // (`LayoutCx::sticky`).
+    link: Option<crate::interactive::scroll_extent::StickyShift>,
 ) -> AnyElement {
     if c.position != Some(crate::style::computed::Position::Sticky) {
         return el;
@@ -54,7 +58,8 @@ pub(crate) fn sticky_wrap(
         // только на отрисовке, поэтому берём ноль — как `top: 0`.
         Some(_) => Some(0.0),
     };
-    let mut wrapper = crate::interactive::sticky::element::Sticky::new(el, frame.clone());
+    let link = link.unwrap_or_else(|| crate::interactive::scroll_extent::ShiftLink::inside(None));
+    let mut wrapper = crate::interactive::sticky::element::Sticky::new(el, frame.clone(), link);
     wrapper.top = side(c.inset.top);
     wrapper.bottom = side(c.inset.bottom);
     wrapper.left = side(c.inset.left);
@@ -73,9 +78,9 @@ pub(crate) fn sticky_wrap(
         || wrapper.left.is_some()
         || wrapper.right.is_some();
     if !allowed || !thresholds {
-        return wrapper.into_any_element();
+        return wrapper.hooked();
     }
-    gpui::deferred(wrapper)
+    gpui::deferred(wrapper.into_hooked())
         .with_priority(c.z_index.unwrap_or(0).max(0) as usize)
         .into_any_element()
 }

@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
+pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) -> Vec<Rule> {
     let mut out = vec![];
     let cleaned = strip_comments(css);
     let mut rest = cleaned.as_str();
@@ -31,7 +31,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                     for name in h[6..].split(',') {
                         let name = name.trim();
                         if !name.is_empty() {
-                            let _ = layer_enter_path(name);
+                            let _ = cx.layer_enter_path(name);
                         }
                     }
                 }
@@ -52,20 +52,17 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
             // Имя at-правила регистронезависимо (§3.3): `@MeDIa` — то же
             // самое, что `@media` (`case-sensitive-001`).
             let name = head.to_ascii_lowercase();
-            let inner = at_rule_inner(&name, head, body, &media);
+            let inner = at_rule_inner(&name, head, body, &media, cx);
             // Блок `@layer имя { … }`: правила внутри — в своём слое.
             let layer_block = name.starts_with("@layer");
-            let saved_layer = layer_block.then(|| {
-                let entered = layer_enter_path(head[6..].trim());
-                LAYER_NOW.with(|l| std::mem::replace(&mut *l.borrow_mut(), entered))
-            });
+            let saved_layer = layer_block.then(|| cx.enter_layer(head[6..].trim()));
             let inner_rules = if inner {
-                parse_stylesheet_media(body, media)
+                sheet_rules(body, media, false, cx)
             } else {
                 vec![]
             };
             if let Some(saved) = saved_layer {
-                LAYER_NOW.with(|l| *l.borrow_mut() = saved);
+                cx.layer_now = saved;
             }
             if inner {
                 for r in inner_rules {
@@ -76,10 +73,6 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
                 }
                 order += 1000;
             }
-            continue;
-        }
-        let decls = parse_decls(body);
-        if decls.is_empty() {
             continue;
         }
         // Список селекторов режется ВНЕ скобок: запятая внутри
@@ -95,21 +88,27 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
         // `p:first-line.two, p.two {}` не применяется ни к кому. Прежде
         // негодная часть просто выбрасывалась, и правило красило соседа
         // (`c25-pseudo-elmnt-000`).
-        let sels: Option<Vec<Selector>> = parts.iter().map(|one| Selector::parse(one)).collect();
+        let parts = super::nesting::top_level_parts(&parts, &cx.selectors);
+        let parse = |one: &String| Selector::parse_in(one, &cx.selectors);
+        let sels: Option<Vec<Selector>> = parts.iter().map(parse).collect();
         let Some(sels) = sels else { continue };
+        if super::nesting::rule(&parts, body, &media, cx, &mut out, &mut order) {
+            continue;
+        }
+        let decls = parse_decls(body);
+        if decls.is_empty() {
+            continue;
+        }
         for sel in sels {
-            {
-                out.push(Rule {
-                    sel,
-                    decls: decls.clone(),
-                    order,
-                    // Разбор не знает, чья это таблица: происхождение ставит
-                    // тот, кто её подключает (см. `dom.rs`).
-                    origin: 0,
-                    layer: layer_of_rules(),
-                });
-                order += 1;
-            }
+            out.push(Rule {
+                sel,
+                decls: decls.clone(),
+                order,
+                // Происхождение ставит тот, кто подключает таблицу (см. `dom.rs`).
+                origin: 0,
+                layer: cx.layer_of_rules(),
+            });
+            order += 1;
         }
     }
     out
@@ -118,9 +117,11 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool) -> Vec<Rule> {
 /// Разобрать at-правило `name` из `sheet_rules`: правила из тела применяются
 /// (`true`) у подошедших `@media`/`@supports` и у `@layer`/`@scope`; `@font-feature-values`,
 /// `@page`, `@property`, `@counter-style`, `@position-try` обрабатываются здесь же и дают `false`.
-fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
+fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx) -> bool {
+    let vcx = cx.doc.values();
+    let layer_of_rules = || cx.layer_of_rules();
     if name.starts_with("@media") {
-        media.matches(name)
+        media.matches_in(name, cx.custom(), vcx)
     } else if name
         .strip_prefix("@font-feature-values")
         .is_some_and(|s| s.starts_with(char::is_whitespace))
@@ -129,7 +130,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
         false
     } else if name.starts_with("@page") {
         // Правило с головой (имя, `:first/:left/:right/:blank`,
-        // список) — в пул `PAGE_RULES`, каскад по листу решает
+        // список) — в реестр документа, каскад по листу решает
         // `page_decls_in`. Имя регистрозависимо (css-page-3
         // §using-named-pages) — из ОРИГИНАЛА головы, не из `name`.
         let flat = strip_nested_blocks(body);
@@ -142,21 +143,23 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             .collect();
         if !decls.is_empty() || !margins.is_empty() {
             // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства —
-            // отдельной парой на своём месте. Словарь `Decls` порядка не
-            // помнит (случайный `RandomState` на процесс), повтор
-            // склеивает через `DECL_SEP`, а `page_box` стенда применяет
-            // пары по очереди: `margin: 0; margin-top: 20vw`
+            // отдельной парой на своём месте: `Decls` склеивает повторы
+            // через `DECL_SEP`, а `page_box` применяет пары по очереди:
+            // `margin: 0; margin-top: 20vw`
             // (`page-size-016`) давал разный лист от прогона к прогону,
             // а `margin: 13px; margin: inherit` (`page-margin-006`) —
             // значение «13px\u{1}inherit», которое не разбиралось вовсе.
-            // Служебный `ORDER_KEY` в пул больше не попадает.
             let list = ordered_decls(&decls);
             if let Some(sels) = parse_page_selectors(&head[5..]) {
-                PAGE_RULES.lock().unwrap().push(PageRule {
-                    sels,
-                    decls: list,
-                    margins,
-                });
+                push_page_rule(
+                    cx.doc,
+                    PageRule {
+                        sels,
+                        decls: list,
+                        margins,
+                        layer: layer_of_rules(),
+                    },
+                );
             }
         }
         false
@@ -179,16 +182,15 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             && matches!(inherits.as_str(), "true" | "false")
             && (syntax == "*" || initial.is_some())
         {
-            PROPERTY_RULES
-                .lock()
-                .unwrap()
-                .get_or_insert_with(HashMap::new)
-                .entry(ident.to_string())
-                .or_insert(Registered {
+            register_property(
+                cx.doc,
+                ident,
+                Registered {
                     syntax,
                     inherits: inherits == "true",
                     initial,
-                });
+                },
+            );
         }
         false
     } else if name
@@ -205,6 +207,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
             .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
             .collect();
         crate::style::generated::counter_style_rules::register(
+            cx.doc,
             &head["@counter-style".len()..],
             &descs,
         );
@@ -218,18 +221,14 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media) -> bool {
         if ident.starts_with("--") {
             let decls = parse_decls(body);
             if !decls.is_empty() {
-                TRY_RULES
-                    .lock()
-                    .unwrap()
-                    .get_or_insert_with(HashMap::new)
-                    .insert(ident.to_string(), decls);
+                insert_try_rule(cx.doc, ident, decls);
             }
         }
         false
     } else if name.starts_with("@supports") {
         // Условию нужен ОРИГИНАЛ: лоуеркейс головы ломал значения
         // (`(font-family: "Foo")`); имя правила — ASCII, срез безопасен.
-        supports(&head[9..])
+        supports_in(&head[9..], &cx.selectors, vcx)
     } else {
         // Слой — прозрачная обёртка: внутри обычные правила, и вся
         // разница в приоритете, которого у нас пока нет. Отбрасывая

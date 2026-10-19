@@ -1,6 +1,5 @@
 //! Выбор содержащего блока и слоя для позиционированной коробки.
 
-use crate::layout::page::paged::PAGED;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
 use crate::paint::stacking::{fixed_cb_layer_box, stacking_context};
 
@@ -8,6 +7,7 @@ use crate::style::computed::Computed;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn layer_route(
+    paged: bool,
     e: &crate::dom::Element,
     inherited: &Computed,
     under_tf: bool,
@@ -15,6 +15,7 @@ pub(crate) fn layer_route(
     geometry_layer_ok: bool,
     nodes: &[crate::dom::Node],
     idx: usize,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> (bool, bool, bool, bool, bool, bool, bool) {
     let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
     let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
@@ -32,7 +33,7 @@ pub(crate) fn layer_route(
     // щуп, копии ≥ 1 идут непрерывным потоком от верха листа.
     let orphan_abs = abs_like
         && !(inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited))
-        && (x_set || y_set || PAGED.with(|p| p.get()));
+        && (x_set || y_set || paged);
     // Позиционированный предок ЕСТЬ, но это не родитель: коробку
     // забирает слой ближайшего содержащего блока (§10.1).
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (03.09, шесть заходов): пускать в слой
@@ -91,8 +92,7 @@ pub(crate) fn layer_route(
     // CSS 2.1 §9.9 step 3): in place it was positioned from its
     // parent's box, e.g. a `body` lowered by a collapsed margin
     // (spec-examples `shape-outside-001`: `#failure-container`).
-    let below_icb = orphan_abs
-        && !fixed
+    let below_icb = (orphan_abs || fixed)
         && e.style.z_index.is_some_and(|z| z < 0)
         && !stacking_context(inherited);
     // In a flex/grid container the static-position probe is missing, but with
@@ -103,7 +103,8 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && (fixed || orphan_abs)
         && (e.style.z_index.unwrap_or(0) >= 0 || below_icb)
-        && !stays_positioned(&nodes[idx + 1..]);
+        && (!stays_positioned(&nodes[idx + 1..])
+            || cx.positioning.icb_active() && !(fixed && paged));
     // В гибком контейнере и сетке слой содержащего блока закрыт: там
     // нет щупа статической позиции. Но при ОБЕИХ заданных осях щуп и не
     // нужен (CSS 2.1 §10.1 п.4 — содержащий блок ближайший
@@ -115,6 +116,6 @@ pub(crate) fn layer_route(
         && geometry_layer_ok
         && far_abs
         && e.style.z_index.unwrap_or(0) >= 0
-        && !stays_positioned(&nodes[idx + 1..]);
+        && (!stays_positioned(&nodes[idx + 1..]) || cx.positioning.cb_active(far_fixed));
     (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed)
 }

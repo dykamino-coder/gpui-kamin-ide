@@ -1,5 +1,6 @@
 //! Псевдоэлементы ::before/::after/::marker и др.: коробка, content-картинка.
 
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Rule};
@@ -9,7 +10,7 @@ use crate::style::select::{Ancestor, Sibs};
 /// Подходит ли значение под синтаксис `@property` (css-properties-values-api-1
 /// §5). Проверяются однозначные типы; значение с `var()` решается позже и
 /// принимается; незнакомый синтаксис — тоже (лучше принять, чем потерять).
-pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
+pub(super) fn syntax_accepts(syntax: &str, value: &str, vcx: ValueCx<'_>) -> bool {
     let v = value.trim();
     if v.contains("var(") || syntax.trim() == "*" {
         return true;
@@ -17,16 +18,16 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
     let one = |ty: &str| -> bool {
         match ty.trim() {
             "<color>" => {
-                crate::style::values::value::Color::parse(v).is_some()
+                crate::style::values::value::Color::parse(v, vcx).is_some()
                     || v.eq_ignore_ascii_case("currentcolor")
                     || v.to_ascii_lowercase().starts_with("light-dark(")
             }
             "<length>" => {
                 !v.ends_with('%')
                     && (v == "0"
-                        || matches!(crate::style::values::value::Len::parse_mixed(v), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
+                        || matches!(crate::style::values::value::Len::parse_mixed(v, vcx), Some(l) if !matches!(l, crate::style::values::value::Len::Pct(_) | crate::style::values::value::Len::Auto)))
             }
-            "<length-percentage>" => crate::style::values::value::Len::parse_mixed(v)
+            "<length-percentage>" => crate::style::values::value::Len::parse_mixed(v, vcx)
                 .is_some_and(|l| l != crate::style::values::value::Len::Auto),
             "<percentage>" => v.ends_with('%') && v[..v.len() - 1].trim().parse::<f32>().is_ok(),
             "<number>" => v.parse::<f32>().is_ok(),
@@ -41,9 +42,9 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str) -> bool {
 /// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
-pub(crate) fn content_image_src(src: &str) -> Option<String> {
-    if let Some((image, _)) = crate::paint::background::filter_image::parse(src) {
-        content_image_src(&image)?;
+pub(crate) fn content_image_src(src: &str, vcx: ValueCx<'_>) -> Option<String> {
+    if let Some((image, _)) = crate::style::computed::filter_image::parse_filter_image(src, vcx) {
+        content_image_src(&image, vcx)?;
         return Some(src.to_string());
     }
     if src.starts_with("data:") {
@@ -69,6 +70,8 @@ pub(crate) fn content_image_src(src: &str) -> Option<String> {
 // исполнение `counter-*` слоя в собственном сегменте маркера и снятие
 // маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
 // 2026-09b.md` §1.
+// Pseudo boxes need the originating cascade, counters and generated-content state.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
     rules: &[Rule],
     vars: &Decls,
@@ -78,6 +81,7 @@ pub(super) fn pseudo_box(
     sibs: Sibs,
     which: &str,
     attrs: &[(String, String)],
+    vcx: ValueCx<'_>,
 ) -> Option<Element> {
     pseudo_box_named(
         rules,
@@ -90,6 +94,7 @@ pub(super) fn pseudo_box(
         which,
         which == "before",
         attrs,
+        vcx,
     )
 }
 
@@ -110,6 +115,7 @@ pub(super) fn pseudo_box_named(
     tag: &str,
     before: bool,
     attrs: &[(String, String)],
+    vcx: ValueCx<'_>,
 ) -> Option<Element> {
     let mut matched: Vec<&Rule> = rules
         .iter()
@@ -119,7 +125,7 @@ pub(super) fn pseudo_box_named(
     if matched.is_empty() {
         return None;
     }
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
     content::inherit_generated(&mut style, Some(me));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,
@@ -127,7 +133,7 @@ pub(super) fn pseudo_box_named(
     inlinify_in_ruby(&mut style, "", std::iter::once(me).chain(path.iter().rev()));
     // Нет содержимого или коробки — нет и псевдоэлемента: его директивы
     // счётчиков тогда не действуют вовсе (у него нет объекта раскладки).
-    let list = resolve_content_attributes(style.content.as_ref()?, attrs, me.html_attrs)?;
+    let list = resolve_content_attributes(style.content.as_ref()?, attrs, me.html_attrs, vcx)?;
     if style.display == Some(Display::None) {
         return None;
     }
@@ -149,7 +155,15 @@ pub(super) fn pseudo_box_named(
                  children: &mut Vec<Node>,
                  counters: &mut crate::style::generated::counters::Counters| {
         if !run.is_empty() {
-            let t = content_text(run, counters, attrs, style.quotes.as_ref(), me.html_attrs);
+            let t = content_text(
+                run,
+                counters,
+                attrs,
+                style.quotes.as_ref(),
+                me.html_attrs,
+                crate::style::generated::counter_style::Context::new(&style, me.counter_context),
+                vcx,
+            );
             children.push(Node::Text(t));
             run.clear();
         }
@@ -157,13 +171,14 @@ pub(super) fn pseudo_box_named(
     for item in &list {
         if let crate::style::computed::ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
-            if let Some(src) = content_image_src(src) {
+            if let Some(src) = content_image_src(src, vcx) {
                 children.push(Node::Element(Element {
+                    marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
                     tag: "img".into(),
-                    style: Computed::default(),
+                    style: Computed::default().into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,
@@ -184,6 +199,7 @@ pub(super) fn pseudo_box_named(
         (style.display == Some(Display::ListItem)).then(|| counters.value_of("list-item"));
     counters.leave();
     Some(Element {
+        marks: Default::default(),
         list_item,
         // Псевдоэлемент своей анимации не несёт: правило `::before` задаёт
         // содержимое, а не движение.
@@ -198,7 +214,7 @@ pub(super) fn pseudo_box_named(
         // it one device row off (`position-anchor-*-pseudo-element-*`).
         inline: !anchor_positioned(&style),
         tag: format!("::{tag}"),
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

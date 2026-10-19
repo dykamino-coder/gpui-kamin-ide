@@ -1,10 +1,8 @@
 //! Фильтры.
 // owner: A
 
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
-    Pixels, Window, px,
-};
+use crate::hooks::Hooks;
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 /// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
 /// фильтром, растрированный resvg по размеру коробки. Холст вдвое больше
@@ -17,13 +15,6 @@ pub struct FilterLayer {
     pub fill: String,
 }
 
-impl IntoElement for FilterLayer {
-    type Element = Self;
-    fn into_element(self) -> Self {
-        self
-    }
-}
-
 thread_local! {
     /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
     static FILTER_RASTERS: std::cell::RefCell<
@@ -31,89 +22,38 @@ thread_local! {
     > = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
-/// Область `<filter filterUnits="userSpaceOnUse">` в точках от угла коробки
-/// (filter-effects-1 §5: «origin at the top-left corner of the bounding
-/// client rect … viewport … width and height of the bounding client rect»);
-/// проценты — от размера коробки. Для `objectBoundingBox` — None: такая
-/// область и так внутри холста −50 %…150 %.
-fn user_space_region(def: &str, w: f32, h: f32) -> Option<[f32; 4]> {
-    let open = &def[def.find("<filter")?..];
-    let open = &open[..open.find('>')?];
-    if !open.contains("userSpaceOnUse") {
-        return None;
-    }
-    let attr = |name: &str| -> Option<&str> {
-        let key = format!(" {name}=\"");
-        let at = open.find(&key)? + key.len();
-        let rest = &open[at..];
-        Some(&rest[..rest.find('"')?])
-    };
-    let num = |name: &str, base: f32, def: f32| -> f32 {
-        match attr(name).map(str::trim) {
-            Some(v) if v.ends_with('%') => v[..v.len() - 1]
-                .trim()
-                .parse::<f32>()
-                .map_or(def, |p| p / 100.0 * base),
-            Some(v) => v.trim_end_matches("px").trim().parse().unwrap_or(def),
-            None => def,
-        }
-    };
-    Some([
-        num("x", w, -0.1 * w),
-        num("y", h, -0.1 * h),
-        num("width", w, 1.2 * w),
-        num("height", h, 1.2 * h),
-    ])
-}
+impl Hooks for FilterLayer {
+    type Layout = ();
+    type Prepaint = ();
 
-impl Element for FilterLayer {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
-        style.position = gpui::Position::Absolute;
-        style.inset = gpui::Edges {
-            top: gpui::px(0.0).into(),
-            right: gpui::px(0.0).into(),
-            bottom: gpui::px(0.0).into(),
-            left: gpui::px(0.0).into(),
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            inset: gpui::Edges {
+                top: gpui::px(0.0).into(),
+                right: gpui::px(0.0).into(),
+                bottom: gpui::px(0.0).into(),
+                left: gpui::px(0.0).into(),
+            },
+            ..Default::default()
         };
         (window.request_layout(style, [], cx), ())
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
@@ -127,7 +67,11 @@ impl Element for FilterLayer {
         // неё (у коробки 0×0 он из неё одной и состоит,
         // `empty-element-with-filter-002/004`).
         let (mut x0, mut y0, mut x1, mut y1) = (-0.5 * w, -0.5 * h, 1.5 * w, 1.5 * h);
-        if let Some([rx, ry, rw, rh]) = user_space_region(&self.def, w, h) {
+        // `calc()` в области (`filter-region-calc-001`) usvg не читает —
+        // она сводится к числу заранее, для холста и для растеризатора.
+        let def = super::filter_region::resolve_calc(&self.def, w, h);
+        let [rx, ry, rw, rh] = super::filter_region::filter_region(&def, w, h);
+        if rw.is_finite() && rh.is_finite() && rx.is_finite() && ry.is_finite() {
             x0 = x0.min(rx).max(-4096.0);
             y0 = y0.min(ry).max(-4096.0);
             x1 = x1.max(rx + rw).min(4096.0);
@@ -161,7 +105,7 @@ impl Element for FilterLayer {
         };
         let markup = format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}" viewBox="0 0 {cw} {ch}"><defs>{}</defs><g transform="translate({} {})">{body}</g></svg>"##,
-            self.def, -x0, -y0
+            def, -x0, -y0
         );
         let (pw, ph) = ((cw * sf).round(), (ch * sf).round());
         let key = (markup.clone(), pw as u32, ph as u32);

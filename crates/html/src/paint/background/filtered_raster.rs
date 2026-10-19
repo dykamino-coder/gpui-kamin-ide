@@ -1,6 +1,7 @@
 //! Resolve CSS Images 3 concrete object size before applying Filter Effects 1 §13.
 
 use super::Source;
+use crate::document::state::ValueCx;
 use gpui::RenderImage;
 use std::{
     collections::HashMap,
@@ -16,6 +17,7 @@ pub(super) fn raster(
     list: &str,
     tile: (f32, f32),
     pixelated: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     if tile.0 <= 0.0 || tile.1 <= 0.0 {
         return None;
@@ -25,8 +27,8 @@ pub(super) fn raster(
         tile.1.round().clamp(1.0, 2048.0) as u32,
     );
     let image = match input {
-        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile),
-        _ => input.sampled_raster(tile, pixelated),
+        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile, vcx),
+        _ => input.sampled_raster(tile, pixelated, vcx),
     }?;
     let key = (image.id.0, list.to_string(), w, h, pixelated);
     let cache = CACHE.get_or_init(Default::default);
@@ -40,7 +42,8 @@ pub(super) fn raster(
     let integral =
         iw > 0 && ih > 0 && w >= iw && h >= ih && w.is_multiple_of(iw) && h.is_multiple_of(ih);
     let resized = resize(&image, w, h, pixelated || integral)?;
-    let result = super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1));
+    let result =
+        super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1), vcx);
     if let Ok(mut cache) = cache.lock() {
         if cache.len() >= 32 {
             cache.clear();
@@ -106,4 +109,89 @@ fn resize(image: &Arc<RenderImage>, w: u32, h: u32, nearest: bool) -> Option<Arc
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Filter image sizing, coverage and allocation-density regressions.
+
+    use super::*;
+    #[test]
+    fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let input = Source::Raster(original);
+        let filtered = Source::Filtered {
+            image: Box::new(input),
+            list: "drop-shadow(5px 0 0 green)".into(),
+        };
+        assert_eq!(filtered.intrinsic().w, Some(2.0));
+        let result = filtered.sampled_raster((10.0, 10.0), true, vcx).unwrap();
+        assert!(
+            result
+                .as_bytes(0)
+                .unwrap()
+                .chunks_exact(4)
+                .all(|p| p == [0, 128, 0, 255])
+        );
+    }
+    #[test]
+    fn smooth_scaling_preserves_color_beside_transparency() {
+        let input = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let result = resize(&input, 4, 1, false).unwrap();
+        let pixels = result.as_bytes(0).unwrap();
+        assert_eq!(&pixels[4..8], &[0, 128, 0, 191]);
+        assert_eq!(&pixels[8..12], &[0, 128, 0, 64]);
+    }
+
+    #[test]
+    fn allocation_limit_preserves_css_shadow_offset() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let input = Source::Raster(original);
+        let result = raster(
+            &input,
+            "drop-shadow(1500px 0 0 green)",
+            (3000.0, 10.0),
+            false,
+            vcx,
+        )
+        .unwrap();
+        assert_eq!(result.size(0).width.0, 2048);
+        assert!(
+            result
+                .as_bytes(0)
+                .unwrap()
+                .chunks_exact(4)
+                .all(|p| p == [0, 128, 0, 255])
+        );
+    }
+
+    #[test]
+    fn radial_input_filters_rendered_samples_without_natural_dimensions() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let source =
+            super::super::source("filter(radial-gradient(red, orange), invert(1))", vcx).unwrap();
+        assert!(source.intrinsic().w.is_none());
+        let filtered = source.raster((7.0, 5.0), vcx).unwrap();
+        let original = super::super::gradient_raster::tile(
+            "radial-gradient(red, orange)",
+            7,
+            5,
+            (7.0, 5.0),
+            vcx,
+        )
+        .unwrap();
+        for (a, b) in filtered
+            .as_bytes(0)
+            .unwrap()
+            .chunks_exact(4)
+            .zip(original.as_bytes(0).unwrap().chunks_exact(4))
+        {
+            assert_eq!(a[3], b[3]);
+            for c in 0..3 {
+                assert_eq!(a[c], 255 - b[c]);
+            }
+        }
+    }
+}

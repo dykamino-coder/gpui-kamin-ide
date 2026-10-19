@@ -1,6 +1,7 @@
 //! Прогон атомов в хосте обтекания формой.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_host::px_margin_box;
 use crate::layout::float::float_atom::band_atom;
 use crate::render::{RenderOpts, inline_level};
@@ -10,6 +11,8 @@ use gpui::{AnyElement, IntoElement, ParentElement};
 
 #[allow(clippy::result_large_err)]
 #[allow(clippy::too_many_arguments)]
+// Failure returns the partially built host together with both float-shape lists.
+#[allow(clippy::type_complexity)]
 pub(crate) fn atoms_flow(
     e: &Element,
     inherited: &Computed,
@@ -76,7 +79,7 @@ pub(crate) fn atoms_flow(
         }
     }
     if atoms_ok && !atoms.is_empty() {
-        let rtl = inherited.rtl == Some(true);
+        let rtl = inherited.wm().rtl();
         // Вертикальное письмо (`vertical-rl`, `sideways-rl`): формы уже
         // построены в осях письма (`background::shape_profile_block`) —
         // индекс равен расстоянию от блок-старта (правого края), значение —
@@ -96,7 +99,7 @@ pub(crate) fn atoms_flow(
         // разворачивает инлайн-ось, и коробки идут от НИЖНЕГО края — эталоны
         // семейства (`shape-outside-inset-023-ref` и родня) меряют свой
         // `inset-inline-start` именно снизу.
-        if inherited.vertical_rl == Some(true) || vert_lr {
+        if inherited.wm().block_rl() || vert_lr {
             let mut row =
                 crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl).vertical_rl();
             if vert_lr {
@@ -110,12 +113,10 @@ pub(crate) fn atoms_flow(
             if let Some(Len::Px(v)) = e.style.height {
                 row = row.inline_limit(v);
             }
-            return Ok(host.child(row).into_any_element());
+            return Ok(host.child(row.into_hooked()).into_any_element());
         }
         return Ok(host
-            .child(crate::layout::fragment::types::FlowRow::new(
-                atoms, shapes, rtl,
-            ))
+            .child(crate::layout::fragment::types::FlowRow::new(atoms, shapes, rtl).into_hooked())
             .into_any_element());
     }
     Err((host, shapes))

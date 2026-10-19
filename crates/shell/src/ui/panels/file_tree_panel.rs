@@ -75,10 +75,20 @@ impl FileTreePanel {
     }
 }
 
+/// Рисует ли дерево сейчас спиннер (хедер «Indexing…», шеврон/корень в загрузке).
+fn has_spinner(tree: &TreeState) -> bool {
+    tree.indexing || !tree.loading.is_empty()
+}
+
 impl Render for FileTreePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = self.props.theme.palette();
         let tree = self.tree.read(cx);
+        // Спиннеры дерева (индексация, загрузка папки) шагают по общему такту,
+        // а кэшированный вью корень окна не перерисовывает: просим такт сами.
+        if has_spinner(tree) {
+            crate::ui::glyph_spinner::request_frame(cx.entity_id());
+        }
         let send = |event: ShellEvent, tx: &smol::channel::Sender<ShellEvent>| {
             let _ = tx.try_send(event);
         };
@@ -126,7 +136,6 @@ impl Render for FileTreePanel {
                 move |dir| send(ShellEvent::Tree(TreeEvent::ShowMoreDir(dir)), &tx)
             },
             {
-                let tx = tx.clone();
                 move |path, ctrl, shift| {
                     send(
                         ShellEvent::Tree(TreeEvent::SelectTreeNode(path, ctrl, shift)),
@@ -135,5 +144,21 @@ impl Render for FileTreePanel {
                 }
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spinner_only_while_indexing_or_loading() {
+        let mut tree = TreeState::default();
+        assert!(!has_spinner(&tree));
+        tree.loading.insert("C:\\proj".into());
+        assert!(has_spinner(&tree));
+        tree.loading.clear();
+        tree.indexing = true;
+        assert!(has_spinner(&tree));
     }
 }

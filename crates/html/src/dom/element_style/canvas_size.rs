@@ -1,15 +1,13 @@
 //! Coerced natural canvas sizes and intrinsic constraints (CSS Sizing 3/4).
 
+use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};
 
 pub(super) fn resolve(s: &mut Computed) {
     if s.contains_width() || s.contains_height() {
         return;
     }
-    let px = |v| match v {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = |v| px_strict(v);
     let intrinsic = |v| matches!(v, Some(Len::MinContent | Len::MaxContent | Len::FitContent));
     let ratio = s.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0);
     let edges = s.borders();
@@ -70,6 +68,29 @@ pub(super) fn resolve(s: &mut Computed) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn html_dimension_integer_prefix_and_defaults() {
+        for (raw, expected) in [
+            ("100px", 100.0),
+            ("100%", 100.0),
+            (" +12.5", 12.0),
+            ("-0tail", 0.0),
+            ("-1", 300.0),
+            ("2147483648", 300.0),
+        ] {
+            let mut s = Computed::default();
+            super::super::presentational_size::apply_presentational_size(
+                &mut s,
+                "canvas",
+                &[("width".into(), raw.into())],
+            );
+            assert!(
+                matches!(s.attr_width, Some(Len::Px(v)) if v == expected),
+                "{raw}"
+            );
+        }
+    }
 
     #[test]
     fn coerced_natural_size_uses_asymmetric_border_box_edges() {

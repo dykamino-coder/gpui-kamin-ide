@@ -1,5 +1,6 @@
 //! Геометрия строк: выравнивание, точка знака, коробка строчного блока, rtl-края.
 
+mod inline_box_rect;
 mod inline_rect;
 mod rtl_extent;
 
@@ -57,14 +58,9 @@ pub(super) fn line_offset(align: Align, rtl: bool, free: Pixels) -> Pixels {
     }
 }
 
-/// Выключка из стиля.
-pub fn align_of(a: Option<crate::style::computed::TextAlign>) -> Align {
-    a.map(align_of_value).unwrap_or(Align::Left)
-}
-
 /// Выключка абзаца с разворотом логических краёв по стороне письма.
 pub fn align_for(c: &crate::style::computed::Computed) -> Align {
-    let rtl = c.rtl == Some(true);
+    let rtl = c.wm().rtl();
     let value = c
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)

@@ -3,6 +3,7 @@ mod columns;
 pub(super) use columns::ColumnPlan;
 pub(super) use columns::column_plan;
 
+mod child_borrow;
 mod children;
 pub(super) use children::generic_children;
 
@@ -25,8 +26,21 @@ pub(super) fn generic_box(
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
 ) -> AnyElement {
-    let mut d = styled_div_with(e, &merged);
-    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited);
+    // css-writing-modes-4 §4.3 / css-align-3 §9.1: an orthogonal flow exports no
+    // baseline to a horizontal block container (Blink skips such children).
+    if merged.wm().vertical()
+        && !inherited.wm().vertical()
+        && !e.inline
+        && crate::render::in_flow(&e.style)
+        && matches!(
+            inherited.display,
+            None | Some(Display::Block | Display::InlineBlock)
+        )
+    {
+        merged.baseline_orthogonal = true;
+    }
+    let mut d = styled_div_with(e, &merged, &opts.cx);
+    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.positioning);
     if let Some(plan) = &overflow_plan {
         plan.prepare(d.style());
     }
@@ -111,7 +125,7 @@ pub(super) fn generic_box(
     // `list-item` сюда НЕ пускать (★ ЗАМЕРЕНО: `li` с одним текстом
     // становился рядом — `line-box-direction-vrl-019/vlr-020`
     // 6.58 -> 12.55).
-    } else if merged.vertical == Some(true)
+    } else if merged.wm().vertical()
         // `display: table-caption` — это `Display::Block` С МЕТКОЙ
         // (`computed.rs:3125`), и голый `Some(Block)` сюда пускать
         // нельзя (замеренный откат выше). Метку же ставит ТОЛЬКО
@@ -143,7 +157,7 @@ pub(super) fn generic_box(
         // Дети идут слева направо (`vertical-lr`) или справа налево
         // (`vertical-rl`).
         d = d.flex();
-        d = if merged.vertical_rl == Some(true) {
+        d = if merged.wm().block_rl() {
             d.flex_row_reverse()
         } else {
             d.flex_row()
@@ -167,6 +181,11 @@ pub(super) fn generic_box(
         // Схлопывание вертикальных отступов при этом делает сама
         // раскладка — включая протекание через пустой блок.
         d = d.flex().flex_col();
+        // The column stands for a block container: its baselines are those of
+        // the first/last child that has one (CSS 2.1 §10.8.1), not a baseline
+        // synthesized from the first child's edge (subgrid/baseline-001-ref:
+        // an empty sized block before a text block).
+        d.style().block_baselines = Some(true);
         // rtl-прижим переполняющих блоков — ТОЧЕЧНЫЙ align_self End
         // детям с заданной шириной (в blocks): items_end на контейнере
         // снимал stretch у всех, и абзац в rtl ужимался до текста —
@@ -182,13 +201,10 @@ pub(super) fn generic_box(
     // без своего `direction` шёл слева направо — поля
     // `margin-inline-start` эталонов вставали не между элементами
     // (`gap-001-rtl-ref`, `gap-003-rtl-ref`).
-    if e.style.display == Some(Display::Flex)
-        && e.style.flex_dir.is_none()
-        && merged.rtl != Some(true)
-    {
+    if e.style.display == Some(Display::Flex) && e.style.flex_dir.is_none() && !merged.wm().rtl() {
         // При вертикальном письме умолчание `row` — это ось строки, а
         // она идёт сверху вниз.
-        d = if merged.vertical == Some(true) {
+        d = if merged.wm().vertical() {
             d.flex_col()
         } else {
             d.flex_row()

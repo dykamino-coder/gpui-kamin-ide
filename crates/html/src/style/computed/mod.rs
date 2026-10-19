@@ -5,6 +5,19 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+use crate::document::state::ValueCx;
+#[macro_use]
+mod declaration_parse;
+pub(crate) use declaration_parse::ParseResult;
+mod appearance;
+pub(crate) mod filter_image;
+pub(crate) mod flat_background;
+pub(crate) mod formatting_context;
+pub(crate) mod math_style;
+pub(crate) mod shape_kind;
+pub(crate) mod single_corner;
+pub(crate) mod stacking;
+pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;
 mod border_color;
@@ -14,12 +27,15 @@ pub(super) mod font_members;
 mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
-mod image_color;
+pub(crate) mod image_function;
 mod radius_mask;
 mod radius_parse;
 mod text_indent;
 mod white_space;
-pub(crate) use image_color::parse as parse_image_color;
+/// Recognize dimensionless color images independently of URL fallback.
+pub(crate) fn parse_image_color<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
+    image_function::color_only(raw, vcx)
+}
 mod content_functions;
 mod counters;
 mod list_style;
@@ -30,6 +46,7 @@ pub(crate) mod orthogonal;
 mod quotes;
 mod size_range;
 mod tab_size;
+pub mod writing_mode;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
 use crate::style::computed::outline_style::parse as outline_style_of;
@@ -37,6 +54,7 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
 mod queries;
 mod resolve;
+pub use resolve::FontCx;
 
 use crate::style::values::value::Len;
 mod fields;
@@ -49,6 +67,7 @@ mod filter;
 pub use crate::style::computed::filter::*;
 pub(super) mod gradient;
 pub(crate) use crate::style::computed::gradient::*;
+pub(crate) use gradient::stops::place_stops;
 pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
 pub(crate) use crate::style::computed::props::border::*;
@@ -69,13 +88,13 @@ pub struct Sides {
 impl Sides {
     /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
     /// 3 — верх/гориз/низ, 4 — по часовой.
-    pub(crate) fn shorthand(raw: &str) -> Sides {
+    pub(crate) fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Sides {
         // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
         // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
         // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
         let v: Vec<Option<Len>> = split_outside_parens(raw)
             .iter()
-            .map(|t| Len::parse_mixed(t))
+            .map(|t| Len::parse_mixed(t, vcx))
             .collect();
         match v.len() {
             1 => Sides {
@@ -148,6 +167,10 @@ pub(crate) mod inh {
     pub(crate) const COLUMN_RULE_C: u32 = 1 << 16;
     /// `row-rule-color: inherit`.
     pub(crate) const ROW_RULE_C: u32 = 1 << 17;
+    /// `corner-shape: inherit` — параметры углов родителя.
+    pub(crate) const CORNER_SHAPE: u32 = 1 << 18;
+    /// `border-radius: inherit` — радиусы углов родителя.
+    pub(crate) const RADIUS: u32 = 1 << 19;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
@@ -155,6 +178,18 @@ pub(crate) mod inh {
 /// would create a stacking context on the element, specifying that property
 /// in will-change must create a stacking context on the element» — и то же
 /// дословно про содержащий блок для `absolute` и для `fixed`.
+/// filter-effects-1 §5 «A computed value of other than none results in the
+/// creation of a containing block for absolute and fixed positioned
+/// descendants»; то же для `backdrop-filter` (filter-effects-2 §3). Blink:
+/// `ComputedStyle::CanContainFixedPositionObjects` (`HasNonInitialFilter`,
+/// `HasNonInitialBackdropFilter`).
+pub(crate) fn filter_contains_fixed(c: &Computed) -> bool {
+    c.filter.is_some()
+        || c.filter_ref.is_some()
+        || c.backdrop_blur.is_some()
+        || c.backdrop_color.is_some()
+}
+
 pub(crate) mod wc {
     /// Содержащий блок для `position: absolute`.
     pub(crate) const CB_ABS: u8 = 1 << 0;

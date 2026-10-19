@@ -48,12 +48,12 @@ pub(crate) fn emit(req: &Value) -> Value {
         // {"cmd":"emit","kind":"treeDnd","name":"<viewId>","dir":true} —
         // эмуляция `kamin:tree:dnd` (у вью появился DnD-контроллер)
         "treeDnd" => ShellEvent::Tree(TreeEvent::TreeDnd {
-            view: name.clone(),
+            view: name,
             enabled: req.get("dir").and_then(Value::as_bool).unwrap_or(true),
         }),
         // {"cmd":"emit","kind":"treeReveal","name":"<viewId>","id":"<handle>"}
         "treeReveal" => ShellEvent::Tree(TreeEvent::TreeReveal {
-            view: name.clone(),
+            view: name,
             handle: req
                 .get("id")
                 .and_then(Value::as_str)
@@ -107,20 +107,16 @@ pub(crate) fn emit(req: &Value) -> Value {
             message: if name.is_empty() {
                 "Probe internal toast".into()
             } else {
-                name.to_string()
+                name
             },
             sticky: false,
             actions: Vec::new(),
         }),
         // {"cmd":"emit","kind":"applyPreset","name":"<имя пресета>"}
-        "applyPreset" => ShellEvent::ApplyLayoutPreset(name.clone()),
+        "applyPreset" => ShellEvent::ApplyLayoutPreset(name),
         "extToast" => ShellEvent::ExternalToast(crate::ui::toasts::Toast {
             id: format!("probe-{name}"),
-            severity: if name.is_empty() {
-                "info".into()
-            } else {
-                name.clone()
-            },
+            severity: if name.is_empty() { "info".into() } else { name },
             title: Some("Probe toast".into()),
             message: "External toast from probe — hover pauses the timer bar.".into(),
             actions: if req.get("dir").and_then(Value::as_bool).unwrap_or(false) {
@@ -162,7 +158,7 @@ pub(crate) fn emit(req: &Value) -> Value {
         "czOpen" => ShellEvent::Cz(CzEvent::ToggleCustomize),
         // {"cmd":"emit","kind":"czContrib","name":"claudeBridgeCzSettings"} —
         // contributed-страница Customize (вебвью расширения) по её view-id
-        "czContrib" => ShellEvent::Cz(CzEvent::SetCustomizeContribPage(name.clone())),
+        "czContrib" => ShellEvent::Cz(CzEvent::SetCustomizeContribPage(name)),
         // {"cmd":"emit","kind":"fileMenu","name":"C:\\path","dir":true,"x":..,"y":..}
         "fileMenu" => ShellEvent::Ed(EdEvent::OpenFileMenu(
             name,

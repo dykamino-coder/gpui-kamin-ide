@@ -39,6 +39,12 @@ pub(crate) fn flush_inline(
         });
         if let Some(drop) = drop {
             let mut host = e.clone();
+            if !first && host.style.display == Some(crate::style::computed::Display::ListItem) {
+                // The marker is the first child, never a continuation's child.
+                host.style.no_marker = Some(true);
+                host.style.marker_text = None;
+                host.style.marker_layer = None;
+            }
             host.children = Vec::new();
             super::drop_inline_side(&mut host.style, drop);
             hosts.push(out.len());
@@ -50,6 +56,12 @@ pub(crate) fn flush_inline(
         return;
     }
     let mut host = e.clone();
+    if !first && host.style.display == Some(crate::style::computed::Display::ListItem) {
+        // The marker is the first child, never a continuation's child.
+        host.style.no_marker = Some(true);
+        host.style.marker_text = None;
+        host.style.marker_layer = None;
+    }
     host.children = std::mem::take(piece);
     hosts.push(out.len());
     out.push(Node::Element(anon_element(

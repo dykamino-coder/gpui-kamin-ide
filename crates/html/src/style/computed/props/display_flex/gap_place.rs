@@ -1,10 +1,10 @@
 //! Computed::apply_display_flex, хвост цепочки: gap, row-gap/column-gap, order, flex-flow, align-content, justify-items/self, place-*. Ветви в исходном порядке после apply_flex_items.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_gap_place(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_gap_place(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             "gap" => {
                 // Куски — по пробелам ВНЕ скобок: `calc(15% + 7px) calc(10px +
@@ -13,7 +13,11 @@ impl Computed {
                 // индексом (`parse_mixed`): зазор разрешает её от своей стороны
                 // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
                 let tokens = split_outside_parens(v);
-                let parts: Vec<Option<Len>> = tokens.iter().map(|t| Len::parse_mixed(t)).collect();
+                let parts: Vec<Option<Len>> =
+                    tokens.iter().map(|t| Len::parse_mixed(t, vcx)).collect();
+                if (1..=2).contains(&parts.len()) && parts.iter().all(Option::is_some) {
+                    self.accept_declaration();
+                }
                 self.gap = match parts.len() {
                     1 => Some((parts[0], parts[0])),
                     2 => Some((parts[0], parts[1])),
@@ -28,19 +32,24 @@ impl Computed {
                 // Многоколоночнику — прежний разбор без смеси: его зазор долю
                 // с точками не читает.
                 if parts.len() == 1 || parts.len() == 2 {
-                    self.column_gap = Len::parse(&tokens[tokens.len() - 1]);
+                    self.column_gap = Len::parse(&tokens[tokens.len() - 1], vcx);
                 }
             }
-            "row-gap" => self.gap = Some((Len::parse(v), self.gap.and_then(|g| g.1))),
+            "row-gap" => {
+                self.gap = Some((
+                    record_parsed!(self, Len::parse(v, vcx)),
+                    self.gap.and_then(|g| g.1),
+                ))
+            }
             // Одно свойство служит двум раскладкам: в сетке и гибкой строке
             // это зазор между ячейками, в многоколоночном потоке — между
             // колонками. Пишем в оба поля, читает нужное та раскладка, которая
             // включена.
             "column-gap" => {
-                self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v)));
-                self.column_gap = Len::parse(v);
+                self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v, vcx)));
+                self.column_gap = record_parsed!(self, Len::parse(v, vcx));
             }
-            "order" => self.order = v.parse().ok(),
+            "order" => self.order = record_parsed!(self, v.parse().ok()),
             "flex-flow" => {
                 for token in v.split_whitespace() {
                     let prop = if token.starts_with("wrap") || token == "nowrap" {
@@ -48,15 +57,16 @@ impl Computed {
                     } else {
                         "flex-direction"
                     };
-                    self.apply_one(prop, token);
+                    self.apply_one(prop, token, vcx);
                 }
             }
             "align-content" => {
                 self.align_inherit &= !ainh::ALIGN_CONTENT;
-                self.align_content = parse_justify(v);
+                self.align_content = record_parsed!(self, parse_justify(v));
                 self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
                 self.align_content_safe = is_safe(v);
+                self.align_content_unsafe = v.split_whitespace().any(|word| word == "unsafe");
                 // css-align-3 §align-block: ЛЮБОЕ не-`normal` значение делает
                 // блочный контейнер корнем блочного контекста форматирования.
                 // `parse_justify` этого не покажет: `baseline`/`first`/`last`
@@ -68,16 +78,25 @@ impl Computed {
                     .unwrap_or("");
                 self.align_content_block =
                     self.align_content.is_some() || matches!(word, "baseline" | "first" | "last");
+                if self.align_content_block || v == "normal" {
+                    self.accept_declaration();
+                }
             }
             "justify-items" => {
                 self.align_inherit &= !ainh::JUSTIFY_ITEMS;
-                self.justify_items = parse_align(v);
+                self.justify_items = record_parsed!(self, parse_align(v));
+                if matches!(v, "normal" | "legacy") {
+                    self.accept_declaration();
+                }
                 self.justify_items_safe = is_safe(v);
                 self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             "justify-self" => {
                 self.align_inherit &= !ainh::JUSTIFY_SELF;
-                self.justify_self = parse_align(v);
+                self.justify_self = record_parsed!(self, parse_align(v));
+                if matches!(v, "auto" | "normal") {
+                    self.accept_declaration();
+                }
                 self.justify_self_physical = match v.split_whitespace().last() {
                     Some("left") => Some(false),
                     Some("right") => Some(true),
@@ -102,8 +121,8 @@ impl Computed {
                     "place-content" => ("align-content", "justify-content"),
                     _ => ("align-self", "justify-self"),
                 };
-                self.apply_one(cross, a);
-                self.apply_one(main, b);
+                self.apply_one(cross, a, vcx);
+                self.apply_one(main, b, vcx);
             }
             _ => *hit = false,
         }

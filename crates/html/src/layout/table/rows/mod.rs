@@ -10,6 +10,7 @@ use gpui::AnyElement;
 mod row_setup;
 use row_setup::{push_empty_row_track, row_band_probes};
 mod cell;
+mod cell_alignment;
 mod cell_box;
 mod cell_columns;
 mod cell_div;
@@ -21,6 +22,8 @@ mod emit;
 use cell::table_cell;
 
 #[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
+// Rows carry their elements and associated row/column band records.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_rows(
     rows: Vec<(
         &Element,
@@ -47,7 +50,7 @@ pub(super) fn table_rows(
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
     table_is_vertical: bool,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     paint_layers: bool,
     cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: Vec<&Element>,
@@ -72,13 +75,17 @@ pub(super) fn table_rows(
     have_rows: bool,
     px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
+    // Буфер полосы группы рядов — общий для всех её рядов (`RowRects`).
+    let mut group_bands = std::collections::HashMap::new();
     for (row, carry) in rows {
         row_ix += 1;
         let row_ref: crate::paint::effects::transformed_element::RefBox = Default::default();
         for slot in occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
-        let (row_rects, grp_band) = row_band_probes(opts, &mut under, &group_of, row, carry);
+        let (row_rects, grp_band) =
+            row_band_probes(&mut group_bands, &mut under, &group_of, row, carry, vcx);
         let shift = (carry.0, carry.1);
         // Письмо к строкам НЕ ПРИМЕНЯЕТСЯ (раскладку ряда ведёт таблица,
         // CSS Writing Modes §3.1) — но ВЫЧИСЛЕННОЕ значение наследуется в
@@ -91,7 +98,7 @@ pub(super) fn table_rows(
         let group_layer;
         let inherited = match carry.3 {
             Some(g) => {
-                group_layer = inherit(inherited, &g.style);
+                group_layer = inherit(inherited, &g.style, vcx);
                 &group_layer
             }
             None => inherited,
@@ -111,7 +118,7 @@ pub(super) fn table_rows(
         // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
-        let row_style = inherit(inherited, &own);
+        let row_style = inherit(inherited, &own, vcx);
         push_empty_row_track(row_ix, &occupied, e, cols, &mut cells, row);
         let mut col_ix = 0usize;
         for child in &row.children {

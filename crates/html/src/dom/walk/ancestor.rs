@@ -1,18 +1,18 @@
 //! Element passports keep DOM selector metadata separate from recursive walking.
 
-use crate::dom::slot_of;
-use crate::style::select::has::has_marks_of;
+use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 
 #[allow(clippy::ptr_arg, clippy::let_and_return)]
 pub(super) fn element_ancestor(
     handle: &Handle,
-    tag: &String,
+    tag: &str,
     attrs: &Vec<(String, String)>,
     html_attrs: bool,
     spot: Spot,
     sibs: Sibs,
+    tree: &TreeIndex,
 ) -> Ancestor {
     let id = attrs
         .iter()
@@ -25,12 +25,13 @@ pub(super) fn element_ancestor(
         .unwrap_or_default();
     let me = Ancestor {
         counter_style: Default::default(),
+        counter_context: Default::default(),
         content_style: None,
         content_none: None,
-        tag: tag.clone(),
+        tag: tag.to_string(),
         html_attrs,
-        id: id.clone(),
-        classes: classes.clone(),
+        id,
+        classes,
         attrs: attrs.clone(),
         spot,
         href: attrs
@@ -44,9 +45,10 @@ pub(super) fn element_ancestor(
                 _ => None,
             }
         }),
-        has_marks: has_marks_of(handle),
+        has_marks: tree.has_marks_of(handle),
+        shadow_has_marks: vec![],
         featureless: None,
-        slot: slot_of(handle),
+        slot: tree.slot_of(handle),
         peers: sibs
             .is_elem
             .then_some(sibs.rc)
@@ -54,7 +56,32 @@ pub(super) fn element_ancestor(
             .map(|r| (r.clone(), sibs.pos)),
         target_group: None,
         target_current: false,
+        empty: crate::style::select::is_empty_node(handle),
+        foreign: match &handle.data {
+            markup5ever_rcdom::NodeData::Element { name, .. } => {
+                &*name.ns != "http://www.w3.org/1999/xhtml"
+            }
+            _ => false,
+        },
     };
 
     me
+}
+
+/// The element's attributes as `(name, value)`; `xml:base` keeps its prefix
+/// (the only namespaced attribute the engine reads).
+pub(super) fn element_attrs(attrs: &[html5ever::Attribute]) -> Vec<(String, String)> {
+    attrs
+        .iter()
+        .map(|a| {
+            let key = if &*a.name.local == "base"
+                && &*a.name.ns == "http://www.w3.org/XML/1998/namespace"
+            {
+                "xml:base".to_owned()
+            } else {
+                a.name.local.to_string()
+            };
+            (key, a.value.to_string())
+        })
+        .collect()
 }

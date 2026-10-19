@@ -1,6 +1,8 @@
 //! Resolve SVG image URL fragments before passing the image to static usvg.
 
-pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
+mod view;
+
+pub(super) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return bytes;
     };
@@ -15,25 +17,13 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let Ok(id) = std::str::from_utf8(&decoded) else {
         return bytes;
     };
+    let mut edits = view::edits(text, &doc, id);
     let Some(target) = doc
         .descendants()
         .find(|n| n.is_element() && n.attribute("id") == Some(id))
     else {
-        return bytes;
+        return apply(text, edits);
     };
-    let mut edits = Vec::new();
-    let root = doc.root_element();
-    // SVG 2 section 16.3.2: a <view> fragment supplies the initial viewBox.
-    if target.has_tag_name("view")
-        && let Some(value) = target.attribute("viewBox")
-    {
-        let value = xml_text(value);
-        if let Some(attr) = root.attributes().find(|a| a.name() == "viewBox") {
-            edits.push((attr.range_value(), value));
-        } else if let Some(end) = opening_end(text, root.range().start) {
-            edits.push((end..end, format!(" viewBox=\"{value}\"")));
-        }
-    }
     // Selectors 4 section 8.3: the fragment's first matching element is :target.
     // usvg has no document URL. An unused attribute marks just that element;
     // an attribute selector has the same specificity as this pseudo-class.
@@ -76,9 +66,10 @@ pub(super) fn resolve(bytes: Vec<u8>, id: &str) -> Vec<u8> {
         };
         edits.push((at..at, format!(" {marker}=\"\"")));
     }
-    if edits.is_empty() {
-        return bytes;
-    }
+    apply(text, edits)
+}
+
+fn apply(text: &str, mut edits: Vec<(std::ops::Range<usize>, String)>) -> Vec<u8> {
     edits.sort_by_key(|(range, _)| range.start);
     let mut result = text.to_string();
     for (range, value) in edits.into_iter().rev() {

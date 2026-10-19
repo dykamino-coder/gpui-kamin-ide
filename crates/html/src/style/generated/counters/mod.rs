@@ -14,7 +14,6 @@
 //! сегменты (они настоящие братья содержимого хозяина).
 
 use std::collections::HashMap;
-
 mod scope;
 
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
@@ -29,7 +28,7 @@ const PSEUDO_AFTER: u32 = u32::MAX;
 #[derive(Clone, Debug)]
 struct Entry {
     owner: Vec<u32>,
-    value: i32,
+    value: i64,
     /// Счётчик создан как `reversed(имя)`: пункты списка считают ВНИЗ
     /// (css-lists-3 §list-item-counter).
     reversed: bool,
@@ -37,6 +36,8 @@ struct Entry {
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
 #[derive(Default, Clone)]
+// Quote overrides pair the owning DOM path with optional opening/closing pairs.
+#[allow(clippy::type_complexity)]
 pub struct Counters {
     stack: HashMap<String, Vec<Entry>>,
     /// Active style-containment roots; their own directives stay outside.
@@ -81,7 +82,6 @@ fn remove_stale(st: &mut Vec<Entry>, cur: &[u32]) {
         st.pop();
     }
 }
-
 impl Counters {
     /// Войти в коробку: занять следующий номер на своём уровне.
     pub fn enter(&mut self) {
@@ -96,13 +96,15 @@ impl Counters {
         self.next.truncate(level + 1);
         self.next.push(0);
     }
-
     pub fn leave(&mut self) {
         let mut i = 0;
         while i < self.resets.len() {
             if self.resets[i].0 == self.path {
                 let (_, name) = self.resets.remove(i);
-                self.drop_shadowed_reset(&name);
+                // A marker reset also scopes the following item contents.
+                if self.path.last() != Some(&PSEUDO_MARKER) {
+                    self.drop_shadowed_reset(&name);
+                }
             } else {
                 i += 1;
             }
@@ -110,14 +112,12 @@ impl Counters {
         self.path.pop();
         self.next.truncate(self.path.len() + 1);
     }
-
     /// Войти в псевдоэлемент хозяина: он брат его содержимого.
     pub fn enter_pseudo(&mut self, before: bool) {
         self.path
             .push(if before { PSEUDO_BEFORE } else { PSEUDO_AFTER });
         self.next.push(0);
     }
-
     /// Войти в `::marker`: он первый ребёнок пункта, раньше `::before`
     /// (css-lists-3 §marker-pseudo). Своя область нужна затем, чтобы
     /// `counter-reset` на маркере вкладывался, а не заменял счётчик пункта:
@@ -130,12 +130,12 @@ impl Counters {
     /// `counter-reset` (Blink `CreateCounter`): своя запись заменяет запись
     /// СВОЕГО уровня (сам узел или предыдущий брат) и вкладывается внутрь
     /// записи предка.
-    pub fn reset(&mut self, name: &str, value: i32) {
+    pub fn reset(&mut self, name: &str, value: i64) {
         self.reset_flagged(name, value, false);
     }
 
     /// То же, но с пометкой обратного счёта.
-    pub fn reset_flagged(&mut self, name: &str, value: i32, reversed: bool) {
+    pub fn reset_flagged(&mut self, name: &str, value: i64, reversed: bool) {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
@@ -198,7 +198,7 @@ impl Counters {
 
     /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
     /// при пустом стеке счётчик сперва создаётся со значения 0.
-    pub fn update(&mut self, name: &str, delta: i32, is_set: bool) {
+    pub fn update(&mut self, name: &str, delta: i64, is_set: bool) {
         let cur = self.path.clone();
         let st = self.stack.entry(name.to_string()).or_default();
         remove_stale(st, &cur);
@@ -223,7 +223,7 @@ impl Counters {
     }
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
-    pub fn value_of(&mut self, name: &str) -> i32 {
+    pub fn value_of(&mut self, name: &str) -> i64 {
         let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return 0;
@@ -233,7 +233,7 @@ impl Counters {
     }
 
     /// `counters(имя, разделитель)`: вся цепочка от внешнего к внутреннему.
-    pub fn chain_of(&mut self, name: &str) -> Vec<i32> {
+    pub fn chain_of(&mut self, name: &str) -> Vec<i64> {
         let cur = self.path.clone();
         let Some(st) = self.stack.get_mut(name) else {
             return vec![0];

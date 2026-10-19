@@ -107,12 +107,9 @@ impl RootView {
                             cx.notify();
                         }),
                         cx.listener(move |this, hovered: &bool, _, cx| {
-                            this.hovered_handle = if *hovered {
-                                Some("file-bottom-handle")
-                            } else {
-                                None
-                            };
-                            cx.notify();
+                            if this.hover_handle("file-bottom-handle", *hovered) {
+                                cx.notify();
+                            }
                         }),
                     ))
                     .child({

@@ -96,7 +96,7 @@ pub(crate) fn orthogonal_limit(
             // «предок уже дал предел» писалось под `max-height` ячейки
             // (table-cell-002), а `max-height` определённого размера не даёт
             // — поэтому вето сужено до случая без своей `height`.
-            if e.style.vertical != Some(true) || merged.ortho_limit.is_none() || h.is_some() {
+            if !e.style.wm().vertical() || merged.ortho_limit.is_none() || h.is_some() {
                 merged.ortho_limit = Some(avail);
                 own_limit = true;
             }
@@ -117,7 +117,7 @@ pub(crate) fn orthogonal_limit(
         // пустым хвостом (`block-flow-direction-vlr-010`, `vrl-009`,
         // `srl-049` зелены при том же дефекте).
         if !own_limit
-            && merged.vertical == Some(true)
+            && merged.wm().vertical()
             && let Some(l) = merged.ortho_limit
         {
             let b = e.style.borders();

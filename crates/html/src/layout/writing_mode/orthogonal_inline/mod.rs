@@ -2,14 +2,7 @@
 use crate::layout::block::ratio_basis;
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
 use crate::style::computed::{Computed, Display, Overflow, Position};
-use crate::style::values::value::Len;
-
-fn px(value: Option<Len>) -> Option<f32> {
-    match value {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    }
-}
+use crate::style::values::value::{Len, px_strict};
 
 pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     let b = style.borders();
@@ -18,7 +11,7 @@ pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
     } else {
         [b.left, b.right, style.padding.left, style.padding.right]
     };
-    sides.into_iter().filter_map(px).sum()
+    sides.into_iter().filter_map(px_strict).sum()
 }
 
 pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
@@ -37,7 +30,7 @@ pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     } else {
         style.scroll.used[0] + style.scroll.used[2]
     };
-    let inner = |value| px(value).map(|v| (v - adjustment - gutters).max(0.0));
+    let inner = |value| px_strict(value).map(|v| (v - adjustment - gutters).max(0.0));
     AxisSizes {
         size: inner(size),
         min: inner(min),
@@ -74,8 +67,8 @@ pub(crate) fn resolve(
     } else {
         parent.orthogonal_scrollport
     };
-    let vertical = style.vertical == Some(true);
-    let parent_vertical = parent.vertical == Some(true);
+    let vertical = style.wm().vertical();
+    let parent_vertical = parent.wm().vertical();
     style.orthogonal_inline = if vertical == parent_vertical && ordinary(style) {
         crate::layout::writing_mode::orthogonal_fixed_child::containing_inline(parent).map(
             |constraint| {
@@ -112,19 +105,32 @@ pub(crate) fn resolve(
     {
         style.orthogonal_scrollport = Some([axis(style, false), own]);
     }
+    // Margins keep font-relative units until layout (`resolve_em` covers sizes
+    // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
+    // available space for the box's MARGIN box).
+    let em = px_strict(style.font_size).unwrap_or(16.0);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
-        other => px(other).unwrap_or(0.0),
+        Some(Len::Em(k)) => k * em,
+        other => px_strict(other).unwrap_or(0.0),
     };
-    let margins = margin(style.margin.top) + margin(style.margin.bottom);
+    // Collapsing may move these margins onto an ancestor, but they still take
+    // their room out of the stretch-fit inline size.
+    let authored = style.own_margin.unwrap_or(style.margin);
+    let margins = margin(authored.top) + margin(authored.bottom);
+    // A definite containing block size IS the available inline space; the
+    // fallback (smallest of max size, scrollport and ICB) only stands in for an
+    // indefinite one (css-writing-modes-4 §7.3.1, `available-size-020`: a
+    // `height: 120vh` parent is not capped by the ICB).
+    let space = basis;
     style.orthogonal_inline = Some(InlineConstraint {
-        available: (fallback - own_edges - margins).max(0.0),
+        available: (space - own_edges - margins).max(0.0),
         fixed: own.size,
         min: own.min,
         max: own.max,
     });
     // A wrapping cap is not a percentage basis or a used inline size.
-    style.ortho_limit = own.size.or(Some((fallback - own_edges - margins).max(0.0)));
+    style.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
 }
 
 #[cfg(test)]

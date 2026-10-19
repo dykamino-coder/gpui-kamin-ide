@@ -2,9 +2,13 @@
 
 use super::settle::{DefaultAnchor, default_anchor_of};
 use super::{AREA_LAST, AnchorRec, CELL_LAST, CHOSEN, LAST_IMPLICIT, LAST_NAMED, USED_LAST};
+use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
-use crate::style::values::value::{AnchorSize, Len, anchor_get};
+use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 use std::rc::Rc;
+
+mod insets;
+use insets::fill_anchor_pairs;
 
 /// Выбранный на прошлом кадре вариант `position-try-fallbacks` (`CHOSEN`) —
 /// в стиль ДО раскладки (зовёт `render::element` сразу после ключей):
@@ -12,7 +16,7 @@ use std::rc::Rc;
 /// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
 /// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
 /// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut Computed) {
+pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
     if c.position_try_fallbacks.is_empty()
         || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
     {
@@ -26,9 +30,9 @@ pub fn apply_chosen(c: &mut Computed) {
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
     {
         if let Some(n) = &fb.name
-            && let Some(decls) = crate::style::css::try_rule(n)
+            && let Some(decls) = vcx.doc.try_rule(n)
         {
-            c.apply_decls(&decls);
+            c.apply_decls(&decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);
@@ -75,18 +79,18 @@ pub(super) fn last_named(n: &str, seq: u32) -> Option<AnchorRec> {
 ///
 /// Первый кадр отдаёт запасные значения, второй — верные; стенд ждёт
 /// устоявшихся кадров.
-pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
+pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         return;
     }
     let seq = c.anchor_seq;
     let default_anchor = default_anchor_of(c);
-    let cb_vertical = inherited.vertical == Some(true);
-    let own_vertical = c.vertical == Some(true);
+    let cb_vertical = inherited.wm().vertical();
+    let own_vertical = c.wm().vertical();
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
         USED_LAST.with(|u| u.set(true));
-        let mut f = anchor_get(i);
+        let mut f = anchor_get(i, vcx);
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
@@ -117,7 +121,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
             });
             match (hit, cur.fallback) {
                 (Some(v), _) => return Some(Len::Px(v)),
-                (None, Some(Len::Anchor(j))) => f = anchor_get(j),
+                (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),
                 (None, fb) => return fb,
             }
         }
@@ -163,6 +167,9 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     c.height = one(c.height, true);
     c.min_height = one(c.min_height, true);
     c.max_height = one(c.max_height, true);
+    if c.position_area.is_none() {
+        fill_anchor_pairs(c, Some(is_grid(inherited)));
+    }
     if c.position_area.is_none() || default_anchor.is_none() {
         return;
     }
@@ -172,10 +179,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     let Some((w, h)) = AREA_LAST.with(|m| m.borrow().get(&c.anchor_key).copied()) else {
         return;
     };
-    let pxv = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let pxv = px_lossy_zero;
     let block_stretch = c.align_self == Some(Align::Stretch);
     let inline_stretch = c.justify_self == Some(Align::Stretch);
     let (x_stretch, y_stretch) = if cb_vertical {
@@ -202,4 +206,12 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
             + pxv(c.padding.bottom);
         c.height = Some(Len::Px((h - extra).max(0.0)));
     }
+}
+
+fn is_grid(c: &Computed) -> bool {
+    matches!(
+        c.display,
+        Some(crate::style::computed::Display::Grid)
+            | Some(crate::style::computed::Display::InlineGrid)
+    )
 }

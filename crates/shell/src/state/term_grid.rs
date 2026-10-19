@@ -117,7 +117,6 @@ pub(crate) fn term_grid(
         // `cursorBlink: true` (`TerminalSession.tsx:75`): xterm
         // мигает периодом 1.2 с — половину периода курсор виден,
         // половину нет. У нас он был статичным (ревью ц.19)
-        use gpui::AnimationExt as _;
         let cursor = div()
             .absolute()
             .left(px(ccol as f32 * TERM_CELL_W))
@@ -128,20 +127,13 @@ pub(crate) fn term_grid(
             .text_color(rgba(p.editor_bg))
             .child(ch);
         // Под RDP вечное мигание = постоянные кадры в сеть — курсор статичен.
-        grid_el = grid_el.child(if crate::win_integration::reduce_motion() {
-            cursor.into_any_element()
-        } else {
-            cursor
-                .with_animation(
-                    "term-cursor-blink",
-                    gpui::Animation::new(std::time::Duration::from_millis(1200)).repeat(),
-                    |d, delta| {
-                        crate::web::diag_why::tick("animation/term-cursor");
-                        if delta < 0.5 { d } else { d.invisible() }
-                    },
-                )
-                .into_any_element()
-        });
+        // Иначе мигание 1.2s по общему такту `anim_tick`: кадр только на смену
+        // видимости (2 за цикл), а не на каждую развёртку (INC-2026-0001).
+        let hidden = !crate::win_integration::reduce_motion() && {
+            crate::web::diag_why::tick("animation/term-cursor");
+            crate::ui::anim_tick::step(600) % 2 == 1
+        };
+        grid_el = grid_el.child(if hidden { cursor.invisible() } else { cursor });
     }
     grid_el
 }

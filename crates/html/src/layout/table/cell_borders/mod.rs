@@ -3,12 +3,16 @@
 
 use crate::dom::Element;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 mod columns;
+mod rows;
 pub(super) use columns::collapsed_col_edges;
 pub(super) use columns::collapsed_colgroup_edges;
+pub(super) use rows::collapsed_row_edges;
 
+// Border conflict resolution keeps style, color and width in the winning edge.
+#[allow(clippy::type_complexity)]
 pub(super) fn collapsed_cell_edge(
     cell: &mut Element,
     cm: &Computed,
@@ -82,10 +86,7 @@ pub(super) fn collapsed_cell_edge(
         let base = match own {
             Some(Len::Px(v)) => v,
             None => 0.0,
-            Some(_) => match merged {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            },
+            Some(_) => px_lossy_zero(merged),
         };
         Some(Len::Px(base + win[i] / 2.0))
     };
@@ -104,61 +105,6 @@ pub(super) fn collapsed_cell_edge(
         styles,
         cell.node_id as u32,
     ))
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn collapsed_row_edges(
-    row: &Element,
-    col_ix: usize,
-    span_cols: u16,
-    cols: u16,
-    row_style: &Computed,
-    table_style: &Computed,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
-    px_of: &impl Fn(Option<Len>) -> f32,
-    mut d: gpui::Div,
-) -> gpui::Div {
-    let b = row.style.borders();
-    let rw = [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)];
-    let hidden_row = row.style.border_side_styles.contains(&Some(1));
-    if rw.iter().any(|w| *w > 0.0) || hidden_row {
-        let start_col = col_ix - span_cols as usize;
-        let last_col = col_ix >= cols as usize;
-        let widths =
-            super::axes::Axes::new(table_style).mask(rw, [true, last_col, true, start_col == 0]);
-        let black = crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        };
-        let side_colour = |k: usize| {
-            row.style.border_colors[k]
-                .or(row.style.border_color)
-                .or(row_style.color)
-                .unwrap_or(black)
-        };
-        let colors = [
-            side_colour(0),
-            side_colour(1),
-            side_colour(2),
-            side_colour(3),
-        ];
-        let side_style = |k: usize| {
-            row.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
-        };
-        let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::layout::table::paint::edge_probe(
-            table_edges.clone(),
-            widths,
-            colors,
-            styles,
-            4,
-            row.node_id as u32,
-            [0.0; 4],
-        ));
-    }
-    d
 }
 
 #[allow(clippy::too_many_arguments)]

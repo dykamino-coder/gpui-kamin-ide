@@ -1,15 +1,17 @@
 //! Computed::apply_one: color, line-height, text-align/indent/transform/wrap, white-space, word-*, hyphens, vertical-align, line-clamp, text-box*, writing modes.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod breaking;
+mod hyphen_limits;
 mod overflow_case;
+mod text_box_values;
 mod vertical_clamp;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_text(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_text(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
@@ -19,7 +21,7 @@ impl Computed {
                 self.color = if v == "inherit" {
                     None
                 } else {
-                    Color::parse(v).or(self.color)
+                    record_parsed!(self, Color::parse(v, vcx)).or(self.color)
                 }
             }
             "line-height" => {
@@ -42,12 +44,12 @@ impl Computed {
                 // «по метрикам шрифта» (`inline.rs:719`, `:1529`, `:2445`), а
                 // `apply.rs:1618` на `Len::Auto` явно ничего не задаёт.
                 if v.eq_ignore_ascii_case("normal") {
-                    self.line_height = Some(Len::Auto);
+                    self.line_height = accept_parsed!(self, Some(Len::Auto));
                     return;
                 }
                 let parsed = match v.parse::<f32>() {
                     Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
-                    _ => match Len::parse(v) {
+                    _ => match Len::parse(v, vcx) {
                         Some(Len::Pct(k)) if v.trim_end().ends_with('%') => Some(Len::Em(k)),
                         other => other,
                     },
@@ -63,7 +65,7 @@ impl Computed {
                 };
                 self.line_height = match parsed {
                     Some(l) if neg(&l) => self.line_height,
-                    other => other,
+                    other => record_parsed!(self, other),
                 };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
@@ -76,6 +78,7 @@ impl Computed {
                     v,
                     "none" | "auto" | "inter-word" | "inter-character" | "distribute" | "ruby"
                 ) {
+                    self.accept_declaration();
                     self.ruby_justify = Some(v == "ruby");
                     self.justify_chars = match v {
                         "inter-word" => Some(0),
@@ -95,6 +98,7 @@ impl Computed {
             // ставит его обоим лонгхендам; `text-align-all` — только всем
             // строкам, кроме последней.
             "text-align" | "text-align-all" if v == "match-parent" => {
+                self.accept_declaration();
                 self.text_align = None;
                 self.text_align_match_parent |= if key == "text-align" { 3 } else { 1 };
             }
@@ -103,6 +107,7 @@ impl Computed {
                     v,
                     "center" | "right" | "left" | "start" | "end" | "justify" | "justify-all"
                 ) {
+                    self.accept_declaration();
                     self.text_align_match_parent &= if key == "text-align" { 0 } else { 2 };
                 }
                 self.text_align = match v {
@@ -122,10 +127,17 @@ impl Computed {
                 }
             }
             "text-align-last" if v == "match-parent" => {
+                self.accept_declaration();
                 self.text_align_last = None;
                 self.text_align_match_parent |= 2;
             }
             "text-align-last" => {
+                if matches!(
+                    v,
+                    "auto" | "center" | "right" | "left" | "start" | "end" | "justify"
+                ) {
+                    self.accept_declaration();
+                }
                 if v != "auto" && v != "inherit" {
                     self.text_align_match_parent &= 1;
                 }
@@ -139,8 +151,10 @@ impl Computed {
                     _ => self.text_align_last,
                 }
             }
-            "letter-spacing" => self.letter_spacing = Len::parse_spacing(v),
-            _ => self.apply_text_overflow_case(key, val, v, hit),
+            "letter-spacing" => {
+                self.letter_spacing = record_parsed!(self, Len::parse_spacing(v, vcx))
+            }
+            _ => self.apply_text_overflow_case(key, v, hit, vcx),
         }
     }
 }

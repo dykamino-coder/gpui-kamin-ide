@@ -2,8 +2,8 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::float::band_host::px_margin;
-use crate::paint::effects::grouped::px_of2;
 use crate::style::computed::{Computed, Display};
+use crate::style::values::value::px_missing_zero;
 use crate::text::text_box::blank_text;
 
 /// Флоат, ради которого строчная коробка и существует, — и ничего кроме него.
@@ -155,11 +155,11 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
 pub(crate) fn px_margin_w(c: &Computed) -> Option<f32> {
     let b = c.borders();
     Some(
-        px_of2(&c.width)?
-            + px_of2(&c.padding.left)?
-            + px_of2(&c.padding.right)?
-            + px_of2(&b.left)?
-            + px_of2(&b.right)?
+        px_missing_zero(c.width)?
+            + px_missing_zero(c.padding.left)?
+            + px_missing_zero(c.padding.right)?
+            + px_missing_zero(b.left)?
+            + px_missing_zero(b.right)?
             + px_margin(&c.margin.left)?
             + px_margin(&c.margin.right)?,
     )

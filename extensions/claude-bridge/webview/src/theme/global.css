@@ -47,6 +47,14 @@ a:focus-visible {
    !important rule (0,1,0) no matter how the bundler orders the css. */
 @media (prefers-reduced-motion: reduce) {
   .fa-spin.fa-spin {
-    animation: fa-spin 1.1s linear infinite !important;
+    animation: fa-spin 1.1s steps(11) infinite !important;
   }
+}
+
+/* Spinning icons turn in ~10 steps a second instead of every display refresh
+   (INC-2026-0001): each CEF frame becomes a full host window redraw, so a
+   smooth spinner alone kept the window near 60 frames/s. FontAwesome 7 reads
+   the timing from this variable; its default spin lasts 2s. */
+.fa-spin {
+  --fa-animation-timing: steps(20);
 }

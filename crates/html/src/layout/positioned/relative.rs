@@ -1,4 +1,6 @@
 //! Относительный сдвиг и подъём абсолютных коробок.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -6,7 +8,7 @@ use crate::layout::positioned::static_position::at_static_position;
 use crate::render::{is_blank, real_inline};
 use crate::style::cascade::inherit::inherit_unpainted;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 /// Абсолют с краями по ОБЕИМ осям внутри НЕпозиционированного строчного —
 /// наружу, соседом этого строчного на блочном уровне. Его содержащий блок —
@@ -20,7 +22,7 @@ use crate::style::values::value::Len;
 /// потоке ему не нужно. Порядок отрисовки тот же: позиционированные красятся
 /// в порядке дерева (прил. E, шаг 8), а вынесенный встаёт сразу за своим
 /// строчным.
-pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node> {
+pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     fn movable(e: &Element) -> bool {
         let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         matches!(
@@ -46,8 +48,8 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
             && e.style.contain_paint != Some(true)
             && !crate::text::inline::establishes_cb(&e.style)
     }
-    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed) {
-        let parent = inherit_unpainted(inherited, &e.style);
+    fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed, vcx: ValueCx<'_>) {
+        let parent = inherit_unpainted(inherited, &e.style, vcx);
         let kids = std::mem::take(&mut e.children);
         for n in kids {
             match n {
@@ -55,11 +57,11 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = inherit_unpainted(&parent, &k.style);
+                    k.style = inherit_unpainted(&parent, &k.style, vcx).into();
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {
-                    take(&mut k, out, &parent);
+                    take(&mut k, out, &parent, vcx);
                     e.children.push(Node::Element(k));
                 }
                 other => e.children.push(other),
@@ -84,7 +86,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed) -> Vec<Node>
             Node::Element(e) if passable(e) && has(e) => {
                 let mut e = e.clone();
                 let mut moved = Vec::new();
-                take(&mut e, &mut moved, inherited);
+                take(&mut e, &mut moved, inherited, vcx);
                 out.push(Node::Element(e));
                 out.extend(moved);
             }
@@ -110,10 +112,7 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
     if e.style.position != Some(crate::style::computed::Position::Relative) {
         return (0.0, 0.0);
     }
-    let basis = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let basis = px_strict;
     let (bw, bh) = parent.map_or((None, None), |p| {
         (basis(p.style.width), basis(p.style.height))
     });

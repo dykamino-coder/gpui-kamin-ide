@@ -1,3 +1,12 @@
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 // GUI-subsystem в release: console-subsystem дарил packaged-приложению чёрное
 // консольное окно. В dev (debug_assertions) консоль остаётся — туда идут логи
 // сайдкара при запуске из терминала.
@@ -312,10 +321,10 @@ fn main() {
                         // проверка изменений молча не работала.
                         v.sync_panels(cx);
                         // Холостые события (вывод терминала, доставка
-                        // страницам) кадра не заказывают: раньше каждое
-                        // будило полную пересборку RootView.
+                        // страницам) кадра не заказывают; остальные — через
+                        // насос, в общем ритме кадров (`frame_rhythm`).
                         if needs_frame {
-                            cx.notify();
+                            crate::web::repaint_requested();
                         }
                     });
                 }

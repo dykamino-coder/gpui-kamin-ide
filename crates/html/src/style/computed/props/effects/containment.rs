@@ -1,15 +1,15 @@
 //! Computed::apply_effects, хвост цепочки: container-type, content-visibility, contain-intrinsic-*, mix-blend-mode, isolation, user-select. Ветви в исходном порядке после apply_effects_timing.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_effects_containment(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             "container-type" => {
@@ -60,6 +60,7 @@ impl Computed {
                 if !known {
                     return;
                 }
+                self.accept_declaration();
                 // Только ВЗВОД: `container-type: normal` не имеет права снять
                 // обособление, объявленное в том же блоке через `contain`, —
                 // это разные свойства, и начальное значение одного ничего не
@@ -84,6 +85,9 @@ impl Computed {
                 }
             }
             "content-visibility" => {
+                if matches!(v.trim(), "visible" | "hidden" | "auto") {
+                    self.accept_declaration();
+                }
                 // `hidden` = size+layout+paint containment, содержимое
                 // пропускается целиком (css-contain-2 §4). `auto` для
                 // reftest без прокрутки всегда «релевантен» = visible.
@@ -99,7 +103,7 @@ impl Computed {
                 let nums: Vec<f32> = v
                     .split_whitespace()
                     .filter(|w| *w != "auto")
-                    .filter_map(|w| match Len::parse(w) {
+                    .filter_map(|w| match Len::parse(w, vcx) {
                         Some(Len::Px(px)) => Some(px),
                         _ => None,
                     })
@@ -109,24 +113,35 @@ impl Computed {
                     [w, h, ..] => (Some(*w), Some(*h)),
                     _ => (None, None),
                 };
+                if !nums.is_empty() || matches!(v.trim(), "none" | "auto none") {
+                    self.accept_declaration();
+                }
             }
             "contain-intrinsic-width" => {
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
-                    self.contain_intrinsic.0 = Some(w);
+                if matches!(v, "none" | "auto none") {
+                    self.accept_declaration();
+                }
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
+                    self.contain_intrinsic.0 = accept_parsed!(self, Some(w));
                 }
             }
             "contain-intrinsic-height" => {
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
-                    self.contain_intrinsic.1 = Some(h);
+                if matches!(v, "none" | "auto none") {
+                    self.accept_declaration();
+                }
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
+                    self.contain_intrinsic.1 = accept_parsed!(self, Some(h));
                 }
             }
             "contain-intrinsic-block-size" => {
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
+                    self.accept_declaration();
                     self.logical().ci_block = Some(h);
                 }
             }
             "contain-intrinsic-inline-size" => {
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim()) {
+                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
+                    self.accept_declaration();
                     self.logical().ci_inline = Some(w);
                 }
             }
@@ -134,34 +149,46 @@ impl Computed {
                 // Номера совпадают с формулами в шейдере: смешивание считается
                 // при сборке буфера группы, поэтому доступны все режимы CSS,
                 // включая те, где цвет берётся целиком (тон, насыщенность).
-                self.blend = match v {
-                    "multiply" => Some(1),
-                    "screen" => Some(2),
-                    "darken" => Some(3),
-                    "lighten" => Some(4),
-                    "overlay" => Some(5),
-                    "color-dodge" => Some(6),
-                    "color-burn" => Some(7),
-                    "hard-light" => Some(8),
-                    "soft-light" => Some(9),
-                    "difference" => Some(10),
-                    "exclusion" => Some(11),
-                    "hue" => Some(12),
-                    "saturation" => Some(13),
-                    "color" => Some(14),
-                    "luminosity" => Some(15),
-                    _ => Some(0),
-                }
+                self.blend = accept_parsed!(
+                    self,
+                    match v {
+                        "multiply" => Some(1),
+                        "screen" => Some(2),
+                        "darken" => Some(3),
+                        "lighten" => Some(4),
+                        "overlay" => Some(5),
+                        "color-dodge" => Some(6),
+                        "color-burn" => Some(7),
+                        "hard-light" => Some(8),
+                        "soft-light" => Some(9),
+                        "difference" => Some(10),
+                        "exclusion" => Some(11),
+                        "hue" => Some(12),
+                        "saturation" => Some(13),
+                        "color" => Some(14),
+                        "luminosity" => Some(15),
+                        "plus-lighter" => Some(16),
+                        _ => Some(0),
+                    }
+                )
             }
             "image-rendering" => {
+                if matches!(
+                    v,
+                    "pixelated" | "crisp-edges" | "auto" | "smooth" | "high-quality"
+                ) {
+                    self.accept_declaration();
+                }
                 self.image_pixelated = match v {
                     "pixelated" | "crisp-edges" => Some(true),
                     "auto" | "smooth" | "high-quality" => Some(false),
                     _ => self.image_pixelated,
                 }
             }
-            "isolation" => self.isolate = Some(v == "isolate"),
-            "user-select" | "-webkit-user-select" => self.no_select = Some(matches!(v, "none")),
+            "isolation" => self.isolate = accept_parsed!(self, Some(v == "isolate")),
+            "user-select" | "-webkit-user-select" => {
+                self.no_select = accept_parsed!(self, Some(matches!(v, "none")))
+            }
             _ => *hit = false,
         }
     }

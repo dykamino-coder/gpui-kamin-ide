@@ -27,15 +27,26 @@ pub fn rasterize(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
     markup.hash(&mut hasher);
     let key = (hasher.finish(), w.round() as u32, h.round() as u32);
 
+    cached(key.0, w, h, || {
+        gpui::svg_markup_to_image(markup, w, h, DENSITY)
+    })
+}
+
+/// Reuse the bounded raster cache for markup and typed decoration scenes.
+pub(super) fn cached(
+    hash: u64,
+    w: f32,
+    h: f32,
+    create: impl FnOnce() -> Option<Arc<RenderImage>>,
+) -> Option<Arc<RenderImage>> {
+    let key = (hash, w.round() as u32, h.round() as u32);
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(map) = cache.lock()
         && let Some(hit) = map.get(&key)
     {
         return hit.clone();
     }
-    // Растеризатор берём у самого GPUI: держать второй комплект resvg/usvg
-    // ради той же работы — лишний вес бинаря и лишний источник расхождений.
-    let image = gpui::svg_markup_to_image(markup, w, h, DENSITY);
+    let image = create();
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
             map.clear();
@@ -52,18 +63,7 @@ pub(super) fn rasterize_padded(markup: &str, w: f32, h: f32, pad: f32) -> Option
     markup.hash(&mut hasher);
     pad.to_bits().hash(&mut hasher);
     let key = (hasher.finish(), w.round() as u32, h.round() as u32);
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(map) = cache.lock()
-        && let Some(hit) = map.get(&key)
-    {
-        return hit.clone();
-    }
-    let image = gpui::svg_markup_to_image_padded(markup, w, h, DENSITY, pad);
-    if let Ok(mut map) = cache.lock() {
-        if map.len() >= CACHE_CAP {
-            map.clear();
-        }
-        map.insert(key, image.clone());
-    }
-    image
+    cached(key.0, w, h, || {
+        gpui::svg_markup_to_image_padded(markup, w, h, DENSITY, pad)
+    })
 }

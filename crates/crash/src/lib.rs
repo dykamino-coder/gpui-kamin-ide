@@ -82,6 +82,10 @@ pub fn install(_role: &'static str, _after: AfterReport) {}
 
 /// Файл отчёта: рядом с `diag.log`, чтобы человек присылал ОДНУ папку.
 #[cfg(windows)]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "OS integration resolves the per-user crash directory from LOCALAPPDATA"
+)]
 fn crash_log_path() -> std::path::PathBuf {
     let base = std::env::var("LOCALAPPDATA")
         .map(std::path::PathBuf::from)

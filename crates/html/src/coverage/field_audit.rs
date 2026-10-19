@@ -36,6 +36,8 @@ const ACCESSORS: &[(&str, &str)] = &[
     // Каскад читает sequence при `all` reset; затем resolve_logical
     // использует сохранённый порядок физических и логических declarations.
     ("decl_seq", ".apply_decls("),
+    // `appearance: none` is read through the form-control helper.
+    ("appearance", ".appearance_none("),
     // Font-relative исходники разрешаются до создания элементов.
     ("gradient_em", ".resolve_em("),
     ("text_shadow_raw", ".resolve_em("),

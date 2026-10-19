@@ -4,14 +4,14 @@
 use crate::layout::fragment::types::{
     Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild,
 };
-use gpui::{Bounds, IntoElement, Pixels};
+use gpui::{Bounds, Pixels};
 
 pub mod avoid;
 mod axis;
 pub mod balance;
 pub mod element;
-pub mod fill;
 mod gap_geometry;
+mod paginate;
 
 pub struct ColumnStack {
     pub(crate) children: Vec<StackChild>,
@@ -28,6 +28,9 @@ pub struct ColumnStack {
     pub(crate) row_phase: f32,
     /// `column-fill: auto` + заданная высота: заполнение без баланса.
     pub(crate) fixed_height: Option<f32>,
+    /// Balanced column height chosen by the pagination of a child laid out
+    /// against the fragmentainer grid (`paginate`); `None` — ordinary balance.
+    pub(crate) forced_h: Option<f32>,
     /// `fixed_height` пришёл из `max-height` при авто-высоте: колонки
     /// заполняются до него, а коробка — по самой высокой занятой колонке
     /// (Blink `ConstrainColumnBlockSize`; `columnfill-auto-max-height-003`).
@@ -49,6 +52,8 @@ pub struct ColumnStack {
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
     pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    /// Reuse placement storage while mapping viewport static-position probes.
+    pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
     /// Линии колонок после укладки: `(y, высота)` каждой — линейкам и
     /// смещениям. Колонка `col` стоит в линии `col / count`. Без спаннеров
@@ -59,6 +64,8 @@ pub struct ColumnStack {
 }
 
 impl ColumnStack {
+    // Construction keeps the independent CSS column constraints explicit.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         children: Vec<StackChild>,
         count: usize,
@@ -97,6 +104,7 @@ impl ColumnStack {
             count: count.max(1),
             gap,
             fixed_height,
+            forced_h: None,
             fill_shrink: false,
             rule,
             rule_to: None,
@@ -107,6 +115,7 @@ impl ColumnStack {
             gap_items,
             intrinsic,
             plan: std::cell::RefCell::new(Vec::new()),
+            static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
@@ -224,13 +233,5 @@ impl ColumnStack {
             }
             _ => (col, 0.0),
         }
-    }
-}
-
-impl IntoElement for ColumnStack {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

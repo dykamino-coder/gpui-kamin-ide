@@ -130,12 +130,9 @@ impl RootView {
                             cx.notify();
                         }),
                         cx.listener(move |this, hovered: &bool, _, cx| {
-                            this.hovered_handle = if *hovered {
-                                Some("right-split-handle")
-                            } else {
-                                None
-                            };
-                            cx.notify();
+                            if this.hover_handle("right-split-handle", *hovered) {
+                                cx.notify();
+                            }
                         }),
                     ))
                     .child(div().flex_1().min_h(px(0.)).min_w(px(0.)).child(

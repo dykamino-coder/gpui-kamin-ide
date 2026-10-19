@@ -3,6 +3,7 @@
 use super::super::area::Tracks;
 use super::super::parse::{FLIP_BLOCK, FLIP_INLINE, FLIP_START};
 use super::super::{AnchorPlan, Placement};
+use crate::document::state::ValueCx;
 use crate::style::computed::Align;
 use crate::style::values::value::AnchorSide;
 use gpui::{Bounds, Pixels, Window};
@@ -14,13 +15,14 @@ impl AnchorPlan {
         &self,
         own: Bounds<Pixels>,
         window: &Window,
+        vcx: ValueCx<'_>,
     ) -> Placement {
-        if let Some(p) = self.area_place(own, window) {
+        if let Some(p) = self.area_place(own, window, vcx) {
             return p;
         }
         let cb = self.cb_bounds(window);
-        let (dx, w, ox) = self.free_axis(true, cb, own);
-        let (dy, h, oy) = self.free_axis(false, cb, own);
+        let (dx, w, ox) = self.free_axis(true, cb, own, vcx);
+        let (dy, h, oy) = self.free_axis(false, cb, own, vcx);
         Placement {
             dx,
             dy,
@@ -32,12 +34,17 @@ impl AnchorPlan {
 
     /// Размещение в клетке `position-area`; `None` — области нет или
     /// якорь/содержащий блок не найдены (тогда — обычные `anchor()`-вставки).
-    pub(super) fn area_place(&self, own: Bounds<Pixels>, window: &Window) -> Option<Placement> {
+    pub(super) fn area_place(
+        &self,
+        own: Bounds<Pixels>,
+        window: &Window,
+        vcx: ValueCx<'_>,
+    ) -> Option<Placement> {
         let (tx, ty) = self.area?;
         let a = self.lookup(None)?;
         let cb = self.cb_bounds(window)?;
-        let (dx, w, ox, cw) = self.axis_place(true, tx, a, cb, own);
-        let (dy, h, oy, ch) = self.axis_place(false, ty, a, cb, own);
+        let (dx, w, ox, cw) = self.axis_place(true, tx, a, cb, own, vcx);
+        let (dy, h, oy, ch) = self.axis_place(false, ty, a, cb, own, vcx);
         Some(Placement {
             dx,
             dy,
@@ -73,7 +80,8 @@ impl AnchorPlan {
         self.margin.swap(k1, k2);
         for k in [k1, k2] {
             if let Some(sp) = self.sides[k].as_mut() {
-                sp.f.side = mirror_side(sp.f.side, y);
+                let f = std::rc::Rc::make_mut(&mut sp.f);
+                f.side = mirror_side(f.side, y);
             }
         }
         if let Some((tx, ty)) = self.area.as_mut() {
@@ -105,7 +113,8 @@ impl AnchorPlan {
         self.margin.swap(0, 3);
         self.margin.swap(2, 1);
         for sp in self.sides.iter_mut().flatten() {
-            sp.f.side = transpose_side(sp.f.side);
+            let f = std::rc::Rc::make_mut(&mut sp.f);
+            f.side = transpose_side(f.side);
         }
         if let Some((tx, ty)) = self.area.as_mut() {
             std::mem::swap(tx, ty);

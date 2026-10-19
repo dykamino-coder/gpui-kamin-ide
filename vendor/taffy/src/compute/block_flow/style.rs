@@ -35,6 +35,9 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
                 flow.vertical == self.flow.vertical && flow.block_reverse == self.flow.block_reverse
             })
     }
+    fn is_flow_root(&self) -> bool {
+        self.style.is_flow_root()
+    }
     fn direction(&self) -> Direction {
         if self.flow.inline_reverse {
             Direction::Rtl

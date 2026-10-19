@@ -36,6 +36,7 @@ pub(crate) fn multicol_box(
     outer_row: Option<(f32, f32)>,
     lone_span: bool,
 ) -> Result<(gpui::Div, Computed), AnyElement> {
+    let vcx = opts.cx.vcx();
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.
     // `columns: auto <w>` без ширины коробки решается в замере —
@@ -80,10 +81,10 @@ pub(crate) fn multicol_box(
     // Сегментный путь ниже: метка родителя предыдущего спаннера,
     // если между ними не легло ни одного ряда колонок, и выложен
     // ли уже хоть один кусок (для сторожей полей).
-    let span_prev: Option<String> = None;
+    let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
     let hoisted;
-    let e = match hoist_spanners(&e.children) {
+    let e = match hoist_spanners(&e.children, vcx) {
         Some(kids) => {
             let mut c = e.clone();
             c.children = kids;
@@ -93,8 +94,7 @@ pub(crate) fn multicol_box(
         None => e,
     };
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
-    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some())
-        && !crate::layout::fragment::types::in_stack();
+    let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
     // Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
     // спаннером, и §column-fill («content in a multi-column line that
     // does not immediately precede a spanner») велит заполнять его
@@ -131,8 +131,8 @@ pub(crate) fn multicol_box(
                     return None;
                 }
                 spans += 1;
-                let st = inherit(&merged, &sp.style);
-                used += shape_full(sp, 4, ShapeCx::COLUMNS)?.0
+                let st = inherit(&merged, &sp.style, vcx);
+                used += shape_full(sp, 4, ShapeCx::COLUMNS, vcx)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;
             }

@@ -19,6 +19,7 @@ export interface SafeInvokeBoundary {
   id: number
   stage: 'host-received' | 'handler-resolved' | 'handler-rejected' | 'handler-unregistered'
     | 'reply-accepted' | 'reply-false' | 'reply-rejected' | 'reply-source-disposed' | 'reply-document-replaced'
+    | 'reply-deferred' | 'reply-flushed' | 'reply-flush-false'
     | 'view-detached' | 'renderer-sent' | 'renderer-received' | 'renderer-duplicate' | 'renderer-unknown'
     | 'renderer-other-document' | 'renderer-ended' | 'renderer-send-threw'
   hidden: boolean
@@ -84,13 +85,27 @@ export class InvokeDiagnostics<T extends object> {
     record('host-received')
     return {
       handler: (outcome: 'resolved' | 'rejected' | 'unregistered') => record(`handler-${outcome}`),
-      reply: async (send: () => PromiseLike<boolean>): Promise<void> => {
+      /** `refused` = postMessage returned false (hidden view); the caller may
+       *  hold the reply and send it on reveal (`DeferredReplies`). */
+      reply: async (send: () => PromiseLike<boolean>): Promise<'accepted' | 'refused' | 'rejected'> => {
         if (state.detached) record('reply-source-disposed')
         if (state.documentRef !== documentRef) record('reply-document-replaced')
-        // Preserve the existing attempt even for hidden/replaced views. This
-        // phase diagnoses the boundary; it does not assert transport recovery.
-        try { record(await send() ? 'reply-accepted' : 'reply-false') }
-        catch { record('reply-rejected') }
+        // Preserve the existing attempt even for hidden/replaced views; holding
+        // a refused reply is the caller's decision, recorded by `deferred`.
+        try {
+          const accepted = await send()
+          record(accepted ? 'reply-accepted' : 'reply-false')
+          return accepted ? 'accepted' : 'refused'
+        } catch {
+          record('reply-rejected')
+          return 'rejected'
+        }
+      },
+      /** A refused reply is being held until the view is shown; the returned
+       *  callback records the outcome of that later send. */
+      deferred: (): ((accepted: boolean) => void) => {
+        record('reply-deferred')
+        return (accepted: boolean) => record(accepted ? 'reply-flushed' : 'reply-flush-false')
       },
     }
   }

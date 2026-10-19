@@ -1,13 +1,17 @@
 //! Растр фигур: скруглённые прямоугольники, кольца, эллипсы, параметры фигуры.
 
+use crate::document::state::ValueCx;
 mod ellipse;
 pub use ellipse::rasterize_ellipse_px;
 
 mod shape_parameters;
 pub use shape_parameters::shape_params;
 
+pub mod contour;
 mod linear_corners;
+mod shaped;
 pub use linear_corners::{rasterize_ring_at, rasterize_shape_at};
+pub use shaped::{Ring, contour_offset, contour_outline, contour_ring};
 
 use crate::paint::background::*;
 use gpui::RenderImage;
@@ -228,11 +232,17 @@ pub fn rasterize_ring(
 
 /// `scale` — физических точек растра на CSS-точку: точечные величины формы
 /// записаны в CSS-точках, а растр может быть плотнее (hidpi).
-pub fn rasterize_shape(raw: &str, w: u32, h: u32, scale: f32) -> Option<Arc<RenderImage>> {
+pub fn rasterize_shape(
+    raw: &str,
+    w: u32,
+    h: u32,
+    scale: f32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     if raw.trim_start().starts_with("rrect(") {
         let rest = raw.split_once('(')?.1;
         return rasterize_rrect(rest.trim_end_matches(')'), w, h, scale);
     }
-    let (cx, cy, rx, ry) = shape_params(raw, w as f32, h as f32, scale)?;
+    let (cx, cy, rx, ry) = shape_params(raw, w as f32, h as f32, scale, vcx)?;
     rasterize_ellipse_px(cx, cy, rx, ry, w, h)
 }

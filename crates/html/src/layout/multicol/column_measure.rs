@@ -1,7 +1,7 @@
 //! Native column measurement and intrinsic contributions before painting.
 
 use crate::layout::fragment::intrinsic_measure;
-use crate::layout::fragment::types::{Intrinsic, Kid, RepeatGeom};
+use crate::layout::fragment::types::Intrinsic;
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{AnyElement, App, LayoutId, Window, px, size};
 
@@ -33,29 +33,8 @@ impl ColumnStack {
                 }
             }
         }
-        let heights: Vec<Kid> = self
-            .children
-            .iter()
-            .map(|c| Kid {
-                h: c.h,
-                mt: c.mt,
-                mb: c.mb,
-                monolith: c.monolith,
-                cuts: c.cuts.clone(),
-                force_before: c.force_before,
-                force_after: c.force_after,
-                avoid_before: c.avoid_before,
-                avoid_after: c.avoid_after,
-                forced: c.forced.clone(),
-                solid: c.solid.clone(),
-                span: c.span,
-                over: c.over,
-                clone_dec: c.clone_dec,
-                overflow_top: c.overflow_top,
-                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
-                par: c.par,
-            })
-            .collect();
+        self.paginate_children(window, cx);
+        let heights = self.kid_geoms();
         let count = self.count;
         let fixed = self.fixed_height;
         let fill_shrink = self.fill_shrink;
@@ -64,6 +43,7 @@ impl ColumnStack {
         let copies = self.copies;
         let axis = self.axis;
         let row_phase = self.row_phase;
+        let forced_h = self.forced_h;
         // Внутренние размеры многоколоночного контейнера. Спека их не
         // определяет (css-multicol-1 §3.4: «This specification does not
         // define how U is calculated»), единственное письменное определение —
@@ -138,6 +118,27 @@ impl ColumnStack {
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
+                let probe = ColumnStack {
+                    children: Vec::new(),
+                    count,
+                    gap,
+                    axis,
+                    row_phase,
+                    fixed_height: fixed,
+                    forced_h,
+                    fill_shrink,
+                    rule: None,
+                    rule_to: None,
+                    rows,
+                    copies,
+                    gap_items: None,
+                    intrinsic: None,
+                    plan: std::cell::RefCell::new(Vec::new()),
+                    static_places: Default::default(),
+                    col_w: std::cell::Cell::new(0.0),
+                    lines_plan: std::cell::RefCell::new(Vec::new()),
+                    spans_plan: std::cell::RefCell::new(Vec::new()),
+                };
                 // Вертикальное письмо: место под прогрессию колонок — по
                 // СТРОЧНОЙ оси, то есть высота коробки (css-multicol-1 §2), а
                 // отдаём (блочный, строчный) как (ширина, высота).
@@ -150,25 +151,6 @@ impl ColumnStack {
                             _ => None,
                         })
                         .unwrap_or(0.0);
-                    let probe = ColumnStack {
-                        children: Vec::new(),
-                        count,
-                        gap,
-                        axis,
-                        row_phase,
-                        fixed_height: fixed,
-                        fill_shrink,
-                        rule: None,
-                        rule_to: None,
-                        rows,
-                        copies,
-                        gap_items: None,
-                        intrinsic: None,
-                        plan: std::cell::RefCell::new(Vec::new()),
-                        col_w: std::cell::Cell::new(0.0),
-                        lines_plan: std::cell::RefCell::new(Vec::new()),
-                        spans_plan: std::cell::RefCell::new(Vec::new()),
-                    };
                     let (block, _, _, _) = probe.balance(&heights);
                     return (size(px(block), px(inline)), None, None);
                 }
@@ -181,25 +163,6 @@ impl ColumnStack {
                         gpui::AvailableSpace::MaxContent => intrinsic.map(|(_, mx)| mx),
                     })
                     .unwrap_or(0.0);
-                let probe = ColumnStack {
-                    children: Vec::new(),
-                    count,
-                    gap,
-                    axis,
-                    row_phase,
-                    fixed_height: fixed,
-                    fill_shrink,
-                    rule: None,
-                    rule_to: None,
-                    rows,
-                    copies,
-                    gap_items: None,
-                    intrinsic: None,
-                    plan: std::cell::RefCell::new(Vec::new()),
-                    col_w: std::cell::Cell::new(0.0),
-                    lines_plan: std::cell::RefCell::new(Vec::new()),
-                    spans_plan: std::cell::RefCell::new(Vec::new()),
-                };
                 let (height, lines, plan, spans) = probe.balance(&heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
                     baselines.measure(&probe, &heights, w, &lines, &plan, &spans, window, cx)

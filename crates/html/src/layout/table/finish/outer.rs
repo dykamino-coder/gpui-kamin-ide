@@ -1,6 +1,7 @@
 //! Внешняя коробка таблицы: клон-обёртка для рамки сросшейся модели и итоговая обёртка.
 
 use super::wrap_with_captions;
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::render::styled_div_with;
 use crate::style::computed::Computed;
@@ -20,6 +21,7 @@ pub(super) fn table_outer_box(
     fixed_floor: Option<f32>,
     inherited: &Computed,
     needs_clone: bool,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     let host_style;
 
@@ -63,7 +65,7 @@ pub(super) fn table_outer_box(
             // БЛОЧНАЯ ось, где border-box верен; вместо этого краи инлайн-оси
             // добавляются к самой величине. Гейт тот же, что у
             // транспонирования решётки и у `spacing_phys`.
-            if e.style.vertical == Some(true)
+            if e.style.wm().vertical()
                 && let Some(Len::Px(h)) = c.height
             {
                 // Сросшийся стол несёт свои краи не рамкой, а паддингом в
@@ -78,9 +80,9 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        styled_div_with(e, &host_style).flex().flex_col()
+        styled_div_with(e, &host_style, cx).flex().flex_col()
     } else {
-        styled_div_with(e, inherited).flex().flex_col()
+        styled_div_with(e, inherited, cx).flex().flex_col()
     }
 }
 
@@ -94,6 +96,7 @@ pub(super) fn finish_table_outer(
     root_table: bool,
     outer: gpui::Div,
     shrink_wrap: bool,
+    vcx: ValueCx<'_>,
 ) -> AnyElement {
     let mut outer = outer;
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
@@ -111,11 +114,15 @@ pub(super) fn finish_table_outer(
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
-        let mut wrap = Computed::default();
-        wrap.position = e.style.position;
-        wrap.inset = e.style.inset;
-        wrap.z_index = e.style.z_index;
-        let mut wrap = crate::style::apply::apply(div(), &wrap).flex().flex_row();
+        let wrap = Computed {
+            position: e.style.position,
+            inset: e.style.inset,
+            z_index: e.style.z_index,
+            ..Default::default()
+        };
+        let mut wrap = crate::paint::apply::apply(div(), &wrap, vcx)
+            .flex()
+            .flex_row();
         wrap.style().no_inline_block_baseline = Some(true);
         return wrap.child(outer).into_any_element();
     }

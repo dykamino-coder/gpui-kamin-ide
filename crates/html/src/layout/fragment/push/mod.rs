@@ -1,4 +1,6 @@
 //! Перенос коробок на следующий фрагмент.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -25,21 +27,17 @@ pub(crate) use spacer::grow_pushed;
 // спуска, как там; таблица по тегу — рядами `table_shape`
 // (`pushed_cell_at`). Текст или строчный среди детей — у `shape_full`
 // отказ от спуска, и здесь тоже.
-thread_local! {
-    /// Щуп `pushed_box_at` ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
-    static PUSH_FORCED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
+// `forced` — щуп ищет коробку под ПРИНУДИТЕЛЬНЫЙ разрыв (`grow_pushed`).
+fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>) -> Option<u64> {
     if depth == 0 {
         return None;
     }
-    let _frame = crate::layout::fragment::LineScope::enter(c);
-    if let Some(found) = row::pushed_row_at(c, a, depth) {
+    let _frame = crate::layout::fragment::LineScope::enter(c, vcx);
+    if let Some(found) = row::pushed_row_at(c, a, depth, forced, vcx) {
         return found;
     }
     if table_box(c) {
-        return pushed_cell_at(c, a, depth);
+        return pushed_cell_at(c, a, depth, forced, vcx);
     }
     // Сетка-стопка спускается ровно как в `shape_full` — иначе распорка
     // роста (`705fd58`) до ряда сетки не добирается, отдаёт `None`, и фон
@@ -78,7 +76,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     // накрывающего `a`, — теми же смещениями, что в мере (`shape_full`).
     // Точка ровно на верху элемента уходит в его первого ребёнка.
     if grid_items_spotted(c) {
-        let (bands, spots) = grid_auto_row_bands(c, depth, ShapeCx::COLUMNS)?;
+        let (bands, spots) = grid_auto_row_bands(c, depth, ShapeCx::COLUMNS, vcx)?;
         for (ix, row, kmt, s, plain) in spots {
             let (true, Some(&(r0, _)), Some(Node::Element(k))) =
                 (plain, bands.get(row), c.children.get(ix))
@@ -87,8 +85,8 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             };
             let start = top + r0 + kmt;
             if a > start - 0.01
-                && a < start + s.0 - 0.01
-                && let Some(id) = pushed_box_at(k, a - start, depth - 1)
+                && a < start + s.height - 0.01
+                && let Some(id) = pushed_box_at(k, a - start, depth - 1, forced, vcx)
             {
                 return Some(id);
             }
@@ -124,7 +122,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     let wrap_flex = is_flex
         && c.style.flex_wrap == Some(true)
         && matches!(c.style.height, Some(Len::Px(_)))
-        && !PUSH_FORCED.with(|f| f.get());
+        && !forced;
     // Та же гибкая стопка, что в `shape_full` (`flex_items`): поля не
     // схлопываются, между элементами `row-gap`, порядок визуальный,
     // внепоточные — не элементы.
@@ -134,7 +132,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
     ) && c.style.webkit_box != Some(true)
         && !row_nowrap;
     let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && c.style.vertical != Some(true) => v.max(0.0),
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
         _ => 0.0,
     };
     let mut items: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
@@ -164,8 +162,17 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
         {
             // Та же база элемента колонки flex, что у `shape_full`.
             let based = basis_sized(c, k);
-            let (h, mt, mb, ..) =
-                shape_full(based.as_ref().unwrap_or(k), depth - 1, ShapeCx::COLUMNS)?;
+            let crate::layout::fragment::Shape {
+                height: h,
+                margin_top: mt,
+                margin_bottom: mb,
+                ..
+            } = shape_full(
+                based.as_ref().unwrap_or(k),
+                depth - 1,
+                ShapeCx::COLUMNS,
+                vcx,
+            )?;
             (h, mt, mb)
         } else {
             return None;
@@ -176,7 +183,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             if !oof
                 && a > top + 0.01
                 && a < top + h - 0.01
-                && let Some(id) = pushed_box_at(k, a - top, depth - 1)
+                && let Some(id) = pushed_box_at(k, a - top, depth - 1, forced, vcx)
             {
                 return Some(id);
             }
@@ -203,7 +210,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8) -> Option<u64> {
             return (!wrap_flex).then_some(k.node_id);
         }
         if !oof && start < a && a < start + h - 0.01 {
-            return pushed_box_at(k, a - start, depth - 1);
+            return pushed_box_at(k, a - start, depth - 1, forced, vcx);
         }
         y = start + h;
         prev_mb = kmb;

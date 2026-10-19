@@ -30,7 +30,7 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
         // Ортогональный ребёнок (своё горизонтальное письмо) — не наш случай:
         // его строчная ось горизонтальна.
         if ch.inline
-            || ch.style.vertical == Some(false)
+            || ch.style.vertical_decl() == Some(false)
             || !crate::render::in_flow(&ch.style)
             || !auto_inline(&ch.style)
         {
@@ -67,7 +67,9 @@ mod tests {
     fn auto_grid_tracks_claim_intrinsics_but_definite_tracks_keep_stretch() {
         let mut parent = Computed {
             display: Some(Display::Grid),
-            vertical: Some(true),
+            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, false, false,
+            )),
             ..Computed::default()
         };
         let child = crate::layout::table::anon::anon_element("div", vec![]);
@@ -88,7 +90,12 @@ mod tests {
         fixed.style.height = Some(Len::Px(50.0));
         assert_eq!(claimed(fixed, &parent), (false, false));
         let mut horizontal = child.clone();
-        horizontal.style.vertical = Some(false);
+        horizontal.style.writing_mode =
+            Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                false,
+                horizontal.style.wm().block_rl(),
+                horizontal.style.wm().sideways(),
+            ));
         assert_eq!(claimed(horizontal, &parent), (false, false));
         let mut positioned = child;
         positioned.style.position = Some(crate::style::computed::Position::Absolute);

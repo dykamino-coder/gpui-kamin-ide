@@ -1,9 +1,10 @@
 //! Apply the font shorthand while retaining its variant and reset behavior.
 
 use super::{Computed, font_size_token, font_slash, join_slash, split_font, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn apply(style: &mut Computed, v: &str) {
+pub(super) fn apply(style: &mut Computed, v: &str, vcx: ValueCx<'_>) {
     // Все части сокращения наследуемые: `inherit` для них — это
     // «своего значения нет», то есть ОЧИСТКА слота. Подстановка
     // родительского значения тут не работает: ниже по разбору
@@ -19,6 +20,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         style.font_weight_step = 0;
         style.italic = None;
         style.oblique = None;
+        style.font_oblique_angle = None;
         style.line_height = None;
         return;
     }
@@ -26,7 +28,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // а кегль с высотой строки обязаны разбираться одним куском:
     // иначе «/ 1 Ahem» уезжало в семейство шрифта целиком.
     let value = join_slash(v);
-    let (head, family) = split_font(&value);
+    let (head, family) = split_font(&value, vcx);
     // Неизвестное слово в голове сокращения тоже валит его целиком
     // (§4.2): `font: bold highlighted 100% serif` не задаёт ни
     // начертания, ни кегля (`c71-fwd-parsing-003`). Слова головы —
@@ -69,7 +71,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     };
     if split_outside_parens(head)
         .iter()
-        .any(|t| !head_word(&t.to_ascii_lowercase()) && !font_size_token(t))
+        .any(|t| !head_word(&t.to_ascii_lowercase()) && !font_size_token(t, vcx))
     {
         return;
     }
@@ -85,7 +87,8 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
                         if *v < 0.0
                 )
             };
-            lh.parse::<f32>().is_ok_and(|m| m < 0.0) || Len::parse(lh).as_ref().is_some_and(neg)
+            lh.parse::<f32>().is_ok_and(|m| m < 0.0)
+                || Len::parse(lh, vcx).as_ref().is_some_and(neg)
         })
     }) {
         return;
@@ -100,6 +103,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     // `em { font: 1em/1 Ahem }` — курсив UA-листа (`c42-ibx-ht-000`).
     style.italic = Some(false);
     style.oblique = Some(false);
+    style.font_oblique_angle = None;
     style.font_weight = Some(400);
     style.font_weight_step = 0;
     style.font_kerning = Some(2);
@@ -113,16 +117,16 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
                 style.italic = Some(true);
                 style.oblique = Some(true);
             }
-            "small-caps" => style.apply_one("font-variant-caps", "small-caps"),
-            "bold" | "bolder" | "lighter" => style.apply_one("font-weight", t),
+            "small-caps" => style.apply_one("font-variant-caps", "small-caps", vcx),
+            "bold" | "bolder" | "lighter" => style.apply_one("font-weight", t, vcx),
             // Кегль — и `0` (`font: 0 Ahem`: вес 0 зацикливал
             // подбор шрифта, vars-font-shorthand-001).
-            _ if font_size_token(t) => match font_slash(t) {
+            _ if font_size_token(t, vcx) => match font_slash(t) {
                 Some((size, lh)) => {
-                    style.apply_one("font-size", size);
-                    style.apply_one("line-height", lh);
+                    style.apply_one("font-size", size, vcx);
+                    style.apply_one("line-height", lh, vcx);
                 }
-                None => style.apply_one("font-size", t),
+                None => style.apply_one("font-size", t, vcx),
             },
             _ if t.starts_with(|c: char| c.is_ascii_digit()) => {
                 style.font_weight = t.parse().ok().filter(|w| (1..=1000).contains(w));
@@ -131,6 +135,9 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
         }
     }
     if !family.is_empty() {
-        style.apply_one("font-family", family);
+        style.apply_one("font-family", family, vcx);
+    }
+    if style.font_size.is_some() && style.font_family.is_some() {
+        style.accept_declaration();
     }
 }

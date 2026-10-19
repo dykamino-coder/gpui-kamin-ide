@@ -102,7 +102,7 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
                 },
                 sb,
                 fb,
-                c.style.clone(),
+                (*c.style).clone(),
             ));
             continue;
         }
@@ -128,7 +128,7 @@ pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit
                         },
                         sb,
                         fb,
-                        k.style.clone(),
+                        (*k.style).clone(),
                     ));
                 }
             }

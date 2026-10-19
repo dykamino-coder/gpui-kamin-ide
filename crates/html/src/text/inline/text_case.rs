@@ -50,6 +50,39 @@ fn titlecase(ch: char) -> Option<char> {
     char::from_u32(title)
 }
 
+/// Титульный регистр из НЕСКОЛЬКИХ знаков (SpecialCasing.txt, поле title)
+/// там, где он отличается от прописного: лигатура `ﬂ` даёт `Fl`, а не `FL`
+/// (`text-transform-letter-spacing-002`), `ß` — `Ss`, армянские лигатуры —
+/// заглавная плюс строчная, греческие с приданной йотой и ударением —
+/// заглавная плюс U+0345.
+fn titlecase_full(ch: char) -> Option<&'static str> {
+    Some(match ch {
+        '\u{00DF}' => "Ss",
+        '\u{FB00}' => "Ff",
+        '\u{FB01}' => "Fi",
+        '\u{FB02}' => "Fl",
+        '\u{FB03}' => "Ffi",
+        '\u{FB04}' => "Ffl",
+        '\u{FB05}' | '\u{FB06}' => "St",
+        '\u{0587}' => "\u{0535}\u{0582}",
+        '\u{FB13}' => "\u{0544}\u{0576}",
+        '\u{FB14}' => "\u{0544}\u{0565}",
+        '\u{FB15}' => "\u{0544}\u{056B}",
+        '\u{FB16}' => "\u{054E}\u{0576}",
+        '\u{FB17}' => "\u{0544}\u{056D}",
+        '\u{1FB2}' => "\u{1FBA}\u{0345}",
+        '\u{1FB4}' => "\u{0386}\u{0345}",
+        '\u{1FC2}' => "\u{1FCA}\u{0345}",
+        '\u{1FC4}' => "\u{0389}\u{0345}",
+        '\u{1FF2}' => "\u{1FFA}\u{0345}",
+        '\u{1FF4}' => "\u{038F}\u{0345}",
+        '\u{1FB7}' => "\u{0391}\u{0342}\u{0345}",
+        '\u{1FC7}' => "\u{0397}\u{0342}\u{0345}",
+        '\u{1FF7}' => "\u{03A9}\u{0342}\u{0345}",
+        _ => return None,
+    })
+}
+
 fn apply(text: &str, style: &Computed, context: &mut Context) -> String {
     let (previous, previous2) = (context.prev, context.prev2);
     context.observe(text);
@@ -112,9 +145,10 @@ fn apply(text: &str, style: &Computed, context: &mut Context) -> String {
                     {
                         skip = taken;
                     } else {
-                        match titlecase(ch) {
-                            Some(title) => out.push(title),
-                            None => out.extend(ch.to_uppercase()),
+                        match (titlecase_full(ch), titlecase(ch)) {
+                            (Some(title), _) => out.push_str(title),
+                            (None, Some(title)) => out.push(title),
+                            (None, None) => out.extend(ch.to_uppercase()),
                         }
                     }
                 } else {
@@ -158,4 +192,17 @@ pub(super) fn transform(text: &str, style: &Computed, context: &mut Context) -> 
             ch
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::titlecase_full;
+
+    #[test]
+    fn ligatures_titlecase_to_capital_plus_lower() {
+        assert_eq!(titlecase_full('\u{FB02}'), Some("Fl"));
+        assert_eq!(titlecase_full('\u{FB03}'), Some("Ffi"));
+        assert_eq!(titlecase_full('\u{00DF}'), Some("Ss"));
+        assert_eq!(titlecase_full('a'), None);
+    }
 }

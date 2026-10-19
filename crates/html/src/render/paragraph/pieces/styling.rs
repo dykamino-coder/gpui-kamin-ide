@@ -35,12 +35,18 @@ pub(crate) fn style_pieces(
             0,
             inline::Piece::Text {
                 text: open.to_string(),
-                style: inherited.clone(),
+                style: Computed {
+                    inline_control: true,
+                    ..inherited.clone()
+                },
             },
         );
         pieces.push(inline::Piece::Text {
             text: close.to_string(),
-            style: inherited.clone(),
+            style: Computed {
+                inline_control: true,
+                ..inherited.clone()
+            },
         });
         // Жёсткий разрыв ЗАКАНЧИВАЕТ абзац разбора двунаправленности, и знак
         // отмены за ним уже не действует: его приходится ставить заново на

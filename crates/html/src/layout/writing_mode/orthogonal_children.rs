@@ -2,7 +2,7 @@
 use crate::dom::Node;
 use crate::render::in_flow;
 use crate::style::computed::{Align, Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 
 pub(crate) fn orthogonal_children(
     children: Vec<Node>,
@@ -10,13 +10,10 @@ pub(crate) fn orthogonal_children(
     icb_w: f32,
 ) -> Vec<Node> {
     let mut out = children;
-    let inline_size = match container.height {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let inline_size = px_strict(container.height);
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || ch.style.vertical != Some(false) {
+        if ch.inline || ch.style.vertical_decl() != Some(false) {
             continue;
         }
         // Внепоточные не зажимаются: абсолютный элемент меряется от своего
@@ -35,9 +32,9 @@ pub(crate) fn orthogonal_children(
             && ch.style.align_self.is_none()
             && !ch.style.float.is_some_and(|side| side != 0)
         {
-            let from_bottom = (container.sideways == Some(true)
-                && container.vertical_rl != Some(true))
-                != (container.rtl == Some(true));
+            // The child stands at the container's inline-start (§6.4).
+            let from_bottom =
+                container.wm().inline_start() == crate::style::computed::writing_mode::Side::Bottom;
             ch.style.align_self = Some(if from_bottom {
                 Align::End
             } else {
@@ -78,10 +75,7 @@ pub(crate) fn orthogonal_children(
         }
         let explicit_auto = matches!(ch.style.width, Some(Len::Auto));
         if (ch.style.width.is_none() || explicit_auto) && ch.style.max_width.is_none() {
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let margins = side(ch.style.margin.left) + side(ch.style.margin.right);
             match container.width {
                 // Заданный размер контейнера — доступное место потока

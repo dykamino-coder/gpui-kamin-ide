@@ -1,7 +1,7 @@
 //! Presentational size for element_style; split out to keep the owning module within 250 lines.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// `aspect-ratio: auto && <ratio>` у НЕзамещаемой коробки (css-sizing-4
 /// §5.1): «the preferred aspect ratio is the specified ratio … unless it is
@@ -40,10 +40,7 @@ pub(crate) fn promote_auto_ratio(style: &mut Computed, tag: &str) {
         style.aspect_ratio = Some(r);
         return;
     }
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let b = style.borders();
     let pad_x = px(style.padding.left) + px(style.padding.right) + px(b.left) + px(b.right);
     let pad_y = px(style.padding.top) + px(style.padding.bottom) + px(b.top) + px(b.bottom);
@@ -93,13 +90,20 @@ pub(crate) fn apply_presentational_size(
         return;
     }
     let value = |name: &str| {
-        attrs
-            .iter()
-            .find(|(k, _)| k == name)
-            .and_then(|(_, v)| match v.strip_suffix('%') {
-                Some(pct) => pct.trim().parse::<f32>().ok().map(|p| Len::Pct(p / 100.0)),
-                None => v.trim().parse::<f32>().ok().map(Len::Px),
-            })
+        attrs.iter().find(|(k, _)| k == name).and_then(|(_, v)| {
+            if tag == "canvas" {
+                // HTML canvas dimensions use a non-negative integer prefix,
+                // not CSS lengths ("100px" and "100%" both mean 100).
+                crate::dom::presentational_hr::non_negative_integer(v)
+                    .filter(|n| *n <= i32::MAX as u32)
+                    .map(|n| Len::Px(n as f32))
+            } else {
+                match v.strip_suffix('%') {
+                    Some(pct) => pct.trim().parse::<f32>().ok().map(|p| Len::Pct(p / 100.0)),
+                    None => v.trim().parse::<f32>().ok().map(Len::Px),
+                }
+            }
+        })
     };
     style.attr_width = value("width");
     style.attr_height = value("height");
@@ -110,12 +114,11 @@ pub(crate) fn apply_presentational_size(
     // (HTML §15.3.8), а `attr_*` держит соотношение сторон замещаемого и
     // таблице не принадлежит. Без этого `<table width="300">` вовсе не
     // доходил до стиля, и таблица сжималась по содержимому.
+    // Ширина таблицы — намёк каскада (`presentational_legacy`, HTML §15.3.8:
+    // размерное значение, ноль не считается).
     if tag == "table" {
-        let w = style.attr_width.take();
+        style.attr_width = None;
         style.attr_height = None;
-        if matches!(style.width, None | Some(Len::Auto)) {
-            style.width = w;
-        }
         return;
     }
     // Оба атрибута объявлены разметкой — только тогда природное соотношение

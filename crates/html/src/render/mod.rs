@@ -14,9 +14,7 @@ use paint_order::paint_last_ok;
 use paint_order::unkeyed_positions;
 
 use crate::dom::Node;
-use crate::layout::block::containing::AVAIL_W;
 use crate::layout::float::clear::without_inert_clear;
-use crate::layout::replaced::iframe::IFRAME_DEPTH;
 use crate::paint::effects::mask::collect_mask_defs;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
@@ -64,13 +62,27 @@ pub struct RenderOpts {
     /// КАЖДЫЙ блок текста выходил на четверть выше браузерного, а разница
     /// копилась вниз по документу.
     pub normal_line_height: f32,
-    /// Соль документа для буферов проб (`Document::key`).
+    /// Соль документа для ключей буферов, живущих между кадрами
+    /// (`Document::key`).
     ///
     /// Номера узлов считаются с нуля в каждом документе: когда в одном
     /// потоке живут два документа сразу (стенд гонит пары параллельно),
-    /// полоса фона одного забирала прямоугольники ячеек другого с тем же
-    /// номером узла. Ноль допустим, пока документ один.
+    /// буфер одного документа находил записи другого с тем же номером узла.
+    /// Нужна, пока такие буферы есть: пробы линеек промежутков
+    /// (`gap_items_for`, `fresh_gap_items`), коробка корня
+    /// (`measure_root_box` / `record_root_box`), левый край вертикального
+    /// корня (`record_root_left`), меры вертикального текста и кэш слоя
+    /// `foreignObject`. Пробы таблиц её не используют: их буферы принадлежат
+    /// построенному дереву. Ноль допустим, пока документ один.
     pub doc_salt: u64,
+    /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
+    /// коробок внутри. Хост передаёт `LayoutCx::default()`, а документ свой
+    /// ставит `Document::render` (`Document::frame_opts`).
+    pub cx: crate::layout::cx::LayoutCx,
+    /// Контекст фрагментации сборки: его ставит код, строящий фрагменты
+    /// (копии детей стопки колонок, вложенный многоколоночник рядами), а
+    /// приложение передаёт `Default::default()`.
+    pub frag: crate::layout::fragment::types::FragCx,
 }
 
 impl RenderOpts {
@@ -102,67 +114,48 @@ impl RenderOpts {
 }
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let vcx = opts.cx.vcx();
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family);
     let root = opts.root_style();
     crate::interactive::frame::frame_sanitize();
-    // Пойманная паника кадра внутри рамки оставляла счётчик глубины
-    // навсегда — три такие паники, и рамки исчезали до перезапуска.
-    IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    collect_mask_defs(nodes, vcx);
+    // Корень документа получает ширину области просмотра: от неё цепочка
+    // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
+    // Слои содержащих блоков — свои у каждой сборки документа.
+    let opts = &*opts.inner(|cx| {
+        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.positioning = Default::default();
+    });
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
-    crate::layout::positioned::containing_block::icb_open();
-    // Корень документа получает ширину области просмотра: от неё цепочка
-    // `AVAIL_W` вычитает поля/рамки/отступы `html` и `body`.
-    let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     // Шаг 8 приложения E: позиционированные `z-index: auto | 0` красятся
     // после потока корневого контекста в порядке разметки — собиратель
     // `gpui::PaintCollect` между парой меток. Внешняя сборка идёт вне краски
     // и сбрасывает собиратели (пойманная паника кадра оставила бы их
     // открытыми); вложенный документ (рамка) собирает своё внутри.
-    let depth = RENDER_DEPTH.with(|d| {
-        d.set(d.get() + 1);
-        d.get()
-    });
-    if depth == 1 {
+    if !opts.cx.in_render {
         gpui::paint_collect_reset();
     }
-    let unkeyed_prev = UNKEYED.replace(unkeyed_positions(nodes));
+    let opts = &*opts.inner(|cx| {
+        cx.unkeyed = std::rc::Rc::new(unkeyed_positions(nodes));
+        cx.in_render = true;
+    });
     let mut out = blocks(nodes, &root, opts);
-    AVAIL_W.set(avail_prev);
-    out.extend(crate::layout::positioned::containing_block::icb_close());
-    UNKEYED.replace(unkeyed_prev);
-    RENDER_DEPTH.with(|d| d.set(d.get() - 1));
+    out.extend(icb_layer.finish());
     let (open, close) = gpui::PaintCollect::pair();
     out.insert(0, open.into_any_element());
     out.push(close.into_any_element());
     out
 }
 
-thread_local! {
-    /// Глубина вложенных `render` (документ в рамке собирается внутри).
-    static RENDER_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-    /// Номер элемента в порядке сборки — ключ краски шага 8 (`PaintLast`).
-    static PAINT_KEY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-    /// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
-    /// позиционированного, который ключа краски не получает (см.
-    /// `unkeyed_positions`).
-    static UNKEYED: std::cell::RefCell<(std::collections::HashMap<u64, usize>, Option<usize>)> =
-        std::cell::RefCell::new((std::collections::HashMap::new(), None));
-}
-
-/// Следующий ключ краски: зовётся при входе в элемент, до сборки детей, —
-/// предок получает ключ меньше потомков (прямой обход).
-fn next_paint_key() -> u64 {
-    PAINT_KEY.with(|k| {
-        let v = k.get().wrapping_add(1);
-        k.set(v);
-        v
-    })
-}
+/// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
+/// позиционированного, который ключа краски не получает (см.
+/// `unkeyed_positions`).
+pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>);
 
 /// Один блок верхнего уровня — единица виртуализации.
 ///
@@ -170,18 +163,20 @@ fn next_paint_key() -> u64 {
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
     crate::interactive::frame::frame_sanitize();
-    IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
-    crate::layout::positioned::containing_block::icb_open();
-    let avail_prev = AVAIL_W.replace(Some(opts.viewport.0).filter(|w| *w > 0.0));
+    let opts = &*opts.inner(|cx| {
+        cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
+        cx.positioning = Default::default();
+    });
+    let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     let out = blocks(std::slice::from_ref(node), &root, opts);
-    AVAIL_W.set(avail_prev);
-    let layer = crate::layout::positioned::containing_block::icb_close();
+    let layer = icb_layer.finish();
     let first = out.into_iter().next()?;
     if layer.is_empty() {
         return Some(first);

@@ -105,8 +105,8 @@ head, title, meta, link, template { display: none }
     del, s { text-decoration: line-through }
     ins { text-decoration: underline }
     mark { background: #ffe066; color: #1a1c23 }
-    button { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
-    *::scroll-button(*) { background: #3d3f51; border: 1px solid #4a4a5a; color: #e6e6ee }
+    button { background: ButtonFace; border: 1px solid ButtonBorder; color: ButtonText }
+    *::scroll-button(*) { background: ButtonFace; border: 1px solid ButtonBorder; color: ButtonText }
     dd { margin-left: 32px }
     dt { font-weight: 700; margin: 6px 0 2px }
     figure { margin: 8px 0 }
@@ -131,6 +131,8 @@ head, title, meta, link, template { display: none }
     table { margin: 6px 0 }
     th { font-weight: 700; padding: 4px 8px; text-align: left }
     td { padding: 4px 8px }
+    input, textarea, select { color: FieldText }
+    textarea { font: 13.3333px monospace; overflow: auto }
     button { padding: 4px 10px; border-radius: 4px }
     /* Руби (css-ruby-1, Appendix A.1): скобки `rp` — только для движков без
        руби; аннотация вполовину кегля, одной строкой, без знака акцента.
@@ -155,3 +157,12 @@ head, title, meta, link, template { display: none }
     marquee { display: inline-block; text-align: initial; overflow: hidden }
     "#
 }
+
+/// HTML rendering, lists: orphan list items use inside markers in quirks mode.
+pub(super) const QUIRKS_CSS: &str = r#"
+/* Quirks Mode §3.12, HTML rendering §tables. */
+table { color: initial }
+li { list-style-position: inside }
+li :is(dir, menu, ol, ul) { list-style-position: outside }
+:is(dir, menu, ol, ul) :is(dir, menu, ol, ul, li) { list-style-position: unset }
+"#;

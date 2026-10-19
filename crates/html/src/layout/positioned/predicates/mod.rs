@@ -19,24 +19,30 @@ pub(crate) use own_box::has_own_box;
 // `out-of-flow-in-multicolumn-107`, `overflow: clip` над абсолютом
 // 100000px), и внутрь вложенного многоколоночника (у его абсолютов свои
 // колонки). Глубина — та же, что у меры стопки (`shape_full(c, 4, ..)`).
-thread_local! {
-    /// Коробки, чью меру фрагментации дотянули внепоточные потомки
-    /// (`shape_full`): `node_id -> (свой размер, мера с дотягом)`.
-    pub(crate) static OOF_OWN: std::cell::RefCell<std::collections::HashMap<u64, (f32, f32)>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
 pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                k.style.position == Some(crate::style::computed::Position::Absolute)
-                    || (visible_overflow(&k.style)
-                        && !multicol_container(&k.style)
-                        && carries_abspos(k, depth - 1))
-            }
-            _ => false,
-        })
+    fn walk(c: &Element, depth: u8, fixed_cb: bool) -> bool {
+        depth > 0
+            && c.children.iter().any(|n| match n {
+                Node::Element(k) => {
+                    k.style.position == Some(crate::style::computed::Position::Absolute)
+                        || (fixed_cb
+                            && k.style.position == Some(crate::style::computed::Position::Fixed))
+                        || (visible_overflow(&k.style)
+                            && !multicol_container(&k.style)
+                            && walk(
+                                k,
+                                depth - 1,
+                                fixed_cb || crate::paint::stacking::fixed_cb_layer_box(&k.style),
+                            ))
+                }
+                _ => false,
+            })
+    }
+    walk(
+        c,
+        depth,
+        crate::paint::stacking::fixed_cb_layer_box(&c.style),
+    )
 }
 
 /// Рисуется ли ДАЛЬШЕ по разметке позиционированное содержимое первым

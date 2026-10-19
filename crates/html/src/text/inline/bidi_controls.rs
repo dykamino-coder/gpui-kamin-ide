@@ -7,7 +7,7 @@ pub fn bidi_marks(
     merged: &Computed,
 ) -> (Option<&'static str>, Option<&'static str>) {
     let own = if own.bidi_inherit { merged } else { own };
-    let rtl = merged.rtl == Some(true);
+    let rtl = merged.wm().rtl();
     if own.bidi_plaintext == Some(true) {
         return (Some("\u{2068}"), Some("\u{2069}"));
     }

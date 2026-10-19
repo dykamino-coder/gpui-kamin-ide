@@ -27,6 +27,13 @@ impl Paragraph {
             .iter()
             .enumerate()
             .map(|(line_no, line)| {
+                // The block-ellipsis displaced the whole line: it holds a
+                // strut of the root inline box and the ellipsis only, no
+                // box of the inlines open there (css-overflow-4
+                // §block-ellipsis; `block-ellipsis-036`, `-quirk-002`).
+                if line.clamped && self.text[line.range.clone()].trim().is_empty() {
+                    return (0.0, 0.0);
+                }
                 let (mut above, mut below) = (0.0f32, 0.0f32);
                 let boxes = !self.box_spans.is_empty() && self.run_metrics.len() == self.runs.len();
                 if boxes {
@@ -72,12 +79,12 @@ impl Paragraph {
                     let t = self.atom_top(b);
                     // Аннотация руби растит строку, только выходя за неё:
                     // полулидинг строки она занимает даром (css-ruby-1 §3.4).
-                    let over = if line_no == 0 && self.ruby_trim.0 {
+                    let over = if line_no == 0 && self.ruby_trim.start {
                         0.0
                     } else {
                         b.over
                     };
-                    let under = if line_no == last_line && self.ruby_trim.1 {
+                    let under = if line_no == last_line && self.ruby_trim.end {
                         0.0
                     } else {
                         b.under
@@ -116,8 +123,8 @@ impl Paragraph {
                     let Some((ra, rd)) = metrics else { continue };
                     // Срез текстовой коробки знак не растит так же, как
                     // аннотацию (`text-box-trim-ruby-start-002`).
-                    if (*under && line_no == last_line && self.ruby_trim.1)
-                        || (!*under && line_no == 0 && self.ruby_trim.0)
+                    if (*under && line_no == last_line && self.ruby_trim.end)
+                        || (!*under && line_no == 0 && self.ruby_trim.start)
                     {
                         continue;
                     }
@@ -157,32 +164,25 @@ impl Paragraph {
                         above += h - total;
                     }
                 }
+                // `text-box-trim` первой (последней) отформатированной строки
+                // режет строчную коробку до края КОРНЕВОЙ строчной коробки
+                // (css-inline-3 §text-box-trim; Blink `ApplyTextBoxTrim`:
+                // `line_box_metrics.ascent - intrinsic_metrics.ascent`):
+                // высокое содержимое над струтом уходит в переполнение.
+                // Остаток до метрики края (полулидинг струта и `cap`/`ex`)
+                // снимает поле в хвосте `blocks_flow`.
+                // Отсчёт — от СТРУТА, а не от базовой строки `a`: высокий
+                // прогон опускает её внутри строки.
+                let root = self.root_base(a);
+                if line_no == 0 && self.ruby_trim.start {
+                    above = above.min(self.ruby_trim.over + root - a);
+                }
+                if line_no == last_line && self.ruby_trim.end {
+                    below = below.min(a - root);
+                }
                 (above, below)
             })
             .collect()
-    }
-}
-
-impl Paragraph {
-    pub(crate) fn flow_cut(&self, line_no: usize) -> (f32, f32) {
-        if self.flow.0.is_empty() && self.flow.1.is_empty() {
-            return (0.0, 0.0);
-        }
-        let lh = f32::from(self.line_height);
-        let (y0, y1) = (line_no as f32 * lh, (line_no as f32 + 1.0) * lh);
-        let l = self
-            .flow
-            .0
-            .iter()
-            .map(|f| f.cut(y0, y1))
-            .fold(0.0f32, f32::max);
-        let r = self
-            .flow
-            .1
-            .iter()
-            .map(|f| f.cut(y0, y1))
-            .fold(0.0f32, f32::max);
-        (l, r)
     }
 }
 

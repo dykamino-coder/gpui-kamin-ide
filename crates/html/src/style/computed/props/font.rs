@@ -1,5 +1,6 @@
 //! Computed::apply_one: font*, font-variant/feature/synthesis/size-adjust/stretch/kerning.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -7,10 +8,31 @@ mod features;
 mod metrics;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_font(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_font(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
+            "math-style" => {
+                if matches!(v, "normal" | "compact") {
+                    self.math_compact = accept_parsed!(self, Some(v == "compact"));
+                }
+            }
+            "math-shift" => {
+                if matches!(v, "normal" | "compact") {
+                    self.math_shift = accept_parsed!(self, Some(v == "compact"));
+                }
+            }
+            "math-depth" => {
+                if let Some(depth) = super::super::math_style::depth(v) {
+                    self.math_depth = accept_parsed!(self, Some(depth));
+                }
+            }
             "font-size" => {
+                if v == "math" {
+                    self.accept_declaration();
+                    self.math_font_size = true;
+                    self.font_size = None;
+                    return;
+                }
+                self.math_font_size = false;
                 // Отрицательный кегль и неразборная запись делают объявление
                 // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
                 // стирается в `None` (`c526-font-sz-003`: `-0.5in`).
@@ -45,6 +67,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(l) = word {
+                    self.accept_declaration();
                     self.font_size = Some(l);
                     // `larger`/`smaller` шагают по ТАБЛИЦЕ (§15.7: «if the
                     // parent element has font size 'medium', then 'larger'
@@ -59,24 +82,37 @@ impl Computed {
                     };
                     return;
                 }
-                self.font_size = match Len::parse(v) {
+                self.font_size = match Len::parse(v, vcx) {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
                         self.font_size_step = 0;
-                        other
+                        record_parsed!(self, other)
                     }
                 };
             }
             "font-weight" => font_weight::apply(self, v),
             "font-style" => {
-                self.italic = Some(v == "italic" || v == "oblique");
+                let mut parts = v.split_whitespace();
+                let kind = parts.next().unwrap_or("");
+                let angle = parts.next().map(crate::text::fonts::matching::angle);
+                if !matches!(kind, "normal" | "italic" | "oblique")
+                    || (kind != "oblique" && angle.is_some())
+                    || angle == Some(None)
+                    || parts.next().is_some()
+                {
+                    return;
+                }
+                self.font_oblique_angle = accept_parsed!(self, angle.flatten());
+                // Retain the angle for face selection. The platform currently
+                // synthesizes only the legacy bare oblique request.
+                self.italic = Some(kind == "italic" || (kind == "oblique" && angle.is_none()));
                 // `oblique <angle>` — тоже наклон, а не курсив (css-fonts-4
                 // §font-style-prop): подбор лица различает их.
                 self.oblique = Some(v.starts_with("oblique"));
             }
             "font-family" => font_family::apply(self, v),
 
-            _ => self.apply_font_features(key, val, v, hit),
+            _ => self.apply_font_features(key, v, hit, vcx),
         }
     }
 }

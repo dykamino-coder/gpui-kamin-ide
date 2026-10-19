@@ -5,6 +5,8 @@ use crate::{
 use image::Frame;
 use resvg::tiny_skia::Pixmap;
 mod markup_pixels;
+/// KaminIDE patch: typed geometry shares the SVG rasterizer without parsing XML.
+pub use resvg::usvg as path_scene;
 use smallvec::SmallVec;
 use std::{
     hash::Hash,
@@ -146,11 +148,30 @@ pub fn svg_markup_to_image_padded(
     density: f32,
     pad: f32,
 ) -> Option<Arc<crate::RenderImage>> {
-    use image::{Frame, ImageBuffer};
-
     let opts = usvg::Options::default();
     let tree = usvg::Tree::from_str(markup, &opts).ok()?;
-    let solid_color = markup_pixels::solid_color(&tree);
+    svg_tree_to_image_padded(&tree, width, height, density, pad)
+}
+
+/// KaminIDE patch: rasterize paths through the same resvg and image conversion as SVG markup.
+pub fn svg_tree_to_image(
+    tree: &usvg::Tree,
+    width: f32,
+    height: f32,
+    density: f32,
+) -> Option<Arc<crate::RenderImage>> {
+    svg_tree_to_image_padded(tree, width, height, density, 0.0)
+}
+
+fn svg_tree_to_image_padded(
+    tree: &usvg::Tree,
+    width: f32,
+    height: f32,
+    density: f32,
+    pad: f32,
+) -> Option<Arc<crate::RenderImage>> {
+    use image::{Frame, ImageBuffer};
+    let solid_color = markup_pixels::solid_color(tree);
     let pw = (width * density).round().max(1.0) as u32;
     let ph = (height * density).round().max(1.0) as u32;
     // Потолок: рисунок в чате не бывает больше половины экрана, а промах в
@@ -167,7 +188,7 @@ pub fn svg_markup_to_image_padded(
     let sx = pw as f32 / size.width();
     let sy = ph as f32 / size.height();
     resvg::render(
-        &tree,
+        tree,
         resvg::tiny_skia::Transform::from_scale(sx, sy),
         &mut pixmap.as_mut(),
     );
@@ -543,8 +564,8 @@ mod tests {
     use usvg::fontdb::{Database, Family, Query};
 
     const IBM_PLEX_REGULAR: &[u8] =
-        include_bytes!("../../../assets/fonts/ibm-plex-sans/IBMPlexSans-Regular.ttf");
-    const LILEX_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/lilex/Lilex-Regular.ttf");
+        include_bytes!("../tests/fonts/IBMPlexSans-Regular.ttf");
+    const LILEX_REGULAR: &[u8] = include_bytes!("../tests/fonts/Lilex-Regular.ttf");
 
     #[test]
     fn renders_parsed_svg_at_requested_size() -> Result<()> {

@@ -66,6 +66,7 @@ fn collect(
     opts: &RenderOpts,
     out: &mut Stack,
 ) -> Option<()> {
+    let vcx = opts.cx.vcx();
     for node in nodes {
         match node {
             Node::Text(t) if t.trim().is_empty() => {}
@@ -87,7 +88,7 @@ fn collect(
                 if !crate::render::real_inline(e) || !plain_span(&e.style) {
                     return None;
                 }
-                let child = crate::style::cascade::inherit::inherit(style, &e.style);
+                let child = crate::style::cascade::inherit::inherit(style, &e.style, vcx);
                 let size = own_size(&child, opts);
                 // `middle`: the box midpoint — its central baseline here —
                 // sits on the parent's central baseline raised by half the
@@ -114,7 +115,7 @@ pub(super) fn upright_central(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    if inherited.rtl == Some(true) {
+    if inherited.wm().rtl() {
         return None;
     }
     let em = own_size(inherited, opts);
@@ -133,7 +134,8 @@ pub(super) fn upright_central(
     let lane = over + under;
     let items = stack.glyphs.into_iter().map(|g| {
         let mut style = g.style;
-        style.vertical = None;
+        style.flat_mode = style.flow_mode();
+        style.writing_mode = None;
         style.upright_stack = true;
         style.line_height = Some(Len::Px(g.size));
         style.text_align = Some(TextAlign::Center);

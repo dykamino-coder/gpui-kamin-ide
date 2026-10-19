@@ -4,7 +4,7 @@
 use crate::dom::Element;
 use crate::render::replaced_tag;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 mod font_clamp;
 pub(crate) use font_clamp::atom_base_font;
 pub(crate) use font_clamp::canvas_limit_keywords;
@@ -38,7 +38,10 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
     let Some(w @ Len::Px(_)) = c.width else {
         return None;
     };
-    if replaced_tag(e)
+    if (c.flex_item
+        && !matches!(c.min_width, Some(Len::FitContent))
+        && !matches!(c.max_width, Some(Len::FitContent)))
+        || replaced_tag(e)
         || e.tag == "table"
         || matches!(c.display, Some(Display::Table) | Some(Display::InlineTable))
     {
@@ -77,10 +80,7 @@ pub(crate) fn content_limit_swapped(e: &Element) -> Option<Element> {
 /// результат (`line-clamp-auto-005`: `height: 4.5lh`; `-014`: максимум из
 /// `min-height` и `max-height`). Бесконечный размер — точки нет.
 pub(crate) fn auto_clamp_limit(m: &Computed) -> Option<f32> {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let max_h = px(m.max_height);
     let base = match px(m.height) {
         Some(h) => Some(max_h.map_or(h, |mx| h.min(mx))),

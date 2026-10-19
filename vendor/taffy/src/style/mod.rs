@@ -119,6 +119,12 @@ pub trait CoreStyle {
     fn is_block(&self) -> bool {
         false
     }
+    /// KaminIDE patch: `display: flow-root` — a block container that establishes a new block
+    /// formatting context. As a layout root it is sized like a block box.
+    #[inline(always)]
+    fn is_flow_root(&self) -> bool {
+        false
+    }
     /// Is it a compressible replaced element: a replaced element (image, video, canvas, ...) or a
     /// form control with an intrinsic size (`input`, `select`, `textarea`, `meter`, ...)?
     /// Such boxes resolve an `auto` width to their intrinsic size rather than being stretched by
@@ -278,6 +284,10 @@ pub trait CoreStyle {
     #[inline(always)]
     fn table_cell_baseline(&self) -> bool {
         false
+    }
+    /// Rows remain in the logical table until sizing has finished.
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        None
     }
     /// KaminIDE patch: раскладка ЛУНКАМИ (css-grid-3 «grid lanes»): сетка
     /// с дорожками только по ОДНОЙ оси. `None` — обычная сетка.
@@ -962,6 +972,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// `max-content` (css-sizing-3 §3.2). `max_size` cannot hold these
     /// keywords; a flex container measures them for its items.
     pub item_max_size_keywords: Size<Option<AvailableSpace>>,
+    /// Explicit intrinsic min-width/min-height for flex items.
+    pub item_min_size_keywords: Size<Option<AvailableSpace>>,
     /// Is it a compressible replaced element that is not a replaced element (a form control with
     /// an intrinsic size)? <https://drafts.csswg.org/css-sizing-3/#compressible>
     pub item_is_compressible_replaced: bool,
@@ -1074,6 +1086,11 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     #[cfg(feature = "flexbox")]
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: a column flex container that emulates a block container. Its
+    /// first/last baselines come from the first/last item that has one (CSS 2.1 10.8.1,
+    /// css-align-3 9.1 block containers), not a baseline synthesized from an item edge.
+    #[cfg(feature = "flexbox")]
+    pub block_baselines: bool,
     /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
     /// высоты родителя ряда (CSS 2.1 §10.1: строка не содержащий блок).
     #[cfg(feature = "flexbox")]
@@ -1105,6 +1122,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// content moves down by the baseline shim (see `set_content_shift`).
     #[cfg_attr(feature = "serde", serde(default))]
     pub table_cell_baseline: bool,
+    /// Table rows collapsed after intrinsic track sizing (physical columns when true).
+    pub table_collapsed_tracks: Option<(bool, Vec<u16>)>,
     /// KaminIDE patch: собственная базовая линия по оси x у узла без своей
     /// раскладки текста (повёрнутый вертикальный абзац движка): смещение и
     /// флаг «от правого края» — у `vertical-rl` первая строка справа, и
@@ -1213,6 +1232,10 @@ impl<S: CheapCloneStr> Style<S> {
             width: None,
             height: None,
         },
+        item_min_size_keywords: Size {
+            width: None,
+            height: None,
+        },
         item_is_compressible_replaced: false,
         box_sizing: BoxSizing::BorderBox,
         direction: Direction::Ltr,
@@ -1270,6 +1293,8 @@ impl<S: CheapCloneStr> Style<S> {
         flex_balance_lines: 0,
         #[cfg(feature = "flexbox")]
         flex_cross_reverse: false,
+        #[cfg(feature = "flexbox")]
+        block_baselines: false,
         percent_basis_from_parent: false,
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         margin_trim: 0,
@@ -1279,6 +1304,7 @@ impl<S: CheapCloneStr> Style<S> {
         baseline_unavailable: false,
         no_inline_block_baseline: false,
         table_cell_baseline: false,
+        table_collapsed_tracks: None,
         baseline_x_hint: None,
         baseline_x_flags: 0,
         #[cfg(feature = "grid")]
@@ -1348,6 +1374,11 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     #[cfg(feature = "block_layout")]
     fn is_block(&self) -> bool {
         matches!(self.display, Display::Block)
+    }
+    #[inline(always)]
+    #[cfg(feature = "block_layout")]
+    fn is_flow_root(&self) -> bool {
+        matches!(self.display, Display::FlowRoot)
     }
     #[inline(always)]
     fn is_compressible_replaced(&self) -> bool {
@@ -1445,6 +1476,9 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn table_cell_baseline(&self) -> bool {
         self.table_cell_baseline
     }
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        self.table_collapsed_tracks.as_ref().map(|(axis, tracks)| (*axis, tracks.as_slice()))
+    }
     #[cfg(feature = "grid")]
     #[inline(always)]
     fn subgrid(&self) -> u8 {
@@ -1502,6 +1536,10 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn is_block(&self) -> bool {
         (*self).is_block()
+    }
+    #[inline(always)]
+    fn is_flow_root(&self) -> bool {
+        (*self).is_flow_root()
     }
     #[inline(always)]
     fn is_compressible_replaced(&self) -> bool {
@@ -1602,6 +1640,9 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[inline(always)]
     fn table_cell_baseline(&self) -> bool {
         (*self).table_cell_baseline()
+    }
+    fn table_collapsed_tracks(&self) -> Option<(bool, &[u16])> {
+        (*self).table_collapsed_tracks()
     }
     #[cfg(feature = "grid")]
     #[inline(always)]
@@ -1777,6 +1818,10 @@ impl<S: CheapCloneStr> FlexboxContainerStyle for Style<S> {
         self.flex_cross_reverse
     }
     #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        self.block_baselines
+    }
+    #[inline(always)]
     fn percent_basis_from_parent(&self) -> bool {
         self.percent_basis_from_parent
     }
@@ -1824,6 +1869,10 @@ impl<T: FlexboxContainerStyle> FlexboxContainerStyle for &'_ T {
     #[inline(always)]
     fn flex_cross_reverse(&self) -> bool {
         (*self).flex_cross_reverse()
+    }
+    #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        (*self).block_baselines()
     }
     #[inline(always)]
     fn percent_basis_from_parent(&self) -> bool {
@@ -1877,6 +1926,11 @@ impl<S: CheapCloneStr> FlexboxItemStyle for Style<S> {
     fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
         self.item_max_size_keywords
     }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        self.item_min_size_keywords
+    }
 }
 
 #[cfg(feature = "flexbox")]
@@ -1908,6 +1962,11 @@ impl<T: FlexboxItemStyle> FlexboxItemStyle for &'_ T {
     #[inline(always)]
     fn max_size_keywords(&self) -> Size<Option<AvailableSpace>> {
         (*self).max_size_keywords()
+    }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
+        (*self).min_size_keywords()
     }
 }
 
@@ -2207,6 +2266,8 @@ mod tests {
             flex_balance_lines: 0,
             #[cfg(feature = "flexbox")]
             flex_cross_reverse: false,
+            #[cfg(feature = "flexbox")]
+            block_baselines: false,
             percent_basis_from_parent: false,
             #[cfg(any(feature = "flexbox", feature = "grid"))]
             margin_trim: 0,
@@ -2216,6 +2277,7 @@ mod tests {
             baseline_unavailable: false,
             no_inline_block_baseline: false,
             table_cell_baseline: false,
+            table_collapsed_tracks: None,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             #[cfg(feature = "grid")]
@@ -2229,6 +2291,10 @@ mod tests {
             item_is_table: false,
             item_is_replaced: false,
             item_max_size_keywords: Size {
+                width: None,
+                height: None,
+            },
+            item_min_size_keywords: Size {
                 width: None,
                 height: None,
             },

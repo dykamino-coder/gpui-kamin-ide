@@ -1,5 +1,6 @@
 //! Растровая маска и интервалы CSS shape-outside.
 
+use crate::document::state::ValueCx;
 mod dilation;
 pub(super) use dilation::dilate;
 
@@ -7,7 +8,13 @@ use super::{ShapeBox, svg_path_of};
 use crate::paint::background::*;
 
 /// Альфа-маска формы в холсте margin-box.
-pub(super) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> Option<Vec<u8>> {
+pub(super) fn shape_mask(
+    raw: &str,
+    b: &ShapeBox,
+    cols: usize,
+    rows: usize,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<u8>> {
     let raw = raw.trim();
     // Круг и эллипс: вписанный эллипс опорной коробки (css-shapes-1 §3.1.1).
     // Горизонтальный путь сюда с ними не приходит — там они уходят в
@@ -23,7 +30,7 @@ pub(super) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
             Some(end) => &head[..=end],
             None => head,
         };
-        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0)?;
+        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0, vcx)?;
         let (cx, cy) = (cx + b.rx, cy + b.ry);
         if rx <= 0.0 || ry <= 0.0 {
             return Some(vec![0u8; cols * rows]);
@@ -42,12 +49,12 @@ pub(super) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
     }
     // Скруглённый прямоугольник: inset/rect/xywh (+round) и слово-коробка
     // с её радиусами.
-    if let Some(rect) = rrect_of(raw, b) {
+    if let Some(rect) = rrect_of(raw, b, vcx) {
         return Some(rrect_mask(rect.0, rect.1, cols, rows));
     }
     // Полигон / путь / shape(): готовым SVG-растеризатором — fill-rule и
     // антиалиас даром (как blink ExtractPathData).
-    if let Some(d) = svg_path_of(raw, b) {
+    if let Some(d) = svg_path_of(raw, b, vcx) {
         let markup = format!(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cols}" height="{rows}" viewBox="0 0 {cols} {rows}"><path d="{}" fill="#000000" fill-rule="{}"/></svg>"##,
             d.0, d.1
@@ -94,10 +101,13 @@ pub(super) fn shape_mask(raw: &str, b: &ShapeBox, cols: usize, rows: usize) -> O
                 .rfind(|c: char| c.is_whitespace())
                 .map_or(0, |s| s + 1);
             let start = raw[head..at].rfind("repeating-").map_or(head, |s| head + s);
-            crate::paint::background::source(raw[start..].trim().trim_end_matches(|c| c != ')'))
-                .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0))))
+            crate::paint::background::source(
+                raw[start..].trim().trim_end_matches(|c| c != ')'),
+                vcx,
+            )
+            .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx))
         } else {
-            crate::style::computed::parse_url(raw).and_then(|u| load(&u))
+            crate::style::computed::parse_url(raw).and_then(|u| load(&u, vcx))
         }?;
         let bytes = src.as_bytes(0)?;
         let sz = src.size(0);

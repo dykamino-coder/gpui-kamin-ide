@@ -12,6 +12,8 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
 
 #[allow(clippy::too_many_arguments)]
+// Emitting a cell threads its element and row/column placement records together.
+#[allow(clippy::type_complexity)]
 pub(super) fn emit_cell(
     row_ix: i16,
     occupied: &mut [u16],
@@ -64,7 +66,17 @@ pub(super) fn emit_cell(
     )>,
     cell: &Element,
 ) {
-    let d = cell_box_div(paint_layers, cell_bgs, row, carry, shift, &cm, cell);
+    let vcx = opts.cx.vcx();
+    let d = cell_box_div(
+        paint_layers,
+        cell_bgs,
+        row,
+        carry,
+        shift,
+        &cm,
+        cell,
+        &opts.cx,
+    );
     let mut d = ortho_cell_box(e, row, &cm, cell, d);
     d = place_cell_in_grid(
         row_ix,
@@ -81,31 +93,36 @@ pub(super) fn emit_cell(
     }
     *col_ix += span_cols as usize;
     let (inside, d) = cell_contents(opts, e, cm, spans_collapsed, clipped, cell, d);
-    let d = cell_edge_probes(
-        row_ix,
-        group_of,
-        cols,
-        collapse_cells,
-        row_elements,
-        table_edges,
-        col_rects,
-        col_els,
-        grp_rects,
-        grp_els,
-        rules_groups,
-        px_of,
-        row,
-        row_rects,
-        grp_band,
-        inherited,
-        row_style,
-        *col_ix,
-        span_cols,
-        span_rows,
-        cell_edge,
-        cell,
-        d,
-    );
+    let d = if crate::layout::table::anon::row_collapsed(row, carry.3) {
+        d
+    } else {
+        cell_edge_probes(
+            row_ix,
+            group_of,
+            cols,
+            collapse_cells,
+            row_elements,
+            table_edges,
+            col_rects,
+            col_els,
+            grp_rects,
+            grp_els,
+            rules_groups,
+            px_of,
+            row,
+            row_rects,
+            grp_band,
+            inherited,
+            row_style,
+            *col_ix,
+            span_cols,
+            span_rows,
+            cell_edge,
+            cell,
+            d,
+            vcx,
+        )
+    };
     // `transform` ячейки, ряда и группы рядов (css-transforms-1
     // §transformable-element: «table-row-group, table-header-group,
     // table-footer-group, table-row, table-column-group,

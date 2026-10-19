@@ -2,12 +2,13 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, measure_font};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::normal_fraction;
-use gpui::{AnyElement, IntoElement, SharedString};
+use gpui::{AnyElement, SharedString};
 mod text;
 use text::{build_text_columns, css_ws, gather_cols, normalized_text};
 mod blocks;
@@ -67,6 +68,8 @@ pub(crate) fn column_flow(
 /// are monolithic», Blink `layout_box.cc:3564-3575` `IsMonolithic`). Строки
 /// монолита между колонками не расходятся; в узкой колонке `measure_columns`
 /// держит для него прежний сторож «без разрезов» (`contain-size-breaks-001`).
+// The column builder closes over all metrics needed to rebuild a fragment.
+#[allow(clippy::type_complexity)]
 fn column_flow_in(
     e: &Element,
     inherited: &Computed,
@@ -220,6 +223,6 @@ fn column_flow_in(
             inherited.orphans.unwrap_or(2) as usize,
             inherited.widows.unwrap_or(2) as usize,
         )
-        .into_any_element(),
+        .hooked(),
     )
 }

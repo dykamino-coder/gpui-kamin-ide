@@ -1,6 +1,6 @@
 //! Запросы к полосам: доступная ширина, края, зазор, низ, формы, место среди флоатов.
 
-use super::{EPS, FloatBands};
+use super::{COORD_EPS, FloatBands};
 use crate::layout::float::shapes::FloatShape;
 use std::sync::Arc;
 
@@ -29,7 +29,10 @@ impl FloatBands {
             }
             i += 1;
         }
-        (l, r.max(l))
+        // Opposing exclusions on different bands may leave no common interval.
+        // Preserve crossed edges so even a zero-width BFC must move down
+        // (CSS 2.1 section 9.5; Servo PlacementAmongFloats).
+        (l, r)
     }
 
     /// Ближайшая граница полос строго ниже `y` — следующий кандидат верха
@@ -148,7 +151,7 @@ impl FloatBands {
                 }
                 i += 1;
             }
-            if r - l >= w - EPS {
+            if r - l >= w - COORD_EPS {
                 return (l, top, r - l);
             }
             if !bot.is_finite() {

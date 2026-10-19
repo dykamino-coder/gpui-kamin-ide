@@ -1,12 +1,15 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
+
+use crate::document::state::ValueCx;
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::render::paint_rect_minus;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
 
-pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ тень (без размытия): примитив тени с нулевым размытием
     // вырождается в шейдере, поэтому она рисуется слоем-квадом, раздутым на
     // разлёт. Радиус фигуры — по спеке (css-backgrounds-3 §7.1): нулевой
@@ -18,7 +21,11 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
         // У `border-shape` тени повторяют фигуру — растром под группой
         // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
-        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
+        if sh.blur > 0.0
+            || sh.color.a == 0.0
+            || c.border_shape.is_some()
+            || super::shaped_outset::shapes_shadows(c, vcx)
+        {
             continue;
         }
         let colour = if sh.color.a < 0.0 {
@@ -66,22 +73,14 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         // border-box of the element were opaque»): без выноса на толщину рамки
         // кольцо ложилось ВНУТРЬ неё (`box-shadow-039`: оранжевое на чёрном).
         let bw = c.borders();
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
         let square = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl]
             .iter()
             .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
         if square && c.radius_ell.is_none() && c.corner_shape.is_none() {
-            // A square sharp shadow is «the shadow rect minus the border box»
-            // (css-backgrounds-3 §7.1) — up to four plain rectangles. They are
-            // painted as FILLS, the same primitive as a box background, so a
-            // translucent shadow blends exactly like the equivalent colored
-            // box (`box-shadow-039`: the border-ring primitive gave 128 where
-            // a 50% fill gives 127), and any offset larger than the spread is
-            // covered too.
+            // CSS Backgrounds 3 §7.1: shadow rect minus border box. Plain fills
+            // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
             out.push(
@@ -99,10 +98,17 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                         let (br, bb) = (f32::from(r.right()), f32::from(r.bottom()));
                         let (rl, rt) = (bl + dx - spread, bt + dy - spread);
                         let (rr, rb) = (br + dx + spread, bb + dy + spread);
-                        paint_rect_minus(window, (rl, rt, rr, rb), (bl, bt, br, bb), fill);
+                        crate::layout::fragment::effect_fragment::paint_shadow(
+                            r,
+                            (px(rt), px(rb)),
+                            window,
+                            |window| {
+                                paint_rect_minus(window, (rl, rt, rr, rb), (bl, bt, br, bb), fill);
+                            },
+                        );
                     },
                 )
-                .into_any_element(),
+                .hooked(),
             );
             continue;
         }
@@ -128,7 +134,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
     }
 }
 
-pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
+pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // РЕЗКАЯ ВНУТРЕННЯЯ тень (без размытия). §7.1: «An inner box-shadow casts
     // a shadow as if everything outside the padding edge were opaque» — тень =
     // padding-box МИНУС фигура, сжатая на разлёт и сдвинутая на смещение.
@@ -189,7 +195,7 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                         paint_rect_minus(window, (pl, pt, pr, pb), hole, fill);
                     },
                 )
-                .into_any_element(),
+                .hooked(),
             );
             continue;
         }
@@ -208,14 +214,11 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         ring.style().css_border_snap = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
-        if !c.radius_masked() && c.border_shape.is_none() {
+        if !c.radius_masked(vcx) && c.border_shape.is_none() {
             let bw = c.borders();
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
-                (crate::style::apply::radius_px(c, r).unwrap_or(0.0) - side(a).max(side(b)))
+                (crate::paint::apply::radius_px(c, r, vcx).unwrap_or(0.0) - side(a).max(side(b)))
                     .max(0.0)
             };
             ring = ring

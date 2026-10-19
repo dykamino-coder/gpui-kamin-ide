@@ -1,16 +1,21 @@
 //! Каскад: разрешение, применение объявлений, слои.
+
+use crate::document::state::ValueCx;
 // owner: B
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
-use crate::style::cascade::vars::{resolve_attrs, resolve_sibling, resolve_vars};
+use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
 use crate::style::computed::{
-    BG_LIST_KEYS, Computed, background_layers, font_members, top_level_comma,
+    BgListProp, Computed, background_layers, font_members, top_level_comma,
 };
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
 
+mod color_initial;
 pub mod defaults;
 pub mod inherit;
+pub(crate) mod inherited_value;
+mod inline_rollback;
 mod pass;
 mod revert;
 pub mod vars;
@@ -18,12 +23,29 @@ use revert::{is_important, revert_layers, strip_important};
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
-    pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls) -> Computed {
-        Computed::resolve_with_vars(matched, inline, &Decls::new())
+    pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls, vcx: ValueCx<'_>) -> Computed {
+        Computed::resolve_with_vars(matched, inline, &Decls::new(), vcx)
     }
 
     /// То же с переменными темы.
-    pub fn resolve_with_vars(matched: &mut Vec<&Rule>, inline: &Decls, vars: &Decls) -> Computed {
+    pub fn resolve_with_vars(
+        matched: &mut Vec<&Rule>,
+        inline: &Decls,
+        vars: &Decls,
+        vcx: ValueCx<'_>,
+    ) -> Computed {
+        Computed::resolve_in(matched, inline, vars, CascadeCx::NONE, vcx)
+    }
+
+    /// То же для элемента `cx`: его атрибуты и место среди братьев видят
+    /// `attr()` и `sibling-index()`.
+    pub fn resolve_in(
+        matched: &mut Vec<&Rule>,
+        inline: &Decls,
+        vars: &Decls,
+        cx: CascadeCx,
+        vcx: ValueCx<'_>,
+    ) -> Computed {
         // Слой старше специфичности (css-cascade-5 §6.4): у обычных
         // объявлений поздний слой сильнее, у важных — ранний.
         matched.sort_by(|a, b| {
@@ -34,6 +56,17 @@ impl Computed {
                 b.order,
             ))
         });
+        let inline_rollback = inline_rollback::prepare(matched, inline);
+        let inline = inline_rollback.as_ref().map_or(inline, |(_, d)| d);
+        let rollback_refs: Vec<&Rule> = inline_rollback
+            .iter()
+            .flat_map(|(rules, _)| rules.iter())
+            .collect();
+        let matched = if inline_rollback.is_some() {
+            rollback_refs.as_slice()
+        } else {
+            matched.as_slice()
+        };
         // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
         // объявления откатываемого слоя (а у важного — и всё между его
         // обычным и важным уровнями) снимаются с копий правил.
@@ -42,7 +75,7 @@ impl Computed {
         let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
             owned_refs
         } else {
-            matched.clone()
+            matched.to_vec()
         };
         let mut c = Computed::default();
         // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
@@ -51,9 +84,9 @@ impl Computed {
         // позднего. Пока проходы шли внутри правила, `!important` действовал
         // только против соседей по тому же блоку.
         for rule in matched.iter() {
-            c.apply_pass(&rule.decls, vars, false);
+            c.apply_pass(&rule.decls, vars, false, cx, vcx);
         }
-        c.apply_pass(inline, vars, false);
+        c.apply_pass(inline, vars, false, cx, vcx);
         // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
         // старше важного авторского (§6.4.4), поэтому применяется последним.
         let mut important: Vec<&&Rule> = matched.iter().collect();
@@ -72,9 +105,9 @@ impl Computed {
                 ))
         });
         for rule in important {
-            c.apply_pass(&rule.decls, vars, true);
+            c.apply_pass(&rule.decls, vars, true, cx, vcx);
         }
-        c.apply_pass(inline, vars, true);
+        c.apply_pass(inline, vars, true, cx, vcx);
         // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
         // подставляем уже после того, как цвет стал известен.
         if c.border_color_is_current {
@@ -88,43 +121,15 @@ impl Computed {
         c
     }
 
-    pub fn apply_decls(&mut self, d: &Decls) {
-        for (k, v) in d {
-            if k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
-                continue;
-            }
-            for part in v.split(crate::style::css::DECL_SEP) {
-                self.apply_one(k, part);
-            }
-        }
-    }
-
-    /// То же, но со словарём переменных: `var(--x)` подставляется значением.
-    ///
-    /// Без этого современные темы не работают вовсе — они целиком построены на
-    /// переменных, и каждое такое объявление молча терялось.
-    pub fn apply_decls_with_vars(&mut self, d: &Decls, vars: &Decls) {
-        // Два прохода: сначала обычные объявления, затем помеченные
-        // `!important`. Так важное перекрывает любое обычное независимо от
-        // порядка правил — раньше пометка просто срезалась, и объявление
-        // конкурировало на общих основаниях.
-        // Порядок объявлений внутри правила: сперва СОКРАЩЁННЫЕ, потом
-        // отдельные. `border: solid gray; border-width: 1px 2px 3px 4px`
-        // обязано дать 1/2/3/4, а не 3px от сокращения; словарь объявлений
-        // исходного порядка не помнит, и без сортировки исход зависел от
-        // случайного обхода хеш-таблицы — от запуска к запуску РАЗНОГО
-        // (`abs-pos-border-offset-001`). Общность меряется числом дефисов:
-        // `border` < `border-width` < `border-top-width`.
-        for important in [false, true] {
-            self.apply_pass(d, vars, important);
-        }
-    }
-
     // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
     // разборщиком — отдельного конвейера под offset-трансформ нет.
-    pub(crate) fn apply_one(&mut self, key: &str, val: &str) {
+    pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
         self.decl_seq += 1;
         let v = val.trim();
+        inherit::note_flow_align(self, key, v);
+        if color_initial::apply(self, key, v, vcx) {
+            return;
+        }
         // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
         // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
         // нас берётся от родителя, поэтому такое объявление молча наследовало
@@ -135,12 +140,12 @@ impl Computed {
         // начальное значение, и `color: unset` давал чёрный вместо цвета
         // родителя (`unset-val-001`).
         if v == "unset" && inherited_property(key) {
-            return self.apply_one(key, "inherit");
+            return self.apply_one(key, "inherit", vcx);
         }
         if matches!(v, "initial" | "unset" | "revert" | "revert-layer")
             && let Some(start) = initial_value(key)
         {
-            return self.apply_one(key, start);
+            return self.apply_one(key, start, vcx);
         }
         // Начальные значения, которые годятся ТОЛЬКО для `initial`/`unset`:
         // `revert` у автора откатывает к таблице агента, а там у `div`
@@ -156,39 +161,50 @@ impl Computed {
                 _ => None,
             }
         {
-            return self.apply_one(key, start);
+            return self.apply_one(key, start, vcx);
+        }
+        if inherited_value::note(self, key, v, vcx) {
+            return;
         }
         // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
         // of values … the first value represents the top layer»). Одиночные
         // поля стиля несут верхний слой, а список целиком хранится сырым —
         // по нему рисуются все слои (`Computed::bg_layers`). Запись без
         // запятой список своего свойства снимает; сокращение — все.
-        if BG_LIST_KEYS.contains(&key) {
-            if key == "background-blend-mode" && !crate::style::computed::background_blend_valid(v)
-            {
+        if let Some(prop) = BgListProp::from_key(key) {
+            if prop == BgListProp::BlendMode && !crate::style::computed::background_blend_valid(v) {
                 return;
             }
-            if key == "background" {
+            if prop == BgListProp::Shorthand {
                 // background-blend-mode is not a background shorthand member.
-                self.bg_lists.retain(|(k, _)| k == "background-blend-mode");
+                self.bg_lists.retain(|k| k == BgListProp::BlendMode);
             } else {
-                self.bg_lists.retain(|(k, _)| k != key);
+                self.bg_lists.remove(prop);
             }
             if top_level_comma(v).is_some() {
-                if key != "background" {
+                if prop != BgListProp::Shorthand {
                     // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
                     // вложенный вызов того же свойства его бы снял.
                     let first = background_layers(v)[0].to_string();
-                    self.apply_one(key, &first);
-                    self.bg_lists.push((key.to_string(), v.to_string()));
+                    self.apply_one(key, &first, vcx);
+                    self.bg_lists.set(prop, v.to_string());
                     return;
                 }
-                self.bg_lists.push((key.to_string(), v.to_string()));
+                self.bg_lists.set(prop, v.to_string());
             }
         }
-        // Свойства разнесены по группам (`props/*`): у каждого ключа ровно одна группа,
-        // ветви внутри группы идут в исходном порядке.
-        let groups: [fn(&mut Self, &str, &str, &str, &mut bool); 14] = [
+        self.apply_property(key, v, vcx);
+    }
+
+    /// Query the actual property dispatcher, including delegated property groups.
+    pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
+        Self::default().apply_property(key, "", vcx)
+    }
+
+    // The temporary cascade callback borrows the current property and variable state.
+    #[allow(clippy::type_complexity)]
+    fn apply_property(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) -> bool {
+        let groups: [fn(&mut Self, &str, &str, &mut bool, ValueCx<'_>); 14] = [
             Self::apply_scroll,
             Self::apply_display_flex,
             Self::apply_grid,
@@ -206,10 +222,11 @@ impl Computed {
         ];
         for group in groups {
             let mut hit = true;
-            group(self, key, val, v, &mut hit);
+            group(self, key, v, &mut hit, vcx);
             if hit {
-                return;
+                return true;
             }
         }
+        false
     }
 }

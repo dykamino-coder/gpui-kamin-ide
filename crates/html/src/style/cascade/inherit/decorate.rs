@@ -1,13 +1,21 @@
 //! Оформление текста при наследовании: линии text-decoration, их цвет, толщина и смещение, распространение на потомков.
 
 use super::*;
+use crate::document::state::ValueCx;
+use crate::style::computed::FontCx;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
 /// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных
 /// (`inline-block`, `inline-table`…) и вынесенных из потока (флоаты,
 /// абсолюты); цвет, рисунок, толщина и метрики — от украшающей коробки.
 /// `display: contents` коробки не даёт и своих линий не кладёт.
-pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_px: f32) {
+pub(super) fn decorate(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    own_px: f32,
+    vcx: ValueCx<'_>,
+) {
     use crate::style::computed::Display as D;
     use crate::style::computed::Position as P;
     use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
@@ -21,7 +29,8 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
         }
     });
     let resolve = |l: DecorLen| match l {
-        DecorLen::Raw(raw) => crate::text::metrics::fallback_len_px(raw, &family, own_px)
+        DecorLen::Raw(raw) => raw
+            .to_px(None, FontCx::new(&family, own_px), vcx)
             .map_or(DecorLen::Auto, DecorLen::Px),
         other => other,
     };
@@ -37,12 +46,21 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             .iter()
             .any(|p| l == *p || l.starts_with(&format!("{p}-")))
     });
+    // Ребёнок flex/grid/lanes-контейнера блокифицирован (css-display-3
+    // §2.7): `inline-block` там уже не атомарная строчная коробка, и линии
+    // идут дальше (Blink `StopPropagateTextDecorations` смотрит display ПОСЛЕ
+    // `AdjustStyleForDisplay`; эталоны `grid-lanes/baseline/*-ref`).
+    let blockified = matches!(
+        parent.display,
+        Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
+    );
     let blocked = matches!(own.position, Some(P::Absolute) | Some(P::Fixed))
         || own.float.is_some_and(|f| f != 0)
-        || matches!(
-            own.display,
-            Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
-        );
+        || (!blockified
+            && matches!(
+                own.display,
+                Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
+            ));
     c.skip_ink = own.skip_ink.or(parent.skip_ink);
     c.skip_spaces = own.skip_spaces.or(parent.skip_spaces);
     c.decors = if blocked {
@@ -90,9 +108,9 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             DecorLen::Px(v) => DecorLen::Px(v),
             _ => DecorLen::Auto,
         };
-        let inset = match own.td_inset {
+        let inset = match c.td_inset {
             Some(None) => None,
-            Some(Some(pair)) => Some(pair.map(resolve)),
+            Some(Some(pair)) => Some(pair),
             None => Some([DecorLen::Px(0.0); 2]),
         };
         let d = Decor {
@@ -104,6 +122,8 @@ pub(super) fn decorate(parent: &Computed, own: &Computed, c: &mut Computed, own_
             position: c.underline_pos.unwrap_or(0),
             inset,
             clone: own.bdb_clone,
+            source: own.decor_box,
+            rtl: c.wm().rtl(),
             over_lang,
             font: DecorFont {
                 family: c.font_family.clone(),

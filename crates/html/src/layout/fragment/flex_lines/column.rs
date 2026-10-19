@@ -1,11 +1,12 @@
 //! Флекс-строки колонки (flex_lines_of) и правила промежутков.
 
+use super::common::{gaps, plain_container, plain_item, zero};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::layout::page::paged::visible_overflow;
-use crate::render::{is_blank, out_of_flow};
-use crate::style::computed::{Computed, Display};
+use crate::render::is_blank;
+use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 /// Строки контейнера для `split_flex_lines`: `(сдвиг строки по x, элементы с
@@ -14,57 +15,14 @@ use crate::style::values::value::Len;
 pub(super) fn flex_lines_of(
     c: &Element,
     col_w: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::style::computed::FlexDir;
     if flex_gap_rules(&c.style) {
         return None;
     }
-    let zero = |l: &Option<Len>| match l {
-        None => true,
-        Some(Len::Px(v)) => v.abs() < 0.01,
-        _ => false,
-    };
     let s = &c.style;
-    let b = s.borders();
-    if c.inline
-        || s.display != Some(Display::Flex)
-        || s.webkit_box == Some(true)
-        || s.flex_dir != Some(FlexDir::Col)
-        || s.flex_wrap != Some(true)
-        || s.flex_wrap_reverse == Some(true)
-        || s.flex_balance == Some(true)
-        || s.vertical == Some(true)
-        || s.justify_content.is_some()
-        || s.align_content.is_some()
-        || s.align_items.is_some()
-        // `position: relative` без сдвигов ничего не двигает, а содержащим
-        // блоком ему служить некому (внепоточных детей гейт не пускает).
-        || !(s.position.is_none()
-            || (s.position == Some(crate::style::computed::Position::Relative)
-                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
-                    .into_iter()
-                    .all(|l| matches!(l, None | Some(Len::Auto)))))
-        || s.transform.is_some()
-        || s.min_height.is_some()
-        || s.max_height.is_some()
-        || !visible_overflow(s)
-        || ![
-            &s.margin.top,
-            &s.margin.bottom,
-            &s.margin.left,
-            &s.margin.right,
-            &s.padding.top,
-            &s.padding.bottom,
-            &s.padding.left,
-            &s.padding.right,
-            &b.top,
-            &b.bottom,
-            &b.left,
-            &b.right,
-        ]
-        .into_iter()
-        .all(zero)
-    {
+    if !plain_container(c) || s.flex_dir != Some(FlexDir::Col) {
         return None;
     }
     let Some(Len::Px(main)) = s.height else {
@@ -75,35 +33,12 @@ pub(super) fn flex_lines_of(
         None | Some(Len::Auto) => col_w?,
         _ => return None,
     };
-    let (row_gap, col_gap) = match s.gap {
-        None => (0.0, 0.0),
-        Some((r, g)) => {
-            let px = |l: &Option<Len>| match l {
-                None => Some(0.0),
-                Some(Len::Px(v)) => Some(v.max(0.0)),
-                _ => None,
-            };
-            (px(&r)?, px(&g)?)
-        }
-    };
+    let (row_gap, col_gap) = gaps(s)?;
     let mut items: Vec<&Element> = Vec::new();
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
         let ks = &k.style;
-        if k.inline
-            || out_of_flow(ks)
-            || !matches!(
-                ks.position,
-                None | Some(crate::style::computed::Position::Relative)
-            )
-            || ks.float.unwrap_or(0) != 0
-            || ks.flex_grow.is_some_and(|g| g > 0.0)
-            || ks.flex_basis.is_some()
-            || ks.align_self.is_some()
-            || ks.align_self_normal
-            || !zero(&ks.margin.left)
-            || !zero(&ks.margin.right)
-        {
+        if !plain_item(k) || ks.flex_basis.is_some() {
             return None;
         }
         items.push(k);
@@ -116,7 +51,7 @@ pub(super) fn flex_lines_of(
     // Мера и внешний поперечный размер элемента; `None` у ширины — `auto`.
     let mut measured: Vec<(Element, Shape, Option<f32>)> = Vec::with_capacity(items.len());
     for k in items {
-        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
         let kb = k.style.borders();
         let side = |l: &Option<Len>| match l {
             None => Some(0.0),
@@ -152,7 +87,7 @@ pub(super) fn flex_lines_of(
     let mut lines: Vec<Vec<(Element, Shape, Option<f32>)>> = Vec::new();
     let mut used = 0.0f32;
     for (k, sh, w) in measured {
-        let outer = sh.0 + sh.1 + sh.2;
+        let outer = sh.height + sh.margin_top + sh.margin_bottom;
         match lines.last_mut() {
             Some(line) if used + row_gap + outer <= main + 0.01 => {
                 used += row_gap + outer;
@@ -189,7 +124,7 @@ pub(super) fn flex_lines_of(
             // он пропадает вместе с полем (Blink
             // `UpdateOffsetAdjustmentForSuppressedRowGap`, :2486-2500).
             if i > 0 {
-                sh.1 += row_gap;
+                sh.margin_top += row_gap;
             }
             items.push((k, sh));
         }

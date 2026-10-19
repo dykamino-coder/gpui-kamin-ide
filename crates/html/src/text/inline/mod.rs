@@ -24,20 +24,18 @@ mod containing_block;
 #[cfg(test)]
 mod em_tests;
 mod first_line;
+pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
 pub use crate::text::inline::collapse::collapse_across_pieces;
+pub(crate) use crate::text::inline::containing_block::InlineCbOffer;
 pub(crate) use crate::text::inline::containing_block::backdrop_root;
 pub(crate) use crate::text::inline::containing_block::establishes_cb;
 use crate::text::inline::containing_block::mark_inline_cb;
-pub(crate) use crate::text::inline::containing_block::note_abs_cb;
-pub(crate) use crate::text::inline::containing_block::set_atom_cb;
-pub(crate) use crate::text::inline::containing_block::take_abs_cb;
-pub(crate) use crate::text::inline::containing_block::take_atom_cb;
 pub use crate::text::inline::first_line::style_first_line;
 
 mod emphasis;
-pub use crate::text::inline::emphasis::emphasis_spans;
+pub(crate) use crate::text::inline::emphasis::emphasis_spans;
 
 mod empty_inline;
 mod first_letter;
@@ -60,6 +58,7 @@ use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement};
 pub(crate) mod atom_parent;
 pub(super) mod collect;
+pub(crate) use crate::text::inline::collect::to_rotated_frame;
 use crate::text::inline::collect::*;
 pub(super) mod hyphenate;
 pub use crate::text::inline::hyphenate::*;
@@ -76,6 +75,8 @@ pub use crate::text::inline::runs::*;
 
 /// Кусок инлайн-содержимого: либо текст со своим стилем, либо готовый элемент
 /// (картинка, кнопка — то, что текстом не является).
+// Text and replaced elements share an owned inline sequence without extra boxing.
+#[allow(clippy::large_enum_variant)]
 pub enum Piece {
     Text {
         text: String,
@@ -96,7 +97,7 @@ pub enum Piece {
 }
 
 /// Как кусок вне потока садится на своё место в тексте (`lines.rs`).
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Default, Debug, PartialEq)]
 pub struct OverlayAt {
     /// Гипотетическая коробка БЛОЧНАЯ: место — начало следующей строки.
     pub next_line: bool,
@@ -128,6 +129,17 @@ pub struct OverlayAt {
     /// байтовые края считаются по ГОТОВЫМ кускам (`overlays`) — схлопывание
     /// пробелов на границах кусков идёт уже после сбора.
     pub cb_marker: Option<(u32, bool)>,
+    /// Метка краёв строчной коробки-якоря или строчного содержащего блока
+    /// `(id, начало?)` (`inline_box::mark_inline_box`).
+    pub box_marker: Option<(u32, bool)>,
+    /// Разрешённые края такой коробки (кусок-носитель ставит
+    /// `spacers::overlays` на место конечной метки): `InlineCb::id` — ключ
+    /// в таблице `inline_box`, края — относительно места куска.
+    pub inline_box: Option<InlineCb>,
+    /// The piece is a static-position probe of an absolute box with one
+    /// inset axis (`absolute_atom`): its prepaint gets the line box through
+    /// this slot.
+    pub line_probe: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
 }
 
 /// Содержащий блок из фрагментов строчной коробки (CSS 2.1 §10.1 п.4.1;
@@ -149,20 +161,24 @@ pub struct InlineCb {
 }
 
 /// Собрать инлайн-куски из детей узла.
+/// `cx` — контекст раскладки блока абзаца: его доступная ширина — база
+/// долей полей и отступов строчных коробок.
 pub fn collect(
     children: &[Node],
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {
     collect_with_empty_metrics(
         children,
         inherited,
         atom,
         empty_inline::has_text(children),
-        &mut text_case::Context::default(),
+        &mut collect::CollectCx {
+            case: text_case::Context::default(),
+            layout: cx.clone(),
+            inline_parents: Vec::new(),
+            inline_cb_depth: 0,
+        },
     )
 }
-
-use crate::text::inline::containing_block::INLINE_CB_DEPTH;
-
-use crate::text::inline::containing_block::ATOM_CB;

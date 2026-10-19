@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 pub(crate) fn inset_holder_box(
@@ -13,16 +13,19 @@ pub(crate) fn inset_holder_box(
     opts: &RenderOpts,
     kw_len: &impl Fn(Option<Len>) -> bool,
 ) -> AnyElement {
-    let mut holder = Computed::default();
-    holder.position = e.style.position;
-    holder.inset = e.style.inset;
-    holder.z_index = e.style.z_index;
-    holder.display = Some(Display::Flex);
-    holder.flex_dir = Some(if block_axis {
-        crate::style::computed::FlexDir::Col
-    } else {
-        crate::style::computed::FlexDir::Row
-    });
+    let vcx = opts.cx.vcx();
+    let mut holder = Computed {
+        position: e.style.position,
+        inset: e.style.inset,
+        z_index: e.style.z_index,
+        display: Some(Display::Flex),
+        flex_dir: Some(if block_axis {
+            crate::style::computed::FlexDir::Col
+        } else {
+            crate::style::computed::FlexDir::Row
+        }),
+        ..Default::default()
+    };
     // Поля вдоль оси остаются у ВНУТРЕННЕЙ коробки: auto-поля
     // элемента гибкого контейнера забирают остаток, а при нехватке
     // места обнуляются (css-flexbox-1 §8.1) — ровно как auto-поля
@@ -41,10 +44,7 @@ pub(crate) fn inset_holder_box(
     }
     // Поперечный размер держателя — border-box внутренней коробки:
     // её рамка и отбивка прибавляются (у держателя своих нет).
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let bd = e.style.borders();
     if block_axis {
         let extra = px_of(e.style.padding.left)
@@ -76,7 +76,7 @@ pub(crate) fn inset_holder_box(
         inner.style.margin.bottom = None;
     }
     inner.style.z_index = None;
-    crate::style::apply::apply(div(), &holder)
+    crate::paint::apply::apply(div(), &holder, vcx)
         .child(element(&inner, inherited, opts))
         .into_any_element()
 }

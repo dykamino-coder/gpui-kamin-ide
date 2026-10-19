@@ -12,6 +12,8 @@ fn project(height: Pixels, baseline: Pixels, ccw: bool, lr: bool) -> (f32, bool)
     }
 }
 
+// Baseline correction uses the child and both parent/child coordinate systems.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn apply(
     style: &mut Style,
     child: &mut AnyElement,

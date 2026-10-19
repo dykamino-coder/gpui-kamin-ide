@@ -1,11 +1,13 @@
 //! Подготовка ряда и ячейки в цикле table_rows: пробы полос ряда/группы, дорожка пустого ряда,
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
-use crate::render::{RenderOpts, pseudo_line_layers};
+use crate::render::pseudo_line_layers;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -57,7 +59,7 @@ pub(super) fn cell_spans(
 }
 
 pub(super) fn row_band_probes(
-    opts: &RenderOpts,
+    group_bands: &mut std::collections::HashMap<u64, crate::layout::table::paint::RowRects>,
     under: &mut Vec<AnyElement>,
     group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
     row: &Element,
@@ -67,6 +69,7 @@ pub(super) fn row_band_probes(
         Option<crate::style::values::value::Color>,
         Option<&Element>,
     ),
+    vcx: ValueCx<'_>,
 ) -> (
     Option<crate::layout::table::paint::RowRects>,
     Option<crate::layout::table::paint::RowRects>,
@@ -74,21 +77,22 @@ pub(super) fn row_band_probes(
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
-    // ячеек, снятыми пробами прошлого кадра.
-    let row_rects: Option<crate::layout::table::paint::RowRects> = (row.style.bg_image.is_some()
-        || row.style.gradient_raw.is_some()
-        || !row.style.shadows.is_empty())
-    .then(|| crate::layout::table::paint::row_rects_for(row.node_id ^ opts.doc_salt));
+    // ячеек, снятыми пробами этого кадра (`RowRects`).
+    let row_rects: Option<crate::layout::table::paint::RowRects> =
+        (!crate::layout::table::anon::row_collapsed(row, carry.3)
+            && (row.style.bg_image.is_some()
+                || row.style.gradient_raw.is_some()
+                || !row.style.shadows.is_empty()))
+        .then(crate::layout::table::paint::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
-        let mut band_style = row.style.clone();
+        let mut band_style = (*row.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
         );
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
@@ -101,18 +105,19 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::paint::RowRects> = carry.3.and_then(|g| {
-        (g.style.bg_image.is_some()
-            || g.style.gradient_raw.is_some()
-            || !g.style.shadows.is_empty()
-            || g.style.outline.is_some())
-        .then(|| crate::layout::table::paint::row_rects_for(g.node_id ^ opts.doc_salt))
+        (g.style.collapsed != Some(true)
+            && (g.style.bg_image.is_some()
+                || g.style.gradient_raw.is_some()
+                || !g.style.shadows.is_empty()
+                || g.style.outline.is_some()))
+        .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.3)
         && group_of
             .get(&row.node_id)
             .is_some_and(|(_, first, _)| *first)
     {
-        let mut band_style = g.style.clone();
+        let mut band_style = (*g.style).clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
@@ -123,8 +128,7 @@ pub(super) fn row_band_probes(
             band_style.background = None;
         }
         under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style)
-                .into_any_element(),
+            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
         );
     }
     (row_rects, grp_band)
@@ -145,7 +149,7 @@ pub(super) fn push_empty_row_track(
     // (20+2 против 10+12). Заглушка на всю ширину ставится только когда
     // ряд не накрыт охватом сверху — иначе авторазмещение унесло бы её
     // в следующий ряд.
-    if e.style.vertical != Some(true)
+    if !e.style.wm().vertical()
         && !row
             .children
             .iter()
@@ -155,16 +159,21 @@ pub(super) fn push_empty_row_track(
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
-        if e.style.vertical != Some(true) {
+        if !e.style.wm().vertical() {
             ph = ph.col_start(1).row_start(row_ix);
         }
         cells.push(ph.into_any_element());
     }
 }
 
-pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Element) -> Computed {
-    let mut cm = inherit(row_style, &cell.style);
-    pseudo_line_layers::install(cell, &mut cm);
+pub(super) fn cell_cascaded_style(
+    e: &Element,
+    row_style: &Computed,
+    cell: &Element,
+    vcx: ValueCx<'_>,
+) -> Computed {
+    let mut cm = inherit(row_style, &cell.style, vcx);
+    pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
     // `th` take their row's value, through the UA rule
     // `vertical-align: inherit` (HTML §15.3.9). A generic
@@ -179,7 +188,7 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
     // element): стопка глифов переносится на следующую колонку по
     // нему (table-cell-002: td vertical-rl с max-height 100 —
     // зелёный квадрат из двух колонок).
-    if cell.style.vertical == Some(true)
+    if cell.style.wm().vertical()
         && cm.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell.style.height.or(cell.style.max_height)
     {
@@ -205,14 +214,19 @@ pub(super) fn cell_cascaded_style(e: &Element, row_style: &Computed, cell: &Elem
     // (`anon_element("table", …)`, стиль `Computed::default()`)
     // `e.style.vertical` пуст, поэтому семья `line-box-direction-*`
     // гейтом не задевается.
-    if e.style.vertical == Some(true) && cm.ortho_limit.is_some() {
+    if e.style.wm().vertical() && cm.ortho_limit.is_some() {
         cm.ortho_col = true;
     }
     cm
 }
 
-pub(super) fn hides_empty_cell(e: &Element, row_style: &Computed, cell: &Element) -> bool {
-    inherit(row_style, &cell.style).empty_cells_hide == Some(true)
+pub(super) fn hides_empty_cell(
+    e: &Element,
+    row_style: &Computed,
+    cell: &Element,
+    vcx: ValueCx<'_>,
+) -> bool {
+    inherit(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
         && e.style.border_collapse != Some(true)
         && {
             let mut текст = String::new();

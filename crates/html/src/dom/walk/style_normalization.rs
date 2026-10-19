@@ -1,6 +1,7 @@
-//! Style normalization for walk; split out to keep the owning module within 250 lines.
+//! Normalize element styles using HTML tag defaults and CSS applicability rules.
 
 use super::presentational_hints;
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Position};
 use crate::style::select::Ancestor;
@@ -9,9 +10,10 @@ use crate::style::select::Ancestor;
 #[allow(clippy::needless_borrow)]
 pub(super) fn normalize_style(
     mut style: &mut Computed,
-    tag: &String,
+    tag: &str,
     attrs: &[(String, String)],
     path: &[Ancestor],
+    vcx: ValueCx<'_>,
 ) {
     // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
     // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
@@ -41,22 +43,47 @@ pub(super) fn normalize_style(
                 }
             }
         };
-        crate::style::values::value::set_root_metrics(font, line);
-        crate::style::values::value::set_root_family(&family);
-        crate::style::values::value::set_root_font_view(match style.font_size {
-            Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
-            Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
-            _ => None,
-        });
+        crate::style::values::value::set_root_metrics(vcx.doc, font, line);
+        crate::style::values::value::set_root_family(vcx.doc, &family);
+        crate::style::values::value::set_root_font_view(
+            vcx.doc,
+            match style.font_size {
+                Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
+                Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
+                _ => None,
+            },
+        );
     }
     apply_presentational_size(&mut style, &tag, &attrs);
+    resolve_svg_keywords(&mut style, &tag, &attrs);
     promote_auto_ratio(&mut style, &tag);
-    presentational_hints::colors(&mut style, &tag, &attrs);
-    finish_inline_display(&mut style, &tag, &attrs);
+    // css-sizing-4 §5.1: `aspect-ratio` applies to all boxes «except inline
+    // boxes and internal ruby or table boxes» (`aspect-ratio/table-element-001`).
+    {
+        use crate::style::computed::Display;
+        let internal_table = match style.display {
+            Some(Display::TableRow | Display::TableRowGroup | Display::TableCell) => true,
+            None => matches!(
+                tag,
+                "td" | "th" | "tr" | "thead" | "tbody" | "tfoot" | "col" | "colgroup"
+            ),
+            _ => false,
+        };
+        if internal_table {
+            style.aspect_ratio = None;
+            style.aspect_ratio_auto = None;
+        }
+    }
+    presentational_hints::colors(&mut style, &tag, &attrs, vcx);
+    finish_inline_display(&mut style, &tag, &attrs, vcx);
+    // HTML 15.4.1: audio without controls does not represent a rendered box.
+    if tag == "audio" && !attrs.iter().any(|(name, _)| name == "controls") {
+        style.display = Some(crate::style::computed::Display::None);
+    }
     style.plain_block_box = {
         use crate::style::computed::Display;
         let special = matches!(
-            tag.as_str(),
+            tag,
             "table"
                 | "caption"
                 | "colgroup"
@@ -97,7 +124,7 @@ pub(super) fn normalize_style(
             | Some(Display::ListItem)
             | Some(Display::Flex)
             | Some(Display::Grid) => true,
-            None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag.as_str()),
+            None => style.inline_display != Some(true) && BLOCK_TAGS.contains(&tag),
             _ => false,
         };
         block && !special && style.float.is_none_or(|f| f == 0)
@@ -115,7 +142,7 @@ pub(super) fn normalize_style(
                 Some(Position::Absolute) | Some(Position::Fixed)
             );
         let replaced = matches!(
-            tag.as_str(),
+            tag,
             "img"
                 | "svg"
                 | "input"
@@ -130,7 +157,7 @@ pub(super) fn normalize_style(
                 | "meter"
                 | "progress"
         );
-        let inline_tag = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+        let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let non_atomic = !out_of_flow
             && !replaced
             && (style.inline_display == Some(true) || (style.display.is_none() && inline_tag));
@@ -149,9 +176,9 @@ pub(super) fn normalize_style(
                 style.position,
                 Some(Position::Absolute) | Some(Position::Fixed)
             );
-        let inline_tag = INLINE_TAGS.contains(&tag.as_str()) || !BLOCK_TAGS.contains(&tag.as_str());
+        let inline_tag = INLINE_TAGS.contains(&tag) || !BLOCK_TAGS.contains(&tag);
         let replaced = matches!(
-            tag.as_str(),
+            tag,
             "img"
                 | "svg"
                 | "input"
@@ -179,7 +206,7 @@ pub(super) fn normalize_style(
     // properties … apply to base containers or annotation containers»
     // (`ruby-box-model-001`: `.rbc.pv { padding: 100px }` не должен
     // отодвигать аннотацию от базы). Контейнер — по тегу или по роли.
-    if matches!(tag.as_str(), "rbc" | "rtc")
+    if matches!(tag, "rbc" | "rtc")
         || matches!(
             style.ruby_role,
             Some(crate::style::computed::RubyRole::BaseContainer)
@@ -199,7 +226,11 @@ pub(super) fn normalize_style(
     // родителя нет вовсе: сюда доезжает только собственный каскад.
     // Язык — свойство узла, а не CSS: по нему выбираются образцы
     // слогораздела (`hyphens: auto`).
-    if let Some((_, v)) = attrs.iter().find(|(k, _)| k == "lang") {
+    if let Some((_, v)) = attrs
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("xml:lang"))
+        .or_else(|| attrs.iter().find(|(k, _)| k.eq_ignore_ascii_case("lang")))
+    {
         style.lang = Some(v.clone());
     }
     apply_direction(&mut style, &tag, &attrs);
