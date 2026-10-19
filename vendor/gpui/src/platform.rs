@@ -1372,6 +1372,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         None
     }
 
+    /// Rasterize an isolated transparent scene without presenting the window.
+    fn rasterize_scene(&self, _scene: &Scene, _size: Size<DevicePixels>) -> Result<image::RgbaImage> {
+        anyhow::bail!("isolated scene capture is unavailable on this platform")
+    }
+
     /// Renders the given scene to a texture and returns the pixel data as an RGBA image.
     /// This does not present the frame to screen - useful for visual testing where we want
     /// to capture what would be rendered without displaying it or requiring the window to be visible.

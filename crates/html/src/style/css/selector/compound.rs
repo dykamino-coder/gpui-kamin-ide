@@ -3,7 +3,7 @@
 use super::*;
 
 impl Selector {
-    pub(crate) fn parse_compound(raw: &str) -> Option<Selector> {
+    pub(crate) fn parse_compound(raw: &str, cx: &SelectorCx) -> Option<Selector> {
         let s = raw.trim();
         if s.is_empty() || s == "*" || s == "*|*" {
             return Some(Selector {
@@ -75,12 +75,13 @@ impl Selector {
             // (`at-media-003`, `at-supports-045`, `at-supports-namespace-001/002`).
             let name = match name.rsplit_once('|') {
                 Some((ns, t)) => {
-                    if !ns_declared(ns) {
+                    if !cx.ns_declared(ns) {
                         return None;
                     }
                     t.to_string()
                 }
-                None => name,
+                None if name == "*" => name,
+                None => crate::style::css::default_ns::mark_tag(name, cx),
             };
             sel.universal = name == "*";
             if !name.is_empty() && name != "*" {
@@ -90,13 +91,19 @@ impl Selector {
         rest = &rest[head_end..];
         while !rest.is_empty() {
             let kind = rest.as_bytes()[0] as char;
-            let body = &rest[1..];
+            let double_colon = rest.starts_with("::");
+            let body = &rest[if double_colon { 2 } else { 1 }..];
             let end = delim(body);
             let name = &body[..end];
-            // Псевдоэлемент стоит ПОСЛЕДНИМ в составной части (Selectors §3):
-            // `p:first-line.two` — недействительный селектор, а разбирался как
-            // годный, и правило красило чужой абзац (`c25-pseudo-elmnt-000`).
-            if sel.pseudo.as_deref().is_some_and(is_pseudo_element) {
+            // CSS Pseudo §5 allows further pseudos after element-backed ones,
+            // but never a class, id or attribute on a pseudo-element.
+            if let Some(last) = sel
+                .pseudo
+                .iter()
+                .chain(sel.also.iter().rev())
+                .find(|p| is_pseudo_element(p))
+                && (kind != ':' || !is_element_backed(last))
+            {
                 return None;
             }
             if kind == '[' {
@@ -129,8 +136,6 @@ impl Selector {
             match kind {
                 '.' => sel.classes.push(unescape(name)),
                 '#' => sel.id = Some(unescape(name)),
-                // `:hover` и `::before` дают одно и то же имя: различать их
-                // незачем — псевдоэлементы отбираются по имени.
                 ':' => {
                     // Неизвестный псевдокласс или псевдоэлемент делает
                     // селектор недействительным, а с ним и ВЕСЬ список
@@ -139,8 +144,17 @@ impl Selector {
                     // просто не совпадало, и вторая часть списка работала.
                     // Имя псевдокласса сравнивается без учёта регистра
                     // (`:FiRSt-cHIlD` — тот же `:first-child`).
-                    let bare = name.trim_start_matches(':').to_ascii_lowercase();
-                    if !bare.is_empty() && !known_pseudo(&bare) {
+                    let bare = name.to_ascii_lowercase();
+                    if !known_pseudo(&bare) {
+                        return None;
+                    }
+                    let head = bare.split('(').next().unwrap_or("");
+                    // Only the four CSS2 pseudo-elements have a single-colon alias.
+                    if is_pseudo_element(&bare)
+                        && !double_colon
+                        && !matches!(head, "before" | "after" | "first-line" | "first-letter")
+                        || double_colon && !is_pseudo_element(&bare)
+                    {
                         return None;
                     }
                     if bare.split('(').next() == Some("lang") {
@@ -152,14 +166,10 @@ impl Selector {
                             return None;
                         }
                     }
-                    // Пустышка от второго двоеточия `::after` — не
-                    // псевдокласс, копить её нельзя.
-                    if let Some(prev) = sel.pseudo.take()
-                        && !prev.is_empty()
-                    {
+                    if let Some(prev) = sel.pseudo.take() {
                         sel.also.push(prev);
                     }
-                    sel.pseudo = Some(unescape(name.trim_start_matches(':')).to_ascii_lowercase())
+                    sel.pseudo = Some(pseudo_name(name, cx))
                 }
                 _ => return None,
             }
@@ -167,4 +177,22 @@ impl Selector {
         }
         Some(sel)
     }
+}
+
+/// Имя псевдокласса в нижнем регистре. У `:is()`/`:where()` аргумент —
+/// список селекторов, и его регистр (имена классов) сохраняется как есть.
+fn pseudo_name(raw: &str, cx: &SelectorCx) -> String {
+    if let Some((head, arg)) = raw.split_once('(') {
+        let head = head.to_ascii_lowercase();
+        if matches!(head.as_str(), "is" | "where" | "matches" | "any") {
+            return format!(
+                "{head}({}",
+                crate::style::css::default_ns::mark_arg(arg, cx)
+            );
+        }
+        if matches!(head.as_str(), "host" | "host-context" | "slotted" | "has") {
+            return format!("{head}({arg}");
+        }
+    }
+    unescape(raw).to_ascii_lowercase()
 }

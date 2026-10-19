@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::render::{content_sized_wraps, replaced_tag};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Доли коробки по содержимому, решённые от содержащего блока (см. вызов в
 /// `blocks`). `None` — решать нечего или блок не блочный: у гибкого и
@@ -20,17 +20,13 @@ pub(crate) fn pct_resolved_for_wrapper(e: &Element, inherited: &Computed) -> Opt
 /// блоком стоит наша служебная обёртка (сетка `content_sized`, строка
 /// абзаца у `inline-block`), и раскладка решала бы долю от неё.
 pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> Option<Element> {
-    if replaced_tag(e) || e.style.vertical == Some(true) {
+    if replaced_tag(e) || e.style.wm().vertical() {
         return None;
     }
-    if !matches!(inherited.display, None | Some(Display::Block)) || inherited.vertical == Some(true)
-    {
+    if !matches!(inherited.display, None | Some(Display::Block)) || inherited.wm().vertical() {
         return None;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     // Опора высоты — СОДЕРЖИМОЕ родителя: при `box-sizing: border-box`
     // заданная высота включает его отступы и рамку.
     let base_h = match inherited.height {

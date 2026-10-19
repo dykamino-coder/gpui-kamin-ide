@@ -1,46 +1,27 @@
 //! Жизненный цикл GPUI-элемента; отделён от состояния и конструкторов.
 
-mod painting;
-use painting::paint_body;
+use super::painting::paint_body;
+use crate::hooks::Hooks;
 
 use super::Transformed;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-    px,
-};
+use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
-impl Element for Transformed {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for Transformed {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout(window, cx);
         (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        layout_id: &mut LayoutId,
+        layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         // Плоская матрица — на стек якорей (`anchor::tf_push`): рамку якоря
         // проба снимает на подготовке, а трансформ применяется только в
         // `paint`, и без стека якорь виделся до трансформа (css-anchor-
@@ -74,8 +55,6 @@ impl Element for Transformed {
                 window.set_layout_placed_origin(*layout_id, origin + gpui::point(px(sx), px(sy)));
                 self.placed = true;
                 self.child
-                    .as_mut()
-                    .unwrap()
                     .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
                 return;
             }
@@ -96,7 +75,7 @@ impl Element for Transformed {
                 [c, d, oy - c * ox - d * oy + sy],
             ]);
         }
-        self.child.as_mut().unwrap().prepaint(window, cx);
+        self.child.prepaint(window, cx);
         if flat {
             crate::layout::positioned::anchor::tf_pop();
         }
@@ -104,23 +83,12 @@ impl Element for Transformed {
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        layout_id: &mut LayoutId,
-        _prepaint: &mut (),
+        layout_id: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        paint_body(
-            self,
-            _id,
-            _inspector_id,
-            bounds,
-            layout_id,
-            _prepaint,
-            window,
-            cx,
-        )
+        paint_body(self, bounds, layout_id, _prepaint, window, cx)
     }
 }

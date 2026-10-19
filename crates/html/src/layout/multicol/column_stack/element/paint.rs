@@ -6,6 +6,8 @@ use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
+    // Fragment painting shares the column geometry and the active GPUI context.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_frags(
         &mut self,
         window: &mut Window,
@@ -82,22 +84,10 @@ impl ColumnStack {
                         mask_scale,
                     )
                 };
-                if f.head > 0.01
-                    && f.copy > 0
-                    && let Some(el) = r.head_els.get_mut(f.copy - 1)
-                {
-                    window.with_content_mask(Some(band_mask(-f.head, f.head)), |window| {
-                        el.paint(window, cx)
-                    });
-                }
-                if f.foot > 0.01
-                    && let Some((_, bh)) = r.foot
-                    && let Some(el) = r.foot_els.get_mut(f.copy)
-                {
-                    window.with_content_mask(Some(band_mask(f.h + f.foot - bh, bh)), |window| {
-                        el.paint(window, cx)
-                    });
-                }
+                r.paint_bands(&f, |el, top, h| {
+                    window
+                        .with_content_mask(Some(band_mask(top, h)), |window| el.paint(window, cx));
+                });
             }
             // Хвост непоследнего фрагмента таблицы — фоном таблицы (`slack`).
             if let Some(bg) = kid.slack
@@ -145,13 +135,10 @@ impl ColumnStack {
                     ));
                 }
             }
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             // Маска и режет: копия нарисована во всю свою высоту, видна
             // только полоса своей колонки (css-break-3 §4, вид `slice`).

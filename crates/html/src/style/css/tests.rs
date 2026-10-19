@@ -154,3 +154,48 @@ fn color_scheme_query_follows_the_theme() {
     assert_eq!(dark.len(), 1);
     assert!(light.is_empty());
 }
+
+#[test]
+fn media_features_accept_math_functions() {
+    let css = "
+        @media (width > calc(1px * (1 + sign(16px - 10px)))) { .a { color: red } }
+        @media (grid: calc(2 * sign(0px))) { .b { color: red } }
+        @media (aspect-ratio > calc(sign(1px) * 1) / calc(1000 * sign(1px))) { .c { color: red } }
+        @media (resolution: calc(1dppx * sign(5px))) { .d { color: red } }
+    ";
+    let sels: Vec<String> = parse_stylesheet(css)
+        .iter()
+        .map(|r| r.sel.classes.join(","))
+        .collect();
+    assert_eq!(sels, vec!["a", "b", "c", "d"]);
+}
+
+#[test]
+fn page_rules_cascade_by_layer_before_specificity() {
+    let rule = |name: Option<&str>, margin: &str, layer: Vec<u32>| PageRule {
+        sels: vec![PageSel {
+            name: name.map(str::to_string),
+            ..PageSel::default()
+        }],
+        decls: vec![("margin".into(), margin.into())],
+        margins: Vec::new(),
+        layer,
+    };
+    let last = |rules: &[PageRule], name: &str| {
+        page_decls_in(rules, 0, name, false)
+            .last()
+            .map(|(_, v)| v.clone())
+    };
+    // `@layer l2, l1;` — l1 объявлен позже и сильнее, хоть и записан раньше.
+    let rules = vec![
+        rule(None, "1cm", vec![1, u32::MAX]),
+        rule(None, "0", vec![0, u32::MAX]),
+    ];
+    assert_eq!(last(&rules, "").as_deref(), Some("1cm"));
+    // Неслойное правило сильнее слойного, даже более специфичного.
+    let rules = vec![
+        rule(None, "5px", vec![u32::MAX]),
+        rule(Some("b"), "9px", vec![0, u32::MAX]),
+    ];
+    assert_eq!(last(&rules, "b").as_deref(), Some("5px"));
+}

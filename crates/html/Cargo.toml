@@ -12,10 +12,25 @@ edition.workspace = true
 # элементы GPUI. Полный охват CSS не ставится целью и недостижим; охват
 # измерен по нашему же коду и задокументирован в `docs/html-css-mapping.html`.
 
+[features]
+# Static-capture controls used only by the WPT example, never by normal consumers.
+wpt-harness = []
+
+[[example]]
+name = "wptrun"
+required-features = ["wpt-harness"]
+
 [dependencies]
+url = "2"
 encoding_rs = "0.8.35"
 # XML source ranges preserve SVG markup when resolving URL fragments.
 roxmltree = "0.21.1"
+# SVG fragment parameters use the same grammar as the rasterizer.
+svgtypes = "0.16.1"
+kurbo = "0.13"
+ryu = "1"
+# Read OpenType MATH variants and assemblies without native dependencies.
+ttf-parser = "0.25.1"
 # Распаковка шрифтов в упаковках `woff` и `woff2` (правило `@font-face`):
 # у второй сверх сжатия ещё и перестроение таблицы глифов, руками её не брать.
 wuff = { version = "0.2.8", features = ["z", "brotli"] }
@@ -64,3 +79,6 @@ default-features = false
 
 [dev-dependencies.smallvec]
 version = "1"
+
+[lints]
+workspace = true

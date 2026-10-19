@@ -94,6 +94,9 @@ fn resolve(
     cache: &mut converter::Cache,
     parent: &mut Group,
 ) -> Option<()> {
+    if marker_node.viewbox_disables_rendering() {
+        return None;
+    }
     let stroke_scale = stroke_scale(shape_node, marker_node, state)?.get();
 
     let r = convert_rect(marker_node, state)?;

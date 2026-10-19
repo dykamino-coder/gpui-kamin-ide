@@ -27,15 +27,17 @@ pub(super) async fn try_alternates(
                 continue;
             }
             let html = resolve_links(&std::fs::read_to_string(other).unwrap_or_default(), other);
-            // Разделитель — не печатная страница: флаг печати снимается, иначе
-            // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
-            // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
-            kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
+            // Разделитель и анти-эталон — экранным носителем: печатный
+            // разделитель рисуется стопкой листов, `flat()` его не узнаёт и
+            // `show` выжидает все 400 шагов (по 6 с на каждый показ).
             let blank = stage
-                .show(cx, SEPARATOR.into(), None, true)
+                .show(cx, SEPARATOR.into(), None, true, None, false)
                 .await
                 .map(|s| s.2);
-            let Some(shot) = stage.show(cx, html, blank.clone(), false).await else {
+            let Some(shot) = stage
+                .show(cx, html, blank.clone(), false, Some(other), false)
+                .await
+            else {
                 continue;
             };
             let Some(test_shot) = &shots[0] else { continue };
@@ -97,16 +99,18 @@ pub(super) async fn check_mismatches(
                 *verdict = "анти-эталон не найден".into();
                 break;
             }
-            // Разделитель — не печатная страница: флаг печати снимается, иначе
-            // он рисуется стопкой листов, `flat()` его не узнаёт и `show`
-            // выжидает все 400 шагов (по 6 с на каждый показ разделителя).
-            kamin_html::css::PRINT_MEDIA.store(false, std::sync::atomic::Ordering::Relaxed);
+            // Разделитель и анти-эталон — экранным носителем: печатный
+            // разделитель рисуется стопкой листов, `flat()` его не узнаёт и
+            // `show` выжидает все 400 шагов (по 6 с на каждый показ).
             let blank = stage
-                .show(cx, SEPARATOR.into(), None, true)
+                .show(cx, SEPARATOR.into(), None, true, None, false)
                 .await
                 .map(|s| s.2);
             let html = resolve_links(&std::fs::read_to_string(other).unwrap_or_default(), other);
-            let Some(shot) = stage.show(cx, html, blank.clone(), false).await else {
+            let Some(shot) = stage
+                .show(cx, html, blank.clone(), false, Some(other), false)
+                .await
+            else {
                 *verdict = "снимок анти-эталона не получен".into();
                 break;
             };

@@ -9,26 +9,35 @@
 //! фильтры, макеты интерфейса от модели. Пустое место вместо поля выглядит
 //! поломкой; нарисованное поле честно показывает задуманный вид.
 
+use crate::document::state::ValueCx;
 mod indicators;
 use indicators::color_swatch;
 use indicators::progress;
 use indicators::range;
 
 mod choice;
+use crate::style::ua::forms as metrics;
+mod textarea;
+use textarea::textarea;
+mod options;
 use choice::select;
 use choice::toggle;
 
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
-/// Цвета «по умолчанию» для элементов формы: документ обычно их не задаёт, а
-/// голая рамка без фона на тёмной теме не читается.
-const BORDER: u32 = 0x4a4a5a;
-const FIELD_BG: u32 = 0x22232e;
-const ACCENT: u32 = 0x3b5bdb;
-const MUTED: u32 = 0x8a90a4;
+use crate::style::values::value::{SystemColor, system_color};
+
+/// Native controls share the replaced-content natural measurement mechanism.
+fn control(paint: gpui::Div, natural: [f32; 2]) -> AnyElement {
+    crate::layout::replaced::natural_control(paint, gpui::size(px(natural[0]), px(natural[1])))
+}
+
+fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
+    system_color(role, style.dark_color_scheme).to_hsla()
+}
 
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
 pub fn element(
@@ -36,12 +45,13 @@ pub fn element(
     style: &Computed,
     opts: &crate::render::RenderOpts,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     match e.tag.as_str() {
-        "input" => Some(input(e, style)),
+        "input" => Some(input(e, style, opts)),
         "textarea" => Some(textarea(e, style, opts)),
-        "select" => Some(select(e, style)),
-        "progress" => Some(progress(e, style)),
-        "meter" => Some(progress(e, style)),
+        "select" => Some(select(e, style, vcx)),
+        "progress" => Some(progress(e, style, vcx)),
+        "meter" => Some(progress(e, style, vcx)),
         _ => None,
     }
 }
@@ -50,20 +60,34 @@ fn kind(e: &Element) -> String {
     e.attr("type").unwrap_or("text").to_ascii_lowercase()
 }
 
-fn input(e: &Element, style: &Computed) -> AnyElement {
-    match kind(e).as_str() {
-        "checkbox" => toggle(e, style, false),
-        "radio" => toggle(e, style, true),
-        "button" | "submit" | "reset" => button_like(e, style),
-        "range" => range(e, style),
-        "color" => color_swatch(e, style),
+fn input(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
+    let vcx = opts.cx.vcx();
+    let kind = kind(e);
+    // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
+    // control loses its native widget and is a primitive box painted from its
+    // CSS alone, with generated children in ordinary flow, no UA size (Blink
+    // `LayoutTheme::AdjustStyle` skips the theme part for `none`).
+    if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
+    {
+        return apply(div(), style, vcx)
+            .children(crate::render::blocks(&e.children, style, opts))
+            .into_any_element();
+    }
+    match kind.as_str() {
+        "checkbox" => toggle(e, style, false, vcx),
+        "radio" => toggle(e, style, true, vcx),
+        "button" | "submit" | "reset" => button_like(e, style, vcx),
+        "range" => range(e, style, vcx),
+        "color" => color_swatch(e, style, vcx),
         "hidden" => div().into_any_element(),
-        _ => text_field(e, style),
+        _ => text_field(e, style, vcx),
     }
 }
 
 /// Текстовое поле: значение, иначе подсказка приглушённым цветом.
-fn text_field(e: &Element, style: &Computed) -> AnyElement {
+fn text_field(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+    let used = metrics::text_style(style, vcx);
+    let style = &used;
     let (text, muted) = match (e.attr("value"), e.attr("placeholder")) {
         (Some(v), _) if !v.is_empty() => (v.to_string(), false),
         (_, Some(p)) => (p.to_string(), true),
@@ -76,12 +100,12 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
             .caret_color
             .or(style.color)
             .map(|c| c.to_hsla())
-            .unwrap_or_else(|| rgb(0xd4d4d4).into()))
+            .unwrap_or_else(|| native_color(style, SystemColor::FieldText)))
     });
-    field_box(style)
+    field_box(style, vcx)
         .child(
             div()
-                .when_muted(muted)
+                .when_muted(muted, style)
                 .child(SharedString::from(text))
                 .into_any_element(),
         )
@@ -89,43 +113,20 @@ fn text_field(e: &Element, style: &Computed) -> AnyElement {
         .into_any_element()
 }
 
-fn textarea(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
-    let mut text = String::new();
-    crate::render::gather_text_public(&e.children, &mut text);
-    let muted = text.trim().is_empty();
-    // Высота — по числу строк, как `rows` в HTML: без этого поле схлопывается
-    // до одной строки и перестаёт быть похожим на себя.
-    let rows: f32 = e.attr("rows").and_then(|r| r.parse().ok()).unwrap_or(3.0);
-    // Содержимое поля — обычный текст, и считать его обязана та же строчная
-    // раскладка, что и весь остальной текст: у поля работают и сохранённые
-    // пробелы, и выключка, и висящий хвост. Пока внутри стоял простой блок,
-    // всё это проходило мимо (`trailing-space-and-text-alignment`).
-    let body = if muted {
-        let hint = e.attr("placeholder").unwrap_or("").to_string();
-        div()
-            .when_muted(true)
-            .child(SharedString::from(hint))
-            .into_any_element()
-    } else {
-        crate::render::paragraph_public(&e.children, style, opts)
-    };
-    let _ = text;
-    field_box(style)
-        .min_h(px(rows * 18.0 + 12.0))
-        .items_start()
-        .child(div().w_full().child(body))
-        .into_any_element()
-}
-
 /// `<input type="button">` — значение лежит в атрибуте, а не в детях.
-fn button_like(e: &Element, style: &Computed) -> AnyElement {
-    apply(div(), style)
+fn button_like(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+        return apply(div(), style, vcx)
+            .child(SharedString::from(e.attr("value").unwrap_or("").to_owned()))
+            .into_any_element();
+    }
+    apply(div(), style, vcx)
         .px(px(10.))
         .py(px(4.))
         .rounded(px(4.))
-        .bg(rgb(FIELD_BG))
+        .bg(native_color(style, SystemColor::ButtonFace))
         .border_1()
-        .border_color(rgb(BORDER))
+        .border_color(native_color(style, SystemColor::ButtonBorder))
         .child(SharedString::from(
             e.attr("value").unwrap_or("Кнопка").to_string(),
         ))
@@ -137,13 +138,19 @@ fn button_like(e: &Element, style: &Computed) -> AnyElement {
 ///
 /// Умолчания ставятся ТОЛЬКО там, где документ ничего не сказал: раньше они
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
-fn field_box(style: &Computed) -> gpui::Div {
-    let mut d = apply(div(), style).flex().items_center().min_h(px(24.));
+fn field_box(style: &Computed, vcx: ValueCx<'_>) -> gpui::Div {
+    if style.appearance == Some(crate::style::computed::Appearance::Base) {
+        return apply(div(), style, vcx);
+    }
+    let mut d = apply(div(), style, vcx)
+        .flex()
+        .items_center()
+        .min_h(px(24.));
     // Служебная заливка поля — только когда автор о фоне НЕ говорил:
     // `background: linear-gradient(...)` сбрасывает цвет в прозрачный, и
     // заливка поверх него закрашивала бы страницу под полем.
     if !style.bg_explicit && style.background.is_none() && style.gradient.is_none() {
-        d = d.bg(rgb(FIELD_BG));
+        d = d.bg(native_color(style, SystemColor::Field));
     }
     // «Автор ничего не сказал» — это когда не заданы НИ толщина, НИ рисунок.
     // По `borders()` отличить нельзя: он гасит толщину без рисунка, и
@@ -153,7 +160,7 @@ fn field_box(style: &Computed) -> gpui::Div {
         d = d.border_1();
     }
     if style.border_color.is_none() {
-        d = d.border_color(rgb(BORDER));
+        d = d.border_color(native_color(style, SystemColor::ButtonBorder));
     }
     // The rounded native look is part of `appearance: auto`; an author
     // border or background replaces it with a plain CSS box (CSS UI 4
@@ -176,13 +183,13 @@ fn field_box(style: &Computed) -> gpui::Div {
 
 /// Приглушить текст подсказки — иначе она неотличима от введённого значения.
 trait Muted {
-    fn when_muted(self, muted: bool) -> Self;
+    fn when_muted(self, muted: bool, style: &Computed) -> Self;
 }
 
 impl Muted for gpui::Div {
-    fn when_muted(self, muted: bool) -> Self {
+    fn when_muted(self, muted: bool, style: &Computed) -> Self {
         if muted {
-            self.text_color(rgb(MUTED))
+            self.text_color(native_color(style, SystemColor::GrayText))
         } else {
             self
         }

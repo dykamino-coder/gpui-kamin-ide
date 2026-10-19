@@ -1,5 +1,6 @@
 //! Ruby display for element_style; split out to keep the owning module within 250 lines.
 
+use crate::document::state::ValueCx;
 mod direction;
 pub(crate) use crate::dom::element_style::ruby_display::direction::apply_direction;
 pub(crate) use crate::dom::element_style::ruby_display::direction::inlinify_in_ruby;
@@ -8,7 +9,12 @@ use crate::dom::*;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::Len;
 
-pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(crate) fn finish_inline_display(
+    style: &mut Computed,
+    tag: &str,
+    attrs: &[(String, String)],
+    vcx: ValueCx<'_>,
+) {
     use crate::style::computed::Display;
     replaced_display::normalize(style, tag, attrs);
     let out_of_flow = style.float.is_some()
@@ -33,7 +39,7 @@ pub(crate) fn finish_inline_display(style: &mut Computed, tag: &str, attrs: &[(S
         // elements», CSS 2.1 §10.8.1): статическая позиция абсолюта — та же,
         // что без `sub` (`vertical-align-sub-001`: зелёный уезжал вниз и
         // открывал красный).
-        style.apply_one("vertical-align", "baseline");
+        style.apply_one("vertical-align", "baseline", vcx);
     }
     if out_of_flow {
         if matches!(

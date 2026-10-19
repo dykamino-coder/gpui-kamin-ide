@@ -5,7 +5,7 @@ use crate::dom::Node;
 use crate::layout::table::anon::anon_element;
 use crate::render::in_flow;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::blank_text;
 mod orthogonal;
 pub(crate) use orthogonal::orthogonal_vertical_children;
@@ -131,10 +131,7 @@ pub(crate) fn resolve_inline_pct(
     ) {
         return children;
     }
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let b = container.borders();
     let (size, edges) = if vertical {
         (
@@ -171,7 +168,7 @@ pub(crate) fn resolve_inline_pct(
         if ch.inline || !in_flow(&ch.style) {
             continue;
         }
-        if !vertical && ch.style.vertical != Some(true) {
+        if !vertical && !ch.style.wm().vertical() {
             continue;
         }
         let s = &mut ch.style;

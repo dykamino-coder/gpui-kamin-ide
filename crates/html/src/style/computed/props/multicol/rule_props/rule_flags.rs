@@ -1,15 +1,15 @@
 //! Computed::apply_multicol_rules, хвост цепочки: visibility/overlap/break линеек, margin-trim, сокращения линеек, columns. Ветви в исходном порядке.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_multicol_rule_flags(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             // §visibility-items: 0 normal, 1 all, 2 around, 3 between.
@@ -24,6 +24,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(code) = code {
+                    self.accept_declaration();
                     if key != "row-rule-visibility-items" {
                         self.column_rule_visibility = Some(code);
                     }
@@ -34,8 +35,8 @@ impl Computed {
             }
             // §overlap: порядок краски пересекающихся линеек.
             "rule-overlap" => match v.trim() {
-                "row-over-column" => self.rule_column_over_row = Some(false),
-                "column-over-row" => self.rule_column_over_row = Some(true),
+                "row-over-column" => self.rule_column_over_row = accept_parsed!(self, Some(false)),
+                "column-over-row" => self.rule_column_over_row = accept_parsed!(self, Some(true)),
                 _ => {}
             },
             // §break: `none` 0, `normal` 1, `intersection` 2.
@@ -47,6 +48,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(code) = code {
+                    self.accept_declaration();
                     if key != "row-rule-break" {
                         self.column_rule_break = Some(code);
                     }
@@ -76,6 +78,7 @@ impl Computed {
                     }
                 }
                 if ok {
+                    self.accept_declaration();
                     self.margin_trim = bits;
                 }
             }
@@ -84,7 +87,7 @@ impl Computed {
             // Незнакомый токен делает недействительным ВСЁ объявление
             // (CSS 2.1 §4.1.7), а токены с пробелами внутри скобок
             // (`rgba(0, 0, 255, 0.5)`) больше не рвутся.
-            "column-rule" | "row-rule" | "rule" => self.gap_rule_shorthand(key, v),
+            "column-rule" | "row-rule" | "rule" => self.gap_rule_shorthand(key, v, vcx),
             "columns" => {
                 // `columns: [<ширина> || <число>] [/ <column-height>]?`
                 // (css-multicol-2 §columns): ширина и число в любом порядке;
@@ -117,7 +120,7 @@ impl Computed {
                         // у нас отвергается и в полной форме).
                         Ok(0) => {}
                         Ok(_) => return,
-                        Err(_) => match Len::parse(token) {
+                        Err(_) => match Len::parse(token, vcx) {
                             Some(l)
                                 if width.is_none()
                                     && !matches!(
@@ -136,10 +139,11 @@ impl Computed {
                         },
                     }
                 }
+                self.accept_declaration();
                 self.column_height = None;
                 self.column_wrap = None;
                 if let Some(t) = tail {
-                    self.apply_one("column-height", t.trim());
+                    self.apply_one("column-height", t.trim(), vcx);
                 }
                 if let Some(n) = count {
                     self.column_count = Some(n);

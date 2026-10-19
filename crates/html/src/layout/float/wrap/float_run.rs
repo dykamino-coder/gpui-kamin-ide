@@ -20,12 +20,13 @@ pub(super) fn wrap_float_run(
     parent_bfc: bool,
     cell_bfc: bool,
     cb_width: Option<crate::style::values::value::Len>,
+    cb_px: Option<f32>,
     nodes: &mut Vec<Node>,
     out: &mut Vec<Node>,
     i: &mut usize,
     side: i8,
 ) -> ControlFlow<()> {
-    let hosted = host_for_run(em, measured_ok, cb_width, &*nodes, &*out, *i);
+    let hosted = host_for_run(em, measured_ok, cb_width, &*nodes, &*out, *i, cb_px);
     if let ControlFlow::Break(_) = wrap_into_host(
         parent,
         cb_top_open,
@@ -46,7 +47,7 @@ pub(super) fn wrap_float_run(
     let separates = |next: &Element| {
         clears_side(next.style.clear, side)
             || clears_side(leading_clear(next), side)
-            || bfc_no_fit(next, run_min_w)
+            || bfc_no_fit(next, run_min_w, cb_px)
     };
     let (mut rest, mut out_of_flow) = split_rest(&*nodes, &mut j, separates);
     let clearance_strut = strut_for_next(cb_top_open, nodes, &*out, j, separates, &mut rest);

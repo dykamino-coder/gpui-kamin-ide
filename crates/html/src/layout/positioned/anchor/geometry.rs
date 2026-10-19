@@ -1,6 +1,7 @@
 //! Resolve anchor placement from logical geometry before device pixel snapping.
 
 use super::{AnchorPlace, CHOSEN, Placement};
+use crate::document::state::ValueCx;
 use gpui::{Bounds, LayoutId, Pixels, Window, px};
 
 pub(super) fn logical_own(
@@ -28,8 +29,17 @@ impl AnchorPlace {
     /// СОДЕРЖАЩЕГО блока (устойчивая сортировка); ни один не влез — база с
     /// пометкой переполнения. Размер коробки у всех кандидатов — текущий:
     /// правило, меняющее размер, довозит его следующей сборкой.
-    pub(super) fn choose(&self, own: Bounds<Pixels>, window: &Window) -> (usize, Placement) {
-        let places: Vec<Placement> = self.plans.iter().map(|p| p.compute(own, window)).collect();
+    pub(super) fn choose(
+        &self,
+        own: Bounds<Pixels>,
+        window: &Window,
+        vcx: ValueCx<'_>,
+    ) -> (usize, Placement) {
+        let places: Vec<Placement> = self
+            .plans
+            .iter()
+            .map(|p| p.compute(own, window, vcx))
+            .collect();
         if places.len() == 1 {
             return (0, places[0]);
         }

@@ -49,6 +49,8 @@ impl Transform {
 
     /// Только плоская 2×3 (`lin`/`tr`) — для объёмных функций, чья
     /// сплющенная тень нужна SVG и клипу.
+    // Matrix multiplication uses the same row/column indices in both operands.
+    #[allow(clippy::needless_range_loop)]
     pub(crate) fn push2(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
         let m = self.lin;
         self.lin = [
@@ -68,20 +70,38 @@ impl Transform {
         }
     }
 
-    /// Дописать 4×4 справа: `M4 := M4 · f`. Столбец сдвига несёт доли размера:
-    /// `(M·F)[i][3] = Σ_k M[i][k]·F[k][3]`, где `F[k][3]` для k<3 — «точки +
-    /// доля», а `F[3][3]` домножает уже накопленные доли самой `M`.
+    /// Дописать 4×4 справа: `M4 := M4 · f`; `pct` — доли размера в столбце
+    /// сдвига функции `f` (строки 0..2: доля ширины, доля высоты).
     pub(crate) fn push4(&mut self, f: [[f32; 4]; 4], pct: [[f32; 2]; 4]) {
-        let m = self.m4;
-        let mut p = [[0.0f32; 2]; 4];
-        for i in 0..4 {
-            for a in 0..2 {
-                p[i][a] =
-                    self.m4_pct[i][a] * f[3][3] + (0..3).map(|k| m[i][k] * pct[k][a]).sum::<f32>();
-            }
+        let mut fw = [[0.0f32; 4]; 4];
+        let mut fh = [[0.0f32; 4]; 4];
+        for k in 0..4 {
+            fw[k][3] = pct[k][0];
+            fh[k][3] = pct[k][1];
         }
+        self.push4_full(f, [fw, fh]);
+    }
+
+    /// `M4 := M4 · F` с долями размера во ВСЕЙ матрице: `M(w, h) = M +
+    /// w·Mw + h·Mh`. Перспектива между сдвигами в процентах
+    /// (`translateY(50%) perspective(…) translateY(-50%)`) переносит долю
+    /// и в столбец z, и в строку w — один столбец сдвига её терял.
+    /// Произведение линеаризуется: `(M·F)_w = Mw·F + M·Fw` (члены w·h и
+    /// w² возможны лишь у `matrix3d` с перспективой по x/y — отброшены).
+    pub(crate) fn push4_full(&mut self, f: [[f32; 4]; 4], fp: [[[f32; 4]; 4]; 2]) {
+        let m = self.m4;
+        let mp = self.m4_pct;
+        let add = |a: [[f32; 4]; 4], b: [[f32; 4]; 4]| {
+            let mut r = a;
+            for i in 0..4 {
+                for j in 0..4 {
+                    r[i][j] += b[i][j];
+                }
+            }
+            r
+        };
+        self.m4_pct = [0, 1].map(|a| add(mul4(mp[a], f), mul4(m, fp[a])));
         self.m4 = mul4(m, f);
-        self.m4_pct = p;
     }
 
     /// `translate3d(x, y, z)` в точках.

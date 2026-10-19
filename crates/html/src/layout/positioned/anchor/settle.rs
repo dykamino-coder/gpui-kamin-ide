@@ -1,6 +1,7 @@
 //! Статическое сведение `anchor()` до сборки дерева и якорь по умолчанию.
 
 use super::{CHOSEN, REFRAMES};
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
 use crate::style::values::value::{Len, anchor_get};
@@ -14,7 +15,7 @@ use std::collections::HashSet;
 /// щупы статической позиции выбираются при сборке дерева по `edge_set`.
 /// Без этого шага две пары, зелёные сейчас, уходили бы в красное
 /// (`position-anchor-none/normal-pseudo-element-implicit-002`).
-pub fn settle_static(nodes: &mut [Node]) {
+pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
@@ -24,9 +25,16 @@ pub fn settle_static(nodes: &mut [Node]) {
             names(&e.children, out);
         }
     }
-    fn settle(nodes: &mut [Node], known: &HashSet<String>) {
+    fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
+            if e.style.position_anchor == Some(PositionAnchor::MatchParent) {
+                let (pa, implicit) = match_parent(parent);
+                e.style.position_anchor = Some(pa);
+                if implicit.is_some() {
+                    e.style.implicit_anchor = implicit;
+                }
+            }
             let has_default = match &e.style.position_anchor {
                 Some(PositionAnchor::Named(n)) => known.contains(n),
                 Some(PositionAnchor::Auto) => e.style.implicit_anchor.is_some(),
@@ -39,9 +47,21 @@ pub fn settle_static(nodes: &mut [Node]) {
             };
             let s = &mut e.style.inset;
             for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                *slot = settle_len(*slot, has_default, known);
+                *slot = settle_len(*slot, has_default, known, vcx);
             }
-            settle(&mut e.children, known);
+            let abs = matches!(
+                e.style.position,
+                Some(crate::style::computed::Position::Absolute)
+                    | Some(crate::style::computed::Position::Fixed)
+            );
+            let me: Parent = abs.then(|| {
+                (
+                    e.style.position_anchor.clone(),
+                    e.style.position_area.is_some(),
+                    e.style.implicit_anchor,
+                )
+            });
+            settle(&mut e.children, known, &me, vcx);
         }
     }
     // Новый документ: выбор `position-try` прошлого документа с теми же
@@ -50,20 +70,25 @@ pub fn settle_static(nodes: &mut [Node]) {
     REFRAMES.with(|r| r.set(0));
     let mut known = HashSet::new();
     names(nodes, &mut known);
-    settle(nodes, &known);
+    settle(nodes, &known, &None, vcx);
 }
 
 /// Одна вставка: цепочка запасных значений раскручивается, пока не
 /// найдётся разрешимая функция или обычная длина.
-fn settle_len(l: Option<Len>, has_default: bool, known: &HashSet<String>) -> Option<Len> {
+fn settle_len(
+    l: Option<Len>,
+    has_default: bool,
+    known: &HashSet<String>,
+    vcx: ValueCx<'_>,
+) -> Option<Len> {
     let mut cur = l;
     for _ in 0..4 {
         let Some(Len::Anchor(i)) = cur else {
             return cur;
         };
-        let f = anchor_get(i)?;
+        let f = anchor_get(i, vcx)?;
         // У `min()`/`max()` разрешимы должны быть ВСЕ доводы.
-        let resolvable = std::iter::once(&f)
+        let resolvable = std::iter::once(&*f)
             .chain(f.alts.iter())
             .all(|g| match &g.name {
                 Some(n) => known.contains(n),
@@ -94,5 +119,28 @@ pub(super) fn default_anchor_of(c: &Computed) -> Option<DefaultAnchor> {
             c.implicit_anchor.map(DefaultAnchor::Implicit)
         }
         _ => None,
+    }
+}
+
+/// Якорь по умолчанию родителя (или порождающего элемента псевдоэлемента)
+/// для `match-parent`: `position-anchor`, есть ли `position-area` и неявный
+/// якорь; `None` — родитель не абсолютный, свойство к нему не применяется.
+pub(super) type Parent = Option<(Option<PositionAnchor>, bool, Option<u64>)>;
+
+/// `position-anchor: match-parent` (§position-anchor): тот же якорь по
+/// умолчанию, что у родителя — для псевдоэлемента у порождающего элемента;
+/// нет его — якоря нет (`none`). Родитель сам с `match-parent` уже сведён
+/// (обход сверху вниз). Неявный якорь родителя переходит вторым полем.
+pub(super) fn match_parent(parent: &Parent) -> (PositionAnchor, Option<u64>) {
+    let Some((pa, area, implicit)) = parent else {
+        return (PositionAnchor::None, None);
+    };
+    match pa {
+        Some(PositionAnchor::Named(n)) => (PositionAnchor::Named(n.clone()), None),
+        Some(PositionAnchor::Auto) if implicit.is_some() => (PositionAnchor::Auto, *implicit),
+        Some(PositionAnchor::Normal) | None if *area && implicit.is_some() => {
+            (PositionAnchor::Auto, *implicit)
+        }
+        _ => (PositionAnchor::None, None),
     }
 }

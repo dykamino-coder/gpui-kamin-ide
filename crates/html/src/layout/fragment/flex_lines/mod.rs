@@ -1,4 +1,6 @@
 //! Флекс-строки при фрагментации.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Element;
@@ -8,8 +10,9 @@ use crate::layout::fragment::probe::size_monolith;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 mod column;
+mod common;
 pub(super) use column::flex_gap_rules;
 use column::flex_lines_of;
 mod row;
@@ -47,10 +50,18 @@ use items::{constrained_inside, row_item_width};
 /// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
 /// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
 /// `auto`. Иначе контейнер идёт прежним путём.
+/// Whether `split_flex_lines` opens the column flex `c` into its lines.
+pub(crate) fn explodes(c: &Element, col_w: Option<f32>, vcx: ValueCx<'_>) -> bool {
+    flex_lines_of(c, col_w, vcx).is_some()
+}
+
+// Keep each flex line paired with its height and break flags.
+#[allow(clippy::type_complexity)]
 pub(crate) fn split_flex_lines(
     kids: Vec<(Element, Shape)>,
     col_w: Option<f32>,
     merged: &Computed,
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<(Element, Shape)>,
     Vec<crate::layout::fragment::types::Par>,
@@ -64,14 +75,17 @@ pub(crate) fn split_flex_lines(
     let mut starts: Vec<usize> = Vec::with_capacity(kids.len() + 1);
     for (c, s) in kids {
         starts.push(out.len());
-        match flex_lines_of(&c, col_w) {
+        if c.marks.paginate {
+            out.push((c, s));
+            par.push(crate::layout::fragment::types::Par::default());
+            parent.push(None);
+            continue;
+        }
+        match flex_lines_of(&c, col_w, vcx) {
             Some(lines) => {
                 group += 1;
-                let pm = inherit(merged, &c.style);
-                let h = match c.style.height {
-                    Some(Len::Px(v)) => v,
-                    _ => 0.0,
-                };
+                let pm = inherit(merged, &c.style, vcx);
+                let h = px_lossy_zero(c.style.height);
                 // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
                 // элементами (фон контейнера, `multi-line-column-flex-
                 // fragmentation-033`) и занимает свою высоту, даже когда строки
@@ -89,12 +103,12 @@ pub(crate) fn split_flex_lines(
                     .filter_map(|l| l.1.last().map(|x| &x.0))
                     .collect();
                 let (bf, ba) = (
-                    heads.iter().any(|e| edge_break(e, false)),
-                    heads.iter().any(|e| edge_avoid(e, false)),
+                    heads.iter().any(|e| edge_break(e, false, vcx)),
+                    heads.iter().any(|e| edge_avoid(e, false, vcx)),
                 );
                 let (af, aa) = (
-                    tails.iter().any(|e| edge_break(e, true)),
-                    tails.iter().any(|e| edge_avoid(e, true)),
+                    tails.iter().any(|e| edge_break(e, true, vcx)),
+                    tails.iter().any(|e| edge_avoid(e, true, vcx)),
                 );
                 let mut boxc = c.clone();
                 boxc.node_id = c.node_id ^ 0x0F1E_5BAC_E000_0001;
@@ -107,7 +121,17 @@ pub(crate) fn split_flex_lines(
                 boxc.style.break_before_avoid = ba && !bf;
                 boxc.style.break_after_force = false;
                 boxc.style.break_after_avoid = false;
-                out.push((boxc, (h, 0.0, 0.0, Vec::new(), Vec::new(), Vec::new())));
+                out.push((
+                    boxc,
+                    crate::layout::fragment::Shape {
+                        height: h,
+                        margin_top: 0.0,
+                        margin_bottom: 0.0,
+                        cuts: Vec::new(),
+                        forced: Vec::new(),
+                        solid: Vec::new(),
+                    },
+                ));
                 par.push(crate::layout::fragment::types::Par {
                     group,
                     group_start: true,
@@ -117,6 +141,7 @@ pub(crate) fn split_flex_lines(
                     avoid_only: false,
                     float: false,
                     clears: false,
+                    rtl_root_in_ltr: false,
                 });
                 parent.push(None);
                 let n_lines = lines.len();
@@ -142,6 +167,7 @@ pub(crate) fn split_flex_lines(
                             avoid_only,
                             float: false,
                             clears: false,
+                            rtl_root_in_ltr: false,
                         });
                         parent.push(Some(pm.clone()));
                     }
@@ -150,13 +176,13 @@ pub(crate) fn split_flex_lines(
                     p.group_end = true;
                 }
             }
-            None => match flex_row_lines_of(&c, col_w) {
+            None => match flex_row_lines_of(&c, col_w, vcx) {
                 // Многострочный РЯД: строки идут одна за другой, а элементы
                 // строки — параллельные потоки своей группы (Blink
                 // `flex_layout_algorithm.cc:2167-2213`: элемент ряда — свой
                 // поток, конец ряда — самый дальний конец его элементов).
                 Some(lines) => {
-                    let pm = inherit(merged, &c.style);
+                    let pm = inherit(merged, &c.style, vcx);
                     for items in lines {
                         group += 1;
                         let m = items.len();
@@ -174,6 +200,7 @@ pub(crate) fn split_flex_lines(
                                 avoid_only,
                                 float: false,
                                 clears: false,
+                                rtl_root_in_ltr: false,
                             });
                             parent.push(Some(pm.clone()));
                         }

@@ -1,9 +1,8 @@
 //! Shared resolution logic for sizing keywords (`min-content`, `max-content`, `fit-content`,
 //! `fit-content(...)`, and `stretch`) on the `width`/`height` style properties
-use crate::geometry::{AbsoluteAxis, Line, Rect, Size};
+use crate::geometry::{AbsoluteAxis, Line, Size};
 use crate::style::AvailableSpace;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, NodeId, SizingMode};
-use crate::util::sys::f32_max;
 use crate::{CompactLength, Dimension};
 
 /// How a sizing keyword resolves to a used size
@@ -66,38 +65,18 @@ pub(crate) fn resolve_sizing_keyword(
 ///
 /// - `area_size` is the size of the item's containing block (which insets and percentages
 ///   resolve against).
-/// - The stretch size in each axis is the containing block minus the item's insets and margins
-///   in that axis.
-#[allow(clippy::too_many_arguments)]
+/// - `stretch_size` is the stretch-fit size in each axis: the inset-modified containing block
+///   (which uses the static position when both insets are auto) minus the item's non-auto margins
+///   <https://www.w3.org/TR/css-position-3/#abspos-auto-size>.
 pub(crate) fn resolve_absolute_sizing_keywords(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,
     known_dimensions: &mut Size<Option<f32>>,
     size_style: Size<Dimension>,
     area_size: Size<f32>,
-    inset: Rect<Option<f32>>,
-    margin: Rect<Option<f32>>,
+    stretch_size: Size<f32>,
     sizing_mode: SizingMode,
 ) {
-    let stretch_size = Size {
-        width: f32_max(
-            area_size.width
-                - inset.left.unwrap_or(0.0)
-                - inset.right.unwrap_or(0.0)
-                - margin.left.unwrap_or(0.0)
-                - margin.right.unwrap_or(0.0),
-            0.0,
-        ),
-        height: f32_max(
-            area_size.height
-                - inset.top.unwrap_or(0.0)
-                - inset.bottom.unwrap_or(0.0)
-                - margin.top.unwrap_or(0.0)
-                - margin.bottom.unwrap_or(0.0),
-            0.0,
-        ),
-    };
-
     let keyword_width = if known_dimensions.width.is_none() {
         resolve_sizing_keyword(
             size_style.width,

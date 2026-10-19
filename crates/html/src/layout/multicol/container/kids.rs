@@ -1,5 +1,6 @@
 //! Дети стопки колонок: копии детей при заданной высоте и элементы StackChild.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::flex_lines::split_flex_lines;
@@ -11,26 +12,23 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Child records keep their layout and paint callbacks with measured geometry.
+#[allow(clippy::type_complexity)]
 pub(super) fn column_kids(
     merged: &Computed,
-    kids: Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    kids: Vec<(Element, crate::layout::fragment::Shape)>,
     cols: u16,
     used_gap: f32,
     col_vert: bool,
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> (
     Vec<Option<Computed>>,
     Vec<usize>,
     Vec<crate::layout::fragment::types::Par>,
-    Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
     let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert
     {
@@ -40,7 +38,7 @@ pub(super) fn column_kids(
             }
             _ => None,
         };
-        split_flex_lines(kids, col_w, merged)
+        split_flex_lines(kids, col_w, merged, vcx)
     } else {
         let n = kids.len();
         (
@@ -57,19 +55,27 @@ pub(super) fn column_kids(
     for (p, (c, _)) in kid_par.iter_mut().zip(kids.iter()) {
         if p.group == 0 {
             p.avoid_only = c.style.break_inside_avoid && avoid_only_monolith(c);
-            p.float = c.attr("kamin-float-block").is_some();
+            p.float = c.marks.float_block;
             p.clears = c.style.clear.is_some();
         }
     }
-    let kids = if col_vert {
+    let mut kids = if col_vert {
         kids
     } else {
-        grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par)
+        grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par, vcx)
     };
+    if !col_vert
+        && rows.is_none()
+        && let Some(height) = fixed.filter(|h| *h > 0.01)
+    {
+        super::parallel::grow(&mut kids, height, cols as usize, copies, vcx);
+    }
     (kid_parent, kid_starts, kid_par, kids)
 }
 
 #[allow(clippy::too_many_arguments)]
+// The stack is assembled from the same measured child/callback records.
+#[allow(clippy::type_complexity)]
 pub(super) fn stack_children(
     e: &Element,
     merged: &Computed,
@@ -86,22 +92,20 @@ pub(super) fn stack_children(
     fixed: Option<f32>,
     kid_parent: Vec<Option<Computed>>,
     kid_par: Vec<crate::layout::fragment::types::Par>,
-    kids: Vec<(
-        Element,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-    )>,
+    kids: Vec<(Element, crate::layout::fragment::Shape)>,
     clone_plan: Vec<Vec<(f32, f32)>>,
 ) -> Vec<crate::layout::fragment::types::StackChild> {
+    let vcx = opts.cx.vcx();
     let balanced_frag: Option<f32> =
         (fixed.is_none() && rows.is_none_or(|r| r.cap) && cols > 1 && kids.len() == 1)
             .then(|| {
                 let (c, s) = &kids[0];
                 (nested_rows_box(c)
                     && matches!(c.style.height, Some(Len::Px(_)))
-                    && s.3.is_empty()
-                    && s.1.abs() < 0.01)
+                    && s.cuts.is_empty()
+                    && s.margin_top.abs() < 0.01)
                     .then(|| {
-                        let per = s.0 / cols as f32;
+                        let per = s.height / cols as f32;
                         rows.and_then(|r| r.h).map_or(per, |cap| per.min(cap))
                     })
             })
@@ -112,54 +116,73 @@ pub(super) fn stack_children(
         let mut v = Vec::with_capacity(kids.len());
         let (mut y, mut prev_mb, mut ok) = (0.0f32, 0.0f32, true);
         for (i, (c, s)) in kids.iter().enumerate() {
-            let lead = if i == 0 { s.1 } else { prev_mb.max(s.1) };
+            let lead = if i == 0 {
+                s.margin_top
+            } else {
+                prev_mb.max(s.margin_top)
+            };
             let hh = fixed_nest.unwrap_or(0.0);
             v.push((ok && fixed_nest.is_some() && y + lead < hh - 0.01).then_some(y + lead));
-            if edge_break(c, false)
-                || edge_break(c, true)
+            if edge_break(c, false, vcx)
+                || edge_break(c, true, vcx)
                 || kid_par.get(i).is_some_and(|p| p.group != 0)
-                || y + lead + s.0 > hh + 0.01
+                || y + lead + s.height > hh + 0.01
             {
                 ok = false;
             }
-            y += lead + s.0;
-            prev_mb = s.2;
+            y += lead + s.height;
+            prev_mb = s.margin_bottom;
         }
         v
     };
     let children: Vec<crate::layout::fragment::types::StackChild> = kids
         .into_iter()
         .enumerate()
-        .map(|(ix, (c, (h, mt, mb, cuts, forced, solid)))| {
-            multicol_stack_child(
+        .map(
+            |(
                 ix,
-                c,
-                h,
-                mt,
-                mb,
-                cuts,
-                forced,
-                solid,
-                e,
-                merged,
-                opts,
-                &clone_plan,
-                &kid_parent,
-                &kid_par,
-                col_vert,
-                col_rl,
-                line_col_w,
-                rows,
-                copies,
-                fixed,
-                fixed_nest,
-                balanced_frag,
-                &nest_at,
-                &nested_auto,
-                &nested_whole,
-                &measured_kids,
-            )
-        })
+                (
+                    c,
+                    crate::layout::fragment::Shape {
+                        height: h,
+                        margin_top: mt,
+                        margin_bottom: mb,
+                        cuts,
+                        forced,
+                        solid,
+                    },
+                ),
+            )| {
+                multicol_stack_child(
+                    ix,
+                    c,
+                    h,
+                    mt,
+                    mb,
+                    cuts,
+                    forced,
+                    solid,
+                    e,
+                    merged,
+                    opts,
+                    &clone_plan,
+                    &kid_parent,
+                    &kid_par,
+                    col_vert,
+                    col_rl,
+                    line_col_w,
+                    rows,
+                    copies,
+                    fixed,
+                    fixed_nest,
+                    balanced_frag,
+                    &nest_at,
+                    &nested_auto,
+                    &nested_whole,
+                    &measured_kids,
+                )
+            },
+        )
         .collect();
     children
 }

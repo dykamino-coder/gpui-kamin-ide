@@ -1,4 +1,6 @@
 //! `text-box`, высота строки, пустой текст.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Node;
@@ -7,7 +9,7 @@ use crate::render::{
 };
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Стиль блока, которому принадлежит первая (`start`) или последняя
 /// отформатированная строка контейнера — для `text-box-trim`
@@ -22,11 +24,16 @@ use crate::style::values::value::Len;
 /// обрывают поиск; отступ и рамка ПОТОМКА на срезаемой стороне — тоже
 /// (`-004/-005`). Строчный элемент с блоком внутри (блок-в-строчном)
 /// прозрачен: строка — в его блоке (`block-in-inline-*`).
+///
+/// Второе значение — узел блока, чей абзац держит строку (`owner` —
+/// узел самого контейнера): ему `line_trim::request` адресует срез.
 pub(crate) fn text_box_line_style(
     nodes: &[Node],
     inherited: &Computed,
     start: bool,
-) -> Option<Computed> {
+    owner: u64,
+    vcx: ValueCx<'_>,
+) -> Option<(Computed, u64)> {
     let has_block = nodes.iter().any(breaks_inline);
     let order: Vec<&Node> = if start {
         nodes.iter().collect()
@@ -37,14 +44,20 @@ pub(crate) fn text_box_line_style(
         let e = match n {
             Node::Text(t) if blank_text(t) => continue,
             // Непробельный текст — строка в этом контейнере.
-            Node::Text(_) => return Some(inherited.clone()),
+            Node::Text(_) => return Some((inherited.clone(), owner)),
             Node::Element(e) => e,
         };
         if e.style.display == Some(Display::None) || out_of_flow(&e.style) {
             continue;
         }
         if e.style.display == Some(Display::Contents) {
-            return text_box_line_style(&e.children, &inherit(inherited, &e.style), start);
+            return text_box_line_style(
+                &e.children,
+                &inherit(inherited, &e.style, vcx),
+                start,
+                owner,
+                vcx,
+            );
         }
         if breaks_inline(n) {
             // Через гибкий, сеточный и табличный контекст свойство не
@@ -58,11 +71,8 @@ pub(crate) fn text_box_line_style(
             ) {
                 return None;
             }
-            let merged = inherit(inherited, &e.style);
-            let px_of = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let merged = inherit(inherited, &e.style, vcx);
+            let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
                 px_of(merged.padding.top) != 0.0 || px_of(bs.top) != 0.0
@@ -86,11 +96,11 @@ pub(crate) fn text_box_line_style(
             if own_trim {
                 return None;
             }
-            return text_box_line_style(&e.children, &merged, start);
+            return text_box_line_style(&e.children, &merged, start, e.node_id, vcx);
         }
         // Блок-в-строчном: оболочка прозрачна, строка — внутри блока.
         if real_inline(e) && contains_block(&e.children) {
-            return text_box_line_style(&e.children, inherited, start);
+            return text_box_line_style(&e.children, inherited, start, owner, vcx);
         }
         // Строчное содержимое. Без блочных братьев это весь контекст
         // форматирования; с ними — анонимная коробка из прогона до блока,
@@ -105,7 +115,7 @@ pub(crate) fn text_box_line_style(
         } else {
             holds_line_box(nodes)
         };
-        return has_line.then(|| inherited.clone());
+        return has_line.then(|| (inherited.clone(), owner));
     }
     None
 }
@@ -127,20 +137,45 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
         _ => ascent + descent,
     };
     let half = (line - (ascent + descent)) / 2.0;
+    half + edge_inset(line_style, &family, size, (ascent, descent, cap), start)
+}
+
+/// Расстояние от подъёма (`start`) или спуска до метрики края
+/// `text-box-edge` (css-inline-3 §text-box-edge): `text` — ноль, `cap`/`ex`
+/// — остаток над прописной/строчной, `alphabetic` — весь спуск (алфавитная
+/// линия может стоять НАД нулём глифа: BASE `romn`, `text-box-trim-end-002`),
+/// `ideographic`/`-ink` — край em-коробки, синтезированной из подъёма и
+/// спуска (§synthesize-baselines: подъём и спуск в той же пропорции, сумма
+/// 1em). Blink `InlineBoxState::AdjustEdges` поддерживает только первые
+/// четыре; идеографический край по спеке.
+pub(crate) fn edge_inset(
+    s: &Computed,
+    family: &str,
+    size: f32,
+    (ascent, descent, cap): (f32, f32, f32),
+    start: bool,
+) -> f32 {
+    use crate::style::computed::TextEdge;
+    let em_box = |part: f32| {
+        let sum = ascent + descent;
+        if sum > 0.0 {
+            part - size * part / sum
+        } else {
+            0.0
+        }
+    };
     if start {
-        half + match line_style.text_box_over {
-            crate::style::computed::TextEdge::Cap => ascent - cap,
-            crate::style::computed::TextEdge::Ex => {
-                ascent - crate::text::metrics::ch_ex_px(&family, size).1
-            }
-            _ => 0.0,
+        match s.text_box_over {
+            TextEdge::Cap => ascent - cap,
+            TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(family, size).1,
+            TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(ascent),
+            TextEdge::Text | TextEdge::Alphabetic => 0.0,
         }
     } else {
-        half + match line_style.text_box_under {
-            crate::style::computed::TextEdge::Alphabetic => {
-                descent + crate::text::fonts::alphabetic_em(&family) * size
-            }
-            _ => 0.0,
+        match s.text_box_under {
+            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family) * size,
+            TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(descent),
+            TextEdge::Text | TextEdge::Cap | TextEdge::Ex => 0.0,
         }
     }
 }

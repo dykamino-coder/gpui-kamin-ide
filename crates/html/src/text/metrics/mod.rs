@@ -11,14 +11,40 @@
 
 mod families;
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Tests for metrics.
+
+    use super::*;
+
+    #[test]
+    fn falls_back_to_half_the_font_size() {
+        assert_eq!(ch_ex_px("нет такого шрифта", 20.0), (10.0, 10.0));
+    }
+
+    #[test]
+    fn probe_result_scales_with_the_font_size() {
+        install_probe(|family, size| {
+            // У Ahem все знаки в кегль, включая иероглиф.
+            if family == "Ahem" {
+                (size, size * 0.8, size, size)
+            } else {
+                (size * 0.5, size * 0.5, size * 1.2, size)
+            }
+        });
+        assert_eq!(ch_ex_px("Ahem", 20.0), (20.0, 16.0));
+        assert_eq!(ch_ex_px("Segoe UI", 20.0), (10.0, 10.0));
+        // Щуп снимается: иначе он утечёт в соседние тесты того же потока.
+        PROBE.with(|p| *p.borrow_mut() = None);
+        CACHE.with(|c| c.borrow_mut().clear());
+    }
+}
 mod text_system;
 pub use crate::text::metrics::families::font_installed;
 pub use crate::text::metrics::families::fonts_known;
 use crate::text::metrics::families::fractions;
 pub use crate::text::metrics::families::set_doc_family;
-pub(crate) use crate::text::metrics::text_system::font_extents;
 pub use crate::text::metrics::text_system::use_text_system;
+pub(crate) use crate::text::metrics::text_system::{font_extents, math_metrics};
 
 mod spacing;
 pub use crate::text::metrics::spacing::spacing_px;
@@ -165,32 +191,6 @@ pub fn ch_ex_px(family: &str, size_px: f32) -> (f32, f32) {
 /// (`ic-unit-*`).
 pub fn ic_px(family: &str, size_px: f32) -> f32 {
     fractions(family).3 * size_px
-}
-
-/// Длина в точках при НЕИЗВЕСТНОМ контексте (узел вне наследования, фон,
-/// скругление): кегль — запасной, метрики — по семейству (пустое — шрифт-
-/// подмена). Доля родителя, единицы окна и размеры по содержимому здесь не
-/// решаются — их значение знает только вызывающий.
-///
-/// Единая точка: прежде этот match был дословно повторён в пяти местах
-/// (apply/background/computed), и правка запасных значений расходилась.
-pub fn fallback_len_px(
-    l: crate::style::values::value::Len,
-    family: &str,
-    font_px: f32,
-) -> Option<f32> {
-    use crate::style::values::value::Len;
-    Some(match l {
-        Len::Px(v) => v,
-        Len::Em(k) => k * font_px,
-        Len::EmPx(k, add) => k * font_px + add,
-        Len::Ch(k) => k * ch_ex_px(family, font_px).0,
-        Len::Ic(k) => k * ic_px(family, font_px),
-        Len::Ex(k) => k * ch_ex_px(family, font_px).1,
-        Len::Lh(k) => k * 1.2 * font_px,
-        Len::LhPx(k, add) => k * 1.2 * font_px + add,
-        _ => return None,
-    })
 }
 
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.

@@ -21,9 +21,10 @@ pub(super) const PROPERTIES: &[Prop] = &[
         "включает обособление размера и стиля, как велит css-conditional-5          §container-type; самого правила `@container` движок пока не разбирает",
     ),
     m("isolation", "isolate"),
-    no(
+    part(
         "appearance",
-        "системного вида у элементов и так нет — рисуем сами",
+        "none",
+        "`none` снимает нарисованный виджет флажка, переключателя, ползунка, образца цвета и стрелку списка; `base` пока как `auto`",
     ),
     part(
         "box-decoration-break",

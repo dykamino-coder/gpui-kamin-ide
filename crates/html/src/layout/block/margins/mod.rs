@@ -18,8 +18,10 @@ use kids::{collapse_kid_margins, emit_margin_struts};
 /// накапливается сверху вниз и было поймано сравнением с Chrome.
 /// `abs_parent` — родитель абсолютно позиционирован: по §10.6.7 его
 /// автовысота ВКЛЮЧАЕТ плавающих детей, и правило «блок из одних флоатов
-/// высотой ноль» (§10.6.3) к его детям не применяется.
-pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
+/// высотой ноль» (§10.6.3) к его детям не применяется. `cb` — ширина
+/// содержащего блока в точках (`LayoutCx::cb_width`): по ней цепочка решает,
+/// влезает ли коробка своего контекста рядом с флоатами (`bfc_no_fit`).
+pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool, cb: Option<f32>) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);
     // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
@@ -40,7 +42,7 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool) -> Vec<Node> {
     // Отступ первого ребёнка «протекает» наружу, если родителя от него не
     // отделяют ни рамка, ни внутренний отступ: в CSS это один и тот же отступ,
     // а не два. Без этого блок уезжает вниз на величину детского отступа.
-    collapse_kid_margins(&mut out);
+    collapse_kid_margins(&mut out, cb);
     // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
     // ЗАПИСАНО в стили этого зазора: раскладка складывает поля сама, и
     // верхнему полю следующего блока достаётся только разница.
@@ -75,8 +77,4 @@ thread_local! {
     /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
     /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
     pub(crate) static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// The next `blocks` call lays out a table cell's or caption's content:
-    /// both are block formatting context roots (CSS 2.1 §9.4.1) and contain
-    /// their floats (§10.6.7), even as a `td`/`caption` without `display`.
-    pub(crate) static CELL_BFC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }

@@ -11,20 +11,17 @@ use flow_children::flow_children;
 use crate::dom::Node;
 use crate::interactive::sticky::sticky_probe;
 use crate::layout::block::available_width;
-use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
-use crate::layout::block::margins::CELL_BFC;
 use crate::layout::block::struts::zero_len;
 use crate::layout::float::band_flow_host::{
     BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard,
 };
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
-use crate::layout::page::paged::PAGED;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
@@ -43,19 +40,29 @@ pub(crate) use crate::render::blocks::positioned::*;
 // линии, а эталоны семьи считают её по-своему. Возвращать вместе с
 // настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
 pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
-    // Only the cell's own content list is the BFC root's (see `CELL_BFC`).
-    let cell_bfc = CELL_BFC.with(|c| c.replace(false));
-    let cb_prev = CB_WIDTH.get();
-    if let Some(Len::Px(w)) = inherited.width
-        && w > 0.0
-    {
-        CB_WIDTH.set(Some(w));
-    }
-    let _cb_guard = scopeguard_cb(cb_prev);
-    // Доступная ширина блочных детей этого уровня (см. `AVAIL_W`).
-    let avail_prev = AVAIL_W.get();
-    AVAIL_W.set(available_width::inner(inherited, avail_prev));
-    let _avail_guard = AvailWGuard(avail_prev);
+    let vcx = opts.cx.vcx();
+    // Only the cell's own content list is the BFC root's (see `LayoutCx::cell_bfc`).
+    let cell_bfc = opts.cx.cell_bfc;
+    // Контекст детей этого уровня: ширина содержащего блока, доступные
+    // ширина и высота (см. `LayoutCx`).
+    let outer = &opts.cx;
+    let cb_width = match inherited.width {
+        Some(Len::Px(w)) if w > 0.0 => Some(w),
+        _ => outer.cb_width,
+    };
+    let avail_h = crate::layout::block::available_height::inner(
+        inherited,
+        outer.avail_h,
+        outer.avail_w,
+        opts.viewport.1,
+    );
+    let avail_w = available_width::inner(inherited, outer.avail_w);
+    let opts = &*opts.inner(|cx| {
+        cx.cb_width = cb_width;
+        cx.avail_w = avail_w;
+        cx.avail_h = avail_h;
+        cx.cell_bfc = false;
+    });
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
     let (collapsed, ordered_context, under_tf) = prepare_children(nodes, inherited, opts, cell_bfc);
@@ -96,7 +103,11 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // логических осях, перевод в физику при сборке (`band_flow::VERT`).
     // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
     // handle RTL within those bands. Vertical RTL still needs axis conversion.
-    let vert_host = inherited.vertical == Some(true) && inherited.sideways != Some(true);
+    // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
+    // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
+    // line-left — низ, и плана для него нет.
+    let vert_host =
+        inherited.wm().vertical() && (!inherited.wm().sideways() || inherited.wm().block_rl());
     // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
     // `line-clamp` (точка среза считает строки и флоаты за ней —
     // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
@@ -106,36 +117,20 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let measured_ok = !flex_ctx
         && inherited.line_clamp.is_none()
         && crate::text::clamp::clamp_context().is_none()
-        && !PAGED.with(std::cell::Cell::get)
+        && opts.paged_build().is_none()
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && (inherited.vertical != Some(true) || vert_host)
-        && (inherited.vertical_rl != Some(true) || vert_host)
-        && (inherited.rtl != Some(true) || inherited.vertical != Some(true));
+        && (!inherited.wm().vertical() || vert_host)
+        && (!inherited.wm().block_rl() || vert_host)
+        && (!inherited.wm().rtl() || !inherited.wm().vertical());
     let _fl_guard =
         BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
-    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| {
-        h.replace(match inherited.height {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        })
-    }));
-    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| {
-        w.replace(match inherited.width {
-            Some(Len::Px(v)) => Some(v),
-            _ => None,
-        })
-    }));
-    let _wm_guard = BandWmGuard(BAND_WM.with(|w| {
-        w.replace(match (inherited.vertical, inherited.vertical_rl) {
-            (Some(true), Some(true)) => 1,
-            (Some(true), _) => 2,
-            _ => 0,
-        })
-    }));
-    let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
+    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
+    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
+    let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
+    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -148,6 +143,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             measured_ok,
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
+            opts.cx.cb_width,
+            vcx,
         ),
         flex_ctx,
     );
@@ -223,7 +220,6 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let pending: Vec<Node> = vec![];
     // Слой верхней отрисовки этого контейнера: позиционированные элементы
     // складывают сюда содержимое, а забирается оно последними детьми.
-    crate::layout::positioned::containing_block::late_open();
     let nodes = collapsed.as_slice();
     blocks_flow(
         nodes,

@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 
 #[rustfmt::skip] mod names;
+mod cycles;
 mod parse;
 mod text;
 
@@ -489,6 +490,7 @@ impl<'a, 'input: 'a> SvgNode<'a, 'input> {
             curr: self.id(),
             is_first: true,
             is_finished: false,
+            visited: Vec::new(),
         }
     }
 }
@@ -614,6 +616,10 @@ pub struct HrefIter<'a, 'input: 'a> {
     curr: NodeId,
     is_first: bool,
     is_finished: bool,
+    /// KaminIDE: elements already yielded. Upstream only stopped on a link
+    /// back to the origin or to the current element, so `a -> b -> c -> b`
+    /// looped forever.
+    visited: Vec<NodeId>,
 }
 
 impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
@@ -630,7 +636,10 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
         }
 
         if let Some(link) = self.doc.get(self.curr).node_attribute(AId::Href) {
-            if link.id() == self.curr || link.id() == self.origin {
+            if link.id() == self.curr
+                || link.id() == self.origin
+                || self.visited.contains(&link.id())
+            {
                 log::warn!(
                     "Element '#{}' cannot reference itself via 'xlink:href'.",
                     self.doc.get(self.origin).element_id()
@@ -639,6 +648,7 @@ impl<'a, 'input: 'a> Iterator for HrefIter<'a, 'input> {
                 return None;
             }
 
+            self.visited.push(self.curr);
             self.curr = link.id();
             Some(self.doc.get(self.curr))
         } else {

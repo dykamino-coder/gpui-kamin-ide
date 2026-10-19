@@ -69,7 +69,17 @@ pub(super) fn wrap_shaped_run(
         {
             out.clear();
         }
+        // Подготовка ниже сняла float с самих блоков — сторона и число
+        // уезжают метками хоста.
         let mut host = Element {
+            marks: crate::dom::Marks {
+                shape_flow: Some(crate::dom::ShapeFlow {
+                    right: side >= 0,
+                    count: floaters.len(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
             list_item: None,
             node_id: 0,
             anim: None,
@@ -81,30 +91,19 @@ pub(super) fn wrap_shaped_run(
                 // его ФИЗИЧЕСКАЯ высота (css-writing-modes-4 §6.1). Строкам
                 // ряда (`FlowRow::vertical_rl`) нужен её предел: сам
                 // ряд лежит в автовысотном хосте и иначе получает 0.
-                height: if parent.vertical == Some(true) {
+                height: if parent.wm().vertical() {
                     parent.height
                 } else {
                     None
                 },
                 ..Computed::default()
-            },
+            }
+            .into(),
             hover: None,
             first_letter: None,
             first_line: None,
             children: Vec::new(),
-            // Подготовка выше сняла float с самих блоков — сторона и
-            // число уезжают атрибутами.
-            attrs: vec![
-                (
-                    "side".into(),
-                    if side < 0 {
-                        "left".into()
-                    } else {
-                        "right".into()
-                    },
-                ),
-                ("count".into(), floaters.len().to_string()),
-            ],
+            attrs: Vec::new(),
             inline: false,
         };
         host.children = std::mem::take(floaters)

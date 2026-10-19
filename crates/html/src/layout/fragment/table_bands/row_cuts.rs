@@ -1,6 +1,7 @@
 //! Разрезы между рядами таблицы: avoid/force рядов и групп, охваты rowspan.
 
 use super::{TableBands, row_geometry};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
@@ -26,6 +27,7 @@ pub(super) fn table_row_cuts(
     mut force_next: bool,
     spans: &mut Vec<(usize, usize, f32)>,
     row_box: &mut Vec<(f32, f32)>,
+    vcx: ValueCx<'_>,
 ) -> Option<()> {
     let topology: Vec<_> = rows
         .iter()
@@ -40,19 +42,19 @@ pub(super) fn table_row_cuts(
             (key, r.row)
         })
         .collect();
-    let geometry = row_geometry(&topology, depth, cell_cx, spacing)?;
+    let geometry = row_geometry(&topology, depth, cell_cx, spacing, vcx)?;
     for (i, r) in rows.iter().enumerate() {
         let start = *y + spacing;
         let h = geometry[i].height;
         for cell in &geometry[i].cells {
             let shape = &cell.shape;
             if !cell.expandable {
-                spans.push((i, cell.span, shape.0));
+                spans.push((i, cell.span, shape.height));
                 continue;
             }
-            cuts.extend(shape.3.iter().map(|&(a, b)| (start + a, start + b)));
-            forced.extend(shape.4.iter().map(|&f| start + f));
-            solid.extend(shape.5.iter().map(|&(a, b)| (start + a, start + b)));
+            cuts.extend(shape.cuts.iter().map(|&(a, b)| (start + a, start + b)));
+            forced.extend(shape.forced.iter().map(|&f| start + f));
+            solid.extend(shape.solid.iter().map(|&(a, b)| (start + a, start + b)));
         }
         // css-break-4 §unforced-breaks Rule 1: «may break at a class A break point
         // only if all the 'break-after' and 'break-before' values applicable to
@@ -151,20 +153,18 @@ pub(super) fn table_row_cuts(
 // строка для `break-after`), и отдаёт результат наружу на `:255-257`.
 // `edge_avoid` уже делает перенос с КРАЙНЕГО ребёнка ячейки — это Blink'овы
 // `InitialBreakBefore`/`FinalBreakAfter`; остаётся объединение по всем ячейкам.
-pub(super) fn row_avoid(row: &Element, last: bool) -> bool {
-    edge_avoid(row, last)
-        || row
-            .children
-            .iter()
-            .filter(|n| !is_blank(n))
-            .any(|n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last)))
+pub(super) fn row_avoid(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
+    edge_avoid(row, last, vcx)
+        || row.children.iter().filter(|n| !is_blank(n)).any(
+            |n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last, vcx)),
+        )
 }
 
 // Принудительные `break-before`/`break-after` ячеек — тем же слиянием на
 // ряд (Blink `table_row_layout_algorithm.cc:169-177`,
 // `JoinFragmentainerBreakValues`): `break-before-expansion-001` — ячейка
 // второго ряда с `break-before: column`.
-pub(super) fn row_force(row: &Element, last: bool) -> bool {
+pub(super) fn row_force(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
     (if last {
         row.style.break_after_force
     } else {
@@ -173,7 +173,7 @@ pub(super) fn row_force(row: &Element, last: bool) -> bool {
         .children
         .iter()
         .filter(|n| !is_blank(n))
-        .any(|n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last)))
+        .any(|n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last, vcx)))
 }
 
 // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и

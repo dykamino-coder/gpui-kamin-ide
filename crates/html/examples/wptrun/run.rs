@@ -3,7 +3,10 @@
 use super::frame_metrics::rss_mb;
 use super::reftest_meta::{out_of_scope, references};
 use super::show::Stage;
-use super::{capture, capture_dump, capture_name, pair, pixel_compare, reference_result, retry};
+use super::{
+    animation_frames, capture, capture_dump, capture_name, pair, pixel_compare, reference_result,
+    retry,
+};
 use gpui::{AnyWindowHandle, AppContext as _, AsyncApp};
 use std::rc::Rc;
 use std::time::Duration;
@@ -37,6 +40,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         dumping,
         dump_all,
     } = cfg;
+    let frames = animation_frames::configured();
     let passed = move |v: &str| pixel_compare::passed(exact, v);
     // Off-screen capture: park the window before its first frame.
     if capture::offscreen() {
@@ -70,51 +74,84 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
     let mut timing_lines = 0usize;
     for (pair_index, (test, reference)) in pairs.iter().enumerate() {
         let started = std::time::Instant::now();
-        if let Some(why) = out_of_scope(test) {
+        if let Some(why) = out_of_scope(test, reference) {
             report.push_str(&format!("{test}|{reference}|{why}\n"));
             let _ = std::fs::write(report_path.as_str(), &report);
             continue;
         }
-        let (shots, blank) = pair::capture_sides(cx, &stage, test, reference).await;
-        let refs = references(test, reference);
-        let negative_primary = !refs.has_match
-            && refs
-                .mismatches
-                .iter()
-                .any(|path| reference_result::same_file(path, reference));
-        let mut verdict =
-            pair::primary_verdict(&shots, blank.as_ref(), test, exact, negative_primary);
-        let matched_alternate =
-            retry::try_alternates(cx, &stage, exact, &refs.alternates, &shots, &mut verdict).await;
-        // ПРОБОВАЛИ И ОТКАТИЛИ: применять вердикт только когда
-        // анти-эталон отличается от ЭТАЛОНА больше порога. Замерено:
-        // CSS2 +5, CSS3 +4. Но выборочная проверка показала, что
-        // правка ПРЯЧЕТ настоящие провалы: у `text-wrap-nowrap-001`
-        // анти-эталон отличается настоящим `width: 20ch`, и совпадение
-        // эталона с ним значит, что ширину не держим МЫ. Отличить это
-        // от честно неразличимого анти-эталона (`selectors/grouping-002`
-        // — только цвет двух строк текста) стенд не может, а ослаблять
-        // мерило ради счёта нельзя.
-        //
-        // Анти-эталон (`rel="mismatch"`): совпадение с ним — ПРОВАЛ.
-        // Проверяется всегда, даже когда пара уже зелёная: именно
-        // зелёная пара и подозрительна — обе стороны могли сломаться
-        // одинаково.
-        retry::check_mismatches(
-            cx,
-            &stage,
-            exact,
-            &refs.mismatches,
-            negative_primary,
-            reference,
-            &shots,
-            &mut verdict,
-        )
-        .await;
-        if dumping && (dump_all || !passed(&verdict)) {
-            let stem = capture_name::stem(pair_index, test);
-            capture_dump::pair(&stem, &shots, matched_alternate.as_ref());
+        let times = animation_frames::for_pair(frames.as_deref(), test, reference);
+        let previous = cx.update(|cx| cx.try_global::<gpui::AnimationElapsedTime>().copied());
+        let mut first_failure = None;
+        let mut final_verdict = String::new();
+        for time in times {
+            let exact = time.is_some() || exact;
+            if let Some(time) = time {
+                cx.update(|cx| cx.set_global(gpui::AnimationElapsedTime(time)));
+            }
+            let (shots, blank) = pair::capture_sides(cx, &stage, test, reference).await;
+            let refs = references(test, reference);
+            let negative_primary = !refs.has_match
+                && refs
+                    .mismatches
+                    .iter()
+                    .any(|path| reference_result::same_file(path, reference));
+            let mut verdict =
+                pair::primary_verdict(&shots, blank.as_ref(), test, exact, negative_primary);
+            let matched_alternate =
+                retry::try_alternates(cx, &stage, exact, &refs.alternates, &shots, &mut verdict)
+                    .await;
+            // ПРОБОВАЛИ И ОТКАТИЛИ: применять вердикт только когда
+            // анти-эталон отличается от ЭТАЛОНА больше порога. Замерено:
+            // CSS2 +5, CSS3 +4. Но выборочная проверка показала, что
+            // правка ПРЯЧЕТ настоящие провалы: у `text-wrap-nowrap-001`
+            // анти-эталон отличается настоящим `width: 20ch`, и совпадение
+            // эталона с ним значит, что ширину не держим МЫ. Отличить это
+            // от честно неразличимого анти-эталона (`selectors/grouping-002`
+            // — только цвет двух строк текста) стенд не может, а ослаблять
+            // мерило ради счёта нельзя.
+            //
+            // Анти-эталон (`rel="mismatch"`): совпадение с ним — ПРОВАЛ.
+            // Проверяется всегда, даже когда пара уже зелёная: именно
+            // зелёная пара и подозрительна — обе стороны могли сломаться
+            // одинаково.
+            retry::check_mismatches(
+                cx,
+                &stage,
+                exact,
+                &refs.mismatches,
+                negative_primary,
+                reference,
+                &shots,
+                &mut verdict,
+            )
+            .await;
+            if dumping && (dump_all || !passed(&verdict)) {
+                let mut stem = capture_name::stem(pair_index, test);
+                if let Some(time) = time {
+                    stem.push_str(&format!("--frame-{}ms", time.as_millis()));
+                }
+                capture_dump::pair(&stem, &shots, matched_alternate.as_ref());
+            }
+            if let Some(time) = time
+                && verdict != "0.00"
+                && first_failure.is_none()
+            {
+                first_failure = Some(format!("frame {}ms: {verdict}", time.as_millis()));
+            }
+            // Preserve the ordinary verdict for the single-capture path.
+            // Animated pairs are exact even in legacy diagnostic mode.
+            final_verdict = verdict;
         }
+        if frames.is_some() {
+            cx.update(|cx| {
+                if let Some(previous) = previous {
+                    cx.set_global(previous);
+                } else if cx.try_global::<gpui::AnimationElapsedTime>().is_some() {
+                    cx.remove_global::<gpui::AnimationElapsedTime>();
+                }
+            });
+        }
+        let verdict = first_failure.unwrap_or(final_verdict);
         report.push_str(&format!("{test}|{reference}|{verdict}\n"));
         // Отчёт пишется после каждой пары: падение на одном файле не
         // должно стирать результат всего прогона.

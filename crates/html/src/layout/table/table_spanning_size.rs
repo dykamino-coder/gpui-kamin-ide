@@ -11,7 +11,7 @@ pub(super) fn preserve(
     vertical: bool,
     collapsed: bool,
 ) {
-    if span <= 1 || fixed || vertical || collapsed || merged.vertical == Some(true) {
+    if span <= 1 || fixed || vertical || collapsed || merged.wm().vertical() {
         return;
     }
     // CSS 2.1 §17.5.2.2: an authored width raises the cell minimum, and a

@@ -1,7 +1,7 @@
 //! Collapse the block-start edge independently of the block-end edge.
 
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
+use crate::layout::block::containing::with_inner_cb;
 use crate::layout::block::margin_height;
 use crate::layout::block::struts::{
     Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve,
@@ -11,7 +11,7 @@ use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
-pub(super) fn collapse_top(e: &mut Element) {
+pub(super) fn collapse_top(e: &mut Element, cb: Option<f32>) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
     // parent-child collapse; bottom collapse has its own edge conditions.
     if !top_edge_open(e) {
@@ -24,14 +24,13 @@ pub(super) fn collapse_top(e: &mut Element) {
     let mut eat: Vec<(Vec<usize>, bool)> = vec![];
     // Дети `e` лежат в `e`: его ширина точками — содержащий блок для
     // `bfc_no_fit` внутри цепи.
-    let cb_prev = CB_WIDTH.get();
-    if let Some(Len::Px(w)) = e.style.width
-        && w > 0.0
-    {
-        CB_WIDTH.set(Some(w));
-    }
-    let chain = with_inner_cb(&e.style, || leading_chain(&e.children, &mut path, &mut eat));
-    CB_WIDTH.set(cb_prev);
+    let cb = match e.style.width {
+        Some(Len::Px(w)) if w > 0.0 => Some(w),
+        _ => cb,
+    };
+    let chain = with_inner_cb(&e.style, || {
+        leading_chain(&e.children, &mut path, &mut eat, cb)
+    });
     if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style))
         && !eat.is_empty()
     {

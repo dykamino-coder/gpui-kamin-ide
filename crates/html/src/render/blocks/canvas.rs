@@ -5,10 +5,14 @@ use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
 use crate::render::*;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
 pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
+    let vcx = opts.cx.vcx();
+    // Pair each root instance with its canvas, including identical iframe documents.
+    let measured =
+        (e.tag == "html").then(|| crate::paint::background::measure_root_box(opts.doc_salt));
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -19,7 +23,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let canvas_layers = e.style.bg_layers();
+    let canvas_layers = e.style.bg_layers(vcx);
     if let Some(g) = e
         .style
         .gradient
@@ -40,7 +44,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 stop.0 = f.apply(stop.0);
             }
         }
-        layer = layer.bg(crate::style::apply::fill(&g));
+        layer = layer.bg(crate::paint::apply::fill(&g));
     } else if let Some(bg) = e.style.background {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());
@@ -76,6 +80,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             };
             let b = e.style.borders();
             let area = crate::paint::background::RootArea {
+                measured,
                 left: side(e.style.margin.left) + side(b.left),
                 top: side(e.style.margin.top) + side(b.top),
                 right: side(e.style.margin.right) + side(b.right),
@@ -92,12 +97,12 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                     }
                     _ => None,
                 },
-                from_right: e.style.vertical_rl == Some(true),
+                from_right: e.style.wm().block_rl(),
                 // Корень `vertical-rl` без заданной ширины — по
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                left_key: (e.style.vertical_rl == Some(true)).then_some(opts.doc_salt),
+                left_key: (e.style.wm().block_rl()).then_some(opts.doc_salt),
             };
             match &canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
@@ -105,13 +110,15 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) = crate::paint::background::canvas_layer(l, area) {
+                        if let Some(t) =
+                            crate::paint::background::canvas_layer(l, area.clone(), vcx)
+                        {
                             stack = stack.child(t);
                         }
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::paint::background::canvas_layer(&e.style, area),
+                None => crate::paint::background::canvas_layer(&e.style, area, vcx),
             }
         }
     {
@@ -125,7 +132,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             .child(tiles)
             .into_any_element();
     } else if e.style.bg_image.is_some()
-        && let Some(tiles) = crate::paint::background::layer(&e.style)
+        && let Some(tiles) = crate::paint::background::layer(&e.style, vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по
@@ -145,17 +152,14 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         // слой на весь холст перекрывает то, что рисуется выше по
         // потоку. Возвращаться вместе с переносом фона тела на
         // корень, когда кегль тела будет разрешаться до переноса.
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = e.style.borders();
         let mut band = div().absolute().top_0().bottom_0();
         band = match e.style.width {
             Some(Len::Px(w)) => {
                 let pad_w = w + side(e.style.padding.left) + side(e.style.padding.right);
                 let band = band.w(px(pad_w));
-                if e.style.vertical_rl == Some(true) {
+                if e.style.wm().block_rl() {
                     band.right(px(side(e.style.margin.right) + side(b.right)))
                 } else {
                     band.left(px(side(e.style.margin.left) + side(b.left)))
@@ -198,11 +202,13 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
         || e.style.clip_inset.is_some()
         || e.style.clip_xywh.is_some()
     {
-        let mut clip = Computed::default();
-        clip.clip_polygon = e.style.clip_polygon.clone();
-        clip.clip_shape = e.style.clip_shape.clone();
-        clip.clip_inset = e.style.clip_inset;
-        clip.clip_xywh = e.style.clip_xywh;
+        let clip = Computed {
+            clip_polygon: e.style.clip_polygon.clone(),
+            clip_shape: e.style.clip_shape.clone(),
+            clip_inset: e.style.clip_inset,
+            clip_xywh: e.style.clip_xywh,
+            ..Default::default()
+        };
         layer = grouped(
             div()
                 .absolute()
@@ -213,6 +219,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 .child(layer)
                 .into_any_element(),
             &clip,
+            vcx,
         );
     }
     out.push(crate::interactive::scroll_target::canvas(layer));

@@ -2,13 +2,19 @@
 
 use super::super::SpotCell;
 use super::LatePlace;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::spot_geometry;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
 /// Нулевая распорка на месте элемента: занимает его место в потоке и
 /// запоминает, где это место оказалось. `full` — распорка в потоке блоков (во
-/// всю ширину), иначе — внутри строки.
-pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
+/// всю ширину), иначе — внутри строки. `line` — передача строчной коробки от
+/// абзаца, который ставит распорку куском своей строки (`LineBoxSlot`).
+pub fn spot_probe(
+    spot: SpotCell,
+    full: bool,
+    line: Option<super::super::LineBoxSlot>,
+) -> AnyElement {
     let mut probe = gpui::div().h_0().flex_shrink_0();
     if full && spot.get().vertical {
         // Вертикальное письмо: блочный поток горизонтален (контейнер — ряд),
@@ -16,13 +22,23 @@ pub fn spot_probe(spot: SpotCell, full: bool) -> AnyElement {
         probe = probe.w_0().h_full();
     } else if full {
         probe = probe.w_full();
+    } else if spot.get().next_line.is_some() && !spot.get().vertical {
+        // A block-level box's probe spans its line box: the hole's height is
+        // the line height the static position steps over (`late_shift`).
+        probe = gpui::div().w_0().flex_shrink_0();
+        probe.style().align_self = Some(gpui::AlignItems::Stretch);
     } else {
         // Внутри строки распорка прижимается к её ВЕРХУ: на базовой линии
         // содержимое уезжало бы под строку.
         probe = probe.w_0();
         probe.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
-    spot_geometry::probe(spot, full, probe.into_any_element())
+    // The strut only marks where an out-of-flow box would have been: it is
+    // not in-flow content and never gives its container a baseline (CSS 2.1
+    // §10.8.1; an inline-block holding only an abspos aligns by its bottom
+    // margin edge — `align-self-static-position-001-ref`).
+    probe.style().no_inline_block_baseline = Some(true);
+    spot_geometry::probe(spot, full, line, probe.into_any_element())
 }
 
 /// Заместитель в конце списка: рисуется последним, но встаёт туда, где стояла
@@ -55,11 +71,7 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         && ((now.fixed_axes != (false, false) && (now.own_vertical || !now.replaced))
             || (now.preserve_cb_geometry && !now.replaced))
     {
-        return LatePlace {
-            child: Some(child),
-            spot,
-        }
-        .into_any_element();
+        return LatePlace { child, spot }.hooked();
     }
     // При вертикальном письме поток строк идёт поперёк: распорка тянется по
     // высоте, а не по ширине, иначе она уводила бы содержимое вниз. Ветка
@@ -71,14 +83,10 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     // распорка с размером двигала бы соседей. Обёртка нулевая, положение
     // целиком считает сдвиг заместителя (LatePlace).
     if now.vertical && now.next_line.is_none() {
-        return gpui::div()
-            .w_0()
-            .h_0()
-            .flex_shrink_0()
-            .child(LatePlace {
-                child: Some(child),
-                spot,
-            })
+        let mut wrap = gpui::div().w_0().h_0().flex_shrink_0();
+        wrap.style().no_inline_block_baseline = Some(true);
+        return wrap
+            .child(LatePlace { child, spot }.into_hooked())
             .into_any_element();
     }
     let mut wrap = if vertical_flow {
@@ -93,6 +101,13 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
         gpui::div().w_full().h_0().flex_shrink_0().flex().flex_row()
     };
     wrap = wrap.items_start();
+    // The carrier holds an out-of-flow box: it is not a line box and must not
+    // give its block container a baseline (CSS 2.1 §10.8.1: an inline-block
+    // without in-flow line boxes aligns by its bottom margin edge; Blink
+    // never propagates baselines from OOF children). As a flex row it would
+    // synthesize one from its item (`align-self-static-position-001-ref`:
+    // the first inline-block dropped a whole line).
+    wrap.style().no_inline_block_baseline = Some(true);
     // Начало строчной оси — правый край: при письме справа налево в
     // горизонтальном режиме и при vertical-rl (блочный поток идёт от правого
     // края, css-writing-modes §block-flow). У vertical-lr `direction`
@@ -114,9 +129,6 @@ pub fn spot_place(spot: SpotCell, child: AnyElement) -> AnyElement {
     } else {
         wrap.justify_start()
     };
-    wrap.child(LatePlace {
-        child: Some(child),
-        spot,
-    })
-    .into_any_element()
+    wrap.child(LatePlace { child, spot }.into_hooked())
+        .into_any_element()
 }

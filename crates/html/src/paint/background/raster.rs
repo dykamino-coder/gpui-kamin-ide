@@ -1,5 +1,6 @@
 //! Растр слоёв-изображений: cross-fade, градиенты, раскладка стопов.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use gpui::RenderImage;
 use std::sync::Arc;
@@ -68,7 +69,14 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 /// меньше — результат частично прозрачен. Слагаемое — цвет (или
 /// `image(<color>)`), градиент или `url()`; растр приводится к размеру плитки
 /// ближайшей точкой.
-pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
+// Pixel channel indices address the source and accumulator buffers together.
+#[allow(clippy::needless_range_loop)]
+pub(super) fn rasterize_cross_fade(
+    src: &str,
+    w: u32,
+    h: u32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     let inner = src.strip_prefix("cross-fade(")?;
     let inner = &inner[..inner.rfind(')')?];
     let n = (w * h) as usize;
@@ -87,6 +95,7 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             img.strip_prefix("image(")
                 .and_then(|t| t.strip_suffix(')'))
                 .unwrap_or(img),
+            vcx,
         );
         let buf = if let Some(c) = colour {
             let px = [
@@ -98,10 +107,10 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
             px.iter().copied().cycle().take(n * 4).collect()
         } else {
             let image = if img.contains("gradient(") {
-                rasterize_gradient(img, w, h)?
+                rasterize_gradient(img, w, h, vcx)?
             } else {
                 let url = crate::style::computed::parse_url(img)?;
-                source(&url)?.raster((w as f32, h as f32))?
+                source(&url, vcx)?.raster((w as f32, h as f32), vcx)?
             };
             let size = image.size(0);
             let (iw, ih) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
@@ -161,60 +170,30 @@ pub(super) fn rasterize_cross_fade(src: &str, w: u32, h: u32) -> Option<Arc<Rend
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-pub(super) fn rasterize_gradient(src: &str, w: u32, h: u32) -> Option<Arc<RenderImage>> {
-    if crate::style::computed::parse_image_color(src).is_some() {
-        return sources::raster_color(src, w, h);
+pub(super) fn rasterize_gradient(
+    src: &str,
+    w: u32,
+    h: u32,
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
+    if crate::style::computed::parse_image_color(src, vcx).is_some() {
+        return sources::raster_color(src, w, h, vcx);
     }
     if src.starts_with("cross-fade(") {
-        return rasterize_cross_fade(src, w, h);
+        return rasterize_cross_fade(src, w, h, vcx);
     }
     if conic::is_conic(src) {
-        return conic::rasterize(src, (w as f32, h as f32), 1.0);
+        return conic::rasterize(src, (w as f32, h as f32), 1.0, vcx);
     }
-    gradient_raster::raster(src, w, h, (w as f32, h as f32), false)
+    gradient_raster::raster(src, w, h, (w as f32, h as f32), false, vcx)
 }
 
 /// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
-pub(super) fn angle_fraction(token: &str) -> Option<f32> {
-    angle::fraction(token)
+pub(super) fn angle_fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
+    angle::fraction(token, vcx)
 }
 
-/// Расставить позиции стопов по правилам css-images: крайние без позиции — на
-/// края, промежуточные — поровну между соседями с позициями, и позиции не
-/// убывают.
-pub(crate) fn place_stops(
-    raw: Vec<(crate::style::values::value::Color, Option<f32>)>,
-) -> Vec<(crate::style::values::value::Color, f32)> {
-    let last = raw.len() - 1;
-    let mut out: Vec<(crate::style::values::value::Color, f32)> = Vec::with_capacity(raw.len());
-    // Зажим снизу — только позицией ПРЕДШЕСТВЕННИКА (css-images-3 §3.5.3):
-    // у первого стопа его нет, и отрицательная позиция законна. Нулевой
-    // пол сдвигал `calc(-65535000px)` в ноль, и вся коробка красилась
-    // первым цветом (`gradient-eval-*`).
-    let mut floor = f32::NEG_INFINITY;
-    for (i, (colour, pos)) in raw.iter().enumerate() {
-        let at = match pos {
-            Some(v) => v.max(floor),
-            None if i == 0 => 0.0,
-            None if i == last => 1.0f32.max(floor),
-            None => {
-                // Доля до следующего стопа с позицией (или до конца).
-                let (mut next, mut steps) = (1.0f32, (last - i + 1) as f32);
-                for (j, (_, p)) in raw.iter().enumerate().skip(i + 1) {
-                    if let Some(v) = p {
-                        next = v.max(floor);
-                        steps = (j - i + 1) as f32;
-                        break;
-                    }
-                }
-                floor + (next - floor) / steps
-            }
-        };
-        floor = at;
-        out.push((*colour, at));
-    }
-    out
-}
+pub(crate) use crate::style::computed::place_stops;
 
 /// Доля точки в ПОВТОРЯЮЩЕМСЯ градиенте (css-images-3 §3.6): узор стопов
 /// повторяется бесконечно в обе стороны со сдвигом на разность позиций

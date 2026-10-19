@@ -1,12 +1,14 @@
 //! Flex rows expose parallel item cuts and sequential row boundaries.
 
-use super::geometry::{collect_rows, px, row_container, row_forced};
+use super::geometry::{collect_rows, row_container, row_forced};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_avoid;
+use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::finish_row_shape;
 use crate::layout::fragment::shape_kids::stack_kids;
-use crate::layout::fragment::{LINE_CX, Shape, ShapeCx};
-use crate::style::values::value::Len;
+use crate::layout::fragment::{LINE_CX, ShapeCx};
+use crate::style::values::value::{Len, px_auto_zero};
 pub(crate) fn main_size(c: &Element) -> Option<f32> {
     LINE_CX
         .with(|cx| {
@@ -20,8 +22,10 @@ pub(crate) fn main_size(c: &Element) -> Option<f32> {
                 return None;
             };
             let b = c.style.borders();
-            let edges =
-                px(c.style.padding.left)? + px(c.style.padding.right)? + px(b.left)? + px(b.right)?;
+            let edges = px_auto_zero(c.style.padding.left)?
+                + px_auto_zero(c.style.padding.right)?
+                + px_auto_zero(b.left)?
+                + px_auto_zero(b.right)?;
             Some(if c.style.border_box == Some(true) {
                 (w - edges).max(0.0)
             } else {
@@ -40,13 +44,14 @@ pub(crate) fn measure_rows(
     bot: f32,
     mt: f32,
     mb: f32,
-) -> Option<Shape> {
+    vcx: ValueCx<'_>,
+) -> Option<Measure> {
     if !row_container(c) {
         return None;
     }
     let main = main_size(c)?;
-    let rows = collect_rows(c, main, depth, cx)?;
-    let gap = px(c.style.gap.and_then(|g| g.0))?.max(0.0);
+    let rows = collect_rows(c, main, depth, cx, vcx)?;
+    let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut cuts = Vec::new();
     let mut forced = Vec::new();
     let mut solid = Vec::new();
@@ -61,9 +66,17 @@ pub(crate) fn measure_rows(
         let mut row_solids = Vec::new();
         for item in &row.items {
             let s = &item.shape;
-            row_cuts.extend(s.3.iter().map(|&(a, b)| (s.1 + a, s.1 + b)));
-            row_forces.extend(s.4.iter().map(|&a| s.1 + a));
-            row_solids.extend(s.5.iter().map(|&(a, b)| (s.1 + a, s.1 + b)));
+            row_cuts.extend(
+                s.cuts
+                    .iter()
+                    .map(|&(a, b)| (s.margin_top + a, s.margin_top + b)),
+            );
+            row_forces.extend(s.forced.iter().map(|&a| s.margin_top + a));
+            row_solids.extend(
+                s.solid
+                    .iter()
+                    .map(|&(a, b)| (s.margin_top + a, s.margin_top + b)),
+            );
         }
         inner.push((
             row.height,
@@ -72,13 +85,13 @@ pub(crate) fn measure_rows(
             row_cuts,
             row_forces,
             row_solids,
-            row_forced(row, false),
-            row_forced(row, true),
-            0.0,
+            row_forced(row, false, vcx),
+            row_forced(row, true, vcx),
+            Default::default(),
         ));
         avoid.push((
-            row.items.iter().any(|i| edge_avoid(&i.element, false)),
-            row.items.iter().any(|i| edge_avoid(&i.element, true)),
+            row.items.iter().any(|i| edge_avoid(&i.element, false, vcx)),
+            row.items.iter().any(|i| edge_avoid(&i.element, true, vcx)),
         ));
     }
     let n = rows.len();
@@ -100,7 +113,7 @@ pub(crate) fn measure_rows(
         vec![false; n],
         vec![(false, false); n],
         vec![None; n],
-        0.0,
+        Default::default(),
         None,
         false,
     );
@@ -127,9 +140,10 @@ pub(crate) fn measure_rows(
         forced,
         solid,
         Some((y, 0.0, 0.0)),
-        0.0,
+        Default::default(),
         h,
         mt,
         mb,
+        vcx,
     )
 }

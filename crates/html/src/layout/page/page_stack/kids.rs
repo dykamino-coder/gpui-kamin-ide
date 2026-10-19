@@ -1,11 +1,13 @@
 //! Дети стопки листов (Kid) и предраскладка марджин-боксов.
 
 use super::{PageGeom, PageStack};
-use crate::layout::fragment::types::{Kid, Par, RepeatGeom};
+use crate::layout::fragment::types::{Kid, Par};
 use crate::layout::page::margin_boxes::layout_margin_boxes;
 use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl PageStack {
+    // Margin boxes use page geometry and the current GPUI layout states.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn prepaint_margins(
         &mut self,
         bounds: Bounds<Pixels>,
@@ -26,6 +28,7 @@ impl PageStack {
                 );
                 let (sx, sy) = self.sheet_origin(p);
                 for (rect, mut el) in layout_margin_boxes(boxes, pg, window, cx) {
+                    let rect = round_rect(rect);
                     el.layout_as_root(
                         size(
                             gpui::AvailableSpace::Definite(px(rect.2.max(0.0))),
@@ -54,18 +57,28 @@ impl PageStack {
         cx: &mut App,
         aw: f32,
     ) -> (Vec<Kid>, usize) {
+        let vertical = self.axis.is_vertical();
         let kids: Vec<Kid> = self
             .kids
             .iter_mut()
             .map(|k| {
-                let sz = k.el.layout_as_root(
-                    size(
-                        gpui::AvailableSpace::Definite(px(aw)),
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
+                // `aw` is the INLINE size of the page area; a vertical root
+                // measures its block size along x (`page_stack/axis.rs`).
+                let (fixed, free) = (
+                    gpui::AvailableSpace::Definite(px(aw)),
+                    gpui::AvailableSpace::MaxContent,
                 );
+                let space = if vertical {
+                    size(free, fixed)
+                } else {
+                    size(fixed, free)
+                };
+                let sz = k.el.layout_as_root(space, window, cx);
+                let sz = if vertical {
+                    size(sz.height, sz.width)
+                } else {
+                    sz
+                };
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
                 let (h, cuts, forced, solid) = match &k.shape {
@@ -103,7 +116,7 @@ impl PageStack {
                     // У страниц своё правило переполнения монолита (`fill_at`,
                     // ветка `paged && placed && cur > target`, crbug 1402540).
                     overflow_top: false,
-                    repeat: RepeatGeom::default(),
+                    repeat: k.repeat.as_ref().map_or_else(Default::default, |r| r.geom),
                     par: Par::default(),
                 }
             })
@@ -115,5 +128,30 @@ impl PageStack {
             .min()
             .unwrap_or(1);
         (kids, limit)
+    }
+}
+
+/// Прямоугольник марджин-бокса, округлённый как раскладка потока (Taffy
+/// `round_layout`: края — `round`, размер — разность округлённых краёв).
+/// Центрированная коробка на 234.5 рисовалась с 234, а эталон, собранный
+/// потоком (grid/flex), — с 235 (`margin-boxes/auto-margins-003`,
+/// `overconstrained-001`).
+fn round_rect((x, y, w, h): (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
+    let (x0, y0) = (x.round(), y.round());
+    (x0, y0, (x + w).round() - x0, (y + h).round() - y0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::round_rect;
+
+    #[test]
+    fn margin_box_rect_rounds_edges_like_taffy() {
+        assert_eq!(
+            round_rect((234.5, 69.5, 31.0, 31.0)),
+            (235.0, 70.0, 31.0, 31.0)
+        );
+        // Размер — разность округлённых краёв, а не округлённая ширина.
+        assert_eq!(round_rect((10.4, 0.0, 20.2, 5.0)), (10.0, 0.0, 21.0, 5.0));
     }
 }

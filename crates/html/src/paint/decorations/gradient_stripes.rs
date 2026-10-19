@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
@@ -64,7 +64,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                 };
-                let layer = div().absolute().bg(crate::style::apply::fill(&band));
+                let layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 bands.push(
                     match (vertical, reverse) {
                         (true, false) => layer.left_0().right_0().top(px(p0)).h(px(p1 - p0)),
@@ -90,10 +90,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
             // Полоса перекрывает фон родителя целиком, поэтому скругление
             // приходится повторять на крайних полосах: иначе углы блока
             // становятся прямыми.
-            let corner = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let corner = px_lossy_zero;
             let last_band = g.stops.len() - 2;
             for (idx, pair) in g.stops.windows(2).enumerate() {
                 let (a, b) = (pair[0], pair[1]);
@@ -121,7 +118,7 @@ pub(super) fn gradient_stripes(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
                     space: g.space,
                     hue: g.hue,
                 };
-                let mut layer = div().absolute().bg(crate::style::apply::fill(&band));
+                let mut layer = div().absolute().bg(crate::paint::apply::fill(&band));
                 // «Первая» полоса по направлению отрисовки, а не по списку:
                 // при обратном направлении список развёрнут.
                 let first_edge = if reverse { idx == last_band } else { idx == 0 };

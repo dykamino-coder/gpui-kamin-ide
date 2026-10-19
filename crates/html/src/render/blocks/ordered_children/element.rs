@@ -21,9 +21,10 @@ pub(crate) fn ordered_element(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
+    e.style.flex_line_wraps = e.style.flex_item && inherited.flex_wrap == Some(true);
     e.style.flex_main_vertical =
         matches!(inherited.flex_dir, Some(FlexDir::Col | FlexDir::ColReverse))
-            != (inherited.vertical == Some(true));
+            != (inherited.wm().vertical());
     // Элемент КОЛОНКИ: определён ли главный размер
     // контейнера (css-flexbox-1 §9.8 п.1). От этого зависит,
     // определён ли блок у ЕГО детей — доля высоты внутри
@@ -76,8 +77,8 @@ pub(crate) fn ordered_element(
     ) && matches!(
         inherited.flex_dir,
         None | Some(FlexDir::Row) | Some(FlexDir::RowReverse)
-    ) && inherited.vertical != Some(true)
-        && e.style.vertical != Some(true)
+    ) && !inherited.wm().vertical()
+        && !e.style.wm().vertical()
         && matches!(e.style.height, Some(Len::Pct(_)))
         && !matches!(
             e.style.position,

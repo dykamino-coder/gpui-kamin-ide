@@ -30,6 +30,11 @@ pub struct Logical {
     /// (у `vertical-rl` inline-start это ВЕРХ, а разбор писал влево).
     /// Порядок: [block-start, inline-end, block-end, inline-start].
     pub border: [Option<String>; 4],
+    /// Logical border longhands `border-{block,inline}-{start,end}-{width,
+    /// style,color}` in declaration order: (logical side in the `border`
+    /// order above, physical longhand suffix, raw value). css-logical-1 §4.3:
+    /// mapped by the element's writing mode, after inheritance.
+    pub border_long: Vec<(u8, &'static str, String)>,
 }
 
 /// Четыре логические стороны коробки.
@@ -116,6 +121,11 @@ pub enum TextEdge {
     Ex,
     /// Алфавитная базовая линия (только нижний край).
     Alphabetic,
+    /// Идеографические базовые линии (края em-коробки, css-inline-3
+    /// §text-edges); без таблицы `BASE` — синтез из подъёма и спуска.
+    Ideographic,
+    /// Идеографические линии чернил; без таблицы — как `Ideographic`.
+    IdeographicInk,
 }
 
 /// `border-shape` (css-borders-4 §border-shape): одна фигура — рамка

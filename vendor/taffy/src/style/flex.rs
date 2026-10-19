@@ -38,6 +38,11 @@ pub trait FlexboxContainerStyle: CoreStyle {
     fn flex_cross_reverse(&self) -> bool {
         Style::<Self::CustomIdent>::DEFAULT.flex_cross_reverse
     }
+    /// KaminIDE patch: block-container baselines for a block-emulating column (see `Style`).
+    #[inline(always)]
+    fn block_baselines(&self) -> bool {
+        Style::<Self::CustomIdent>::DEFAULT.block_baselines
+    }
     /// KaminIDE patch: анонимный ряд строки — доли высоты детей решаются от
     /// высоты родителя ряда, а не от самого ряда (CSS 2.1 §10.1).
     #[inline(always)]
@@ -120,6 +125,14 @@ pub trait FlexboxItemStyle: CoreStyle {
     /// (css-sizing-3 §3.2), measured by the flex container.
     #[inline(always)]
     fn max_size_keywords(&self) -> crate::geometry::Size<Option<crate::style::AvailableSpace>> {
+        crate::geometry::Size {
+            width: None,
+            height: None,
+        }
+    }
+    /// Explicit intrinsic minima, independently measured by flex layout.
+    #[inline(always)]
+    fn min_size_keywords(&self) -> crate::geometry::Size<Option<crate::style::AvailableSpace>> {
         crate::geometry::Size {
             width: None,
             height: None,

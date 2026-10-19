@@ -10,8 +10,11 @@ pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
 
 /// Абзац со своей раскладкой строк.
+// Paragraph span records retain their text ranges, geometry and decoration state.
+#[allow(clippy::type_complexity)]
 pub struct Paragraph {
-    pub(super) scroll_owner: Option<u64>,
+    /// Scroll owner and the shift chain the paragraph is built in.
+    pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,
@@ -87,6 +90,8 @@ pub struct Paragraph {
     pub(super) tab_stop: tabs::TabStops,
     /// Чем показывать перенос слова (`hyphenate-character`).
     pub(super) hyphen: SharedString,
+    /// Consecutive automatic/manual hyphenation limit (CSS Text 4).
+    pub(super) hyphen_limit_lines: usize,
     /// Ширина этого знака — считается при раскладке, где есть окно.
     pub(super) hyphen_w: std::cell::RefCell<Vec<(usize, Pixels)>>,
     /// Куски ВНЕ потока: байтовое место в тексте → элемент. Рисуются поверх
@@ -94,6 +99,10 @@ pub struct Paragraph {
     /// Третье поле — блочный уровень: коробка встаёт в начало СЛЕДУЮЩЕЙ
     /// строки (см. `inline::Piece::Overlay`).
     pub(super) overlays: Vec<(usize, AnyElement, crate::text::inline::OverlayAt)>,
+    /// Overlay `i` follows the clamp point (css-overflow-4 §5.3): its
+    /// inline containing block starts after the last line kept by
+    /// `line-clamp`, so it is laid out but not painted.
+    pub(super) overlay_hidden: Vec<bool>,
     /// Трекинг (`letter-spacing`): добавка к каждому знаку.
     pub(super) letter_spacing: Pixels,
     /// `word-spacing` — добавка к КАЖДОМУ пробелу. Шейпер о ней не знает,
@@ -210,7 +219,7 @@ pub struct Paragraph {
     /// первой строки сверху и последней снизу её не растят — срез идёт по краю текста
     /// корневой строчной коробки, и выход аннотации срезался бы всё равно
     /// (css-inline-3 §text-box-trim, `text-box-trim-ruby-start-001`).
-    pub(super) ruby_trim: (bool, bool),
+    pub(super) ruby_trim: crate::text::line_trim::Trim,
     /// Куски со знаком акцента (`text-emphasis`): (отрезок, снизу?, высота
     /// знака). Знак растит строку так же, как аннотация руби
     /// (css-text-decor-3 §5.3 «If emphasis marks … do not fit, the UA must
@@ -234,7 +243,7 @@ pub struct Paragraph {
     pub(super) strut_run: Option<(gpui::Font, Pixels)>,
     /// Подъём и спуск струта в точках (меряются в `request_layout`).
     pub(super) strut_box: (f32, f32),
-    /// Границы строк в байтах — считаются на замере, переиспользуются на
-    /// отрисовке.
+    pub(super) first_strut: Option<super::first_line::Strut>,
+    /// Границы строк в байтах для замера и отрисовки.
     pub(super) lines: Vec<Line>,
 }

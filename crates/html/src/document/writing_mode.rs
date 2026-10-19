@@ -1,9 +1,10 @@
-//! Writing mode for document; split out to keep the owning module within 250 lines.
+//! §8.2 principal writing mode: the root box takes the body's writing mode (used value only), and the vertical root fills the viewport along its inline axis.
 
 use super::any_containment;
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 
-pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
+pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Node> {
     let [Node::Element(html)] = nodes.as_mut_slice() else {
         return nodes;
     };
@@ -57,18 +58,11 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
     let body_contained = any_containment(body);
     let taken = if body_contained {
-        (
-            html.style.vertical,
-            html.style.vertical_rl,
-            html.style.rtl,
-            html.style.sideways,
-        )
+        (html.style.writing_mode, html.style.rtl)
     } else {
         (
-            body.style.vertical.or(html.style.vertical),
-            body.style.vertical_rl.or(html.style.vertical_rl),
+            body.style.writing_mode.or(html.style.writing_mode),
             body.style.rtl.or(html.style.rtl),
-            body.style.sideways.or(html.style.sideways),
         )
     };
     // Та же пометка, что и при обособлении корня: письмо тела осталось при
@@ -85,12 +79,8 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
             }
         }
     }
-    let own = (
-        html.style.vertical,
-        html.style.vertical_rl,
-        html.style.rtl,
-        html.style.sideways,
-    );
+    let own = (html.style.writing_mode, html.style.rtl);
+    let taken_vertical = taken.0.is_some_and(|m| m.is_vertical());
     // Главное вертикальное письмо: строчная ось корня занимает всё окно
     // (§8.2) — И при письме, заданном на самом `<html>` (taken == own):
     // эталон wm-propagation-047 ставит sideways-lr на корень, и без 100vh
@@ -101,27 +91,25 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2): якорь самим
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
-    if taken.1 == Some(true) && html.style.align_self.is_none() && html.style.bg_image.is_none() {
+    if taken.0.is_some_and(|m| m.is_rl())
+        && html.style.align_self.is_none()
+        && html.style.bg_image.is_none()
+    {
         html.style.align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
     // (background-size-document-root-vrl-*). Обычным вертикальным корням
     // минимум не ставится — терялась скроллер-структура (av-size-022/023).
-    if taken.0 == Some(true)
+    if taken_vertical
         && html.style.bg_image.is_some()
         && html.style.height.is_none()
         && html.style.min_height.is_none()
     {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
-    let side_lr = taken.3 == Some(true) && taken.1 != Some(true);
-    if taken.0 == Some(true)
-        && side_lr
-        && html.style.height.is_none()
-        && html.style.min_height.is_none()
-    {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
     if taken == own {
         return nodes;
@@ -135,19 +123,60 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>) -> Vec<Node> {
         if !(e.tag == "::after" || e.tag == "::before") {
             continue;
         }
-        e.style.vertical = e.style.vertical.or(own.0);
-        e.style.vertical_rl = e.style.vertical_rl.or(own.1);
-        e.style.rtl = e.style.rtl.or(own.2);
-        e.style.sideways = e.style.sideways.or(own.3);
+        // Ordinary inline text participates in the principal root line (§8.2).
+        // Their text participates in the root's used line orientation; block
+        // pseudo boxes retain the root's original computed writing mode.
+        if !crate::render::inline_level(e) {
+            e.style.writing_mode = e.style.writing_mode.or(Some(own.0.unwrap_or_default()));
+        }
+        e.style.rtl = e.style.rtl.or(Some(own.1.unwrap_or(false)));
     }
-    if taken.0 == Some(true) && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(crate::style::values::value::Len::Vh(1.0));
+    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
+        html.style.min_height = Some(fill_inline(&html.style, vcx));
     }
-    (
-        html.style.vertical,
-        html.style.vertical_rl,
-        html.style.rtl,
-        html.style.sideways,
-    ) = taken;
+    (html.style.writing_mode, html.style.rtl) = taken;
     nodes
+}
+
+/// CSS Writing Modes 4 §8.2: the principal vertical root's inline size is the
+/// viewport height, and a block-level box fills what is left after its own
+/// margins (CSS 2.1 §10.3.3 applied to the line axis). `100vh` alone ignored
+/// the root's margins/borders/padding and overflowed the window.
+fn fill_inline(
+    style: &crate::style::computed::Computed,
+    vcx: ValueCx<'_>,
+) -> crate::style::values::value::Len {
+    use crate::style::values::value::Len;
+    let px = |l: Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(v),
+        _ => None,
+    };
+    let edge = |m: Option<Len>, b: Option<Len>, bv: Option<bool>, p: Option<Len>| {
+        let border = if bv == Some(true) { px(b)? } else { 0.0 };
+        let inner = if style.border_box == Some(true) {
+            0.0
+        } else {
+            border + px(p)?
+        };
+        Some(px(m)? + inner)
+    };
+    let sum = edge(
+        style.margin.top,
+        style.border_width.top,
+        style.border_visible[0],
+        style.padding.top,
+    )
+    .zip(edge(
+        style.margin.bottom,
+        style.border_width.bottom,
+        style.border_visible[2],
+        style.padding.bottom,
+    ));
+    match sum {
+        Some((a, b)) if a + b > 0.0 => {
+            Len::parse(&format!("calc(100vh - {}px)", a + b), vcx).unwrap_or(Len::Vh(1.0))
+        }
+        _ => Len::Vh(1.0),
+    }
 }

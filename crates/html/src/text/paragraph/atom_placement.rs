@@ -22,6 +22,15 @@ impl Paragraph {
             let (p, q) = pads.get(i).copied().unwrap_or((0.0, 0.0));
             y += lh + p + q;
         }
+        // `vertical-lr` feeds lines bottom-up (`reversed_offset` in painting):
+        // the first line owns the bottom row, so its atoms go there as well.
+        if self.lines_reversed {
+            let total = y;
+            for (i, top) in tops.iter_mut().enumerate() {
+                let (p, q) = pads.get(i).copied().unwrap_or((0.0, 0.0));
+                *top = total - *top - (lh + p + q);
+            }
+        }
         for k in 0..self.atoms.len() {
             let Some(b) = self.atom_boxes.get(k).copied() else {
                 continue;

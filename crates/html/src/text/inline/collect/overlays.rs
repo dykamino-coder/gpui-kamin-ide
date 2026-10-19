@@ -1,7 +1,7 @@
 //! Overlays for collect; split out to keep the owning module within 250 lines.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
 
@@ -14,7 +14,11 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// у блочного начала строки — при `vertical-rl` это ПРАВЫЙ край
 /// (css-writing-modes-4 §7.1; Blink `static_position` с `InsetBias::kEnd`
 /// по физической оси x), а не левый, как у горизонтальной строки.
-pub(crate) fn overlay_in_row(el: AnyElement, turned: Option<bool>) -> AnyElement {
+pub(crate) fn overlay_in_row(
+    el: AnyElement,
+    turned: Option<bool>,
+    positioning: &crate::layout::positioned::containing_block::Positioning,
+) -> AnyElement {
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     if let Some(rl) = turned {
         spot.set(crate::layout::positioned::containing_block::Spot {
@@ -23,8 +27,8 @@ pub(crate) fn overlay_in_row(el: AnyElement, turned: Option<bool>) -> AnyElement
             ..Default::default()
         });
     }
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
-    match crate::layout::positioned::containing_block::late_push(spot, el) {
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false, None);
+    match positioning.late_push(spot, el) {
         None => probe,
         Some(kept) => {
             let mut hole = gpui::div().relative().w_0().h_0().flex_shrink_0();
@@ -49,10 +53,7 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     if style.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let (dx, dy) = (
         px_of(style.inset.left) - px_of(style.inset.right),
         px_of(style.inset.top) - px_of(style.inset.bottom),
@@ -60,6 +61,13 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     if dx == 0.0 && dy == 0.0 {
         return pieces;
     }
+    // Rotated paragraphs are typeset horizontally and turned afterwards: express
+    // the physical relative offset in the pre-rotation frame, as the text runs do.
+    let (rx, ry) = if rotated {
+        to_rotated_frame(style, (dx, dy))
+    } else {
+        (dx, dy)
+    };
     pieces
         .into_iter()
         .map(|p| match p {
@@ -75,11 +83,21 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
                     ..at
                 },
             ),
+            // Метка строчной коробки-якоря копит сдвиг в `rot_dx/rot_dy`:
+            // рамку считает абзац по месту меток (`spacers::overlays`).
+            Piece::Overlay(el, at) if at.box_marker.is_some() => Piece::Overlay(
+                el,
+                OverlayAt {
+                    rot_dx: at.rot_dx + rx,
+                    rot_dy: at.rot_dy + ry,
+                    ..at
+                },
+            ),
             Piece::Overlay(el, at) if rotated => Piece::Overlay(
                 el,
                 OverlayAt {
-                    rot_dx: at.rot_dx + dx,
-                    rot_dy: at.rot_dy + dy,
+                    rot_dx: at.rot_dx + rx,
+                    rot_dy: at.rot_dy + ry,
                     ..at
                 },
             ),
@@ -94,4 +112,16 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
             other => other,
         })
         .collect()
+}
+
+/// Physical offset -> pre-rotation frame of a rotated vertical line: a clockwise
+/// turn sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way (css-writing-modes-4 §7.1).
+pub(crate) fn to_rotated_frame(style: &Computed, (dx, dy): (f32, f32)) -> (f32, f32) {
+    use crate::style::computed::writing_mode::Turn;
+    if style.wm().line().line_turn() == Turn::CounterClockwise {
+        (-dy, dx)
+    } else {
+        (dy, -dx)
+    }
 }

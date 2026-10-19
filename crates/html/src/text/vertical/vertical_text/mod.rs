@@ -5,10 +5,8 @@ mod painting;
 mod prepaint;
 
 use super::{VT_FRAME, VT_INLINE_MAX, VT_MEASURED};
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window,
-};
+use crate::hooks::Wrap;
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 pub struct VerticalText {
     /// Own layout node: the unrounded box edge anchors the turned content.
@@ -16,7 +14,7 @@ pub struct VerticalText {
     /// Clockwise turn frame from prepaint: unrounded block extent and the
     /// pre-turn block-axis phase that keeps pixel snapping physical.
     pub(crate) turn: Option<(Pixels, Pixels)>,
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Естественный размер содержимого до поворота.
     pub(crate) natural: gpui::Size<Pixels>,
     /// Потолок заявляемой высоты (см. `claiming_height`).
@@ -50,58 +48,20 @@ pub struct VerticalText {
     pub(crate) first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
 }
 
-impl Element for VerticalText {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for VerticalText {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
+        self.request_layout_impl(window, cx)
     }
 
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        self.request_layout_impl(_id, _inspector_id, window, cx)
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        self.prepaint_impl(bounds, window, cx)
     }
 
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.prepaint_impl(_id, _inspector_id, bounds, _state, window, cx)
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.paint_impl(_id, _inspector_id, bounds, _state, _prepaint, window, cx)
-    }
-}
-
-impl IntoElement for VerticalText {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        self.paint_impl(bounds, window, cx)
     }
 }

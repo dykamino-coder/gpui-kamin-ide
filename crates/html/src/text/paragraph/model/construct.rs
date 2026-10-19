@@ -2,7 +2,6 @@
 
 use super::Paragraph;
 use super::{Align, Indent, Wrap};
-use crate::text::paragraph::probes::*;
 use crate::text::paragraph::tabs;
 use gpui::{Hsla, Pixels, SharedString, TextRun, point, px};
 
@@ -17,8 +16,8 @@ impl Paragraph {
     ) -> Self {
         Paragraph {
             scroll_owner: None,
-            ruby_base_sink: take_ruby_base_sink(),
-            ruby_layers: crate::text::ruby::layers::current(),
+            ruby_base_sink: None,
+            ruby_layers: None,
             text,
             runs,
             font_size,
@@ -67,13 +66,14 @@ impl Paragraph {
             strut: (0.0, 0.0, 0.0),
             run_metrics: Vec::new(),
             edge_spans: Vec::new(),
-            ruby_trim: (false, false),
+            ruby_trim: Default::default(),
             emph_spans: Vec::new(),
             decor_spans: Vec::new(),
             decor_pending: Default::default(),
             box_spans: Vec::new(),
             strut_run: None,
             strut_box: (0.0, 0.0),
+            first_strut: None,
             lines: Vec::new(),
             clamp: None,
             clamp_force: false,
@@ -90,13 +90,24 @@ impl Paragraph {
             fit_line_height_fixed: false,
             tab_stop: tabs::TabStops::uniform(64.0),
             hyphen: SharedString::from("\u{2010}"),
+            hyphen_limit_lines: usize::MAX,
             hyphen_w: std::cell::RefCell::new(Vec::new()),
             overlays: Vec::new(),
+            overlay_hidden: Vec::new(),
         }
     }
 }
 
 impl Paragraph {
+    /// Ruby context of the place where the paragraph is built: the base-width
+    /// sink of the ruby column (the first paragraph built under it takes it)
+    /// and the base's annotation layers.
+    pub(crate) fn ruby_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
+        self.ruby_base_sink = cx.ruby_base.as_ref().and_then(|offer| offer.take());
+        self.ruby_layers = cx.ruby_layers.clone();
+        self
+    }
+
     /// Пустой абзац — только чтобы на миг занять место настоящего, пока тот
     /// рисуется в повёрнутой системе координат.
     pub(crate) fn empty() -> Self {

@@ -47,7 +47,7 @@ pub(crate) fn gap_rule_spec(
         a: 1.0,
     });
     let s = &e.style;
-    let axis = |column: bool| -> Option<GapAxisRule> {
+    let axis = |column: bool| -> GapAxisRule {
         let (vis, w, c, ws, ss, cs, brk, inset, visibility) = if column {
             (
                 s.column_rule_visible,
@@ -76,9 +76,6 @@ pub(crate) fn gap_rule_spec(
         let styles = ss
             .clone()
             .unwrap_or_else(|| GapList::single(vis == Some(true)));
-        if !styles.any(|v| *v) {
-            return None;
-        }
         let widths = ws
             .as_ref()
             .map(|l| l.map(px))
@@ -93,7 +90,7 @@ pub(crate) fn gap_rule_spec(
                 GapInset::Len(Len::Em(k)) => GapInset::Len(Len::Px(k * size)),
                 other => other,
             });
-        Some(GapAxisRule {
+        GapAxisRule {
             widths,
             colors,
             styles,
@@ -105,14 +102,22 @@ pub(crate) fn gap_rule_spec(
             } else {
                 s.row_rule_double
             },
-        })
+            kinds: if column {
+                &s.column_rule_kinds
+            } else {
+                &s.row_rule_kinds
+            }
+            .clone()
+            .unwrap_or(crate::style::computed::GapList::single(0)),
+        }
     };
     let col = axis(true);
     let row = axis(false);
-    if col.is_none() && row.is_none() {
+    if !col.styles.any(|v| *v) && !row.styles.any(|v| *v) {
         return None;
     }
-    gap_rule_layout(merged, size, s, col, row)
+    // Invisible rules still supply their computed width at junctions (CSS Gaps).
+    gap_rule_layout(merged, size, s, Some(col), Some(row))
 }
 
 /// Линейки промежутков многоколоночника с рядами (css-gaps-1 §gap-multicol:

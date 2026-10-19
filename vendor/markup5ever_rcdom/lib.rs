@@ -47,6 +47,8 @@
 extern crate markup5ever;
 extern crate tendril;
 
+mod selection;
+
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashSet, VecDeque};
@@ -186,72 +188,6 @@ impl Node {
         parent
     }
 
-    /// <https://html.spec.whatwg.org/#select-enabled-selectedcontent>
-    /// KaminIDE patch: выбранный пункт этого `<select>`.
-    ///
-    /// Правило сброса из спецификации: последний пункт с атрибутом
-    /// `selected`, иначе первый пункт списка.
-    fn selected_option(self: &Rc<Self>) -> Option<Rc<Self>> {
-        let mut options: Vec<Rc<Self>> = Vec::new();
-        let mut remaining = VecDeque::default();
-        remaining.extend(self.children.borrow().iter().cloned());
-        while let Some(node) = remaining.pop_front() {
-            if let NodeData::Element { name, .. } = &node.data {
-                if name.local_name() == &local_name!("option") {
-                    options.push(node.clone());
-                }
-            }
-            remaining.extend(node.children.borrow().iter().cloned());
-        }
-        let has_attr = |node: &Rc<Self>| match &node.data {
-            NodeData::Element { attrs, .. } => attrs
-                .borrow()
-                .iter()
-                .any(|a| a.name.local == local_name!("selected")),
-            _ => false,
-        };
-        options
-            .iter()
-            .rev()
-            .find(|o| has_attr(o))
-            .or_else(|| options.first())
-            .cloned()
-    }
-
-    /// KaminIDE patch: выбран ли этот `<option>` внутри своего `<select>`.
-    ///
-    /// Правило сброса из спецификации: если есть пункты с атрибутом
-    /// `selected`, выбран последний из них; иначе выбран первый пункт.
-    fn is_selected_option(self: &Rc<Self>) -> bool {
-        let Some(select) = self.get_option_element_nearest_ancestor_select() else {
-            return false;
-        };
-        let mut options: Vec<Rc<Self>> = Vec::new();
-        let mut remaining = VecDeque::default();
-        remaining.extend(select.children.borrow().iter().cloned());
-        while let Some(node) = remaining.pop_front() {
-            if let NodeData::Element { name, .. } = &node.data {
-                if name.local_name() == &local_name!("option") {
-                    options.push(node.clone());
-                }
-            }
-            remaining.extend(node.children.borrow().iter().cloned());
-        }
-        let has_attr = |node: &Rc<Self>| match &node.data {
-            NodeData::Element { attrs, .. } => attrs
-                .borrow()
-                .iter()
-                .any(|a| a.name.local == local_name!("selected")),
-            _ => false,
-        };
-        let chosen = options
-            .iter()
-            .rev()
-            .find(|o| has_attr(o))
-            .or_else(|| options.first());
-        chosen.is_some_and(|o| Rc::ptr_eq(o, self))
-    }
-
     fn get_a_selects_enabled_selectedcontent(&self) -> Option<Rc<Self>> {
         // Step 1. If select has the multiple attribute, then return null.
         let NodeData::Element { name, attrs, .. } = &self.data else {
@@ -268,12 +204,11 @@ impl Node {
 
         // Step 2. Let selectedcontent be the first selectedcontent element descendant of select in tree order
         // if any such element exists; otherwise return null.
-        // FIXME: This does not visit the nodes in tree order
-        let mut remaining = VecDeque::default();
-        remaining.extend(self.children.borrow().iter().cloned());
+        // KaminIDE patch: depth-first tree order, including grouped descendants.
+        let mut remaining: Vec<_> = self.children.borrow().iter().rev().cloned().collect();
         let mut selectedcontent = None;
-        while let Some(node) = remaining.pop_front() {
-            remaining.extend(node.children.borrow().iter().cloned());
+        while let Some(node) = remaining.pop() {
+            remaining.extend(node.children.borrow().iter().rev().cloned());
 
             // KaminIDE patch: имя ПЕРЕБИРАЕМОГО узла, а не самого `<select>`.
             // С `self.data` цикл проверял одно и то же имя на каждом шаге и
@@ -440,11 +375,15 @@ impl TreeSink for RcDom {
         while let Some(node) = stack.pop() {
             if let NodeData::Element { name, .. } = &node.data {
                 if name.local_name() == &local_name!("select") {
-                    if let (Some(option), Some(target)) = (
-                        node.selected_option(),
-                        node.get_a_selects_enabled_selectedcontent(),
-                    ) {
-                        option.clone_an_option_into_selectedcontent(target);
+                    if let Some(target) = node.get_a_selects_enabled_selectedcontent() {
+                        if let Some(option) = node.selected_option() {
+                            option.clone_an_option_into_selectedcontent(target);
+                        } else {
+                            // KaminIDE patch: reset can leave a listbox with no selection.
+                            for child in target.children.borrow_mut().drain(..) {
+                                child.parent.set(None);
+                            }
+                        }
                     }
                 }
             }
@@ -691,11 +630,8 @@ impl TreeSink for RcDom {
         if let Some(selectedcontent) =
             select.and_then(|select| select.get_a_selects_enabled_selectedcontent())
         {
-            // KaminIDE patch: выбранность пункта, а не наличие атрибута.
-            // Спецификация («ask for a reset») делает выбранным ПОСЛЕДНИЙ
-            // пункт с `selected`, а если такого нет — ПЕРВЫЙ пункт списка.
-            // Проверка одного атрибута теряла обычный случай `<select>` с
-            // единственным пунктом, и набор html5lib расходился.
+            // KaminIDE patch: общий статический reset учитывает порядок дерева,
+            // selected, multiple, disabled и display size (см. selection.rs).
             if option.is_selected_option() {
                 option.clone_an_option_into_selectedcontent(selectedcontent);
             }

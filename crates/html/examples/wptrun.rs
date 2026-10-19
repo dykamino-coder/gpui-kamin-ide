@@ -1,7 +1,9 @@
 //! Прогон reftest-ов WPT: тест и эталон рисуются НАШИМ движком, снимки
 //! сравниваются между собой.
+//! `WPT_ANIMATION_FRAMES=0,125,500,1000` compares animated pairs at every listed
+//! millisecond time; without it the ordinary single-capture protocol is unchanged.
 //!
-//!     cargo run --example wptrun -- <список.txt> [ширина] [высота]
+//!     cargo run --example wptrun --features wpt-harness -- <список.txt> [ширина] [высота]
 //!
 //! Формат списка: по строке на пару, `тест|эталон`. Эталон в reftest написан
 //! примитивной вёрсткой, дающей заведомо тот же результат, поэтому
@@ -12,9 +14,18 @@
 //! тысячи. Документ подменяется в той же сущности, кадр снимается прямо
 //! отсюда (`PrintWindow`), и следующая пара идёт без перезапуска.
 
-// The runner is configured through WPT_* environment variables (see clippy.toml).
-#![allow(clippy::disallowed_methods)]
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+#![allow(
+    clippy::disallowed_methods,
+    reason = "process entry point reads OS and tool configuration from the environment"
+)]
 
+#[path = "wptrun/animation_frames.rs"]
+mod animation_frames;
 #[path = "wptrun/capture.rs"]
 mod capture;
 #[path = "wptrun/capture_dump.rs"]
@@ -37,6 +48,8 @@ mod page;
 mod page_box;
 #[path = "wptrun/page_box_values.rs"]
 mod page_box_values;
+#[path = "wptrun/paged.rs"]
+mod paged;
 #[path = "wptrun/pair.rs"]
 mod pair;
 #[path = "wptrun/pixel_compare.rs"]

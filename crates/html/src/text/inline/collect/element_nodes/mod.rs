@@ -1,5 +1,6 @@
 //! Element nodes for collect; split out to keep the owning module within 250 lines.
 
+mod list_item;
 mod special_nodes;
 use special_nodes::special_node;
 
@@ -9,12 +10,11 @@ use crate::text::inline::collect::element_nodes::blank_box::blank_box;
 mod box_paint;
 use crate::text::inline::collect::element_nodes::box_paint::element_style;
 
-use super::collect_with_empty_metrics;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline::collect::boundary_spacing::boundary_gap_after_box;
-use crate::text::inline::collect::boundary_spacing::set_boundary_spacing;
+use crate::text::inline::collect::boundary_spacing::set_parent_boundary_spacing;
 use crate::text::inline::collect::overlays::shift_overlays;
 use crate::text::inline::*;
 
@@ -22,23 +22,22 @@ use crate::text::inline::*;
 pub(super) fn collect_element(
     e: &Element,
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
     out: &mut Vec<Piece>,
     gap_at: &mut Option<usize>,
     from: usize,
 ) {
-    if special_node(e, inherited, atom, has_text, case, out) {
+    let doc = cx.layout.doc().clone();
+    let vcx = doc.frame_values();
+    if special_node(e, inherited, atom, has_text, cx, out) {
         return;
     }
-    // Атому сообщают, лежит ли он в позиционированном строчном
-    // (`take_atom_cb`); его собственное содержимое — уже вне его.
-    let depth = INLINE_CB_DEPTH.with(|d| d.replace(0));
-    ATOM_CB.with(|c| c.set(depth > 0));
-    let built = atom(e);
-    ATOM_CB.with(|c| c.set(false));
-    INLINE_CB_DEPTH.with(|d| d.set(depth));
+    // Атому сообщают стиль ближайшего строчного предка и лежит ли он в
+    // позиционированном строчном (`AtomCx`); его собственное содержимое —
+    // уже вне их: вложенный сбор кусков начинает свой контекст.
+    let built = atom(e, &cx.atom_cx());
     if let Some(piece) = built {
         // CSS Ruby box fixup suppresses the break that an empty block would
         // introduce. Its inlinified zero-size box must not create a soft
@@ -56,7 +55,7 @@ pub(super) fn collect_element(
             out.push(joiner());
         }
         if matches!(piece, Piece::Atom(_)) {
-            case.boundary();
+            cx.case.boundary();
         }
         out.push(piece);
         if join {
@@ -78,7 +77,7 @@ pub(super) fn collect_element(
         }
         return;
     }
-    let (mut merged, painted_bg) = element_style(e, inherited);
+    let (mut merged, painted_bg) = element_style(e, inherited, vcx);
     let atomic = matches!(
         e.style.display,
         Some(crate::style::computed::Display::InlineBlock)
@@ -109,8 +108,8 @@ pub(super) fn collect_element(
     // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
     // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
-        inline_spacing::inline_sides(e, &merged, inherited);
-    let own_rtl = merged.rtl == Some(true);
+        inline_spacing::inline_sides(e, &merged, inherited, cx.layout.avail_w);
+    let own_rtl = merged.wm().rtl();
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);
         std::mem::swap(&mut mlead, &mut mtrail);
@@ -141,7 +140,9 @@ pub(super) fn collect_element(
             style: edge(margin_spacer_style(&merged, inherited, mlead), true),
         });
     }
-    let blank = blank_box(e, &merged, inherited, painted_bg, lead, trail, out);
+    let blank = blank_box(
+        e, &merged, inherited, painted_bg, lead, trail, out, &cx.layout,
+    );
     if lead != 0.0 {
         out.push(Piece::Text {
             text: SPACER.into(),
@@ -181,7 +182,10 @@ pub(super) fn collect_element(
     if let Some(mark) = open {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: merged.clone(),
+            style: Computed {
+                inline_control: true,
+                ..merged.clone()
+            },
         });
     }
     // Относительный сдвиг строчного куска несёт и его потомков вне
@@ -189,26 +193,26 @@ pub(super) fn collect_element(
     // спана стоит от СДВИНУТОГО места (`static-position/htb-*`).
     let cb_here = establishes_cb(&e.style);
     if cb_here {
-        INLINE_CB_DEPTH.with(|d| d.set(d.get() + 1));
+        cx.inline_cb_depth += 1;
     }
-    crate::text::inline::atom_parent::open(&e.style, inherited);
-    let kids = collect_with_empty_metrics(&e.children, &merged, atom, has_text, case);
-    crate::text::inline::atom_parent::close();
+    crate::text::inline::atom_parent::open(&mut cx.inline_parents, &e.style, inherited, vcx);
+    let kids = list_item::children(e, &merged, atom, has_text, cx);
+    cx.inline_parents.pop();
     let kids = if cb_here {
-        INLINE_CB_DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        cx.inline_cb_depth = cx.inline_cb_depth.saturating_sub(1);
         mark_inline_cb(kids, e)
     } else {
         kids
     };
-    out.extend(shift_overlays(
-        kids,
-        &e.style,
-        merged.rotated_line == Some(true),
-    ));
+    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged);
+    out.extend(shift_overlays(kids, &e.style, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(Piece::Text {
             text: mark.to_string(),
-            style: merged.clone(),
+            style: Computed {
+                inline_control: true,
+                ..merged.clone()
+            },
         });
     }
     if box_id != 0 {
@@ -236,5 +240,5 @@ pub(super) fn collect_element(
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
     // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
     // снимается ниже с последнего куска: за ним границы уже нет.
-    set_boundary_spacing(&mut out[from..], inherited.letter_spacing);
+    set_parent_boundary_spacing(&mut out[from..], inherited.letter_spacing);
 }

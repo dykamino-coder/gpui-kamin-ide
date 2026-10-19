@@ -26,6 +26,7 @@ pub(crate) fn static_position_layer(
     below_zs: &mut Vec<i32>,
     mut below_run_start: usize,
     mut below_run_end: usize,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> (usize, usize) {
     // Позиционированный элемент рисуется ПОВЕРХ обычного
     // содержимого (CSS 2.1 §9.9, шаг 8) и без заданного `z-index`:
@@ -48,11 +49,19 @@ pub(crate) fn static_position_layer(
     // там его место — поверх всего.
     let below = e.style.z_index.is_some_and(|z| z < 0);
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
+    // In a vertical parent the flag means "inline-start is the bottom":
+    // `direction: rtl` of `vertical-*`, `ltr` of `sideways-lr` (§6.4).
+    let wm = inherited.wm();
+    let rtl = if wm.vertical() {
+        wm.inline_start() == crate::style::computed::writing_mode::Side::Bottom
+    } else {
+        wm.rtl()
+    };
     spot.set(crate::layout::positioned::containing_block::Spot {
-        rtl: inherited.rtl == Some(true),
-        vertical: inherited.vertical == Some(true),
-        vertical_rl: inherited.vertical_rl == Some(true),
-        own_vertical: e.style.vertical == Some(true),
+        rtl,
+        vertical: wm.vertical(),
+        vertical_rl: wm.block_rl(),
+        own_vertical: e.style.wm().vertical(),
         replaced: matches!(
             e.tag.as_str(),
             "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
@@ -61,7 +70,7 @@ pub(crate) fn static_position_layer(
         self_align: static_self_align(e, inherited),
         ..Default::default()
     });
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true);
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), true, None);
     // Поля сдвигают абсолютный элемент ОТ статической позиции
     // (CSS 2.1 §10.3.7: auto-края = static + margin). Раскладка
     // под нами поля у absolute без краёв не считает — сдвиг
@@ -85,7 +94,7 @@ pub(crate) fn static_position_layer(
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
     let mr = margin_px(e.style.margin.right, &e.style).unwrap_or(0.0);
-    let stretch = inherited.rtl != Some(true) && inherited.vertical != Some(true);
+    let stretch = !inherited.wm().rtl() && !inherited.wm().vertical();
     let built = if (ml != 0.0 || mt != 0.0) && !below {
         let wrap = div().absolute().left(px(ml)).top(px(mt));
         let wrap = if stretch { wrap.right(px(mr)) } else { wrap };
@@ -107,15 +116,15 @@ pub(crate) fn static_position_layer(
     // всех соседей контейнера.
     let taken = if below {
         Some(built)
-    } else if paint_last_ok(e, &nodes[idx + 1..]) {
-        crate::layout::positioned::containing_block::late_push(
+    } else if paint_last_ok(e, &nodes[idx + 1..], cx) {
+        cx.positioning.late_push(
             spot,
             gpui::PaintLast::new(built)
                 .key(paint_key)
                 .into_any_element(),
         )
     } else {
-        crate::layout::positioned::containing_block::late_push(spot, built)
+        cx.positioning.late_push(spot, built)
     };
     match taken {
         None => out.push(probe),
@@ -145,7 +154,9 @@ pub(crate) fn static_position_layer(
             // шаг 3 корня: под потоком и под фоном любых предков, в том
             // числе позиционированных без `z-index` выше родителя.
             let kept = if below && !crate::paint::stacking::nested_context(inherited) {
-                crate::paint::effects::underlay::Underlay::new(kept).into_any_element()
+                crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(
+                    kept,
+                ))
             } else {
                 kept
             };

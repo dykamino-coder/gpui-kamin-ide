@@ -4,8 +4,9 @@ use crate::style::computed::{Computed, Sides};
 
 pub(super) fn project<T: Copy>(flow: &Computed, sides: [T; 4]) -> [T; 4] {
     super::physical_projection::project(
-        flow.rotated_line == Some(true),
-        flow.sideways == Some(true) && flow.vertical_rl != Some(true),
+        flow.wm().turned(),
+        flow.wm().line().line_turn()
+            == crate::style::computed::writing_mode::Turn::CounterClockwise,
         sides,
     )
 }
@@ -51,9 +52,10 @@ mod tests {
 
     fn flow(rotated: bool, ccw: bool) -> Computed {
         Computed {
-            rotated_line: Some(rotated),
-            sideways: Some(ccw),
-            vertical_rl: Some(!ccw),
+            flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                true, !ccw, ccw,
+            )),
+            turned_line: rotated,
             ..Computed::default()
         }
     }

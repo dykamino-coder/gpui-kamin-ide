@@ -1,9 +1,10 @@
-//! Loading for fonts; split out to keep the owning module within 250 lines.
+//! Load font faces, cache decoded sources and register page-local family aliases.
 
 use super::{
     ALIASES, declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc,
 };
 use super::{FACES, FEATURES, HAS_SPACE, LOADED, LOADER, ROMN, ROMN_BY_SRC, SIZE_ADJUST};
+use crate::document::state::ValueCx;
 
 /// Есть ли в семействе знак пробела (U+0020).
 ///
@@ -61,9 +62,11 @@ pub(super) fn range_has_space(value: Option<&str>) -> bool {
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
 ///
-/// Путь в `url(...)` берётся как есть: страницу до движка доводит стенд, и
-/// адреса в ней уже разрешены в файлы.
-pub fn load_faces(css: &str) {
+pub fn load_faces(css: &str, vcx: ValueCx<'_>) {
+    load_faces_with_base(css, None, vcx);
+}
+
+pub(crate) fn load_faces_with_base(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
     // Имена семейств придумывает страница, и на соседней странице то же имя
     // значит другой файл — поэтому таблица подмены живёт РОВНО одну страницу.
     ALIASES.with(|a| a.borrow_mut().clear());
@@ -73,26 +76,36 @@ pub fn load_faces(css: &str) {
     SIZE_ADJUST.with(|s| s.borrow_mut().clear());
     super::metric_overrides::clear();
     ROMN.with(|r| r.borrow_mut().clear());
-    load_faces_into(css);
+    super::math::clear_aliases();
+    load_faces_into(css, base, vcx);
 }
 
 /// Дозагрузка БЕЗ сброса подмен: вложенный документ (`<iframe>`) разбирается
 /// посреди отрисовки внешнего — сброс крал бы шрифты хозяина, и весь текст
 /// после рамки падал в подстановочный шрифт.
-pub fn load_faces_additive(css: &str) {
-    load_faces_into(css);
+pub fn load_faces_additive(css: &str, vcx: ValueCx<'_>) {
+    load_faces_into(css, None, vcx);
 }
 
-pub(super) fn load_faces_into(css: &str) {
-    for block in faces(css) {
+pub(crate) fn load_faces_sheets(sheets: &[String], base: Option<&url::Url>, vcx: ValueCx<'_>) {
+    load_faces_with_base("", base, vcx);
+    for css in sheets {
+        load_faces_into(css, base, vcx);
+    }
+}
+
+pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'_>) {
+    for block in faces(css, vcx) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };
+        let src = crate::document::resource_url::resolve(&src, base);
         let real = LOADED.with(|c| c.borrow().get(&src).cloned());
         let real = match real {
             Some(hit) => hit,
             None => {
                 let loaded = read_font(&src).and_then(|bytes| {
+                    super::math::remember(&src, &bytes);
                     let romn = sfnt_romn_baseline(&bytes);
                     ROMN_BY_SRC.with(|m| m.borrow_mut().insert(src.clone(), romn));
                     LOADER.with(|l| l.borrow().as_ref().and_then(|load| load(bytes)))
@@ -102,6 +115,7 @@ pub(super) fn load_faces_into(css: &str) {
             }
         };
         if let Some(real) = real {
+            super::math::register(&src, &real);
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
             if let Some(Some(v)) = ROMN_BY_SRC.with(|m| m.borrow().get(&src).copied()) {
                 ROMN.with(|r| r.borrow_mut().insert(name.clone(), v));
@@ -137,11 +151,26 @@ pub(super) fn load_faces_into(css: &str) {
             });
             super::metric_overrides::register(&name, slope, &block);
             let width = stretch_desc(declaration(&block, "font-stretch").as_deref());
+            let weight =
+                super::matching::range(declaration(&block, "font-weight").as_deref(), 400.0);
+            let (slope, angle) =
+                super::matching::slope(declaration(&block, "font-style").as_deref());
+            let features = declaration(&block, "font-feature-settings")
+                .and_then(|v| crate::style::computed::feature_list(&v))
+                .unwrap_or_default();
             FACES.with(|f| {
                 f.borrow_mut()
                     .entry(name.clone())
                     .or_default()
-                    .push((width, real.clone()));
+                    .push(super::matching::Face {
+                        width,
+                        weight,
+                        slope,
+                        angle,
+                        family: real.clone(),
+                        adjust,
+                        features,
+                    });
             });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))

@@ -26,3 +26,6 @@ windows = { version = "0.62", features = [
   "Win32_System_JobObjects",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[lints]
+workspace = true

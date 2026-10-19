@@ -53,17 +53,19 @@ pub(crate) fn flow_metrics(
 /// Прежде высота строки на ВЕСЬ абзац бралась по самому крупному куску
 /// (`max_line_height`, `k × biggest`): одна крупная буква растила все строки,
 /// а базовая линия мелкого текста в строке с крупным стояла посередине.
+// Each span carries a text range, a baseline offset and a two-axis displacement.
+#[allow(clippy::type_complexity)]
 pub(crate) fn line_box_spans(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<(Vec<(std::ops::Range<usize>, f32)>, f32)> {
-    let vertical = inherited.vertical == Some(true) || inherited.rotated_line == Some(true);
+    let vertical = inherited.wm().vertical() || inherited.wm().turned();
     // Sideways lines use the same alphabetic metrics and per-run half-leading
     // as horizontal lines (Blink inline_box_state.cc:110-150). Only the physical
     // projection differs. Central baseline runs need their own metric table.
-    let alphabetic = inherited.sideways == Some(true) || inherited.text_sideways == Some(true);
+    let alphabetic = inherited.wm().alphabetic_baseline();
     if (vertical && !alphabetic)
         || crate::render::paragraph::paragraph_style(inherited)
             .text_fit
@@ -81,7 +83,7 @@ pub(crate) fn line_box_spans(
         _ => return None,
     };
     let mut out: Vec<(std::ops::Range<usize>, f32)> = Vec::new();
-    let mut mixed = false;
+    let mut mixed = inherited.first_line.is_some();
     let mut at = 0usize;
     for p in pieces {
         let inline::Piece::Text { text, style } = p else {
@@ -126,13 +128,13 @@ pub(crate) fn line_box_spans(
 /// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
 pub(crate) fn atoms_fit_line(inherited: &Computed, ruby: bool) -> bool {
-    inherited.vertical != Some(true)
+    !inherited.wm().vertical()
         // A rotated paragraph of atoms only is a row whose end edge sits on
         // the end of the paragraph box (`paragraph_routed`, pure-atom
         // branch); a line box would add the strut's descent below the atoms
         // (`wm-propagation-body-035`: the caption image rose by the descent).
-        && !(inherited.rotated_line == Some(true) && !rotated_atom::text_turn())
-        && (ruby || inherited.rtl != Some(true))
+        && (!inherited.wm().turned() || rotated_atom::text_turn())
+        && (ruby || !inherited.wm().rtl())
         && inherited.no_select != Some(true)
         && inherited.pointer_events_none != Some(true)
         && crate::text::paragraph::align_for(inherited) != crate::text::paragraph::Align::Justify

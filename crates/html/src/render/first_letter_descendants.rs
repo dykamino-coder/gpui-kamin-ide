@@ -39,7 +39,7 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                 // descendant. Keep relative fonts relative to that text.
                 let layer = first.clone();
                 e.style.first_letter_own = Some(Box::new(layer.clone()));
-                e.first_letter = Some(layer);
+                e.first_letter = Some(layer.into());
             }
             _ => {}
         }

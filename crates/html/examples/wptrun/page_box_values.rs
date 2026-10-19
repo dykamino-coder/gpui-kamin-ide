@@ -1,6 +1,6 @@
 //! Value helpers for the print-pair page box: lengths, sides and shorthands of `@page`.
 
-use kamin_html::value::{Color, Len};
+use kamin_html::value::{Color, Len, ValueCx};
 
 /// Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
 /// оговаривает, но `monolithic-overflow-027/-028/-029` сходятся с эталоном
@@ -40,12 +40,12 @@ pub(super) fn logical_side(wm: (bool, bool, bool), block: bool, start: bool) -> 
 /// `em` — от кегля контекста страницы (css-page-3 §page-properties: «Values
 /// in units of em … relative to the font associated with their context»);
 /// кегль листа по умолчанию — 16 (`content-004`: `margin: 4em` = 64).
-pub(super) fn page_font_size(decls: &[(String, String)]) -> f32 {
+pub(super) fn page_font_size(decls: &[(String, String)], vcx: ValueCx<'_>) -> f32 {
     decls
         .iter()
         .rev()
         .find(|(k, _)| k == "font-size")
-        .and_then(|(_, v)| match Len::parse(v.trim()) {
+        .and_then(|(_, v)| match Len::parse(v.trim(), vcx) {
             Some(Len::Px(p)) => Some(p),
             Some(Len::Em(k)) => Some(k * 16.0),
             Some(Len::Pct(k)) => Some(k * 16.0),
@@ -56,8 +56,8 @@ pub(super) fn page_font_size(decls: &[(String, String)]) -> f32 {
 
 /// Длина: точки как есть; vw/vh — от ДЕФОЛТНОЙ страницы (по тестам
 /// page-size-016/017).
-pub(super) fn abs_len(t: &str, fs: f32) -> Option<f32> {
-    match Len::parse(t)? {
+pub(super) fn abs_len(t: &str, fs: f32, vcx: ValueCx<'_>) -> Option<f32> {
+    match Len::parse(t, vcx)? {
         Len::Px(v) => Some(v),
         Len::Em(k) => Some(k * fs),
         Len::Vw(k) => Some(k * 480.0),
@@ -68,8 +68,14 @@ pub(super) fn abs_len(t: &str, fs: f32) -> Option<f32> {
 
 /// Как `abs_len`, плюс проценты — от ОБЪЯВЛЕННОГО размера страницы по своей
 /// оси (page-margin-005: 10% от 300px = 30px).
-pub(super) fn rel_len(t: &str, axis_h: bool, fs: f32, (pw, ph): (f32, f32)) -> Option<f32> {
-    match Len::parse(t)? {
+pub(super) fn rel_len(
+    t: &str,
+    axis_h: bool,
+    fs: f32,
+    (pw, ph): (f32, f32),
+    vcx: ValueCx<'_>,
+) -> Option<f32> {
+    match Len::parse(t, vcx)? {
         Len::Px(v) => Some(v),
         Len::Em(k) => Some(k * fs),
         Len::Vw(k) => Some(k * 480.0),
@@ -92,9 +98,9 @@ fn sides(v: &str) -> (&str, &str, &str, &str) {
 }
 
 /// `size` листа: числа, имена носителей и ориентация.
-pub(super) fn apply_size(v: &str, fs: f32, w: &mut f32, h: &mut f32) {
+pub(super) fn apply_size(v: &str, fs: f32, w: &mut f32, h: &mut f32, vcx: ValueCx<'_>) {
     let toks: Vec<&str> = v.split_whitespace().collect();
-    let nums: Vec<f32> = toks.iter().filter_map(|t| abs_len(t, fs)).collect();
+    let nums: Vec<f32> = toks.iter().filter_map(|t| abs_len(t, fs, vcx)).collect();
     // Нулевой лист — начальное значение (csswg#8335;
     // `printing/zero-size-001-print`: «The used page size is the
     // initial value instead of the authored width and height of zero»).
@@ -192,6 +198,7 @@ pub(super) fn apply_border(
     v: &str,
     px_of: impl Fn(&str, bool) -> Option<f32>,
     border: &mut (f32, Color),
+    vcx: ValueCx<'_>,
 ) {
     // Сокращение без толщины — `medium`, 3px (css-backgrounds-3
     // §border-width); `none`/`hidden` — без рамки
@@ -213,7 +220,7 @@ pub(super) fn apply_border(
             _ => {
                 if let Some(px) = px_of(t, false) {
                     width = Some(px);
-                } else if let Some(c) = Color::parse(t) {
+                } else if let Some(c) = Color::parse(t, vcx) {
                     border.1 = c;
                 }
             }
@@ -224,24 +231,4 @@ pub(super) fn apply_border(
         None if styled => 3.0,
         _ => 0.0,
     };
-}
-
-/// Размер листа по оси при явном `width`/`height` (см. `page_box`).
-pub(super) fn fit(size: f32, used: f32, a: bool, b: bool, ma: &mut f32, mb: &mut f32) -> f32 {
-    match (a, b) {
-        (true, true) => {
-            *ma = (size - used) / 2.0;
-            *mb = *ma;
-            size
-        }
-        (true, false) => {
-            *ma = size - used - *mb;
-            size
-        }
-        (false, true) => {
-            *mb = size - used - *ma;
-            size
-        }
-        (false, false) => used + *ma + *mb,
-    }
 }

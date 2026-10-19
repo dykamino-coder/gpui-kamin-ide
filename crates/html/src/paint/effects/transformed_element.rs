@@ -2,11 +2,12 @@
 // owner: A
 
 mod lifecycle;
+mod painting;
 
-use gpui::{AnyElement, IntoElement, Pixels};
+use gpui::{AnyElement, Pixels};
 
 pub struct Transformed {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Поворот в радианах, масштаб по осям, сдвиг в точках.
     pub rotate: f32,
     /// Скос по осям в радианах (`transform: skew`).
@@ -26,7 +27,7 @@ pub struct Transformed {
     /// Полная 4×4 элемента и доли размера в её столбце сдвига
     /// (`computed::Transform::m4`/`m4_pct`); `has_3d` — идти по ней.
     pub m4: [[f32; 4]; 4],
-    pub m4_pct: [[f32; 2]; 4],
+    pub m4_pct: [[[f32; 4]; 4]; 2],
     pub has_3d: bool,
     /// `backface-visibility: hidden` — решается по `m4[2][2]` на отрисовке,
     /// коробка держит место.
@@ -79,8 +80,7 @@ pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 /// детерминированно и одинаково для теста и эталона с той же гомографией
 /// (transform3d-matrix3d-003/-004). `None` — плоскость за глазом или ребром.
 fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::TransformationMatrix> {
-    const EPS: f32 = 1e-5;
-    if crate::style::computed::det3_plane(f).abs() < EPS {
+    if crate::style::computed::det3_plane(f).abs() < crate::tolerance::PLANE_SINGULAR_EPS {
         return None;
     }
     let (cx, cy) = center;
@@ -114,9 +114,9 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
 /// Обратная аффинная `[[a, b, tx], [c, d, ty]]`.
 ///
 /// Нужна ровно затем, чтобы снять долю родителя: gpui складывает вложенные
-/// `with_transformation` как `inner∘outer` (`window.rs:2789`; обратный
-/// порядок замерен и откачен), поэтому ребёнок объёмного контекста, желая
-/// оказаться на абсолютной `G`, обязан втолкнуть `G ∘ F_родителя⁻¹`.
+/// `with_transformation` как `outer∘inner` (css-transforms-1: матрица предка
+/// применяется последней), поэтому ребёнок объёмного контекста, желая
+/// оказаться на абсолютной `G`, обязан втолкнуть `F_родителя⁻¹ ∘ G`.
 fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
     let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
     let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
@@ -133,7 +133,7 @@ fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
 impl Transformed {
     pub fn new(child: AnyElement) -> Self {
         Transformed {
-            child: Some(child),
+            child,
             rotate: 0.0,
             skew: (0.0, 0.0),
             scale: (1.0, 1.0),
@@ -144,7 +144,7 @@ impl Transformed {
             lin: [[1.0, 0.0], [0.0, 1.0]],
             tr: [[0.0; 3]; 2],
             m4: crate::style::computed::IDENTITY4,
-            m4_pct: [[0.0; 2]; 4],
+            m4_pct: [[[0.0; 4]; 4]; 2],
             has_3d: false,
             backface_hidden: false,
             fragment_clip_ancestor: false,
@@ -172,13 +172,5 @@ impl Transformed {
         let sx = self.tr[0][0] + w * self.tr[0][1] + h * self.tr[0][2];
         let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
         (id && sx.is_finite() && sy.is_finite()).then_some((sx, sy))
-    }
-}
-
-impl IntoElement for Transformed {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

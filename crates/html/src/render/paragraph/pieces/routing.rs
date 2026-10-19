@@ -2,8 +2,8 @@
 
 use super::native_paragraph;
 use crate::layout::writing_mode::upright_in_mixed;
+use crate::paint::apply::apply;
 use crate::render::*;
-use crate::style::apply::apply;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -26,6 +26,7 @@ pub(crate) fn route_pieces(
         crate::text::paragraph::RubyExtents,
     )>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text)
@@ -118,8 +119,8 @@ pub(crate) fn route_pieces(
         // только для кусков, стоячих ЦЕЛИКОМ: смешанный кусок потребовал бы
         // резки на прогоны по ориентации.
         let vert_style;
-        let style = if style.rotated_line == Some(true)
-            && style.sideways != Some(true)
+        let style = if style.wm().turned()
+            && !style.wm().sideways()
             && t.chars().any(upright_in_mixed)
             && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
         {
@@ -132,9 +133,9 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(div(), &style.text_only())
+        let d = apply(div(), &style.text_only(), vcx)
             .max_w_full()
-            .child(SharedString::from(t.clone()));
+            .child(SharedString::from(t));
         d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
@@ -143,24 +144,25 @@ pub(crate) fn route_pieces(
     let align = inherited
         .text_align
         .unwrap_or(crate::style::computed::TextAlign::Start)
-        .physical(inherited.rtl == Some(true));
+        .physical(inherited.wm().rtl());
     inline::as_wrapped_row(
         pieces,
         inherited.vertical_align,
         Some(align),
-        inherited.rtl == Some(true),
+        inherited.wm().rtl(),
         match inherited.text_indent {
             Some(Len::Px(v)) => v,
             // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
             // смеси берутся хотя бы точки — как у чистых точек.
-            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
+            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx)
                 .pct_px()
                 .map_or(0.0, |(_, px)| px),
             _ => 0.0,
         },
         inherited.nowrap == Some(true),
         &mut render_text,
-        inherited.vertical != Some(true) && inherited.rotated_line != Some(true),
-        (inherited.rotated_line == Some(true)).then_some(inherited.vertical_rl == Some(true)),
+        !inherited.wm().vertical() && !inherited.wm().turned(),
+        (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
+        &opts.cx.positioning,
     )
 }

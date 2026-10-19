@@ -12,6 +12,7 @@
 //! Плата за такой подход — растр: при увеличении масштаба картинка не
 //! пересчитывается. Поэтому рисуем с запасом по плотности.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use clip::{shape_box, translate_only};
 use gpui::{AnyElement, IntoElement};
@@ -20,10 +21,15 @@ use serialize::serialize_sized;
 use size::size_of;
 
 mod clip;
+pub(crate) use clip::ClipIds;
 mod device_image;
+mod foreign;
 mod masks;
+pub(crate) mod path_commands;
+pub(crate) mod path_scene;
 pub(crate) mod raster;
 pub mod serialize;
+pub(crate) use serialize::geometry_property;
 pub(crate) mod size;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном
@@ -42,7 +48,24 @@ thread_local! {
 }
 
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
-pub fn element(e: &Element) -> Option<AnyElement> {
+pub(crate) fn element_with_html(
+    e: &Element,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
+    if foreign::contains(e) {
+        foreign::element(e, opts)
+    } else {
+        element(e, vcx)
+    }
+}
+
+/// Опорная коробка фигуры (`fill-box`/`stroke-box`) для motion path.
+pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
+    clip::reference_box(e, stroke)
+}
+
+pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let (w, h) = size_of(e);
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
     // растр расширяется до содержимого по свободной оси, а коробка остаётся
@@ -126,7 +149,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
         (h + clip_margin).min(child_extent(false).max(h))
     };
     // CSS-маски на детях рисунка — слоями (см. `masked_layers`).
-    if let Some(layers) = masked_layers(e, w, h, rw, rh) {
+    if let Some(layers) = masked_layers(e, w, h, rw, rh, vcx) {
         return Some(layers);
     }
     // Переполнение ВЛЕВО и ВВЕРХ (SVG 2 §overflow, `overflow: visible`):
@@ -170,7 +193,7 @@ pub fn element(e: &Element) -> Option<AnyElement> {
     let nx = if visible_x { neg_extent(true) } else { 0.0 };
     let ny = if visible_y { neg_extent(false) } else { 0.0 };
     let (cw, ch) = (rw + nx, rh + ny);
-    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny), cw, ch)?;
+    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny, vcx), cw, ch)?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
     if let Some(bg) = e.style.background {

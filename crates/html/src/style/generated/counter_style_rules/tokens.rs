@@ -88,10 +88,10 @@ pub(super) fn tokenize(v: &str) -> Vec<Tok> {
         let starts_ident = is_name_start(c)
             || valid_escape(&chars, i)
             || (c == '-'
-                && chars
+                && (chars
                     .get(i + 1)
                     .is_some_and(|n| is_name_start(*n) || *n == '-')
-                || (c == '-' && valid_escape(&chars, i + 1)));
+                    || valid_escape(&chars, i + 1)));
         if starts_ident {
             // Математическая функция — до парной скобки.
             let word: String = chars[i..].iter().take_while(|c| is_name(**c)).collect();

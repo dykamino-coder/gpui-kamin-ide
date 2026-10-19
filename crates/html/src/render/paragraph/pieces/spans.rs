@@ -27,12 +27,10 @@ pub(crate) fn paragraph_spans(
             inherited.para_vertical == Some(true),
         )
         .ortho_limit(inherited.ortho_limit.map(px))
-        .vertical_central_baseline(
-            inherited.sideways != Some(true) && inherited.text_sideways != Some(true),
-        )
+        .vertical_central_baseline(!inherited.wm().alphabetic_baseline())
         .rotated_central(rotated_central(inherited))
         .vertical_counter_clockwise(
-            inherited.para_vertical == Some(false) && inherited.sideways == Some(true),
+            inherited.para_vertical == Some(false) && inherited.wm().sideways(),
         )
         .vertical_inline_constraint(
             inherited.orthogonal_inline,
@@ -59,13 +57,22 @@ pub(crate) fn paragraph_spans(
         .word_spans(inline::word_spans(pieces, biggest))
         // Автозазоры идут ПЕРВЫМИ: поиск диапазона берёт первое
         // попадание, и зазор обязан перебить трекинг всего куска.
-        .letter_spans(
-            [
-                inline::autospace_spans(pieces, biggest),
-                inline::letter_spans(pieces, biggest),
-            ]
-            .concat(),
-        )
+        .letter_spans({
+            let auto = inline::autospace_spans(pieces, biggest);
+            let letters = inline::letter_spans(pieces, biggest);
+            // Gaps re-paired by bidi reordering go first (first match wins).
+            // They replace tracking only: an autospace gap stays in charge.
+            let mut bidi = inline::bidi_letter_spans(
+                pieces,
+                inherited.wm().rtl(),
+                inline::block_letter_spacing(inherited, biggest),
+                &letters,
+            );
+            bidi.retain(|(r, _)| !auto.iter().any(|(a, _)| a.contains(&r.start)));
+            bidi.extend(auto);
+            bidi.extend(letters);
+            bidi
+        })
         .shift_spans({
             let mut v = inline::shift_spans(
                 pieces,
@@ -102,8 +109,9 @@ pub(crate) fn paragraph_spans(
             pieces,
             biggest,
             crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
-            (inherited.rotated_line == Some(true) || inherited.vertical == Some(true))
-                .then(|| inherited.sideways == Some(true) && inherited.vertical_rl != Some(true)),
+            (inherited.wm().turned() || inherited.wm().vertical())
+                .then(|| inherited.wm().sideways_lr()),
+            opts.cx.ruby_layers.as_ref(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
@@ -112,7 +120,26 @@ pub(crate) fn paragraph_spans(
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).
 fn rotated_central(inherited: &Computed) -> bool {
-    inherited.rotated_line == Some(true)
-        && inherited.sideways != Some(true)
-        && inherited.text_sideways != Some(true)
+    inherited.wm().turned() && !inherited.wm().alphabetic_baseline()
+}
+
+/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
+/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
+/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
+/// sends the line axis (+x) to screen-down and the block axis (+y) to
+/// screen-left; `sideways-lr` turns the other way.
+// Rotation preserves each span's text range and two-axis displacements.
+#[allow(clippy::type_complexity)]
+pub(super) fn rotate_rel_spans(
+    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
+    inherited: &crate::style::computed::Computed,
+) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
+    if !inherited.wm().turned() {
+        return spans;
+    }
+    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
+    spans
+        .into_iter()
+        .map(|(r, d, b)| (r, turn(d), turn(b)))
+        .collect()
 }

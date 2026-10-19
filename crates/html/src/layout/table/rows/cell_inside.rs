@@ -1,7 +1,6 @@
 //! Место ячейки в сетке (охваты, явные координаты) и её содержимое (BFC ячейки, обрезка, выравнивание).
 
 use crate::dom::{Element, Node};
-use crate::layout::block::margins::CELL_BFC;
 use crate::layout::table::table_clipped_content;
 use crate::render::{RenderOpts, blocks};
 use crate::style::computed::{Align, Computed};
@@ -21,7 +20,7 @@ pub(super) fn place_cell_in_grid(
 ) -> gpui::Div {
     // Вертикальное письмо таблицы: ряды идут ПОПЕРЁК — охваты
     // меняются осями вместе с сеткой (css-writing-modes-3 §8).
-    let (grid_cols, grid_rows) = if e.style.vertical == Some(true) {
+    let (grid_cols, grid_rows) = if e.style.wm().vertical() {
         (span_rows, span_cols)
     } else {
         (span_cols, span_rows)
@@ -35,9 +34,9 @@ pub(super) fn place_cell_in_grid(
     // Явные координаты вместо авто-потока: у `vertical-rl` ряды идут
     // от ПРАВОГО края, а авто-поток умеет только вперёд — реверс
     // рядов ломал охваты (замерено: -001 1.02 → 1.31, откачено).
-    if e.style.vertical == Some(true) {
+    if e.style.wm().vertical() {
         let n_rows = row_elements.len() as i16;
-        let gc = if e.style.vertical_rl == Some(true) {
+        let gc = if e.style.wm().block_rl() {
             n_rows - row_ix - (span_rows as i16) + 2
         } else {
             row_ix
@@ -47,15 +46,15 @@ pub(super) fn place_cell_in_grid(
         // ФОРСИРУЕТ ltr (§5.1 — upright задаёт направление ltr), а у
         // `sideways-lr` базовое направление само снизу вверх —
         // разворот инвертируется.
-        let rtl_line = e.style.rtl == Some(true) && e.style.upright != Some(true);
-        let base_up = e.style.sideways == Some(true) && e.style.vertical_rl != Some(true);
+        let rtl_line = e.style.wm().rtl() && !e.style.wm().upright();
+        let base_up = e.style.wm().sideways_lr();
         let gr = if rtl_line != base_up {
             cols as i16 - col_ix as i16 - span_cols as i16 + 1
         } else {
             col_ix as i16 + 1
         };
         d = d.col_start(gc.max(1)).row_start(gr.max(1));
-    } else if e.style.rtl == Some(true) {
+    } else if e.style.wm().rtl() {
         // `dir=rtl` на таблице: колонки идут от ПРАВОГО края
         // (CSS 2.2 §17.2) — та же явная расстановка, зеркалом.
         let gc = cols as i16 - col_ix as i16 - span_cols as i16 + 1;
@@ -87,15 +86,18 @@ pub(super) fn cell_contents(
     // CSS 2.1 §9.4.1: a table cell establishes a block formatting
     // context, so its auto height contains its floats (§10.6.7). A
     // `td`/`th` gets its role from the tag and carries no `display`,
-    // which `own_context_style` checks; without `CELL_BFC` its float
+    // which `own_context_style` checks; without `LayoutCx::cell_bfc` its float
     // host took in-flow height only (`floats-wrap-bfc-001-right-
     // overflow`: the cell ended under the float's first 50px).
-    CELL_BFC.with(|c| c.set(true));
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inside = blocks(flow.as_deref().unwrap_or(&cell.children), &cm, opts);
-    CELL_BFC.with(|c| c.set(false));
+    let inside = blocks(
+        flow.as_deref().unwrap_or(&cell.children),
+        &cm,
+        &opts.inner(|cx| cx.cell_bfc = true),
+    );
+    let inside = super::cell_alignment::subject(&cm, inside);
     // Обрезанная ячейка не расталкивает колонки: её минимальный
     // вклад в дорожки НУЛЕВОЙ (css-sizing: automatic minimum при
     // overflow, отличном от visible, равен нулю) — иначе длинное
@@ -121,7 +123,7 @@ pub(super) fn cell_contents(
     } else if clipped {
         vec![table_clipped_content::wrap(&mut d, inside)]
     } else if matches!(cm.vertical_align, Some(Align::Center) | Some(Align::End))
-        && e.style.vertical != Some(true)
+        && !e.style.wm().vertical()
         && cell.children.iter().any(|n| {
             matches!(n, Node::Element(c) if matches!(
                 c.style.position,

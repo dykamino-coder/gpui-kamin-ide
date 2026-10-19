@@ -6,7 +6,7 @@ use super::through::strut_of;
 use super::through::through_strut;
 use super::{Strut, inline_axis_edges, margin_or_bail, top_edge_open};
 use crate::dom::Node;
-use crate::layout::block::containing::{CB_WIDTH, with_inner_cb};
+use crate::layout::block::containing::with_inner_cb;
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::px_margin_w;
 use crate::render::{atomic_inline, in_flow, inline_marked_block, replaced_inline};
@@ -21,6 +21,7 @@ pub(crate) fn leading_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
+    cb: Option<f32>,
 ) -> Option<Strut> {
     let mut s = strut_of(0.0);
     // Нижняя оценка ширины флоатов, которые цепь уже прошла: они ПРИМЫКАЮТ к
@@ -79,7 +80,7 @@ pub(crate) fn leading_chain(
         // не увозит (ассерт `new-fc-separates-from-float`: «will need to
         // separate its margin from the float, so that it doesn't affect the
         // float»). Дальше по цепи примыкание не идёт.
-        if adjoining_floats.is_some_and(|w| bfc_no_fit(ch, w)) {
+        if adjoining_floats.is_some_and(|w| bfc_no_fit(ch, w, cb)) {
             return Some(s);
         }
         // Поле САМОГО ребёнка примыкает к полю родителя всегда — даже когда
@@ -106,15 +107,12 @@ pub(crate) fn leading_chain(
         if top_edge_open(ch) && ch.style.margin_trim & 1 == 0 {
             // Содержащий блок детей `ch` — сам `ch`: его ширина точками —
             // оценка для `bfc_no_fit` на спуске.
-            let cb_prev = CB_WIDTH.get();
-            if let Some(Len::Px(w)) = ch.style.width
-                && w > 0.0
-            {
-                CB_WIDTH.set(Some(w));
-            }
+            let cb = match ch.style.width {
+                Some(Len::Px(w)) if w > 0.0 => Some(w),
+                _ => cb,
+            };
             // Внуки меряют доли от содержимого `ch`, а не от уровня (§10.1 п.2).
-            let inner = with_inner_cb(&ch.style, || leading_chain(&ch.children, path, eat));
-            CB_WIDTH.set(cb_prev);
+            let inner = with_inner_cb(&ch.style, || leading_chain(&ch.children, path, eat, cb));
             s = adjoin(s, inner?);
         }
         path.pop();

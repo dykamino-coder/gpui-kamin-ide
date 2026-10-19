@@ -70,6 +70,8 @@ fn svg_percent_side_is_not_intrinsic() {
 
 #[test]
 fn auto_background_side_requires_a_natural_ratio() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let width_only = Intrinsic {
         w: Some(8.0),
         ..Default::default()
@@ -78,17 +80,23 @@ fn auto_background_side_requires_a_natural_ratio() {
         Some(crate::style::values::value::Len::Px(12.0)),
         None,
     );
-    assert_eq!(tile_size(width_only, (768.0, 256.0), size), (12.0, 256.0));
+    assert_eq!(
+        tile_size(width_only, (768.0, 256.0), size, vcx),
+        (12.0, 256.0)
+    );
     let height_only = Intrinsic {
         h: Some(32.0),
         ..Default::default()
     };
-    assert_eq!(tile_size(height_only, (768.0, 256.0), size), (12.0, 32.0));
+    assert_eq!(
+        tile_size(height_only, (768.0, 256.0), size, vcx),
+        (12.0, 32.0)
+    );
     let ratio = Intrinsic {
         ratio: Some(0.25),
         ..width_only
     };
-    assert_eq!(tile_size(ratio, (768.0, 256.0), size), (12.0, 48.0));
+    assert_eq!(tile_size(ratio, (768.0, 256.0), size, vcx), (12.0, 48.0));
 }
 
 #[test]

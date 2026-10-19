@@ -2,10 +2,11 @@
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use crate::text::inline::*;
 use gpui::Styled;
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn blank_box(
     e: &Element,
     merged: &Computed,
@@ -14,6 +15,7 @@ pub(super) fn blank_box(
     lead: f32,
     trail: f32,
     out: &mut Vec<Piece>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> bool {
     // ПУСТАЯ строчная коробка: прогона текста у неё нет, а
     // отступ, рамку и фон рисовать надо (§8.4). Распорка их не
@@ -40,10 +42,7 @@ pub(super) fn blank_box(
                     .chars()
                     .all(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))));
     if blank && (lead != 0.0 || trail != 0.0) {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let size = match merged.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -98,7 +97,7 @@ pub(super) fn blank_box(
         sized.position = None;
         physical_sides::project_box(inherited, &mut copy.style);
         physical_sides::project_box(inherited, &mut sized);
-        let boxel = crate::render::styled_div_with(&copy, &sized)
+        let boxel = crate::render::styled_div_with(&copy, &sized, cx)
             .absolute()
             .top(gpui::px(dy));
         out.push(Piece::Overlay(

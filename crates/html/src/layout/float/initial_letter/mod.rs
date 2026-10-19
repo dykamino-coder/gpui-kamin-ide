@@ -18,7 +18,7 @@ pub(super) use leading::split_leading_float;
 /// пишут её плавающим блоком (`initial-letter-drop-initial-ref`: `float:
 /// left; width: 80px; height: 80px; margin-top: 2px` при `font: 20px/24px
 /// Ahem` и `initial-letter: 3`), и наше обтекание (`wrap_floats` →
-/// `kamin-float` → `float_flow`) такой узел уже ведёт — поэтому буквица
+/// ряд `Marks::float_row` → `float_flow`) такой узел уже ведёт — поэтому буквица
 /// расшивается в синтетический флоат ДО `wrap_floats`, и обе стороны пары
 /// идут одним путём.
 ///
@@ -55,19 +55,19 @@ pub(crate) fn initial_letter_float(
     // `*-rl`, `margin-left` при `*-lr` — css-writing-modes-4 §6.3, строка
     // `block-start`), а величина сдвига у `vertical-*` считается
     // центрированием, а не по алфавитной базовой.
-    let vert = inherited.vertical == Some(true);
+    let vert = inherited.wm().vertical();
     // `sideways-*` типографски ГОРИЗОНТАЛЕН: у него алфавитная базовая и та
     // же формула, что в горизонтали. Blink `initial_letter_utils.cc:81-83`
     // разводит ветки условием
     // `IsHorizontalTypographicMode() || text-orientation: sideways`, а
     // `sideways-rl`/`sideways-lr` попадают во вторую половину этого «или».
-    let sideways = inherited.sideways == Some(true);
+    let sideways = inherited.wm().sideways();
     // Блок-старт вертикали: правый край при `vertical-rl`/`sideways-rl`,
     // левый при `vertical-lr`/`sideways-lr`.
-    let block_rl = inherited.vertical_rl == Some(true);
+    let block_rl = inherited.wm().block_rl();
     let at = nodes.iter().position(|n| match n {
         Node::Text(t) => !blank_text(t),
-        Node::Element(e) => !e.style.float.is_some_and(|f| f != 0),
+        Node::Element(e) => e.style.float.is_none_or(|f| f == 0),
     });
     let Some(at) = at else {
         return nodes;
@@ -137,7 +137,7 @@ pub(crate) fn initial_letter_float(
             .and_then(|l| l.color)
             .or(inherited.color),
     };
-    let rtl = inherited.rtl == Some(true);
+    let rtl = inherited.wm().rtl();
     // Отступ первой строки (css-inline-3 §initial-letter-indentation:
     // «'text-indent' … cause a shift in the start of the line's contents
     // including the initial letter itself»). Blink сдвигает КОРОБКУ буквицы
@@ -190,11 +190,12 @@ pub(crate) fn initial_letter_float(
     );
     let synthetic = |tag: &str, style: Computed, children: Vec<Node>, inline: bool| {
         Node::Element(Element {
+            marks: Default::default(),
             list_item: None,
             node_id: 0,
             anim: None,
             tag: tag.into(),
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,

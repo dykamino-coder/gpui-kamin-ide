@@ -4,8 +4,8 @@ mod route;
 pub(super) use route::layer_route;
 
 use super::finish_element;
+use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
-use crate::layout::page::paged::{FIXED_LAYER, PAGED};
 use crate::paint::stacking::layered;
 use crate::render::blocks::flow::BelowRun;
 use crate::render::*;
@@ -32,6 +32,7 @@ pub(crate) fn place_element(
     opts: &RenderOpts,
 ) {
     let (x_set, y_set, fixed, below_icb, to_icb, to_cb, far_fixed) = layer_route(
+        opts.paged_build().is_some(),
         e,
         inherited,
         under_tf,
@@ -39,12 +40,14 @@ pub(crate) fn place_element(
         geometry_layer_ok,
         nodes,
         idx,
+        &opts.cx,
     );
     let built = if to_icb || to_cb {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (x_set, y_set),
             preserve_cb_geometry: to_cb,
+            viewport_static: to_icb,
             free_margin: (
                 if x_set {
                     0.0
@@ -57,26 +60,33 @@ pub(crate) fn place_element(
                     margin_px(e.style.margin.top, &e.style).unwrap_or(0.0)
                 },
             ),
-            rtl: inherited.rtl == Some(true),
-            vertical: inherited.vertical == Some(true),
-            vertical_rl: inherited.vertical_rl == Some(true),
-            own_vertical: e.style.vertical == Some(true),
+            rtl: inherited.wm().rtl(),
+            vertical: inherited.wm().vertical(),
+            vertical_rl: inherited.wm().block_rl(),
+            own_vertical: e.style.wm().vertical(),
             replaced: matches!(
                 e.tag.as_str(),
                 "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
             ),
+            // The static-position rectangle and the box's self-alignment in
+            // it (css-position-3 §staticpos-rect, css-align-3 §justify-abspos)
+            // belong to the static position, not to the layer that carries
+            // the box: a CB layer above a non-positioned parent aligns the
+            // same way as the parent's own late layer
+            // (`justify-self-static-position-001`).
+            self_align: crate::layout::positioned::static_position::static_self_align(e, inherited),
             ..Default::default()
         });
-        let sent = if to_icb && fixed && PAGED.with(|p| p.get()) {
+        let mut source_paint = None;
+        let paged = opts.paged_build().filter(|_| to_icb && fixed);
+        let sent = if let Some(paged) = paged {
             // Стопка страниц: фиксированный — в свой слой, по копии
-            // на лист без сдвига (`FIXED_LAYER`). Обёртка `LatePlace`
+            // на лист без сдвига (`PagedBuild::fixed`). Обёртка `LatePlace`
             // та же, что у слоя ICB, — через вложенный слой.
-            crate::layout::positioned::containing_block::icb_open();
-            let _ = crate::layout::positioned::containing_block::icb_push(spot.clone(), built);
-            FIXED_LAYER.with(|f| {
-                f.borrow_mut()
-                    .extend(crate::layout::positioned::containing_block::icb_close())
-            });
+            let icb_layer =
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+            let _ = opts.cx.positioning.icb_push(spot.clone(), built);
+            paged.push_fixed(icb_layer.finish());
             None
         } else {
             // Слой содержащего блока рисуется после его потока, но
@@ -98,7 +108,7 @@ pub(crate) fn place_element(
             } else {
                 built
             };
-            let built = if paint_last_ok(e, &nodes[idx + 1..]) {
+            let built = if paint_last_ok(e, &nodes[idx + 1..], &opts.cx) {
                 gpui::PaintLast::new(built)
                     .key(paint_key)
                     .into_any_element()
@@ -106,16 +116,37 @@ pub(crate) fn place_element(
                 built
             };
             let built = if to_icb && below_icb {
-                crate::paint::effects::underlay::Underlay::new(built).into_any_element()
+                crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(
+                    built,
+                ))
             } else {
                 built
             };
+            let built =
+                if crate::layout::positioned::predicates::stays_positioned(&nodes[idx + 1..]) {
+                    let mut state = spot.get();
+                    state.layout_only = true;
+                    spot.set(state);
+                    let (layout, paint) =
+                        crate::layout::positioned::containing_block::split_source_paint(
+                            spot.clone(),
+                            built,
+                        );
+                    source_paint = Some(paint);
+                    layout
+                } else {
+                    built
+                };
             if to_icb {
-                crate::layout::positioned::containing_block::icb_push(spot.clone(), built)
+                opts.cx.positioning.icb_push(spot.clone(), built)
             } else if far_fixed {
-                crate::layout::positioned::containing_block::cb_push_fixed(spot.clone(), built)
+                opts.cx.positioning.cb_push_fixed(spot.clone(), built)
             } else {
-                crate::layout::positioned::containing_block::cb_push(spot.clone(), built)
+                opts.cx.positioning.cb_push(
+                    spot.clone(),
+                    built,
+                    crate::layout::positioned::containing_block::nearest_cb_index(inherited),
+                )
             }
         };
         match sent {
@@ -125,8 +156,11 @@ pub(crate) fn place_element(
                 // не остаётся ничего.
                 if !(x_set && y_set) {
                     out.push(crate::layout::positioned::containing_block::spot_probe(
-                        spot, true,
+                        spot, true, None,
                     ));
+                }
+                if let Some(paint) = source_paint {
+                    out.push(paint);
                 }
                 return;
             }
@@ -136,12 +170,10 @@ pub(crate) fn place_element(
                 out.push(crate::layout::positioned::containing_block::spot_probe(
                     spot.clone(),
                     true,
+                    None,
                 ));
-                crate::layout::positioned::containing_block::LatePlace {
-                    child: Some(kept),
-                    spot,
-                }
-                .into_any_element()
+                crate::layout::positioned::containing_block::LatePlace { child: kept, spot }
+                    .hooked()
             }
             Some(kept) => kept,
         }

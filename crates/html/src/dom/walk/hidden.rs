@@ -1,6 +1,7 @@
-//! Hidden for walk; split out to keep the owning module within 250 lines.
+//! Preserve root canvas styles and non-flow table columns during the walk.
 
 use super::walk_children;
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -16,6 +17,7 @@ pub(super) fn hidden_element(
     attrs: Vec<(String, String)>,
     me: &Ancestor,
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
@@ -23,7 +25,7 @@ pub(super) fn hidden_element(
     counters: &mut crate::style::generated::counters::Counters,
     path: &[Ancestor],
     preserve: bool,
-    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i32,
+    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i64,
     out: &mut Vec<Node>,
 ) {
     // Table columns use an internal non-flow display, but still
@@ -33,10 +35,11 @@ pub(super) fn hidden_element(
     // without a root box. Keep its style for canvas propagation.
     if me.tag == "html" {
         out.push(Node::Element(Element {
+            marks: Default::default(),
             tag: "html".to_string(),
             inline: false,
             node_id: 0,
-            style,
+            style: style.into(),
             hover: None,
             first_letter: None,
             first_line: None,
@@ -61,12 +64,13 @@ pub(super) fn hidden_element(
         let mut raw: Vec<Node> = vec![];
         walk_children(
             handle,
+            tree,
             rules,
             vars,
             frames,
             counter,
             counters,
-            &path2,
+            &mut path2,
             style.preserve_newlines.unwrap_or(preserve),
             &mut raw,
         );
@@ -78,12 +82,13 @@ pub(super) fn hidden_element(
     counters.leave();
     *counter += 1;
     out.push(Node::Element(Element {
+        marks: Default::default(),
         list_item: None,
         node_id: *counter,
         anim: None,
         inline: false,
         tag,
-        style,
+        style: style.into(),
         hover: None,
         first_letter: None,
         first_line: None,

@@ -1,6 +1,7 @@
 //! Статические места позиционированных детей, div стопки колонок и его завершение.
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
 use crate::layout::positioned::predicates::edge_set;
 use crate::render::{RenderOpts, element};
@@ -30,15 +31,19 @@ pub(super) fn place_oof_statics(
                 edge_set(oof.style.inset.left) || edge_set(oof.style.inset.right),
                 edge_set(oof.style.inset.top) || edge_set(oof.style.inset.bottom),
             ),
-            rtl: merged.rtl == Some(true),
-            vertical: merged.vertical == Some(true),
-            vertical_rl: merged.vertical_rl == Some(true),
-            own_vertical: oof.style.vertical == Some(true),
+            rtl: merged.wm().rtl(),
+            vertical: merged.wm().vertical(),
+            vertical_rl: merged.wm().block_rl(),
+            own_vertical: oof.style.wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {
             measure: None,
-            el: crate::layout::positioned::containing_block::spot_probe(oof_spots[i].clone(), true),
+            el: crate::layout::positioned::containing_block::spot_probe(
+                oof_spots[i].clone(),
+                true,
+                None,
+            ),
             frags: Vec::new(),
             monolith: false,
             fit_whole: false,
@@ -62,6 +67,7 @@ pub(super) fn place_oof_statics(
             par: crate::layout::fragment::types::Par::default(),
             slack: None,
             laid_w: Default::default(),
+            paginate: None,
             positioned: false,
         };
         // Номер — среди ДЕТЕЙ ДО раскрытия строк flex (`split_flex_lines`).
@@ -122,6 +128,7 @@ pub(super) fn column_stack_div(
                 })
             }),
         )
+        .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)
         .with_fill_shrink(
             fixed.is_some()
@@ -149,7 +156,8 @@ pub(super) fn column_stack_div(
                 Some(h)
             }
             _ => None,
-        }),
+        })
+        .into_hooked(),
     )
 }
 
@@ -160,8 +168,6 @@ pub(super) fn finish_column_stack(
     opts: &RenderOpts,
     col_vert: bool,
     oof_static: Vec<(usize, Element)>,
-    gap_spec: Option<crate::paint::gap_rules::GapRuleSpec>,
-    gap_items: Option<crate::paint::gap_rules::GapItems>,
     oof_spots: Vec<std::rc::Rc<std::cell::Cell<crate::layout::positioned::containing_block::Spot>>>,
     mut d: gpui::Div,
 ) -> AnyElement {
@@ -203,11 +209,6 @@ pub(super) fn finish_column_stack(
             oof_spots[i].clone(),
             element(&oof, &merged, opts),
         ));
-    }
-    if let (Some(buf), Some(spec)) = (gap_items, gap_spec) {
-        d = d.child(
-            crate::paint::gap_rules::painter::GapRulePainter::new(buf, spec).into_any_element(),
-        );
     }
     d.into_any_element()
 }

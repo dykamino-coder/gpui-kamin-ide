@@ -1,16 +1,23 @@
 //! Computed::apply_mask_clip, продолжение цепочки: mask-origin/clip, mask-repeat, mask-position, clip-path/mask. Ветви в исходном порядке.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_mask_layers(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_mask_layers(
+        &mut self,
+        key: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // SVG-коробки (css-masking-1 §7.10/7.11, `<geometry-box>`):
             // у элемента с CSS-коробкой fill-box = content-box, stroke-box и
             // view-box = border-box; у SVG-ребёнка их считает
             // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
+                self.accept_declaration();
                 self.mask_origin = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
@@ -21,6 +28,7 @@ impl Computed {
                 }
             }
             "mask-clip" | "-webkit-mask-clip" => {
+                self.accept_declaration();
                 self.mask_clip = match v.trim() {
                     "padding-box" => Some(2),
                     "content-box" => Some(3),
@@ -32,6 +40,7 @@ impl Computed {
                 }
             }
             "mask-repeat" | "-webkit-mask-repeat" => {
+                self.accept_declaration();
                 // Пооосно (css-backgrounds §3.4): `repeat-x` = repeat по x,
                 // одна плитка по y; два слова — оси по порядку.
                 //
@@ -82,7 +91,7 @@ impl Computed {
                     "left" | "top" => Some(Len::Pct(0.0)),
                     "center" => Some(Len::Pct(0.5)),
                     "right" | "bottom" => Some(Len::Pct(1.0)),
-                    _ => Len::parse(t),
+                    _ => Len::parse(t, vcx),
                 };
                 // Запись — СПИСОК по слоям (css-masking-1 §7.7:
                 // `<position>#`): `top, bottom` — своя точка у каждого слоя.
@@ -93,7 +102,7 @@ impl Computed {
                     // края доля зеркалится.
                     if toks.len() == 4 {
                         let pair = |edge: &str, off: &str| -> Option<(Len, bool)> {
-                            let l = Len::parse(off)?;
+                            let l = Len::parse(off, vcx)?;
                             Some((l, matches!(edge, "right" | "bottom")))
                         };
                         let horiz = matches!(toks[0], "left" | "right");
@@ -123,12 +132,13 @@ impl Computed {
                     .filter_map(|l| one(l))
                     .collect();
                 if let Some((x, y, fx, fy)) = list.first().copied() {
+                    self.accept_declaration();
                     self.mask_pos = Some((x, y));
                     self.mask_pos_far = (fx, fy);
                 }
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
-            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, val, v, hit),
+            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, v, vcx),
             _ => *hit = false,
         }
     }

@@ -1,5 +1,6 @@
 //! Распорки перед перенесённым и рост перенесённой коробки; поля абзаца.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
@@ -15,7 +16,7 @@ pub(crate) use grow::grow_pushed;
 /// схлопнутым полем (`shape_full`: `cuts.push((y, y + lead))`, потом
 /// `forced.push(y)`), поэтому `margin-top` её не сдвигает — сдвигает только
 /// новый поточный сосед.
-pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
+pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_>) -> bool {
     // Сетка-стопка: между рядами стоит `row-gap` (`shape_full`:
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
@@ -52,7 +53,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         // коробки исчезнет вовсе — распорка уедет в следующую колонку
         // вместе с ней. 11 пар из 51 в корзине D держатся только на
         // `break-after`; их забирает подъём (Х5-Х8).
-        if !matches!(&c.children[i], Node::Element(k) if edge_break(k, false)) {
+        if !matches!(&c.children[i], Node::Element(k) if edge_break(k, false, vcx)) {
             return false;
         }
         // Нижнее поле предыдущего соседа переносится на распорку. Иначе
@@ -70,8 +71,10 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         {
             k.style.margin.bottom = None;
         }
-        let mut style = crate::style::computed::Computed::default();
-        style.height = Some(Len::Px(grow));
+        let mut style = crate::style::computed::Computed {
+            height: Some(Len::Px(grow)),
+            ..Default::default()
+        };
         style.margin.bottom = prev_mb;
         // Распорка в гибком хозяине — сама элемент: при переносе по строкам
         // она обязана занять СВОЮ строку (иначе встаёт рядом с предыдущим
@@ -91,6 +94,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
         c.children.insert(
             i,
             Node::Element(Element {
+                marks: Default::default(),
                 list_item: None,
                 // Свой устойчивый номер: анимации у распорки нет, но номер
                 // обязан быть уникальным — иначе GPUI склеит её состояние с
@@ -98,7 +102,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
                 node_id: id ^ 0x5350_4143_4552_0001,
                 anim: None,
                 tag: "div".to_string(),
-                style,
+                style: style.into(),
                 hover: None,
                 first_letter: None,
                 first_line: None,
@@ -120,7 +124,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32) -> bool {
     }
     for n in c.children.iter_mut() {
         if let Node::Element(k) = n
-            && spacer_before(k, id, grow)
+            && spacer_before(k, id, grow, vcx)
         {
             return true;
         }

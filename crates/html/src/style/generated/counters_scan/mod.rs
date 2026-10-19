@@ -14,17 +14,19 @@ use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Rule};
-use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs, Spot, ancestor_of, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
+mod style;
+use style::{pseudo_style, scan_style};
 
 /// Состояние обхода: набранная сумма и последний ненулевой шаг.
 struct Scan<'a> {
+    tree: &'a crate::dom::tree_index::TreeIndex,
     rules: &'a [Rule],
     vars: &'a Decls,
     name: &'a str,
     num: i64,
-    last: i32,
+    last: i64,
     done: bool,
     scope_depth: usize,
 }
@@ -52,58 +54,6 @@ fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
         && matches!(tag_of(h).as_str(), "ol" | "ul" | "menu" | "dir")
 }
 
-/// Resolve counter directives and display with the rendering cascade.
-fn scan_style(
-    h: &Handle,
-    me: &Ancestor,
-    path: &[Ancestor],
-    sibs: Sibs,
-    rules: &[Rule],
-    vars: &Decls,
-) -> Option<Computed> {
-    let NodeData::Element { attrs, .. } = &h.data else {
-        return None;
-    };
-    let inline_decls: Decls = attrs
-        .borrow()
-        .iter()
-        .find(|a| &*a.name.local == "style")
-        .map(|a| crate::style::css::parse_decls(&a.value))
-        .unwrap_or_default();
-    let mut matched: Vec<&Rule> = rules
-        .iter()
-        .filter(|r| crate::style::select::matching::matches(&r.sel, me, path, sibs))
-        .collect();
-    let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
-    crate::dom::content::inherit_generated(&mut style, path.last());
-    crate::dom::apply_value_hint(&mut style, me);
-    Some(style)
-}
-
-/// Стиль псевдоэлемента, если правила дают ему коробку.
-fn pseudo_style(
-    me: &Ancestor,
-    path: &[Ancestor],
-    sibs: Sibs,
-    which: &str,
-    rules: &[Rule],
-    vars: &Decls,
-) -> Option<Computed> {
-    let mut matched: Vec<&Rule> = rules
-        .iter()
-        .filter(|r| r.sel.pseudo.as_deref() == Some(which))
-        .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
-        .collect();
-    if matched.is_empty() {
-        return None;
-    }
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
-    crate::dom::content::inherit_generated(&mut style, Some(me));
-    // Без содержимого коробки нет, а значит нет и счётчиков.
-    (crate::dom::host_content(&style, me).is_some() && style.display != Some(Display::None))
-        .then_some(style)
-}
-
 impl Scan<'_> {
     /// Шаг алгоритма для одного узла: сумма отрицаний увеличений, последний
     /// ненулевой шаг и обрыв на `counter-set`.
@@ -114,7 +64,7 @@ impl Scan<'_> {
             return;
         }
         let neg = match decl_value(&style.counter_increment, self.name, 1) {
-            Some(v) => -v,
+            Some(v) => v.saturating_neg(),
             // Неявный шаг пункта у обратного счётчика равен −1, значит его
             // отрицание — плюс единица.
             None if self.name == "list-item" && is_item => 1,
@@ -124,14 +74,15 @@ impl Scan<'_> {
             self.last = neg;
         }
         if let Some(set) = decl_value(&style.counter_set, self.name, 0) {
-            self.num += i64::from(set);
+            self.num = self.num.saturating_add(set);
             self.done = true;
             return;
         }
-        self.num += i64::from(neg);
+        self.num = self.num.saturating_add(neg);
     }
 
     fn node(&mut self, h: &Handle, me: &Ancestor, path: &[Ancestor], sibs: Sibs, root: bool) {
+        let vcx = self.tree.doc.values();
         if self.done {
             return;
         }
@@ -139,11 +90,11 @@ impl Scan<'_> {
         if crate::dom::DROP_TAGS.contains(&tag.as_str()) {
             return;
         }
-        let Some(style) = scan_style(h, me, path, sibs, self.rules, self.vars) else {
+        let Some(style) = scan_style(h, me, path, sibs, self.rules, self.vars, vcx) else {
             return;
         };
         let mut computed_me = me.clone();
-        crate::dom::content::snapshot_generated(&mut computed_me, &style);
+        crate::dom::content::snapshot_generated(&mut computed_me, &style, path.last());
         let me = &computed_me;
         // Узел без коробки счётчиков не трогает (css-lists-3
         // §counters-without-boxes).
@@ -169,12 +120,13 @@ impl Scan<'_> {
             return;
         }
         // Порядок как в отрисовке: `::before`, дети, `::after`.
-        if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "before", self.rules, self.vars) {
+        if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "before", self.rules, self.vars, vcx)
+        {
             self.step(&st, false);
         }
         {
             let children = h.children.borrow();
-            let (spots, all) = census_of(&children);
+            let (spots, all) = census_of(&children, self.tree);
             let mut inner_path: Vec<Ancestor> = path.to_vec();
             inner_path.push(me.clone());
             let mut pos = 0usize;
@@ -195,7 +147,7 @@ impl Scan<'_> {
                 }
             }
         }
-        if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "after", self.rules, self.vars) {
+        if let Some(st) = pseudo_style(me, path, Sibs::EMPTY, "after", self.rules, self.vars, vcx) {
             self.step(&st, false);
         }
     }
@@ -204,6 +156,7 @@ impl Scan<'_> {
 /// Начальное значение обратного счётчика, созданного на этом узле.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn reversed_initial(
+    tree: &crate::dom::tree_index::TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     name: &str,
@@ -214,8 +167,9 @@ pub(crate) fn reversed_initial(
     level: &[Handle],
     spots: &[Spot],
     pos: usize,
-) -> i32 {
+) -> i64 {
     let mut scan = Scan {
+        tree,
         rules,
         vars,
         name,
@@ -234,7 +188,7 @@ pub(crate) fn reversed_initial(
                 continue;
             }
             idx += 1;
-            let Some(a) = ancestor_of(sib, *spot) else {
+            let Some(a) = ancestor_of(sib, *spot, tree) else {
                 continue;
             };
             scan.node(sib, &a, path, sibs.at(idx), false);
@@ -243,5 +197,5 @@ pub(crate) fn reversed_initial(
             }
         }
     }
-    (scan.num + i64::from(scan.last)).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
+    scan.num.saturating_add(scan.last)
 }

@@ -20,7 +20,7 @@ fn walk(nodes: &mut [Node], parent: Option<GridContext>, inherited_vertical: boo
             continue;
         };
         let style = &mut element.style;
-        let vertical = style.vertical.unwrap_or(inherited_vertical);
+        let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
         let linked_rows = parent.and_then(|grid| {
             grid.lanes_rows.map(|rows| {
                 if grid.vertical == vertical {

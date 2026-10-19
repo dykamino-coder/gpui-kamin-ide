@@ -1,17 +1,20 @@
 //! Build emphasis spans with their line geometry and clipped background fill.
 
 use super::Piece;
+use crate::style::values::value::Color;
 use crate::style::values::value::Len;
 
 /// Куски со знаком акцента. Знак набирается в половину кегля своей базы
 /// (css-text-decor-3 §5.3, как аннотация руби с `font-size: 50%`) и встаёт
 /// на край строчной коробки куска (`line-height` куска, `normal` — доля
 /// `normal` шрифта абзаца).
-pub fn emphasis_spans(
+pub(crate) fn emphasis_spans(
     pieces: &[Piece],
     base_size: f32,
     normal: f32,
     rotated: Option<bool>,
+    // Слои аннотаций руби-базы, в которой абзац собирается (`LayoutCx::ruby_layers`).
+    ruby: Option<&std::rc::Rc<crate::text::ruby::layers::Layers>>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -33,7 +36,7 @@ pub fn emphasis_spans(
                 _ => crate::text::metrics::normal_px(normal, size),
             };
             out.push(crate::text::paragraph::EmphSpan {
-                ruby: crate::text::ruby::layers::current(),
+                ruby: ruby.cloned(),
                 range: at..end,
                 // Повёрнутый абзац вертикального письма (`rotated` — поворот
                 // против часовой, `sideways-lr`): «над» строкой после
@@ -57,8 +60,8 @@ pub fn emphasis_spans(
                 // typographic mode, including inherited emphasis on a child.
                 mark: if style.emphasis_auto_shape
                     && rotated.is_some()
-                    && style.sideways != Some(true)
-                    && style.text_sideways != Some(true)
+                    && !style.wm().sideways()
+                    && !style.wm().text_sideways()
                 {
                     if mark == "\u{25CB}" {
                         "\u{FE46}"
@@ -73,11 +76,13 @@ pub fn emphasis_spans(
                 // geometry regardless of the mark's foreground transparency.
                 // CurrentColor already carries the composited text fill;
                 // explicit emphasis colors need the same composition here.
-                color: style.emphasis_color.map(|color| {
-                    style
-                        .text_clip_fill
-                        .map_or(color, |fill| crate::paint::background::over(color, fill))
-                        .to_hsla()
+                color: style.text_shadow_ink.map(Color::to_hsla).or_else(|| {
+                    style.emphasis_color.map(|color| {
+                        style
+                            .text_clip_fill
+                            .map_or(color, |fill| crate::paint::background::over(color, fill))
+                            .to_hsla()
+                    })
                 }),
             });
         }

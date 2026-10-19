@@ -1,9 +1,11 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
+mod formatting_context;
 mod probes;
 pub(super) use probes::child_probes;
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline_pct};
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
@@ -16,10 +18,11 @@ use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::render::*;
-use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::computed::Computed;
+use crate::style::values::value::px_lossy_zero;
 use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement};
+use std::borrow::Cow;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn generic_children(
@@ -30,74 +33,65 @@ pub(crate) fn generic_children(
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
-    let children = match &e.style.grid_areas {
-        Some(areas) => place_named_areas(areas, e.children.clone()),
-        None => e.children.clone(),
-    };
-    // Resolve physical margins before preparing the vertical formatting context.
-    let children = if merged.vertical == Some(true) {
-        // Поле самого контейнера по ведущей стороне оси потока —
-        // для схлопывания с первым ребёнком (§8.3.1). Ведущая
-        // сторона: левая у `vertical-lr`/`sideways-*`, правая у
-        // `vertical-rl`. Открыта, если там нет ни рамки, ни
-        // внутреннего отступа; у корня поля не схлопываются вовсе.
-        let reverse = merged.vertical_rl == Some(true);
-        let lead_margin = if e.tag == "html" {
-            None
-        } else {
-            let b = e.style.borders();
-            let (border, pad, own) = if reverse {
-                (b.right, e.style.padding.right, e.style.margin.right)
-            } else {
-                (b.left, e.style.padding.left, e.style.margin.left)
-            };
-            // Независимый контекст форматирования (overflow не
-            // `visible`, флоат, `display: flow-root`, `contain`) не
-            // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
-            // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016`
-            // (`overflow: hidden`, v100: 0.00 → «красное видно»).
-            let bfc = !matches!(
-                e.style.overflow_x,
-                None | Some(crate::style::computed::Overflow::Visible)
-            ) || !matches!(
-                e.style.overflow_y,
-                None | Some(crate::style::computed::Overflow::Visible)
-            ) || e.style.float.is_some()
-                || e.style.display.is_some()
-                || e.style.flow_root == Some(true)
-                // css-align-3 §align-block — тот же список, что и в
-                // `own_context`: своё поле такая коробка с полем
-                // первого ребёнка не схлопывает.
-                || e.style.align_content_block
-                || e.style.contain_layout == Some(true)
-                || e.style.contain_paint == Some(true);
-            let sealed = bfc
-                || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-                || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
-            if sealed {
+    let vcx = opts.cx.vcx();
+    let makes_bfc = formatting_context::independent(&merged, &e.tag);
+    let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
+        Cow::Borrowed(children)
+    } else {
+        let children = match &e.style.grid_areas {
+            Some(areas) => place_named_areas(areas, e.children.clone()),
+            None => e.children.clone(),
+        };
+        // Resolve physical margins before preparing the vertical formatting context.
+        let children = if merged.wm().vertical() {
+            // Поле самого контейнера по ведущей стороне оси потока —
+            // для схлопывания с первым ребёнком (§8.3.1). Ведущая
+            // сторона: левая у `vertical-lr`/`sideways-*`, правая у
+            // `vertical-rl`. Открыта, если там нет ни рамки, ни
+            // внутреннего отступа; у корня поля не схлопываются вовсе.
+            let reverse = merged.wm().block_rl();
+            let lead_margin = if e.tag == "html" {
                 None
             } else {
-                Some(margin_px(own, &e.style).unwrap_or(0.0))
-            }
-        };
-        // Доли полей/отступов — в точки от высоты контейнера ДО
-        // схлопывания (см. `resolve_inline_pct`).
-        vertical_hug::children(
-            orthogonal_children(
-                vertical_flow_margins::children(
-                    resolve_inline_pct(children, &merged, true),
+                let b = e.style.borders();
+                let (border, pad, own) = if reverse {
+                    (b.right, e.style.padding.right, e.style.margin.right)
+                } else {
+                    (b.left, e.style.padding.left, e.style.margin.left)
+                };
+                // Независимый контекст форматирования (overflow не
+                // `visible`, флоат, `display: flow-root`, `contain`) не
+                // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
+                // modes-4 §7.4).
+                let sealed = makes_bfc
+                    || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+                if sealed {
+                    None
+                } else {
+                    Some(margin_px(own, &e.style).unwrap_or(0.0))
+                }
+            };
+            // Доли полей/отступов — в точки от высоты контейнера ДО
+            // схлопывания (см. `resolve_inline_pct`).
+            vertical_hug::children(
+                orthogonal_children(
+                    vertical_flow_margins::children(
+                        resolve_inline_pct(children, &merged, true),
+                        &merged,
+                        reverse,
+                        lead_margin,
+                    ),
                     &merged,
-                    reverse,
-                    lead_margin,
+                    opts.viewport.0,
                 ),
+                &e.style,
                 &merged,
-                opts.viewport.0,
-            ),
-            &e.style,
-            &merged,
-        )
-    } else {
-        orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
+            )
+        } else {
+            orthogonal_vertical_children(resolve_inline_pct(children, &merged, false), &merged)
+        };
+        Cow::Owned(children)
     };
     let mut kids: Vec<AnyElement> = Vec::new();
     kids.extend(clip_layer(&merged, opts));
@@ -107,40 +101,11 @@ pub(crate) fn generic_children(
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
     let is_clamp = (e.style.clamp_lines().is_some()
-        || (e.style.clamp_auto == Some(true) && auto_clamp_limit(&merged).is_some()))
+        || (e.style.clamp_auto == Some(true)
+            && e.style.clamp_block_container()
+            && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
     let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
-    let makes_bfc = matches!(
-        merged.overflow_x,
-        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
-    ) || matches!(
-        merged.overflow_y,
-        Some(crate::style::computed::Overflow::Hidden) | Some(crate::style::computed::Overflow::Scroll)
-    ) || matches!(
-        merged.position,
-        Some(crate::style::computed::Position::Absolute)
-            | Some(crate::style::computed::Position::Fixed)
-    ) || merged.float.is_some()
-        || merged.flow_root == Some(true)
-        // Независимый контекст форматирования и без overflow/float/
-        // flow-root: гибкий контейнер, сетка, таблица — своя
-        // раскладка по определению, и строки внутри в бюджет
-        // `line-clamp` не входят (css-overflow-4: «skip lines in
-        // independent formatting contexts»; `webkit-line-clamp-012/013`).
-        || matches!(
-            merged.display,
-            Some(Display::Flex)
-                | Some(Display::InlineFlex)
-                | Some(Display::Grid)
-                | Some(Display::InlineGrid)
-                | Some(Display::GridLanes)
-                | Some(Display::Table)
-                | Some(Display::InlineTable)
-                | Some(Display::TableCell)
-        )
-        // `<fieldset>` — тоже отдельная раскладка
-        // (`webkit-line-clamp-027`).
-        || e.tag == "fieldset";
     let clamp_outer = crate::text::clamp::clamp_context();
     let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
         .then(crate::text::clamp::ClampGuard::enter_bfc);
@@ -165,9 +130,12 @@ pub(crate) fn generic_children(
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
     // содержащим блоком не является, переезжает сюда.
     let cb_layer = crate::text::inline::establishes_cb(&merged);
-    if cb_layer {
-        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&merged));
-    }
+    let cb_scope = cb_layer.then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::cb(
+            &opts.cx.positioning,
+            fixed_cb_layer_box(&merged),
+        )
+    });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
     // что рисовать нечего, и ни одна старая пара сюда не попадает
@@ -182,28 +150,24 @@ pub(crate) fn generic_children(
     // closes. Its padding box still owns the initial containing block
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
-    if viewport {
-        crate::layout::positioned::containing_block::icb_open();
-    }
+    let viewport_scope = viewport
+        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
     kids.extend(decorated_children(e, &merged, opts, || {
         blocks(&children, &merged, opts)
     }));
-    if viewport {
-        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    if let Some(scope) = viewport_scope {
+        kids.extend(scope.finish());
     }
     let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
-    if cb_layer {
-        kids.extend(crate::layout::positioned::containing_block::cb_close());
+    if let Some(scope) = cb_scope {
+        kids.extend(scope.finish());
     }
     if is_clamp {
         // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:
         // border-box` из `max-height` вычитаются вертикальные рамки и
         // паддинги (`line-clamp-auto-003`: 138 − 2×(1+4) = 128).
         let bb_y = if merged.border_box == Some(true) {
-            let side = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let side = px_lossy_zero;
             let bw = merged.borders();
             side(bw.top) + side(bw.bottom) + side(merged.padding.top) + side(merged.padding.bottom)
         } else {
@@ -234,7 +198,7 @@ pub(crate) fn generic_children(
                 max_h,
             )
             .trim_end(clamp_trim)
-            .into_any_element(),
+            .hooked(),
         );
     }
     // Абсолют с `anchor()`-вставками: раскладка поставила его к краю
@@ -243,8 +207,8 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child),
+        Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited)
+    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
 }

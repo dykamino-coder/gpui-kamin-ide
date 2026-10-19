@@ -1,6 +1,6 @@
 //! Вычисление треков и промежутков grid для gap rules.
 
-use super::{GAP_EPS, GapItem, uniq_sorted};
+use super::{GAP_RULE_EPS, GapItem, uniq_sorted};
 
 /// Дорожки по оси `a`: начало — уникальные ближние края элементов, конец —
 /// дальний край элемента, начатого в дорожке и не заходящего в следующую;
@@ -13,7 +13,8 @@ pub(super) fn tracks_a(items: &[GapItem], gap: Option<f32>) -> Vec<(f32, f32)> {
             let end = items
                 .iter()
                 .filter(|i| {
-                    (i.a0 - st[k]).abs() <= GAP_EPS && next.is_none_or(|nx| i.a1 <= nx + GAP_EPS)
+                    (i.a0 - st[k]).abs() <= GAP_RULE_EPS
+                        && next.is_none_or(|nx| i.a1 <= nx + GAP_RULE_EPS)
                 })
                 .map(|i| i.a1)
                 .fold(f32::NEG_INFINITY, f32::max);
@@ -78,8 +79,8 @@ pub(super) fn template_tracks(
             .map(|(w, o)| (base + o, base + o + w))
             .collect();
         let fits = items.iter().all(|i| {
-            out.iter().any(|t| (t.0 - i.a0).abs() <= GAP_EPS)
-                && out.iter().any(|t| (t.1 - i.a1).abs() <= GAP_EPS)
+            out.iter().any(|t| (t.0 - i.a0).abs() <= GAP_RULE_EPS)
+                && out.iter().any(|t| (t.1 - i.a1).abs() <= GAP_RULE_EPS)
         });
         if fits {
             return Some(out);
@@ -100,16 +101,16 @@ pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f3
     // При `rtl` и обратных осях раскладка отдаёт дорожки в логическом
     // порядке — здесь нужен физический.
     tracks.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
-    if gap <= GAP_EPS {
+    if gap <= GAP_RULE_EPS {
         return tracks;
     }
     let n = tracks.len();
     (0..n)
         .filter(|&k| {
             let (s, e) = tracks[k];
-            let empty = e - s <= GAP_EPS;
-            let flush_prev = k > 0 && (s - tracks[k - 1].1).abs() <= GAP_EPS;
-            let flush_next = k + 1 < n && (tracks[k + 1].0 - e).abs() <= GAP_EPS;
+            let empty = e - s <= GAP_RULE_EPS;
+            let flush_prev = k > 0 && (s - tracks[k - 1].1).abs() <= GAP_RULE_EPS;
+            let flush_next = k + 1 < n && (tracks[k + 1].0 - e).abs() <= GAP_RULE_EPS;
             !(empty && (flush_prev || flush_next))
         })
         .map(|k| tracks[k])
@@ -121,7 +122,7 @@ pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f3
 pub(super) fn gaps_of(tracks: &[(f32, f32)]) -> Vec<(f32, f32)> {
     tracks
         .windows(2)
-        .filter(|w| w[1].0 - w[0].1 >= -GAP_EPS)
+        .filter(|w| w[1].0 - w[0].1 >= -GAP_RULE_EPS)
         .map(|w| (w[0].1.min(w[1].0), w[1].0))
         .collect()
 }

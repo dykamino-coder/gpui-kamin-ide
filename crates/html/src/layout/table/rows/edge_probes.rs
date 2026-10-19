@@ -1,14 +1,17 @@
 //! Пробы кромок ячейки: полосы фонов рядов, колонок и групп, сросшиеся рамки (CSS 2.1 §17.6.2).
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::table::{
     collapsed_col_edges, collapsed_colgroup_edges, collapsed_group_edges, collapsed_row_edges,
 };
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
 
 #[allow(clippy::too_many_arguments)]
+// Edge probes retain border colors, styles and widths as one record.
+#[allow(clippy::type_complexity)]
 pub(super) fn cell_edge_probes(
     row_ix: i16,
     group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
@@ -38,6 +41,7 @@ pub(super) fn cell_edge_probes(
     )>,
     cell: &Element,
     d: gpui::Div,
+    vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let mut d = d;
     // Полосы фонов рядов и колонок в сросшейся модели начинаются от
@@ -61,10 +65,7 @@ pub(super) fn cell_edge_probes(
     // неё, а фон полосы идёт по внешним краям (§17.5.1).
     let cell_border = {
         let b = cell.style.borders();
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
     };
     if let Some(rects) = row_rects {
@@ -127,6 +128,13 @@ pub(super) fn cell_edge_probes(
     // колонка > таблица); в раздельной модели рамки ряда не
     // действуют вовсе (§17.6.1) — сюда попадает только collapse.
     if collapse_cells {
+        // Rowspan is already clipped to its row group by cell_spans.
+        let last_row = (span_rows > 1).then(|| {
+            row_elements
+                .get(row_ix as usize + span_rows as usize - 2)
+                .copied()
+                .unwrap_or(row)
+        });
         d = collapsed_row_edges(
             row,
             col_ix,
@@ -134,9 +142,11 @@ pub(super) fn cell_edge_probes(
             cols,
             row_style,
             inherited,
+            last_row,
             table_edges,
             px_of,
             d,
+            vcx,
         );
     }
     // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у

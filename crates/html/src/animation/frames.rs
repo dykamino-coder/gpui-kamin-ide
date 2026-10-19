@@ -1,4 +1,6 @@
 //! Кадры анимаций и переходов.
+
+use crate::document::state::ValueCx;
 mod frozen;
 pub(crate) use frozen::{bake_frozen, sample_at};
 
@@ -30,7 +32,7 @@ pub(crate) fn transitioned(
     let build = std::rc::Rc::new(move |k: f32| {
         let _depth = DepthScope::enter(depth);
         let mut mixed = node.clone();
-        mixed.style = node.style.blend(&hover, k);
+        mixed.style = node.style.blend(&hover, k).into();
         // Слой наведения снят: его роль уже сыграла доля перехода, иначе
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;
@@ -49,11 +51,8 @@ pub(crate) fn transitioned(
 
 /// Интерполяция стиля между кадрами анимации.
 ///
-/// Интерполируются те свойства, которые анимируют на практике и которые можно
-/// подменить у уже собранного элемента: прозрачность, заливка, цвет текста,
-/// сдвиг и размеры. Всё остальное берётся с ближайшего кадра — перестраивать
-/// поддерево каждый кадр нельзя, это стоило бы дороже самой анимации.
-pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
+/// Sampled layout properties rebuild the formatting node in `animation_live`.
+pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Computed {
     let t = t.clamp(0.0, 1.0);
     let mut prev = &frames[0];
     let mut next = &frames[frames.len() - 1];
@@ -96,12 +95,16 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32) -> Computed {
             (Len::Pct(x), Len::Pct(y)) => Some(Len::Pct(lerp(x, y))),
             // Разные природы (`0px → 200vw`, `0% → 200vw`) — покомпонентно,
             // как `calc()`; несводимая смесь — ближайший кадр.
-            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k).unwrap_or(x)),
+            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k, vcx).unwrap_or(x)),
         }
     };
     out.width = len(prev.1.width, next.1.width).or(out.width);
     out.height = len(prev.1.height, next.1.height).or(out.height);
     out.font_size = len(prev.1.font_size, next.1.font_size).or(out.font_size);
+    out.margin.top = len(prev.1.margin.top, next.1.margin.top).or(out.margin.top);
+    out.margin.right = len(prev.1.margin.right, next.1.margin.right).or(out.margin.right);
+    out.margin.bottom = len(prev.1.margin.bottom, next.1.margin.bottom).or(out.margin.bottom);
+    out.margin.left = len(prev.1.margin.left, next.1.margin.left).or(out.margin.left);
     // Фильтры интерполируются покомпонентно; `none` = нейтральный
     // (filter-effects-1 §Interpolation, css-filters-animation-*).
     if prev.1.filter.is_some() || next.1.filter.is_some() {

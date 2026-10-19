@@ -10,6 +10,7 @@
 import * as vscode from "vscode"
 import path from "node:path"
 import { ResyncTracker } from "./resync-tracker"
+import { DeferredReplies, type DeferredReply } from "./deferred-replies"
 import type { BrowserWindow, WebContents } from "@kaminide/host-compat"
 import { ipcMain } from "@kaminide/host-compat"
 import { TabManager } from "./main/tab-manager"
@@ -102,6 +103,9 @@ export class BridgeHost {
   // Resync-on-reveal state, per webview — see ResyncTracker for why the gap is
   // recorded at the dropped send rather than inferred from working-state.
   private readonly resync = new ResyncTracker<vscode.Webview>()
+  // Invoke replies a hidden view refused, sent when it is shown (INC-2026-0065):
+  // a request's reply is not an event resync can regenerate.
+  private readonly deferredReplies = new DeferredReplies<vscode.Webview>()
   private onResyncNeeded: (() => void) | undefined
   private disposed = false
   private readonly sink: BrowserWindow
@@ -432,6 +436,7 @@ export class BridgeHost {
         // Drop the visibility/stale bookkeeping too: a torn-down view left
         // behind as "hidden" would otherwise keep accruing staleness forever.
         this.resync.forget(webview)
+        this.deferredReplies.forget(webview)
         // The chat is the only view that reports which transcript is on screen.
         // If it goes away, no session is "showing" — clear the record so the
         // host's gap check can't report a divergence against a view that is gone.
@@ -451,7 +456,24 @@ export class BridgeHost {
    *  recorded gap (see ResyncTracker.setVisible). */
   setWebviewVisible(webview: vscode.Webview, visible: boolean): void {
     this.invokeDiagnostics.setHidden(webview, !visible)
+    if (visible) void this.flushDeferredReplies(webview)
     if (this.resync.setVisible(webview, visible)) this.onResyncNeeded?.()
+  }
+
+  /** Send the invoke replies this view refused while it was hidden, oldest
+   *  first. A reply the view still refuses stays held for the next reveal. */
+  async flushDeferredReplies(webview: vscode.Webview): Promise<void> {
+    const pending = this.deferredReplies.take(webview)
+    for (let i = 0; i < pending.length; i++) {
+      let accepted = false
+      try { accepted = await webview.postMessage(pending[i].frame) } catch { /* view gone: nothing to keep */ }
+      pending[i].flushed(accepted)
+      if (!accepted) {
+        // `i` was refused again (hidden once more): keep it and the rest.
+        this.deferredReplies.restore(webview, pending.slice(i))
+        return
+      }
+    }
   }
 
   /** Read-only view of the external-MCP manager — for the status-bar
@@ -501,6 +523,12 @@ export class BridgeHost {
     }
   }
 
+  private deferReply(source: vscode.Webview, entry: DeferredReply): void {
+    const evicted = this.deferredReplies.defer(source, entry)
+    // The cap is only a guard; an evicted reply is reported, never silent.
+    if (evicted) { console.warn("[claude-bridge] deferred invoke replies over the cap; oldest dropped"); evicted.flushed(false) }
+  }
+
   private async onMessage(msg: InboundMessage, source: vscode.Webview): Promise<void> {
     if (msg?.kind === 'invoke-diagnostic') {
       this.invokeDiagnostics.renderer(source, msg)
@@ -516,7 +544,13 @@ export class BridgeHost {
 
     if (msg.kind === "invoke") {
       const trace = this.invokeDiagnostics.begin(source, msg.id, msg.channel, msg.generation)
-      const reply = (frame: Record<string, unknown>) => trace.reply(() => source.postMessage({ kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }))
+      const reply = async (frame: Record<string, unknown>): Promise<void> => {
+        const full = { kind: "invoke-reply", id: msg.id, generation: msg.generation, ...frame }
+        const outcome = await trace.reply(() => source.postMessage(full))
+        // Refused by a hidden view: the requesting page is alive and waits for
+        // this answer, so hold it until the view is shown (see DeferredReplies).
+        if (outcome === "refused") this.deferReply(source, { frame: full, flushed: trace.deferred() })
+      }
       try {
         const result = await ipcMain.invokeHandler(msg.channel, this.event, ...args)
         trace.handler('resolved')

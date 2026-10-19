@@ -1,11 +1,18 @@
 //! Размер и начало плитки background image.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
+use crate::style::computed::FontCx;
 use crate::style::computed::{BgPos, BgSize, Tiling};
 use crate::style::values::value::Len;
 
 /// Размер одной плитки в точках по правилам `background-size`.
-pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f32, f32) {
+pub(crate) fn tile_size(
+    i: Intrinsic,
+    box_size: (f32, f32),
+    size: BgSize,
+    vcx: ValueCx<'_>,
+) -> (f32, f32) {
     let (bw, bh) = box_size;
     // CSS Backgrounds 3 §3.9: only a natural ratio can transfer a specified
     // dimension to an auto one. The default sizing result supplies missing
@@ -31,7 +38,7 @@ pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f3
             (iw * k, ih * k)
         }
         // Заданная одна сторона тянет вторую по соотношению — как в CSS.
-        BgSize::Fixed(w, h) => match (len_px(w, bw), len_px(h, bh)) {
+        BgSize::Fixed(w, h) => match (len_px(w, bw, vcx), len_px(h, bh, vcx)) {
             (Some(w), Some(h)) => (w, h),
             (Some(w), None) if i.ratio.is_some() => (w, w / ratio),
             (Some(w), None) => (w, i.h.unwrap_or(bh)),
@@ -42,29 +49,20 @@ pub(crate) fn tile_size(i: Intrinsic, box_size: (f32, f32), size: BgSize) -> (f3
     }
 }
 
-pub(crate) fn len_px(l: Option<Len>, base: f32) -> Option<f32> {
-    match l? {
-        Len::Px(v) => Some(v),
-        Len::Pct(v) => Some(base * v),
-        Len::Calc(i) => {
-            let s = crate::style::values::value::calc_get(i);
-            Some(s.px + base * s.pct)
-        }
-        // Шрифтовые единицы — от запасного кегля, единой точкой.
-        l @ (Len::Em(_)
-        | Len::EmPx(..)
-        | Len::Ch(_)
-        | Len::Ic(_)
-        | Len::Ex(_)
-        | Len::Lh(_)
-        | Len::LhPx(..)) => crate::text::metrics::fallback_len_px(l, "", 16.0),
-        Len::Vw(_) | Len::Vh(_) => None,
-        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent | Len::Anchor(_) => None,
-    }
+/// Длина плитки против базы `base` (сторона области); шрифтовые единицы
+/// в записи картинки уже решены в точки (`resolve_image_lengths`), остаток —
+/// запасным контекстом.
+pub(crate) fn len_px(l: Option<Len>, base: f32, vcx: ValueCx<'_>) -> Option<f32> {
+    l?.to_px(Some(base), FontCx::FALLBACK, vcx)
 }
 
 /// Смещение первой плитки: проценты считаются от свободного места, как в CSS.
-pub(super) fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32, f32) {
+pub(super) fn origin(
+    pos: BgPos,
+    box_size: (f32, f32),
+    tile: (f32, f32),
+    vcx: ValueCx<'_>,
+) -> (f32, f32) {
     let axis = |l: Option<Len>, box_len: f32, tile_len: f32| -> f32 {
         match l {
             Some(Len::Px(v)) => v,
@@ -72,7 +70,7 @@ pub(super) fn origin(pos: BgPos, box_size: (f32, f32), tile: (f32, f32)) -> (f32
             // `calc(50px + 50%)`: доля — от свободного места, как у чистой
             // доли (css-backgrounds-3 §3.6), точки — как есть. Смесь с
             // третьей природой парой не отдаётся и, как прежде, идёт нулём.
-            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
+            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx)
                 .pct_px()
                 .map_or(0.0, |(pct, px)| (box_len - tile_len) * pct + px),
             _ => 0.0,

@@ -101,7 +101,7 @@ where
             InsertionMode::Initial => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, _) => ProcessResult::Done,
                 Token::Comment(text) => self.append_comment_to_doc(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi_to_doc(target, data),
@@ -111,7 +111,7 @@ where
                         self.set_quirks_mode(Quirks);
                     }
                     ProcessResult::Reprocess(InsertionMode::BeforeHtml, token)
-                }
+                },
             },
 
             // § The "before html" insertion mode
@@ -126,25 +126,25 @@ where
                     Token::Comment(text) => self.append_comment_to_doc(text),
                     Token::ProcessingInstruction(target, data) => {
                         self.append_pi_to_doc(target, data)
-                    }
+                    },
 
                     Token::Characters(SplitStatus::NotSplit, text) => {
                         ProcessResult::SplitWhitespace(text)
-                    }
+                    },
 
                     Token::Characters(SplitStatus::Whitespace, _) => ProcessResult::Done,
                     Token::Tag(tag @ tag!(<html>)) => {
                         self.create_root(tag.attrs);
                         self.mode.set(InsertionMode::BeforeHead);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag!(</head> | </body> | </html> | </br>)) => anything_else(token),
                     Token::Tag(tag @ tag!(</>)) => self.unexpected(&tag),
 
                     token => anything_else(token),
                 }
-            }
+            },
 
             // § The "before head" insertion mode
             // https://html.spec.whatwg.org/multipage/parsing.html#the-before-head-insertion-mode
@@ -156,7 +156,7 @@ where
                 match token {
                     Token::Characters(SplitStatus::NotSplit, text) => {
                         ProcessResult::SplitWhitespace(text)
-                    }
+                    },
                     Token::Characters(SplitStatus::Whitespace, _) => ProcessResult::Done,
                     Token::Comment(text) => self.append_comment(text),
                     Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -167,7 +167,7 @@ where
                         *self.head_elem.borrow_mut() = Some(self.insert_element_for(tag));
                         self.mode.set(InsertionMode::InHead);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag!(</head> | </body> | </html> | </br>)) => anything_else(token),
 
@@ -175,7 +175,7 @@ where
 
                     token => anything_else(token),
                 }
-            }
+            },
 
             // § The "in head" insertion mode
             // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inhead
@@ -188,7 +188,7 @@ where
                 match token {
                     Token::Characters(SplitStatus::NotSplit, text) => {
                         ProcessResult::SplitWhitespace(text)
-                    }
+                    },
                     Token::Characters(SplitStatus::Whitespace, text) => self.append_text(text),
                     Token::Comment(text) => self.append_comment(text),
                     Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -223,7 +223,7 @@ where
                             }
                         }
                         ProcessResult::DoneAckSelfClosing
-                    }
+                    },
 
                     Token::Tag(tag @ tag!(<title>)) => self.parse_raw_data(tag, Rcdata),
 
@@ -235,7 +235,7 @@ where
                         } else {
                             self.parse_raw_data(tag, Rawtext)
                         }
-                    }
+                    },
 
                     Token::Tag(tag @ tag!(<script>)) => {
                         let elem = create_element_with_flags(
@@ -250,13 +250,13 @@ where
                         self.insert_appropriately(AppendNode(elem.clone()), None);
                         self.open_elems.borrow_mut().push(elem);
                         self.to_raw_text_mode(ScriptData)
-                    }
+                    },
 
                     Token::Tag(tag!(</head>)) => {
                         self.pop();
                         self.mode.set(InsertionMode::AfterHead);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag!(</body> | </html> | </br>)) => anything_else(token),
 
@@ -298,7 +298,7 @@ where
                         }
 
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag @ tag!(</template>)) => {
                         if !self.in_html_elem_named(local_name!("template")) {
@@ -311,13 +311,13 @@ where
                             self.mode.set(self.reset_insertion_mode());
                         }
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag!(<head> | </>)) => self.unexpected(&token),
 
                     token => anything_else(token),
                 }
-            }
+            },
 
             // § The "in head noscript" insertion mode
             // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inheadnoscript
@@ -334,18 +334,18 @@ where
                         self.pop();
                         self.mode.set(InsertionMode::InHead);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Characters(SplitStatus::NotSplit, text) => {
                         ProcessResult::SplitWhitespace(text)
-                    }
+                    },
                     Token::Characters(SplitStatus::Whitespace, _) => {
                         self.step(InsertionMode::InHead, token)
-                    }
+                    },
 
                     Token::Comment(_) | Token::ProcessingInstruction(..) => {
                         self.step(InsertionMode::InHead, token)
-                    }
+                    },
 
                     Token::Tag(
                         tag!(<basefont> | <bgsound> | <link> | <meta> | <noframes> | <style>),
@@ -357,7 +357,7 @@ where
 
                     token => anything_else(token),
                 }
-            }
+            },
 
             // § The "after head" insertion mode
             // https://html.spec.whatwg.org/multipage/parsing.html#the-after-head-insertion-mode
@@ -370,7 +370,7 @@ where
                 match token {
                     Token::Characters(SplitStatus::NotSplit, text) => {
                         ProcessResult::SplitWhitespace(text)
-                    }
+                    },
                     Token::Characters(SplitStatus::Whitespace, text) => self.append_text(text),
                     Token::Comment(text) => self.append_comment(text),
                     Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -382,13 +382,13 @@ where
                         self.frameset_ok.set(false);
                         self.mode.set(InsertionMode::InBody);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(tag @ tag!(<frameset>)) => {
                         self.insert_element_for(tag);
                         self.mode.set(InsertionMode::InFrameset);
                         ProcessResult::Done
-                    }
+                    },
 
                     Token::Tag(
                         tag!(<base> | <basefont> | <bgsound> | <link> | <meta> |
@@ -406,7 +406,7 @@ where
                         let result = self.step(InsertionMode::InHead, token);
                         self.remove_from_stack(&head);
                         result
-                    }
+                    },
 
                     Token::Tag(tag!(</template>)) => self.step(InsertionMode::InHead, token),
 
@@ -416,7 +416,7 @@ where
 
                     token => anything_else(token),
                 }
-            }
+            },
 
             // § The "in body" insertion mode
             // https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
@@ -429,7 +429,7 @@ where
                         self.frameset_ok.set(false);
                     }
                     self.append_text(text)
-                }
+                },
 
                 Token::Comment(text) => self.append_comment(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -442,7 +442,7 @@ where
                         self.sink.add_attrs_if_missing(top, tag.attrs);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag!(<base> | <basefont> | <bgsound> | <link> | <meta> | <noframes>
@@ -459,11 +459,11 @@ where
                         {
                             self.frameset_ok.set(false);
                             self.sink.add_attrs_if_missing(node, tag.attrs)
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<frameset>)) => {
                     self.unexpected(&tag);
@@ -482,7 +482,7 @@ where
                     self.insert_element_for(tag);
                     self.mode.set(InsertionMode::InFrameset);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Eof => {
                     if !self.template_modes.borrow().is_empty() {
@@ -491,7 +491,7 @@ where
                         self.check_body_end();
                         self.stop_parsing()
                     }
-                }
+                },
 
                 Token::Tag(tag!(</body>)) => {
                     if self.in_scope_named(default_scope, local_name!("body")) {
@@ -502,7 +502,7 @@ where
                             .parse_error(Borrowed("</body> with no <body> in scope"));
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</html>)) => {
                     if self.in_scope_named(default_scope, local_name!("body")) {
@@ -513,7 +513,7 @@ where
                             .parse_error(Borrowed("</html> with no <body> in scope"));
                         ProcessResult::Done
                     }
-                }
+                },
 
                 Token::Tag(
                     tag @
@@ -524,13 +524,13 @@ where
                     self.close_p_element_in_button_scope();
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<menu>)) => {
                     self.close_p_element_in_button_scope();
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<h1> | <h2> | <h3> | <h4> | <h5> | <h6>)) => {
                     self.close_p_element_in_button_scope();
@@ -540,7 +540,7 @@ where
                     }
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<pre> | <listing>)) => {
                     self.close_p_element_in_button_scope();
@@ -548,7 +548,7 @@ where
                     self.ignore_lf.set(true);
                     self.frameset_ok.set(false);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<form>)) => {
                     if self.form_elem.borrow().is_some()
@@ -563,7 +563,7 @@ where
                         }
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<li> | <dd> | <dt>)) => {
                     declare_tag_set!(close_list = "li");
@@ -603,13 +603,13 @@ where
                     self.close_p_element_in_button_scope();
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<plaintext>)) => {
                     self.close_p_element_in_button_scope();
                     self.insert_element_for(tag);
                     ProcessResult::ToPlaintext
-                }
+                },
 
                 Token::Tag(tag @ tag!(<button>)) => {
                     if self.in_scope_named(default_scope, local_name!("button")) {
@@ -621,7 +621,7 @@ where
                     self.insert_element_for(tag);
                     self.frameset_ok.set(false);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag @
@@ -637,7 +637,7 @@ where
                         self.expect_to_close(tag.name);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</form>)) => {
                     if !self.in_html_elem_named(local_name!("template")) {
@@ -672,7 +672,7 @@ where
                         self.pop_until_named(local_name!("form"));
                     }
                     ProcessResult::Done
-                }
+                },
                 // FIXME: This branch does not exist like this in the specification, because it should run for
                 // implicitly closed option tags too. See https://github.com/servo/html5ever/issues/712.
                 Token::Tag(tag @ tag!(</option>)) => {
@@ -698,7 +698,7 @@ where
                     }
 
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</p>)) => {
                     if !self.in_scope_named(button_scope, local_name!("p")) {
@@ -707,7 +707,7 @@ where
                     }
                     self.close_p_element();
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(</li> | </dd> | </dt>)) => {
                     let in_scope = if tag.name == local_name!("li") {
@@ -722,7 +722,7 @@ where
                         self.sink.parse_error(Borrowed("No matching tag to close"));
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(</h1> | </h2> | </h3> | </h4> | </h5> | </h6>)) => {
                     if self.in_scope(default_scope, |n| self.elem_in(&n, heading_tag)) {
@@ -735,14 +735,14 @@ where
                         self.sink.parse_error(Borrowed("No heading tag to close"));
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<a>)) => {
                     self.handle_misnested_a_tags(&tag);
                     self.reconstruct_active_formatting_elements();
                     self.create_formatting_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag @
@@ -751,7 +751,7 @@ where
                     self.reconstruct_active_formatting_elements();
                     self.create_formatting_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<nobr>)) => {
                     self.reconstruct_active_formatting_elements();
@@ -762,7 +762,7 @@ where
                     }
                     self.create_formatting_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag @ tag!(</a> | </b> | </big> | </code> | </em> | </font> | </i> | </nobr> |
@@ -770,7 +770,7 @@ where
                 ) => {
                     self.adoption_agency(tag.name);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<applet> | <marquee> | <object>)) => {
                     self.reconstruct_active_formatting_elements();
@@ -780,7 +780,7 @@ where
                         .push(FormatEntry::Marker);
                     self.frameset_ok.set(false);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(</applet> | </marquee> | </object>)) => {
                     if !self.in_scope_named(default_scope, tag.name.clone()) {
@@ -791,7 +791,7 @@ where
                         self.clear_active_formatting_to_marker();
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<table>)) => {
                     if self.quirks_mode.get() != Quirks {
@@ -801,7 +801,7 @@ where
                     self.frameset_ok.set(false);
                     self.mode.set(InsertionMode::InTable);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(</br>)) => {
                     self.unexpected(&tag);
@@ -813,14 +813,14 @@ where
                             ..tag
                         }),
                     )
-                }
+                },
 
                 Token::Tag(tag @ tag!(<area> | <br> | <embed> | <img> | <keygen> | <wbr>)) => {
                     self.reconstruct_active_formatting_elements();
                     self.insert_and_pop_element_for(tag);
                     self.frameset_ok.set(false);
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag @ tag!(<input>)) => {
                     if self.is_fragment()
@@ -847,12 +847,12 @@ where
                     }
 
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag @ tag!(<param> | <source> | <track>)) => {
                     self.insert_and_pop_element_for(tag);
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag @ tag!(<hr>)) => {
                     self.close_p_element_in_button_scope();
@@ -868,7 +868,7 @@ where
                     self.insert_and_pop_element_for(tag);
                     self.frameset_ok.set(false);
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag @ tag!(<image>)) => {
                     self.unexpected(&tag);
@@ -879,25 +879,25 @@ where
                             ..tag
                         }),
                     )
-                }
+                },
 
                 Token::Tag(tag @ tag!(<textarea>)) => {
                     self.ignore_lf.set(true);
                     self.frameset_ok.set(false);
                     self.parse_raw_data(tag, Rcdata)
-                }
+                },
 
                 Token::Tag(tag @ tag!(<xmp>)) => {
                     self.close_p_element_in_button_scope();
                     self.reconstruct_active_formatting_elements();
                     self.frameset_ok.set(false);
                     self.parse_raw_data(tag, Rawtext)
-                }
+                },
 
                 Token::Tag(tag @ tag!(<iframe>)) => {
                     self.frameset_ok.set(false);
                     self.parse_raw_data(tag, Rawtext)
-                }
+                },
 
                 Token::Tag(tag @ tag!(<noembed>)) => self.parse_raw_data(tag, Rawtext),
 
@@ -920,7 +920,7 @@ where
                     }
 
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<option>)) => {
                     if self.in_scope_named(default_scope, local_name!("select")) {
@@ -935,7 +935,7 @@ where
                     self.reconstruct_active_formatting_elements();
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<optgroup>)) => {
                     if self.in_scope_named(default_scope, local_name!("select")) {
@@ -952,7 +952,7 @@ where
                     self.reconstruct_active_formatting_elements();
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<rb> | <rtc>)) => {
                     if self.in_scope_named(default_scope, local_name!("ruby")) {
@@ -963,7 +963,7 @@ where
                     }
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<rp> | <rt>)) => {
                     if self.in_scope_named(default_scope, local_name!("ruby")) {
@@ -976,17 +976,17 @@ where
                     }
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<math>)) => {
                     self.reconstruct_active_formatting_elements();
                     self.enter_foreign(tag, ns!(mathml))
-                }
+                },
 
                 Token::Tag(tag @ tag!(<svg>)) => {
                     self.reconstruct_active_formatting_elements();
                     self.enter_foreign(tag, ns!(svg))
-                }
+                },
 
                 Token::Tag(
                     tag!(<caption> | <col> | <colgroup> | <frame> | <head> |
@@ -994,7 +994,7 @@ where
                 ) => {
                     self.unexpected(&token);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<>)) => {
                     if self.opts.scripting_enabled && tag.name == local_name!("noscript") {
@@ -1004,12 +1004,12 @@ where
                         self.insert_element_for(tag);
                         ProcessResult::Done
                     }
-                }
+                },
 
                 Token::Tag(tag @ tag!(</>)) => {
                     self.process_end_tag_in_body(tag);
                     ProcessResult::Done
-                }
+                },
             },
 
             // § The "text" insertion mode
@@ -1026,7 +1026,7 @@ where
                     }
                     self.pop();
                     ProcessResult::Reprocess(self.orig_mode.take().unwrap(), token)
-                }
+                },
 
                 Token::Tag(tag @ tag!(</>)) => {
                     let node = self.pop();
@@ -1035,7 +1035,7 @@ where
                         return ProcessResult::Script(node);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 // The spec doesn't say what to do here.
                 // Other tokens are impossible?
@@ -1058,33 +1058,33 @@ where
                     self.insert_element_for(tag);
                     self.mode.set(InsertionMode::InCaption);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<colgroup>)) => {
                     self.pop_until_current(table_scope);
                     self.insert_element_for(tag);
                     self.mode.set(InsertionMode::InColumnGroup);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(<col>)) => {
                     self.pop_until_current(table_scope);
                     self.insert_phantom(local_name!("colgroup"));
                     ProcessResult::Reprocess(InsertionMode::InColumnGroup, token)
-                }
+                },
 
                 Token::Tag(tag @ tag!(<tbody> | <tfoot> | <thead>)) => {
                     self.pop_until_current(table_scope);
                     self.insert_element_for(tag);
                     self.mode.set(InsertionMode::InTableBody);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(<td> | <th> | <tr>)) => {
                     self.pop_until_current(table_scope);
                     self.insert_phantom(local_name!("tbody"));
                     ProcessResult::Reprocess(InsertionMode::InTableBody, token)
-                }
+                },
 
                 Token::Tag(tag!(<table>)) => {
                     self.unexpected(&token);
@@ -1094,7 +1094,7 @@ where
                     } else {
                         ProcessResult::Done
                     }
-                }
+                },
 
                 Token::Tag(tag!(</table>)) => {
                     if self.in_scope_named(table_scope, local_name!("table")) {
@@ -1104,7 +1104,7 @@ where
                         self.unexpected(&token);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag!(</body> | </caption> | </col> | </colgroup> | </html> |
@@ -1113,7 +1113,7 @@ where
 
                 Token::Tag(tag!(<style> | <script> | <template> | </template>)) => {
                     self.step(InsertionMode::InHead, token)
-                }
+                },
 
                 Token::Tag(tag @ tag!(<input>)) => {
                     self.unexpected(&tag);
@@ -1123,7 +1123,7 @@ where
                     } else {
                         self.foster_parent_in_body(Token::Tag(tag))
                     }
-                }
+                },
 
                 Token::Tag(tag @ tag!(<form>)) => {
                     self.unexpected(&tag);
@@ -1133,14 +1133,14 @@ where
                         *self.form_elem.borrow_mut() = Some(self.insert_and_pop_element_for(tag));
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Eof => self.step(InsertionMode::InBody, token),
 
                 token => {
                     self.unexpected(&token);
                     self.foster_parent_in_body(token)
-                }
+                },
             },
 
             // § The "in table text" insertion mode
@@ -1151,7 +1151,7 @@ where
                 Token::Characters(split, text) => {
                     self.pending_table_text.borrow_mut().push((split, text));
                     ProcessResult::Done
-                }
+                },
 
                 token => {
                     let pending = self.pending_table_text.take();
@@ -1176,7 +1176,7 @@ where
                     }
 
                     ProcessResult::Reprocess(self.orig_mode.take().unwrap(), token)
-                }
+                },
             },
 
             // § The "in caption" insertion mode
@@ -1198,14 +1198,14 @@ where
                             } => {
                                 self.mode.set(InsertionMode::InTable);
                                 ProcessResult::Done
-                            }
+                            },
                             _ => ProcessResult::Reprocess(InsertionMode::InTable, Token::Tag(tag)),
                         }
                     } else {
                         self.unexpected(&tag);
                         ProcessResult::Done
                     }
-                }
+                },
 
                 Token::Tag(
                     tag!(</body> | </col> | </colgroup> | </html> | </tbody> |
@@ -1220,7 +1220,7 @@ where
             InsertionMode::InColumnGroup => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, text) => self.append_text(text),
                 Token::Comment(text) => self.append_comment(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -1230,7 +1230,7 @@ where
                 Token::Tag(tag @ tag!(<col>)) => {
                     self.insert_and_pop_element_for(tag);
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag!(</colgroup>)) => {
                     if self.current_node_named(local_name!("colgroup")) {
@@ -1240,13 +1240,13 @@ where
                         self.unexpected(&token);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</col>)) => self.unexpected(&token),
 
                 Token::Tag(tag!(<template> | </template>)) => {
                     self.step(InsertionMode::InHead, token)
-                }
+                },
 
                 Token::Eof => self.step(InsertionMode::InBody, token),
 
@@ -1257,7 +1257,7 @@ where
                     } else {
                         self.unexpected(&token)
                     }
-                }
+                },
             },
 
             // § The "in table body" insertion mode
@@ -1268,14 +1268,14 @@ where
                     self.insert_element_for(tag);
                     self.mode.set(InsertionMode::InRow);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(<th> | <td>)) => {
                     self.unexpected(&token);
                     self.pop_until_current(table_body_context);
                     self.insert_phantom(local_name!("tr"));
                     ProcessResult::Reprocess(InsertionMode::InRow, token)
-                }
+                },
 
                 Token::Tag(tag @ tag!(</tbody> | </tfoot> | </thead>)) => {
                     if self.in_scope_named(table_scope, tag.name.clone()) {
@@ -1286,7 +1286,7 @@ where
                         self.unexpected(&tag);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag!(<caption> | <col> | <colgroup> | <tbody> | <tfoot> | <thead> | </table>),
@@ -1299,7 +1299,7 @@ where
                     } else {
                         self.unexpected(&token)
                     }
-                }
+                },
 
                 Token::Tag(
                     tag!(</body> | </caption> | </col> | </colgroup> | </html> | </td> | </th> | </tr>),
@@ -1319,7 +1319,7 @@ where
                         .borrow_mut()
                         .push(FormatEntry::Marker);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</tr>)) => {
                     if self.in_scope_named(table_scope, local_name!("tr")) {
@@ -1331,7 +1331,7 @@ where
                         self.unexpected(&token);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag!(<caption> | <col> | <colgroup> | <tbody> | <tfoot> | <thead> | <tr> | </table>),
@@ -1344,7 +1344,7 @@ where
                     } else {
                         self.unexpected(&token)
                     }
-                }
+                },
 
                 Token::Tag(tag @ tag!(</tbody> | </tfoot> | </thead>)) => {
                     if self.in_scope_named(table_scope, tag.name.clone()) {
@@ -1359,7 +1359,7 @@ where
                     } else {
                         self.unexpected(&tag)
                     }
-                }
+                },
 
                 Token::Tag(
                     tag!(</body> | </caption> | </col> | </colgroup> | </html> | </td> | </th>),
@@ -1381,7 +1381,7 @@ where
                         self.unexpected(&tag);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(
                     tag!(<caption> | <col> | <colgroup> | <tbody> | <td> | <tfoot> | <th> | <thead> | <tr>),
@@ -1392,11 +1392,11 @@ where
                     } else {
                         self.unexpected(&token)
                     }
-                }
+                },
 
                 Token::Tag(tag!(</body> | </caption> | </col> | </colgroup> | </html>)) => {
                     self.unexpected(&token)
-                }
+                },
 
                 Token::Tag(tag @ tag!(</table> | </tbody> | </tfoot> | </thead> | </tr>)) => {
                     if self.in_scope_named(table_scope, tag.name.clone()) {
@@ -1405,7 +1405,7 @@ where
                     } else {
                         self.unexpected(&tag)
                     }
-                }
+                },
 
                 token => self.step(InsertionMode::InBody, token),
             },
@@ -1416,7 +1416,7 @@ where
                 Token::Characters(_, _) => self.step(InsertionMode::InBody, token),
                 Token::Comment(_) | Token::ProcessingInstruction(..) => {
                     self.step(InsertionMode::InBody, token)
-                }
+                },
 
                 Token::Tag(
                     tag!(<base> | <basefont> | <bgsound> | <link> | <meta> | <noframes> | <script> |
@@ -1429,7 +1429,7 @@ where
                         .borrow_mut()
                         .push(InsertionMode::InTable);
                     ProcessResult::Reprocess(InsertionMode::InTable, token)
-                }
+                },
 
                 Token::Tag(tag!(<col>)) => {
                     self.template_modes.borrow_mut().pop();
@@ -1437,7 +1437,7 @@ where
                         .borrow_mut()
                         .push(InsertionMode::InColumnGroup);
                     ProcessResult::Reprocess(InsertionMode::InColumnGroup, token)
-                }
+                },
 
                 Token::Tag(tag!(<tr>)) => {
                     self.template_modes.borrow_mut().pop();
@@ -1445,13 +1445,13 @@ where
                         .borrow_mut()
                         .push(InsertionMode::InTableBody);
                     ProcessResult::Reprocess(InsertionMode::InTableBody, token)
-                }
+                },
 
                 Token::Tag(tag!(<td> | <th>)) => {
                     self.template_modes.borrow_mut().pop();
                     self.template_modes.borrow_mut().push(InsertionMode::InRow);
                     ProcessResult::Reprocess(InsertionMode::InRow, token)
-                }
+                },
 
                 Token::Eof => {
                     if !self.in_html_elem_named(local_name!("template")) {
@@ -1464,13 +1464,13 @@ where
                         self.mode.set(self.reset_insertion_mode());
                         ProcessResult::Reprocess(self.reset_insertion_mode(), token)
                     }
-                }
+                },
 
                 Token::Tag(tag @ tag!(<>)) => {
                     self.template_modes.borrow_mut().pop();
                     self.template_modes.borrow_mut().push(InsertionMode::InBody);
                     ProcessResult::Reprocess(InsertionMode::InBody, Token::Tag(tag))
-                }
+                },
 
                 token => self.unexpected(&token),
             },
@@ -1480,10 +1480,10 @@ where
             InsertionMode::AfterBody => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, _) => {
                     self.step(InsertionMode::InBody, token)
-                }
+                },
                 Token::Comment(text) => self.append_comment_to_html(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi_to_html(target, data),
 
@@ -1496,14 +1496,14 @@ where
                         self.mode.set(InsertionMode::AfterAfterBody);
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Eof => self.stop_parsing(),
 
                 token => {
                     self.unexpected(&token);
                     ProcessResult::Reprocess(InsertionMode::InBody, token)
-                }
+                },
             },
 
             // § The "in frameset" insertion mode
@@ -1511,7 +1511,7 @@ where
             InsertionMode::InFrameset => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, text) => self.append_text(text),
                 Token::Comment(text) => self.append_comment(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -1521,7 +1521,7 @@ where
                 Token::Tag(tag @ tag!(<frameset>)) => {
                     self.insert_element_for(tag);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(</frameset>)) => {
                     if self.open_elems.borrow().len() == 1 {
@@ -1534,12 +1534,12 @@ where
                         }
                     }
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag @ tag!(<frame>)) => {
                     self.insert_and_pop_element_for(tag);
                     ProcessResult::DoneAckSelfClosing
-                }
+                },
 
                 Token::Tag(tag!(<noframes>)) => self.step(InsertionMode::InHead, token),
 
@@ -1548,7 +1548,7 @@ where
                         self.unexpected(&token);
                     }
                     self.stop_parsing()
-                }
+                },
 
                 token => self.unexpected(&token),
             },
@@ -1558,7 +1558,7 @@ where
             InsertionMode::AfterFrameset => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, text) => self.append_text(text),
                 Token::Comment(text) => self.append_comment(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -1568,7 +1568,7 @@ where
                 Token::Tag(tag!(</html>)) => {
                     self.mode.set(InsertionMode::AfterAfterFrameset);
                     ProcessResult::Done
-                }
+                },
 
                 Token::Tag(tag!(<noframes>)) => self.step(InsertionMode::InHead, token),
 
@@ -1582,10 +1582,10 @@ where
             InsertionMode::AfterAfterBody => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, _) => {
                     self.step(InsertionMode::InBody, token)
-                }
+                },
                 Token::Comment(text) => self.append_comment_to_doc(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi_to_doc(target, data),
 
@@ -1596,7 +1596,7 @@ where
                 token => {
                     self.unexpected(&token);
                     ProcessResult::Reprocess(InsertionMode::InBody, token)
-                }
+                },
             },
 
             // § The "after after frameset" insertion mode
@@ -1604,10 +1604,10 @@ where
             InsertionMode::AfterAfterFrameset => match token {
                 Token::Characters(SplitStatus::NotSplit, text) => {
                     ProcessResult::SplitWhitespace(text)
-                }
+                },
                 Token::Characters(SplitStatus::Whitespace, _) => {
                     self.step(InsertionMode::InBody, token)
-                }
+                },
                 Token::Comment(text) => self.append_comment_to_doc(text),
                 Token::ProcessingInstruction(target, data) => self.append_pi_to_doc(target, data),
 
@@ -1629,14 +1629,14 @@ where
             Token::NullCharacter => {
                 self.unexpected(&token);
                 self.append_text("\u{fffd}".to_tendril())
-            }
+            },
 
             Token::Characters(_, text) => {
                 if any_not_whitespace(&text) {
                     self.frameset_ok.set(false);
                 }
                 self.append_text(text)
-            }
+            },
 
             Token::Comment(text) => self.append_comment(text),
             Token::ProcessingInstruction(target, data) => self.append_pi(target, data),
@@ -1664,7 +1664,7 @@ where
                 } else {
                     self.foreign_start_tag(tag)
                 }
-            }
+            },
 
             Token::Tag(tag @ tag!(<>)) => self.foreign_start_tag(tag),
 
@@ -1701,7 +1701,7 @@ where
                     }
                     stack_idx -= 1;
                 }
-            }
+            },
 
             // FIXME: Why is this unreachable?
             Token::Eof => panic!("impossible case in foreign content"),

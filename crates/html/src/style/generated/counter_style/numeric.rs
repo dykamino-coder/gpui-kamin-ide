@@ -58,19 +58,21 @@ pub(super) fn lower_greek(n: usize) -> String {
 /// Числовая система (css-counter-styles-3 §numeric): запись цифрами своего
 /// набора по основанию, равному его длине. Ноль — нулевая цифра, знак минус
 /// идёт впереди.
-pub(super) fn numeric(value: i32, digits: &[char]) -> String {
-    let base = digits.len();
-    let mut n = value.unsigned_abs() as usize;
+pub(super) fn numeric(value: i64, digits: &[char]) -> String {
+    let body = numeric_unsigned(value.unsigned_abs(), digits);
+    if value < 0 { format!("-{body}") } else { body }
+}
+
+/// The magnitude is unsigned so i64::MIN remains exactly representable.
+pub(super) fn numeric_unsigned(mut n: u64, digits: &[char]) -> String {
+    let base = digits.len() as u64;
     if n == 0 {
         return digits[0].to_string();
     }
     let mut out = vec![];
     while n > 0 {
-        out.push(digits[n % base]);
+        out.push(digits[(n % base) as usize]);
         n /= base;
-    }
-    if value < 0 {
-        out.push('-');
     }
     out.iter().rev().collect()
 }

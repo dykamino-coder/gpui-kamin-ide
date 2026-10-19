@@ -11,7 +11,7 @@ use crate::layout::positioned::anchor::NAMED;
 use crate::layout::positioned::anchor::NAMED_SEQ;
 use crate::layout::positioned::anchor::USED_LAST;
 use crate::style::computed::{Computed, PositionAnchor};
-use crate::style::values::value::Len;
+use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
 
 /// Ключ коробки в реестрах между кадрами: `node_id`; у псевдоэлемента он 0 —
@@ -58,10 +58,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     // CSS Anchor Positioning 1 resolves logical border-box edges before snapping.
     // The absolute probe covers the padding box; expand it by the CSS borders.
     // The containing-block record remains the padding box (CSS 2.1 section 10.1).
-    let bw = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let bw = px_lossy_zero;
     let b = e.style.borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
     Some(
@@ -84,53 +81,18 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                         bounds.size.height + px(border[0] + border[2]),
                     ),
                 };
-                // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
-                // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
-                // промежуточными коробками (§position-visibility).
-                // Рамка раскладки — до трансформов: `Transformed` матрицу
-                // применяет только на отрисовке. Отображённую снимаем здесь же
-                // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
-                // `transform-001/002/009` — якорь с `translate(-200px, -100px)
-                // scale(2)` обязан стоять там, где нарисован.
-                let (rect_tf, tf_top) = tf_map(outer);
-                let rec = AnchorRec {
-                    rect: outer,
-                    clip: window.content_mask().bounds,
-                    hidden,
-                    id,
-                    cb: own_cb,
-                    rect_tf,
-                    tf_top,
-                };
-                NAMED.with(|m| {
-                    let mut m = m.borrow_mut();
-                    for n in &names {
-                        m.insert(n.clone(), rec);
-                    }
-                });
-                NAMED_SEQ.with(|v| {
-                    let mut v = v.borrow_mut();
-                    for n in &names {
-                        v.push((n.clone(), seq, rec));
-                    }
-                });
-                if implicit {
-                    IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
-                }
-                if USED_LAST.with(|u| u.get()) {
-                    let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
-                    let stale = names.iter().any(|n| {
-                        !LAST_NAMED.with(|v| {
-                            v.borrow()
-                                .iter()
-                                .any(|(k, s, r)| k == n && *s == seq && same(r))
-                        })
-                    }) || (implicit
-                        && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
-                    if stale {
-                        reframe_if_stale(window);
-                    }
-                }
+                record(
+                    &names,
+                    implicit,
+                    Entry {
+                        id,
+                        cb: own_cb,
+                        seq,
+                        hidden,
+                    },
+                    outer,
+                    window,
+                );
             },
             |_, _, _, _| {},
         )
@@ -140,4 +102,77 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
         .size_full()
         .into_any_element(),
     )
+}
+
+/// Кто пишет запись в реестр якорей.
+#[derive(Clone, Copy)]
+pub(crate) struct Entry {
+    pub id: u64,
+    pub cb: u64,
+    pub seq: u32,
+    pub hidden: bool,
+}
+
+/// Записать рамку якоря `outer` (border box в точках окна, до трансформов)
+/// под именами `names` и, при `implicit`, как неявный якорь `who.id`.
+pub(crate) fn record(
+    names: &[String],
+    implicit: bool,
+    who: Entry,
+    outer: Bounds<Pixels>,
+    window: &mut Window,
+) {
+    let Entry {
+        id,
+        cb: own_cb,
+        seq,
+        hidden,
+    } = who;
+    // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
+    // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
+    // промежуточными коробками (§position-visibility).
+    // Рамка раскладки — до трансформов: `Transformed` матрицу
+    // применяет только на отрисовке. Отображённую снимаем здесь же
+    // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
+    // `transform-001/002/009` — якорь с `translate(-200px, -100px)
+    // scale(2)` обязан стоять там, где нарисован.
+    let (rect_tf, tf_top) = tf_map(outer);
+    let rec = AnchorRec {
+        rect: outer,
+        clip: window.content_mask().bounds,
+        hidden,
+        id,
+        cb: own_cb,
+        rect_tf,
+        tf_top,
+    };
+    NAMED.with(|m| {
+        let mut m = m.borrow_mut();
+        for n in names {
+            m.insert(n.clone(), rec);
+        }
+    });
+    NAMED_SEQ.with(|v| {
+        let mut v = v.borrow_mut();
+        for n in names {
+            v.push((n.clone(), seq, rec));
+        }
+    });
+    if implicit {
+        IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
+    }
+    if USED_LAST.with(|u| u.get()) {
+        let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
+        let stale = names.iter().any(|n| {
+            !LAST_NAMED.with(|v| {
+                v.borrow()
+                    .iter()
+                    .any(|(k, s, r)| k == n && *s == seq && same(r))
+            })
+        }) || (implicit
+            && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
+        if stale {
+            reframe_if_stale(window);
+        }
+    }
 }

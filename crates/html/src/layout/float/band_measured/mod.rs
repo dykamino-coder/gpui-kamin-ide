@@ -79,6 +79,7 @@ pub(super) fn band_host_m(
     i: usize,
     em: f32,
     lead: &[Node],
+    cb: Option<f32>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
@@ -90,7 +91,7 @@ pub(super) fn band_host_m(
         let Node::Element(next) = &nodes[j] else {
             break;
         };
-        if !next.style.float.is_some_and(|f| f != 0) {
+        if next.style.float.is_none_or(|f| f == 0) {
             break;
         }
         band_float_m(next, em)?;
@@ -162,7 +163,7 @@ pub(super) fn band_host_m(
     {
         return None;
     }
-    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes)
+    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes, cb)
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
@@ -172,10 +173,7 @@ pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
         // (Writing Modes 4 §7.3), затем полосы размещают физическую коробку
         // в осях хоста. Горизонтальному ортогональному тексту ещё нужен
         // fallback доступного строчного размера, поэтому он остаётся в ряду.
-        if band_orthogonal(&next.style)
-            && subtree_has_text(next)
-            && next.style.vertical != Some(true)
-        {
+        if band_orthogonal(&next.style) && subtree_has_text(next) && !next.style.wm().vertical() {
             return None;
         }
         // Флоат с трансформацией — на прежнем пути: трансформацию даёт

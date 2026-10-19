@@ -13,7 +13,6 @@ pub(crate) use contexts::own_context_style;
 
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};
-use crate::text::text_box::blank_text;
 
 /// Обтекание: плавающий блок и следующие за ним встают в один ряд.
 ///
@@ -101,9 +100,7 @@ pub(crate) fn contains_block(children: &[Node]) -> bool {
     })
 }
 
-pub(crate) fn is_blank(n: &Node) -> bool {
-    matches!(n, Node::Text(t) if blank_text(t))
-}
+pub(crate) use crate::dom::whitespace::is_blank;
 
 /// Схлопываются ли отступы этого элемента с соседями и родителем.
 ///
@@ -130,7 +127,16 @@ pub(crate) fn in_flow(c: &Computed) -> bool {
 pub(crate) fn replaced_inline(tag: &str) -> bool {
     matches!(
         tag,
-        "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe" | "input" | "br"
+        "img"
+            | "svg"
+            | "canvas"
+            | "video"
+            | "audio"
+            | "embed"
+            | "object"
+            | "iframe"
+            | "input"
+            | "br"
     )
 }
 
