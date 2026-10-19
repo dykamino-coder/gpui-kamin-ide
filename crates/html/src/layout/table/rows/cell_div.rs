@@ -10,6 +10,7 @@ use gpui::{ParentElement, Styled, px};
 
 // The cell box consumes the border decoration record produced by preparation.
 #[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn cell_box_div(
     paint_layers: bool,
     cell_bgs: &std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
@@ -23,6 +24,7 @@ pub(super) fn cell_box_div(
     shift: (f32, f32),
     cm: &Computed,
     cell: &Element,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     // Коробке ячейки нужен СЛИТЫЙ стиль: у сырого `cell.style`
     // шрифтовые единицы не разрешены, и `apply` считает их от жёстких
@@ -89,7 +91,7 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.background = None;
     }
-    let mut d = styled_div_with(cell, &box_style);
+    let mut d = styled_div_with(cell, &box_style, cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }

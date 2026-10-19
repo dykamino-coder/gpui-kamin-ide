@@ -61,7 +61,7 @@ pub(super) fn band_host_m_tail(
         r.extend(rest);
         r
     };
-    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm)?;
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm, cb.margin_basis)?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
     if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {

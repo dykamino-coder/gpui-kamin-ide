@@ -14,6 +14,7 @@ use crate::style::css::stylesheet_tokens::find_matching;
 pub(crate) use stylesheet_tokens::next_piece;
 mod component_tokens;
 mod font_family_values;
+pub(crate) mod value_tokens;
 pub(crate) use component_tokens::skip_string;
 mod priority_tokens;
 use crate::style::css::priority_tokens::top_level_bang;
@@ -90,9 +91,11 @@ mod media_probe {
     /// молча становилась `<general-enclosed>`.
     #[test]
     fn media_without_space_before_paren() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let m = Media::default();
-        assert!(m.matches("@media(min-width:0px)"), "no-space form");
-        assert!(m.matches("@media (min-width:0px)"), "spaced form");
-        assert!(m.matches("@media"), "empty query");
+        assert!(m.matches("@media(min-width:0px)", vcx), "no-space form");
+        assert!(m.matches("@media (min-width:0px)", vcx), "spaced form");
+        assert!(m.matches("@media", vcx), "empty query");
     }
 }

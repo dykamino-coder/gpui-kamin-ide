@@ -1,5 +1,6 @@
 //! Computed::apply_one: column*, break-*, *-rule*, margin-trim, page, orphans/widows.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -8,8 +9,7 @@ mod rule_props;
 use gap_rules::{gap_color, gap_inset, gap_list, gap_style, gap_width};
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_multicol(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_multicol(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
             // невалидны — объявление отбрасывается.
@@ -42,7 +42,7 @@ impl Computed {
             "column-width" => {
                 if v.trim() == "auto" {
                     self.column_width = accept_parsed!(self, None);
-                } else if let Some(l) = Len::parse(v.trim()) {
+                } else if let Some(l) = Len::parse(v.trim(), vcx) {
                     // Отрицательная и нулевая ширина колонки невалидны.
                     if !matches!(l, Len::Px(w) if w <= 0.0) {
                         self.column_width = accept_parsed!(self, Some(l));
@@ -55,7 +55,7 @@ impl Computed {
             "column-height" => {
                 if v.trim() == "auto" {
                     self.column_height = accept_parsed!(self, None);
-                } else if let Some(l) = Len::parse(v.trim())
+                } else if let Some(l) = Len::parse(v.trim(), vcx)
                     && !matches!(l, Len::Px(h) if h < 0.0)
                 {
                     self.column_height = accept_parsed!(self, Some(l));
@@ -153,7 +153,7 @@ impl Computed {
                 self.break_after_avoid = v.trim().starts_with("avoid");
                 self.accept_declaration();
             }
-            _ => self.apply_multicol_rules(key, val, v, hit),
+            _ => self.apply_multicol_rules(key, v, hit, vcx),
         }
     }
 }

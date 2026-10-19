@@ -1,6 +1,7 @@
 //! Профиль фигуры обтекания (shape-outside, shape-margin): маска, интервалы, расширение.
 
-mod svg_path;
+use crate::document::state::ValueCx;
+pub(super) mod svg_path;
 pub(super) use svg_path::svg_path_of;
 
 mod mask;
@@ -42,10 +43,16 @@ pub struct ShapeBox {
 /// Экстенты обтекания по строкам margin-box; None — форма нераспознана
 /// (вызывающий откатывается к прямоугольнику коробки). Пустая форма —
 /// нули: «empty float area», НЕ фоллбек.
-pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<f32>> {
+pub fn shape_profile(
+    raw: &str,
+    b: &ShapeBox,
+    sm: f32,
+    side: i32,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<f32>> {
     let rows = b.mh.ceil().max(1.0) as usize;
     let cols = b.mw.ceil().max(1.0) as usize;
-    let mask = shape_mask(raw, b, cols, rows)?;
+    let mask = shape_mask(raw, b, cols, rows, vcx)?;
     let mut iv = mask_intervals(&mask, cols, rows, b.threshold);
     // `shape-margin` раздувает фигуру наружу на своё расстояние
     // (css-shapes-1 §2.2): контур обтекания — множество точек не дальше
@@ -81,7 +88,13 @@ pub fn shape_profile(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<
 /// Раздутие `shape-margin` — тот же диск Минковского (css-shapes-1 §2.2),
 /// что и у строчного профиля: `dilate` не знает, какая ось «длинная», ей
 /// достаточно поменять местами два размера.
-pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Option<Vec<f32>> {
+pub fn shape_profile_block(
+    raw: &str,
+    b: &ShapeBox,
+    sm: f32,
+    side: i32,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<f32>> {
     let rows = b.mh.ceil().max(1.0) as usize;
     let cols = b.mw.ceil().max(1.0) as usize;
     // Circle/ellipse without shape-margin: exact extent per one-pixel column,
@@ -97,7 +110,7 @@ pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Optio
             Some(end) => &head[..=end],
             None => head,
         };
-        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0)?;
+        let (cx, cy, rx, ry) = shape_params(head, b.rw, b.rh, 1.0, vcx)?;
         let (cx, cy) = (cx + b.rx, cy + b.ry);
         return Some(
             (0..cols)
@@ -127,7 +140,7 @@ pub fn shape_profile_block(raw: &str, b: &ShapeBox, sm: f32, side: i32) -> Optio
                 .collect(),
         );
     }
-    let mask = shape_mask(raw, b, cols, rows)?;
+    let mask = shape_mask(raw, b, cols, rows, vcx)?;
     let t = (b.threshold.clamp(0.0, 1.0) * 255.0) as u8;
     let mut iv: Vec<Option<(i32, i32)>> = (0..cols)
         .map(|x| {

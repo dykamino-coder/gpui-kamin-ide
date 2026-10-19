@@ -159,6 +159,7 @@ pub(crate) fn band_kids(
         }
         let inherited = inherited.clone();
         let pagination_offset = opts.frag.float_struts.get(&c.node_id).map_or(0.0, |s| s.by);
+        let shape_values = opts.cx.vcx().keep();
         let opts = opts.clone();
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
@@ -180,7 +181,7 @@ pub(crate) fn band_kids(
                 let side = c.style.float.unwrap_or(-1);
                 let em = band_em(&c.style, em).unwrap_or(em);
                 std::rc::Rc::new(move |bw: f32, bh: f32, m: [f32; 4], cbw: f32| {
-                    measured_shape(&f, side, (bw, bh), m, cbw, em, vert)
+                    measured_shape(&f, side, (bw, bh), m, cbw, em, vert, shape_values.vcx())
                 }) as crate::layout::float::band_flow::ShapeOf
             });
         kids.push(Kid {

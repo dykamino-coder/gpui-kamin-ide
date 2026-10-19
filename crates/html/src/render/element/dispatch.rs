@@ -2,9 +2,8 @@
 
 use super::element;
 use crate::dom::{Element, Node};
-use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
 use crate::layout::float::shape_flow::shape_flow;
-use crate::layout::list::{list_container, list_item};
+use crate::layout::list::{self, list_item};
 use crate::layout::replaced::iframe::object_is_document;
 use crate::layout::replaced::image::{image, image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
@@ -26,6 +25,7 @@ pub(crate) fn dispatch_element(
     outer_row: Option<(f32, f32)>,
     mut built_iframe: Option<AnyElement>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return math;
     }
@@ -46,7 +46,7 @@ pub(crate) fn dispatch_element(
         // блочная картинка под `body { image-orientation: none }` всё равно
         // разворачивалась по метке EXIF.
         "canvas" if merged.parent_grid != 0 => {
-            crate::layout::replaced::canvas_grid::render(e, &merged, inherited)
+            crate::layout::replaced::canvas_grid::render(e, &merged, inherited, &opts.cx)
                 .unwrap_or_else(|| generic_box(e, merged, inherited, opts, outer_row))
         }
         "img" => {
@@ -58,7 +58,7 @@ pub(crate) fn dispatch_element(
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
+                replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
             }
             copy.style.image_orient_none = merged.image_orient_none;
             crate::layout::replaced::image::inherit_item_metadata(
@@ -77,14 +77,15 @@ pub(crate) fn dispatch_element(
                 copy.style.cb_height_def = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
-            copy.style.resolve_viewport(opts.viewport);
-            crate::layout::replaced::svg_document_image::render(&copy, opts)
-                .unwrap_or_else(|| image_with(&copy, Some(atom_base_font(inherited, opts))))
+            copy.style.resolve_viewport(opts.viewport, vcx);
+            crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
+                image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
+            })
         }
         // Замещаемые с картинкой-источником рисуются как <img>: embed через
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
-        "embed" if e.attr("src").is_some() => image(e),
+        "embed" if e.attr("src").is_some() => image(e, &opts.cx),
         // Вложенный документ (`<iframe>` и `<object>` с документом в `data`)
         // построен выше; рукав стоит ПЕРЕД картиночным `object`, иначе
         // документ уходил в `image()` пустой коробкой. Объект с документом,
@@ -124,21 +125,25 @@ pub(crate) fn dispatch_element(
                 copy.style.height = Some(Len::Px(150.0));
             }
             copy.style.cb_height_def = merged.cb_height_def;
-            styled_div(&copy).flex_shrink_0().into_any_element()
+            styled_div(&copy, &opts.cx)
+                .flex_shrink_0()
+                .into_any_element()
         }
         "object" if e.attr("data").is_some() && !object_is_document(e) => {
             let mut copy = e.clone();
             let url = e.attr("data").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            image(&copy)
+            image(&copy, &opts.cx)
         }
         "video" if e.attr("poster").is_some() => {
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            image(&copy)
+            image(&copy, &opts.cx)
         }
-        _ if crate::layout::replaced::media::empty(e) => crate::layout::replaced::media::render(e),
+        _ if crate::layout::replaced::media::empty(e) => {
+            crate::layout::replaced::media::render(e, opts)
+        }
         // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
         // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
         // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —
@@ -152,12 +157,12 @@ pub(crate) fn dispatch_element(
             // уже собственный стиль рисунка.
             let cb_w = match inherited.width {
                 Some(Len::Px(v)) if v > 0.0 => Some(v),
-                _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+                _ => opts.cx.cb_width.filter(|v| *v > 0.0),
             };
             // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`.
             svg_replaced(e, &crate::svg::size::stretch_fit(e, cb_w), &merged, opts).unwrap_or_else(
                 || {
-                    styled_div_with(e, &merged)
+                    styled_div_with(e, &merged, &opts.cx)
                         .child(SharedString::from("[рисунок]"))
                         .into_any_element()
                 },
@@ -169,7 +174,7 @@ pub(crate) fn dispatch_element(
         // (`horizontal-rule-vlr-003`), а строчную ось (высоту) растягивает сам
         // ряд блочного потока.
         "hr" => {
-            let d = styled_div_with(e, &merged);
+            let d = styled_div_with(e, &merged, &opts.cx);
             // A `width` (CSS or the §15.3.11 hint) keeps its own size.
             if inherited.wm().vertical() || merged.width.is_some() {
                 d.into_any_element()
@@ -226,7 +231,7 @@ pub(crate) fn dispatch_element(
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list_container::render(e, &merged, opts),
+        "ul" | "ol" if e.style.display.is_none() => list::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.

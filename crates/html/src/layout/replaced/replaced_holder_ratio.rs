@@ -1,11 +1,18 @@
 //! Expose a replaced image's ratio on its layout holder for deferred automatic sizing.
 //! The inner measured image alone cannot transfer the holder's opposite-axis bounds.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
-pub(super) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixed: bool) -> bool {
+pub(super) fn apply(
+    holder: &mut Div,
+    style: &Computed,
+    ratio: Option<f32>,
+    fixed: bool,
+    vcx: ValueCx<'_>,
+) -> bool {
     let Some(ratio) = ratio.filter(|r| r.is_finite() && *r > 0.0) else {
         return false;
     };
@@ -22,7 +29,7 @@ pub(super) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixe
     let percentage =
         matches!(style.width, Some(Len::Pct(_))) || matches!(style.height, Some(Len::Pct(_)));
     if percentage {
-        if style.aspect_ratio.is_none() && !natural_content_box(holder, style) {
+        if style.aspect_ratio.is_none() && !natural_content_box(holder, style, vcx) {
             return false;
         }
         holder.style().aspect_ratio = Some(ratio);
@@ -38,7 +45,7 @@ pub(super) fn apply(holder: &mut Div, style: &Computed, ratio: Option<f32>, fixe
 
 /// Natural ratios use content coordinates even when authored dimensions are border-box.
 /// Rebuild raw numeric bounds rather than retaining apply's flattened padding offsets.
-fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
+fn natural_content_box(holder: &mut Div, style: &Computed, vcx: ValueCx<'_>) -> bool {
     use gpui::{DefiniteLength, Length};
     let border = style.borders();
     let edge = |sides: [Option<Len>; 4]| -> Option<f32> {
@@ -82,7 +89,7 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
         let offset = offsets[index % 2];
         let percentage = match value {
             Some(Len::Pct(_)) => true,
-            Some(Len::Calc(index)) => crate::style::values::value::calc_get(index).pct != 0.0,
+            Some(Len::Calc(index)) => crate::style::values::value::calc_get(index, vcx).pct != 0.0,
             _ => false,
         };
         if percentage
@@ -103,12 +110,14 @@ fn natural_content_box(holder: &mut Div, style: &Computed) -> bool {
         converted[index] = match value {
             None | Some(Len::Auto) => None,
             Some(Len::MinContent | Len::MaxContent | Len::FitContent) => return false,
-            Some(value) if offset == 0.0 => Some(crate::style::apply::len_to_gpui(value).into()),
+            Some(value) if offset == 0.0 => {
+                Some(crate::paint::apply::len_to_gpui(value, vcx).into())
+            }
             Some(Len::Px(value)) => Some(gpui::px((value - offset).max(0.0)).into()),
             Some(Len::Pct(value)) => Some(DefiniteLength::Calc(-offset, value).into()),
             Some(Len::Calc(index)) => {
                 let Some((percentage, pixels)) =
-                    crate::style::values::value::calc_get(index).pct_px()
+                    crate::style::values::value::calc_get(index, vcx).pct_px()
                 else {
                     return false;
                 };
@@ -135,6 +144,8 @@ mod tests {
 
     #[test]
     fn natural_ratio_translates_padded_border_box_percentage_and_bound() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut style = Computed {
             height: Some(Len::Pct(1.0)),
             max_height: Some(Len::Px(100.0)),
@@ -146,8 +157,8 @@ mod tests {
         style.padding.right = Some(Len::Px(10.0));
         style.padding.top = Some(Len::Px(10.0));
         style.padding.bottom = Some(Len::Px(10.0));
-        let mut holder = crate::style::apply::apply(div(), &style);
-        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
+        let mut holder = crate::paint::apply::apply(div(), &style, vcx);
+        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false, vcx));
         assert_eq!(holder.style().content_box, Some(true));
         assert_eq!(
             holder.style().size.height,
@@ -159,6 +170,8 @@ mod tests {
 
     #[test]
     fn natural_content_box_keeps_content_box_bounds() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut style = Computed {
             height: Some(Len::Pct(1.0)),
             max_height: Some(Len::Px(100.0)),
@@ -170,23 +183,25 @@ mod tests {
         // A percentage size already switches `apply` to the native content
         // box (`intrinsic_size::native_content_box`), so padding is not
         // folded into the bounds there and the holder keeps them.
-        let mut holder = crate::style::apply::apply(div(), &style);
+        let mut holder = crate::paint::apply::apply(div(), &style, vcx);
         assert_eq!(holder.style().content_box, Some(true));
         assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
-        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
+        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false, vcx));
         assert_eq!(holder.style().max_size.height, Some(px(100.0).into()));
         assert_eq!(holder.style().content_box, Some(true));
     }
     #[test]
     fn unresolved_percentage_block_bounds_remain_unresolved() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let style = Computed {
             width: Some(Len::Pct(1.0)),
             max_height: Some(Len::Pct(0.5)),
             ..Computed::default()
         };
-        let mut holder = crate::style::apply::apply(div(), &style);
+        let mut holder = crate::paint::apply::apply(div(), &style, vcx);
         assert_eq!(holder.style().max_size.height, None);
-        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false));
+        assert!(!apply(&mut holder, &style, Some(113.0 / 120.0), false, vcx));
         assert_eq!(holder.style().max_size.height, None);
         assert_eq!(holder.style().size.height, None);
         assert_eq!(holder.style().aspect_ratio, Some(113.0 / 120.0));

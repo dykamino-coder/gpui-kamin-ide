@@ -1,13 +1,13 @@
 //! Computed::apply_one: filter, blend, isolation, animation, transition, will-change, contain*, content, counters, quotes, lists, svg, cursor and the rest.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 mod containment;
 mod timing;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_effects(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_effects(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // `pre` сохраняет переводы строк — это не то же самое, что запрет
             // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
@@ -28,7 +28,7 @@ impl Computed {
             "stroke-width" => {
                 self.svg_stroke_width = accept_parsed!(
                     self,
-                    Some(match crate::style::values::value::calc_pct_px(v) {
+                    Some(match crate::style::values::value::calc_pct_px(v, vcx) {
                         Some((0.0, px)) => format!("{px}"),
                         _ => v.to_string(),
                     })
@@ -37,10 +37,14 @@ impl Computed {
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
-            "x" => self.svg_x = record_parsed!(self, crate::style::values::value::Len::parse(v)),
-            "y" => self.svg_y = record_parsed!(self, crate::style::values::value::Len::parse(v)),
+            "x" => {
+                self.svg_x = record_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+            }
+            "y" => {
+                self.svg_y = record_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+            }
             "cx" | "cy" | "r" | "rx" | "ry" | "d" => {
-                crate::svg::geometry_property(self, key, v);
+                crate::svg::geometry_property(self, key, v, vcx);
             }
             "caption-side" => {
                 self.caption_bottom = accept_parsed!(self, Some(v.eq_ignore_ascii_case("bottom")))
@@ -57,7 +61,7 @@ impl Computed {
                     declaration_parse: self.declaration_parse,
                     ..Default::default()
                 };
-                tmp.apply_one("filter", v);
+                tmp.apply_one("filter", v, vcx);
                 if tmp.declaration_parse == ParseResult::Accepted {
                     self.accept_declaration();
                 }
@@ -170,7 +174,9 @@ impl Computed {
             "table-layout" => self.table_fixed = accept_parsed!(self, Some(v == "fixed")),
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
-            "counter-reset" | "counter-increment" | "counter-set" => counters::apply(self, key, v),
+            "counter-reset" | "counter-increment" | "counter-set" => {
+                counters::apply(self, key, v, vcx)
+            }
             "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
@@ -191,7 +197,7 @@ impl Computed {
                     // `counter(a,b,c)` печатался литералом и `counters-002`
                     // показывал слово FAIL.
                     other => {
-                        if let Some(list) = parse_content(other) {
+                        if let Some(list) = parse_content(other, vcx) {
                             self.accept_declaration();
                             self.content_inherit = false;
                             self.content = Some(list);
@@ -199,14 +205,14 @@ impl Computed {
                     }
                 }
             }
-            "accent-color" => self.accent_color = record_parsed!(self, Color::parse(v)),
+            "accent-color" => self.accent_color = record_parsed!(self, Color::parse(v, vcx)),
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {
                     self.appearance = accept_parsed!(self, Some(a));
                 }
             }
 
-            _ => self.apply_effects_timing(key, val, v, hit),
+            _ => self.apply_effects_timing(key, v, hit, vcx),
         }
     }
 }

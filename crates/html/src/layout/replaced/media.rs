@@ -1,8 +1,9 @@
 //! Sizing of replaced media without available natural dimensions.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::layout::block::containing::AVAIL_W;
 use crate::layout::replaced::{image, limits::css2_replaced_limits, replaced_used_style};
+use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
@@ -19,14 +20,21 @@ pub(crate) fn empty(e: &Element) -> bool {
 
 /// HTML 15.4.1 and CSS Images 3 default sizing: fallback dimensions are
 /// separate from a natural aspect ratio and disappear under size containment.
-pub(crate) fn resolve(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> Option<Element> {
+/// `avail_w` — доступная ширина блока (`LayoutCx::avail_w`) для долей.
+pub(crate) fn resolve(
+    e: &Element,
+    inherited: &Computed,
+    viewport: (f32, f32),
+    avail_w: Option<f32>,
+    vcx: ValueCx<'_>,
+) -> Option<Element> {
     if !empty(e) {
         return None;
     }
-    let normalized = replaced_used_style::normalize(e, AVAIL_W.get());
+    let normalized = replaced_used_style::normalize(e, avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let mut copy = image::pct_height_to_px(e, inherited);
-    copy.style.resolve_viewport(viewport);
+    copy.style.resolve_viewport(viewport, vcx);
     // A media resource is not an image source. Its unavailable natural size
     // must not trigger image decoding or a broken-image text placeholder.
     copy.attrs.retain(|(name, _)| name != "src");
@@ -100,8 +108,8 @@ pub(crate) fn resolve(e: &Element, inherited: &Computed, viewport: (f32, f32)) -
     Some(copy)
 }
 
-pub(crate) fn render(e: &Element) -> AnyElement {
-    image::image(e)
+pub(crate) fn render(e: &Element, opts: &RenderOpts) -> AnyElement {
+    image::image(e, &opts.cx)
 }
 
 #[cfg(test)]
@@ -114,29 +122,35 @@ mod tests {
 
     #[test]
     fn fallback_dimensions_do_not_imply_a_ratio() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut e = video();
         e.style.height = Some(Len::Px(40.0));
-        let sized = resolve(&e, &Computed::default(), (800.0, 600.0)).unwrap();
+        let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
         assert_eq!(sized.style.width, Some(Len::Px(300.0)));
         assert_eq!(sized.style.height, Some(Len::Px(40.0)));
     }
 
     #[test]
     fn dimension_attributes_transfer_maximum_constraints() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut e = video();
         e.style.attr_width = Some(Len::Px(100.0));
         e.style.attr_height = Some(Len::Px(100.0));
         e.style.max_width = Some(Len::Px(100.0));
-        let sized = resolve(&e, &Computed::default(), (800.0, 600.0)).unwrap();
+        let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
         assert_eq!(sized.style.width, Some(Len::Px(100.0)));
         assert_eq!(sized.style.height, Some(Len::Px(100.0)));
     }
 
     #[test]
     fn size_containment_keeps_default_dimensions_out_of_style() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut e = video();
         e.style.contain_size = Some(true);
-        let sized = resolve(&e, &Computed::default(), (800.0, 600.0)).unwrap();
+        let sized = resolve(&e, &Computed::default(), (800.0, 600.0), None, vcx).unwrap();
         assert_eq!(sized.style.width, None);
         assert_eq!(sized.style.height, None);
     }

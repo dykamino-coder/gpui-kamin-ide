@@ -1,13 +1,14 @@
 //! Индикаторы формы и ползунок, отдельно от текстовых полей.
 
 use super::{SystemColor, native_color};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::apply::apply;
+use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 /// Ползунок: дорожка и заполненная часть по значению.
-pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
+pub(super) fn range(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let num = |name: &str, default: f32| -> f32 {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };
@@ -20,7 +21,7 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
     } else {
         0.
     };
-    let mut paint = apply(div(), style).flex().items_center().child(
+    let mut paint = apply(div(), style, vcx).flex().items_center().child(
         div()
             .relative()
             .w_full()
@@ -38,30 +39,33 @@ pub(super) fn range(e: &Element, style: &Computed) -> AnyElement {
                     .bg(accent),
             ),
     );
-    paint.style().sizing_keywords = Some(crate::style::apply::intrinsic_size::keywords(style));
-    super::intrinsic::control(
+    paint.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(style));
+    super::control(
         paint,
-        super::metrics::size(super::metrics::ControlKind::Range),
+        crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Range),
     )
 }
 
-pub(super) fn color_swatch(e: &Element, style: &Computed) -> AnyElement {
+pub(super) fn color_swatch(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let color = e
         .attr("value")
-        .and_then(crate::style::values::value::Color::parse)
+        .and_then(|v| crate::style::values::value::Color::parse(v, vcx))
         .map(|c| c.to_hsla());
-    let mut d = apply(div(), style)
+    let mut d = apply(div(), style, vcx)
         .rounded(px(3.))
         .border_1()
         .border_color(native_color(style, SystemColor::ButtonBorder));
     if let Some(c) = color {
         d = d.bg(c);
     }
-    super::intrinsic::control(d, super::metrics::size(super::metrics::ControlKind::Color))
+    super::control(
+        d,
+        crate::style::ua::forms::size(crate::style::ua::forms::ControlKind::Color),
+    )
 }
 
 /// Полоса выполнения: `<progress value max>`.
-pub(super) fn progress(e: &Element, style: &Computed) -> AnyElement {
+pub(super) fn progress(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let num = |name: &str, default: f32| -> f32 {
         e.attr(name).and_then(|v| v.parse().ok()).unwrap_or(default)
     };
@@ -70,7 +74,7 @@ pub(super) fn progress(e: &Element, style: &Computed) -> AnyElement {
     let accent: gpui::Hsla = super::control_accent(style)
         .map(|c| c.to_hsla())
         .unwrap_or_else(|| native_color(style, SystemColor::AccentColor));
-    apply(div(), style)
+    apply(div(), style, vcx)
         .h(px(8.))
         .w_full()
         // Внутри колонки шириной по содержимому `w_full` даёт ноль: у полосы

@@ -1,6 +1,7 @@
 //! Обход содержащих коробок и геометрия motion path.
 
 use super::{Cb, apply_offset_transform};
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -13,7 +14,12 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// `fixed` стоят тогда в НАЧАЛЬНОМ содержащем блоке (окне), размер которого
 /// знает только сборщик, поэтому их offset-трансформ откладывается до
 /// отрисовки (`apply_icb`, `Computed::offset_icb`).
-pub(super) fn walk(nodes: &mut [Node], parent: Option<(Cb, bool)>, icb_open: bool) {
+pub(super) fn apply_offset_transforms(
+    nodes: &mut [Node],
+    parent: Option<(Cb, bool)>,
+    icb_open: bool,
+    vcx: ValueCx<'_>,
+) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         // Геометрия снимается ДО правки стиля: `transform` на размеры коробки
@@ -32,9 +38,9 @@ pub(super) fn walk(nodes: &mut [Node], parent: Option<(Cb, bool)>, icb_open: boo
                 .filter(|(_, est)| cb_is_parent(&e.style, *est))
                 .map(|(g, _)| with_self(g, &e.style));
             let origin = svg_origin(e);
-            apply_offset_transform(&mut e.style, cb.as_ref(), origin);
+            apply_offset_transform(&mut e.style, cb.as_ref(), origin, vcx);
         }
-        walk(&mut e.children, mine, icb_open && !est);
+        apply_offset_transforms(&mut e.children, mine, icb_open && !est, vcx);
     }
 }
 

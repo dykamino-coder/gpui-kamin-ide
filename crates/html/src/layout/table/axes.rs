@@ -1,5 +1,7 @@
 //! Table grid indices are logical; borders and layout boxes remain physical.
 //! Follow Blink TableBorders::MergeBorders, which converts with the table's writing direction.
+
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 
@@ -34,8 +36,8 @@ impl Axes {
     }
 }
 
-pub(super) fn inherited(e: &Element, parent: &Computed) -> Option<Element> {
-    let style = crate::style::cascade::inherit::inherit(parent, &e.style);
+pub(super) fn inherited(e: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Option<Element> {
+    let style = crate::style::cascade::inherit::inherit(parent, &e.style, vcx);
     if (
         e.style.writing_mode,
         e.style.flat_mode,

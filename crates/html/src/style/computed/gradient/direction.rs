@@ -1,6 +1,7 @@
 //! Направление линейного градиента из первой части записи (угол, `to <сторона>`, форма радиального): угол и номер первого стопа.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// CSS Images 3 §3.1: a corner direction is perpendicular to the diagonal
 /// between the two adjacent corners, rather than a fixed 45-degree bearing.
@@ -29,7 +30,12 @@ pub(crate) fn corner_angle(raw: &str, (width, height): (f32, f32)) -> Option<f32
     )
 }
 
-pub(super) fn gradient_direction(head: &str, radial: bool, mut idx: usize) -> Option<(f32, usize)> {
+pub(super) fn gradient_direction(
+    head: &str,
+    radial: bool,
+    mut idx: usize,
+    vcx: ValueCx<'_>,
+) -> Option<(f32, usize)> {
     let angle = match head {
         a if a.ends_with("deg") => {
             idx = 1;
@@ -81,7 +87,8 @@ pub(super) fn gradient_direction(head: &str, radial: bool, mut idx: usize) -> Op
         // У радиального первым идёт описание формы (`circle at center`) —
         // цветом оно не разбирается, поэтому просто пропускается.
         first
-            if radial && Color::parse(first.split_whitespace().next().unwrap_or("")).is_none() =>
+            if radial
+                && Color::parse(first.split_whitespace().next().unwrap_or(""), vcx).is_none() =>
         {
             idx = 1;
             180.0

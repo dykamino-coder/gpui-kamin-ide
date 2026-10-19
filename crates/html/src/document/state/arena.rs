@@ -8,13 +8,11 @@
 //! записи сборки кадра (интерполяция, значения листа у хоста) — в область
 //! кадра, которая сбрасывается на первой сборке после краски документа:
 //! кадр GPUI — render, layout, prepaint, paint, и ручки кадра N читаются
-//! только до его краски. Чтение находит владельца по `owner` и вне его
-//! области (отложенные замыкания GPUI): реестр живых документов потока.
+//! только до его краски. Документ ручки приходит с контекстом значения
+//! (`ValueCx`).
 
-use super::DocState;
+use super::{DocState, ValueCx};
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Weak;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Ручка записи арены: область-владелец и номер записи в ней.
@@ -53,35 +51,23 @@ impl<T> Arena<T> {
 
 static NEXT_OWNER: AtomicU32 = AtomicU32::new(1);
 
-thread_local! {
-    /// Живые области потока: номер → документ (`Weak`: реестр документ не
-    /// держит, `Drop` его вычёркивает).
-    static OWNERS: RefCell<HashMap<u32, Weak<DocState>>> = RefCell::new(HashMap::new());
-}
-
-/// Новый номер области, зарегистрированный за документом `doc`.
-pub(super) fn new_owner(doc: &Weak<DocState>) -> u32 {
+/// Новый номер области.
+pub(super) fn new_owner() -> u32 {
     let mut owner = NEXT_OWNER.fetch_add(1, Ordering::Relaxed);
     if owner == 0 {
         owner = NEXT_OWNER.fetch_add(1, Ordering::Relaxed);
     }
-    OWNERS.with(|o| o.borrow_mut().insert(owner, doc.clone()));
     owner
 }
 
-/// Вычеркнуть область (документ умер или кадр сброшен).
-pub(super) fn forget_owner(owner: u32) {
-    let _ = OWNERS.try_with(|o| o.borrow_mut().remove(&owner));
-}
-
-/// Записать значение в арену текущего документа: на сборке кадра — в
+/// Записать значение в арену документа контекста: на сборке кадра — в
 /// область кадра, иначе — в область документа.
-pub(crate) fn store<T>(pick: fn(&DocState) -> &Arena<T>, value: T) -> ArenaKey {
-    let (doc, frame) = super::current_mode();
-    let (owner, list) = if frame {
-        (doc.frame_owner.get(), &pick(&doc).frame)
+pub(crate) fn store<T>(vcx: ValueCx<'_>, pick: fn(&DocState) -> &Arena<T>, value: T) -> ArenaKey {
+    let doc = vcx.doc;
+    let (owner, list) = if vcx.frame {
+        (doc.frame_owner.get(), &pick(doc).frame)
     } else {
-        (doc.owner.get(), &pick(&doc).doc)
+        (doc.owner.get(), &pick(doc).doc)
     };
     let mut list = list.borrow_mut();
     let Ok(slot) = u32::try_from(list.len()) else {
@@ -92,25 +78,24 @@ pub(crate) fn store<T>(pick: fn(&DocState) -> &Arena<T>, value: T) -> ArenaKey {
     ArenaKey { owner, slot }
 }
 
-/// Прочитать запись по ручке; `None` — ручка чужая для живых документов
-/// потока или устарела (сброшенный кадр, умерший документ): это ошибка
-/// связи, и отладочная сборка её не прячет.
-pub(crate) fn load<T: Clone>(pick: fn(&DocState) -> &Arena<T>, key: ArenaKey) -> Option<T> {
-    let cur = super::current();
-    let doc = if key.owner == cur.owner.get() || key.owner == cur.frame_owner.get() {
-        Some(cur)
+/// Прочитать запись по ручке в документе контекста; `None` — ручка чужая
+/// или устарела (сброшенный кадр): это ошибка связи, и отладочная сборка её
+/// не прячет.
+pub(crate) fn load<T: Clone>(
+    vcx: ValueCx<'_>,
+    pick: fn(&DocState) -> &Arena<T>,
+    key: ArenaKey,
+) -> Option<T> {
+    let doc = vcx.doc;
+    let arena = pick(doc);
+    let list = if key.owner == doc.owner.get() {
+        Some(&arena.doc)
+    } else if key.owner == doc.frame_owner.get() {
+        Some(&arena.frame)
     } else {
-        OWNERS.with(|o| o.borrow().get(&key.owner).and_then(Weak::upgrade))
+        None
     };
-    let got = doc.and_then(|doc| {
-        let arena = pick(&doc);
-        let list = if key.owner == doc.owner.get() {
-            &arena.doc
-        } else {
-            &arena.frame
-        };
-        list.borrow().get(key.slot as usize).cloned()
-    });
+    let got = list.and_then(|list| list.borrow().get(key.slot as usize).cloned());
     debug_assert!(
         got.is_some() || key == ArenaKey::INVALID,
         "ручка арены без записи: {key:?}"

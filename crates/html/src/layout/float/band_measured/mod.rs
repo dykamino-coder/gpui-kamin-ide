@@ -214,3 +214,6 @@ fn has_flow_float(c: &Element) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod construction_tests;

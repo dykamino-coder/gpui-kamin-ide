@@ -11,24 +11,11 @@
 //! обещает.
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla,
-    InspectorElementId, IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, SharedString, StyledText, TextLayout, TextRun, Window,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, Hsla, InspectorElementId,
+    IntoElement, LayoutId, Pixels, SharedString, StyledText, TextLayout, TextRun, Window,
 };
 
-/// Память между кадрами: границы выделения в байтах строки.
-#[derive(Default, Clone, Copy)]
-struct State {
-    anchor: usize,
-    head: usize,
-    dragging: bool,
-}
-
-impl State {
-    fn range(&self) -> (usize, usize) {
-        (self.anchor.min(self.head), self.anchor.max(self.head))
-    }
-}
+use super::selection::{Selection as State, selected_runs, track_selection};
 
 pub struct Selectable {
     id: ElementId,
@@ -54,28 +41,7 @@ impl Selectable {
     /// Прогон нельзя раскрасить наполовину, поэтому те, что попадают на
     /// границу выделения, разрезаются надвое.
     fn runs_with_selection(&self, from: usize, to: usize) -> Vec<TextRun> {
-        if from >= to {
-            return self.runs.clone();
-        }
-        let mut out = Vec::with_capacity(self.runs.len() + 2);
-        let mut at = 0usize;
-        for run in &self.runs {
-            let end = at + run.len;
-            let mut cut = |start: usize, stop: usize, selected: bool| {
-                if stop <= start {
-                    return;
-                }
-                let mut piece = run.clone();
-                piece.len = stop - start;
-                piece.background_color = selected.then_some(self.highlight);
-                out.push(piece);
-            };
-            cut(at, end.min(from), false);
-            cut(at.max(from), end.min(to), true);
-            cut(at.max(to), end, false);
-            at = end;
-        }
-        out
+        selected_runs(&self.runs, self.highlight, from, to)
     }
 }
 
@@ -124,8 +90,7 @@ impl Element for Selectable {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        child.prepaint(window, cx);
-        window.insert_hitbox(bounds, HitboxBehavior::Normal)
+        crate::interactive::hitbox::prepaint_hitbox(child, bounds, window, cx)
     }
 
     fn paint(
@@ -149,65 +114,16 @@ impl Element for Selectable {
         }
         let inside = hitbox.is_hovered(window);
 
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let st = std::rc::Rc::new(std::cell::Cell::new(state.unwrap_or_default()));
-            // Индекс символа под точкой; за пределами строки — ближайший край.
-            let index_at = {
-                let layout = layout.clone();
-                move |p| match layout.index_for_position(p) {
-                    Ok(i) => Some(i),
-                    Err(i) => Some(i),
-                }
-            };
-
-            let down = st.clone();
-            let at_down = index_at.clone();
-            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _cx| {
-                if !phase.bubble() || e.button != MouseButton::Left || !inside {
-                    return;
-                }
-                let Some(i) = at_down(e.position) else { return };
-                down.set(State {
-                    anchor: i,
-                    head: i,
-                    dragging: true,
-                });
-                window.refresh();
-            });
-
-            let mv = st.clone();
-            let at_move = index_at.clone();
-            window.on_mouse_event(move |e: &MouseMoveEvent, phase, window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = mv.get();
-                if !s.dragging {
-                    return;
-                }
-                if let Some(i) = at_move(e.position)
-                    && s.head != i
-                {
-                    s.head = i;
-                    mv.set(s);
-                    window.refresh();
-                }
-            });
-
-            let up = st.clone();
-            window.on_mouse_event(move |_e: &MouseUpEvent, phase, _window, _cx| {
-                if !phase.bubble() {
-                    return;
-                }
-                let mut s = up.get();
-                if s.dragging {
-                    s.dragging = false;
-                    up.set(s);
-                }
-            });
-
-            ((), st.get())
-        });
+        track_selection(
+            global_id,
+            inside,
+            move |p| {
+                Some(match layout.index_for_position(p) {
+                    Ok(i) | Err(i) => i,
+                })
+            },
+            window,
+        );
     }
 }
 

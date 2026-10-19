@@ -1,18 +1,24 @@
 //! Computed::apply_multicol, хвост цепочки: лонгхенды линеек промежутков (*-rule-width/style/color/inset/visibility/overlap/break), margin-trim, сокращения линеек и columns. Ветви в исходном порядке после свойств колонок и разрывов.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 mod rule_flags;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_multicol_rules(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_multicol_rules(
+        &mut self,
+        key: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // Лонгхенды линеек промежутков (css-gaps-1 §color-style-width):
             // список через запятую с `repeat()`, `rule-*` ставит обе оси.
             // Первое значение уходит в скаляры — ими живёт многоколонник.
             "column-rule-width" | "row-rule-width" | "rule-width" => {
-                if let Some(l) = gap_list(v, gap_width) {
+                if let Some(l) = gap_list(v, |s| gap_width(s, vcx)) {
                     self.accept_declaration();
                     if key != "row-rule-width" {
                         self.set_gap_widths(true, &l);
@@ -52,7 +58,7 @@ impl Computed {
                     }
                     return;
                 }
-                if let Some(l) = gap_list(v, gap_color) {
+                if let Some(l) = gap_list(v, |s| gap_color(s, vcx)) {
                     self.accept_declaration();
                     if key != "row-rule-color" {
                         self.set_gap_colors(true, &l);
@@ -84,8 +90,8 @@ impl Computed {
                 let end = !tail.ends_with("-start");
                 let toks = split_outside_parens(v);
                 let (vs, ve) = match toks.as_slice() {
-                    [a] => (gap_inset(a), gap_inset(a)),
-                    [a, b] => (gap_inset(a), gap_inset(b)),
+                    [a] => (gap_inset(a, vcx), gap_inset(a, vcx)),
+                    [a, b] => (gap_inset(a, vcx), gap_inset(b, vcx)),
                     _ => (None, None),
                 };
                 if let (Some(vs), Some(ve)) = (vs, ve) {
@@ -112,7 +118,7 @@ impl Computed {
                     }
                 }
             }
-            _ => self.apply_multicol_rule_flags(key, val, v, hit),
+            _ => self.apply_multicol_rule_flags(key, v, hit, vcx),
         }
     }
 }

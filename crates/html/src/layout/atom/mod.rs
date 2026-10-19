@@ -32,6 +32,7 @@ pub(crate) fn atom_element(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     // Atomic inline containers own a scrollport just like block containers
     // (CSS Overflow 3 §3). The raw atom path otherwise only clips their content.
     if !e.style.scroller
@@ -77,7 +78,12 @@ pub(crate) fn atom_element(
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
     Some(if wraps {
-        content_sized(el, &e.style, &inherit(inherited, &e.style), (None, None))
+        content_sized(
+            el,
+            &e.style,
+            &inherit(inherited, &e.style, vcx),
+            (None, None),
+        )
     } else {
         el
     })

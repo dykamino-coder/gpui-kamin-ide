@@ -39,7 +39,7 @@ pub(crate) fn anchor_probe(id: String) -> impl gpui::IntoElement {
     gpui::canvas(
         move |bounds, _, _| {
             *pill_anchor().lock().unwrap() = Some(PillAnchor {
-                id: id.clone(),
+                id,
                 bounds: [
                     f32::from(bounds.origin.x),
                     f32::from(bounds.origin.y),

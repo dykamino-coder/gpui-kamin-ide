@@ -1,9 +1,10 @@
 //! `all: initial | unset` (css-cascade-4 §3.2): сброс стиля к начальному с сохранением направления письма и счётчика объявлений, начальные значения наследуемых свойств.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    pub(super) fn reset_for_all(&mut self, initial: bool) {
+    pub(super) fn reset_for_all(&mut self, initial: bool, vcx: ValueCx<'_>) {
         let keep = (
             self.rtl,
             self.bidi_override,
@@ -23,7 +24,7 @@ impl Computed {
             self.bidi_inherit,
             self.decl_seq,
         ) = keep;
-        self.apply_one("display", "inline");
+        self.apply_one("display", "inline", vcx);
         if initial {
             // Наследуемые свойства: пустое поле у нас значит «от
             // родителя», поэтому начальное значение ставится явно.
@@ -47,7 +48,7 @@ impl Computed {
                 "word-spacing",
             ] {
                 if let Some(start) = initial_value(key) {
-                    self.apply_one(key, start);
+                    self.apply_one(key, start, vcx);
                 }
             }
         }

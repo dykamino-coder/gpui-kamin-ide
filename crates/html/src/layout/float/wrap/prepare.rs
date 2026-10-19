@@ -1,5 +1,6 @@
 //! Подготовка обтекания: узлы с поднятыми флоатами, ранний выход без флоатов, бандовый хост пробега.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
 use crate::layout::float::band_measured::{band_host_m, band_host_nested};
@@ -48,6 +49,8 @@ pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
     parent: &Computed,
     cb_top_open: bool,
+    cb_px: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     // CSS Display 3 §2.5: an element with `display: contents` generates no
     // box, so `float` does not apply to it (`display-contents-float-001`).
@@ -61,7 +64,7 @@ pub(super) fn prepare_float_nodes(
             n => n,
         })
         .collect();
-    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent);
+    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent, vcx);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
@@ -118,7 +121,7 @@ pub(super) fn prepare_float_nodes(
             Some(c) if c < 0 => left,
             Some(_) => right,
             None => false,
-        } || bfc_no_fit(n, min_w))
+        } || bfc_no_fit(n, min_w, cb_px))
     {
         if let Node::Element(w) = &mut nodes[a] {
             w.style.height = None;

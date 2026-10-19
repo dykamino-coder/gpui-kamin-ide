@@ -20,6 +20,7 @@ pub(crate) fn vertical_paragraph(
     opts: &RenderOpts,
     _native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // `text-orientation: upright`: глифы СТОЯТ и идут сверху вниз —
     // никакого поворота. Это обычный горизонтальный абзац шириной в один
     // кегль (продвижение стоячего глифа = кегль, §7.4) с резкой по
@@ -34,8 +35,8 @@ pub(crate) fn vertical_paragraph(
             Node::Element(e) => e.style.wm().upright(),
             Node::Text(t) => t.trim().is_empty(),
         });
-    let upright =
-        (inherited.wm().upright() || kids_upright) && !upright::only_mixed_text(nodes, inherited);
+    let upright = (inherited.wm().upright() || kids_upright)
+        && !upright::only_mixed_text(nodes, inherited, vcx);
     if upright && !inherited.wm().sideways() {
         return upright_paragraph(nodes, inherited, opts);
     }
@@ -181,9 +182,10 @@ pub(crate) fn vertical_paragraph(
         // min-content колонки заведомо не больше него.
         .column_min(col_min)
         .inline_keyword(native_vertical::keyword(inherited))
-        .keyed(crate::text::vertical::vt_seq_key(
+        .keyed(
             text_id(&plain) ^ (nodes.len() as u64).wrapping_mul(0x9E3779B9),
-        ));
+            opts.cx.vcx(),
+        );
     // Настоящий предел от родителя (ортогональная ячейка): строка,
     // которая уже влезает, заявляет высоту честно — без неё гибкая
     // ячейка мерила коробку нулём и justify уводил глиф из виду.

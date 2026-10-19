@@ -136,7 +136,6 @@ impl Render for FileTreePanel {
                 move |dir| send(ShellEvent::Tree(TreeEvent::ShowMoreDir(dir)), &tx)
             },
             {
-                let tx = tx.clone();
                 move |path, ctrl, shift| {
                     send(
                         ShellEvent::Tree(TreeEvent::SelectTreeNode(path, ctrl, shift)),

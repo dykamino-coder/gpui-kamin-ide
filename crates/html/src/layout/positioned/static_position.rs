@@ -218,3 +218,26 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
         && !edge_set(c.inset.bottom)
         && !edge_set(c.inset.left)
 }
+
+/// Whether the box's hypothetical static box (`position: static`) is
+/// inline-level: such a box stays a point in the line, a block-level one
+/// starts at the line's start (CSS 2.1 §10.3.7, §10.6.4).
+pub(crate) fn hypothetical_inline_level(e: &Element) -> bool {
+    // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
+    // hypothetical box (`dom` marks it `abs_inline_level`).
+    if e.style.abs_inline_level {
+        return true;
+    }
+    match e.style.display {
+        Some(crate::style::computed::Display::InlineBlock)
+        | Some(crate::style::computed::Display::InlineFlex)
+        | Some(crate::style::computed::Display::InlineGrid)
+        | Some(crate::style::computed::Display::InlineTable) => true,
+        Some(crate::style::computed::Display::GridLanes) => e.style.lanes_inline,
+        // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
+        // позиции остаётся строчным: гипотеза §10.3.7 считается без
+        // блокификации (htb-rtl-*).
+        Some(_) => e.style.inline_display == Some(true),
+        None => e.inline,
+    }
+}

@@ -3,6 +3,7 @@
 use super::resolve::last_named;
 use super::settle::DefaultAnchor;
 use super::{AnchorPlan, AnchorRec, CB_PARENT, IMPLICIT, LAST_IMPLICIT, NAMED, tf_under};
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get};
 use gpui::{Bounds, Pixels};
@@ -166,7 +167,13 @@ impl AnchorPlan {
 
     /// Куда просится край по `anchor()`: экранная координата; вставка в
     /// точках от края содержащего блока (запасное значение); ничего.
-    fn resolve_anchor(&self, first: std::rc::Rc<AnchorFn>, y_axis: bool, end_side: bool) -> Edge {
+    fn resolve_anchor(
+        &self,
+        first: std::rc::Rc<AnchorFn>,
+        y_axis: bool,
+        end_side: bool,
+        vcx: ValueCx<'_>,
+    ) -> Edge {
         let mut f = Some(first);
         // Цепочка запасных значений: `anchor(top, anchor(--a1 bottom))`.
         for _ in 0..4 {
@@ -175,7 +182,7 @@ impl AnchorPlan {
             match (hit, cur.fallback) {
                 (Some(want), _) => return Edge::Abs(want),
                 (None, Some(Len::Px(v))) => return Edge::FromEdge(v),
-                (None, Some(Len::Anchor(j))) => f = anchor_get(j),
+                (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),
                 // Якоря нет и запаса нет: по спеке — статическая позиция,
                 // но статически это было неотличимо (`settle_static` такие
                 // уже снял); остаток — якорь, который есть в документе, но

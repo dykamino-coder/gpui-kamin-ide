@@ -3,18 +3,18 @@
 use super::PAGE_COPIES;
 use crate::dom::Node;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::breaks::{edge_break, oof_reach, page_monolith};
-use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
+use crate::layout::fragment::breaks::oof_reach;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::layout::page::names::page_names;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::{RenderOpts, blocks, is_blank, out_of_flow};
+use crate::render::{RenderOpts, blocks, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
+mod names;
+use names::group_break_names;
 #[allow(clippy::too_many_arguments)]
 pub(super) fn page_kids_from_groups(
     opts: &RenderOpts,
@@ -36,6 +36,7 @@ pub(super) fn page_kids_from_groups(
     groups: Vec<Vec<Node>>,
     vertical: Option<bool>,
 ) {
+    let vcx = opts.cx.vcx();
     for group in &groups {
         let n = &group[0];
         if let Node::Element(e) = n
@@ -46,7 +47,7 @@ pub(super) fn page_kids_from_groups(
         if let Node::Element(e) = n
             && out_of_flow(&e.style)
         {
-            *icb_reach = icb_reach.max(oof_reach(e, shape_cx));
+            *icb_reach = icb_reach.max(oof_reach(e, shape_cx, vcx));
         }
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
@@ -58,7 +59,8 @@ pub(super) fn page_kids_from_groups(
                      fixed_slot: &mut Vec<AnyElement>| {
             let mut opts = opts.clone();
             opts.frag.watch = main.then(|| watched.clone());
-            crate::layout::positioned::containing_block::icb_open();
+            let icb_layer =
+                crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
             opts.clear_paged_fixed();
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
@@ -99,9 +101,7 @@ pub(super) fn page_kids_from_groups(
             let el = wrap
                 .children(blocks(source, root, &opts))
                 .into_any_element();
-            slot.extend(layer(
-                crate::layout::positioned::containing_block::icb_close(),
-            ));
+            slot.extend(layer(icb_layer.finish()));
             fixed_slot.extend(layer(opts.take_paged_fixed()));
             el
         };
@@ -112,7 +112,7 @@ pub(super) fn page_kids_from_groups(
         // CSS Paged Media: anonymous runs inherit the page name; floats
         // and out-of-flow boxes do not pass a name to subsequent pages.
         let (fb, fa, monolith, renamed, start_name) =
-            group_break_names(&root_page, &mut prev_end, &floated, group, n);
+            group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
         // Мера поддерева — те же точки разреза, что у колонок. Обёртка
         // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
         // смещения меры сдвигаются на неё, а высота растёт.
@@ -134,7 +134,7 @@ pub(super) fn page_kids_from_groups(
         // class-A cut list yet and its kids are sliced at the page edge.
         let (margins, shape) = match vertical {
             Some(_) => ((0.0, 0.0, 0.0), None),
-            None => group_shape(root, shape_cx, group, n, pad_top),
+            None => group_shape(root, shape_cx, group, n, pad_top, vcx),
         };
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
@@ -148,8 +148,8 @@ pub(super) fn page_kids_from_groups(
                     unclamped: true,
                     ..shape_cx
                 };
-                shape_full(e, 4, cx)
-                    .map(|u| u.0 + pad_top)
+                shape_full(e, 4, cx, vcx)
+                    .map(|u| u.height + pad_top)
                     .filter(|&u| u > s.0 + 0.01)
             }
             _ => None,
@@ -158,9 +158,15 @@ pub(super) fn page_kids_from_groups(
             repeat: vertical
                 .is_none()
                 .then(|| {
-                    repeat::sections(group, ah, shape_cx, pad_top, PAGE_COPIES, || {
-                        build(false, true, &mut Vec::new(), &mut Vec::new())
-                    })
+                    repeat::sections(
+                        group,
+                        ah,
+                        shape_cx,
+                        pad_top,
+                        PAGE_COPIES,
+                        || build(false, true, &mut Vec::new(), &mut Vec::new()),
+                        vcx,
+                    )
                 })
                 .flatten(),
             flow: Some(watched.flow.clone()),
@@ -182,69 +188,4 @@ pub(super) fn page_kids_from_groups(
             inner_top: margins.2,
         });
     }
-}
-
-pub(super) fn group_break_names(
-    root_page: &str,
-    prev_end: &mut Option<String>,
-    floated: impl Fn(&Node) -> bool,
-    group: &[Node],
-    n: &Node,
-) -> (bool, bool, bool, bool, String) {
-    let (monolith, fb, fa, names) = match n {
-        Node::Element(e) if class_a_box(e) => (
-            page_monolith(e),
-            edge_break(e, false),
-            edge_break(e, true),
-            Some(page_names(e, root_page)),
-        ),
-        Node::Element(e) if !e.inline && !inline_display(e) => (
-            page_monolith(e),
-            edge_break(e, false),
-            edge_break(e, true),
-            None,
-        ),
-        _ => (
-            false,
-            false,
-            false,
-            Some((root_page.to_string(), root_page.to_string())),
-        ),
-    };
-    // Группа флоата: сам флоат имени не передаёт (§named pages п. 2), но
-    // поточные коробки класса A в группе — передают конец — у последней (`page-name-000-print`: флоат, `clear`-блок
-    // страницы `foo` и следом блок страницы `bar` — разрыв перед `bar`).
-    let names = match (&names, n) {
-        (None, Node::Element(e)) if floated(n) && !class_a_box(e) => {
-            let named: Vec<(String, String)> = group
-                .iter()
-                .filter_map(|g| match g {
-                    Node::Element(k) if class_a_box(k) => Some(page_names(k, root_page)),
-                    _ => None,
-                })
-                .collect();
-            // Начало группы — продолжение предыдущей: разрыв перед флоатом
-            // увёл бы и его (`page-name-float-002-print`: флоат `b` остаётся
-            // на листе `a`).
-            let start = prev_end.clone().unwrap_or_else(|| root_page.to_string());
-            named.last().map(|l| (start, l.1.clone()))
-        }
-        _ => names,
-    };
-    // Группа из нескольких узлов монолитом не бывает: её режет край листа.
-    let monolith = monolith && group.iter().filter(|g| !is_blank(g)).count() == 1;
-    let renamed = match (&*prev_end, &names) {
-        (Some(p), Some((start, _))) => p != start,
-        _ => false,
-    };
-    // Имя, с которого коробка начинается: своё у коробки класса A, иначе
-    // — конец предыдущей (анонимный блок и прочие продолжают страницу).
-    let start_name = match &names {
-        Some((start, _)) => start.clone(),
-        None => prev_end.clone().unwrap_or_else(|| root_page.to_string()),
-    };
-    if let Some((_, end)) = &names {
-        *prev_end = Some(end.clone());
-    }
-    (fb, fa, monolith, renamed, start_name)
 }

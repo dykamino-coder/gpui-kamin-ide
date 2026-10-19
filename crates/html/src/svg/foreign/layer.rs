@@ -1,4 +1,6 @@
 //! Layout, caching and resource substitution for foreign HTML layers.
+
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::render::RenderOpts;
 use crate::style::cascade::inherit::inherit;
@@ -33,11 +35,12 @@ pub(super) fn prepare(
     cx: &mut App,
     layers: &mut Vec<Layer>,
 ) {
-    let merged = inherit(inherited, &e.style);
+    let vcx = opts.cx.vcx();
+    let merged = inherit(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let w = length(e.style.width, e.attr("width"), viewport.0);
-        let h = length(e.style.height, e.attr("height"), viewport.1);
+        let w = length(e.style.width, e.attr("width"), viewport.0, vcx);
+        let h = length(e.style.height, e.attr("height"), viewport.1, vcx);
         if w <= 0.0 || h <= 0.0 {
             e.children.clear();
             return;
@@ -149,8 +152,8 @@ pub(super) fn prepare(
     }
 }
 
-fn length(style: Option<Len>, attr: Option<&str>, base: f32) -> f32 {
-    let value = style.or_else(|| attr.and_then(Len::parse));
+fn length(style: Option<Len>, attr: Option<&str>, base: f32, vcx: ValueCx<'_>) -> f32 {
+    let value = style.or_else(|| attr.and_then(|s| Len::parse(s, vcx)));
     match value {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(v)) => base * v,

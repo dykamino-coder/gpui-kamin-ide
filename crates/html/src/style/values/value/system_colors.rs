@@ -89,13 +89,15 @@ mod tests {
 
     #[test]
     fn palette_follows_page_scheme() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         assert_eq!(
             system_color(SystemColor::Field, false),
-            Color::parse("#fff").unwrap()
+            Color::parse("#fff", vcx).unwrap()
         );
         assert_eq!(
             system_color(SystemColor::Field, true),
-            Color::parse("#3b3b3b").unwrap()
+            Color::parse("#3b3b3b", vcx).unwrap()
         );
         assert_ne!(
             system_color(SystemColor::ButtonText, false),

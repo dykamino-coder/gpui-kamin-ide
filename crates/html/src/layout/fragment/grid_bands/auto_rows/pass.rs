@@ -1,5 +1,6 @@
 //! Проход размещения элементов сетки по рядам авто-полос.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
@@ -19,15 +20,10 @@ pub(crate) fn grid_pass(
     s: &Computed,
     cols: usize,
     used: &mut Vec<Vec<bool>>,
-    spots: &mut Vec<(
-        usize,
-        usize,
-        f32,
-        (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-        bool,
-    )>,
+    spots: &mut Vec<(usize, usize, f32, crate::layout::fragment::Shape, bool)>,
     fill: &mut Vec<f32>,
     pass: u8,
+    vcx: ValueCx<'_>,
 ) -> Option<()> {
     let mut cur_row = 0usize;
     let mut cur_col = 0usize;
@@ -90,8 +86,8 @@ pub(crate) fn grid_pass(
         if (pass == 0) != line.is_some() {
             continue;
         }
-        let ks = shape_full(k, depth - 1, cx)?;
-        let h = ks.0 + ks.1 + ks.2;
+        let ks = shape_full(k, depth - 1, cx, vcx)?;
+        let h = ks.height + ks.margin_top + ks.margin_bottom;
         let busy = |used: &Vec<Vec<bool>>, r: usize, c0: usize| {
             used.get(r)
                 .is_some_and(|v| v[c0..c0 + cspan].iter().any(|x| *x))
@@ -163,7 +159,7 @@ pub(crate) fn grid_pass(
             || aligned(&k.style.align_self)
             || k.style.align_self.is_none() && aligned(&c.style.align_items)
             || matches!(k.style.margin.top, Some(Len::Auto)));
-        spots.push((ix, row, ks.1, ks, plain));
+        spots.push((ix, row, ks.margin_top, ks, plain));
         if line.is_none() {
             cur_row = row;
             cur_col = col + cspan;

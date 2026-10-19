@@ -4,16 +4,11 @@
 mod collect;
 pub(crate) use collect::collect_has_args;
 
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::style::css::Selector;
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, census_of};
 use markup5ever_rcdom::Handle;
-use std::collections::HashMap;
-
-thread_local! {
-    pub(crate) static HAS_MARKS: std::cell::RefCell<HashMap<usize, Vec<u64>>> =
-        std::cell::RefCell::new(HashMap::new());
-}
 
 /// Хеш одного аргумента `:has(...)` - ключ отметки.
 pub(super) fn has_id(arg: &str) -> u64 {
@@ -21,11 +16,6 @@ pub(super) fn has_id(arg: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     arg.hash(&mut h);
     h.finish()
-}
-
-pub(crate) fn has_marks_of(handle: &Handle) -> Vec<u64> {
-    let key = std::rc::Rc::as_ptr(handle) as usize;
-    HAS_MARKS.with(|m| m.borrow().get(&key).cloned().unwrap_or_default())
 }
 
 /// Разобранный аргумент `:has()`: части списка, каждая с ведущим
@@ -98,9 +88,14 @@ fn with_sentinel(a: &Ancestor) -> Ancestor {
 }
 
 /// Есть ли в СТРОГОМ поддереве узла предмет селектора с якорем в `path`.
-fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> bool {
+fn has_in_subtree(
+    handle: &Handle,
+    sel: &Selector,
+    path: &mut Vec<Ancestor>,
+    tree: &TreeIndex,
+) -> bool {
     let children = handle.children.borrow();
-    let (spots, all) = census_of(&children);
+    let (spots, all) = census_of(&children, tree);
     let mut pos = 0usize;
     for (child, spot) in children.iter().zip(&spots) {
         if spot.index == 0 {
@@ -116,7 +111,7 @@ fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> 
             return true;
         }
         path.push(all[pos].clone());
-        let hit = has_in_subtree(child, sel, path);
+        let hit = has_in_subtree(child, sel, path, tree);
         path.pop();
         if hit {
             return true;
@@ -130,9 +125,14 @@ fn has_in_subtree(handle: &Handle, sel: &Selector, path: &mut Vec<Ancestor>) -> 
 /// найдётся ли предмет - в поддереве либо среди последующих братьев - и
 /// складывает отметку. Вложенный `:has` запрещён, поэтому матчи внутри
 /// аргумента в отметки не заглядывают и циклов нет.
-pub(crate) fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor>) {
+pub(crate) fn mark_has(
+    handle: &Handle,
+    args: &[HasArg],
+    path: &mut Vec<Ancestor>,
+    tree: &mut TreeIndex,
+) {
     let children = handle.children.borrow();
-    let (spots, all) = census_of(&children);
+    let (spots, all) = census_of(&children, tree);
     let mut pos = 0usize;
     for (child, spot) in children.iter().zip(&spots) {
         if spot.index == 0 {
@@ -155,7 +155,7 @@ pub(crate) fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor
                     })
                 } else {
                     path.push(with_sentinel(&all[pos]));
-                    let hit = has_in_subtree(child, sel, path);
+                    let hit = has_in_subtree(child, sel, path, tree);
                     path.pop();
                     hit
                 }
@@ -165,24 +165,28 @@ pub(crate) fn mark_has(handle: &Handle, args: &[HasArg], path: &mut Vec<Ancestor
             }
         }
         if !marks.is_empty() {
-            let key = std::rc::Rc::as_ptr(child) as usize;
-            HAS_MARKS.with(|m| m.borrow_mut().insert(key, marks));
+            tree.has_marks.insert(NodeKey::of(child), marks);
         }
         path.push(all[pos].clone());
-        mark_has(child, args, path);
+        mark_has(child, args, path, tree);
         path.pop();
         pos += 1;
     }
 }
 
 /// Relational matches anchored on the host but searching its shadow tree.
-pub(crate) fn shadow_marks(root: &Handle, args: &[HasArg], host: &Ancestor) -> Vec<u64> {
+pub(crate) fn shadow_marks(
+    root: &Handle,
+    args: &[HasArg],
+    host: &Ancestor,
+    tree: &TreeIndex,
+) -> Vec<u64> {
     let mut path = vec![with_sentinel(host)];
     args.iter()
         .filter(|arg| {
             arg.parts
                 .iter()
-                .any(|(sibling, sel)| !sibling && has_in_subtree(root, sel, &mut path))
+                .any(|(sibling, sel)| !sibling && has_in_subtree(root, sel, &mut path, tree))
         })
         .map(|arg| arg.id)
         .collect()

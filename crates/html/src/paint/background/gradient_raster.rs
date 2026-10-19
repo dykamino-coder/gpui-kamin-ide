@@ -1,6 +1,7 @@
 //! Sample gradient geometry and stop lengths before quantizing straight-alpha BGRA.
 
 use super::{gradient_geometry::Geometry, place_stops, rasterize_cross_fade, wrap_repeat};
+use crate::document::state::ValueCx;
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
 use std::{
@@ -13,13 +14,19 @@ type TileCache = Mutex<HashMap<TileKey, Option<Arc<RenderImage>>>>;
 static TILES: OnceLock<TileCache> = OnceLock::new();
 
 /// Device-sized samples depend on the concrete CSS line as well as the bitmap.
-pub(super) fn tile(src: &str, w: u32, h: u32, css: (f32, f32)) -> Option<Arc<RenderImage>> {
+pub(super) fn tile(
+    src: &str,
+    w: u32,
+    h: u32,
+    css: (f32, f32),
+    vcx: ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
     let key = (src.to_string(), w, h, css.0.to_bits(), css.1.to_bits());
     let cache = TILES.get_or_init(Default::default);
     if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
         return hit;
     }
-    let result = raster(src, w, h, css, true);
+    let result = raster(src, w, h, css, true, vcx);
     if let Ok(mut cache) = cache.lock() {
         if cache.len() >= 32 {
             cache.clear();
@@ -35,19 +42,21 @@ pub(super) fn raster(
     h: u32,
     css: (f32, f32),
     centers: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     if src.starts_with("cross-fade(") {
-        return rasterize_cross_fade(src, w, h);
+        return rasterize_cross_fade(src, w, h, vcx);
     }
     let repeating = src.starts_with("repeating-");
-    let g = crate::style::computed::parse_gradient(src)?;
+    let g = crate::style::computed::parse_gradient(src, vcx)?;
     let angle = crate::style::computed::corner_angle(src, css).unwrap_or(g.angle_deg);
-    let geometry = Geometry::new(src, css, angle)?;
+    let geometry = Geometry::new(src, css, angle, vcx)?;
     // CSS Images 3 sections 3.2.3 and 3.4.3: percentages refer to the
     // gradient line, which is the horizontal radius for a radial gradient.
     let stops = resolved_stops(&g, geometry.length());
     let hsl = crate::style::values::color_space::HslRamp::new(&stops, g.space, g.hue);
-    let palette = crate::style::values::color_space::DirectGradient::new(src, stops.len(), g.space);
+    let palette =
+        crate::style::values::color_space::DirectGradient::new(src, stops.len(), g.space, vcx);
     let mut bytes = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         for x in 0..w {

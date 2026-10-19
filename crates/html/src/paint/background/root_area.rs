@@ -29,7 +29,11 @@ pub struct RootArea {
 }
 
 impl RootArea {
-    pub(crate) fn rect(&self, clip: Bounds<Pixels>) -> Bounds<Pixels> {
+    pub(crate) fn rect(
+        &self,
+        clip: Bounds<Pixels>,
+        vcx: crate::document::state::ValueCx<'_>,
+    ) -> Bounds<Pixels> {
         if let Some(bounds) = self.measured.as_ref().and_then(|area| area.get()) {
             return bounds;
         }
@@ -37,7 +41,7 @@ impl RootArea {
         let w = self.width.unwrap_or(cw - self.left - self.right).max(0.0);
         let h = self.height.unwrap_or(ch - self.top - self.bottom).max(0.0);
         let left_abs = (self.measured_left && self.width.is_none())
-            .then(|| crate::document::state::current().root_left.get())
+            .then(|| vcx.doc.root_left.get())
             .flatten()
             .map(|l| l - f32::from(clip.origin.x));
         let (x, w) = match left_abs {

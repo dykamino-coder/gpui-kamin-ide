@@ -1,5 +1,6 @@
 //! Признаки строчных детей и оси рядов (flex/grid) для формы содержимого.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
@@ -7,7 +8,12 @@ use crate::render::out_of_flow;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
-pub(super) fn line_inner_kids(c: &Element, kids: &Vec<&Node>, avoid_chains: bool) -> Vec<bool> {
+pub(super) fn line_inner_kids(
+    c: &Element,
+    kids: &Vec<&Node>,
+    avoid_chains: bool,
+    vcx: ValueCx<'_>,
+) -> Vec<bool> {
     let main_gap0 = match c.style.gap {
         None | Some((_, None)) => true,
         Some((_, Some(Len::Px(v)))) => v.abs() < 0.01,
@@ -47,8 +53,8 @@ pub(super) fn line_inner_kids(c: &Element, kids: &Vec<&Node>, avoid_chains: bool
             Node::Element(k) if avoid_chains && out_of_flow(&k.style) => false,
             Node::Element(k) if avoid_chains => {
                 let w = pct_of(k);
-                let forced = line_fa || edge_break(k, false);
-                line_fa = edge_break(k, true);
+                let forced = line_fa || edge_break(k, false, vcx);
+                line_fa = edge_break(k, true, vcx);
                 let inner =
                     !forced && matches!((line_acc, w), (Some(s), Some(p)) if s + p <= 1.0 + 1e-3);
                 line_acc = match w {

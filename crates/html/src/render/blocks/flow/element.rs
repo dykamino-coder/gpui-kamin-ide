@@ -39,8 +39,9 @@ pub(crate) fn paint_element(
     out: &mut Vec<AnyElement>,
     below: &mut BelowRun,
 ) {
+    let vcx = opts.cx.vcx();
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
-    let paint_key = next_paint_key();
+    let paint_key = opts.cx.next_paint_key();
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
     let layer_ok = !inside_deferred();
     let geometry_layer_ok = !paint_scope::deferred();
@@ -73,7 +74,7 @@ pub(crate) fn paint_element(
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
     if e.style.display == Some(Display::Contents) {
-        let mut merged = inherit(inherited, &e.style);
+        let mut merged = inherit(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
         // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`
@@ -124,7 +125,7 @@ pub(crate) fn paint_element(
     // уходил бы в её неявный ряд. Прежде обёртка без размещения
     // ставилась авто-размещением (`row-fill-reverse-align-self-001`:
     // `width: min-content; grid-row: 2` в лунках вставал в ряд 1).
-    let placement = crate::style::apply::grid_item_placement(&e.style);
+    let placement = crate::paint::apply::grid_item_placement(&e.style);
     let hoist_place = content_sized_wraps(e)
         && !replaced_tag(e)
         && (placement.0.is_some() || placement.1.is_some());

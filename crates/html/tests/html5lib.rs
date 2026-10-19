@@ -86,6 +86,7 @@ const STALE: &[(&str, usize, &str)] = &[
 ];
 
 #[test]
+#[allow(clippy::print_stdout, reason = "report corpus test totals")]
 fn tree_construction() {
     // Наборов ДВА: канонический html5lib-tests и его копия внутри WPT. Копия
     // шире (в ней есть `processing-instructions.dat`), но заявлять покрытие

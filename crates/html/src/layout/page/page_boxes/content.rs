@@ -1,5 +1,6 @@
 //! Узлы содержимого полевых коробок страницы (content: строки и счётчики).
 
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::Computed;
 
@@ -9,6 +10,7 @@ pub(super) fn content_nodes(
     items: &[crate::style::computed::ContentItem],
     style: &Computed,
     counters: &mut crate::style::generated::counters::Counters,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     use crate::style::computed::ContentItem;
     let mut children = Vec::new();
@@ -24,6 +26,7 @@ pub(super) fn content_nodes(
                 style.quotes.as_ref(),
                 false,
                 crate::style::generated::counter_style::Context::new(style, Default::default()),
+                vcx,
             )));
             run.clear();
         }
@@ -31,7 +34,7 @@ pub(super) fn content_nodes(
     for item in items {
         if let ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
-            if let Some(src) = crate::dom::content_image_src(src) {
+            if let Some(src) = crate::dom::content_image_src(src, vcx) {
                 let mut image = crate::layout::table::anon::anon_element("img", vec![]);
                 image.inline = true;
                 image.attrs.push(("src".into(), src));

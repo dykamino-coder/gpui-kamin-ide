@@ -58,16 +58,22 @@ pub(super) fn own_layout_mode(c: &Computed) -> bool {
 /// `box-sizing`, and `min-width`/`max-width` still apply after it (§10.4);
 /// percentage paddings resolve against `cb`, font units against the box's
 /// font in `inherited`.
-pub(super) fn fit_own_layout(c: &mut Computed, inherited: &Computed, avail: f32, cb: f32) {
+pub(super) fn fit_own_layout(
+    c: &mut Computed,
+    inherited: &Computed,
+    avail: f32,
+    cb: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     if !own_layout_mode(c) || avail <= 0.0 || !matches!(c.width, None | Some(Len::Auto)) {
         return;
     }
     let edges = if c.border_box == Some(true) {
         0.0
     } else {
-        let merged = crate::style::cascade::inherit::inherit(inherited, c);
+        let merged = crate::style::cascade::inherit::inherit(inherited, c, vcx);
         let font = merged.font_cx();
-        let px = |l: Option<Len>| l.and_then(|l| l.to_px(Some(cb), font)).unwrap_or(0.0);
+        let px = |l: Option<Len>| l.and_then(|l| l.to_px(Some(cb), font, vcx)).unwrap_or(0.0);
         let b = c.borders();
         px(b.left) + px(b.right) + px(c.padding.left) + px(c.padding.right)
     };
@@ -107,8 +113,13 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec<Node>> {
-    band_flow_rest_lift(rest, em, None, wm)
+pub(super) fn band_flow_rest(
+    rest: Vec<Node>,
+    em: f32,
+    wm: WritingMode,
+    cb: Option<f32>,
+) -> Option<Vec<Node>> {
+    band_flow_rest_lift(rest, em, None, wm, cb)
 }
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который

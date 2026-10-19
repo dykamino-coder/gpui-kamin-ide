@@ -1,7 +1,9 @@
 //! Cascade stylesheet, inline and presentational declarations for an element.
 
 use super::presentational_hints;
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
+use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Rule, parse_decls};
 use crate::style::select::matching::matches;
@@ -24,6 +26,7 @@ pub(super) fn cascade_element(
     attrs: &Vec<(String, String)>,
     tag: &str,
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     inherited_vars: &Decls,
     path: &[Ancestor],
@@ -35,6 +38,7 @@ pub(super) fn cascade_element(
     SchemeGuard,
     Option<Rc<crate::dom::shadow::Shadow>>,
 ) {
+    let vcx = tree.doc.values();
     // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
     // `scroll-target-group: auto` element are its scroll markers. At the
     // initial scroll position the first target in tree order is current
@@ -61,12 +65,12 @@ pub(super) fn cascade_element(
         .collect();
     let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
     matched.extend(math_defaults.iter());
-    let slotted = crate::dom::shadow::slotted::rules_of(handle);
+    let slotted = tree.slotted_rules_of(handle);
     matched.extend(slotted.iter());
     // Правила `:host`/`:host(S)` из ТЕНИ хоста ложатся на сам хост
     // (css-shadow-1 §3.1; Blink `MatchHostRules`). Хост для них
     // безлик: совпадает только `:host`-компаунд без предков и братьев.
-    let shadow = shadow_of(handle);
+    let shadow = tree.shadow_of(handle);
     if let Some(shadow) = &shadow {
         matched.extend(
             shadow
@@ -82,16 +86,18 @@ pub(super) fn cascade_element(
     // и `.dark{--c:blue}` складывались в него подряд, и последнее
     // объявление красило ВЕСЬ документ — переключение темы классом
     // не работало в принципе.
-    let registered = crate::style::css::property_rules();
+    let registered = tree.doc.property_rules();
     let cascaded = crate::style::css::custom_properties::cascade(
         &matched,
         &inline_decls,
         vars,
         &registered,
-        syntax_accepts,
+        |s, v| syntax_accepts(s, v, vcx),
     );
     let own_vars =
-        crate::style::css::variable_values::compute(&cascaded, vars, &registered, syntax_accepts);
+        crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
+            syntax_accepts(s, v, vcx)
+        });
     let vars = &own_vars;
     // Используемая схема цвета (css-color-adjust-1 §color-scheme-prop):
     // своё `color-scheme` — последнее по каскаду, иначе родительская
@@ -123,19 +129,19 @@ pub(super) fn cascade_element(
         crate::style::values::value::resolve_scheme(&v);
     }
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
-    // (css-values-5 §7.7): слот ставится только на время его каскада.
-    crate::style::cascade::vars::set_current_attrs(&attrs);
-    crate::style::cascade::vars::set_current_sibling(
-        (spot.index > 0).then_some((spot.index, spot.total)),
-    );
-    let hints = presentational_hints::rules(&tag, &attrs, path);
+    // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
+    let element = CascadeCx {
+        attrs,
+        sibling: (spot.index > 0).then_some((spot.index, spot.total)),
+    };
+    let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
     matched.extend(hints.iter());
-    let math_hints = crate::dom::mathml::hints(handle, attrs);
+    let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
     matched.extend(math_hints.iter());
-    let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+    let mut style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
     if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
         matched.push(&basic);
-        style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars);
+        style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
     }
     style.mathml = crate::dom::mathml::is_mathml(handle);
     if crate::dom::mathml_routing::enabled(handle) {
@@ -157,7 +163,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    crate::style::cascade::vars::clear_current_attrs();
-    crate::style::cascade::vars::set_current_sibling(None);
     (style, own_vars, _scheme, shadow)
 }

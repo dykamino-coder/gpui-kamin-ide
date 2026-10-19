@@ -2,7 +2,7 @@
 //! A transparent extent proxy projects CSS Overflow 3 §2.2 into that native range.
 pub(crate) mod classic;
 mod exact_probe;
-pub(crate) use exact_probe::sticky_geometry;
+pub(crate) use exact_probe::{ShiftLink, StickyShift};
 mod geometry;
 mod grid;
 mod snap;
@@ -75,8 +75,14 @@ impl Frame {
             .with(|slot| slot.borrow().clone())
             .filter(|f| f.root.get() != Some(id))
     }
-    pub(super) fn record_border_box(&self, id: u64, c: &Computed, mut b: Bounds<Pixels>) {
-        b.origin -= exact_probe::sticky_shift();
+    pub(super) fn record_border_box(
+        &self,
+        id: u64,
+        c: &Computed,
+        mut b: Bounds<Pixels>,
+        sticky: Option<&exact_probe::StickyShift>,
+    ) {
+        b.origin -= exact_probe::sticky_shift(sticky);
         self.boxes.borrow_mut().insert(
             id,
             (

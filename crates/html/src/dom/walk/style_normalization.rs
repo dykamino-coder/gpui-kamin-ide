@@ -1,6 +1,7 @@
 //! Normalize element styles using HTML tag defaults and CSS applicability rules.
 
 use super::presentational_hints;
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Position};
 use crate::style::select::Ancestor;
@@ -12,6 +13,7 @@ pub(super) fn normalize_style(
     tag: &str,
     attrs: &[(String, String)],
     path: &[Ancestor],
+    vcx: ValueCx<'_>,
 ) {
     // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
     // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
@@ -41,13 +43,16 @@ pub(super) fn normalize_style(
                 }
             }
         };
-        crate::style::values::value::set_root_metrics(font, line);
-        crate::style::values::value::set_root_family(&family);
-        crate::style::values::value::set_root_font_view(match style.font_size {
-            Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
-            Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
-            _ => None,
-        });
+        crate::style::values::value::set_root_metrics(vcx.doc, font, line);
+        crate::style::values::value::set_root_family(vcx.doc, &family);
+        crate::style::values::value::set_root_font_view(
+            vcx.doc,
+            match style.font_size {
+                Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
+                Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
+                _ => None,
+            },
+        );
     }
     apply_presentational_size(&mut style, &tag, &attrs);
     resolve_svg_keywords(&mut style, &tag, &attrs);
@@ -69,8 +74,8 @@ pub(super) fn normalize_style(
             style.aspect_ratio_auto = None;
         }
     }
-    presentational_hints::colors(&mut style, &tag, &attrs);
-    finish_inline_display(&mut style, &tag, &attrs);
+    presentational_hints::colors(&mut style, &tag, &attrs, vcx);
+    finish_inline_display(&mut style, &tag, &attrs, vcx);
     // HTML 15.4.1: audio without controls does not represent a rendered box.
     if tag == "audio" && !attrs.iter().any(|(name, _)| name == "controls") {
         style.display = Some(crate::style::computed::Display::None);

@@ -1,6 +1,7 @@
 //! Resolve gradient stop colors in the element's used currentColor context.
 
 use super::{Color, Computed, Gradient, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::color_space::resolve_relative;
 use std::borrow::Cow;
 
@@ -11,18 +12,22 @@ const BLACK: Color = Color {
     a: 1.0,
 };
 
-pub(crate) fn parse_gradient(raw: &str) -> Option<Gradient> {
-    parse_gradient_with_current(raw, BLACK)
+pub(crate) fn parse_gradient(raw: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
+    parse_gradient_with_current(raw, BLACK, vcx)
 }
 
-pub(crate) fn parse_gradient_with_current(raw: &str, current: Color) -> Option<Gradient> {
-    super::parse::parse_gradient(&resolve_gradient_colors(raw, current))
+pub(crate) fn parse_gradient_with_current(
+    raw: &str,
+    current: Color,
+    vcx: ValueCx<'_>,
+) -> Option<Gradient> {
+    super::parse::parse_gradient(&resolve_gradient_colors(raw, current, vcx), vcx)
 }
 
 /// Keep the authored expression on the style: inherited currentColor uses
 /// the descendant's color (CSS Color 4 §6.4), including relative colors.
 impl Computed {
-    pub(crate) fn resolve_gradient_current_color(&mut self) {
+    pub(crate) fn resolve_gradient_current_color(&mut self, vcx: ValueCx<'_>) {
         if (self.gradient.is_some()
             || self.background_all_inherit
             || self.inherit_bits & super::inh::BG_IMAGE != 0)
@@ -32,14 +37,18 @@ impl Computed {
                 .or(self.gradient_current.as_deref())
             && raw.contains("currentcolor")
         {
-            self.gradient = parse_gradient_with_current(raw, self.color.unwrap_or(BLACK));
+            self.gradient = parse_gradient_with_current(raw, self.color.unwrap_or(BLACK), vcx);
         }
     }
 }
 
 /// Raster cache keys must distinguish the same expression on two elements.
 /// Only stop colors are substituted; directions and positions stay authored.
-pub(crate) fn resolve_gradient_colors(raw: &str, current: Color) -> Cow<'_, str> {
+pub(crate) fn resolve_gradient_colors<'a>(
+    raw: &'a str,
+    current: Color,
+    vcx: ValueCx<'_>,
+) -> Cow<'a, str> {
     if !(raw.contains("currentcolor") || raw.contains("from "))
         || !raw
             .split('(')
@@ -57,7 +66,7 @@ pub(crate) fn resolve_gradient_colors(raw: &str, current: Color) -> Cow<'_, str>
             let mut words = split_outside_parens(part);
             if let Some(token) = words.first_mut()
                 && (token.contains("currentcolor") || token.contains("from "))
-                && let Some(color) = resolve_relative(token, current)
+                && let Some(color) = resolve_relative(token, current, vcx)
             {
                 // Relative RGB is a modern color, so preserve the default
                 // OKLab interpolation rather than serializing it as rgba().
@@ -89,62 +98,74 @@ mod tests {
 
     #[test]
     fn shorthand_inheritance_keeps_the_native_background_route() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut parent = Computed::default();
         parent.apply_one(
             "background",
             "linear-gradient(to right, currentcolor, limegreen)",
+            vcx,
         );
         let mut child = Computed::default();
-        child.apply_one("background", "inherit");
-        child.apply_one("color", "limegreen");
-        let child = crate::style::cascade::inherit::inherit(&parent, &child);
+        child.apply_one("background", "inherit", vcx);
+        child.apply_one("color", "limegreen", vcx);
+        let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
         assert!(child.gradient_raw.is_none());
         let gradient = child.gradient.as_ref().unwrap();
-        assert_eq!(gradient.from, Color::parse("limegreen").unwrap());
+        assert_eq!(gradient.from, Color::parse("limegreen", vcx).unwrap());
         assert_eq!(gradient.to, gradient.from);
         // Canvas propagation moves the painted gradient away from body,
         // while descendants still inherit its authored image expression.
         parent.gradient = None;
-        let child = crate::style::cascade::inherit::inherit(&parent, &child);
+        let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
         assert_eq!(
             child.gradient.unwrap().from,
-            Color::parse("limegreen").unwrap()
+            Color::parse("limegreen", vcx).unwrap()
         );
     }
 
     #[test]
     fn relative_stops_use_the_inherited_element_color() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut own = Computed::default();
         own.apply_one(
             "background-image",
             "linear-gradient(rgb(from currentcolor r g b), rgb(from currentcolor r g b))",
+            vcx,
         );
         let mut parent = Computed::default();
-        parent.apply_one("color", "blue");
-        let blue = crate::style::cascade::inherit::inherit(&parent, &own);
+        parent.apply_one("color", "blue", vcx);
+        let blue = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         let gradient = blue.gradient.as_ref().unwrap();
-        assert_eq!(gradient.from, Color::parse("blue").unwrap());
+        assert_eq!(gradient.from, Color::parse("blue", vcx).unwrap());
         assert!(matches!(gradient.space, GradSpace::Oklab));
         let mut child = Computed::default();
-        child.apply_one("color", "green");
-        child.apply_one("background-image", "inherit");
-        let green = crate::style::cascade::inherit::inherit(&blue, &child);
-        assert_eq!(green.gradient.unwrap().from, Color::parse("green").unwrap());
+        child.apply_one("color", "green", vcx);
+        child.apply_one("background-image", "inherit", vcx);
+        let green = crate::style::cascade::inherit::inherit(&blue, &child, vcx);
+        assert_eq!(
+            green.gradient.unwrap().from,
+            Color::parse("green", vcx).unwrap()
+        );
         assert!(green.gradient_raw.unwrap().contains("currentcolor"));
     }
 
     #[test]
     fn cancelled_current_color_image_is_not_reinherited() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         for replacement in ["none", "image(red)"] {
             let mut parent = Computed::default();
             parent.apply_one(
                 "background-image",
                 "linear-gradient(currentcolor, currentcolor)",
+                vcx,
             );
-            parent.apply_one("background-image", replacement);
+            parent.apply_one("background-image", replacement, vcx);
             let mut child = Computed::default();
-            child.apply_one("background-image", "inherit");
-            let child = crate::style::cascade::inherit::inherit(&parent, &child);
+            child.apply_one("background-image", "inherit", vcx);
+            let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
             assert!(parent.gradient_current.is_none());
             assert!(child.gradient.is_none());
         }

@@ -1,9 +1,10 @@
 //! Resolve calculated counter integers before applying counter scopes and scans.
 
 use super::{Computed, split_outside_parens};
+use crate::document::state::ValueCx;
 
-pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
-    let Some(value) = normalized(value, key == "counter-reset") else {
+pub(super) fn apply(style: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) {
+    let Some(value) = normalized(value, key == "counter-reset", vcx) else {
         return;
     };
     style.accept_declaration();
@@ -84,7 +85,7 @@ fn operators_valid(raw: &str) -> bool {
     true
 }
 
-fn normalized(raw: &str, reversed: bool) -> Option<String> {
+fn normalized(raw: &str, reversed: bool, vcx: ValueCx<'_>) -> Option<String> {
     let words = split_outside_parens(raw);
     // Preserve existing non-mathematical directive parsing in this bounded fix.
     if !words.iter().any(|word| math(word)) {
@@ -101,7 +102,7 @@ fn normalized(raw: &str, reversed: bool) -> Option<String> {
                 }
                 // CSS Values 4 §§5.1, 10.9: numeric calculations may occupy an
                 // integer slot, with exact half ties rounded toward +infinity.
-                let value = crate::style::values::value::number(&format!("calc({next})"))?;
+                let value = crate::style::values::value::number(&format!("calc({next})"), vcx)?;
                 // CSS Values 4 §10.9.2 censors top-level NaN to zero.
                 let value = if value.is_nan() { 0.0 } else { value };
                 out.push(((value + 0.5).floor() as i64).to_string());

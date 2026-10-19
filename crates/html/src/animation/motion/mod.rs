@@ -34,15 +34,64 @@
 //! отрисовка), проход отдаёт `None`, и работают ровно те ветки, что работали
 //! раньше: `path()` и `ray()` с пиксельным `offset-distance`.
 
+use crate::document::state::ValueCx;
 mod path;
 use path::flatten;
-use path::length;
+use path::polyline_length;
 use path::sample;
 
 mod curves;
 
 #[cfg(test)]
-mod geometry_tests;
+mod geometry_tests {
+    //! Тесты геометрии пути: точка и касательная по длине.
+
+    use super::{flatten, polyline_length, sample};
+
+    fn near(a: f32, b: f32, eps: f32) -> bool {
+        (a - b).abs() <= eps
+    }
+
+    #[test]
+    fn line_point_and_tangent() {
+        let poly = flatten("M0 0 L30 40").unwrap();
+        assert!(near(polyline_length(&poly.pts), 50.0, 1e-3));
+        let ((x, y), ang) = sample(&poly.pts, 25.0);
+        assert!(near(x, 15.0, 1e-3) && near(y, 20.0, 1e-3));
+        assert!(near(ang, 40f32.atan2(30.0), 1e-4));
+    }
+
+    #[test]
+    fn half_circle_arc_quarter_length() {
+        // Полукруг радиуса 50 от (0,0) к (100,0): длина pi*50.
+        let poly = flatten("M0 0 A50 50 0 0 1 100 0").unwrap();
+        let total = polyline_length(&poly.pts);
+        assert!(near(total, std::f32::consts::PI * 50.0, 0.1));
+        let ((x, y), ang) = sample(&poly.pts, total / 2.0);
+        assert!(near(x, 50.0, 0.1) && near(y.abs(), 50.0, 0.1));
+        assert!(near(ang.abs(), 0.0, 0.05));
+    }
+
+    #[test]
+    fn cubic_and_quadratic_agree_when_degenerate() {
+        let q = flatten("M0 0 Q50 100 100 0").unwrap();
+        let c = flatten("M0 0 C33.3333 66.6667 66.6667 66.6667 100 0").unwrap();
+        assert!(near(polyline_length(&q.pts), polyline_length(&c.pts), 0.05));
+        let (pq, _) = sample(&q.pts, polyline_length(&q.pts) / 2.0);
+        assert!(near(pq.0, 50.0, 0.1) && near(pq.1, 50.0, 0.1));
+    }
+
+    #[test]
+    fn closed_path_ends_at_start() {
+        let poly = flatten("M0 0 H10 V10 Z").unwrap();
+        assert!(poly.closed);
+        assert!(near(
+            polyline_length(&poly.pts),
+            20.0 + 10.0 * 2f32.sqrt(),
+            1e-3
+        ));
+    }
+}
 
 mod ray;
 use ray::angle_rad;
@@ -57,7 +106,7 @@ mod transform;
 use transform::offset_transform_css;
 
 mod containing;
-use containing::walk;
+use containing::apply_offset_transforms;
 
 mod shapes;
 use shapes::collect_shapes;
@@ -95,14 +144,14 @@ pub struct Cb {
 
 /// Второй проход по дереву коробок: каждому элементу с `offset-path`
 /// считается offset-трансформ по геометрии его СОДЕРЖАЩЕГО БЛОКА.
-pub fn settle(nodes: &mut [Node]) {
+pub fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     // `offset-path: url(#id)` ссылается на SVG-фигуру ЛЮБОГО места документа —
     // словарь эквивалентных путей собирается до обхода и живёт ровно один
     // проход (вложенный документ `<iframe>` зовёт `settle` со своим деревом).
     let mut shapes = std::collections::HashMap::new();
     collect_shapes(nodes, &mut shapes);
     SVG_SHAPES.with(|m| *m.borrow_mut() = shapes);
-    walk(nodes, None, true);
+    apply_offset_transforms(nodes, None, true, vcx);
     SVG_SHAPES.with(|m| m.borrow_mut().clear());
 }
 
@@ -114,12 +163,17 @@ thread_local! {
 }
 
 /// Приставить offset-трансформ к авторскому.
-pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>, svg_origin: (f32, f32)) {
-    let Some(css) = offset_transform_css(c, cb, svg_origin) else {
+pub fn apply_offset_transform(
+    c: &mut Computed,
+    cb: Option<&Cb>,
+    svg_origin: (f32, f32),
+    vcx: ValueCx<'_>,
+) {
+    let Some(css) = offset_transform_css(c, cb, svg_origin, vcx) else {
         return;
     };
     let author = c.transform.take();
-    c.apply_one("transform", &css);
+    c.apply_one("transform", &css, vcx);
     if let (Some(off), Some(a)) = (c.transform, author) {
         c.transform = Some(off.then(&a));
     }
@@ -129,7 +183,7 @@ pub fn apply_offset_transform(c: &mut Computed, cb: Option<&Cb>, svg_origin: (f3
 /// опорные коробки — окно `viewport` (css-position-3 §initial containing
 /// block; motion-1 §offset-path: коробки берутся у элемента, устанавливающего
 /// содержащий блок).
-pub fn apply_icb(c: &mut Computed, viewport: (f32, f32)) {
+pub fn apply_icb(c: &mut Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
     if !c.offset_icb || viewport.0 <= 0.0 || viewport.1 <= 0.0 {
         return;
     }
@@ -142,7 +196,7 @@ pub fn apply_icb(c: &mut Computed, viewport: (f32, f32)) {
         },
         c,
     );
-    apply_offset_transform(c, Some(&g), (0.0, 0.0));
+    apply_offset_transform(c, Some(&g), (0.0, 0.0), vcx);
 }
 
 /// Исходные параметры offset-трансформа для расчётов в дочерних модулях.

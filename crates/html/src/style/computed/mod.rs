@@ -5,11 +5,18 @@
 //! Во-вторых, ровно она задаёт границу охвата: поле есть — свойство
 //! поддержано, поля нет — свойство игнорируется осознанно, а не потеряно.
 
+use crate::document::state::ValueCx;
 #[macro_use]
 mod declaration_parse;
 pub(crate) use declaration_parse::ParseResult;
 mod appearance;
+pub(crate) mod filter_image;
+pub(crate) mod flat_background;
+pub(crate) mod formatting_context;
 pub(crate) mod math_style;
+pub(crate) mod shape_kind;
+pub(crate) mod single_corner;
+pub(crate) mod stacking;
 pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;
@@ -20,13 +27,15 @@ pub(super) mod font_members;
 mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
-mod image_color;
 pub(crate) mod image_function;
 mod radius_mask;
 mod radius_parse;
 mod text_indent;
 mod white_space;
-pub(crate) use image_color::parse as parse_image_color;
+/// Recognize dimensionless color images independently of URL fallback.
+pub(crate) fn parse_image_color<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
+    image_function::color_only(raw, vcx)
+}
 mod content_functions;
 mod counters;
 mod list_style;
@@ -58,6 +67,7 @@ mod filter;
 pub use crate::style::computed::filter::*;
 pub(super) mod gradient;
 pub(crate) use crate::style::computed::gradient::*;
+pub(crate) use gradient::stops::place_stops;
 pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
 pub(crate) use crate::style::computed::props::border::*;
@@ -78,13 +88,13 @@ pub struct Sides {
 impl Sides {
     /// Раскрытие сокращённой записи: 1 значение — все стороны, 2 — верт/гориз,
     /// 3 — верх/гориз/низ, 4 — по часовой.
-    pub(crate) fn shorthand(raw: &str) -> Sides {
+    pub(crate) fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Sides {
         // Разрез — по пробелам ВНЕ скобок: `calc(10px + 1%) 0 0 0` — четыре
         // значения, а не шесть обрывков (`calc-margin-block-1`). Смесь с долей
         // доживает индексом (`parse_mixed`) — раскладка складывает её сама.
         let v: Vec<Option<Len>> = split_outside_parens(raw)
             .iter()
-            .map(|t| Len::parse_mixed(t))
+            .map(|t| Len::parse_mixed(t, vcx))
             .collect();
         match v.len() {
             1 => Sides {

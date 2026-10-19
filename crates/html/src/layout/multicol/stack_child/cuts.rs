@@ -1,5 +1,6 @@
 //! Разрезы ребёнка по строкам и высота копии; заполнение полей StackChild.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
@@ -77,6 +78,7 @@ pub(super) fn line_cuts(
     Vec<(f32, f32)>,
     Option<(f32, f32)>,
 ) {
+    let vcx = opts.cx.vcx();
     let measured = with_lines(merged, line_col_w, opts, || {
         measure(
             copy_m.as_ref().unwrap_or(copy),
@@ -85,6 +87,7 @@ pub(super) fn line_cuts(
                 unclamped: true,
                 ..ShapeCx::COLUMNS
             },
+            vcx,
         )
     });
     // Собственный размер копии при мере с дотягом внепоточных (`Measure::own`).
@@ -118,9 +121,9 @@ pub(super) fn line_cuts(
             );
             fixed.is_some() && plain && block_visible
         })
-        .filter(|s| s.0 > h + 0.01)
+        .filter(|s| s.height > h + 0.01)
     {
-        Some(s) => (s.0, s.3, s.4, s.5),
+        Some(s) => (s.height, s.cuts, s.forced, s.solid),
         None => (h, cuts, forced, solid),
     };
     (over, cuts, forced, solid, own)
@@ -148,6 +151,7 @@ pub(super) fn stack_child_of(
     monolith: bool,
     span: bool,
     kid_copies: usize,
+    vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     crate::layout::fragment::types::StackChild {
         flow: None,
@@ -166,10 +170,10 @@ pub(super) fn stack_child_of(
         // Тот же подъём, что в мере (Х5): иначе
         // укладка колонок не увидит разрыва,
         // который мера уже посчитала.
-        force_before: edge_break(copy, false),
-        force_after: edge_break(copy, true),
-        avoid_before: edge_avoid(copy, false),
-        avoid_after: edge_avoid(copy, true),
+        force_before: edge_break(copy, false, vcx),
+        force_after: edge_break(copy, true, vcx),
+        avoid_before: edge_avoid(copy, false, vcx),
+        avoid_after: edge_avoid(copy, true, vcx),
         forced,
         solid,
         h,
@@ -183,7 +187,7 @@ pub(super) fn stack_child_of(
         // (`flow.rs` `fill_at`, `overflow_to`) —
         // только при `column-fill: auto` без рядов
         // и без элементов ряда в поддереве.
-        overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(copy, 4),
+        overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(copy, 4, vcx),
         // Вложенный многоколоночник — маска режет вбок
         // (`flow.rs` `StackChild::nested_cols`).
         nested_cols: multicol_inside(copy, 4),
@@ -214,7 +218,7 @@ pub(super) fn stack_child_of(
         // Повтор шапки/подвала таблицы — полосы своими
         // копиями (`flow::Repeat`); та же мера, что у
         // щупов (`repeat_leads`).
-        repeat: repeat_bands(copy, fixed, rows)
+        repeat: repeat_bands(copy, fixed, rows, vcx)
             .filter(|_| !span && !col_vert)
             .map(
                 |(head, foot, geom)| crate::layout::fragment::types::Repeat {

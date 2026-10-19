@@ -1,5 +1,6 @@
 //! Пробы кромок ячейки: полосы фонов рядов, колонок и групп, сросшиеся рамки (CSS 2.1 §17.6.2).
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::table::{
     collapsed_col_edges, collapsed_colgroup_edges, collapsed_group_edges, collapsed_row_edges,
@@ -40,6 +41,7 @@ pub(super) fn cell_edge_probes(
     )>,
     cell: &Element,
     d: gpui::Div,
+    vcx: ValueCx<'_>,
 ) -> gpui::Div {
     let mut d = d;
     // Полосы фонов рядов и колонок в сросшейся модели начинаются от
@@ -144,6 +146,7 @@ pub(super) fn cell_edge_probes(
             table_edges,
             px_of,
             d,
+            vcx,
         );
     }
     // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у

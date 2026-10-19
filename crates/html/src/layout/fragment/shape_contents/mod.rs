@@ -1,4 +1,6 @@
 //! Содержимое формы фрагмента.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -35,10 +37,15 @@ use height::shaped_height;
 /// которые держались стопкой детей, разваливаются. Половинить нельзя (это и
 /// есть откат 04.09); брать заново только с мерой по строкам (FRAG-LINES).
 /// Мера содержимого коробки с её внепоточной досягаемостью (`Measure`).
-pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Measure> {
+pub(super) fn shape_contents(
+    c: &Element,
+    depth: u8,
+    cx: ShapeCx,
+    vcx: ValueCx<'_>,
+) -> Option<Measure> {
     let none = Measure::plain;
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
-    let _line_frame = LineScope::enter(c);
+    let _line_frame = LineScope::enter(c, vcx);
     let px_or = |l: &Option<Len>, strict: bool| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -64,14 +71,14 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
         } else {
             Vec::new()
         };
-        return Some(none((
-            top + tall + bot,
-            mt,
-            mb,
-            Vec::new(),
-            Vec::new(),
+        return Some(none(crate::layout::fragment::Shape {
+            height: top + tall + bot,
+            margin_top: mt,
+            margin_bottom: mb,
+            cuts: Vec::new(),
+            forced: Vec::new(),
             solid,
-        )));
+        }));
     }
     if has_float(c, 3) {
         return None;
@@ -87,7 +94,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
     // (`break-after-table-cell`, `-child`: 0.00 → 2.08 без гейта, срез
     // `L-brk` 2874 пар, +0/−2). Страницы — стопкой блоков.
     if table_box(c) {
-        match table_shape(c, depth, cx) {
+        match table_shape(c, depth, cx, vcx) {
             Some(s) => return Some(none(s)),
             None if !cx.paged => return None,
             None => {}
@@ -126,9 +133,9 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
     };
     let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
     let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
-    if let Some(measure) =
-        crate::layout::fragment::flex_lines::measure_rows(c, depth, cx, unclamp, top, bot, mt, mb)
-    {
+    if let Some(measure) = crate::layout::fragment::flex_lines::measure_rows(
+        c, depth, cx, unclamp, top, bot, mt, mb, vcx,
+    ) {
         return Some(measure);
     }
     // Строчное содержимое — по строкам, если ширина колонки известна.
@@ -178,7 +185,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
         });
     }
     let (oof_kid, abs_top, avoid_chains, avoid_kid, page_kid, page_prev, blk_avoid) =
-        kid_break_flags(c, cx, &kids, flex_items);
+        kid_break_flags(c, cx, &kids, flex_items, vcx);
     // Элемент в ОДНОЙ строке с предыдущим — там, где это видно без раскладки:
     // ширины в процентах без полей, отступов, рамок по главной оси, без
     // `flex-basis`, `min/max-width` и `column-gap` (css-flexbox-1 §9.3: строка
@@ -187,7 +194,7 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
     // sibling flex lines»; Blink кладёт `break-*` на СТРОКУ,
     // `flex_layout_algorithm.cc:1892-1906`): сцепка от неё начаться не может
     // (`multi-line-row-flex-fragmentation-040`: 50% + 50%).
-    let line_inner = line_inner_kids(c, &kids, avoid_chains);
+    let line_inner = line_inner_kids(c, &kids, avoid_chains, vcx);
     // Спуск — по физике контейнера. ★ ЗАМЕРЕНО (04.09,
     // срез 1498): без гейта 384, гейт «только блочный
     // поток» 376 (+15/−23) — flex-колонки, flex с
@@ -230,5 +237,6 @@ pub(super) fn shape_contents(c: &Element, depth: u8, cx: ShapeCx) -> Option<Meas
         grid_rows_stack,
         row_gap,
         no_descent,
+        vcx,
     )
 }

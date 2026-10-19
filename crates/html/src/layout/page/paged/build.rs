@@ -81,6 +81,7 @@ mod tests {
             text: Default::default(),
             viewport: (800.0, 600.0),
             normal_line_height: 1.2,
+            cx: Default::default(),
             frag: Default::default(),
         };
         assert!(opts.paged_build().is_none());

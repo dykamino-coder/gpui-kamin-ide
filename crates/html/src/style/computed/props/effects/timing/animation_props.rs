@@ -108,21 +108,24 @@ mod tests {
 
     #[test]
     fn functions_and_fill_are_not_animation_names() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut style = Computed::default();
         style.apply_one(
             "animation",
             "slide 100s -50s steps(4, jump-end) both paused",
+            vcx,
         );
         let spec = style.animation.as_ref().unwrap();
         assert_eq!(spec.name, "slide");
         assert_eq!(spec.fill, 3);
         assert_eq!(spec.delay, -50.0);
         assert_eq!(style.animation_easing.unwrap().sample(0.6, false), 0.5);
-        style.apply_one("animation-timing-function", "cubic-bezier(0, 0, 1, 1)");
+        style.apply_one("animation-timing-function", "cubic-bezier(0, 0, 1, 1)", vcx);
         assert_eq!(style.animation_easing.unwrap().sample(0.5, false), 0.5);
-        style.apply_one("animation-fill-mode", "backwards");
+        style.apply_one("animation-fill-mode", "backwards", vcx);
         assert_eq!(style.animation.as_ref().unwrap().fill, 1);
-        style.apply_one("animation-fill-mode", "invalid");
+        style.apply_one("animation-fill-mode", "invalid", vcx);
         assert_eq!(style.animation.as_ref().unwrap().fill, 1);
     }
 }

@@ -59,7 +59,11 @@ impl VerticalText {
             self.natural.height
         } else {
             self.key
-                .and_then(|k| crate::document::state::current().vertical_measures.get(k))
+                .and_then(|k| {
+                    self.values
+                        .as_ref()
+                        .and_then(|v| v.vcx().doc.vertical_measures.get(k))
+                })
                 .unwrap_or(self.natural.height)
         };
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

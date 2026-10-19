@@ -44,6 +44,8 @@ pub(crate) struct FloatCb {
     pub(crate) icb: bool,
     /// Preserved segment breaks end the line preceding a float.
     pub(crate) preserve_newlines: bool,
+    /// Margin-collapse basis supplied by the build context.
+    pub(crate) margin_basis: Option<f32>,
 }
 
 impl FloatCb {
@@ -54,6 +56,7 @@ impl FloatCb {
             height: px_strict(cb.height),
             icb: cb.icb,
             preserve_newlines: cb.preserve_newlines.unwrap_or(false),
+            margin_basis: None,
         }
     }
 }

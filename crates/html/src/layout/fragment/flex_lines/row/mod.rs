@@ -1,15 +1,15 @@
 //! Флекс-строки ряда: перенос по строкам и их формы.
 
 use super::column::flex_gap_rules;
+use super::common::{gaps, plain_container, plain_item};
 use super::{constrained_inside, row_item_width};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::layout::page::paged::visible_overflow;
 use crate::layout::positioned::predicates::carries_abspos;
-use crate::render::{is_blank, out_of_flow};
+use crate::render::is_blank;
 use crate::style::computed::FlexDir;
-use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 mod edges;
 pub(crate) mod geometry;
@@ -38,36 +38,27 @@ pub(super) use shape::shape_flex_lines;
 pub(super) fn flex_row_lines_of(
     c: &Element,
     col_w: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<Vec<(f32, Element, Shape)>>> {
     if flex_gap_rules(&c.style) {
         return None;
     }
-    let zero = |l: &Option<Len>| match l {
-        None => true,
-        Some(Len::Px(v)) => v.abs() < 0.01,
-        _ => false,
-    };
     let s = &c.style;
-    let b = s.borders();
-    if let Some(value) = inline_flex_lines(c, zero, s, b) {
-        return value;
+    if !plain_container(c)
+        || !matches!(s.flex_dir, None | Some(FlexDir::Row))
+        || s.wm().rtl()
+        || !matches!(s.height, None | Some(Len::Auto))
+        || s.background.is_some()
+        || s.bg_image.is_some()
+    {
+        return None;
     }
     let main = match s.width {
         Some(Len::Px(w)) => w,
         None | Some(Len::Auto) => col_w?,
         _ => return None,
     };
-    let (row_gap, col_gap) = match s.gap {
-        None => (0.0, 0.0),
-        Some((r, g)) => {
-            let px = |l: &Option<Len>| match l {
-                None => Some(0.0),
-                Some(Len::Px(v)) => Some(v.max(0.0)),
-                _ => None,
-            };
-            (px(&r)?, px(&g)?)
-        }
-    };
+    let (row_gap, col_gap) = gaps(s)?;
     let side = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
@@ -77,21 +68,7 @@ pub(super) fn flex_row_lines_of(
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
         let ks = &k.style;
-        if k.inline
-            || out_of_flow(ks)
-            || !matches!(
-                ks.position,
-                None | Some(crate::style::computed::Position::Relative)
-            )
-            || ks.float.unwrap_or(0) != 0
-            || ks.flex_grow.is_some_and(|g| g > 0.0)
-            || ks.align_self.is_some()
-            || ks.align_self_normal
-            || ks.min_height.is_some()
-            || !zero(&ks.margin.left)
-            || !zero(&ks.margin.right)
-            || row_item_width(ks, main).is_none()
-        {
+        if !plain_item(k) || ks.min_height.is_some() || row_item_width(ks, main).is_none() {
             return None;
         }
         items.push(k);
@@ -139,7 +116,7 @@ pub(super) fn flex_row_lines_of(
                 + side(&kb.left)?
                 + side(&kb.right)?
         };
-        let sh = shape_full(k, 4, ShapeCx::COLUMNS)?;
+        let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
         match lines.last_mut() {
             Some(line) if used + col_gap + w <= main + 0.01 => {
                 single = false;
@@ -152,73 +129,9 @@ pub(super) fn flex_row_lines_of(
             }
         }
     }
-    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.4.is_empty())) {
+    if (single || widened) && (risky || lines.iter().flatten().any(|x| !x.2.forced.is_empty())) {
         return None;
     }
-    shape_flex_lines(row_gap, side, &mut lines)?;
+    shape_flex_lines(row_gap, side, &mut lines, vcx)?;
     Some(lines)
-}
-
-// Inline flex fragments carry their heights and break flags as one record.
-#[allow(clippy::type_complexity)]
-pub(super) fn inline_flex_lines(
-    c: &Element,
-    zero: impl Fn(&Option<Len>) -> bool,
-    s: &Computed,
-    b: crate::style::computed::Sides,
-) -> Option<
-    Option<
-        Vec<
-            Vec<(
-                f32,
-                Element,
-                (f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>),
-            )>,
-        >,
-    >,
-> {
-    if c.inline
-        || s.display != Some(Display::Flex)
-        || s.webkit_box == Some(true)
-        || !matches!(s.flex_dir, None | Some(FlexDir::Row))
-        || s.flex_wrap != Some(true)
-        || s.flex_wrap_reverse == Some(true)
-        || s.flex_balance == Some(true)
-        || s.wm().vertical()
-        || s.wm().rtl()
-        || s.justify_content.is_some()
-        || s.align_content.is_some()
-        || s.align_items.is_some()
-        || !matches!(s.height, None | Some(Len::Auto))
-        || s.min_height.is_some()
-        || s.max_height.is_some()
-        || s.transform.is_some()
-        || s.background.is_some()
-        || s.bg_image.is_some()
-        || !(s.position.is_none()
-            || (s.position == Some(crate::style::computed::Position::Relative)
-                && [&s.inset.top, &s.inset.right, &s.inset.bottom, &s.inset.left]
-                    .into_iter()
-                    .all(|l| matches!(l, None | Some(Len::Auto)))))
-        || !visible_overflow(s)
-        || ![
-            &s.margin.top,
-            &s.margin.bottom,
-            &s.margin.left,
-            &s.margin.right,
-            &s.padding.top,
-            &s.padding.bottom,
-            &s.padding.left,
-            &s.padding.right,
-            &b.top,
-            &b.bottom,
-            &b.left,
-            &b.right,
-        ]
-        .into_iter()
-        .all(zero)
-    {
-        return Some(None);
-    }
-    None
 }

@@ -214,6 +214,8 @@ mod tests {
 
     #[test]
     fn media_features_take_math_and_negative_ranges() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let m = crate::style::css::Media::default();
         for q in [
             "(width > calc(1px * (1 + sign(16px - 1rem))))",
@@ -230,7 +232,7 @@ mod tests {
     and
     (not (max-color: -10))",
         ] {
-            assert!(m.matches(q), "{q}");
+            assert!(m.matches(q, vcx), "{q}");
         }
     }
 }

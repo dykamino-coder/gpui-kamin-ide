@@ -1,6 +1,7 @@
 //! Запись числа пользовательским стилем счётчика: начальные системы, графемы, маркеры.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Начальное представление по системе (§cyclic … §additive).
 fn initial(algo: &Algo, v: i128, context: Context) -> Option<String> {
@@ -101,16 +102,17 @@ fn generate(
     name: &str,
     depth: usize,
     context: Context,
+    vcx: ValueCx<'_>,
 ) -> String {
     // Keep builtin fallback in this document's registry; re-entering repr()
     // would lose this map and recursively acquire the public registry mutex.
     let resolved = || {
-        resolve(rules, name, 0)
+        resolve_counter_style(rules, name, 0)
             .or_else(|| builtin(name).map(|_| super::resolve::builtin_resolved(name)))
     };
     let Some(r) = (depth < 16).then(resolved).flatten() else {
         return if depth < 16 {
-            builtin_repr_in(v, name, context)
+            builtin_repr_in(v, name, context, vcx)
         } else {
             v.to_string()
         };
@@ -120,7 +122,7 @@ fn generate(
         if depth >= 15 || fb == name {
             v.to_string()
         } else {
-            generate(rules, v, &fb, depth + 1, context)
+            generate(rules, v, &fb, depth + 1, context, vcx)
         }
     };
     if !in_range(&r, v) {
@@ -151,12 +153,11 @@ fn generate(
 
 /// Представление значения стилем, заданным правилом документа; `None` —
 /// такого правила нет (решает предопределённый путь).
-pub fn custom_repr(v: i64, name: &str, context: Context) -> Option<String> {
-    let doc = crate::document::state::current();
-    let guard = doc.counter_styles.borrow();
+pub fn custom_repr(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
+    let guard = vcx.doc.counter_styles.borrow();
     let rules = &*guard;
     (rules.contains_key(name) || anonymous(name).is_some())
-        .then(|| generate(rules, v, name, 0, context))
+        .then(|| generate(rules, v, name, 0, context, vcx))
 }
 
 /// Анонимный стиль `symbols()` (css-counter-styles-3 §symbols-function):
@@ -214,12 +215,11 @@ pub fn valid_symbols_fn(text: &str) -> bool {
 /// Строка маркера: `prefix`, представление, `suffix` (§counter-style-prefix).
 /// Префикс и суффикс берутся у самого стиля, даже если значение ушло в
 /// резервный.
-pub fn custom_marker(v: i64, name: &str, context: Context) -> Option<String> {
-    let doc = crate::document::state::current();
-    let guard = doc.counter_styles.borrow();
+pub fn custom_marker(v: i64, name: &str, context: Context, vcx: ValueCx<'_>) -> Option<String> {
+    let guard = vcx.doc.counter_styles.borrow();
     let rules = &*guard;
-    let r = resolve(rules, name, 0)?;
-    let body = generate(rules, v, name, 0, context);
+    let r = resolve_counter_style(rules, name, 0)?;
+    let body = generate(rules, v, name, 0, context, vcx);
     Some(format!("{}{body}{}", r.prefix, r.suffix))
 }
 

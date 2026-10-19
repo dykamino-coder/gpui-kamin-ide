@@ -4,6 +4,7 @@
 //! overflowing descendants remain a parallel flow, rather than increasing the
 //! distance to the following sibling. Min-height wins when min exceeds max.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::shape_contents;
@@ -12,20 +13,30 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 
-pub(crate) fn shape_full(element: &Element, depth: u8, cx: ShapeCx) -> Option<Shape> {
-    measure(element, depth, cx).map(|m| m.shape)
+pub(crate) fn shape_full(
+    element: &Element,
+    depth: u8,
+    cx: ShapeCx,
+    vcx: ValueCx<'_>,
+) -> Option<Shape> {
+    measure(element, depth, cx, vcx).map(|m| m.shape)
 }
 
 /// Мера фрагментации коробки (`shape_full`) вместе с её внепоточной
 /// досягаемостью и собственным размером (`Measure`).
-pub(crate) fn measure(element: &Element, depth: u8, cx: ShapeCx) -> Option<Measure> {
+pub(crate) fn measure(
+    element: &Element,
+    depth: u8,
+    cx: ShapeCx,
+    vcx: ValueCx<'_>,
+) -> Option<Measure> {
     let cx = ShapeCx {
         legacy_oof: cx.legacy_oof
             || element.style.bdb_clone
             || crate::layout::multicol::spanner::multicol_container(&element.style),
         ..cx
     };
-    let mut m = shape_contents(element, depth, cx)?;
+    let mut m = shape_contents(element, depth, cx, vcx)?;
     // Table height is a minimum of the row grid (CSS Tables 3), and its
     // specialised measurement already owns that sizing/distribution pass.
     if table_box(element) {
@@ -45,25 +56,25 @@ pub(crate) fn measure(element: &Element, depth: u8, cx: ShapeCx) -> Option<Measu
         + resolve(border.top, false)
         + resolve(border.bottom, false);
     let height = constrain(
-        shape.0,
+        shape.height,
         &element.style,
         decoration,
         cx.viewport,
         cx.unclamped,
     );
-    if height < shape.0 {
+    if height < shape.height {
         shape
-            .3
+            .cuts
             .retain(|&(need, _)| need > 0.01 && need < height - 0.01);
         shape
-            .4
+            .forced
             .retain(|&forced| forced > 0.01 && forced < height - 0.01);
-        shape.5.retain(|&(start, _)| start < height - 0.01);
-        for (_, end) in &mut shape.5 {
+        shape.solid.retain(|&(start, _)| start < height - 0.01);
+        for (_, end) in &mut shape.solid {
             *end = end.min(height);
         }
     }
-    shape.0 = height;
+    shape.height = height;
     Some(m)
 }
 
@@ -106,142 +117,4 @@ pub(super) fn constrain(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::Node;
-
-    fn element(style: Computed, children: Vec<Node>) -> Element {
-        Element {
-            marks: Default::default(),
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            tag: "div".into(),
-            style: style.into(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children,
-            attrs: Vec::new(),
-            inline: false,
-        }
-    }
-
-    #[test]
-    fn positioned_descendants_keep_their_balancing_extent() {
-        use crate::style::computed::Position;
-        let child = element(
-            Computed {
-                height: Some(Len::Px(160.0)),
-                position: Some(Position::Absolute),
-                ..Default::default()
-            },
-            Vec::new(),
-        );
-        let parent = element(
-            Computed {
-                height: Some(Len::Px(100.0)),
-                position: Some(Position::Relative),
-                ..Default::default()
-            },
-            vec![Node::Element(child)],
-        );
-        assert_eq!(shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap().0, 160.0);
-    }
-
-    #[test]
-    fn measured_box_and_parallel_flow_keep_distinct_sizes_and_break_ranges() {
-        let child = element(
-            Computed {
-                height: Some(Len::Px(206.0)),
-                ..Default::default()
-            },
-            Vec::new(),
-        );
-        let parent = element(
-            Computed {
-                min_height: Some(Len::Px(120.0)),
-                max_height: Some(Len::Px(160.0)),
-                ..Default::default()
-            },
-            vec![Node::Element(child)],
-        );
-        let used = shape_full(&parent, 4, ShapeCx::COLUMNS).unwrap();
-        let overflow = shape_full(
-            &parent,
-            4,
-            ShapeCx {
-                unclamped: true,
-                ..ShapeCx::COLUMNS
-            },
-        )
-        .unwrap();
-        assert_eq!(used.0, 160.0);
-        assert_eq!(overflow.0, 206.0);
-        assert!(used.5.iter().all(|(_, end)| *end <= used.0));
-    }
-
-    #[test]
-    fn visible_overflow_does_not_remove_the_box_maximum() {
-        let style = Computed {
-            min_height: Some(Len::Px(120.0)),
-            max_height: Some(Len::Px(160.0)),
-            ..Default::default()
-        };
-        assert_eq!(constrain(206.0, &style, 0.0, None, false), 160.0);
-        assert_eq!(constrain(206.0, &style, 0.0, None, true), 206.0);
-    }
-
-    #[test]
-    fn minimum_wins_over_maximum_in_both_flow_modes() {
-        let style = Computed {
-            min_height: Some(Len::Px(200.0)),
-            max_height: Some(Len::Px(100.0)),
-            overflow_y: Some(Overflow::Clip),
-            ..Default::default()
-        };
-        assert_eq!(constrain(300.0, &style, 0.0, None, false), 200.0);
-        assert_eq!(constrain(300.0, &style, 0.0, None, true), 200.0);
-    }
-
-    #[test]
-    fn border_box_constraints_include_decoration_once() {
-        let measure = |style: Computed| {
-            shape_full(&element(style, Vec::new()), 4, ShapeCx::COLUMNS)
-                .unwrap()
-                .0
-        };
-        let mut style = Computed {
-            height: Some(Len::Px(40.0)),
-            min_height: Some(Len::Px(30.0)),
-            max_height: Some(Len::Px(50.0)),
-            border_box: Some(true),
-            padding: crate::style::computed::Sides {
-                top: Some(Len::Px(10.0)),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        assert_eq!(measure(style.clone()), 40.0);
-        style.border_box = Some(false);
-        assert_eq!(measure(style.clone()), 50.0);
-        style.height = Some(Len::Px(2.0));
-        style.min_height = None;
-        style.border_box = Some(true);
-        assert_eq!(measure(style), 10.0);
-    }
-
-    #[test]
-    fn viewport_constraints_use_the_actual_page_area() {
-        let style = Computed {
-            height: Some(Len::Vh(0.5)),
-            max_height: Some(Len::Vw(0.25)),
-            ..Default::default()
-        };
-        assert_eq!(
-            constrain(400.0, &style, 0.0, Some((800.0, 600.0)), false),
-            200.0
-        );
-        assert_eq!(constrain(400.0, &style, 0.0, None, false), 400.0);
-    }
-}
+mod tests;

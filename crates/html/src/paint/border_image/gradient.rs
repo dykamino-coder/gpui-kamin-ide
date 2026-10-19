@@ -2,6 +2,7 @@
 //! CSS Backgrounds 3 §6.6 scales the source image, rather than rebuilding a
 //! gradient in each slice. Clip a virtual whole image in the slice's mapping.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::Source;
 use gpui::{Bounds, Corners, Window, point, px, size};
 
@@ -11,11 +12,12 @@ pub(super) fn paint(
     image: (f32, f32),
     (sx, sy, sw, sh): (f32, f32, f32, f32),
     (dx, dy, dw, dh): (f32, f32, f32, f32),
+    vcx: ValueCx<'_>,
 ) -> bool {
     let Source::Gradient { raw } = source else {
         return false;
     };
-    let Some(g) = crate::style::computed::parse_gradient(raw) else {
+    let Some(g) = crate::style::computed::parse_gradient(raw, vcx) else {
         return false;
     };
     if g.radial || raw.starts_with("repeating-") {
@@ -35,6 +37,6 @@ pub(super) fn paint(
     );
     let clip = super::sampling::destination_bounds(window, (dx, dy, dw, dh));
     window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-        crate::paint::background::paint_gradient(window, bounds, Corners::default(), source)
+        crate::paint::background::paint_gradient(window, bounds, Corners::default(), source, vcx)
     })
 }

@@ -1,5 +1,6 @@
 //! Формы детей (KidShape): рекурсивный замер вырезов каждого ребёнка.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::float::block_like_float;
 use crate::layout::fragment::ShapeCx;
@@ -12,7 +13,7 @@ use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
 // Child shapes retain their offsets and break metadata as one record.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn kid_shapes(
     c: &Element,
     depth: u8,
@@ -21,6 +22,7 @@ pub(super) fn kid_shapes(
     kids: &Vec<&Node>,
     flex_col: bool,
     no_descent: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<
     Vec<(
         f32,
@@ -51,8 +53,8 @@ pub(super) fn kid_shapes(
                         .as_ref()
                         .filter(|l| !matches!(l, Len::Auto))
                         .and_then(|_| px_or(&k.style.inset.top, false));
-                    let (full, up) = measure(k, depth - 1, cx)
-                        .map_or((0.0, Reach::default()), |m| (m.shape.0, m.up));
+                    let (full, up) = measure(k, depth - 1, cx, vcx)
+                        .map_or((0.0, Reach::default()), |m| (m.shape.height, m.up));
                     let reach = Reach::positioned(k, full, top, cx, up);
                     Some((
                         0.0,
@@ -80,8 +82,15 @@ pub(super) fn kid_shapes(
                     // гибкость базу не меняет (§9.7).
                     let based = if flex_col { basis_sized(c, k) } else { None };
                     let k = based.as_ref().unwrap_or(k);
-                    measure(k, depth - 1, cx).map(|m| {
-                        let (h, mt, mb, cuts, forced, solid) = m.shape;
+                    measure(k, depth - 1, cx, vcx).map(|m| {
+                        let crate::layout::fragment::Shape {
+                            height: h,
+                            margin_top: mt,
+                            margin_bottom: mb,
+                            cuts,
+                            forced,
+                            solid,
+                        } = m.shape;
                         // Монолит-потомок — весь диапазон
                         // его высоты; иначе — его собственные
                         // монолиты.
@@ -125,8 +134,8 @@ pub(super) fn kid_shapes(
                             // fragmentation-016` с разрывом на внуке стоит
                             // красной ровно из-за него (проба
                             // `target/probe-9g/p-…-016.html` = 0.00).
-                            edge_break(k, false),
-                            edge_break(k, true),
+                            edge_break(k, false, vcx),
+                            edge_break(k, true, vcx),
                             // Own flow size and positioned reach travel separately.
                             reach,
                         )

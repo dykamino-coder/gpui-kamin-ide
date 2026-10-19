@@ -1,9 +1,9 @@
 //! Counted line-clamp cuts and the end edges retained by intersecting boxes.
 
-use super::ClampCut;
 use super::ClampEntry;
+use super::geometry::ClampGeometry;
 
-impl ClampCut {
+impl ClampGeometry {
     pub(crate) fn counted_cut(
         &self,
         mut cut: Option<f32>,
@@ -129,7 +129,11 @@ mod tests {
 
     #[test]
     fn counted_cut_contains_the_intersecting_float_end_margin() {
-        let counter = ClampCut::new(0, Default::default(), Some(1), None);
+        let counter = ClampGeometry {
+            limit: Some(1),
+            max_h: None,
+            trim_end: 0.0,
+        };
         let entries = [paragraph(1, 0.0), paragraph(2, 20.0)];
         let mut blocks = [super::super::ClampBox {
             y0: 0.0,

@@ -86,6 +86,7 @@ pub(super) fn table_spacing(
     inherited: &Computed,
     border_spacing: Option<(Option<Len>, Option<Len>)>,
 ) -> (f32, f32) {
+    let vcx = opts.cx.vcx();
     match (e.style.border_collapse, border_spacing) {
         (Some(true), _) => (0.0, 0.0),
         (None, _) if e.attr("rules").is_some() => (0.0, 0.0),
@@ -98,7 +99,7 @@ pub(super) fn table_spacing(
             let px_of = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_))) => {
-                    l.to_px(None, FontCx::with_font_px(em)).unwrap_or(0.0)
+                    l.to_px(None, FontCx::with_font_px(em), vcx).unwrap_or(0.0)
                 }
                 _ => 0.0,
             };

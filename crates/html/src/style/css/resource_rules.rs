@@ -1,6 +1,7 @@
 //! Resource at-rules use stylesheet tokens and the same conditional rules as the cascade.
 
 use super::{Media, Piece, next_piece, strip_comments, supports, unescape};
+use crate::document::state::ValueCx;
 
 pub(crate) struct ResourceRule {
     pub name: String,
@@ -67,7 +68,7 @@ fn keyword(head: &str) -> Option<(String, &str)> {
     })
 }
 
-pub(crate) fn resources(css: &str, media: Media) -> Vec<ResourceRule> {
+pub(crate) fn resources(css: &str, media: Media, vcx: ValueCx<'_>) -> Vec<ResourceRule> {
     let css = strip_comments(css);
     let mut pending = vec![super::stylesheet_tokens::start(&css)];
     let mut out = Vec::new();
@@ -96,11 +97,11 @@ pub(crate) fn resources(css: &str, media: Media) -> Vec<ResourceRule> {
                         body: body.to_string(),
                     })
                 }
-                "media" if media.matches(&format!("@media {prelude}")) => {
+                "media" if media.matches(&format!("@media {prelude}"), vcx) => {
                     pending.push(remaining);
                     remaining = body;
                 }
-                "supports" if supports(prelude) => {
+                "supports" if supports(prelude, vcx) => {
                     pending.push(remaining);
                     remaining = body;
                 }
@@ -121,6 +122,8 @@ mod tests {
 
     #[test]
     fn resources_are_rules_rather_than_substrings() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let css = r#"
             /* @font-face { src: url(comment.ttf) } */
             p { content: "@font-face { src: url(string.ttf) }" }
@@ -132,7 +135,7 @@ mod tests {
             @\66 ont-face { src: url(escaped.ttf) }
             @color-profile --test { src: url("profile}.icc") }
         "#;
-        let rules = resources(css, Media::default());
+        let rules = resources(css, Media::default(), vcx);
         assert_eq!(rules.len(), 3);
         assert!(rules[0].body.contains("quoted}file.ttf"));
         assert!(rules[1].body.contains("escaped.ttf"));

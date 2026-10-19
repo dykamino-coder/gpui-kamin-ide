@@ -14,7 +14,11 @@ use gpui::{AnyElement, ParentElement, Styled};
 /// у блочного начала строки — при `vertical-rl` это ПРАВЫЙ край
 /// (css-writing-modes-4 §7.1; Blink `static_position` с `InsetBias::kEnd`
 /// по физической оси x), а не левый, как у горизонтальной строки.
-pub(crate) fn overlay_in_row(el: AnyElement, turned: Option<bool>) -> AnyElement {
+pub(crate) fn overlay_in_row(
+    el: AnyElement,
+    turned: Option<bool>,
+    positioning: &crate::layout::positioned::containing_block::Positioning,
+) -> AnyElement {
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     if let Some(rl) = turned {
         spot.set(crate::layout::positioned::containing_block::Spot {
@@ -23,8 +27,8 @@ pub(crate) fn overlay_in_row(el: AnyElement, turned: Option<bool>) -> AnyElement
             ..Default::default()
         });
     }
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false);
-    match crate::layout::positioned::containing_block::late_push(spot, el) {
+    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false, None);
+    match positioning.late_push(spot, el) {
         None => probe,
         Some(kept) => {
             let mut hole = gpui::div().relative().w_0().h_0().flex_shrink_0();

@@ -1,5 +1,6 @@
 //! Computed::apply_one: grid-*, grid lanes.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -7,8 +8,7 @@ mod placement;
 mod templates;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_grid(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // `repeat(auto-fill | auto-fit, minmax(N, 1fr))` — «сколько
             // влезет»: число колонок известно только раскладке. Раньше запись
@@ -44,7 +44,7 @@ impl Computed {
                     self.subgrid_cols = true;
                     self.subgrid = true;
                     self.grid_cols = count_tracks(v);
-                    self.grid_tracks = parse_tracks(v);
+                    self.grid_tracks = parse_tracks(v, vcx);
                     return;
                 }
                 // css-grid-1 `<auto-track-list>`: ВОКРУГ авто-повтора допустим
@@ -60,9 +60,9 @@ impl Computed {
                 if auto_repeat_outside_intrinsic(v) {
                     return;
                 }
-                self.grid_auto_fill_min = auto_fill_min(v);
-                self.grid_auto_fill_tracks = auto_fill_tracks(v);
-                self.auto_repeat_body_cols = auto_fill_body_tracks(v);
+                self.grid_auto_fill_min = auto_fill_min(v, vcx);
+                self.grid_auto_fill_tracks = auto_fill_tracks(v, vcx);
+                self.auto_repeat_body_cols = auto_fill_body_tracks(v, vcx);
                 // Список пишется и при авто-повторе: дорожки ДО и ПОСЛЕ него
                 // (`max-content repeat(auto-fill, max-content) max-content`)
                 // иначе теряются целиком. Разворот самого повтора при
@@ -77,7 +77,7 @@ impl Computed {
                 // (→ 7.78). Синтаксической границы между целями и заложниками нет
                 // (`auto 50px` красен в колонках и зелен в рядах) — нужен разбор
                 // по контексту, а не по форме тела.
-                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                if let Some(list) = parse_tracks(v, vcx).filter(|l| l.len() > 1) {
                     self.grid_cols = count_tracks(v);
                     self.grid_tracks = Some(list);
                 }
@@ -85,11 +85,11 @@ impl Computed {
                 self.auto_repeat_cols = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_min,
-                    body: auto_fill_body(v),
-                    track_pct: auto_fill_pct(v),
-                    intrinsic: auto_fill_intrinsic(v),
-                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
-                    fit_px: auto_fill_fit_px(v),
+                    body: auto_fill_body(v, vcx),
+                    track_pct: auto_fill_pct(v, vcx),
+                    intrinsic: auto_fill_intrinsic(v, vcx),
+                    intrinsic_min: auto_fill_intrinsic(v, vcx) && v.contains("min-content"),
+                    fit_px: auto_fill_fit_px(v, vcx),
                     max_auto,
                     max_fr,
                 });
@@ -104,7 +104,7 @@ impl Computed {
                     self.accept_declaration();
                     self.subgrid_rows = true;
                     self.subgrid = true;
-                    self.grid_rows = parse_tracks(v);
+                    self.grid_rows = parse_tracks(v, vcx);
                     return;
                 }
                 // Та же негодность по РЯДАМ (`row-auto-repeat-auto-005`,
@@ -112,29 +112,29 @@ impl Computed {
                 if auto_repeat_outside_intrinsic(v) {
                     return;
                 }
-                self.grid_auto_fill_row = auto_fill_min(v);
-                self.auto_repeat_body_rows = auto_fill_body_tracks(v);
+                self.grid_auto_fill_row = auto_fill_min(v, vcx);
+                self.auto_repeat_body_rows = auto_fill_body_tracks(v, vcx);
                 // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
                 // повтор целиком ведёт прежний путь раскладки, он считает
                 // число повторов точнее (доли, содержимое, `fit-content`).
-                if let Some(list) = parse_tracks(v).filter(|l| l.len() > 1) {
+                if let Some(list) = parse_tracks(v, vcx).filter(|l| l.len() > 1) {
                     self.grid_rows = Some(list);
                 }
                 let (max_auto, max_fr) = auto_fill_max(v);
                 self.auto_repeat_rows = Some(AutoRepeat {
                     fit: v.contains("auto-fit"),
                     track: self.grid_auto_fill_row,
-                    body: auto_fill_body(v),
-                    track_pct: auto_fill_pct(v),
-                    intrinsic: auto_fill_intrinsic(v),
-                    intrinsic_min: auto_fill_intrinsic(v) && v.contains("min-content"),
-                    fit_px: auto_fill_fit_px(v),
+                    body: auto_fill_body(v, vcx),
+                    track_pct: auto_fill_pct(v, vcx),
+                    intrinsic: auto_fill_intrinsic(v, vcx),
+                    intrinsic_min: auto_fill_intrinsic(v, vcx) && v.contains("min-content"),
+                    fit_px: auto_fill_fit_px(v, vcx),
                     max_auto,
                     max_fr,
                 });
                 self.accept_declaration();
             }
-            _ => self.apply_grid_templates(key, val, v, hit),
+            _ => self.apply_grid_templates(key, v, hit, vcx),
         }
     }
 }

@@ -83,6 +83,7 @@ pub(crate) fn band_flow_rest_lift(
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
     wm: WritingMode,
+    cb: Option<f32>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
@@ -207,7 +208,7 @@ pub(crate) fn band_flow_rest_lift(
                 cont = false;
                 if band_piece_m(&n, em, wm).is_some()
                     || band_flow_block(c, em)
-                    || band_nest_ok(c, em, wm)
+                    || band_nest_ok(c, em, wm, cb)
                 {
                     out.push(n);
                 } else {

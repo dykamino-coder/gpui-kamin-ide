@@ -11,7 +11,9 @@ pub(super) fn contained_image(
     src: &str,
     e: &Element,
     d: gpui::Div,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Result<AnyElement, gpui::Div> {
+    let vcx = cx.vcx();
     if e.style.contains_width() || e.style.contains_height() {
         let side = px_lossy_zero;
         let b = e.style.borders();
@@ -86,10 +88,10 @@ pub(super) fn contained_image(
             .strip_prefix("file:///")
             .or_else(|| src.strip_prefix("file://"))
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match crate::paint::background::source(&crate::paint::background::key(
-            local.unwrap_or(src),
-            &e.style,
-        )) {
+        let mut image = match crate::paint::background::source(
+            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+            vcx,
+        ) {
             Some(crate::paint::background::Source::Vector { markup, .. })
                 if cw > 0.0 && ch > 0.0 =>
             {
@@ -128,7 +130,7 @@ pub(super) fn contained_image(
             fitted.style.border_box = Some(false);
             fitted.style.contain_size = Some(false);
             fitted.style.contain_inline_size = Some(false);
-            return Ok(image_with(&fitted, base_font));
+            return Ok(image_with(&fitted, base_font, cx));
         }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
         return Ok(d.child(image).into_any_element());

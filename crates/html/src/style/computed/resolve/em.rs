@@ -1,9 +1,10 @@
 //! Computed::resolve_em: перевод длин в единицах шрифта (em/ex/ch/…) в точки по кеглю элемента и родителя.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    pub fn resolve_em(&mut self, parent_font_px: f32) {
+    pub fn resolve_em(&mut self, parent_font_px: f32, vcx: ValueCx<'_>) {
         // Сначала свой размер шрифта: от него считается всё остальное. Для
         // него самого единицы шрифта считаются от РОДИТЕЛЬСКОГО кегля.
         // Родовое `monospace` имени семейства не даёт, а меряться должно по
@@ -36,22 +37,22 @@ impl Computed {
             let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-                self.apply_one("transform", &px);
+                self.apply_one("transform", &px, vcx);
             }
             if let Some(raw) = self.transform_origin_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-                self.apply_one("transform-origin", &px);
+                self.apply_one("transform-origin", &px, vcx);
             }
             if let Some(raw) = self.shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-                self.apply_one("box-shadow", &px);
+                self.apply_one("box-shadow", &px, vcx);
             }
             // `text-shadow` наследуется ВЫЧИСЛЕННЫМ значением: `em` решается
             // кеглем того элемента, где тень объявлена, а потомки получают уже
             // точки (сырая запись есть только у своего стиля).
             if let Some(raw) = self.text_shadow_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
-                self.apply_one("text-shadow", &px);
+                self.apply_one("text-shadow", &px, vcx);
             }
         }
         if let Some(raw) = self.gradient_em.take() {
@@ -70,6 +71,7 @@ impl Computed {
                     b: 0.0,
                     a: 1.0,
                 }),
+                vcx,
             ) {
                 self.gradient = Some(g);
                 if self.gradient_raw.is_some() {
@@ -148,7 +150,7 @@ impl Computed {
             // Смешанный calc: шрифтовые слагаемые складываются здесь — база
             // и метрики известны; остаток сворачивается заново.
             Some(Len::Calc(i)) => {
-                let mut s = crate::style::values::value::calc_get(i);
+                let mut s = crate::style::values::value::calc_get(i, vcx);
                 // Без шрифтовых слагаемых складывать нечего — индекс остаётся
                 // прежним: арена append-only, а `resolve_em` идёт на каждом
                 // наследовании, и повторное хранение раздувало бы её впустую.
@@ -163,7 +165,7 @@ impl Computed {
                     // `None` и стёр `text-indent: calc(1em + 50%)`. Для всего,
                     // что пришло из `Len::parse`, `pct == 0`, и обе свёртки
                     // совпадают.
-                    *l = s.collapse_mixed();
+                    *l = s.collapse_mixed(vcx);
                 }
             }
             _ => {}
@@ -207,7 +209,7 @@ impl Computed {
             fix(&mut o.width);
             fix(&mut o.offset);
         }
-        self.resolve_decor_inset_font(fix, &family, base);
-        self.resolve_image_lengths();
+        self.resolve_decor_inset_font(fix, &family, base, vcx);
+        self.resolve_image_lengths(vcx);
     }
 }

@@ -30,6 +30,7 @@ pub(super) fn wrap_float_run(
     side: i8,
 ) -> ControlFlow<()> {
     let cb_width = parent.width;
+    let cb_px = cb.margin_basis;
     let hosted = host_for_run(em, measured_ok, cb, &*nodes, &*out, *i);
     if let ControlFlow::Break(_) = wrap_into_host(
         parent,
@@ -51,7 +52,7 @@ pub(super) fn wrap_float_run(
     let separates = |next: &Element| {
         clears_side(next.style.clear, side)
             || clears_side(leading_clear(next), side)
-            || bfc_no_fit(next, run_min_w)
+            || bfc_no_fit(next, run_min_w, cb_px)
     };
     let (mut rest, mut out_of_flow) = split_rest(&*nodes, &mut j, separates);
     strut_for_next(cb_top_open, nodes, &*out, j, separates, &mut rest);

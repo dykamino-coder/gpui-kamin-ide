@@ -131,3 +131,45 @@ pub fn axis_box(
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts() -> RenderOpts {
+        RenderOpts {
+            text: Default::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        }
+    }
+
+    #[test]
+    fn outer_row_is_consumed_for_children_without_changing_enclosing_handoff() {
+        let outer = opts().with_outer_row((120.0, 0.0));
+        let inner = outer.with_outer_row((60.0, 0.5));
+        let (row, children) = inner.take_outer_row();
+        assert_eq!(row, Some((60.0, 0.5)));
+        let children = children.unwrap();
+        let (row, cleared) = children.take_outer_row();
+        assert_eq!(row, None);
+        assert!(cleared.is_none());
+        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
+    }
+
+    #[test]
+    fn outer_row_survives_unwind_of_nested_build() {
+        let outer = opts().with_outer_row((120.0, 0.0));
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let inner = outer.with_outer_row((60.0, 0.5));
+                assert_eq!(inner.take_outer_row().0, Some((60.0, 0.5)));
+                panic!("render failed");
+            }))
+            .is_err()
+        );
+        assert_eq!(outer.take_outer_row().0, Some((120.0, 0.0)));
+    }
+}

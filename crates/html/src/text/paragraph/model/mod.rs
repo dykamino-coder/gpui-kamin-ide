@@ -13,7 +13,8 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 // Paragraph span records retain their text ranges, geometry and decoration state.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
-    pub(super) scroll_owner: Option<u64>,
+    /// Scroll owner and the shift chain the paragraph is built in.
+    pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,

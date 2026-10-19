@@ -33,6 +33,7 @@ pub(crate) fn generic_children(
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let makes_bfc = formatting_context::independent(&merged, &e.tag);
     let children = if let Some(children) = super::child_borrow::borrowed(e, &merged) {
         Cow::Borrowed(children)
@@ -129,9 +130,12 @@ pub(crate) fn generic_children(
     // родителя. Пока строятся дети, открыт слой: коробка, чей родитель
     // содержащим блоком не является, переезжает сюда.
     let cb_layer = crate::text::inline::establishes_cb(&merged);
-    if cb_layer {
-        crate::layout::positioned::containing_block::cb_open_with(fixed_cb_layer_box(&merged));
-    }
+    let cb_scope = cb_layer.then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::cb(
+            &opts.cx.positioning,
+            fixed_cb_layer_box(&merged),
+        )
+    });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
     // задан стиль хотя бы одной линейки: начальное `none` означает,
     // что рисовать нечего, и ни одна старая пара сюда не попадает
@@ -146,9 +150,8 @@ pub(crate) fn generic_children(
     // closes. Its padding box still owns the initial containing block
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
     let viewport = e.tag == "html-viewport";
-    if viewport {
-        crate::layout::positioned::containing_block::icb_open();
-    }
+    let viewport_scope = viewport
+        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
     kids.extend(decorated_children(e, &merged, opts, || {
         // A clamp container establishes an independent formatting context
         // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
@@ -161,12 +164,12 @@ pub(crate) fn generic_children(
         });
         blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
     }));
-    if viewport {
-        kids.extend(crate::layout::positioned::containing_block::icb_close());
+    if let Some(scope) = viewport_scope {
+        kids.extend(scope.finish());
     }
     let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
-    if cb_layer {
-        kids.extend(crate::layout::positioned::containing_block::cb_close());
+    if let Some(scope) = cb_scope {
+        kids.extend(scope.finish());
     }
     if is_clamp {
         // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:
@@ -213,8 +216,8 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child),
+        Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited)
+    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
 }

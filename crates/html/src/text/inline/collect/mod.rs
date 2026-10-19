@@ -15,12 +15,36 @@ use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::text::inline::*;
 
+/// What the piece collection carries across the inline boxes it descends:
+/// the text-transform word state (CSS Text 3 §2.1) and the layout context of
+/// the paragraph block (`LayoutCx`; its available width is the containing
+/// block of inline-box percentages).
+pub(crate) struct CollectCx {
+    pub(super) case: text_case::Context,
+    pub(super) layout: crate::layout::cx::LayoutCx,
+    /// Computed styles of the open inline ancestors (`atom_parent`): an atom
+    /// inherits from the nearest one.
+    pub(super) inline_parents: Vec<crate::style::computed::Computed>,
+    /// How many of them establish a containing block (positioned inlines).
+    pub(super) inline_cb_depth: usize,
+}
+
+impl CollectCx {
+    /// What an atom built at the current point learns from the collection.
+    pub(super) fn atom_cx(&self) -> crate::text::inline::atom_parent::AtomCx {
+        crate::text::inline::atom_parent::AtomCx {
+            parent: self.inline_parents.last().cloned(),
+            in_inline_cb: self.inline_cb_depth > 0,
+        }
+    }
+}
+
 pub(super) fn collect_with_empty_metrics(
     children: &[Node],
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
 ) -> Vec<Piece> {
     let mut out = vec![];
     // Место последней распорки зазора за коробкой (см. ниже).
@@ -31,7 +55,7 @@ pub(super) fn collect_with_empty_metrics(
         let from = out.len();
         match child {
             Node::Text(t) => {
-                collect_text(t, inherited, case, &mut out);
+                collect_text(t, inherited, &mut cx.case, &mut out);
             }
             Node::Element(e) => {
                 collect_element(
@@ -39,7 +63,7 @@ pub(super) fn collect_with_empty_metrics(
                     inherited,
                     atom,
                     has_text,
-                    case,
+                    cx,
                     &mut out,
                     &mut gap_at,
                     from,

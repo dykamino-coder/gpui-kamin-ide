@@ -44,7 +44,8 @@ use setup::{
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
 pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let inherited_axes = axes::inherited(e, inherited);
+    let vcx = opts.cx.vcx();
+    let inherited_axes = axes::inherited(e, inherited, vcx);
     let e = inherited_axes.as_ref().unwrap_or(e);
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
     // письма (блочная ось) ведёт себя как начальное `none`: высота таблицы и
@@ -94,7 +95,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стилем, — а бесхозные ячейки и текст заворачиваются в анонимный ряд.
     // Без этого содержимое просто пропадало: сборщик рядов видел только
     // настоящие `<tr>` и группы.
-    let fixed = fixup_table_children(&e.children);
+    let fixed = fixup_table_children(&e.children, vcx);
     // `<thead>` встаёт первым, `<tfoot>` — последним (CSS 2.2 §17.5.3,
     // HTML §14.3.9) СТАБИЛЬНОЙ перестановкой ГРУПП: прочий порядок детей
     // не трогается. Прошлая попытка ломала css-position — она сдвигала
@@ -185,7 +186,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols);
+    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, opts.cx.cb_width);
     let busy: Vec<u16> = vec![0; cols as usize];
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,

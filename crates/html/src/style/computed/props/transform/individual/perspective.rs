@@ -1,16 +1,16 @@
 //! Computed::apply_transform_individual, хвост цепочки: backface-visibility, perspective, perspective-origin, transform-style, transform-box, vector-effect. Ветви в исходном порядке.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::values::value::px_strict;
 
 impl Computed {
-    #[allow(unused_variables)]
     pub(super) fn apply_transform_perspective(
         &mut self,
         key: &str,
-        val: &str,
         v: &str,
         hit: &mut bool,
+        vcx: ValueCx<'_>,
     ) {
         match key {
             // Трёхмерной сцены нет: без объёмных преобразований перспектива
@@ -31,7 +31,7 @@ impl Computed {
             "perspective" => {
                 self.perspective = record_parsed!(
                     self,
-                    match Len::parse(v) {
+                    match Len::parse(v, vcx) {
                         Some(Len::Px(d)) => Some(d.max(1.0)),
                         _ => None,
                     }
@@ -52,13 +52,13 @@ impl Computed {
                         "left" | "top" => 0.0,
                         "center" => 0.5,
                         "right" | "bottom" => 1.0,
-                        other => match Len::parse(other) {
+                        other => match Len::parse(other, vcx) {
                             Some(Len::Pct(p)) => p,
                             _ => default,
                         },
                     }
                 };
-                let px_axis = |t: &str| -> Option<f32> { px_strict(Len::parse(t)) };
+                let px_axis = |t: &str| -> Option<f32> { px_strict(Len::parse(t, vcx)) };
                 let mut xs: Option<&str> = None;
                 let mut ys: Option<&str> = None;
                 let mut free: Vec<&str> = vec![];

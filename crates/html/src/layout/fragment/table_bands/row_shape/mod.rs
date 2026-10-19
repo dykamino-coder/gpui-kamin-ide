@@ -1,6 +1,7 @@
 //! Форма рядов таблицы при фрагментации: вырезы между рядами, подписи.
 
 use super::{RowRef, TableBands, table_row_cuts};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 mod captions;
@@ -27,7 +28,8 @@ pub(super) fn row_band_shape(
     caps_bot: Vec<&Element>,
     parts: Vec<(u8, &Element)>,
     rows: Vec<RowRef<'_>>,
-) -> Option<(f32, f32, f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)> {
+    vcx: ValueCx<'_>,
+) -> Option<crate::layout::fragment::Shape> {
     let mut cuts: Vec<(f32, f32)> = Vec::new();
     let mut forced: Vec<f32> = Vec::new();
     let mut solid: Vec<(f32, f32)> = Vec::new();
@@ -72,6 +74,7 @@ pub(super) fn row_band_shape(
         force_next,
         &mut spans,
         &mut row_box,
+        vcx,
     )?;
     bands.spacing = spacing;
     // Сверка охватов (см. `spans`): ячейка выше суммы своих рядов с зазорами
@@ -170,7 +173,14 @@ pub(super) fn row_band_shape(
     if caps_top.is_empty() && caps_bot.is_empty() {
         cuts.retain(|&(need, _)| need > COORD_EPS && need < h_box - COORD_EPS);
         forced.retain(|&f| f > COORD_EPS && f < h_box - COORD_EPS);
-        return Some((h_box, mt, mb, cuts, forced, solid));
+        return Some(crate::layout::fragment::Shape {
+            height: h_box,
+            margin_top: mt,
+            margin_bottom: mb,
+            cuts,
+            forced,
+            solid,
+        });
     }
     // Обёртка таблицы — обычная блочная стопка: верхние подписи, коробка
     // рядов, нижние подписи (css-tables-3 §terminology; Blink
@@ -185,6 +195,6 @@ pub(super) fn row_band_shape(
     // `None` в списке — сама коробка рядов; поля у неё НУЛЕВЫЕ, поля таблицы
     // носит обёртка (они уже в `mt`/`mb` и возвращаются наружу).
     caption_slots_shape(
-        depth, cx, bands, mt, mb, caps_top, caps_bot, cuts, forced, solid, h_box,
+        depth, cx, bands, mt, mb, caps_top, caps_bot, cuts, forced, solid, h_box, vcx,
     )
 }

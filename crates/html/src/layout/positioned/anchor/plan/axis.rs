@@ -2,6 +2,7 @@
 
 use super::super::AnchorPlan;
 use super::super::area::{Al, Tracks};
+use crate::document::state::ValueCx;
 use crate::style::computed::Align;
 use crate::tolerance::COORD_EPS;
 use gpui::{Bounds, Pixels};
@@ -18,6 +19,7 @@ impl AnchorPlan {
         a: Bounds<Pixels>,
         cb: Bounds<Pixels>,
         own: Bounds<Pixels>,
+        vcx: ValueCx<'_>,
     ) -> (f32, f32, bool, f32) {
         let f = f32::from;
         let (cs, ce, as_, ae, os, olen) = if x {
@@ -44,8 +46,8 @@ impl AnchorPlan {
         let lines = [cs.min(as_), as_, ae, ce.max(ae)];
         let (s, e) = (lines[t.lo as usize], lines[t.hi as usize]);
         let (k_start, k_end) = if x { (3usize, 1usize) } else { (0, 2) };
-        let is = self.imcb_edge(k_start, s, e - s);
-        let ie = self.imcb_edge(k_end, e, e - s);
+        let is = self.imcb_edge(k_start, s, e - s, vcx);
+        let ie = self.imcb_edge(k_end, e, e - s, vcx);
         let (m_s, m_e) = (self.margin[k_start], self.margin[k_end]);
         // Выравнивается коробка ПОЛЕЙ (`auto`-поля уже нули: `m` в `of`).
         let mbox = olen + m_s + m_e;
@@ -94,6 +96,7 @@ impl AnchorPlan {
         x: bool,
         cb: Option<Bounds<Pixels>>,
         own: Bounds<Pixels>,
+        vcx: ValueCx<'_>,
     ) -> (f32, f32, bool) {
         let f = f32::from;
         let (k_start, k_end) = if x { (3usize, 1usize) } else { (0, 2) };
@@ -107,9 +110,9 @@ impl AnchorPlan {
         // Без области по оси побеждает начальная сторона: `left` при
         // заданных `left` и `right`.
         let plain = if self.sides[k_start].is_some() {
-            self.shift(k_start, own)
+            self.shift(k_start, own, vcx)
         } else {
-            self.shift(k_end, own)
+            self.shift(k_end, own, vcx)
         };
         let Some(cb) = cb else {
             return (plain, 0.0, false);
@@ -119,8 +122,8 @@ impl AnchorPlan {
         } else {
             (f(cb.origin.y), f(cb.origin.y) + f(cb.size.height))
         };
-        let is = self.imcb_edge(k_start, cs, ce - cs);
-        let ie = self.imcb_edge(k_end, ce, ce - cs);
+        let is = self.imcb_edge(k_start, cs, ce - cs, vcx);
+        let ie = self.imcb_edge(k_end, ce, ce - cs, vcx);
         let (explicit, safe) = if x == self.cb_vertical {
             (self.align_self, self.safe_align)
         } else {

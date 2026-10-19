@@ -12,6 +12,7 @@ pub(super) fn inline_sides(
     e: &Element,
     merged: &Computed,
     flow: &Computed,
+    cb: Option<f32>,
 ) -> ((f32, f32), (f32, f32)) {
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
@@ -22,8 +23,7 @@ pub(super) fn inline_sides(
     // (CSS 2.1 §8.3, §8.4: «percentage … refer to the width of the
     // containing block»), то есть блока абзаца. Прежде доля молча давала
     // ноль (`text-indent-percentage-001`: эталон `margin-left: 50%` на
-    // `<span>` стоял у края).
-    let cb = crate::layout::block::containing::avail_width();
+    // `<span>` стоял у края). Блок абзаца — `cb` (`LayoutCx::avail_w`).
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_)) => {
             crate::text::metrics::spacing_px(l, &family, size)

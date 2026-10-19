@@ -119,7 +119,7 @@ mod tests {
             "activityMain": {"pinned": ["claudeBridge"], "active": "claudeBridge"},
             "activityMainBottom": {"pinned": [], "active": null}
         });
-        let snap: LayoutSnapshot = serde_json::from_value(raw.clone()).unwrap();
+        let snap: LayoutSnapshot = serde_json::from_value(raw).unwrap();
         assert_eq!(snap.sidebar_width_px, 200.0);
         assert_eq!(snap.activity_main.active.as_deref(), Some("claudeBridge"));
         // Сериализация не добавляет rightPanelSplit

@@ -1,4 +1,6 @@
 //! Обтекание флоатов: `wrap_floats` и хвост потока.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use std::ops::ControlFlow;
@@ -15,6 +17,7 @@ mod run;
 mod shaped;
 use float_run::wrap_float_run;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn wrap_floats(
     nodes: Vec<Node>,
     parent: &Computed,
@@ -32,17 +35,24 @@ pub(crate) fn wrap_floats(
     // Содержащий блок — корень БФК (§10.6.7): его авто-высота обязана
     // охватить флоаты, в том числе внутри вложенных блоков.
     parent_bfc: bool,
-    // The parent is a table cell (see `CELL_BFC`): a BFC root whose float
+    // The parent is a table cell (see `LayoutCx::cell_bfc`): a BFC root whose float
     // host keeps containing floats, while the band-host choices above stay
     // those of an ordinary block (margin-collapse-121..125, 157, 158).
     cell_bfc: bool,
+    // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
+    // `bfc_no_fit`.
+    cb_px: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let cb = FloatCb::of(parent);
-    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open);
+    let cb = FloatCb {
+        margin_basis: cb_px,
+        ..FloatCb::of(parent)
+    };
+    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
     if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, cb, &mut nodes) {
         return value;
     }

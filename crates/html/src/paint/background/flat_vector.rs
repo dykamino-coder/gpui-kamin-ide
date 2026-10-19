@@ -1,5 +1,6 @@
 //! Preserve uniform SVG coverage without rasterizing enormous viewports.
 
+use crate::document::state::ValueCx;
 use crate::style::values::value::Color;
 use gpui::{Bounds, Corners, Pixels, Window};
 
@@ -7,7 +8,7 @@ use gpui::{Bounds, Corners, Pixels, Window};
 /// covering that viewport is a uniform image, even when its natural ratio
 /// makes the concrete tile too large for accurate bitmap/path coordinates.
 /// Blink SVGShapePainter::FillShape paints rectangle geometry directly.
-pub(super) fn color(markup: &str, size: (f32, f32)) -> Option<Color> {
+pub(super) fn color(markup: &str, size: (f32, f32), vcx: ValueCx<'_>) -> Option<Color> {
     let markup = super::with_viewport(markup, size);
     let doc = roxmltree::Document::parse(&markup).ok()?;
     let root = doc.root_element();
@@ -94,6 +95,7 @@ pub(super) fn color(markup: &str, size: (f32, f32)) -> Option<Color> {
         rect.attribute("fill")
             .or_else(|| root.attribute("fill"))
             .unwrap_or("black"),
+        vcx,
     )?;
     (color.a == 1.0).then_some(color)
 }
@@ -103,6 +105,7 @@ pub(super) fn paint(
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
     source: &super::Source,
+    vcx: ValueCx<'_>,
 ) -> bool {
     let super::Source::Vector { markup, .. } = source else {
         return false;
@@ -115,6 +118,7 @@ pub(super) fn paint(
     let Some(color) = color(
         markup,
         (f32::from(bounds.size.width), f32::from(bounds.size.height)),
+        vcx,
     ) else {
         return false;
     };
@@ -130,26 +134,31 @@ mod tests {
     use super::*;
     #[test]
     fn uniform_coverage_respects_viewport_mapping_and_effects() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let full = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2147483647 1' preserveAspectRatio='none'><rect width='100%' height='100%' fill='lime'/></svg>";
-        assert_eq!(color(full, (768.0, 256.0)), Color::parse("lime"));
+        assert_eq!(color(full, (768.0, 256.0), vcx), Color::parse("lime", vcx));
         assert!(
             color(
                 &full.replace("preserveAspectRatio='none'", ""),
-                (768.0, 256.0)
+                (768.0, 256.0),
+                vcx
             )
             .is_none()
         );
         assert!(
             color(
                 &full.replace("fill='lime'", "fill='lime' filter='url(#f)'"),
-                (768.0, 256.0)
+                (768.0, 256.0),
+                vcx
             )
             .is_none()
         );
         assert!(
             color(
                 &full.replace("height='100%'", "height='50%'"),
-                (768.0, 256.0)
+                (768.0, 256.0),
+                vcx
             )
             .is_none()
         );

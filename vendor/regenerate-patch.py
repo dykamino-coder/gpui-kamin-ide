@@ -5,6 +5,7 @@ import argparse
 import base64
 import difflib
 import hashlib
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,23 +13,31 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent.parent
 PINS = {
-    "gpui": "gpui-pre 0.3.8 (zed 279fe07)",
-    "gpui-windows": "gpui-pre-windows 0.3.8 (zed 279fe07)",
-    "gpui-base": "gpui-base 0.7.1",
-    "gpui-component": "gpui-component 0.7.1",
-    "taffy": "taffy 0.14.0",
+    "gpui": "gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)",
+    "gpui-windows": "gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)",
+    "gpui-base": "gpui-base 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)",
+    "gpui-component": "gpui-component 0.7.1 (longbridge/gpui-kit 87d10ae5e1299d1be18670a37570c5402f952e34)",
+    "taffy": "taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)",
     "html5ever": "html5ever 0.40.1",
     "markup5ever_rcdom": "markup5ever_rcdom 0.39.0+unofficial",
     "resvg": "resvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
     "usvg": "usvg 0.48.1 + src at linebender/resvg 77b12f4951a7b75d759c42e8c9497cff7c839c3c",
 }
+PACKAGE_REVISIONS = {
+    "gpui-base": "87d10ae5e1299d1be18670a37570c5402f952e34",
+    "gpui-component": "87d10ae5e1299d1be18670a37570c5402f952e34",
+    "taffy": "2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f",
+}
+
 FIXES = {
     "gpui": [
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
         "Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.",
         "Tests: retain bundled upstream fonts for SVG regression coverage and import the moved image-fit type explicitly.",
+        "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
         "Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
+        "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
@@ -73,6 +82,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",
         "Empty geometry: do not create filtered groups for zero-size/empty shapes or images (SVG 2 sections 9-12).",
@@ -136,6 +146,11 @@ def is_binary(data):
         return True
 
 
+def has_trailing_whitespace(data):
+    # Preserve upstream bytes without introducing whitespace errors into the patch file.
+    return any(line.endswith((b" ", b"\t")) for line in data.splitlines())
+
+
 def render(name, before, after):
     lines = [f"# KaminIDE patches — {PINS[name]}\n", "#\n"]
     lines += [f"# {i}. {reason}\n" for i, reason in enumerate(FIXES[name], 1)]
@@ -154,7 +169,7 @@ def render(name, before, after):
         old_id = blob_id(old) if rel in before else "0" * 40
         new_id = blob_id(new) if rel in after else "0" * 40
         lines.append(f"index {old_id}..{new_id}\n")
-        if is_binary(old) or is_binary(new):
+        if is_binary(old) or is_binary(new) or has_trailing_whitespace(old) or has_trailing_whitespace(new):
             lines += ["GIT binary patch\n", binary_literal(new), binary_literal(old)]
             continue
         delta = difflib.unified_diff(
@@ -190,6 +205,12 @@ def main():
     parser.add_argument("--scratch", type=Path, help="parent for disposable verification directory")
     parser.add_argument("--check", action="store_true", help="verify without overwriting the patch")
     args = parser.parse_args()
+    revision = PACKAGE_REVISIONS.get(args.crate)
+    if revision:
+        info = args.upstream / ".cargo_vcs_info.json"
+        actual = json.loads(info.read_text(encoding="utf-8"))["git"]["sha1"]
+        if actual != revision:
+            raise SystemExit(f"Wrong upstream revision: expected {revision}, got {actual}")
     before, after = upstream_files(args.upstream), vendor_files(args.crate)
     patch = render(args.crate, before, after)
     round_trip(args.crate, before, after, patch, args.scratch)

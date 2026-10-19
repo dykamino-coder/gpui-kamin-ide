@@ -17,6 +17,7 @@ pub(crate) fn canvas_layer(
 ) -> Option<crate::paint::background::RootMeasurement> {
     let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
     let measurement = measured.clone();
+    let vcx = opts.cx.vcx();
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -27,7 +28,7 @@ pub(crate) fn canvas_layer(
     // Слоёв несколько — их рисуют плитки (`bg_layers` ниже), а
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
-    let canvas_layers = e.style.bg_layers();
+    let canvas_layers = e.style.bg_layers(vcx);
     if let Some(g) = e
         .style
         .gradient
@@ -48,7 +49,7 @@ pub(crate) fn canvas_layer(
                 stop.0 = f.apply(stop.0);
             }
         }
-        layer = layer.bg(crate::style::apply::fill(&g));
+        layer = layer.bg(crate::paint::apply::fill(&g));
     } else if let Some(bg) = e.style.background {
         let bg = root_filter.map_or(bg, |f| f.apply(bg));
         layer = layer.bg(bg.to_hsla());
@@ -114,13 +115,15 @@ pub(crate) fn canvas_layer(
                 Some(layers) => {
                     let mut stack = div().absolute().top_0().left_0().right_0().bottom_0();
                     for l in layers.iter().rev() {
-                        if let Some(t) = crate::paint::background::canvas_layer(l, area.clone()) {
+                        if let Some(t) =
+                            crate::paint::background::canvas_layer(l, area.clone(), vcx)
+                        {
                             stack = stack.child(t);
                         }
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::paint::background::canvas_layer(&e.style, area),
+                None => crate::paint::background::canvas_layer(&e.style, area, vcx),
             }
         }
     {
@@ -134,7 +137,7 @@ pub(crate) fn canvas_layer(
             .child(tiles)
             .into_any_element();
     } else if e.style.bg_image.is_some()
-        && let Some(tiles) = crate::paint::background::layer(&e.style)
+        && let Some(tiles) = crate::paint::background::layer(&e.style, vcx)
     {
         // Область ПОЗИЦИОНИРОВАНИЯ краски — PADDING-BOX корня:
         // ширина + горизонтальные отступы; полоса прижата по
@@ -221,6 +224,7 @@ pub(crate) fn canvas_layer(
                 .child(layer)
                 .into_any_element(),
             &clip,
+            vcx,
         );
     }
     out.push(crate::interactive::scroll_target::canvas(layer));

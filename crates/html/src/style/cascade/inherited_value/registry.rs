@@ -1,5 +1,6 @@
 //! Longhand-to-computed-field registry shared by keyword tracking and copying.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 
 macro_rules! properties {
@@ -9,7 +10,7 @@ macro_rules! properties {
 
         impl Property {
             #[allow(clippy::clone_on_copy)] // One registry covers both owned and Copy fields.
-            pub(super) fn copy(self, p: &Computed, c: &mut Computed) {
+            pub(super) fn copy(self, p: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
                 match self {
                     $(Self::$id => { $(c.$field $(.$part)* = p.$field $(.$part)*.clone();)+ },)*
                     Self::RowGap => c.gap.get_or_insert((None, None)).0 = p.gap.and_then(|g| g.0),
@@ -26,7 +27,7 @@ macro_rules! properties {
                             Self::ImageOutset => ("border-image-outset", "0"),
                             _ => ("border-image-repeat", "stretch"),
                         };
-                        c.set_border_image(key, initial);
+                        c.set_border_image(key, initial, vcx);
                         if let (Some(src), Some(dst)) = (&p.border_image, &mut c.border_image) {
                             match self {
                                 Self::ImageSource => dst.src.clone_from(&src.src),

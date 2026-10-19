@@ -1,5 +1,6 @@
 //! Доводка вычисленного стиля: логические стороны, единицы окна и шрифта, текстовые и смешанные стили.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -77,8 +78,8 @@ impl Computed {
     ///
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
-    pub fn resolve_viewport(&mut self, viewport: (f32, f32)) {
-        self.resolve_decor_inset_viewport(viewport);
+    pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
+        self.resolve_decor_inset_viewport(viewport, vcx);
         let insets = self.viewport_unit_insets.unwrap_or_default();
         let viewport = (
             (viewport.0 - insets[0]).max(0.0),
@@ -93,13 +94,13 @@ impl Computed {
             Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
             Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
             Some(Len::Calc(i)) => {
-                let mut s = crate::style::values::value::calc_get(i);
+                let mut s = crate::style::values::value::calc_get(i, vcx);
                 // Без слагаемых окна складывать нечего: индекс остаётся
                 // (арена append-only, `resolve_viewport` идёт на каждом
                 // слитом стиле), а `collapse` стёр бы процентную смесь
                 // `calc(50% - 3px)` в `None` уже после разбора.
                 if s.fold_viewport(viewport, vertical, container) {
-                    *l = s.collapse_mixed();
+                    *l = s.collapse_mixed(vcx);
                 }
             }
             _ => {}
@@ -110,10 +111,10 @@ impl Computed {
                     Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
                     Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
                     Some(Len::Calc(i)) => {
-                        let mut s = crate::style::values::value::calc_get(i);
+                        let mut s = crate::style::values::value::calc_get(i, vcx);
                         // То же, что у размеров: смесь с долей доживает.
                         if s.fold_viewport(viewport, vertical, container) {
-                            *one = s.collapse_mixed();
+                            *one = s.collapse_mixed(vcx);
                         }
                     }
                     _ => {}

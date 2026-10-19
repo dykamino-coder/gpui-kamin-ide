@@ -1,10 +1,11 @@
 //! inherit_stage, этап размеров: процентная высота в режиме quirks, цвет, длины от кегля родителя, inherit у теней, рамок, отступов, выравнивания.
 
 use super::*;
+use crate::document::state::ValueCx;
 mod lh_units;
 use lh_units::inherit_lh_units;
 
-pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
     // Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
     // quirks содержащий блок для ДОЛИ высоты ищется циклом — предки с
     // `height: auto` пропускаются, пока не найдётся предок с заданной
@@ -15,7 +16,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed)
     // `float-percentage-resolution-quirks-mode`). Blink:
     // `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
     // (`SkipContainingBlockForPercentHeightCalculation`).
-    if crate::style::select::quirks() {
+    if vcx.doc.quirks() {
         use crate::style::computed::Display as D;
         use crate::style::computed::Position as P;
         use crate::style::values::value::Len as L;

@@ -16,13 +16,6 @@ pub(crate) mod combined_text;
 mod vertical_line_baseline;
 mod vertical_style;
 
-/// Stable occurrence key within the current document's frame.
-pub fn vt_seq_key(base: u64) -> u64 {
-    crate::document::state::current()
-        .vertical_measures
-        .next_key(base)
-}
-
 thread_local! {
     /// Сборщик внутреннего строчного размера повёрнутого текста (`None` —
     /// закрыт): наибольшая длина строки всех `VerticalText`, разложенных,

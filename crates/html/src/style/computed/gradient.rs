@@ -1,5 +1,6 @@
 //! Градиенты и image-set: разбор, угол, растр, image-resolution.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
@@ -7,6 +8,7 @@ mod current_color;
 mod direction;
 mod image_set;
 mod parse;
+pub(crate) mod stops;
 pub(crate) use current_color::{
     parse_gradient, parse_gradient_with_current, resolve_gradient_colors,
 };
@@ -43,7 +45,7 @@ pub(crate) fn gradient_as_raster(v: &str) -> bool {
 /// Пересчитать фильтром цвета стопов в ЗАПИСИ растрового градиента: такие
 /// градиенты живут строкой в `bg_image`, а не полем `gradient`. Слова, не
 /// являющиеся цветом (направление, позиции, `from`/`at`), остаются как есть.
-pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
+pub(crate) fn filter_gradient_text(raw: &str, f: &Filter, vcx: ValueCx<'_>) -> String {
     let (Some(open), Some(close)) = (raw.find('('), raw.rfind(')')) else {
         return raw.to_string();
     };
@@ -55,7 +57,7 @@ pub(crate) fn filter_gradient_text(raw: &str, f: &Filter) -> String {
         .map(|part| {
             split_outside_parens(part)
                 .into_iter()
-                .map(|w| match Color::parse(&w) {
+                .map(|w| match Color::parse(&w, vcx) {
                     Some(c) => {
                         let c = f.apply(c);
                         format!(

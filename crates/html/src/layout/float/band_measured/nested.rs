@@ -26,7 +26,7 @@ pub(crate) fn band_host_nested(
     let Node::Element(c) = &nodes[i] else {
         return None;
     };
-    if !has_flow_float(c) || !band_nest_ok(c, em, wm) {
+    if !has_flow_float(c) || !band_nest_ok(c, em, wm, cb.margin_basis) {
         return None;
     }
     let mut j = i + 1;
@@ -50,7 +50,7 @@ pub(crate) fn band_host_nested(
     if !rest.iter().any(|n| !is_blank(n)) && !parent_bfc {
         return None;
     }
-    let rest = band_flow_rest(rest, em, wm)?;
+    let rest = band_flow_rest(rest, em, wm, cb.margin_basis)?;
     if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
         && next.style.clear.is_some()
         && !band_clear_supported(next)
@@ -74,14 +74,14 @@ pub(crate) fn band_host_nested(
 
 /// Блок с флоатами или коробками своего контекста внутри годится в
 /// `Kind::Nest` целиком — со всеми потомками (шаг F7).
-pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode) -> bool {
+pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode, cb: Option<f32>) -> bool {
     if !band_nest_block(c, em, wm) {
         return false;
     }
     let Some(inner_em) = band_em(&c.style, em) else {
         return false;
     };
-    let Some(seq) = band_seq(collapse_margins(&c.children, false), inner_em, wm) else {
+    let Some(seq) = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb) else {
         return false;
     };
     seq.iter().all(|n| match n {
@@ -91,7 +91,7 @@ pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode) -> bool {
                 || band_piece_m(n, inner_em, wm).is_some()
                 || k.marks.anon
                 || band_flow_block(k, inner_em)
-                || band_nest_ok(k, inner_em, wm)
+                || band_nest_ok(k, inner_em, wm, cb)
         }
     })
 }

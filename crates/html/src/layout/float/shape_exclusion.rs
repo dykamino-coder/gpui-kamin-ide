@@ -14,6 +14,7 @@ use crate::style::values::value::Len;
 /// is the float's font size. `vertical`: the host is `vertical-rl`
 /// (`Some(true)`) or `vertical-lr` (`Some(false)`). Measured from the
 /// float's own margin edge and margin-box block-start, in logical axes.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn measured_shape(
     f: &Element,
     side: i8,
@@ -22,6 +23,7 @@ pub(crate) fn measured_shape(
     cbw: f32,
     em: f32,
     vertical: Option<bool>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> FloatShape {
     // Physical sizes and margins (css-writing-modes-4 §6.4): in vertical
     // modes the inline axis is the height and block-start is the right
@@ -89,5 +91,6 @@ pub(crate) fn measured_shape(
         0.0,
         sm,
         vertical.is_some(),
+        vcx,
     )
 }

@@ -46,6 +46,7 @@ pub struct VerticalText {
     /// Первая строка для базовой по оси x: шрифт, кегль, высота строки
     /// (`None` — `normal`) и центральная ли доминантная базовая.
     pub(crate) first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
+    pub(crate) values: Option<crate::document::state::ValueDoc>,
 }
 
 impl Wrap for VerticalText {

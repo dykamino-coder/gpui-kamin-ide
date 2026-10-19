@@ -1,8 +1,8 @@
 //! HTML+CSS → элементы GPUI.
 //!
 //! ```ignore
-//! let nodes = kamin_html::parse(html, theme_css);
-//! let elements = kamin_html::render(&nodes, &RenderOpts { text, ..Default::default() });
+//! let doc = kamin_html::Document::new(html, theme_css);
+//! let elements = doc.render(&RenderOpts { text, ..Default::default() });
 //! ```
 //!
 //! Что покрыто, что нет и почему — `docs/html-css-mapping.html`; там же по
@@ -13,6 +13,7 @@
 //! `z-index`, переходы и анимации — не переносятся, потому что примитивов под
 //! них в GPUI нет.
 
+#[cfg(test)]
 pub mod coverage;
 pub(crate) mod hooks;
 pub mod tolerance;
@@ -52,8 +53,9 @@ pub(crate) mod text;
 /// точек. Передаётся вторым доводом в [`Document::new`] — он идёт после
 /// таблицы движка и до `<style>` самого документа.
 // Отступы потоковых тегов — ЛОГИЧЕСКИЕ (margin-block/margin-inline), как в
-// настоящей таблице UA (whatwg rendering §15.3.3): при вертикальном письме
-// они поворачиваются на горизонтальную ось (wm-propagation-body-*).
+// таблице HTML Rendering, Flow content: поля следуют блочной/строчной оси
+// элемента, включая вертикальное письмо.
+// https://html.spec.whatwg.org/multipage/rendering.html#flow-content-3
 pub const BROWSER_CSS: &str = r#"
     body { margin: 8px }
     p { margin-block: 1em; margin-inline: 0 }
@@ -74,8 +76,9 @@ pub const BROWSER_CSS: &str = r#"
     blockquote { margin-block: 1em; margin-inline: 40px; padding-left: 0; border-left: none }
     figure { margin-block: 1em; margin-inline: 40px }
     figcaption { font-size: 1em; margin: 0 }
-    /* `overflow-x: auto` чатового листа браузер у `pre` не ставит: прокручиваемая
-       коробка теряла прижим к концу в rtl-родителе (`text-align-start-014`). */
+    /* HTML Rendering, Flow content (#flow-content-3): pre preserves whitespace
+       and has block margins; it does not establish a scroll container.
+       Restore initial visible overflow over the embedding chat stylesheet. */
     pre { margin-block: 1em; margin-inline: 0; padding: 0; font-size: 1em; white-space: pre;
           overflow: visible }
     code, kbd, samp { font-size: 1em }
@@ -86,7 +89,8 @@ pub const BROWSER_CSS: &str = r#"
     hr { height: auto; margin: 0.5em auto; background: none; color: gray; border-style: inset;
          border-width: 1px; border-color: currentColor }
     table { margin: 0; border-spacing: 2px }
-    /* HTML §15.3.9: row groups center cells unless authored alignment wins. */
+    /* HTML Rendering, Tables (#tables-2): row groups align cells in the
+       middle; rows/cells inherit alignment unless an author rule overrides it. */
     thead, tbody, tfoot, table > tr { vertical-align: middle }
     /* CSS Tables 3 §10.1: the first header/footer sections repeat in print. */
     thead, tfoot { break-inside: avoid }
@@ -102,30 +106,31 @@ pub const BROWSER_CSS: &str = r#"
     u, ins { text-decoration: underline }
     s, strike, del { text-decoration: line-through }
     nobr { white-space: nowrap }
-    /* ПРОБОВАЛИ И ОТКАТИЛИ: `iframe { border: 2px inset }` из листа HTML.
-       Замерено: CSS3 2352 -> 2350, потеряны position-absolute-iframe-print-001
-       и -002 (0.23 -> 1.39); эталоны этих пар рамку рамке не рисуют. */
+    /* UA DEVIATION: iframe lacks the 2px inset border expected by HTML
+       Rendering, Embedded content (#embedded-content-rendering-rules) and
+       Blink html.css. This omission has no spec basis; see
+       docs/html-ua-deviations.md for the unresolved rule and acceptance case. */
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
     a[href] { color: #0000ee }
     /* css-overflow-5: a scroll marker behaves like a link (Blink
        `scroll_marker.css`: `color: -webkit-link; text-decoration: underline`). */
     *::scroll-marker { color: #0000ee; text-decoration: underline }
-    /* `button` — строчный блок (HTML §15.5.2 «expected to render as an
-       'inline-block' box»): без вида кнопка шла строчной коробкой, и доля
-       высоты картинки внутри не решалась (`intrinsic-percent-replaced-021`). */
+    /* HTML Rendering, Button layout (#button-layout): a button generates
+       an inline-block box, so its contents have an independent layout context. */
     button { display: inline-block; padding: 1px 6px; border-radius: 0 }
     /* css-overflow-5 §scroll-buttons: `::scroll-button()`s are styled like
        `<button>` (Blink `scroll_button.css`). */
     *::scroll-button(*) { display: inline-block; padding: 1px 6px; border-radius: 0;
                           box-sizing: border-box }
-    /* Widget sizes include their border and padding (Blink html.css and
-       Gecko forms.css: `select`, check boxes and radio buttons are
-       `box-sizing: border-box`): a percentage size must not add the edges
-       to the used size (`widget-percentage-height-001`). */
+    /* Blink html.css gives select, checkbox and radio controls border-box
+       sizing: the specified width/height includes padding and borders.
+       Source: third_party/blink/renderer/core/html/resources/html.css. */
     select, input[type="checkbox" i], input[type="radio" i] { box-sizing: border-box }
     canvas { background: none; border: none }
-    /* HTML §15.5.4: the first summary is the disclosure widget's list item. */
+    /* HTML Rendering, The details and summary elements
+       (#the-details-and-summary-elements): the first summary is a list item
+       with a disclosure marker reflecting the details open state. */
     details > summary:first-of-type { display: list-item; counter-increment: list-item 0;
                                       list-style: disclosure-closed inside }
     details[open] > summary:first-of-type { list-style-type: disclosure-open }

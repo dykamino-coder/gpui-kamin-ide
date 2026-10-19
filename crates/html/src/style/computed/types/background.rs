@@ -1,6 +1,7 @@
 //! Типы фона: background-clip/size/position (с разбором слов положения), background-repeat и укладка.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `background-clip`: до какого края коробки красится фон
 /// (css-backgrounds-3 §3.7).
@@ -45,7 +46,7 @@ pub struct BgPos {
 /// (css-backgrounds-3 §3.6): `bottom center` и `center bottom` — одно и то
 /// же. Длины и `center` ложатся по порядку в свободные оси; одно значение
 /// задаёт свою ось, вторая — по центру.
-pub fn parse_pos_words(v: &str) -> BgPos {
+pub fn parse_pos_words(v: &str, vcx: ValueCx<'_>) -> BgPos {
     // Процентная смесь `calc(50px + 50%)` доживает до растра: смещение
     // плитки складывает `доля × свободное место + точки` (`background::origin`,
     // css-values-4 §10.9 — именно `background-position` спека приводит
@@ -54,8 +55,9 @@ pub fn parse_pos_words(v: &str) -> BgPos {
     // при разборе. Сравниваются РАЗРЕШЁННЫЕ длины, а база доли — свободное
     // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
     // там равно 100% (`background-position-calc-minmax-001` ловит именно это).
-    let length =
-        |t: &str| -> Option<Len> { Len::parse_mixed(t).filter(|l| !l.needs_unit_context()) };
+    let length = |t: &str| -> Option<Len> {
+        Len::parse_mixed(t, vcx).filter(|l| !l.needs_unit_context(vcx))
+    };
     let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
     // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,
     // которую берёт разбор фона.
@@ -91,7 +93,7 @@ pub fn parse_pos_words(v: &str) -> BgPos {
             match off {
                 None => Some(Len::Pct(1.0)),
                 Some(Len::Pct(k)) => Some(Len::Pct(1.0 - k)),
-                Some(Len::Px(px)) => Len::parse_mixed(&format!("calc(100% - {px}px)")),
+                Some(Len::Px(px)) => Len::parse_mixed(&format!("calc(100% - {px}px)"), vcx),
                 Some(other) => Some(other),
             }
         };

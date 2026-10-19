@@ -17,13 +17,14 @@ pub(super) fn float_box(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
-    let mut merged = inherit(inherited, &copy.style);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
-    merged.resolve_viewport(opts.viewport);
+    merged.resolve_viewport(opts.viewport, vcx);
     let el = if copy.tag == "img" {
-        image(copy)
+        image(copy, &opts.cx)
     } else {
         let span = open_clamp_span();
         let mut kids = blocks(&copy.children, &merged, opts);
@@ -41,10 +42,10 @@ pub(super) fn float_box(
             margin => margin,
         };
         crate::render::generic_box::child_probes(copy, &probed, opts, &mut kids, true, false, span);
-        styled_div_with(copy, &merged)
+        styled_div_with(copy, &merged, &opts.cx)
             .children(kids)
             .into_any_element()
     };
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
-    grouped(transformed(el, &merged, inherited), &copy.style)
+    grouped(transformed(el, &merged, inherited), &copy.style, vcx)
 }

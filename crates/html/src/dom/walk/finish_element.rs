@@ -1,5 +1,6 @@
-//! Finish element for walk; split out to keep the owning module within 250 lines.
+//! Final element assembly: direction, pseudo boxes, ruby and authored node state.
 
+use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
@@ -18,6 +19,7 @@ pub(super) fn finish_element(
     first_line: Option<Computed>,
     scroll_pseudos: ScrollPseudos,
     out: &mut Vec<Node>,
+    vcx: ValueCx<'_>,
 ) {
     let ruby_parent = ruby_box_role(&tag, &style);
     if ruby_parent.is_some() {
@@ -87,20 +89,7 @@ pub(super) fn finish_element(
     let children = if style.display == Some(Display::Block)
         && style.ruby_role == Some(crate::style::computed::RubyRole::Container)
     {
-        vec![Node::Element(Element {
-            marks: Default::default(),
-            list_item: None,
-            node_id: 0,
-            anim: None,
-            inline: true,
-            tag: "ruby".to_string(),
-            style: Computed::default().into(),
-            hover: None,
-            first_letter: None,
-            first_line: None,
-            children,
-            attrs: vec![],
-        })]
+        vec![anonymous_ruby(children)]
     } else {
         children
     };
@@ -116,13 +105,16 @@ pub(super) fn finish_element(
     // замены не делает (Servo `replaced.rs:348`: `None` при ошибке).
     let (tag, children, attrs) = match style.content.as_deref() {
         Some([crate::style::computed::ContentItem::Image(src)])
-            if tag != "html" && content_image_src(src).is_some() =>
+            if tag != "html" && content_image_src(src, vcx).is_some() =>
         {
             let mut attrs: Vec<(String, String)> = attrs
                 .into_iter()
                 .filter(|(k, _)| k != "src" && k != "srcset")
                 .collect();
-            attrs.push(("src".into(), content_image_src(src).unwrap_or_default()));
+            attrs.push((
+                "src".into(),
+                content_image_src(src, vcx).unwrap_or_default(),
+            ));
             ("img".to_string(), vec![], attrs)
         }
         _ => (tag, children, attrs),

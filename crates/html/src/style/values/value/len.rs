@@ -1,6 +1,7 @@
 //! Длина CSS (Len) и её разбор для spacing/смешанных записей; разбор числа css_number.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Длина в терминах, которые понимает GPUI.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -66,7 +67,7 @@ impl Len {
     /// Разбор для `word-spacing` и `letter-spacing`: там доля берётся от кегля
     /// так же, как `em`, поэтому смешанное `calc(400% + 1em)` складывается в
     /// одну длину вместо того чтобы пропасть (`word-spacing-001`).
-    pub fn parse_spacing(raw: &str) -> Option<Self> {
+    pub fn parse_spacing(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         // `normal` — ЗАДАННЫЙ ноль, а не «не задано»: без него наследованное
         // значение не сбросить, и `<span style="letter-spacing: normal">`
@@ -79,9 +80,9 @@ impl Len {
             .or_else(|| s.strip_prefix("CALC("))
             .and_then(|r| r.strip_suffix(')'))
         {
-            return eval_calc(inner)?.collapse_spacing();
+            return eval_calc(inner, vcx)?.collapse_spacing(vcx);
         }
-        Len::parse(s)
+        Len::parse(s, vcx)
     }
 
     /// Разбор для свойств, которые доли решают САМИ при отрисовке, зная
@@ -92,12 +93,12 @@ impl Len {
     /// used-value time. Раскладка (taffy) этим разбором НЕ пользуется:
     /// туда смесь по-прежнему не попадает (замерено `gap-003-ltr`,
     /// см. `Sum::collapse`).
-    pub fn parse_mixed(raw: &str) -> Option<Self> {
+    pub fn parse_mixed(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
-            return eval_calc(inner)?.collapse_mixed();
+            return eval_calc(inner, vcx)?.collapse_mixed(vcx);
         }
-        Len::parse(s)
+        Len::parse(s, vcx)
     }
 }
 

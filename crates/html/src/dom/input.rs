@@ -52,6 +52,10 @@ mod tests {
     fn deeply_nested_input_is_bounded_before_recursive_walks() {
         let source = format!("{}text{}", "<div>".repeat(10_000), "</div>".repeat(10_000));
         let dom = html(&source);
+        #[expect(
+            clippy::redundant_clone,
+            reason = "keep the root alive: Node::drop drains descendant children"
+        )]
         let mut pending = vec![(dom.document.clone(), 0)];
         let mut maximum = 0;
         while let Some((node, depth)) = pending.pop() {
@@ -73,6 +77,10 @@ mod tests {
     #[test]
     fn ordinary_html_keeps_its_text() {
         let dom = html("<p>Hello <b>world</b></p>");
+        #[expect(
+            clippy::redundant_clone,
+            reason = "keep the root alive: Node::drop drains descendant children"
+        )]
         let mut pending = vec![dom.document.clone()];
         let mut text = String::new();
         while let Some(node) = pending.pop() {

@@ -1,16 +1,23 @@
 //! Полоса фона ряда/группы, обрезанная прямоугольниками ячеек (CellsClipped).
 
 use super::RowRects;
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Pixels, Window};
 
 pub struct CellsClipped {
     pub(crate) style: crate::style::computed::Computed,
     pub(crate) rects: RowRects,
+    /// Values of the document the band's style lengths come from.
+    pub(crate) values: crate::document::state::ValueDoc,
 }
 
 impl CellsClipped {
-    pub fn new(rects: RowRects, style: crate::style::computed::Computed) -> Self {
-        CellsClipped { style, rects }
+    pub fn new(rects: RowRects, style: crate::style::computed::Computed, vcx: ValueCx<'_>) -> Self {
+        CellsClipped {
+            style,
+            rects,
+            values: vcx.keep(),
+        }
     }
 
     pub(super) fn paint_band_outline(&mut self, window: &mut Window, area: Bounds<Pixels>) {

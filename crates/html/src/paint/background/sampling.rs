@@ -1,5 +1,6 @@
 //! Preserve tile pixel boundaries and paint supported gradients analytically.
 
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
 
@@ -10,14 +11,15 @@ pub(super) fn paint_tile(
     image: Arc<RenderImage>,
     source_kind: &super::Source,
     pixelated: bool,
+    vcx: ValueCx<'_>,
 ) {
-    if super::flat_vector::paint(window, bounds, corners, source_kind) {
+    if super::flat_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
-    if paint_gradient(window, bounds, corners, source_kind) {
+    if paint_gradient(window, bounds, corners, source_kind, vcx) {
         return;
     }
-    if super::oriented_vector::paint(window, bounds, corners, source_kind) {
+    if super::oriented_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
     let source = image.size(0);
@@ -92,6 +94,7 @@ pub(crate) fn paint_gradient(
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
     source: &super::Source,
+    vcx: ValueCx<'_>,
 ) -> bool {
     let super::Source::Gradient { raw } = source else {
         return false;
@@ -99,7 +102,7 @@ pub(crate) fn paint_gradient(
     if !raw.contains("gradient(") || super::conic::is_conic(raw) {
         return false;
     }
-    let Some(mut gradient) = crate::style::computed::parse_gradient(raw) else {
+    let Some(mut gradient) = crate::style::computed::parse_gradient(raw, vcx) else {
         return false;
     };
     if let Some(angle) = crate::style::computed::corner_angle(
@@ -109,7 +112,9 @@ pub(crate) fn paint_gradient(
         gradient.angle_deg = angle;
     }
     let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    if let Some(geometry) = super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg) {
+    if let Some(geometry) =
+        super::gradient_geometry::Geometry::new(raw, css, gradient.angle_deg, vcx)
+    {
         gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
     }
     // Extended stop ranges lose the visible colour variation in the analytic
@@ -141,7 +146,7 @@ pub(crate) fn paint_gradient(
                 .round()
                 .clamp(1.0, 4096.0) as u32,
         );
-        if let Some(image) = super::gradient_raster::tile(raw, w, h, css) {
+        if let Some(image) = super::gradient_raster::tile(raw, w, h, css, vcx) {
             let sampling = if window.current_transformation() == gpui::TransformationMatrix::unit()
             {
                 ImageSampling::LinearSnapped
@@ -164,7 +169,7 @@ pub(crate) fn paint_gradient(
         gpui::point(edge(bounds.left()), edge(bounds.top())),
         gpui::point(edge(bounds.right()), edge(bounds.bottom())),
     );
-    let mut quad = gpui::fill(bounds, crate::style::apply::fill(&gradient));
+    let mut quad = gpui::fill(bounds, crate::paint::apply::fill(&gradient));
     quad.corner_radii = corners;
     window.paint_quad(quad);
     true

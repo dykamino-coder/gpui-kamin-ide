@@ -1,4 +1,6 @@
 //! HTML presentational attributes at the DOM/cascade boundary.
+
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Rule, Selector, parse_decls};
 
@@ -7,12 +9,11 @@ use svg::foreign_object;
 
 /// HTML rendering §15.3.8: cell nowrap is a presentational hint, with a
 /// nonzero-length width exception in quirks mode. Author CSS takes precedence.
-pub(super) fn nowrap(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+pub(super) fn nowrap(tag: &str, attrs: &[(String, String)], quirks: bool) -> Option<Rule> {
     if !matches!(tag, "td" | "th") || !attrs.iter().any(|(k, _)| k == "nowrap") {
         return None;
     }
-    let normal = crate::style::select::quirks()
-        && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
+    let normal = quirks && attrs.iter().any(|(k, v)| k == "width" && nonzero_length(v));
     hint(if normal {
         "white-space: normal"
     } else {
@@ -38,26 +39,28 @@ pub(super) fn rules(
     tag: &str,
     attrs: &[(String, String)],
     path: &[crate::style::select::Ancestor],
+    vcx: ValueCx<'_>,
 ) -> Vec<Rule> {
-    nowrap(tag, attrs)
+    let quirks = vcx.doc.quirks();
+    nowrap(tag, attrs, quirks)
         .into_iter()
         .chain(cell_padding(tag, path))
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
-        .chain(font_color(tag, attrs))
-        .chain(super::presentational_hr::rule(tag, attrs))
-        .chain(super::presentational_legacy::rule(tag, attrs, path))
+        .chain(font_color(tag, attrs, vcx))
+        .chain(super::presentational_hr::rule(tag, attrs, vcx))
+        .chain(super::presentational_legacy::rule(tag, attrs, path, vcx))
         .chain(foreign_object(tag, attrs))
         .collect()
 }
 
 /// HTML rendering §15.3.4: legacy font colors participate below author CSS.
-fn font_color(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+fn font_color(tag: &str, attrs: &[(String, String)], vcx: ValueCx<'_>) -> Option<Rule> {
     if tag != "font" {
         return None;
     }
     let raw = &attrs.iter().find(|(name, _)| name == "color")?.1;
-    let color = super::presentational_hr::legacy_color(raw)?;
+    let color = super::presentational_hr::legacy_color(raw, vcx)?;
     hint(&format!("color: {color}"))
 }
 
@@ -158,13 +161,18 @@ fn nonzero_length(raw: &str) -> bool {
 }
 
 /// Preserve the existing bgcolor/text fallback below authored colors.
-pub(super) fn colors(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
+pub(super) fn colors(
+    style: &mut Computed,
+    tag: &str,
+    attrs: &[(String, String)],
+    vcx: ValueCx<'_>,
+) {
     let color_of = |name: &str| {
         attrs
             .iter()
             .find(|(k, _)| k == name)
-            .and_then(|(_, v)| super::presentational_hr::legacy_color(v))
-            .and_then(|v| crate::style::values::value::Color::parse(&v))
+            .and_then(|(_, v)| super::presentational_hr::legacy_color(v, vcx))
+            .and_then(|v| crate::style::values::value::Color::parse(&v, vcx))
     };
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
         && style.background.is_none()

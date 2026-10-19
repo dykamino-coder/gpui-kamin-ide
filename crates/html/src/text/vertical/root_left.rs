@@ -10,10 +10,20 @@ use gpui::{AnyElement, App, Bounds, Pixels, Window};
 pub struct RecordRootLeft {
     pub(crate) child: AnyElement,
     pub(crate) offset: f32,
+    pub(crate) values: crate::document::state::ValueDoc,
 }
 
-pub fn record_root_left(child: AnyElement, offset: f32) -> AnyElement {
-    RecordRootLeft { child, offset }.hooked()
+pub fn record_root_left(
+    child: AnyElement,
+    offset: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    RecordRootLeft {
+        child,
+        offset,
+        values: vcx.keep(),
+    }
+    .hooked()
 }
 
 impl Wrap for RecordRootLeft {
@@ -23,7 +33,7 @@ impl Wrap for RecordRootLeft {
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let left = f32::from(bounds.origin.x) - self.offset;
-        crate::document::state::current().root_left.set(Some(left));
+        self.values.vcx().doc.root_left.set(Some(left));
         self.child.prepaint(window, cx);
     }
 }

@@ -108,7 +108,6 @@ impl Render for RootView {
                     gpui::canvas(
                         |_, _, _| {},
                         move |_, (), window, _| {
-                            let tx = tx.clone();
                             window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, _| {
                                 if phase == gpui::DispatchPhase::Capture {
                                     let _ = tx.try_send(ShellEvent::DismissHoverPill);
@@ -131,7 +130,6 @@ impl Render for RootView {
                     gpui::canvas(
                         |_, _, _| {},
                         move |_, (), window, _| {
-                            let tx = tx.clone();
                             window.on_mouse_event(move |_: &gpui::MouseDownEvent, phase, _, _| {
                                 if phase == gpui::DispatchPhase::Capture {
                                     let _ = tx.try_send(ShellEvent::WebMenu(None));
@@ -154,7 +152,6 @@ impl Render for RootView {
                         // ТОЛЬКО из paint: `on_mouse_event` в prepaint паникует
                         // («this method can only be called during paint»)
                         move |_, (), window, _| {
-                            let tx = tx.clone();
                             window.on_mouse_event(
                                 move |_: &gpui::ScrollWheelEvent, phase, _, _| {
                                     if phase == gpui::DispatchPhase::Capture {

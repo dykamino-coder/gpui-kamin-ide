@@ -48,41 +48,32 @@ impl VerticalMeasures {
         }
         sizes.insert(key, size);
     }
-
-    pub(crate) fn clear(&self) {
-        self.sizes.borrow_mut().clear();
-        self.begin_frame();
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::document::state::{DocState, current};
+    use crate::document::state::DocState;
     use gpui::px;
 
     #[test]
     fn measures_follow_document_scope_and_occurrences_survive_frames() {
         let outer = DocState::new(Default::default());
         let inner = DocState::new(Default::default());
-        let _outer = outer.enter_frame();
-        let a = current().vertical_measures.next_key(7);
-        let b = current().vertical_measures.next_key(7);
+        let a = outer.vertical_measures.next_key(7);
+        let b = outer.vertical_measures.next_key(7);
         assert_ne!(a, b);
-        current().vertical_measures.record(a, px(20.));
-        current().vertical_measures.record(b, px(40.));
+        outer.vertical_measures.record(a, px(20.));
+        outer.vertical_measures.record(b, px(40.));
         {
-            let _inner = inner.enter_frame();
-            assert_eq!(current().vertical_measures.next_key(7), a);
-            assert_eq!(current().vertical_measures.get(a), None);
-            current().vertical_measures.record(a, px(80.));
+            assert_eq!(inner.vertical_measures.next_key(7), a);
+            assert_eq!(inner.vertical_measures.get(a), None);
+            inner.vertical_measures.record(a, px(80.));
         }
-        current().vertical_measures.begin_frame();
-        assert_eq!(current().vertical_measures.next_key(7), a);
-        assert_eq!(current().vertical_measures.get(a), Some(px(20.)));
-        assert_eq!(current().vertical_measures.next_key(7), b);
-        assert_eq!(current().vertical_measures.get(b), Some(px(40.)));
-        current().vertical_measures.clear();
-        assert_eq!(current().vertical_measures.get(a), None);
+        outer.vertical_measures.begin_frame();
+        assert_eq!(outer.vertical_measures.next_key(7), a);
+        assert_eq!(outer.vertical_measures.get(a), Some(px(20.)));
+        assert_eq!(outer.vertical_measures.next_key(7), b);
+        assert_eq!(outer.vertical_measures.get(b), Some(px(40.)));
         assert_eq!(inner.vertical_measures.get(a), Some(px(80.)));
     }
 }

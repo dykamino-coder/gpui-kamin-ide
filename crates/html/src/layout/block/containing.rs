@@ -1,59 +1,10 @@
-//! Ширина содержащего блока и доступная ширина (охранники потока).
+//! Ширина содержимого коробки как содержащий блок её детей на спуске схлопывания полей.
 // owner: A
 
 use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
 use crate::render::in_flow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-
-thread_local! {
-    /// Ширина содержащего блока в точках, когда её видно из стиля родителя.
-    /// Нужна замещаемому элементу БЕЗ собственного размера, но С соотношением:
-    /// §10.3.2 (последний пункт) берёт его ширину из уравнения для блочных
-    /// коробок, то есть из содержащего блока, а резерв 300×150 применяется
-    /// только когда ширину взять неоткуда.
-    pub(crate) static CB_WIDTH: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-}
-
-/// Вернуть прежнюю ширину содержащего блока по выходе из `blocks()`.
-pub(crate) struct CbWidthGuard(pub(crate) Option<f32>);
-
-impl Drop for CbWidthGuard {
-    fn drop(&mut self) {
-        CB_WIDTH.set(self.0);
-    }
-}
-
-pub(crate) fn scopeguard_cb(prev: Option<f32>) -> CbWidthGuard {
-    CbWidthGuard(prev)
-}
-
-thread_local! {
-    /// Ширина, которую получит БЛОЧНЫЙ ребёнок с `width: auto` в текущем
-    /// `blocks()`: stretch-fit содержащего блока (CSS 2.1 §10.3.3, css-sizing-3
-    /// «definite»: inline-размер block-level коробки в потоке ОПРЕДЕЛЁН, даже когда
-    /// `width` не задан). Нужна счёту `repeat(auto-fill | auto-fit, …)` в лунках
-    /// (css-grid-1 §7.2.3.2): прежде у `width: auto` размер считался неизвестным, и
-    /// повтор не разворачивался вовсе (`column-auto-repeat-016`: три лунки вместо
-    /// семи по 100 в 784). `None` — ширину честно взять неоткуда (флекс, сетка,
-    /// таблица, строчный блок, флоат, абсолют, многоколоночник, вертикальное письмо).
-    pub(crate) static AVAIL_W: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-}
-
-/// Доступная ширина текущего уровня `blocks()` (см. `AVAIL_W`) — для долей
-/// у строчных коробок абзаца: их содержащий блок — блок абзаца.
-pub(crate) fn avail_width() -> Option<f32> {
-    AVAIL_W.get()
-}
-
-/// Вернуть прежнюю доступную ширину по выходе из `blocks()`.
-pub(crate) struct AvailWGuard(pub(crate) Option<f32>);
-
-impl Drop for AvailWGuard {
-    fn drop(&mut self) {
-        AVAIL_W.set(self.0);
-    }
-}
 
 /// Ширина СОДЕРЖИМОГО коробки в точках — содержащий блок её детей (CSS 2.1
 /// §10.1 п.2) — для процентных полей внуков в цепочках схлопывания. `cb` —

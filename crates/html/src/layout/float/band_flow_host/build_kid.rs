@@ -2,7 +2,6 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
 use crate::layout::writing_mode::native_vertical;
@@ -34,19 +33,18 @@ pub(super) fn build_band_kid(
     >,
     height: Option<f32>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let _depth = DepthScope::enter(depth);
     let _clamp_bfc = float.then(crate::text::clamp::ClampGuard::enter_bfc);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
-    // без размеров (§10.3.2) и долям внутри (`CB_WIDTH`), блочным
-    // детям куска — ширина окна (`AVAIL_W`).
-    let cb_prev = CB_WIDTH.get();
-    let avail_prev = AVAIL_W.get();
-    if cb > 0.0 {
-        CB_WIDTH.set(Some(cb));
-    }
-    AVAIL_W.set((avail > 0.0).then_some(avail));
-    let _cb_guard = scopeguard_cb(cb_prev);
-    let _avail_guard = AvailWGuard(avail_prev);
+    // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
+    // детям куска — ширина окна (`LayoutCx::avail_w`).
+    let opts = &*opts.inner(|cx| {
+        if cb > 0.0 {
+            cx.cb_width = Some(cb);
+        }
+        cx.avail_w = (avail > 0.0).then_some(avail);
+    });
     let mut copy = node.clone();
     cont_indent(&mut copy, inherited);
     // Сторону, очистку и поля несёт хост (позиция от полос), на
@@ -189,7 +187,7 @@ pub(super) fn build_band_kid(
     // element() installs the vertical block axis and containing-block scopes.
     let own_vertical = copy.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
     if float && !vertical {
-        super::fit_own_layout(&mut copy.style, inherited, avail, cb);
+        super::fit_own_layout(&mut copy.style, inherited, avail, cb, vcx);
     }
     // CSS Multicol 1: a floated multicol still balances and hoists spanners
     // through element(), then contributes its measured outer box to bands.
@@ -212,9 +210,9 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(el, &copy.style)
+            grouped(el, &copy.style, vcx)
         } else {
-            content_wrapper::for_element(el, &copy, inherited, (None, None))
+            content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
         }
     }
 }

@@ -134,7 +134,7 @@ pub fn tile(
             })
             // RMB по плитке — меню тула (Hide / Move to ▸), как у правого рейла
             .on_mouse_down(gpui::MouseButton::Right, {
-                let id_menu = tool_id.clone();
+                let id_menu = tool_id;
                 move |e: &gpui::MouseDownEvent, _, cx| {
                     cx.stop_propagation();
                     let _ = tx_menu.try_send(ShellEvent::OpenToolTabMenu(

@@ -19,8 +19,65 @@ impl Paragraph {
         if let Some(node) = &self.fragment {
             // CSS Break 3 section 4.1: break between line boxes. The same
             // padding accounts for atoms, emphasis and ruby in the box size.
-            *node.geometry.borrow_mut() =
-                FlowGeometry::lines(pads.iter().map(|(a, b)| height + a + b));
+            let mut geometry = FlowGeometry::lines(pads.iter().map(|(a, b)| height + a + b));
+            // CSS 2.1 section 9.5: an empty float-avoidance step moves the
+            // next line down; it is not itself an indivisible line box.
+            let mut index = 0;
+            geometry.solid.retain(|_| {
+                let line = &self.lines[index];
+                index += 1;
+                !line.range.is_empty() || index == self.lines.len()
+            });
+            *node.geometry.borrow_mut() = geometry;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::paragraph::{Align, Line, Wrap};
+    use gpui::px;
+
+    #[test]
+    fn float_avoidance_space_can_split_between_line_grid_positions() {
+        let mut paragraph = Paragraph::new(
+            "ab".into(),
+            Vec::new(),
+            px(16.0),
+            px(16.0),
+            Align::Left,
+            Wrap::default(),
+        );
+        paragraph.lines = [0..1, 1..1, 1..1, 1..2, 2..2]
+            .into_iter()
+            .map(|range| Line {
+                range,
+                width: px(0.0),
+                ellipsis: false,
+                clamped: false,
+                vis_cut: None,
+                hyphen: false,
+                indent: px(0.0),
+            })
+            .collect();
+        let node = FlowNode::new(
+            Rc::new(FlowMeasurements::for_lines()),
+            StackAxis::Horizontal,
+        );
+        paragraph.fragment = Some(node.clone());
+        paragraph.publish_fragment_lines(&[(0.0, 0.0); 5], 16.0);
+        let geometry = node.geometry.borrow();
+        assert_eq!(geometry.solid, [(0.0, 16.0), (48.0, 64.0), (64.0, 80.0)]);
+        assert_eq!(
+            geometry.cuts,
+            [
+                (16.0, 16.0),
+                (32.0, 32.0),
+                (48.0, 48.0),
+                (64.0, 64.0),
+                (80.0, 80.0)
+            ]
+        );
     }
 }

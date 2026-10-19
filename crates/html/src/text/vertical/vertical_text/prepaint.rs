@@ -33,11 +33,10 @@ impl VerticalText {
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
+                && let Some(values) = &self.values
                 && sized.height > gpui::px(0.)
             {
-                crate::document::state::current()
-                    .vertical_measures
-                    .record(k, sized.height);
+                values.vcx().doc.vertical_measures.record(k, sized.height);
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение

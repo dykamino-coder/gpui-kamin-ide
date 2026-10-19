@@ -1,13 +1,19 @@
 //! Candidate traversal for the shared measured fragmentation solver.
 
 use super::{Cand, avoid_row, column_flex, row_flex, row_gap};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::monolith_box;
 use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::px_auto_zero;
 
-pub(super) fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
+pub(super) fn walk(
+    p: &Element,
+    depth: u8,
+    out: &mut Vec<(u64, Cand)>,
+    vcx: ValueCx<'_>,
+) -> Option<()> {
     if depth == 0 {
         return None;
     }
@@ -27,13 +33,13 @@ pub(super) fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option
                         },
                     ));
                 } else {
-                    walk(k, depth - 1, out)?;
+                    walk(k, depth - 1, out, vcx)?;
                 }
             }
             continue;
         }
         if k.inline {
-            walk(k, depth - 1, out)?;
+            walk(k, depth - 1, out, vcx)?;
             continue;
         }
         if k.list_item.is_some()
@@ -67,8 +73,8 @@ pub(super) fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option
         }
         prev = Some((k.node_id, k.style.break_after_avoid));
         let edge = crate::layout::fragment::breaks::edge_break;
-        let forced = force_next || edge(k, false);
-        force_next = edge(k, true);
+        let forced = force_next || edge(k, false, vcx);
+        force_next = edge(k, true, vcx);
         // A forced break before an item of a flex row breaks the whole row
         // (Blink `row_break_between`), not just the item; clipped overflow is
         // not part of the flow thread.
@@ -100,7 +106,7 @@ pub(super) fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option
                 },
             ));
         }
-        walk(k, depth - 1, out)?;
+        walk(k, depth - 1, out, vcx)?;
     }
     Some(())
 }

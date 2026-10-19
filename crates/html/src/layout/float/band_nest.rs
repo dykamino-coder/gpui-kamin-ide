@@ -104,9 +104,11 @@ pub(super) fn band_nest(
     if !band_nest_block(c, em, wm) {
         return None;
     }
+    let vcx = opts.cx.vcx();
+    let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
-    let seq = band_seq(collapse_margins(&c.children, false), inner_em, wm)?;
-    let merged = inherit(inherited, &c.style);
+    let seq = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb)?;
+    let merged = inherit(inherited, &c.style, vcx);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
     Some(crate::layout::float::band_flow::Nest {
         kids,
@@ -120,7 +122,12 @@ pub(super) fn band_nest(
 /// между блоками на своём месте (правило 5/6 §9.5.1 — потолок от низа
 /// предыдущего блока). Флоат посреди строчного прогона (правило 6 со
 /// «верхом текущей строки») — не наш случай, отказ.
-pub(super) fn band_seq(nodes: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec<Node>> {
+pub(super) fn band_seq(
+    nodes: Vec<Node>,
+    em: f32,
+    wm: WritingMode,
+    cb: Option<f32>,
+) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
     for n in nodes {
@@ -151,9 +158,9 @@ pub(super) fn band_seq(nodes: Vec<Node>, em: f32, wm: WritingMode) -> Option<Vec
         {
             return None;
         }
-        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm)?);
+        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm, cb)?);
         out.push(n);
     }
-    out.extend(band_flow_rest(chunk, em, wm)?);
+    out.extend(band_flow_rest(chunk, em, wm, cb)?);
     Some(out)
 }

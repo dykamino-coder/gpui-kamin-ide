@@ -1,5 +1,6 @@
 //! Вырезы формы: финальная обрезка по высоте, нижняя кромка, сквозной верх.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::grid_bands::{grid_row_forced, grid_row_gaps};
 use crate::layout::fragment::oof_reach::{Measure, Reach};
@@ -28,6 +29,7 @@ pub(crate) fn finish_shape_cuts(
     h: f32,
     mt: f32,
     mb: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Measure> {
     let own_h = h;
     let (reach_end, up) = oof_reach.finish(c, cx);
@@ -66,7 +68,7 @@ pub(crate) fn finish_shape_cuts(
     // красный прямоугольник `x 73..134, y 129..191`). Проба
     // `target/probe-fg/p-fg-044.html` (та же геометрия блоками, разрыв на
     // границе ряда) = 0.00.
-    let (row_forced, row_mono) = grid_row_forced(c);
+    let (row_forced, row_mono) = grid_row_forced(c, vcx);
     for f in row_forced {
         forced.push(top + f);
     }
@@ -102,7 +104,14 @@ pub(crate) fn finish_shape_cuts(
     }
     bottom_edge_cuts(bot, &mut solid, stacked, h);
     Some(Measure {
-        shape: (h, mt, mb, cuts, forced, solid),
+        shape: crate::layout::fragment::Shape {
+            height: h,
+            margin_top: mt,
+            margin_bottom: mb,
+            cuts,
+            forced,
+            solid,
+        },
         up,
         own,
     })

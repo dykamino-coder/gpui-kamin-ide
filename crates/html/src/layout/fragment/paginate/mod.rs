@@ -13,6 +13,7 @@
 //! The resulting copy is a flow thread whose content is aligned to the
 //! fragmentainer grid, so it is sliced at the column edges.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::render::out_of_flow;
 use crate::style::computed::Display;
@@ -92,9 +93,9 @@ fn layout_parent(s: &crate::style::computed::Computed) -> bool {
 /// Collect the candidates of `c`'s subtree, or `None` when the subtree holds
 /// content whose measured geometry is unavailable (tables or nested
 /// fragmentation contexts). Lines remain in the measured flow geometry.
-pub(crate) fn candidates(c: &Element) -> Option<Vec<(u64, Cand)>> {
+pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
-    candidates::walk(c, 8, &mut out)?;
+    candidates::walk(c, 8, &mut out, vcx)?;
     Some(out)
 }
 

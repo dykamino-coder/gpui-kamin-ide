@@ -1,6 +1,7 @@
 //! Declaration parser outcomes for capability queries, independent of computed defaults.
 
 use super::Computed;
+use crate::document::state::ValueCx;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ParseResult {
@@ -12,8 +13,8 @@ pub(crate) enum ParseResult {
 }
 
 impl Computed {
-    pub(crate) fn declaration_result(key: &str, value: &str) -> ParseResult {
-        if !Self::recognizes_property(key) {
+    pub(crate) fn declaration_result(key: &str, value: &str, vcx: ValueCx<'_>) -> ParseResult {
+        if !Self::recognizes_property(key, vcx) {
             return ParseResult::Unsupported;
         }
         // CSS Cascade 5 §7.3: CSS-wide keywords belong to every known property.
@@ -27,7 +28,7 @@ impl Computed {
             declaration_parse: ParseResult::Invalid,
             ..Self::default()
         };
-        parser.apply_one(key, value);
+        parser.apply_one(key, value, vcx);
         parser.declaration_parse
     }
 

@@ -17,7 +17,6 @@ mod cuts;
 use cuts::{copy_cuts_and_height, stack_child_of};
 mod build;
 mod fixed;
-use build::build_copy;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
@@ -153,7 +152,7 @@ pub(super) fn multicol_stack_child(
         &copy,
     );
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let mut inner = inherit(&merged, &copy.style);
+    let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками:
@@ -186,7 +185,7 @@ pub(super) fn multicol_stack_child(
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
-        build_copy(
+        build::build_copy(
             &opts,
             col_vert,
             col_rl,
@@ -231,6 +230,7 @@ pub(super) fn multicol_stack_child(
         nest_row,
         whole,
         build,
+        opts.cx.vcx(),
     );
     child.paginate = paginate;
     child.flow = Some(watched.flow.clone());

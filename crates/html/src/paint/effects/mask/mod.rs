@@ -1,4 +1,6 @@
 //! Маски.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Node;
@@ -199,13 +201,13 @@ pub(super) fn resolve_mask_refs(raw: &str) -> String {
 
 /// Собрать определения масок ДО отрисовки: ссылка может стоять раньше
 /// определения по тексту.
-pub(crate) fn collect_mask_defs(nodes: &[Node]) {
+pub(crate) fn collect_mask_defs(nodes: &[Node], vcx: ValueCx<'_>) {
     let key = nodes.as_ptr() as usize;
     if MASK_DEFS_FOR.with(|c| c.get()) == key {
         return;
     }
     MASK_DEFS_FOR.with(|c| c.set(key));
-    fn walk(nodes: &[Node], out: &mut std::collections::HashMap<String, String>) {
+    fn walk(nodes: &[Node], out: &mut std::collections::HashMap<String, String>, vcx: ValueCx<'_>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
             let tag = e.tag.to_ascii_lowercase();
@@ -222,7 +224,7 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
                 let ids = crate::svg::ClipIds::for_document(e);
                 for c in &e.children {
                     if let Node::Element(el) = c {
-                        crate::svg::serialize::write_in(el, &mut markup, &ids);
+                        crate::svg::serialize::write_in(el, &mut markup, &ids, vcx);
                     }
                 }
                 out.insert(id.to_string(), markup);
@@ -233,16 +235,16 @@ pub(crate) fn collect_mask_defs(nodes: &[Node]) {
                 && let Some(id) = e.attr("id")
             {
                 let mut markup = String::new();
-                crate::svg::serialize::write_element(e, &mut markup);
+                crate::svg::serialize::write_element(e, &mut markup, vcx);
                 out.insert(format!("filter:{id}"), markup);
             }
-            walk(&e.children, out);
+            walk(&e.children, out, vcx);
         }
     }
     MASK_ALPHA_IDS.with(|s| s.borrow_mut().clear());
     MASK_DEFS.with(|m| {
         let mut map = m.borrow_mut();
         map.clear();
-        walk(nodes, &mut map);
+        walk(nodes, &mut map, vcx);
     });
 }

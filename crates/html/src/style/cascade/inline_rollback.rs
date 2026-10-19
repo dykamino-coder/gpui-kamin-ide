@@ -66,6 +66,8 @@ mod tests {
 
     #[test]
     fn inline_rollback_preserves_origin_and_element_attached_rank() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let ua = Rule {
             sel: Selector::parse("p").unwrap(),
             decls: parse_decls("width: 10px"),
@@ -83,14 +85,14 @@ mod tests {
             ("width: revert-layer", 20.0),
             ("width: 30px; width: revert !important", 10.0),
         ] {
-            let c = Computed::resolve(&mut vec![&ua, &author], &parse_decls(inline));
+            let c = Computed::resolve(&mut vec![&ua, &author], &parse_decls(inline), vcx);
             assert_eq!(c.width, Some(Len::Px(expected)), "{inline}");
         }
         let author = Rule {
             decls: parse_decls("width: revert-layer"),
             ..author
         };
-        let c = Computed::resolve(&mut vec![&ua, &author], &Decls::new());
+        let c = Computed::resolve(&mut vec![&ua, &author], &Decls::new(), vcx);
         assert_eq!(c.width, Some(Len::Px(10.0)));
     }
 }

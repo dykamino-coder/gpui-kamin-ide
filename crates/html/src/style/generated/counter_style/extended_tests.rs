@@ -4,6 +4,8 @@ use super::{builtin, builtin_initial, builtin_repr};
 
 #[test]
 fn cjk_groups_preserve_zeros_and_language_markers() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for (style, value, expected) in [
         ("japanese-informal", 10_001, "一万一"),
         ("japanese-informal", 11_000, "一万千"),
@@ -24,13 +26,15 @@ fn cjk_groups_preserve_zeros_and_language_markers() {
         ("trad-chinese-informal", 100_000_001, "一億零一"),
         ("trad-chinese-formal", 1_000_000_000_001, "壹兆零壹"),
     ] {
-        assert_eq!(builtin_repr(value, style), expected, "{style} {value}");
+        assert_eq!(builtin_repr(value, style, vcx), expected, "{style} {value}");
         assert_eq!(builtin_initial(style, value as u64).unwrap(), expected);
     }
 }
 
 #[test]
 fn cjk_extended_range_and_negative_descriptors() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     for style in [
         "japanese-informal",
         "korean-hanja-formal",
@@ -41,17 +45,17 @@ fn cjk_extended_range_and_negative_descriptors() {
             data.range,
             Some((-9_999_999_999_999_999, 9_999_999_999_999_999))
         );
-        let body = builtin_repr(1_000_000_000_001, style);
+        let body = builtin_repr(1_000_000_000_001, style, vcx);
         assert_eq!(
-            builtin_repr(-1_000_000_000_001, style),
+            builtin_repr(-1_000_000_000_001, style, vcx),
             format!("{}{body}", data.negative.0)
         );
         assert_eq!(
-            builtin_repr(10_000_000_000_000_000, style),
+            builtin_repr(10_000_000_000_000_000, style, vcx),
             "一〇〇〇〇〇〇〇〇〇〇〇〇〇〇〇〇"
         );
         assert_eq!(
-            builtin_repr(-10_000_000_000_000_000, style),
+            builtin_repr(-10_000_000_000_000_000, style, vcx),
             "-10000000000000000"
         );
     }
@@ -59,15 +63,20 @@ fn cjk_extended_range_and_negative_descriptors() {
 
 #[test]
 fn full_width_values_survive_numeric_and_fallback_styles() {
-    assert_eq!(builtin_repr(i64::MIN, "decimal"), "-9223372036854775808");
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     assert_eq!(
-        builtin_repr(i64::MIN, "arabic-indic"),
+        builtin_repr(i64::MIN, "decimal", vcx),
+        "-9223372036854775808"
+    );
+    assert_eq!(
+        builtin_repr(i64::MIN, "arabic-indic", vcx),
         "-٩٢٢٣٣٧٢٠٣٦٨٥٤٧٧٥٨٠٨"
     );
     assert_eq!(
-        builtin_repr(10_000_000_000_000_000, "lower-roman"),
+        builtin_repr(10_000_000_000_000_000, "lower-roman", vcx),
         "10000000000000000"
     );
-    assert_eq!(builtin_repr(10_999, "hebrew"), "י׳תתקצט");
-    assert_eq!(builtin_repr(11_000, "hebrew"), "11000");
+    assert_eq!(builtin_repr(10_999, "hebrew", vcx), "י׳תתקצט");
+    assert_eq!(builtin_repr(11_000, "hebrew", vcx), "11000");
 }
