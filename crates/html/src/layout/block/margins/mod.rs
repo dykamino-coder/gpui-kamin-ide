@@ -34,6 +34,8 @@ pub(crate) fn collapse_margins(
     // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
     // Margin collapse proves zero in-flow height for an open empty block;
     // The contextual proof also handles borders, padding and white-space.
+    // Preserve computed auto for percentage and orthogonal sizing (§10.5);
+    // only styled_div applies the proven used zero via margin_height::used_style.
     // Formatting contexts retain floats (§10.6.7). Keep the absolute-parent
     // guard: its float containment currently depends on the child's height.
     for node in out.iter_mut().filter(|_| !abs_parent) {
@@ -43,7 +45,7 @@ pub(crate) fn collapse_margins(
             .iter()
             .any(|n| matches!(n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0)));
         if has_float && through_strut_no_clear(e, vcx).is_some() {
-            e.style.height = Some(Len::Px(0.0));
+            e.marks.auto_zero_height = true;
         }
     }
     // Отступ первого ребёнка «протекает» наружу, если родителя от него не
@@ -71,3 +73,6 @@ pub(crate) fn collapse_margins(
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

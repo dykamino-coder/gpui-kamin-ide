@@ -102,7 +102,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/float/shape_flow/float_place.rs"),
     include_str!("../../layout/float/shape_flow/host/mod.rs"),
     include_str!("../../layout/float/shape_flow/host/atoms.rs"),
-    include_str!("../../layout/float/shape_flow/shape.rs"),
+    include_str!("../../layout/float/shapes/shape.rs"),
     include_str!("../../layout/positioned/static_position.rs"),
     include_str!("../../layout/positioned/predicates/mod.rs"),
     include_str!("../../layout/positioned/predicates/own_box.rs"),

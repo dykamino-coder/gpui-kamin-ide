@@ -2,15 +2,13 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::float::band_flow_host::band_flow_host;
+use crate::layout::float::shapes::float_shape_of;
 use crate::render::{RenderOpts, blocks};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
 mod float_place;
 use float_place::place_shape_float;
-mod shape;
-pub(crate) use shape::float_shape_of;
 mod host;
 use host::{atoms_flow, shape_host_div};
 
@@ -22,12 +20,6 @@ use host::{atoms_flow, shape_host_div};
 /// формы считается от выбранной опорной коробки (по умолчанию margin-box),
 /// затем переводится в координаты margin-box (позиция флоата).
 pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    if e.marks
-        .shape_flow
-        .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Measured))
-    {
-        return band_flow_host(e, inherited, opts);
-    }
     let px_of = |l: &Option<Len>| match l {
         None => 0.0,
         Some(Len::Px(v)) => *v,

@@ -2,7 +2,7 @@
 
 use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
-use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
+use crate::layout::float::band_measured::{band_nest_ok, band_piece_m};
 use crate::render::{block_level_in_flow, inline_level, is_blank, out_of_flow, own_context};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 /// коробка своего контекста внешних флоатов не увидели бы вовсе — им нужен
 /// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
 /// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
-pub(super) fn flow_interior_plain(c: &Element) -> bool {
+pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
         Node::Element(k) => {
@@ -121,13 +121,6 @@ pub(crate) fn band_flow_rest_lift(
             if !hostable {
                 bad = true;
             }
-            // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
-            // высоты `line_no × line-height`; руби поднимает строку на
-            // аннотацию, и вырез уезжает с неё
-            // (`initial-letter-block-position-raise-over-ruby-ref`).
-            if run.iter().any(has_ruby) {
-                bad = true;
-            }
             out.push(Node::Element(Element::synthetic(
                 "div",
                 Computed {
@@ -148,7 +141,13 @@ pub(crate) fn band_flow_rest_lift(
             false
         }
     };
-    for n in rest {
+    for mut n in rest {
+        if let Node::Element(c) = &mut n
+            && !band_flow_block(c, em)
+            && let Some(l) = lift.as_deref_mut()
+        {
+            super::nested_lift::lift_nested(c, em, wm, l);
+        }
         match &n {
             Node::Text(_) => run.push(n),
             Node::Element(c) => {
@@ -157,6 +156,11 @@ pub(crate) fn band_flow_rest_lift(
                         && abs_pinned(&c.style)
                     {
                         l.push(n);
+                        continue;
+                    }
+                    // Without an external lift, pinned boxes must keep their CB.
+                    if !wm.vertical() && !abs_pinned(&c.style) {
+                        run.push(n);
                         continue;
                     }
                     return None;

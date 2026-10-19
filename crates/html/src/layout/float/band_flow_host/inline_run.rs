@@ -5,7 +5,7 @@
 use super::subtree_has_text;
 use crate::dom::Node;
 use crate::layout::float::band_host::{BandPiece, band_piece};
-use crate::render::{inline_level, is_blank, replaced_tag};
+use crate::render::{inline_level, is_blank, out_of_flow, replaced_tag};
 use crate::style::computed::Display;
 
 /// `(atoms, hostable)`: the run holds only atoms of known size, and the run
@@ -36,13 +36,15 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
                     )
                 )
                 && band_piece(n) != Some(BandPiece::Atom);
-            container
+            out_of_flow(&c.style)
+                || container
                 || inline_level(c)
                 && band_piece(n) != Some(BandPiece::Atom)
-                && !replaced_tag(c)
-                // The paragraph also owns whitespace-only inline fragments on either
-                // side of a floated child (CSS 2.1 sections 9.2.1.1, 9.5).
-                && (subtree_has_text(c) || c.children.iter().all(is_blank))
+                // After inline floats are lifted, the empty in-flow fragment
+                // still owns its margin and current line (CSS2 sections 9.2.2, 9.5).
+                && (replaced_tag(c)
+                    || subtree_has_text(c)
+                    || c.children.iter().all(is_blank))
         }
     }) || run
         .iter()

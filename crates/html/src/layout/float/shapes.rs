@@ -1,5 +1,8 @@
 //! Continuous and raster exclusion shapes used by inline flow.
 
+mod shape;
+pub(crate) use shape::float_shape_of;
+
 /// Форма обтекания плавающего блока — в координатах от НАЧАЛА стороны
 /// обтекания (для правого флоата вызывающий зеркалит X заранее).
 ///

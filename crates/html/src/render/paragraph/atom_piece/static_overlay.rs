@@ -56,6 +56,9 @@ pub(crate) fn static_overlay(
             vcx,
         )
     };
+    // Transform the actual out-of-flow box before anchoring it; the
+    // paragraph overlay has zero advance and is not a transform reference box.
+    let inner = crate::paint::effects::transform::transformed(inner, &e.style, inherited, vcx);
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:
@@ -101,7 +104,9 @@ pub(crate) fn static_overlay(
     Some(inline::Piece::Overlay(
         inner,
         inline::OverlayAt {
-            next_line: rot_block,
+            next_line: rot_block
+                || (inherited.band_kid
+                    && !crate::layout::positioned::static_position::hypothetical_inline_level(e)),
             bidi_hang: rotated_rtl && !rot_block,
             ..Default::default()
         },

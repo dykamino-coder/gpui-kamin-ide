@@ -1,7 +1,8 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
 use super::element;
-use crate::dom::{Element, Node};
+use crate::dom::{BandPath, Element, Node};
+use crate::layout::float::band_flow_host::band_flow_host;
 use crate::layout::float::shape_flow::shape_flow;
 use crate::layout::list::{self, list_item};
 use crate::layout::replaced::iframe::object_is_document;
@@ -92,21 +93,16 @@ pub(crate) fn dispatch_element(
         // который не прочитался, в картинку не превращается — падает в общий
         // рукав и показывает запасное содержимое (HTML §4.8.7).
         "iframe" | "object" if built_iframe.is_some() => built_iframe.take().unwrap(),
-        // БЛОЧНЫЙ кадр без пригодного документа — всё равно замещаемая
-        // коробка: по умолчанию 300×150 (CSS 2.1 §10.3.2 «…the used value of
-        // 'width' becomes 300px», §10.6.2 — 150px; HTML §15.4.4 у `<iframe>`
-        // атрибуты `width/height` — размеры). Прежде он шёл общим рукавом
-        // пустым блоком: ширина растягивалась на содержащий блок, высота
-        // была нулевой, и красная рамка вылезала из-под зелёной
-        // (`block-replaced-height-004/005/007`). Строчный кадр не трогаем —
-        // там коробка без вклада в строку замерена и откачена (рукав
-        // `"iframe"` в `atom_element`).
-        // Плавающий кадр сюда не идёт: замерено — `float-replaced-height-005/
-        // 007` (0.00 → «красное видно»), у флоата свой путь размеров.
-        // Только кадр в обычном блочном потоке: флоат снимает `float` с
-        // копии и кладёт её в синтетический гибкий ряд (`wrap_floats`) или в
-        // бандовый хост (`flow-root`) — там размер считает свой путь
-        // (замерено: `float-replaced-height-005/007` 0.00 → «красное видно»).
+        // A float establishes a BFC but remains replaced content (CSS 2.1
+        // §§10.3.2, 10.6.2): an empty browsing context keeps its default size.
+        "iframe"
+            if e.style.floated_box
+                && crate::layout::replaced::replaced_content::default_iframe(e) =>
+        {
+            crate::layout::replaced::replaced_content::empty_iframe(e, inherited, opts)
+        }
+        // Ordinary block browsing contexts use the default replaced size.
+        // Legacy float wrappers retain their own percentage-size basis.
         "iframe"
             if e.style.float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
@@ -183,7 +179,10 @@ pub(crate) fn dispatch_element(
             }
         }
         // Синтетический узел обтекания формой (см. wrap_floats).
-        _ if e.marks.shape_flow.is_some() => shape_flow(e, &merged, opts),
+        _ if e.marks.shape_flow.is_some() => match e.marks.shape_flow.and_then(|h| h.bands) {
+            Some(BandPath::Measured) => band_flow_host(e, &merged, opts),
+            None => shape_flow(e, &merged, opts),
+        },
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит

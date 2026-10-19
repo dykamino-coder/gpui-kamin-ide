@@ -3,6 +3,30 @@
 use crate::dom::Node;
 use crate::render::{atomic_inline, inline_level, out_of_flow, replaced_tag};
 
+/// The same paragraph probes serve top-level and nested floats. Their ranges
+/// refer to node positions before the non-painting probes are appended.
+pub(crate) fn probes(nodes: Vec<Node>, from: usize, to: usize, preserve: bool) -> Vec<Node> {
+    use crate::dom::{Element, LeadProbe, Marks};
+    let (base, line) = split(nodes, preserve);
+    let probe = |children, base| {
+        Node::Element(Element::synthetic(
+            "div",
+            Default::default(),
+            Marks {
+                anon: true,
+                lead: Some(LeadProbe { base, from, to }),
+                ..Default::default()
+            },
+            children,
+        ))
+    };
+    let mut out = vec![probe(line, false)];
+    if let Some(base) = base {
+        out.push(probe(base, true));
+    }
+    out
+}
+
 pub(super) fn split(mut nodes: Vec<Node>, preserve: bool) -> (Option<Vec<Node>>, Vec<Node>) {
     for i in (0..nodes.len()).rev() {
         match &nodes[i] {

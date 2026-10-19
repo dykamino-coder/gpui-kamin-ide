@@ -13,9 +13,9 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 mod inline_run;
 mod lift;
+mod nested_lift;
 pub(super) use lift::band_flow_rest_lift;
-use lift::flow_interior_plain;
-pub(in crate::layout::float) use lift::trimmed_clear;
+pub(in crate::layout::float) use lift::flow_interior_plain;
 mod kids;
 pub(super) use kids::band_kids;
 mod build_kid;
@@ -125,7 +125,7 @@ pub(super) fn band_flow_rest(
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
-pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let host = e.marks.shape_flow.unwrap_or_default();
     let count = host.count;
     let em: f32 = host.em.unwrap_or(opts.base_size());

@@ -147,7 +147,7 @@ pub(super) fn place_nest(
     );
     let (bx0, bx1) = (x0 + ml, x1 - mr);
     let (ix0, ix1) = match nest.width {
-        Some(w) => (bx0 + il, bx0 + il + w),
+        Some(w) => (bx0 + il, bx0 + il + w.at(cbw)),
         None => (bx0 + il, bx1 - ir),
     };
     let walls = bands.set_walls(ix0, ix1);

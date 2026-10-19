@@ -1,4 +1,4 @@
-//! Inline rect for geometry; split out to keep the owning module within 250 lines.
+//! Inline static points and containing blocks from the measured paragraph lines.
 
 use super::{align_of_value, line_offset};
 use crate::text::paragraph::*;
@@ -76,7 +76,16 @@ impl Paragraph {
             .position(|l| at < l.range.end)
             .unwrap_or(self.lines.len().saturating_sub(1));
         let Some(line) = self.lines.get(row) else {
-            return bounds.origin;
+            // A phantom line has no height, but its inline static point
+            // still observes the float opportunity (CSS Position 3).
+            let (left, right) = self.flow_cut(0);
+            let indent = self.indent_of(true, true, Some(bounds.size.width));
+            let room = bounds.size.width - indent - px(left + right);
+            let inset = if self.wrap.rtl { px(0.0) } else { indent };
+            return point(
+                bounds.origin.x + px(left) + inset + line_offset(self.align, self.wrap.rtl, room),
+                bounds.origin.y,
+            );
         };
         let from = self.x_at(segs, line.range.start, Edge::Start);
         let x = self.x_at(segs, at.max(line.range.start), Edge::Start) - from;

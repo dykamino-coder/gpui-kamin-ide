@@ -1,10 +1,9 @@
-//! Padding for measure; split out to keep the owning module within 250 lines.
+//! Line-box extents, vertical alignment and strut-relative inline geometry.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, px};
 
 impl Paragraph {
-    /// Вырез строки номер `line_no`: (слева, справа).
     /// Надбавки строки сверху и снизу от сдвинутых по вертикали кусков.
     ///
     /// Сдвиг `vertical-align` не просто двигает знаки — он РАСТИТ строчную
@@ -12,6 +11,10 @@ impl Paragraph {
     /// кусков после выравнивания. На каждую строку своя пара: абзац с
     /// надстрочным знаком в одной строке не должен раздувать остальные.
     pub(crate) fn line_padding(&self) -> Vec<(f32, f32)> {
+        self.padding_for(&self.lines)
+    }
+
+    pub(super) fn padding_for(&self, lines: &[Line]) -> Vec<(f32, f32)> {
         if self.shift_spans.is_empty()
             && self.lh_spans.is_empty()
             && self.atom_boxes.is_empty()
@@ -19,11 +22,14 @@ impl Paragraph {
             && self.box_spans.is_empty()
             && self.emph_spans.is_empty()
         {
-            return vec![(0.0, 0.0); self.lines.len()];
+            return lines
+                .iter()
+                .map(|l| (f32::from(l.clearance), 0.0))
+                .collect();
         }
         let lh = f32::from(self.line_height);
-        let last_line = self.lines.len().saturating_sub(1);
-        self.lines
+        let last_line = lines.len().saturating_sub(1);
+        lines
             .iter()
             .enumerate()
             .map(|(line_no, line)| {
@@ -32,7 +38,7 @@ impl Paragraph {
                 // box of the inlines open there (css-overflow-4
                 // §block-ellipsis; `block-ellipsis-036`, `-quirk-002`).
                 if line.clamped && self.text[line.range.clone()].trim().is_empty() {
-                    return (0.0, 0.0);
+                    return (f32::from(line.clearance), 0.0);
                 }
                 let (mut above, mut below) = (0.0f32, 0.0f32);
                 let boxes = !self.box_spans.is_empty() && self.run_metrics.len() == self.runs.len();
@@ -180,13 +186,10 @@ impl Paragraph {
                 if line_no == last_line && self.ruby_trim.end {
                     below = below.min(a - root);
                 }
-                (above, below)
+                (above + f32::from(line.clearance), below)
             })
             .collect()
     }
-}
-
-impl Paragraph {
     /// Отступ ЭТОЙ строки в точках.
     ///
     /// Доля считается от ширины строки (css-text-3 §7.1: процент берётся от
@@ -210,9 +213,6 @@ impl Paragraph {
         let pct = self.indent.pct * f32::from(basis.unwrap_or(px(0.)));
         px(self.indent.px + pct)
     }
-}
-
-impl Paragraph {
     /// Сколько байт в начале строки свисает за левый край.
     ///
     /// Свисает только открывающий знак и только в начале ПЕРВОЙ строки
@@ -229,9 +229,6 @@ impl Paragraph {
             _ => 0,
         }
     }
-}
-
-impl Paragraph {
     /// Сколько байт в конце строки свисает за правый край.
     pub(crate) fn hang_last(&self, end: usize, closing_line: bool, over: bool) -> usize {
         let Some(ch) = self.text[..end].chars().next_back() else {

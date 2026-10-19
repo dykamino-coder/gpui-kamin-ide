@@ -3,8 +3,7 @@
 //! its own borders and paddings, and the margins the host resolved.
 
 use crate::dom::Element;
-use crate::layout::float::shape_flow::float_shape_of;
-use crate::layout::float::shapes::FloatShape;
+use crate::layout::float::shapes::{FloatShape, float_shape_of};
 use crate::style::values::value::Len;
 
 /// The exclusion of float `f` on side `side` (-1 line-left, 1 line-right)

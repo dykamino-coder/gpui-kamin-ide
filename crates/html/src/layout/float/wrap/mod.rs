@@ -42,6 +42,7 @@ pub(crate) fn wrap_floats(
     // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
     // `bfc_no_fit`.
     cb_px: Option<f32>,
+    cb_height: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
@@ -50,6 +51,7 @@ pub(crate) fn wrap_floats(
     // только у вызывающего.
     let cb = FloatCb {
         margin_basis: cb_px,
+        height: cb_height.or_else(|| crate::style::values::value::px_strict(parent.height)),
         ..FloatCb::of(parent)
     };
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);

@@ -23,7 +23,12 @@ pub(super) fn float_box(
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
-    let el = if copy.tag == "img" {
+    let el = if copy.style.clamp_lines().is_some() || copy.style.clamp_auto == Some(true) {
+        // A float can own a clamp context as well as isolate its parent's
+        // counter. The native box installs that context, its cut and probes;
+        // inheriting the paragraph's line limit alone loses the root strut.
+        crate::render::element(copy, inherited, opts)
+    } else if copy.tag == "img" {
         image(copy, &opts.cx)
     } else {
         let span = open_clamp_span(&opts.cx);

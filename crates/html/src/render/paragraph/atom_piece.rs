@@ -1,15 +1,13 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
 mod static_overlay;
+#[cfg(test)]
+mod tests;
 pub(super) use static_overlay::static_overlay;
-
 mod decoration;
 pub(super) use decoration::decorate_atom;
-
 mod atom_cx;
 pub(crate) use atom_cx::AtomRuby;
-
 // owner: A
-
 use crate::animation::frames::bake_frozen;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -88,19 +86,22 @@ fn atom_piece_in(
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
     // текстовым и не теряет пробелы (`line-breaking-018`).
-    // Вертикальное письмо сюда по-прежнему не пускается: там строчная ось
-    // вертикальна, `point_of` отдаёт ДО-поворотные координаты, и класс
-    // берётся отдельно (подкорень A3, три отката на `render.rs` «отдать
-    // ось строки самому абзацу»).
     // Static overlays use the vertical paragraph path only when its
-    // containing block supplies the turned coordinate frame.
+    // containing block supplies the turned coordinate frame. A shared-band
+    // block retains its hypothetical static point even without flow text.
     let plain_flow = !inherited.wm().vertical()
-        && (!inherited.wm().rtl() || (flow_text && inherited.ortho_limit.is_some()));
+        && (!inherited.wm().rtl()
+            || (flow_text && inherited.ortho_limit.is_some())
+            || (inherited.band_kid && !flow_text));
     let rot_block =
         inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
+        && !in_inline_cb
         && at_static_position(&e.style)
-        && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
+        && (inline_level(e)
+            || e.style.inline_display == Some(true)
+            || rot_block
+            || inherited.band_kid)
     {
         return static_overlay(e, inherited, opts, rot_block);
     }

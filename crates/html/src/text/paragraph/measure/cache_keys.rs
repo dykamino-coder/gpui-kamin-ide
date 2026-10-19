@@ -1,4 +1,4 @@
-//! Cache keys for measure; split out to keep the owning module within 250 lines.
+//! Measurement and line-breaking cache identities.
 
 use crate::text::paragraph::*;
 use gpui::Pixels;
@@ -76,6 +76,26 @@ impl Paragraph {
         self.indent.px.to_bits().hash(&mut h);
         for f in self.flow.0.iter().chain(self.flow.1.iter()) {
             f.hash_bits().hash(&mut h);
+        }
+        if !self.flow.0.is_empty() || !self.flow.1.is_empty() {
+            // Float opportunities depend on the content's block extent as well as width.
+            format!(
+                "{:?}",
+                (
+                    self.line_height,
+                    &self.atom_boxes,
+                    &self.shift_spans,
+                    &self.lh_spans,
+                    &self.edge_spans,
+                    &self.box_spans,
+                    &self.emph_spans,
+                    self.ruby_trim,
+                    self.strut_box,
+                    self.strut,
+                    &self.run_metrics
+                )
+            )
+            .hash(&mut h);
         }
         self.indent.pct.to_bits().hash(&mut h);
         self.indent.each_line.hash(&mut h);

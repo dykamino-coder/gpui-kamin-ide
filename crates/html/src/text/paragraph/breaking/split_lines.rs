@@ -1,4 +1,4 @@
-//! Line breaking, ellipsis, and document-owned split reuse.
+//! Document-owned line-break reuse, clamp truncation and balanced paragraph layout.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};
@@ -178,6 +178,12 @@ impl Paragraph {
 impl Paragraph {
     /// Набор строк под заданную ширину — без выравнивания их длин.
     pub(crate) fn lay(&self, limit: Option<Pixels>, segs: &[Seg]) -> Vec<Line> {
+        // CSS 2.1 section 9.4.2: an overlay-only phantom line contributes no
+        // height or line count. Its hypothetical static point survives in
+        // point_of, which uses the same paragraph's float opportunity.
+        if self.text.is_empty() {
+            return Vec::new();
+        }
         self.lay_in(0..self.text.len(), limit, segs)
     }
 }

@@ -64,6 +64,8 @@ pub(crate) fn band_host_nested(
     let host = measured_host(
         crate::dom::ShapeFlow {
             em: Some(em),
+            cbh: cb.height,
+            cbw: cb.width,
             wm,
             icb: cb.icb,
             ..Default::default()
@@ -93,6 +95,7 @@ pub(crate) fn band_nest_ok(
         inner_em,
         wm,
         cb,
+        c.style.preserve_newlines == Some(true),
         vcx,
     ) else {
         return false;

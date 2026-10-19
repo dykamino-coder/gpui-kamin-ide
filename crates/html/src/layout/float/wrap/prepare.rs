@@ -62,6 +62,13 @@ pub(super) fn prepare_float_nodes(
                 e.style.float = None;
                 Node::Element(e)
             }
+            Node::Element(mut e) if e.style.float.is_some_and(|f| f != 0) => {
+                // Font-relative margins use the float's computed font, before
+                // the band planner takes ownership of its margin box.
+                e.style.margin =
+                    crate::style::cascade::inherit::inherit_unpainted(parent, &e.style, vcx).margin;
+                Node::Element(e)
+            }
             n => n,
         })
         .collect();
@@ -223,3 +230,6 @@ pub(super) fn wrap_into_host(
     }
     ControlFlow::Continue(())
 }
+
+#[cfg(test)]
+mod tests;

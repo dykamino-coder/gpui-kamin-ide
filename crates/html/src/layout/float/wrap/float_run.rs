@@ -1,7 +1,6 @@
 //! A float run starting at node `i`: the measured host when the run and its
-//! tail are expressible in it; otherwise the fallback lowerings used where
-//! the monolithic host cannot be (fragmented flows, line clamping,
-//! `sideways-lr` and vertical RTL hosts): a lone float as a flow box, a
+//! tail are expressible in it; otherwise the lowerings for runs not yet
+//! representable in the shared plan: a lone float as a flow box, a
 //! shape-outside host, or a row of floats beside a growing column.
 
 use super::lone::wrap_lone_float;

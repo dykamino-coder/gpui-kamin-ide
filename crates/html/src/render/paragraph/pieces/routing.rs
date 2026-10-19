@@ -30,6 +30,8 @@ pub(crate) fn route_pieces(
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
         && let Some((text, runs)) = inline::text_and_runs(&pieces, &opts.text, opts.cx.vcx())
+        // A physical atom row has no turned inline frame for a phantom static point.
+        && (!text.is_empty() || !opts.cx.pure_atom_paragraph)
     {
         // `word-space-transform` смотрит на СОСЕДЕЙ точки переноса, а они
         // сплошь и рядом лежат в других кусках (`あ<wbr>い` — это три куска:
@@ -166,4 +168,51 @@ pub(crate) fn route_pieces(
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
         &opts.cx,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {
+        for physical in [false, true] {
+            for text in ["", "text"] {
+                let mut opts = RenderOpts {
+                    text: gpui::TextStyle::default(),
+                    viewport: (800.0, 600.0),
+                    normal_line_height: 1.2,
+                    cx: Default::default(),
+                    frag: Default::default(),
+                };
+                opts.cx.pure_atom_paragraph = physical;
+                let inherited = Computed {
+                    no_select: Some(true),
+                    ..Default::default()
+                };
+                let pieces = vec![
+                    inline::Piece::Text {
+                        text: text.into(),
+                        style: inherited.clone(),
+                    },
+                    inline::Piece::Overlay(div().into_any_element(), Default::default()),
+                ];
+                let mut element = route_pieces(
+                    pieces,
+                    &inherited,
+                    &opts,
+                    None,
+                    Default::default(),
+                    None,
+                    None,
+                    vec![],
+                );
+                assert_eq!(
+                    element.downcast_mut::<gpui::StyledText>().is_some(),
+                    !physical || !text.is_empty(),
+                    "physical={physical}, text={text:?}",
+                );
+            }
+        }
+    }
 }
