@@ -145,8 +145,8 @@ fn orthogonal_float_roots_keep_native_layout_ownership() {
     for mode in ["vertical-lr", "vertical-rl", "sideways-lr"] {
         for (layout, content, admitted) in [
             ("", "<span>first second</span>", true),
-            ("", "<div>first</div><div>second</div>", false),
-            ("", r#"<span style="float:left">nested</span>"#, false),
+            ("", "<div>first</div><div>second</div>", true),
+            ("", r#"<span style="float:left">nested</span>"#, true),
             ("width:100px", "<div>first</div><div>second</div>", true),
             ("height:100px", "<div>first</div><div>second</div>", true),
             ("display:grid", "<div>first</div><div>second</div>", true),
