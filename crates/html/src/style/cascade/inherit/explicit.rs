@@ -1,8 +1,14 @@
 //! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы, размеры, inset, фон и background_rcs.
 
 use super::*;
+use crate::document::state::ValueCx;
 
-pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Computed) {
+pub(super) fn inherit_explicit(
+    parent: &Computed,
+    own: &Computed,
+    c: &mut Computed,
+    vcx: ValueCx<'_>,
+) {
     // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
     // умолчание или роняло объявление.
@@ -14,6 +20,13 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         }
         if on(inh::Z_INDEX) {
             c.z_index = parent.z_index;
+        }
+        if on(inh::CORNER_SHAPE) {
+            c.corner_shape = parent.corner_shape;
+        }
+        if on(inh::RADIUS) {
+            c.radius = parent.radius;
+            c.radius_ell = parent.radius_ell;
         }
         if own.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S | inh::OUTLINE_O)
             != 0
@@ -43,6 +56,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         if on(inh::DISPLAY) {
             c.display = parent.display;
             c.inline_display = parent.inline_display;
+            c.math_layout = parent.math_layout;
         }
         if on(inh::BG_IMAGE) {
             c.bg_image = parent.bg_image.clone();
@@ -154,7 +168,8 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             b: 0.0,
             a: 1.0,
         });
-        if let Some(resolved) = crate::style::values::color_space::resolve_relative(&expr, current)
+        if let Some(resolved) =
+            crate::style::values::color_space::resolve_relative(&expr, current, vcx)
         {
             c.background = Some(resolved);
         }

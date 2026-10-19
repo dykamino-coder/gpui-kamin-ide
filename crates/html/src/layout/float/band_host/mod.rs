@@ -2,10 +2,9 @@
 // owner: A
 
 use crate::dom::Node;
-use crate::paint::effects::grouped::px_of2;
 use crate::render::{inline_level, is_blank, own_context};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_missing_zero};
 mod build;
 pub(super) use build::band_edge;
 pub(super) use build::band_em;
@@ -75,7 +74,7 @@ pub(super) enum BandPiece {
 
 // Точки поля: `auto` считается нулём.
 //
-// Отдельно от `px_of2`, потому что `margin: auto` у коробки С ЗАДАННОЙ
+// Отдельно от `px_missing_zero`, потому что `margin: auto` у коробки С ЗАДАННОЙ
 // шириной поле не растит, а лишь выбирает, к какому краю прижаться
 // (§10.3.3); занятость от него не меняется. Без этого гейт бандового хоста
 /// не сработал бы вовсе: `floats-wrap-top-below-bfc-001l` — `margin-right:
@@ -83,7 +82,7 @@ pub(super) enum BandPiece {
 pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
     match l {
         Some(Len::Auto) => Some(0.0),
-        other => px_of2(other),
+        other => px_missing_zero(*other),
     }
 }
 
@@ -94,18 +93,18 @@ pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
 pub(super) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     let b = c.borders();
     Some((
-        px_of2(&c.width)?
-            + px_of2(&c.padding.left)?
-            + px_of2(&c.padding.right)?
-            + px_of2(&b.left)?
-            + px_of2(&b.right)?
+        px_missing_zero(c.width)?
+            + px_missing_zero(c.padding.left)?
+            + px_missing_zero(c.padding.right)?
+            + px_missing_zero(b.left)?
+            + px_missing_zero(b.right)?
             + px_margin(&c.margin.left)?
             + px_margin(&c.margin.right)?,
-        px_of2(&c.height)?
-            + px_of2(&c.padding.top)?
-            + px_of2(&c.padding.bottom)?
-            + px_of2(&b.top)?
-            + px_of2(&b.bottom)?
+        px_missing_zero(c.height)?
+            + px_missing_zero(c.padding.top)?
+            + px_missing_zero(c.padding.bottom)?
+            + px_missing_zero(b.top)?
+            + px_missing_zero(b.bottom)?
             + px_margin(&c.margin.top)?
             + px_margin(&c.margin.bottom)?,
     ))

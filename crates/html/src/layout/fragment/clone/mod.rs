@@ -36,7 +36,7 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     };
     if w.inline
         || s.webkit_box == Some(true)
-        || s.vertical == Some(true)
+        || s.wm().vertical()
         || s.position.is_some()
         || s.float.is_some_and(|f| f != 0)
         || s.background.is_some()
@@ -97,12 +97,22 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
 /// строчное содержимое (строк укладка не видит) — пустая
 /// коробка монолитом НЕ является.
 pub(crate) fn solid_box(k: &Element) -> bool {
-    let scrolls = |o: Option<crate::style::computed::Overflow>| {
-        matches!(o, Some(crate::style::computed::Overflow::Scroll))
-    };
     let block_kid = |n: &Node| {
         matches!(n, Node::Element(x)
             if !x.inline || x.style.display == Some(Display::Block))
+    };
+    monolith_box(k)
+        || (k.children.iter().any(|n| !is_blank(n)) && !k.children.iter().any(block_kid))
+}
+
+/// The css-break-4 §4.1 monoliths among `solid_box`: everything except a
+/// box that is solid only because its line boxes are not measured. Such a
+/// box keeps its unused block size (a fixed `height` beyond the lines)
+/// fragmentable, as Blink fragments the remaining block-size of a block
+/// once its content has ended (`FinishFragmentation`).
+pub(crate) fn monolith_box(k: &Element) -> bool {
+    let scrolls = |o: Option<crate::style::computed::Overflow>| {
+        matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     // `contain: size` — монолит и у страниц, и в колонках (`size_monolith`).
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): то же БЕЗ роста коробки от
@@ -132,6 +142,4 @@ pub(crate) fn solid_box(k: &Element) -> bool {
                 | Some(Display::InlineFlex)
                 | Some(Display::InlineGrid)
         )
-        || (k.children.iter().any(|n| !is_blank(n))
-            && !k.children.iter().any(block_kid))
 }

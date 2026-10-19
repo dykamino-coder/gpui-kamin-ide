@@ -14,8 +14,8 @@
 //! вообще ничего.
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, HitboxBehavior,
-    InspectorElementId, IntoElement, LayoutId, Pixels, Window,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
+    IntoElement, LayoutId, Pixels, Window,
 };
 use std::rc::Rc;
 use std::time::Instant;
@@ -114,8 +114,7 @@ impl Element for Transition {
         window: &mut Window,
         cx: &mut App,
     ) -> Hitbox {
-        child.prepaint(window, cx);
-        window.insert_hitbox(bounds, HitboxBehavior::Normal)
+        crate::interactive::hitbox::prepaint_hitbox(child, bounds, window, cx)
     }
 
     fn paint(

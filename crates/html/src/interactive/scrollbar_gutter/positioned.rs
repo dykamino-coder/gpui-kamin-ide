@@ -1,7 +1,9 @@
 //! CSS Overflow 3 §4.2: gutters reduce the containing block, including fixed boxes.
+
+use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};
 use gpui::{DefiniteLength, Div, Length, Styled};
-fn adjust(value: &mut Option<Length>, side: f32, total: f32) {
+fn adjust(value: &mut Option<Length>, side: f32, total: f32, vcx: ValueCx<'_>) {
     let Some(Length::Definite(v)) = value else {
         return;
     };
@@ -9,9 +11,9 @@ fn adjust(value: &mut Option<Length>, side: f32, total: f32) {
         DefiniteLength::Fraction(k) | DefiniteLength::Calc(_, k) => *k,
         _ => 0.0,
     };
-    *v = super::add(*v, side - fraction * total);
+    *v = super::add(*v, side - fraction * total, vcx);
 }
-pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
+pub(crate) fn apply(mut div: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if !matches!(c.position, Some(Position::Absolute | Position::Fixed)) {
         return div;
     }
@@ -27,23 +29,23 @@ pub(crate) fn apply(mut div: Div, c: &Computed) -> Div {
     }
     let totals = [delta[0] + delta[2], delta[1] + delta[3]];
     let style = div.style();
-    adjust(&mut style.inset.left, delta[0], totals[0]);
-    adjust(&mut style.inset.right, delta[2], totals[0]);
-    adjust(&mut style.inset.top, delta[1], totals[1]);
-    adjust(&mut style.inset.bottom, delta[3], totals[1]);
+    adjust(&mut style.inset.left, delta[0], totals[0], vcx);
+    adjust(&mut style.inset.right, delta[2], totals[0], vcx);
+    adjust(&mut style.inset.top, delta[1], totals[1], vcx);
+    adjust(&mut style.inset.bottom, delta[3], totals[1], vcx);
     for value in [
         &mut style.size.width,
         &mut style.min_size.width,
         &mut style.max_size.width,
     ] {
-        adjust(value, 0.0, totals[0]);
+        adjust(value, 0.0, totals[0], vcx);
     }
     for value in [
         &mut style.size.height,
         &mut style.min_size.height,
         &mut style.max_size.height,
     ] {
-        adjust(value, 0.0, totals[1]);
+        adjust(value, 0.0, totals[1], vcx);
     }
     div
 }

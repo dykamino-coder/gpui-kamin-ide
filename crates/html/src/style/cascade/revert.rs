@@ -8,6 +8,8 @@
 /// важные в L и в слоях после него (у важных они слабее) и обычные в L и
 /// после него. `all: revert-layer` откатывает каждое свойство, чьё
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
+// Reversion uses the same property-application callback as ordinary cascading.
+#[allow(clippy::type_complexity)]
 pub(super) fn revert_layers(
     matched: &[&crate::style::css::Rule],
 ) -> Option<Vec<crate::style::css::Rule>> {
@@ -58,7 +60,7 @@ pub(super) fn revert_layers(
     let winner = |rules: &Vec<crate::style::css::Rule>,
                   key: &str,
                   imp: bool|
-     -> Option<(Vec<u32>, String)> {
+     -> Option<(u8, Vec<u32>, String)> {
         let mut best: Option<(&crate::style::css::Rule, String)> = None;
         for r in rules {
             let Some(v) = r.decls.get(key) else { continue };
@@ -86,7 +88,7 @@ pub(super) fn revert_layers(
                 best = Some((r, part.to_string()));
             }
         }
-        best.map(|(r, v)| (r.layer.clone(), v))
+        best.map(|(r, v)| (r.origin, r.layer.clone(), v))
     };
     // `all: revert-layer` (обычный): каждое свойство слоя, объявленное в
     // правиле НЕ позже правила с `all`, снимается в этом слое.
@@ -135,21 +137,27 @@ pub(super) fn revert_layers(
             continue;
         }
         for _ in 0..16 {
-            if let Some((layer, v)) = winner(&rules, &key, true) {
+            if let Some((origin, layer, v)) = winner(&rules, &key, true) {
                 if is_rl(&v) {
                     let l = layer.clone();
-                    strip(&mut rules, &key, true, &|r| r.layer < l);
+                    strip(&mut rules, &key, true, &|r| {
+                        r.origin != origin || r.layer < l
+                    });
                     let l = layer.clone();
-                    strip(&mut rules, &key, false, &|r| r.layer < l);
+                    strip(&mut rules, &key, false, &|r| {
+                        r.origin != origin || r.layer < l
+                    });
                     continue;
                 }
                 break;
             }
-            if let Some((layer, v)) = winner(&rules, &key, false)
+            if let Some((origin, layer, v)) = winner(&rules, &key, false)
                 && is_rl(&v)
             {
                 let l = layer.clone();
-                strip(&mut rules, &key, false, &|r| r.layer != l);
+                strip(&mut rules, &key, false, &|r| {
+                    r.origin != origin || r.layer != l
+                });
                 continue;
             }
             break;

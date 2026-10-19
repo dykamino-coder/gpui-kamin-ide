@@ -5,6 +5,8 @@ use crate::text::paragraph::*;
 use gpui::{Pixels, px};
 
 impl Paragraph {
+    // Prepared words retain their run ranges and measured paint geometry together.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn prepare_words(
         &self,
         range: &std::ops::Range<usize>,

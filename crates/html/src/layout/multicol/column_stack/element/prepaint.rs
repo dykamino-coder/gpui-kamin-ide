@@ -3,7 +3,7 @@
 use crate::layout::fragment::fragment_mask;
 use crate::layout::fragment::types::Frag;
 use crate::layout::multicol::column_stack::ColumnStack;
-use gpui::{AnyElement, App, Bounds, Pixels, Window, point, px, size};
+use gpui::{App, Bounds, Pixels, Window, point, px, size};
 
 impl ColumnStack {
     pub(super) fn paint_column_rules(&mut self, window: &mut Window, bounds: Bounds<Pixels>) {
@@ -80,6 +80,24 @@ impl ColumnStack {
         plan: &[Frag],
         step: f32,
     ) {
+        use crate::layout::fragment::static_coordinates::{Place, StaticCoordinates};
+        let places = self.static_places.clone();
+        if let Some(places) = &places {
+            let mut entries = places.borrow_mut();
+            entries.clear();
+            entries.extend(plan.iter().map(|part| {
+                let (column, row_y) = self.place(part.col);
+                let child = &self.children[part.kid];
+                Place {
+                    kid: part.kid,
+                    from: part.from,
+                    origin: point(
+                        bounds.origin.x + px(column as f32 * step + child.rel.0 + child.par.dx),
+                        bounds.origin.y + px(row_y + part.y + child.rel.1 - part.from),
+                    ),
+                }
+            }));
+        }
         for f in plan {
             // У `clone` копия — САМ фрагмент своей высоты со своими рамками,
             // отбивкой и фоном (`render.rs::clone_fragment`): раскладывать её
@@ -100,47 +118,42 @@ impl ColumnStack {
             // Копия та же полная таблица, поднятая так, что её полоса
             // совпадает с местом во фрагменте; видимой полосу делает маска.
             if let Some(r) = kid.repeat.as_mut() {
-                let mut band = |el: Option<&mut AnyElement>, at: f32| {
-                    if let Some(el) = el {
-                        el.layout_as_root_at(
-                            point(x, y + px(at)),
-                            size(
-                                gpui::AvailableSpace::Definite(px(col_w)),
-                                gpui::AvailableSpace::Definite(px(full_h)),
-                            ),
-                            window,
-                            cx,
-                        );
-                        el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-                    }
-                };
-                if let (Some((src, _)), true) = (r.head, f.head > 0.01 && f.copy > 0) {
-                    band(r.head_els.get_mut(f.copy - 1), -f.head - src);
-                }
-                if let (Some((src, bh)), true) = (r.foot, f.foot > 0.01) {
-                    band(r.foot_els.get_mut(f.copy), f.h + f.foot - bh - src);
-                }
+                r.place_bands(f, |el, at| {
+                    el.layout_as_root_at(
+                        point(x, y + px(at)),
+                        size(
+                            gpui::AvailableSpace::Definite(px(col_w)),
+                            gpui::AvailableSpace::Definite(px(full_h)),
+                        ),
+                        window,
+                        cx,
+                    );
+                    el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+                });
             }
-            let el = if f.copy == 0 {
-                &mut kid.el
-            } else {
-                match kid.frags.get_mut(f.copy - 1) {
-                    Some(e) => e,
-                    None => continue,
-                }
+            let Some(el) =
+                crate::layout::fragment::types::frag_copy(&mut kid.el, &mut kid.frags, f.copy)
+            else {
+                continue;
             };
             // Копия раскладывается ЦЕЛИКОМ и поднимается на срез: видимой её
             // часть делает маска в отрисовке. Иначе половина коробки просто
             // сжалась бы, а не продолжилась в следующей колонке.
-            let laid = el.layout_as_root_at(
-                point(x, if clone { y } else { y - px(f.from) }),
-                size(
-                    gpui::AvailableSpace::Definite(px(col_w)),
-                    gpui::AvailableSpace::Definite(px(full_h)),
-                ),
-                window,
-                cx,
+            let at = point(x, if clone { y } else { y - px(f.from) });
+            let avail = size(
+                gpui::AvailableSpace::Definite(px(col_w)),
+                gpui::AvailableSpace::Definite(px(full_h)),
             );
+            let mut laid = el.layout_as_root_at(at, avail, window, cx);
+            // Корень rtl taffy ставит у правого края колонки; содержащий
+            // блок ltr — вернуть к левому (`Par::rtl_root_in_ltr`).
+            if kid.par.rtl_root_in_ltr && f32::from(laid.width) < col_w {
+                let back = px(col_w - f32::from(laid.width));
+                laid = el.layout_as_root_at(point(at.x - back, at.y), avail, window, cx);
+            }
+            let _static_coordinates = places.as_ref().filter(|_| !clone).map(|places| {
+                StaticCoordinates::enter(f.kid, point(x, y - px(f.from)), places.clone())
+            });
             el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));

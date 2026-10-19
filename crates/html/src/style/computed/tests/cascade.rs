@@ -2,6 +2,8 @@
 
 #[test]
 fn var_fallback_with_nested_parens_survives_a_defined_variable() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     // Конец записи — парная скобка, а запятая ищется на верхнем уровне:
     // иначе при ЗАДАННОЙ переменной оставалась лишняя скобка и значение
     // умирало, а при незаданной выходило случайно верно — из-за чего
@@ -12,22 +14,29 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
     c.apply_decls_with_vars(
         &crate::style::css::parse_decls("color: var(--c, rgba(0,0,0,.5))"),
         &vars,
+        vcx,
     );
-    assert_eq!(c.color, crate::style::values::value::Color::parse("red"));
+    assert_eq!(
+        c.color,
+        crate::style::values::value::Color::parse("red", vcx)
+    );
     // Незаданная переменная берёт запасное значение ЦЕЛИКОМ.
     let mut c = crate::style::computed::Computed::default();
     c.apply_decls_with_vars(
         &crate::style::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
         &crate::style::css::Decls::new(),
+        vcx,
     );
     assert_eq!(
         c.color,
-        crate::style::values::value::Color::parse("rgba(0,0,0,1)")
+        crate::style::values::value::Color::parse("rgba(0,0,0,1)", vcx)
     );
 }
 
 #[test]
 fn important_survives_a_later_ordinary_rule() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     // Важность — самый старший ключ сравнения (CSS Cascade §6.1): важное
     // объявление раннего правила переживает обычное объявление позднего,
     // даже если то и специфичнее. Пока проходы шли внутри правила,
@@ -47,13 +56,21 @@ fn important_survives_a_later_ordinary_rule() {
         layer: vec![u32::MAX],
     };
     let mut matched = vec![&early, &late];
-    let c =
-        crate::style::computed::Computed::resolve(&mut matched, &crate::style::css::Decls::new());
-    assert_eq!(c.color, crate::style::values::value::Color::parse("red"));
+    let c = crate::style::computed::Computed::resolve(
+        &mut matched,
+        &crate::style::css::Decls::new(),
+        vcx,
+    );
+    assert_eq!(
+        c.color,
+        crate::style::values::value::Color::parse("red", vcx)
+    );
 }
 
 #[test]
 fn author_sheet_beats_user_agent_regardless_of_specificity() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     // Происхождение старше специфичности (CSS Cascade §6.4.4). Пока обе
     // таблицы сравнивались только специфичностью, `* { margin: 0 }` со
     // специфичностью (0,0,0) проигрывал умолчанию `p { margin: 6px 0 }`
@@ -73,8 +90,11 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
         layer: vec![u32::MAX],
     };
     let mut matched = vec![&ua, &author];
-    let c =
-        crate::style::computed::Computed::resolve(&mut matched, &crate::style::css::Decls::new());
+    let c = crate::style::computed::Computed::resolve(
+        &mut matched,
+        &crate::style::css::Decls::new(),
+        vcx,
+    );
     assert_eq!(
         c.margin.top,
         Some(crate::style::values::value::Len::Px(0.0))
@@ -83,11 +103,13 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
 
 #[test]
 fn font_shorthand_takes_size_with_line_height_and_family() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     // Пробелы вокруг косой черты допустимы, и семейство начинается ПОСЛЕ
     // высоты строки: раньше «/ 1 Ahem» уезжало в семейство целиком, и
     // страница набиралась чужим шрифтом.
     let mut c = crate::style::computed::Computed::default();
-    c.apply_one("font", "50px / 1 Ahem");
+    c.apply_one("font", "50px / 1 Ahem", vcx);
     assert_eq!(
         c.font_size,
         Some(crate::style::values::value::Len::Px(50.0))

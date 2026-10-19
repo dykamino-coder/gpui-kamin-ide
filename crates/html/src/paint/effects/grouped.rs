@@ -1,25 +1,21 @@
 //! Сгруппированная покраска (непрозрачность, обрезка).
+
+use crate::document::state::ValueCx;
 mod bare_clip;
 pub(super) use bare_clip::bare_clip;
 
+mod replaced;
 mod wrapper;
+pub(crate) use replaced::grouped_replaced;
 pub(crate) use wrapper::grouped_wrapper;
 
 // owner: A
 
 use crate::paint::effects::mask::{PAINT_VIEWPORT, resolve_mask_refs};
 use crate::style::computed::Computed;
+use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
-
-/// Точки стороны коробки: только явный `px` (None непроходной).
-pub(crate) fn px_of2(l: &Option<Len>) -> Option<f32> {
-    match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        _ => None,
-    }
-}
 
 /// `inset()`/`rect()`/`xywh()` with a `round` radius in points: the group
 /// buffer rounds the clip rectangle (css-shapes-1 §basic-shape-rect);
@@ -38,7 +34,17 @@ pub(crate) fn rounded_rect_clip(c: &Computed) -> bool {
 /// Таких случаев три: размытие поддерева (`filter: blur`), смешивание с
 /// кадром по формулам CSS (`mix-blend-mode`) и изоляция (`isolation`), где
 /// поддерево обязано сложиться отдельно, прежде чем попасть в кадр.
-pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
+pub(crate) fn grouped(el: AnyElement, c: &Computed, vcx: ValueCx<'_>) -> AnyElement {
+    grouped_with(el, c, None, vcx)
+}
+
+pub(super) fn grouped_with(
+    el: AnyElement,
+    c: &Computed,
+    ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
+    vcx: ValueCx<'_>,
+) -> AnyElement {
+    let el = crate::paint::decorations::outline_phase::context(el, c);
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -58,9 +64,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
             Len::Px(_) | Len::Pct(_) => l,
             Len::Vw(k) => Len::Px(k * poly_vp.0),
             Len::Vh(k) => Len::Px(k * poly_vp.1),
-            other => crate::text::metrics::fallback_len_px(other, &poly_family, poly_font)
-                .map(Len::Px)
-                .unwrap_or(other),
+            other => other.font_units_to_px(FontCx::new(&poly_family, poly_font), vcx),
         }
     };
     let polygon_px: Vec<(Len, Len)> = c
@@ -90,10 +94,13 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // `poly_unit`, что вершины полигона (`contain-paint-clip-002`: 4em = 64 →
     // ужатие css-backgrounds-3 §5.5 до 60). Blink берёт форму обрезки из
     // вычисленного стиля (`paint_property_tree_builder.cc:3127-3143`).
-    let rrect = c.radius_masked().then(|| {
+    let rrect = c.radius_masked(vcx).then(|| {
         let mut own = c.clone();
         own.resolve_radius_lengths(|r| *r = r.map(poly_unit));
-        format!("shape:{}", crate::paint::background::rrect_spec(&own, None))
+        format!(
+            "shape:{}",
+            crate::paint::background::rrect_spec(&own, None, vcx)
+        )
     });
     // `border-shape` (css-borders-4): фон и содержимое режутся ВНЕШНИМ
     // контуром рамки (Blink клипует фон внешней фигурой, у двух фигур —
@@ -106,11 +113,11 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         let (stroke, colour) = c.border_shape_stroke();
         // Рамка, несущая заливку `border-area`, видима — маска берёт внешнюю
         // фигуру, как у цветной рамки.
-        let colour = crate::paint::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour, vcx);
         // Обрезка переполнения — ВНУТРЕННИМ контуром (css-borders-4
         // §border-shape-overflow-interaction; Blink `InnerPath`): у двух фигур
         // внутренняя, у одной — внешняя минус обводка (отрицательная обводка
-        // в записи, `background::border_shape_mask_svg`). Кольцо при этом
+        // в записи, `background::border_shape_mask_scene`). Кольцо при этом
         // ложится НАД буфером (`Grouped::over`, ниже).
         let (shape, kind, stroke) = match &bs.inner {
             Some((inner, k)) if colour.a <= 0.0 || c.border_shape_clips() => {
@@ -142,7 +149,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
         crate::style::computed::font_lengths_to_px(
             &s,
             px,
-            crate::style::values::value::root_font_px(),
+            crate::style::values::value::root_font_px(vcx),
             ex,
             ch,
         )
@@ -204,7 +211,7 @@ pub(crate) fn grouped(el: AnyElement, c: &Computed) -> AnyElement {
     // смешивания, ни маски, ни обрезки. Такой буфер коробкой не режется
     // (`interact::Grouped::spill`).
     grouped_wrapper(
-        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round,
+        blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round, ring_over, vcx,
     )
 }
 
@@ -228,6 +235,7 @@ pub(super) fn apply_mask_style(
     wrapper.mask_repeat_modes = c.mask_repeat_modes.clone().unwrap_or_default();
     wrapper.mask_luminance = c.mask_luminance == Some(true);
     wrapper.mask_alpha_mode = c.mask_alpha_mode == Some(true);
+    wrapper.mask_orient_none = c.image_orient_none == Some(true);
     wrapper.mask_pos = c.mask_pos;
     wrapper.mask_pos_far = c.mask_pos_far;
     wrapper.mask_pos_list = c.mask_pos_list.clone().unwrap_or_default();

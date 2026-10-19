@@ -1,6 +1,7 @@
 //! Continuous circle/ellipse motion paths, including their true tangents.
 
 use super::{origin_shift, rotation};
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use std::f64::consts::FRAC_PI_2;
@@ -11,13 +12,15 @@ pub(super) fn css(
     width: f32,
     height: f32,
     shift: (f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
-    let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, width, height, 1.0)?;
+    let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, width, height, 1.0, vcx)?;
     if rx <= 0.0 || ry <= 0.0 {
         return Some(origin_shift(
             c,
             (cx + shift.0, cy + shift.1),
             rotation(c, 0.0),
+            vcx,
         ));
     }
     let (rx, ry) = (f64::from(rx), f64::from(ry));
@@ -30,7 +33,7 @@ pub(super) fn css(
     let requested = match super::motion_style(c).offset_distance {
         Some(Len::Px(v)) => f64::from(v),
         Some(Len::Pct(p)) => f64::from(p) * length,
-        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i)
+        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx)
             .pct_px()
             .map_or(0.0, |(p, px)| f64::from(p) * length + f64::from(px)),
         _ => 0.0,
@@ -62,7 +65,7 @@ pub(super) fn css(
         (f64::from(cy) + ry * uy + f64::from(shift.1)) as f32,
     );
     let tangent = (ry * ux).atan2(-rx * uy) as f32;
-    Some(origin_shift(c, point, rotation(c, tangent)))
+    Some(origin_shift(c, point, rotation(c, tangent), vcx))
 }
 
 fn speed(rx: f64, ry: f64, angle: f64) -> f64 {

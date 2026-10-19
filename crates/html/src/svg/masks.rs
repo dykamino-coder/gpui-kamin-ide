@@ -1,5 +1,6 @@
 //! CSS-маски на детях `<svg>`: срезы разметки по порядку отрисовки и слои.
 
+use crate::document::state::ValueCx;
 mod units;
 use units::Rect;
 use units::Unit;
@@ -18,7 +19,14 @@ use gpui::{AnyElement, ImageSource, IntoElement};
 /// маскированная — своим растром по её рамке в обёртке `render::grouped`
 /// (маска, `mask-size/-repeat/-position/-mode` — из её стиля). Порядок
 /// наложения сохраняется: слои кладутся абсолютно друг над другом.
-pub(super) fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Option<AnyElement> {
+pub(super) fn masked_layers(
+    e: &Element,
+    w: f32,
+    h: f32,
+    rw: f32,
+    rh: f32,
+    vcx: ValueCx<'_>,
+) -> Option<AnyElement> {
     use gpui::{ParentElement as _, Styled as _};
     let units = masked_units(e, w, h)?;
     // Пользовательская единица в CSS-точках (та же, что у `masked_units`).
@@ -79,7 +87,7 @@ pub(super) fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Op
         let keep = run.clone();
         run.clear();
         let part = filtered(e, &|u| keep.contains(&u));
-        let Some(img) = rasterize(&serialize_sized(&part, rw, rh, 0.0, 0.0), rw, rh) else {
+        let Some(img) = rasterize(&serialize_sized(&part, rw, rh, 0.0, 0.0, vcx), rw, rh) else {
             return root;
         };
         root.child(
@@ -139,7 +147,7 @@ pub(super) fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Op
         let part = filtered(e, &|m| m == u);
         let markup = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}" viewBox="{bx} {by} {bw} {bh}">{}</svg>"#,
-            serialize_sized(&part, rw, rh, 0.0, 0.0)
+            serialize_sized(&part, rw, rh, 0.0, 0.0, vcx)
         );
         let Some(img) = rasterize(&markup, *bw, *bh) else {
             continue;
@@ -148,7 +156,7 @@ pub(super) fn masked_layers(e: &Element, w: f32, h: f32, rw: f32, rh: f32) -> Op
             .w(gpui::px(*bw))
             .h(gpui::px(*bh))
             .into_any_element();
-        let layer = crate::paint::effects::grouped::grouped(layer, style);
+        let layer = crate::paint::effects::grouped::grouped(layer, style, vcx);
         root = root.child(
             gpui::div()
                 .absolute()

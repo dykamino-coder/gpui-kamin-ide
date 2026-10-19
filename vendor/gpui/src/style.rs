@@ -262,6 +262,8 @@ pub struct Style {
     /// KaminIDE patch: intrinsic `max-width`/`max-height` keywords (`min-content`,
     /// `max-content`) passed to the native layout; `None` keeps `max_size`.
     pub max_sizing_keywords: [Option<CssSizingKeyword>; 2],
+    /// Authored intrinsic minimum dimensions, resolved by native flex layout.
+    pub min_sizing_keywords: [Option<CssSizingKeyword>; 2],
     /// Content-box intrinsic sizes for contained physical axes, in logical pixels.
     pub contained_intrinsic_size: [Option<f32>; 2],
 
@@ -307,6 +309,9 @@ pub struct Style {
     /// `direction: rtl` (css-flexbox-1 §2 «cross-start … inline-start»).
     /// Выравнивание читает это как `wrap-reverse`, перенос строк — нет.
     pub flex_cross_reverse: bool,
+    /// KaminIDE patch: a flex column emulating a block container takes its baselines from
+    /// the first/last child that has one (taffy `Style::block_baselines`).
+    pub block_baselines: bool,
     /// KaminIDE patch: размеры — `content-box` (CSS `box-sizing`). Обычно
     /// html-слой сам прибавляет отбивки к размеру, но долю отступа он в точки
     /// не переведёт — тогда пересчёт делает раскладка (`taffy::BoxSizing`).
@@ -334,6 +339,8 @@ pub struct Style {
     /// `Style::table_cell_baseline`): the row aligns its content by the
     /// baseline, the cell box still fills the row.
     pub table_cell_baseline: bool,
+    /// Table rows to collapse after intrinsic sizing; true selects physical columns.
+    pub table_collapsed_tracks: Option<(bool, Vec<u16>)>,
     /// KaminIDE patch: собственная базовая линия по оси x (повёрнутый
     /// вертикальный абзац): смещение и «от правого края».
     pub baseline_x_hint: Option<(f32, bool)>,
@@ -1066,6 +1073,7 @@ impl Default for Style {
             aspect_ratio_preferred_size: [None; 2],
             sizing_keywords: [None; 2],
             max_sizing_keywords: [None; 2],
+            min_sizing_keywords: [None; 2],
             contained_intrinsic_size: [None; 2],
             gap: Size::default(),
             // Alignment
@@ -1086,6 +1094,7 @@ impl Default for Style {
             flex_wrap: FlexWrap::NoWrap,
             flex_balance_lines: 0,
             flex_cross_reverse: false,
+            block_baselines: false,
             content_box: false,
             percent_basis_from_parent: false,
             calc_size: [None; 4],
@@ -1094,6 +1103,7 @@ impl Default for Style {
             baseline_unavailable: false,
             no_inline_block_baseline: false,
             table_cell_baseline: false,
+            table_collapsed_tracks: None,
             baseline_x_hint: None,
             baseline_x_flags: 0,
             margin_trim: 0,
@@ -1448,6 +1458,10 @@ pub type JustifyContent = AlignContent;
 pub enum Display {
     /// The children will follow the block layout algorithm
     Block,
+    /// KaminIDE patch: a block container that establishes a new block formatting context
+    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
+    /// children's or through it (CSS 2.1 §8.3.1).
+    FlowRoot,
     /// The children will follow the flexbox layout algorithm
     #[default]
     Flex,
@@ -1598,6 +1612,7 @@ impl From<Display> for taffy::style::Display {
     fn from(value: Display) -> Self {
         match value {
             Display::Block => Self::Block,
+            Display::FlowRoot => Self::FlowRoot,
             Display::Flex => Self::Flex,
             Display::Grid => Self::Grid,
             Display::None => Self::None,

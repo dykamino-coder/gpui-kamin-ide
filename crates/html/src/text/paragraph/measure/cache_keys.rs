@@ -91,6 +91,7 @@ impl Paragraph {
             .map(|s| f32::from(s).to_bits())
             .hash(&mut h);
         self.hyphen.hash(&mut h);
+        self.hyphen_limit_lines.hash(&mut h);
         self.spacers.hash(&mut h);
         for (r, v) in self.word_spans.iter().chain(&self.letter_spans) {
             r.start.hash(&mut h);

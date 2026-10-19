@@ -79,6 +79,7 @@ pub(crate) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
+    cb: Option<f32>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
@@ -116,7 +117,7 @@ pub(crate) fn band_flow_rest_lift(
             if !text && !atoms {
                 bad = true;
             }
-            if atoms && BAND_WM.with(std::cell::Cell::get) != 0 {
+            if atoms && BAND_WM.with(std::cell::Cell::get).vertical() {
                 bad = true;
             }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
@@ -126,26 +127,18 @@ pub(crate) fn band_flow_rest_lift(
             if run.iter().any(has_ruby) {
                 bad = true;
             }
-            let mut attrs = vec![("anon".to_string(), "1".to_string())];
-            if atoms {
-                attrs.push(("atoms".into(), "1".into()));
-            }
-            if cont {
-                attrs.push(("cont".into(), "1".into()));
-            }
-            out.push(Node::Element(Element {
-                list_item: None,
-                node_id: 0,
-                anim: None,
-                tag: "div".into(),
-                style: Computed::default(),
-                hover: None,
-                first_letter: None,
-                first_line: None,
-                children: std::mem::take(run),
-                attrs,
-                inline: false,
-            }));
+            out.push(Node::Element(Element::anonymous(
+                "div",
+                Computed::default(),
+                std::mem::take(run),
+                false,
+                crate::dom::Marks {
+                    anon: true,
+                    atoms,
+                    cont,
+                    ..Default::default()
+                },
+            )));
         } else {
             run.clear();
         }
@@ -177,9 +170,20 @@ pub(crate) fn band_flow_rest_lift(
                     // (`float-no-content-beside-001-ref`: `<span float>` +
                     // `<br>` + длинное слово — прогон целиком съезжал под
                     // флоат вместе с пустой строкой `<br>`, на строку ниже).
+                    // Вертикальный хост: прогон из одних `<br>` не отделяется от
+                    // следующего содержимого. Вертикальные строки не режутся
+                    // вырезами полос по одной, и пустой прогон перед текстом
+                    // мерился блочным размером флоата: весь текст за ним
+                    // вставал ПОСЛЕ буквицы вместо обтекания
+                    // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
+                    // осадки сразу за буквицей).
+                    let only_breaks = BAND_WM.with(std::cell::Cell::get).vertical()
+                        && run
+                            .iter()
+                            .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
                     let br = c.tag == "br";
                     run.push(n);
-                    if br {
+                    if br && !only_breaks {
                         flush(&mut run, &mut out, cont);
                         cont = true;
                     }
@@ -187,7 +191,10 @@ pub(crate) fn band_flow_rest_lift(
                 }
                 flush(&mut run, &mut out, cont);
                 cont = false;
-                if band_piece_m(&n, em).is_some() || band_flow_block(c, em) || band_nest_ok(c, em) {
+                if band_piece_m(&n, em).is_some()
+                    || band_flow_block(c, em)
+                    || band_nest_ok(c, em, cb)
+                {
                     out.push(n);
                 } else {
                     return None;

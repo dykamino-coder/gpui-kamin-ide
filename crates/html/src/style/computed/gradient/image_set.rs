@@ -1,6 +1,7 @@
 //! image-set(): выбор кандидата по типу и плотности, разрешение картинки (`x`/`dppx`/`dpi`).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Выбор кандидата `image-set()` (css-images-4 §2.5).
 ///
@@ -10,7 +11,10 @@ use super::*;
 /// * `Some(Some(src))` — СЫРАЯ запись выбранного `<image>` (`url(...)`,
 ///   градиент); строка-адрес оборачивается в `url(...)` (§2.5: «Each
 ///   `<string>` inside image-set() represents a `<url>`»).
-pub(in crate::style::computed) fn image_set_pick(inner: &str) -> Option<Option<String>> {
+pub(in crate::style::computed) fn image_set_pick(
+    inner: &str,
+    vcx: ValueCx<'_>,
+) -> Option<Option<String>> {
     let mut options: Vec<(String, f32)> = vec![];
     for cand in crate::style::css::split_args(inner) {
         let mut image: Option<String> = None;
@@ -33,7 +37,7 @@ pub(in crate::style::computed) fn image_set_pick(inner: &str) -> Option<Option<S
                 );
                 continue;
             }
-            if let Some(r) = image_resolution(&low) {
+            if let Some(r) = image_resolution(&low, vcx) {
                 // Отрицательное ЧИСЛО вне диапазона по определению — ошибка
                 // разбора. Из `calc()` оно приходит вычисленным: запись годна,
                 // непригоден только кандидат (`negative-resolution-3`).
@@ -81,7 +85,7 @@ pub(in crate::style::computed) fn image_set_pick(inner: &str) -> Option<Option<S
 /// Единицы разрешения переписываются точками (`1x` → `1px`, `96dpi` → `1px`),
 /// арифметику считает готовый разборщик длин. `None` — в записи нет ни одного
 /// разрешения либо она не сводится к числу.
-fn image_resolution(token: &str) -> Option<f32> {
+fn image_resolution(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
     if !token.is_ascii() {
         return None;
     }
@@ -133,7 +137,7 @@ fn image_resolution(token: &str) -> Option<f32> {
     if !found {
         return None;
     }
-    match Len::parse(&expr)? {
+    match Len::parse(&expr, vcx)? {
         Len::Px(v) => Some(v),
         _ => None,
     }

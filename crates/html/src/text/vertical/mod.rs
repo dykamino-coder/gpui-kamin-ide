@@ -3,7 +3,6 @@ mod combined_upright;
 mod root_left;
 mod vertical_text;
 pub use crate::text::vertical::combined_upright::CombinedUpright;
-pub use crate::text::vertical::root_left::RecordRootLeft;
 pub use crate::text::vertical::root_left::record_root_left;
 pub use crate::text::vertical::root_left::root_left_prev;
 pub use crate::text::vertical::vertical_text::VerticalText;

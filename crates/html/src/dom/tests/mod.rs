@@ -1,6 +1,8 @@
-//! Tests for dom; split out to keep the owning module within 250 lines.
+//! DOM parsing, selector matching and generated-content regression tests.
 
+mod ancestor_stack;
 mod filtered_content;
+mod shadow_selectors;
 mod style_parsing;
 mod tree_parsing;
 use crate::dom::tests::tree_parsing::child_colors;

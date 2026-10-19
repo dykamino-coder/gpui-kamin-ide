@@ -11,7 +11,13 @@ use super::*;
 /// (`ch-unit-001`: ширина `div + div span` терялась). Без сохранённых братьев
 /// (обход вне `walk`) — честно не совпадает, как раньше.
 pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    if path[at].featureless.is_some() {
+        return super::featureless::matches_featureless(sel, &path[at]).unwrap_or(false);
+    }
     if !matches_ancestor_compound(sel, &path[at]) {
+        return false;
+    }
+    if !ancestor_pseudos_hold(sel, path, at) {
         return false;
     }
     if sel.prev.is_some() {
@@ -33,6 +39,31 @@ pub(super) fn ancestor_holds(sel: &Selector, path: &[Ancestor], at: usize) -> bo
 }
 
 /// Продолжение цепочки вверх для `.a .b .c`.
+/// `:root` и `:is()`/`:where()` у НЕ-предметного компаунда: прежде они
+/// пропускались, и `:root > .x` брал любого родителя (`nesting-basic`
+/// test-12), а `:is(.a) .b` — любого предка.
+fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
+    let node = &path[at];
+    let sibs = match &node.peers {
+        Some((all, pos)) => Sibs {
+            all: &all[..],
+            pos: *pos,
+            is_elem: true,
+            rc: Some(all),
+        },
+        None => Sibs::EMPTY,
+    };
+    sel.pseudo.iter().chain(sel.also.iter()).all(|p| {
+        if p == "root" {
+            return node.tag == "html";
+        }
+        if p == "empty" {
+            return node.empty;
+        }
+        is_holds(p, node, &path[..at], sibs).unwrap_or(true)
+    })
+}
+
 fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     let Some(anc) = &sel.ancestor else {
         return true;
@@ -61,22 +92,11 @@ fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
 }
 
 pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
-    // Безликий хост: ни тег, ни `*`, ни класс, ни атрибут его не берут —
-    // только `:host`/`:host(S)`, и все псевдоклассы компаунда обязаны быть
-    // такими (`:host:host` — да, `div:host`, `:host.host` — нет;
-    // `selectors/featureless-002`).
     if node.featureless.is_some() {
-        let bare = sel.tag.is_none()
-            && !sel.universal
-            && sel.id.is_none()
-            && sel.classes.is_empty()
-            && sel.attrs.is_empty();
-        return bare
-            && sel.pseudo.as_deref().is_some_and(|p| host_holds(p, node))
-            && sel.also.iter().all(|p| host_holds(p, node));
+        return super::featureless::matches_featureless(sel, node).unwrap_or(false);
     }
     if let Some(t) = &sel.tag
-        && t != &node.tag
+        && !crate::style::css::default_ns::tag_matches(t, &node.tag, node.foreign)
     {
         return false;
     }

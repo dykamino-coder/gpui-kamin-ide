@@ -1,23 +1,18 @@
 //! Клип по голой опорной коробке и её радиусам.
 
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
     let bare_inset = if c.clip_bare_box && c.clip_inset.is_none() {
         let b = c.borders();
-        let s = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let s = px_lossy_zero;
         let [t, r, bo, l] = match c.clip_ref {
-            Some(1) => [
-                -s(c.margin.top),
-                -s(c.margin.right),
-                -s(c.margin.bottom),
-                -s(c.margin.left),
-            ],
+            Some(1) => {
+                let m = c.own_margin.unwrap_or(c.margin);
+                [-s(m.top), -s(m.right), -s(m.bottom), -s(m.left)]
+            }
             Some(2) => [s(b.top), s(b.right), s(b.bottom), s(b.left)],
             Some(3) => [
                 s(b.top) + s(c.padding.top),

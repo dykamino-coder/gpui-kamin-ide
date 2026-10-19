@@ -2,20 +2,21 @@
 
 use super::{contained_image, fit_local_image, local_image_source, view_boxed};
 use crate::dom::Element;
-use crate::layout::block::containing::AVAIL_W;
+use crate::layout::cx::LayoutCx;
 use crate::layout::replaced::replaced_used_style;
 use crate::render::styled_div;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
-pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
+pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> AnyElement {
+    let vcx = cx.vcx();
     // Ключевое слово содержимого в оси замещаемого — его природный (или
     // перенесённый через соотношение) размер, то есть `auto` (css-sizing-3
     // §5.1: «When the box has a preferred aspect ratio, size constraints in
     // the opposite dimension will transfer through»; Blink
     // `ComputeReplacedSizeInternal`): `width: min-content; height: 100px` —
     // ширина из соотношения (`intrinsic-size-017…025`).
-    let normalized = replaced_used_style::normalize(e, AVAIL_W.get());
+    let normalized = replaced_used_style::normalize(e, cx.avail_w);
     let e = normalized.as_ref().unwrap_or(e);
     let src = e.attr("src").unwrap_or_default();
     // Размеры коробки ставит общий разбор стиля (`apply`): он же добавляет к
@@ -26,18 +27,18 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     let resolved;
     let e = if let Some(base) = base_font {
         let mut copy = e.clone();
-        copy.style.resolve_em(base);
+        copy.style.resolve_em(base, vcx);
         resolved = copy;
         &resolved
     } else {
         e
     };
     if let Some(vb) = e.style.object_view_box
-        && let Some(el) = view_boxed(e, vb)
+        && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
     }
-    let d = styled_div(e);
+    let d = styled_div(e, cx);
     // Замещаемый элемент в СТРОКЕ не сжимается: браузер даёт строке
     // переполниться или перенести коробку целиком (CSS 2.1 §10.3.2, замер
     // wm-propagation-body-040: картинка 340px ужималась на 6-7%). А вот
@@ -56,20 +57,20 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
     // соотношения, — их задаёт `contain-intrinsic-size`. Врезка ранняя: ниже
     // по ветке `intrinsic()` вернул бы настоящие 100×100, и всё посчиталось бы
     // по ним.
-    let d = match contained_image(base_font, src, e, d) {
+    let d = match contained_image(base_font, src, e, d, cx) {
         Ok(value) => return value,
         Err(d) => d,
     };
     if src.starts_with("data:")
         || src.starts_with("file:")
         || src.starts_with('/')
-        || crate::paint::background::filter_image::parse(src).is_some()
+        || crate::style::computed::filter_image::parse_filter_image(src, vcx).is_some()
     {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
         // ничего не приходит, и картинка молча не рисуется вовсе. Ровно на
         // этом эталоны из одних картинок выходили пустой страницей.
-        let (local, d, image) = match local_image_source(src, e, d) {
+        let (local, d, image) = match local_image_source(src, e, d, vcx) {
             Ok(value) => value,
             Err(value) => return value,
         };
@@ -86,7 +87,8 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
         let vector: Option<String> = crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style),
+            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+            vcx,
         )
         .and_then(|s| match s {
             crate::paint::background::Source::Vector { markup, .. } => Some(markup),
@@ -98,7 +100,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
                 Some(r) => gpui::img(r),
                 None => old,
             };
-            if let Some(c) = crate::paint::background::svg_root_background(m) {
+            if let Some(c) = crate::paint::background::svg_root_background(m, vcx) {
                 out = out.bg(gpui::Rgba {
                     r: c.r,
                     g: c.g,
@@ -110,10 +112,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         };
         // Контентная поправка: при `box-sizing: border-box` названный размер
         // или предел включает паддинг и рамку — рисунку остаётся остальное.
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let (sub_w, sub_h) = if e.style.border_box == Some(true) {
             let b = e.style.borders();
             (
@@ -170,10 +169,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
         // изменили, коробка обязана ужаться вместе с рисунком.
         let узкая: Option<(f32, f32)> = None;
         let natural_ratio = || {
-            crate::paint::background::source(&crate::paint::background::key(
-                local.unwrap_or(src),
-                &e.style,
-            ))
+            crate::paint::background::source(
+                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+                vcx,
+            )
             .map(|s| s.intrinsic())
             .and_then(|i| {
                 i.ratio.or(match (i.w, i.h) {
@@ -196,8 +195,23 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>) -> AnyElement {
             replaced_used_style::transfer(&e.style, size, ratio, from_width, [sub_w, sub_h])
         };
         return fit_local_image(
-            src, e, local, d, image, vectorize, sub_w, sub_h, clamp, max_w, max_h, limit, узкая,
-            ratio_of, transfer,
+            src,
+            e,
+            local,
+            d,
+            image,
+            vectorize,
+            sub_w,
+            sub_h,
+            clamp,
+            max_w,
+            max_h,
+            limit,
+            узкая,
+            ratio_of,
+            transfer,
+            cx.cb_width,
+            vcx,
         );
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

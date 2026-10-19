@@ -95,7 +95,7 @@ pub(crate) fn clone_fragment(
 ) -> Element {
     use crate::style::computed::{Overflow, Position, Sides};
     let mut body = c.clone();
-    body.style = c.style.paint_off();
+    body.style = c.style.paint_off().into();
     body.style.padding = Sides::default();
     body.style.border_width = Sides::default();
     body.style.border_visible = [Some(false); 4];
@@ -111,6 +111,7 @@ pub(crate) fn clone_fragment(
     body.anim = None;
     body.list_item = None;
     let clip_box = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: c.node_id ^ 0x0BDB_C10E_0000_0001,
         anim: None,
@@ -120,7 +121,8 @@ pub(crate) fn clone_fragment(
             height: Some(Len::Px(clip.max(0.0))),
             overflow_y: Some(Overflow::Clip),
             ..Computed::default()
-        },
+        }
+        .into(),
         hover: None,
         first_letter: None,
         first_line: None,

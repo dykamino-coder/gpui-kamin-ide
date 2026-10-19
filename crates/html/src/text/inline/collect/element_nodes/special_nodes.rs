@@ -9,11 +9,13 @@ use crate::text::inline::*;
 pub(super) fn special_node(
     e: &Element,
     inherited: &Computed,
-    atom: &mut dyn FnMut(&Element) -> Option<Piece>,
+    atom: &mut dyn FnMut(&Element, &crate::text::inline::atom_parent::AtomCx) -> Option<Piece>,
     has_text: bool,
-    case: &mut text_case::Context,
+    cx: &mut CollectCx,
     out: &mut Vec<Piece>,
 ) -> bool {
+    let doc = cx.layout.doc().clone();
+    let vcx = doc.frame_values();
     // `display: contents` on `<br>`/`<wbr>` behaves as
     // `display: none` (css-display-3 §B «Unusual Elements»): no
     // line break, no break opportunity
@@ -29,7 +31,7 @@ pub(super) fn special_node(
         if inherited.ruby_suppress_breaks {
             return true;
         }
-        case.boundary();
+        cx.case.boundary();
         out.push(Piece::Text {
             text: "\n".into(),
             style: inherited.clone(),
@@ -60,13 +62,13 @@ pub(super) fn special_node(
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
     if e.style.display == Some(crate::style::computed::Display::Contents) {
-        let merged = inherit(inherited, &e.style);
+        let merged = inherit(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,
             &merged,
             atom,
             has_text,
-            case,
+            cx,
         ));
         return true;
     }

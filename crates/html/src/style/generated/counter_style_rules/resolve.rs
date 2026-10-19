@@ -19,7 +19,7 @@ pub(super) struct Resolved {
     pub(super) fallback: String,
 }
 
-fn builtin_resolved(name: &str) -> Resolved {
+pub(super) fn builtin_resolved(name: &str) -> Resolved {
     let b = builtin(name)
         .or_else(|| builtin("decimal"))
         .expect("decimal");
@@ -55,7 +55,11 @@ fn in_cycle(rules: &HashMap<String, Raw>, name: &str) -> bool {
     false
 }
 
-pub(super) fn resolve(rules: &HashMap<String, Raw>, name: &str, depth: usize) -> Option<Resolved> {
+pub(super) fn resolve_counter_style(
+    rules: &HashMap<String, Raw>,
+    name: &str,
+    depth: usize,
+) -> Option<Resolved> {
     let anon;
     let raw = match rules.get(name) {
         Some(raw) => raw,
@@ -69,7 +73,8 @@ pub(super) fn resolve(rules: &HashMap<String, Raw>, name: &str, depth: usize) ->
             if depth > 32 || in_cycle(rules, name) {
                 builtin_resolved("decimal")
             } else if rules.contains_key(&target) {
-                resolve(rules, &target, depth + 1).unwrap_or_else(|| builtin_resolved("decimal"))
+                resolve_counter_style(rules, &target, depth + 1)
+                    .unwrap_or_else(|| builtin_resolved("decimal"))
             } else {
                 // Незнакомое имя — `extends decimal`.
                 builtin_resolved(&target)

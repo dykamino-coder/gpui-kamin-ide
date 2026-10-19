@@ -1,5 +1,6 @@
 //! ::scroll-marker и ::scroll-marker-group.
 
+use crate::document::state::ValueCx;
 mod marker_collect;
 use crate::dom::scroll_markers::marker_collect::collect_scroll_markers;
 use crate::dom::scroll_markers::marker_collect::purge_scroll_markers;
@@ -42,6 +43,7 @@ pub(super) fn scroll_marker_pass(
     style: &Computed,
     attrs: &[(String, String)],
     children: &mut Vec<Node>,
+    vcx: ValueCx<'_>,
 ) -> ScrollPseudos {
     use crate::style::computed::Overflow;
     let mut out = ScrollPseudos {
@@ -59,9 +61,9 @@ pub(super) fn scroll_marker_pass(
             .as_deref()
             .is_some_and(|p| p.starts_with("scroll-button("))
     }) {
-        let vertical = style.vertical == Some(true);
-        let rl = style.vertical_rl == Some(true);
-        let rtl = style.rtl == Some(true);
+        let vertical = style.wm().vertical();
+        let rl = style.wm().block_rl();
+        let rtl = style.wm().rtl();
         for logical in ["block-start", "inline-start", "inline-end", "block-end"] {
             let physical = match (logical, vertical) {
                 ("block-start", false) => "up",
@@ -122,6 +124,7 @@ pub(super) fn scroll_marker_pass(
                 &l,
                 false,
                 attrs,
+                vcx,
             ) {
                 out.buttons.push(el);
             }
@@ -156,7 +159,7 @@ pub(super) fn scroll_marker_pass(
         .filter(|r| r.sel.pseudo.as_deref() == Some("scroll-marker-group"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
-    let mut gstyle = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars);
+    let mut gstyle = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
     if gstyle.display == Some(Display::None) {
         return out;
     }
@@ -175,12 +178,13 @@ pub(super) fn scroll_marker_pass(
         gstyle.contain_size = Some(true);
     }
     let group = Element {
+        marks: Default::default(),
         list_item: None,
         node_id: 0,
         anim: None,
         inline: false,
         tag: "::scroll-marker-group".to_string(),
-        style: gstyle,
+        style: gstyle.into(),
         hover: None,
         first_letter: None,
         first_line: None,

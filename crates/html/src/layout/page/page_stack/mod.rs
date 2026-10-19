@@ -1,8 +1,10 @@
 //! Элемент стопки страниц `PageStack`.
-// owner: A
 
 use crate::layout::fragment::types::Frag;
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, point, px, size};
+use gpui::{AnyElement, Bounds, Pixels, point, px, size};
+mod canvas;
+pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
+mod axis;
 mod contents;
 mod element;
 mod kids;
@@ -51,35 +53,8 @@ impl PageGeom {
     }
 }
 
-/// Блок верхнего уровня документа в стопке страниц. Высота заранее НЕ
-/// известна и меряется раскладкой (`layout_as_root`) в `prepaint` — так в
-/// стопку попадает и голый текст, которого укладка колонок не видит.
-pub struct PageKid {
-    pub el: AnyElement,
-    /// Копии на случай разреза между страницами (см. `StackChild::frags`).
-    pub frags: Vec<AnyElement>,
-    /// Монолит (css-break-4 §4.1 плюс `contain: size`, как Blink `IsMonolithic`).
-    pub monolith: bool,
-    /// Принудительный разрыв страницы перед/после (css-break-4 §3.1), включая
-    /// смену имени страницы (css-page-3 §"Using named pages", п. 4).
-    pub force_before: bool,
-    pub force_after: bool,
-    /// Мера поддерева от `render::shape_full` (css-break-4 §possible-breaks):
-    /// высота в точках, точки законного разреза `(need, from)`, смещения
-    /// принудительных разрывов и монолитные диапазоны — как у `StackChild`.
-    /// `None` — высота не известна заранее, берётся измеренная, разрезов
-    /// внутри нет.
-    pub shape: Option<(f32, Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>)>,
-    /// Имя страницы, с которого коробка начинается (css-page-3 §using-named-pages:
-    /// start value), `""` — без имени. Лист, на котором коробка — первая, берёт
-    /// это имя для своего `@page <имя>` (`PageStack::geom_for`).
-    pub page: String,
-    /// Поля коробки для укладки (схлопываются с соседями в `fill`) и смещение
-    /// её border box внутри элемента — на него копия поднимается.
-    pub mt: f32,
-    pub mb: f32,
-    pub inner_top: f32,
-}
+mod kid;
+pub use kid::PageKid;
 
 /// Геометрия листа по его номеру (с нуля) и имени страницы: каскад
 /// `@page` (`:first`, `:left`/`:right`, имена) решает стенд.
@@ -93,7 +68,8 @@ pub struct MarginBox {
     /// Элемент коробки по её border box (ширина, высота) — строится после
     /// раскладки, с размером в точках.
     pub make: std::rc::Rc<dyn Fn(f32, f32) -> AnyElement>,
-    pub probe: AnyElement,
+    pub probe: std::rc::Rc<dyn Fn(Option<crate::style::values::value::Len>) -> AnyElement>,
+    pub vertical: bool,
     pub w: Option<f32>,
     pub h: Option<f32>,
     pub intrinsic: [Option<crate::style::values::value::Len>; 2],
@@ -114,7 +90,6 @@ pub struct PageStack {
     /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
     /// `@page :first { size }`, именные страницы).
     pub(crate) geoms: std::cell::RefCell<Vec<PageGeom>>,
-    /// Ячейка сетки листов — наибольший лист.
     pub(crate) cell: std::cell::Cell<(f32, f32)>,
     /// Марджин-боксы: построитель и итог раскладки `(лист, элемент)`.
     pub(crate) margin_for: Option<MarginFn>,
@@ -131,18 +106,20 @@ pub struct PageStack {
     /// монолитов, как Blink `ReserveSpaceForMonolithicOverflow`): листов не
     /// меньше, чем нужно, чтобы её показать.
     pub(crate) icb_reach: f32,
-    /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига: содержащий
-    /// блок фиксированного — page area каждого листа (Blink `IsMonolithic`:
-    /// «IsFixedPositioned() && GetDocument().Printing()» — монолит, повторяемый
-    /// на каждой странице; `fixedpos-007..009`).
+    /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига (Blink
+    /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
     pub(crate) pages: std::cell::Cell<usize>,
-    /// Листов в ряду и масштаб стопки.
     pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
     /// reftest WPT сравнивает только страницы из `<meta name=reftest-pages>`.
     pub(crate) select: Option<Vec<usize>>,
+    /// Image layers of the document canvas and their per-sheet layout.
+    pub(crate) canvas_layer: Option<CanvasLayerFn>,
+    pub(crate) canvas_els: Vec<(usize, AnyElement)>,
+    /// Block axis of the root writing mode (`page_stack/axis.rs`).
+    pub(crate) axis: crate::layout::fragment::types::StackAxis,
 }
 
 impl PageStack {
@@ -168,10 +145,12 @@ impl PageStack {
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
             select: None,
+            canvas_layer: None,
+            canvas_els: Vec::new(),
+            axis: crate::layout::fragment::types::StackAxis::Horizontal,
         }
     }
 
-    /// Показать только листы `select` (номера с нуля).
     pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
         self.select = select;
         self
@@ -230,13 +209,5 @@ impl PageStack {
         gpui::ContentMask {
             bounds: area.intersect(&sheet),
         }
-    }
-}
-
-impl IntoElement for PageStack {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

@@ -1,9 +1,7 @@
 //! Элемент Sticky: липкий сдвиг по кадру прокрутки.
 
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window, px,
-};
+use crate::hooks::Wrap;
+use gpui::{AnyElement, App, Bounds, Pixels, Window, px};
 
 /// `transform` — поворот, масштаб и сдвиг при отрисовке.
 ///
@@ -34,19 +32,26 @@ pub type StickyCell = std::rc::Rc<std::cell::Cell<StickyFrame>>;
 /// отложенный проход: иначе содержимое, идущее ниже по разметке, закрашивало
 /// бы прилипший заголовок.
 pub struct Sticky {
-    pub(crate) child: Option<AnyElement>,
+    pub(crate) child: AnyElement,
     /// Пороги прилипания в точках; `None` — сторона не задана.
     pub top: Option<f32>,
     pub bottom: Option<f32>,
     pub left: Option<f32>,
     pub right: Option<f32>,
     pub frame: StickyCell,
+    /// The shift this box applies to its subtree (`ShiftLink`).
+    pub(crate) link: crate::interactive::scroll_extent::StickyShift,
 }
 
 impl Sticky {
-    pub fn new(child: AnyElement, frame: StickyCell) -> Self {
+    pub(crate) fn new(
+        child: AnyElement,
+        frame: StickyCell,
+        link: crate::interactive::scroll_extent::StickyShift,
+    ) -> Self {
         Sticky {
-            child: Some(child),
+            link,
+            child,
             top: None,
             bottom: None,
             left: None,
@@ -101,58 +106,23 @@ impl Sticky {
     }
 }
 
-impl Element for Sticky {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
-
-    fn id(&self) -> Option<ElementId> {
-        None
+impl Wrap for Sticky {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
-        (layout_id, ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _state: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let shift = self.shift(bounds);
-        let child = self.child.as_mut().unwrap();
-        crate::interactive::scroll_extent::sticky_geometry(shift, || {
+        let child = &mut self.child;
+        self.link.applied(shift, || {
             window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
         });
     }
 
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) {
+    fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // Отложенный проход рисует вне обрезки ленты — возвращаем её сами,
         // иначе прилипший элемент вылезал бы за края прокручиваемой области.
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         match self.frame.get().viewport {
             Some(view) => window
                 .with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
@@ -160,13 +130,5 @@ impl Element for Sticky {
                 }),
             None => child.paint(window, cx),
         }
-    }
-}
-
-impl IntoElement for Sticky {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }

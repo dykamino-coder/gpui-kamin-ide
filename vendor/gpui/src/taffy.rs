@@ -141,7 +141,11 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
         children: &[LayoutId],
     ) -> LayoutId {
-        let taffy_style = style.to_taffy(rem_size, scale_factor);
+        // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
+        let taffy_style = {
+            let _calc = self.taffy.calc_scope();
+            style.to_taffy(rem_size, scale_factor)
+        };
         crate::frame_perf::LAYOUT_NODES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         if children.is_empty() {
@@ -818,6 +822,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             flex_line_count: self.flex_balance_lines.max(1),
             // KaminIDE patch: обратная поперечная ось однострочного контейнера.
             flex_cross_reverse: self.flex_cross_reverse,
+            block_baselines: self.block_baselines,
             // KaminIDE patch: `box-sizing: content-box` силами раскладки.
             box_sizing: if self.content_box {
                 taffy::style::BoxSizing::ContentBox
@@ -853,6 +858,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             baseline_unavailable: self.baseline_unavailable,
             no_inline_block_baseline: self.no_inline_block_baseline,
             table_cell_baseline: self.table_cell_baseline,
+            table_collapsed_tracks: self.table_collapsed_tracks.clone(),
             // KaminIDE patch: базовая по оси x (вертикальное письмо).
             baseline_x_hint: self
                 .baseline_x_hint
@@ -968,14 +974,18 @@ impl ToTaffy<taffy::style::Style> for Style {
         if let Some(keyword) = self.sizing_keywords[1] {
             out.size.height = keyword.to_native(scale_factor);
         }
-        let max_keyword = |keyword: Option<crate::CssSizingKeyword>| match keyword {
+        let intrinsic_keyword = |keyword: Option<crate::CssSizingKeyword>| match keyword {
             Some(crate::CssSizingKeyword::MinContent) => Some(taffy::AvailableSpace::MinContent),
             Some(crate::CssSizingKeyword::MaxContent) => Some(taffy::AvailableSpace::MaxContent),
             _ => None,
         };
+        out.item_min_size_keywords = taffy::Size {
+            width: intrinsic_keyword(self.min_sizing_keywords[0]),
+            height: intrinsic_keyword(self.min_sizing_keywords[1]),
+        };
         out.item_max_size_keywords = taffy::Size {
-            width: max_keyword(self.max_sizing_keywords[0]),
-            height: max_keyword(self.max_sizing_keywords[1]),
+            width: intrinsic_keyword(self.max_sizing_keywords[0]),
+            height: intrinsic_keyword(self.max_sizing_keywords[1]),
         };
         if let Some(names) = self.grid_line_names.as_deref() {
             apply_grid_line_names(&mut out, names);

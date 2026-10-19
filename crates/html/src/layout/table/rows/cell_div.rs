@@ -8,6 +8,9 @@ use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
 
+// The cell box consumes the border decoration record produced by preparation.
+#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn cell_box_div(
     paint_layers: bool,
     cell_bgs: &std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
@@ -21,6 +24,7 @@ pub(super) fn cell_box_div(
     shift: (f32, f32),
     cm: &Computed,
     cell: &Element,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     // Коробке ячейки нужен СЛИТЫЙ стиль: у сырого `cell.style`
     // шрифтовые единицы не разрешены, и `apply` считает их от жёстких
@@ -71,7 +75,9 @@ pub(super) fn cell_box_div(
     // заливки, цвет пишет проба. Картинка, градиент, `background-clip`,
     // спрятанная или преобразованная ячейка красятся по-прежнему на
     // месте — для них слой не строится.
+    let collapsed = crate::layout::table::anon::row_collapsed(row, carry.3);
     let bg_layered = paint_layers
+        && !collapsed
         && box_style.bg_clip.is_none()
         && box_style.gradient.is_none()
         && box_style.bg_image.is_none()
@@ -85,7 +91,10 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.background = None;
     }
-    let mut d = styled_div_with(cell, &box_style);
+    let mut d = styled_div_with(cell, &box_style, cx);
+    if collapsed {
+        d.style().opacity = Some(0.0);
+    }
     // Заливка строки И ГРУППЫ строк: своей коробки у них в общей сетке
     // не остаётся, поэтому фон рисуют ячейки. Раньше бралась только
     // строка, и `<tbody style="background">` пропадал молча
@@ -164,10 +173,10 @@ pub(super) fn ortho_cell_box(
     // `table_layout_utils.cc:218`:
     // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
     //                         cell_writing_direction, /* is_new_fc */ true)`.
-    let ortho_cell = cm.vertical == Some(true) && e.style.vertical != Some(true);
+    let ortho_cell = cm.wm().vertical() && !e.style.wm().vertical();
     let mut d = if ortho_cell {
         let d = d.flex();
-        if cm.vertical_rl == Some(true) {
+        if cm.wm().block_rl() {
             d.flex_row_reverse()
         } else {
             d.flex_row()
@@ -184,7 +193,7 @@ pub(super) fn ortho_cell_box(
         use crate::style::computed::TextAlign;
         // `start`/`end` — края СТРОКИ: вертикальная строка идёт
         // сверху вниз, `dir=rtl` разворачивает её снизу вверх.
-        let rtl = cm.rtl == Some(true);
+        let rtl = cm.wm().rtl();
         d = match cm.text_align {
             Some(TextAlign::Right) => d.items_end(),
             Some(TextAlign::Center) => d.items_center(),
@@ -222,9 +231,9 @@ pub(super) fn ortho_cell_box(
         } else {
             None
         });
-        if own_va == Some(Align::Baseline) && e.style.vertical != Some(true) {
+        if own_va == Some(Align::Baseline) && !e.style.wm().vertical() {
             d.style().table_cell_baseline = Some(true);
         }
     }
-    d
+    super::cell_alignment::apply(cm, d)
 }

@@ -91,6 +91,8 @@ impl Paragraph {
             })
             .collect()
     }
+    // Suffix placement depends on the clipped run geometry and its paint context.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn paint_suffix(
         &self,
         mark: &str,

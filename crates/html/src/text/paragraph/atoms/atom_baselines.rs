@@ -1,5 +1,6 @@
 //! Atom baselines for atoms; split out to keep the owning module within 250 lines.
 
+use crate::hooks::IntoHooked;
 use crate::text::paragraph::*;
 use gpui::{AnyElement, IntoElement, Window};
 
@@ -23,14 +24,17 @@ impl Paragraph {
                     child: gpui::div()
                         .flex()
                         .items_baseline()
-                        .child(BaselineProbe {
-                            slot: probe.clone(),
-                        })
+                        .child(
+                            BaselineProbe {
+                                slot: probe.clone(),
+                            }
+                            .into_hooked(),
+                        )
                         .child(el)
                         .into_any_element(),
                     slot: root.clone(),
                 }
-                .into_any_element();
+                .hooked();
                 AtomSlot {
                     at,
                     el,
@@ -71,8 +75,7 @@ impl Paragraph {
     /// Blink: `inline_box_state.cc` `ComputeTextMetrics` + `line_box_fragment_
     /// builder` — та же сумма наибольших подъёма и спуска.
     pub(crate) fn line_extents(&self, range: &std::ops::Range<usize>) -> (f32, f32) {
-        let lh = f32::from(self.line_height);
-        let (sa, sd) = self.strut_box;
+        let (lh, (sa, sd)) = self.root_line_box(range.start);
         let a_s = (lh - (sa + sd)) / 2.0 + sa;
         let (mut top, mut bot) = (a_s, lh - a_s);
         let mut at = 0usize;

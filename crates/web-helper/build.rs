@@ -1,6 +1,12 @@
 //! Ресурсы Windows помощника: та же иконка, но СВОЁ описание — по нему
 //! диспетчер задач подписывает строки дочерних процессов CEF.
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "Cargo build script emits directives and build diagnostics"
+)]
+
 fn main() {
     #[cfg(windows)]
     {

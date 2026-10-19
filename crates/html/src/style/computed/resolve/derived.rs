@@ -6,6 +6,7 @@ impl Computed {
     pub fn text_only(&self) -> Computed {
         Computed {
             color: self.color,
+            text_shadow_ink: self.text_shadow_ink,
             // Видимость — свойство ТЕКСТА тоже: скрытый кусок держит место, но
             // не красится, а запасная ветка «строка из слов» флаг теряла.
             hidden: self.hidden,
@@ -20,6 +21,8 @@ impl Computed {
             font_weight_step: self.font_weight_step,
             italic: self.italic,
             oblique: self.oblique,
+            font_oblique_angle: self.font_oblique_angle,
+            font_oblique_only: self.font_oblique_only,
             underline: self.underline,
             line_through: self.line_through,
             line_height: self.line_height,
@@ -65,6 +68,11 @@ impl Computed {
             box_shift: self.box_shift,
             text_fit: self.text_fit,
             hyphen_char: self.hyphen_char.clone(),
+            hyphen_limit_chars: self.hyphen_limit_chars,
+            hyphen_limit_lines: self.hyphen_limit_lines,
+            hyphenate: self.hyphenate,
+            hyphens_auto: self.hyphens_auto,
+            lang: self.lang.clone(),
             // Кусок, собранный из `text_only`, бывает родителем: без базы он
             // отдал бы детям ПОДОГНАННЫЙ кегль, и подгонка накопилась бы.
             font_size_adjust: self.font_size_adjust,

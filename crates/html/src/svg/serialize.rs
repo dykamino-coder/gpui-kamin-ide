@@ -1,5 +1,6 @@
 //! Обратная сериализация поддерева `<svg>` в разметку для растеризатора.
 
+use crate::document::state::ValueCx;
 mod transform;
 pub(super) use transform::element_transform;
 
@@ -10,8 +11,11 @@ mod sizing;
 pub(super) use sizing::serialize_sized;
 
 mod filters;
+
+mod geometry;
 use filters::subtree_has;
 use filters::untaint_filters;
+pub(crate) use geometry::geometry_property;
 
 use super::clip::synth_clip;
 use super::size::{size_of, view_box_ratio};
@@ -23,21 +27,27 @@ use crate::dom::{Element, Node};
 /// Дерево у нас уже разобрано, исходного текста нет — а растеризатору нужен
 /// именно текст. Пишем только то, что имеет смысл внутри SVG: имя тега,
 /// атрибуты и текстовые узлы.
-pub fn serialize(e: &Element) -> String {
+pub fn serialize(e: &Element, vcx: ValueCx<'_>) -> String {
     let mut out = String::new();
     if subtree_has(e, "fedisplacementmap") {
         let mut copy = e.clone();
         untaint_filters(&mut copy);
-        write_element(&copy, &mut out);
+        write_element(&copy, &mut out, vcx);
     } else {
-        write_element(e, &mut out);
+        write_element(e, &mut out, vcx);
     }
     out
 }
 
-pub(crate) fn write_element(e: &Element, out: &mut String) {
+/// Writes `e` as its own document of synthesized ids.
+pub(crate) fn write_element(e: &Element, out: &mut String, vcx: ValueCx<'_>) {
+    write_in(e, out, &super::ClipIds::for_document(e), vcx);
+}
+
+/// Writes `e` inside a document whose synthesized ids come from `ids`.
+pub(crate) fn write_in(e: &Element, out: &mut String, ids: &super::ClipIds, vcx: ValueCx<'_>) {
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
-    let clip_id = synth_clip(e, out);
+    let clip_id = synth_clip(e, out, ids, vcx);
     out.push('<');
     out.push_str(&e.tag);
     // `transform-origin` растеризатор не знает — точка отсчёта
@@ -46,6 +56,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     // доли — от fill-box (атрибуты width/height фигуры).
     let (combined, attr_bad) = element_transform(e);
     write_attributes(e, out, &combined, &clip_id, attr_bad);
+    geometry::write_geometry(e, out);
     if let Some(t) = &combined {
         out.push_str(" transform=\"");
         escape_attr(t, out);
@@ -77,7 +88,7 @@ pub(crate) fn write_element(e: &Element, out: &mut String) {
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, out),
-            Node::Element(el) => write_element(el, out),
+            Node::Element(el) => write_in(el, out, ids, vcx),
         }
     }
     IN_CLIP.with(|c| c.set(prev_clip));

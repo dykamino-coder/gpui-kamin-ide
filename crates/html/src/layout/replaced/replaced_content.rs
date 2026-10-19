@@ -1,8 +1,10 @@
 //! Replaced content can be empty without erasing its surrounding CSS box.
+
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::render::styled_div_with;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
@@ -11,15 +13,16 @@ pub(crate) fn empty_iframe_size(
     e: &Element,
     inherited: &Computed,
     viewport: (f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Element {
     let mut copy = crate::layout::replaced::image::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
-    let merged = crate::style::cascade::inherit::inherit(inherited, &copy.style);
+    let merged = crate::style::cascade::inherit::inherit(inherited, &copy.style, vcx);
     copy.style.height = merged.height;
     copy.style.cb_height_def = merged.cb_height_def;
-    copy.style.resolve_viewport(viewport);
-    if crate::style::select::quirks()
+    copy.style.resolve_viewport(viewport, vcx);
+    if vcx.doc.quirks()
         && !matches!(
             copy.style.position,
             Some(
@@ -80,13 +83,18 @@ pub(crate) fn empty_iframe_size(
     copy
 }
 
-pub(crate) fn empty_iframe(e: &Element, inherited: &Computed, viewport: (f32, f32)) -> AnyElement {
-    let mut copy = empty_iframe_size(e, inherited, viewport);
+pub(crate) fn empty_iframe(
+    e: &Element,
+    inherited: &Computed,
+    opts: &crate::render::RenderOpts,
+) -> AnyElement {
+    let vcx = opts.cx.vcx();
+    let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return crate::layout::replaced::image::image(&copy);
+        return crate::layout::replaced::image::image(&copy, &opts.cx);
     }
-    crate::render::styled_div(&copy)
+    crate::render::styled_div(&copy, &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -97,11 +105,11 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
         && e.style.contain_size != Some(true)
 }
 
-pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
+pub(super) fn position(mut image: gpui::Img, style: &Computed, vcx: ValueCx<'_>) -> gpui::Img {
     if let Some(position) = style.object_position {
         image = image.object_position(gpui::point(
-            crate::style::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5))),
-            crate::style::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5))),
+            crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
+            crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),
         ));
     }
     image
@@ -114,7 +122,12 @@ pub(super) fn position(mut image: gpui::Img, style: &Computed) -> gpui::Img {
 /// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
 /// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
 /// `None` — рисунок не разобрался.
-pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> Option<AnyElement> {
+pub(crate) fn svg_replaced(
+    e: &Element,
+    sized: &Element,
+    merged: &Computed,
+    opts: &crate::render::RenderOpts,
+) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
     let inner;
     let sized = if boxed {
@@ -125,14 +138,11 @@ pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> O
     } else {
         sized
     };
-    let raster = crate::svg::element(sized);
+    let raster = crate::svg::element_with_html(sized, opts);
     if !boxed {
         return raster;
     }
-    let px_of = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px_of = px_lossy_zero;
     let (w, h) = crate::svg::size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
     if raster.is_none() && w > 0.0 && h > 0.0 {
@@ -150,7 +160,7 @@ pub(crate) fn svg_replaced(e: &Element, sized: &Element, merged: &Computed) -> O
         + px_of(merged.padding.top)
         + px_of(merged.padding.bottom);
     Some(
-        styled_div_with(e, merged)
+        styled_div_with(e, merged, &opts.cx)
             .w(px(bw))
             .h(px(bh))
             .flex_shrink_0()

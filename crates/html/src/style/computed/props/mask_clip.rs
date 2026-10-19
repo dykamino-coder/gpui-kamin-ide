@@ -1,5 +1,6 @@
 //! Computed::apply_one: mask*, clip, clip-path, shape-*.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -8,25 +9,31 @@ mod clip_mask;
 mod mask_layers;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_mask_clip(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_mask_clip(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // `will-change` (css-will-change-1 §2.1) разбирается ОДНОЙ армой
             // рядом с `backdrop-filter`: вторая арма того же ключа в этом
             // `match` недостижима.
             "shape-outside" => {
+                self.accept_declaration();
                 let t = v.trim();
                 if t != "none" {
                     self.shape_outside = Some(t.to_string());
                 }
             }
-            "shape-margin" => self.shape_margin = Len::parse(v.trim()),
+            "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim(), vcx)),
             "shape-image-threshold" => {
-                self.shape_threshold = v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0));
+                self.shape_threshold = record_parsed!(
+                    self,
+                    v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0))
+                );
             }
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {
+                if v == "auto" {
+                    self.accept_declaration();
+                }
                 if v == "inherit" {
                     self.inherit_bits |= inh::CLIP;
                     return;
@@ -46,6 +53,7 @@ impl Computed {
                         .filter(|t| !t.is_empty())
                         .collect();
                     if parts.len() == 4 {
+                        self.accept_declaration();
                         let side = |t: &str| match t {
                             "auto" => None,
                             // Нулевая длина есть ноль в любой единице, и
@@ -53,7 +61,7 @@ impl Computed {
                             // как `auto` (`visufx/clip-076…102`). Кегель на
                             // этом шаге ещё не известен, поэтому ненулевые
                             // относительные единицы по-прежнему мимо.
-                            _ => match Len::parse(t) {
+                            _ => match Len::parse(t, vcx) {
                                 Some(Len::Px(v)) => Some(v),
                                 Some(
                                     Len::Em(v)
@@ -75,20 +83,22 @@ impl Computed {
                         ]);
                         let raw = |t: &str| match t {
                             "auto" => None,
-                            _ => Len::parse(t),
+                            _ => Len::parse(t, vcx),
                         };
                         self.clip_len =
                             Some([raw(parts[0]), raw(parts[1]), raw(parts[2]), raw(parts[3])]);
                     }
                 }
             }
-            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v),
+            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v, vcx),
             "mask-mode" => {
+                self.accept_declaration();
                 self.mask_luminance = Some(v.trim() == "luminance");
                 self.mask_alpha_mode = Some(v.trim() == "alpha");
             }
-            "mask-type" => self.mask_type_alpha = Some(v.trim() == "alpha"),
+            "mask-type" => self.mask_type_alpha = accept_parsed!(self, Some(v.trim() == "alpha")),
             "mask-composite" | "-webkit-mask-composite" => {
+                self.accept_declaration();
                 self.mask_composite = Some(
                     v.split(',')
                         .map(|t| match t.trim() {
@@ -100,7 +110,7 @@ impl Computed {
                         .collect(),
                 );
             }
-            _ => self.apply_mask_layers(key, val, v, hit),
+            _ => self.apply_mask_layers(key, v, hit, vcx),
         }
     }
 }

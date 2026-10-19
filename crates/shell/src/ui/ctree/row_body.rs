@@ -78,7 +78,7 @@ pub(crate) fn row_body(
             div()
                 // `.row:hover { color: text-primary }` красит лейбл;
                 // ховер строки до вложенного текста не доходит (ц.21)
-                .group_hover(row_group.clone(), {
+                .group_hover(row_group, {
                     let tp = rgba(p.text_primary);
                     move |st| st.text_color(tp)
                 })

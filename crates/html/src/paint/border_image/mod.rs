@@ -11,6 +11,7 @@
 //! увеличенным и сдвинутым так, чтобы нужный кусок лёг ровно в своё место, а
 //! всё остальное срезала маска куска.
 
+use crate::document::state::ValueCx;
 mod gradient;
 mod grid;
 mod tiling;
@@ -23,7 +24,8 @@ use crate::paint::border_image::sampling::{destination_bounds, paint_slice};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 
 /// Слой рамки-картинки поверх коробки.
-pub fn layer(c: &Computed) -> Option<AnyElement> {
+pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
+    let values = vcx.keep();
     let image = c.border_image.clone().filter(|bi| !bi.src.is_empty())?;
     let family = c.font_family.clone().unwrap_or_default();
     let size = match c.font_size {
@@ -45,13 +47,14 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
     // `image-orientation` действует и на рамку-картинку (css-images-3 §5.4,
     // «Applies to: all elements»). Ключ строится ДО замыкания: в него уезжает
     // готовая строка, а не стиль.
-    let src = crate::paint::background::key_exif(&image.src, c);
+    let src = crate::paint::background::key_exif(&image.src, c, vcx);
     let pixelated = c.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(
             |_, _, _| {},
             move |bounds: Bounds<Pixels>, _, window, _| {
-                let Some(found) = crate::paint::background::source(&src) else {
+                let vcx = values.vcx();
+                let Some(found) = crate::paint::background::source(&src, vcx) else {
                     return;
                 };
                 let area = Bounds {
@@ -66,7 +69,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                 };
                 let grid = grid::Grid::new(&image, &found, area, base);
                 let (iw, ih) = grid.image;
-                let Some(raster) = found.raster((iw, ih)) else {
+                let Some(raster) = found.raster((iw, ih), vcx) else {
                     return;
                 };
                 let (cols, rows) = (grid.cols, grid.rows);
@@ -134,6 +137,7 @@ pub fn layer(c: &Computed) -> Option<AnyElement> {
                                         (iw, ih),
                                         (sx, sy, sw, sh),
                                         cell,
+                                        vcx,
                                     ) {
                                         return;
                                     }
@@ -189,4 +193,47 @@ impl crate::style::computed::BorderImageSlice {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
+
+    #[test]
+    fn repeat_centers_one_full_tile_and_clips_its_neighbours() {
+        use crate::style::computed::Tiling;
+        let cells = super::tiling::pieces(
+            (Tiling::Repeat, Tiling::None),
+            (0.0, 0.0, 80.0, 10.0),
+            (40.0, 10.0),
+            (true, false),
+        );
+        assert_eq!(cells.len(), 3);
+        assert_eq!(cells[0], ((-20.0, 0.0, 40.0, 10.0), (0.0, 0.0, 20.0, 10.0)));
+        assert_eq!(cells[1], ((20.0, 0.0, 40.0, 10.0), (20.0, 0.0, 40.0, 10.0)));
+        assert_eq!(cells[2], ((60.0, 0.0, 40.0, 10.0), (60.0, 0.0, 20.0, 10.0)));
+    }
+
+    /// Вырезка с растяжением: угловой знак образа приходит чистым, без
+    /// подмешивания соседей.
+    #[test]
+    fn crop_keeps_the_corner_colour() {
+        use image::Frame;
+        // 2×2: (0,0) зелёный, остальные красные. Байты в порядке BGRA.
+        let g = [0u8, 128, 0, 255];
+        let r = [0u8, 0, 255, 255];
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&g);
+        bytes.extend_from_slice(&r);
+        bytes.extend_from_slice(&r);
+        bytes.extend_from_slice(&r);
+        let buffer = image::RgbaImage::from_raw(2, 2, bytes).unwrap();
+        let image = gpui::RenderImage::new(smallvec::SmallVec::<[Frame; 1]>::from_elem(
+            Frame::new(buffer),
+            1,
+        ));
+        let cut = gpui::crop_image(&image, 0, 0, 1, 1, 4, 4).expect("вырезка");
+        let out = cut.as_bytes(0).unwrap();
+        assert_eq!(out.len(), 4 * 4 * 4);
+        for px in out.chunks_exact(4) {
+            assert_eq!(px, &g, "весь кусок — цвет углового знака");
+        }
+    }
+}

@@ -3,6 +3,7 @@
 //! concave notch grows into the inset rectangle, including its inner edges.
 
 use super::{CORNER_K_FLAT, Rrect};
+use crate::document::state::ValueCx;
 use crate::paint::background::{MaskLayer, compose_mask_layers};
 use crate::style::values::value::Color;
 use gpui::RenderImage;
@@ -18,7 +19,12 @@ fn corner(rx: f32, ry: f32, k: f32, bx: f32, by: f32) -> Option<Vec<(f32, f32)>>
     None
 }
 
-fn contour(r: &Rrect, w: f32, h: f32, [t, right, b, l]: [f32; 4]) -> Option<Vec<(f32, f32)>> {
+pub(super) fn contour(
+    r: &Rrect,
+    w: f32,
+    h: f32,
+    [t, right, b, l]: [f32; 4],
+) -> Option<Vec<(f32, f32)>> {
     // Curved and bevel corners keep their existing coverage backend.
     if r.corners
         .iter()
@@ -137,6 +143,7 @@ pub fn rasterize_shape_at(
     h: u32,
     scale: f32,
     origin: (f32, f32),
+    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
     if let Some(args) = raw.strip_prefix("rrect(").and_then(|s| s.strip_suffix(')')) {
         let r = super::parse_rrect(args, w as f32, h as f32, scale)?;
@@ -146,7 +153,7 @@ pub fn rasterize_shape_at(
             return Some(image);
         }
     }
-    super::rasterize_shape(raw, w, h, scale)
+    super::rasterize_shape(raw, w, h, scale, vcx)
 }
 
 pub fn rasterize_ring_at(

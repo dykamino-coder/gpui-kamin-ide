@@ -27,9 +27,9 @@
 //!
 //! Что остаётся шагу 2: природный размер картинок (`render.rs`,
 //! `natural_ratio`), `vw`/`vh` (`Computed::resolve_viewport`), px внутри
-//! `shape-outside`/`clip-path`, `Calc(i)`, SVG, а также ЯВНОЕ наследование
-//! `transform: inherit` / `perspective: inherit` — флагов `*_inherit` для
-//! них в `Computed` пока нет, и `explicit` их не видит.
+//! `shape-outside`/`clip-path`, `Calc(i)` и SVG. Зарегистрированные явные
+//! `inherit` разрешаются до этого прохода по вычисленным значениям родителя;
+//! полученные абсолютные длины масштабируются как собственные.
 
 use crate::dom::Node;
 use crate::style::computed::{Computed, Shadow, Sides};
@@ -38,6 +38,7 @@ use crate::style::values::value::Len;
 mod explicit;
 mod scale;
 use explicit::{explicit, remember};
+pub(crate) use scale::scale_transform;
 use scale::{scale_own, scale_shadow};
 
 /// Наследуемые длины, которые проход несёт вниз В ТОЧКАХ: значение
@@ -75,6 +76,15 @@ fn walk(nodes: &mut [Node], parent: Option<&Computed>, parent_eff: f32, carried:
         }
         let mut below = carried;
         remember(&e.style, &mut below);
+        // `<foreignObject>` content is laid out in SVG user units and magnified
+        // with the SVG (its raster scale carries the zoom), so its descendants
+        // start unzoomed. Blink reaches the same used size by zooming them and
+        // putting the inverse into `LayoutSVGForeignObject::
+        // LocalToSVGParentTransform` (`svg-foreignObject-font-size`).
+        if e.tag.eq_ignore_ascii_case("foreignObject") {
+            walk(&mut e.children, Some(&e.style), 1.0, Carried::default());
+            continue;
+        }
         walk(&mut e.children, Some(&e.style), eff, below);
     }
 }
@@ -169,6 +179,8 @@ fn set_side(s: &mut Sides, i: usize, v: Len) {
 /// Явное `inherit` по сторонам: сторона родителя в точках × `k`, флаг
 /// снимается — слияние эту сторону уже не копирует. Не в точках — флаг
 /// остаётся, слияние копирует как прежде (доля и `auto` зуму безразличны).
+// The side index selects both the inheritance flag and the matching CSS edge.
+#[allow(clippy::needless_range_loop)]
 fn per_side(flags: &mut [bool; 4], into: &mut Sides, from: &Sides, k: f32) {
     for i in 0..4 {
         if flags[i]

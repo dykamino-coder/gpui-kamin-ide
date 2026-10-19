@@ -1,5 +1,6 @@
 //! Разрывы и запреты на кромках детей: break-before/after и avoid между соседями.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::flex_lines::class_a_box;
 use crate::layout::fragment::probe::forced_opaque;
@@ -22,7 +23,7 @@ use crate::style::computed::Display;
 /// колоночного флекса. Через крайнего ребёнка ни тот, ни другой не проходит,
 /// и обе пары остаются нетронутыми. Перенос «бок о бок» для запретов —
 /// отдельный шаг с отдельным замером.
-pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
+pub(crate) fn edge_avoid(e: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
     let own = if last {
         e.style.break_after_avoid
     } else {
@@ -31,7 +32,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
     if own {
         return true;
     }
-    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, true) {
+    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, true, vcx) {
         return value;
     }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
@@ -59,9 +60,9 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
             .children
             .iter()
             .filter(|n| !is_blank(n))
-            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_avoid(k, last)));
+            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_avoid(k, last, vcx)));
     }
-    matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_avoid(k, last))
+    matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_avoid(k, last, vcx))
 }
 
 /// Принудительный разрыв на краю коробки: свой `break-before`/`break-after`
@@ -71,7 +72,7 @@ pub(crate) fn edge_avoid(e: &Element, last: bool) -> bool {
 /// 'break-after' value on a last in-flow child box»; Blink
 /// `BoxFragmentBuilder::SetInitialBreakBefore`). Текст или строчный на краю
 /// — анонимная коробка без разрыва, пропагация останавливается.
-pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
+pub(crate) fn edge_break(e: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
     // Абсолютная коробка вне потока: `break-*` применяется к блочным коробкам
     // ПОТОКА (css-break-3 §3.1 «Applies to: block-level boxes …»), а внутри
     // своего потока абсолют фрагментируется отдельно (Blink: OOF ложится во
@@ -101,7 +102,7 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
     if forced_opaque(e) {
         return false;
     }
-    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, false) {
+    if let Some(value) = crate::layout::fragment::flex_lines::row_break_edge(e, last, false, vcx) {
         return value;
     }
     let mut live = e.children.iter().filter(|n| !is_blank(n)).filter(
@@ -189,8 +190,8 @@ pub(crate) fn edge_break(e: &Element, last: bool) -> bool {
             });
     if row_nowrap || cells_abreast || grid_one_row {
         return live
-            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last)));
+            .any(|n| matches!(n, Node::Element(k) if class_a_box(k) && edge_break(k, last, vcx)));
     }
     let edge = if last { live.next_back() } else { live.next() };
-    matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_break(k, last))
+    matches!(edge, Some(Node::Element(k)) if class_a_box(k) && edge_break(k, last, vcx))
 }

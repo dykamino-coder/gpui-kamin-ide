@@ -24,6 +24,11 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     crate::style::computed::font_weight::inherit(c, parent, own);
     c.italic = own.italic.or(parent.italic);
     c.oblique = own.oblique.or(parent.oblique);
+    c.font_oblique_angle = if own.oblique.is_some() {
+        own.font_oblique_angle
+    } else {
+        parent.font_oblique_angle
+    };
     c.underline = own.underline.or(parent.underline);
     c.line_through = own.line_through.or(parent.line_through);
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
@@ -53,12 +58,15 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Направление письма наследуется: `writing-mode` ставят на `body`, а ось
     // потока обязана смениться у КАЖДОГО вложенного блока — иначе вертикально
     // становится только сам `body`, а его дети снова текут вниз.
-    c.vertical = own.vertical.or(parent.vertical);
-    c.vertical_rl = own.vertical_rl.or(parent.vertical_rl);
-    c.sideways = own.sideways.or(parent.sideways);
+    let wm = crate::style::computed::writing_mode::WritingProps::of(own).inherit(
+        crate::style::computed::writing_mode::WritingProps::of(parent),
+    );
+    (c.writing_mode, c.flat_mode, c.text_orientation) =
+        (wm.writing_mode, wm.flat_mode, wm.text_orientation);
     c.combine_upright = own.combine_upright.or(parent.combine_upright);
-    c.rotated_line = own.rotated_line.or(parent.rotated_line);
+    c.turned_line = own.turned_line || parent.turned_line;
     c.ortho_limit = own.ortho_limit.or(parent.ortho_limit);
+    c.cq_box = parent.container_box_for_children();
     c.orthogonal_scrollport = parent.orthogonal_scrollport;
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
@@ -88,17 +96,12 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => own.vertical_align_base,
     };
-    c.upright = own.upright.or(parent.upright);
-    c.text_sideways = own.text_sideways.or(parent.text_sideways);
     // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
     // элемента переставляются (`apply.rs`), а по оси x идут группы базовых.
     c.parent_grid = match parent.display {
         Some(crate::style::computed::Display::Grid)
         | Some(crate::style::computed::Display::InlineGrid) => {
-            match (
-                parent.vertical == Some(true),
-                parent.vertical_rl == Some(true),
-            ) {
+            match (parent.wm().vertical(), parent.wm().block_rl()) {
                 (false, _) => 1,
                 (true, false) => 2,
                 (true, true) => 3,
@@ -146,6 +149,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.text_indent_hanging = own.text_indent_hanging.or(parent.text_indent_hanging);
     c.break_anywhere = own.break_anywhere.or(parent.break_anywhere);
     c.break_word = own.break_word.or(parent.break_word);
+    c.auto_phrase = own.auto_phrase.or(parent.auto_phrase);
     c.balance_lines = own.balance_lines.or(parent.balance_lines);
     c.break_anywhere_strict = own.break_anywhere_strict.or(parent.break_anywhere_strict);
     c.line_break_loose = own.line_break_loose.or(parent.line_break_loose);
@@ -158,7 +162,7 @@ fn match_parent_align(parent: &Computed, own: &Computed, c: &mut Computed) {
     if own.text_align_match_parent == 0 || (parent.rtl.is_none() && parent.text_align.is_none()) {
         return;
     }
-    let rtl = parent.rtl == Some(true);
+    let rtl = parent.wm().rtl();
     let resolve = |a: Option<TextAlign>| {
         Some(match a.unwrap_or(TextAlign::Start) {
             TextAlign::Start if rtl => TextAlign::Right,

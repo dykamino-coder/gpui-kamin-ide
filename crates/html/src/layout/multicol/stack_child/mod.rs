@@ -17,10 +17,10 @@ mod cuts;
 use cuts::{copy_cuts_and_height, stack_child_of};
 mod build;
 mod fixed;
-use build::build_copy;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
+mod paginate;
 use frag_div::frag_box_div;
 
 #[allow(clippy::too_many_arguments, clippy::needless_borrow)]
@@ -124,17 +124,17 @@ pub(super) fn multicol_stack_child(
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.
     let rel = hoist_relative(&mut copy);
-    // Срез строки хоста (`kamin-host-trim-*`) — рисует
+    // Срез строки хоста (`Marks::host_trim_*`) — рисует
     // `blocks()` копии по её флагам.
-    if copy.attr("kamin-host-trim-start").is_some() {
+    if copy.marks.host_trim_start {
         copy.style.text_box_trim_start = true;
     }
-    if copy.attr("kamin-host-trim-end").is_some() {
+    if copy.marks.host_trim_end {
         copy.style.text_box_trim_end = true;
     }
     // Вложенный многоколоночник с ВЕРХА внешней колонки
     // (первый ребёнок без поля) и заданной высотой —
-    // рядами во внешний фрагментаинер (`flow::OUTER_ROW`).
+    // рядами во внешний фрагментаинер (`FragCx::outer_row`).
     // С верха колонки граница k-го ряда — ровно k·H, и
     // внешняя стопка режет коробку краем колонки
     // (`fill_at`, не монолит) точно по рядам; мера
@@ -152,7 +152,7 @@ pub(super) fn multicol_stack_child(
         &copy,
     );
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let mut inner = inherit(&merged, &copy.style);
+    let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками:
@@ -182,10 +182,9 @@ pub(super) fn multicol_stack_child(
     // содержимым — вид `slice` css-break-3 §4.
     let copy_ix = std::cell::Cell::new(0usize);
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let build = |first: bool, part: usize| {
-        build_copy(
-            e,
-            opts,
+    let build = |first: bool, part: usize, band: bool| {
+        build::build_copy(
+            &opts.in_stack_copy(), // копии — «внутри стопки» (`FragCx`)
             col_vert,
             col_rl,
             line_col_w,
@@ -202,6 +201,7 @@ pub(super) fn multicol_stack_child(
             whole,
             first,
             part,
+            band,
         )
     };
     // Монолиты (css-break-3 §4.1) — их разрыв
@@ -218,7 +218,8 @@ pub(super) fn multicol_stack_child(
     // §4.1 «scroll containers»); `hidden`/`clip` —
     // обрезка, не прокрутка, и режется как блок
     // (корень A4).
-    finish_stack_child(
+    let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy);
+    let mut child = finish_stack_child(
         ix,
         mt,
         mb,
@@ -240,5 +241,16 @@ pub(super) fn multicol_stack_child(
         nest_row,
         whole,
         build,
-    )
+        opts.cx.vcx(),
+    );
+    child.paginate = paginate;
+    // CSS 2.1 §10.3.3: у переопределённых полей отбрасывается конец по
+    // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
+    // левого края (Blink `ComputeMarginsFor` по стилю контейнера).
+    child.par.rtl_root_in_ltr = !col_vert
+        && !merged.wm().rtl()
+        && !merged.wm().vertical()
+        && copy.style.wm().rtl()
+        && !copy.style.wm().vertical();
+    child
 }

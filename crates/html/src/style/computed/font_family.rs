@@ -17,7 +17,7 @@ pub(super) fn apply(style: &mut Computed, v: &str) {
     if !v.split(',').all(|part| family_name_ok(part.trim())) {
         return;
     }
-    style.font_families = Some(families(v));
+    style.font_families = accept_parsed!(style, Some(families(v)));
     let lower = v.to_ascii_lowercase();
     // Моноширинный запрос несёт смысл (код) и решает выбор
     // встроенного шрифта, если названного в системе нет.
@@ -196,10 +196,7 @@ pub(crate) fn fallbacks(
         .filter(|name| {
             crate::text::metrics::font_installed(name) || crate::text::fonts::alias(name).is_some()
         })
-        .map(|name| {
-            crate::text::fonts::alias_stretch(name, style.font_stretch)
-                .unwrap_or_else(|| name.clone())
-        })
+        .map(|name| crate::text::fonts::alias_for(name, style).unwrap_or_else(|| name.clone()))
         .collect();
     if let Some(document) = crate::text::fonts::document_fallbacks() {
         list.extend(document.fallback_list().iter().cloned());

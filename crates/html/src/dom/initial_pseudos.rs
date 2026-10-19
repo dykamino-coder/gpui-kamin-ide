@@ -1,11 +1,13 @@
 //! Keep authored initial-pseudo declarations separate from the originating box.
 //! The existing direct text path also needs its legacy base-style layer.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Rule};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn resolve(
     name: &str,
     rules: &[Rule],
@@ -14,6 +16,7 @@ pub(super) fn resolve(
     path: &[Ancestor],
     sibs: Sibs,
     base: Option<&Computed>,
+    vcx: ValueCx<'_>,
 ) -> Option<Computed> {
     let mut found: Vec<&Rule> = rules
         .iter()
@@ -24,7 +27,7 @@ pub(super) fn resolve(
     (!found.is_empty()).then(|| {
         let mut merged = base.cloned().unwrap_or_default();
         for rule in found {
-            merged.apply_decls_with_vars(&rule.decls, vars);
+            merged.apply_decls_with_vars(&rule.decls, vars, vcx);
         }
         merged
     })

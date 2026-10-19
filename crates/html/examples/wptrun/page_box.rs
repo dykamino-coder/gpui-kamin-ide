@@ -1,9 +1,10 @@
 //! Print-pair page box: `@page` declarations resolved into sheet geometry.
 
 use super::page_box_values::{
-    abs_len, apply_border, apply_margin, apply_padding, apply_size, default_margin, fit,
-    logical_side, page_font_size, rel_len,
+    abs_len, apply_border, apply_margin, apply_padding, apply_size, default_margin, logical_side,
+    page_font_size, rel_len,
 };
+use kamin_html::value::ValueCx;
 
 /// Лист по номеру и имени страницы.
 pub(super) type PageBoxFn = std::rc::Rc<dyn Fn(usize, &str) -> PageBox>;
@@ -32,6 +33,7 @@ pub(super) fn page_box(
     decls: Vec<(String, String)>,
     root_margin: [f32; 4],
     wm: (bool, bool, bool),
+    vcx: ValueCx<'_>,
 ) -> PageBox {
     use kamin_html::value::Color;
     let (mut w, mut h) = (480.0f32, 288.0f32);
@@ -68,11 +70,11 @@ pub(super) fn page_box(
     // page-size-016/017); проценты полей — от ОБЪЯВЛЕННОГО размера
     // страницы по своей оси (page-margin-005: 10% от 300px = 30px),
     // поэтому размер считается первым проходом.
-    let fs = page_font_size(&decls);
-    let px_abs = |t: &str| -> Option<f32> { abs_len(t, fs) };
+    let fs = page_font_size(&decls, vcx);
+    let px_abs = |t: &str| -> Option<f32> { abs_len(t, fs, vcx) };
     for (k, v) in &decls {
         match k.as_str() {
-            "size" => apply_size(v, fs, &mut w, &mut h),
+            "size" => apply_size(v, fs, &mut w, &mut h, vcx),
             "width" => explicit_w = px_abs(v).or(explicit_w),
             "height" => explicit_h = px_abs(v).or(explicit_h),
             _ => {}
@@ -80,7 +82,8 @@ pub(super) fn page_box(
     }
     let (pw, ph) = (w, h);
     let mut turn = 0u8;
-    let px_of = move |t: &str, axis_h: bool| -> Option<f32> { rel_len(t, axis_h, fs, (pw, ph)) };
+    let px_of =
+        move |t: &str, axis_h: bool| -> Option<f32> { rel_len(t, axis_h, fs, (pw, ph), vcx) };
     for (k, v) in &decls {
         match k.as_str() {
             "margin" if v.trim() == "inherit" => {
@@ -131,7 +134,7 @@ pub(super) fn page_box(
             }
             "background" | "background-color" => {
                 let first = v.split_whitespace().next().unwrap_or("");
-                if let Some(c) = Color::parse(first) {
+                if let Some(c) = Color::parse(first, vcx) {
                     bg = Some(c);
                 }
             }
@@ -139,7 +142,7 @@ pub(super) fn page_box(
                 for t in v.split_whitespace() {
                     if let Some(px) = px_of(t, false) {
                         outline.0 = px;
-                    } else if let Some(c) = Color::parse(t) {
+                    } else if let Some(c) = Color::parse(t, vcx) {
                         outline.2 = c;
                     }
                 }
@@ -155,8 +158,8 @@ pub(super) fn page_box(
             }
             "outline-width" => outline.0 = px_of(v, false).unwrap_or(outline.0),
             "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
-            "outline-color" => outline.2 = Color::parse(v.trim()).unwrap_or(outline.2),
-            "border" => apply_border(v, px_of, &mut border),
+            "outline-color" => outline.2 = Color::parse(v.trim(), vcx).unwrap_or(outline.2),
+            "border" => apply_border(v, px_of, &mut border, vcx),
             _ => {}
         }
     }
@@ -208,5 +211,25 @@ pub(super) fn page_box(
         border,
         outline,
         turn,
+    }
+}
+
+/// Размер листа по оси при явном `width`/`height` (см. `page_box`).
+fn fit(size: f32, used: f32, a: bool, b: bool, ma: &mut f32, mb: &mut f32) -> f32 {
+    match (a, b) {
+        (true, true) => {
+            *ma = (size - used) / 2.0;
+            *mb = *ma;
+            size
+        }
+        (true, false) => {
+            *ma = size - used - *mb;
+            size
+        }
+        (false, true) => {
+            *mb = size - used - *ma;
+            size
+        }
+        (false, false) => used + *ma + *mb,
     }
 }

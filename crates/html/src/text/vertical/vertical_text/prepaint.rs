@@ -3,15 +3,12 @@
 use super::VerticalText;
 use super::{VT_FRAME, VT_MEASURED};
 use crate::text::vertical::{VT_CCW, VT_PHASE};
-use gpui::{App, Bounds, GlobalElementId, InspectorElementId, Pixels, Window, px};
+use gpui::{App, Bounds, Pixels, Window, px};
 
 impl VerticalText {
     pub(crate) fn prepaint_impl(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
@@ -26,7 +23,7 @@ impl VerticalText {
         // `available-size-020/021` не чинятся, а `slr-alongside-vlr-floats`
         // ломается. Значит предел приходит откуда-то ещё.
         let along = bounds.size.height;
-        let child = self.child.as_mut().unwrap();
+        let child = &mut self.child;
         if along > gpui::px(0.) {
             let space = gpui::size(
                 gpui::AvailableSpace::Definite(along),
@@ -54,7 +51,7 @@ impl VerticalText {
         let prev = VT_FRAME.with(|c| c.replace(Some(frame)));
         let prev_phase = VT_PHASE.with(|c| c.replace(phase));
         let flat = gpui::point(bounds.origin.x, bounds.origin.y + phase);
-        self.child.as_mut().unwrap().prepaint_at(flat, window, cx);
+        self.child.prepaint_at(flat, window, cx);
         VT_PHASE.with(|c| c.set(prev_phase));
         VT_FRAME.with(|c| c.set(prev));
         VT_CCW.with(|c| c.set(prev_ccw));

@@ -5,7 +5,7 @@ use gpui::{AnyElement, Pixels};
 impl VerticalText {
     pub fn new(child: AnyElement) -> Self {
         VerticalText {
-            child: Some(child),
+            child,
             natural: gpui::Size::default(),
             fit_limit: None,
             inline_constraint: None,

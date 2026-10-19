@@ -1,6 +1,7 @@
 //! Размер рисунка: атрибуты, `viewBox`, замещаемый размер по умолчанию, вписывание в пределы.
 
 use crate::dom::Element;
+use crate::style::values::value::px_strict;
 
 /// Размер рисунка в логических пикселях: из атрибутов, иначе из `viewBox`.
 pub fn size_of(e: &Element) -> (f32, f32) {
@@ -53,12 +54,34 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         );
     }
     if let (Some(w), Some(h)) = (given_w, given_h) {
-        return (w, h);
+        // Both sides given: min/max clamp each axis on its own (CSS 2.1
+        // §10.4, §10.7); intrinsic keywords there are already lengths
+        // (`dom::element_style::svg_size`, `svg-no-ar-*-min-content`).
+        let clamp = |v: f32, lo, hi| {
+            v.min(css(hi).unwrap_or(f32::INFINITY))
+                .max(css(lo).unwrap_or(0.0))
+        };
+        return (
+            clamp(w, e.style.min_width, e.style.max_width),
+            clamp(h, e.style.min_height, e.style.max_height),
+        );
     }
     // Заявленное `aspect-ratio` СИЛЬНЕЕ соотношения из `viewBox`
     // (css-sizing-4 §4: «the preferred aspect ratio … overrides any natural
     // aspect ratio»): рисунок переформатируется, как и картинка.
-    if let Some(r) = e.style.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0) {
+    // `auto <ratio>` (css-sizing-4 §5.1) берёт запасное соотношение, только
+    // когда природного нет: ни `viewBox`, ни пары атрибутов
+    // (`aspect-ratio/replaced-element-016`).
+    let fallback = e
+        .style
+        .aspect_ratio_auto
+        .filter(|_| view_box_ratio(e).is_none());
+    if let Some(r) = e
+        .style
+        .aspect_ratio
+        .or(fallback)
+        .filter(|r| r.is_finite() && *r > 0.0)
+    {
         match (given_w, given_h) {
             (Some(w), None) => return (w, w / r),
             (None, Some(h)) => return (h * r, h),
@@ -124,10 +147,7 @@ pub(super) fn view_box_ratio(e: &Element) -> Option<(f32, f32)> {
 /// Возвращает копию с обеими сторонами в точках — их и возьмёт `size_of`.
 pub fn stretch_fit(e: &Element, cb_width: Option<f32>) -> Element {
     use crate::style::values::value::Len;
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let attr_num = |name: &str| -> bool {
         e.attr(name)
             .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())

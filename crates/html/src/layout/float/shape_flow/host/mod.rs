@@ -15,9 +15,9 @@ pub(super) fn shape_host_div(
     vert_lr: bool,
     bands: &super::super::bands::FloatBands,
 ) -> gpui::Div {
-    if inherited.vertical_rl == Some(true) || vert_lr {
+    if inherited.wm().block_rl() || vert_lr {
         div().relative()
-    } else if e.attr("inflow-height") != Some("1") && bands.bottom(None) > 0.0 {
+    } else if !e.marks.inflow_height && bands.bottom(None) > 0.0 {
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО: гейтить охват флоатов признаком «коробка
         // образует свой контекст форматирования», как это делают Blink
         // (`block_layout_algorithm.cc`: `IsNewFormattingContext()`) и Servo
@@ -66,8 +66,9 @@ pub(super) fn band_host_flow(
     mut host: gpui::Div,
     band_host: bool,
 ) -> Result<AnyElement, gpui::Div> {
+    let vcx = opts.cx.vcx();
     if band_host
-        && inherited.vertical_rl != Some(true)
+        && !inherited.wm().block_rl()
         && !vert_lr
         && rest
             .iter()
@@ -132,9 +133,9 @@ pub(super) fn band_host_flow(
             // Поля кладёт держатель — на самой коробке они сдвинули бы её
             // ещё раз (та же причина, что у флоатов, `:5092-5095`).
             inner.style.margin = crate::style::computed::Sides::default();
-            let mut merged = inherit(inherited, &c.style);
+            let mut merged = inherit(inherited, &c.style, vcx);
             merged.self_node = c.node_id;
-            let built = styled_div_with(&inner, &merged)
+            let built = styled_div_with(&inner, &merged, &opts.cx)
                 .children(blocks(&inner.children, &merged, opts))
                 .into_any_element();
             host = host.child(div().absolute().left(px(l + ml)).top(px(top)).child(built));
@@ -142,7 +143,7 @@ pub(super) fn band_host_flow(
         // §10.6.7 плюс собственная высота потока: держатели абсолютные и сами
         // хост не растят. `min_h` переопределяет поставленный на `:5129` —
         // это и нужно, там учтены только флоаты.
-        let bottom = if e.attr("inflow-height") == Some("1") {
+        let bottom = if e.marks.inflow_height {
             y
         } else {
             bands.bottom(None).max(y)

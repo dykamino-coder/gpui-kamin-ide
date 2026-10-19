@@ -15,21 +15,27 @@ pub(super) fn own_box_atom(
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
-    let mut merged = inherit(inherited, &e.style);
+    let vcx = opts.cx.vcx();
+    let mut merged = inherit(inherited, &e.style, vcx);
+    // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
+    // `element()`: the atom path skipped it and `height: 350vh` on an
+    // `inline-block` with `vertical-align: top` collapsed to its content
+    // (`monolithic-overflow-014/015-print`).
+    merged.resolve_viewport(opts.viewport, vcx);
     // CSS 2 sections 5.12.1-5.12.2 include inline-block containers,
     // but not ordinary inline boxes, in the pseudo-line scope.
     if e.style.display == Some(Display::InlineBlock) && e.style.inline_display != Some(true) {
-        pseudo_line_layers::install(e, &mut merged);
+        pseudo_line_layers::install(e, &mut merged, vcx);
     }
-    let mut box_ = styled_div_with(e, &merged);
+    let mut box_ = styled_div_with(e, &merged, &opts.cx);
     // Writing Modes 4 §4.3: orthogonal content has no baseline in the line's
     // axis. As in Blink LogicalBoxFragment::LastBaseline, let the line
     // synthesize an alphabetic baseline at the atomic margin box's under edge.
     if e.style.display == Some(Display::InlineBlock)
         && e.style.inline_display != Some(true)
-        && merged.vertical == Some(true)
-        && inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true)
+        && merged.wm().vertical()
+        && !inherited.wm().vertical()
+        && !inherited.wm().turned()
     {
         box_.style().baseline_unavailable = Some(true);
     }
@@ -80,7 +86,7 @@ pub(super) fn own_box_atom(
     // (`block-flow-direction-vrl-011`). Путь атома минует общий гейт в
     // `element()`, поэтому ось ставится здесь.
     if e.style.display == Some(Display::InlineBlock)
-        && merged.vertical == Some(true)
+        && merged.wm().vertical()
         && e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
                 if !k.inline || matches!(k.style.display, Some(Display::Block)))
@@ -111,7 +117,7 @@ pub(super) fn own_box_atom(
             merged.ortho_limit = Some((h - edges).max(0.0));
         }
         box_ = box_.flex();
-        box_ = if merged.vertical_rl == Some(true) {
+        box_ = if merged.wm().block_rl() {
             box_.flex_row_reverse()
         } else {
             box_.flex_row()
@@ -123,14 +129,37 @@ pub(super) fn own_box_atom(
     // мимо, и `clip-path` на `inline-block` не резал ничего
     // (`clip-path-contentBox-1d/1e`). Обёртка сама возвращает
     // элемент как есть, когда группировать нечего.
-    Some(grouped(
-        box_.children(crate::layout::multicol::gap_rules::decorated_children(
-            e,
+    // An atomic inline (`inline-block` and kin) is a block container: when it
+    // is positioned (or otherwise a containing block) its padding box is the
+    // containing block of absolute descendants (CSS 2.1 §10.1 item 4), so
+    // grandchildren must leave their non-positioned parent block for this
+    // box's layer, as on the generic block path (`generic_box/children.rs`).
+    // Without the layer the box resolved its insets against its parent
+    // (`justify-self-static-position-001-ref`: `left: 20px` from the inner
+    // block's padding edge, 5px off). Genuine inline boxes stay excluded
+    // (see the measurement above).
+    // Only `inline-block`: table parts reach this path too, and their
+    // absolute children keep the table's own handling
+    // (`position-relative-table-*-absolute-child`).
+    let cb_layer = e.style.display == Some(Display::InlineBlock)
+        && !genuine_inline
+        && crate::text::inline::establishes_cb(&merged);
+    let cb_layer = cb_layer.then(|| {
+        crate::layout::positioned::layer_scope::LayerScope::strict(
+            &opts.cx.positioning,
             &merged,
-            opts,
-            || blocks(&e.children, &merged, opts),
-        ))
-        .into_any_element(),
+            crate::paint::stacking::fixed_cb_layer_box(&merged),
+        )
+    });
+    let mut kids = crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, || {
+        blocks(&e.children, &merged, opts)
+    });
+    if let Some(layer) = cb_layer {
+        kids.extend(layer.finish());
+    }
+    Some(grouped(
+        box_.children(kids).into_any_element(),
         &e.style,
+        vcx,
     ))
 }

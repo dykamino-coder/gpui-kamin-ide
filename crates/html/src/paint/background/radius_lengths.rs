@@ -1,12 +1,13 @@
 //! Carry calculated length-percentage radii to the border-box rasterizer.
 
+use crate::document::state::ValueCx;
 use crate::style::values::value::{Len, calc_get};
 
-pub(super) fn token(length: Option<Len>) -> String {
+pub(super) fn token(length: Option<Len>, vcx: ValueCx<'_>) -> String {
     match length {
         Some(Len::Px(v)) => format!("{v}"),
         Some(Len::Pct(p)) => format!("{}%", p * 100.0),
-        Some(Len::Calc(i)) => match calc_get(i).pct_px() {
+        Some(Len::Calc(i)) => match calc_get(i, vcx).pct_px() {
             // This is an internal rrect token, not serialized CSS. Its two
             // terms stay separate until the axis's percentage basis is known.
             Some((percentage, pixels)) => format!("{pixels}:{percentage}"),

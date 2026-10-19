@@ -2,7 +2,7 @@
 
 use super::with::image_with;
 use crate::dom::Element;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::result_large_err)]
@@ -11,12 +11,11 @@ pub(super) fn contained_image(
     src: &str,
     e: &Element,
     d: gpui::Div,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> Result<AnyElement, gpui::Div> {
+    let vcx = cx.vcx();
     if e.style.contains_width() || e.style.contains_height() {
-        let side = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let side = px_lossy_zero;
         let b = e.style.borders();
         let pad_x =
             side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
@@ -57,6 +56,23 @@ pub(super) fn contained_image(
             Some(r) if nw && !nh => used(e.style.width, e.style.contain_intrinsic.0) / r,
             _ => used(e.style.height, e.style.contain_intrinsic.1),
         };
+        // CSS Containment 2 §3.1: lay out content in the final box, including
+        // its min/max constraints, rather than the suppressed natural size.
+        let clamp = |value: f32, min: Option<Len>, max: Option<Len>, padding: f32| {
+            let content = |length| match length {
+                Some(Len::Px(v)) => Some(if e.style.border_box == Some(true) {
+                    (v - padding).max(0.0)
+                } else {
+                    v
+                }),
+                _ => None,
+            };
+            value
+                .min(content(max).unwrap_or(f32::INFINITY))
+                .max(content(min).unwrap_or(0.0))
+        };
+        let cw = clamp(cw, e.style.min_width, e.style.max_width, pad_x);
+        let ch = clamp(ch, e.style.min_height, e.style.max_height, pad_y);
         let mut d = d;
         if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
             d = d.w(px(cw + pad_x));
@@ -72,10 +88,10 @@ pub(super) fn contained_image(
             .strip_prefix("file:///")
             .or_else(|| src.strip_prefix("file://"))
             .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image = match crate::paint::background::source(&crate::paint::background::key(
-            local.unwrap_or(src),
-            &e.style,
-        )) {
+        let mut image = match crate::paint::background::source(
+            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+            vcx,
+        ) {
             Some(crate::paint::background::Source::Vector { markup, .. })
                 if cw > 0.0 && ch > 0.0 =>
             {
@@ -114,7 +130,7 @@ pub(super) fn contained_image(
             fitted.style.border_box = Some(false);
             fitted.style.contain_size = Some(false);
             fitted.style.contain_inline_size = Some(false);
-            return Ok(image_with(&fitted, base_font));
+            return Ok(image_with(&fitted, base_font, cx));
         }
         image = image.w(px(cw)).h(px(ch)).object_fit(gpui::ObjectFit::Fill);
         return Ok(d.child(image).into_any_element());

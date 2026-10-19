@@ -1,11 +1,12 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
 use crate::dom::Element;
+use crate::hooks::IntoHooked;
 use crate::layout::positioned::predicates::edge_set;
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, Styled};
+use gpui::{AnyElement, Styled};
 mod outer;
 use outer::{finish_table_outer, table_outer_box};
 mod tracks;
@@ -18,6 +19,8 @@ mod captions;
 use captions::{collect_captions, wrap_with_captions};
 
 #[allow(clippy::too_many_arguments, clippy::ptr_arg)]
+// Finishing consumes row elements and the corresponding band geometry together.
+#[allow(clippy::type_complexity)]
 pub(super) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,
@@ -31,7 +34,7 @@ pub(super) fn table_finish(
     row_elements: Vec<&Element>,
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
     table_font: f32,
-    table_family: &String,
+    table_family: &str,
     spacing: (f32, f32),
     cols: u16,
     from_cols: Vec<Option<f32>>,
@@ -43,17 +46,15 @@ pub(super) fn table_finish(
     have_rows: bool,
     px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let mut grid_children = under;
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::CellBgPainter::new(cell_bgs.clone()).into_any_element(),
-        );
+        grid_children.push(crate::layout::table::paint::CellBgPainter::new(cell_bgs).hooked());
     }
     grid_children.extend(cells);
     if paint_layers {
-        grid_children.push(
-            crate::layout::table::paint::EdgePainter::new(table_edges.clone()).into_any_element(),
-        );
+        grid_children
+            .push(crate::layout::table::paint::EdgePainter::new(table_edges.clone()).hooked());
     }
     grid_children.extend(cells_over);
     let cells = grid_children;
@@ -84,6 +85,7 @@ pub(super) fn table_finish(
         col_widths,
         cols_collapsed,
         cols_pct,
+        opts.cx.cb_width,
     );
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
     // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:
@@ -94,7 +96,7 @@ pub(super) fn table_finish(
     // `percentage-sizing-of-table-cell-children-004` («красное видно»),
     // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
     // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
-    let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall);
+    let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall, vcx);
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
     // (CSS 2.1 §17.6.2). Рамка при этом рисуется ПОВЕРХ фонов ячеек, как и
@@ -147,6 +149,7 @@ pub(super) fn table_finish(
         fixed_floor,
         inherited,
         needs_clone,
+        &opts.cx,
     );
     // Таблица без заданной ширины СЖИМАЕТСЯ по содержимому, а не растягивается
     // на родителя (CSS 2.1 §17.5.2, shrink-to-fit). Пока она растягивалась,
@@ -227,5 +230,6 @@ pub(super) fn table_finish(
         root_table,
         outer,
         shrink_wrap,
+        vcx,
     )
 }

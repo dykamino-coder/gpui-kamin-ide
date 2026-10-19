@@ -1,6 +1,7 @@
 //! Полосы авто-рядов сетки: проходы размещения элементов и высоты рядов.
 
 use super::{grid_rows_px, grid_stack};
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::{GridSpot, ShapeCx};
 use crate::style::computed::Display;
@@ -42,10 +43,13 @@ pub(super) use pass::grid_pass;
 /// на каждой границе ряда увела бы разрез у зелёных
 /// `grid-item-oof-002/003` (ряды `50px 150px`, край колонки на 100 внутри
 /// второго ряда) с края на 50 и потеряла бы половину колонки.
+// Grid bands retain row heights and fragmentation flags together.
+#[allow(clippy::type_complexity)]
 pub(crate) fn grid_auto_row_bands(
     c: &Element,
     depth: u8,
     cx: ShapeCx,
+    vcx: ValueCx<'_>,
 ) -> Option<(Vec<(f32, f32)>, Vec<GridSpot>)> {
     use crate::style::computed::{AutoFlow, Track, TrackSize};
     let s = &c.style;
@@ -111,7 +115,7 @@ pub(crate) fn grid_auto_row_bands(
     let mut fill: Vec<f32> = Vec::new();
     for pass in 0..2u8 {
         grid_pass(
-            c, depth, cx, s, cols, &mut used, &mut spots, &mut fill, pass,
+            c, depth, cx, s, cols, &mut used, &mut spots, &mut fill, pass, vcx,
         )?;
     }
     let rows_n = track.len().max(used.len());

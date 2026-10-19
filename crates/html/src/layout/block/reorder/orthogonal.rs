@@ -4,7 +4,7 @@ use crate::dom::Node;
 use crate::layout::writing_mode::orthogonal_fixed_child;
 use crate::render::in_flow;
 use crate::style::computed::{Align, Computed, Display};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// Зеркальный ортогональный случай: ВЕРТИКАЛЬНЫЙ блок внутри горизонтального
 /// контейнера. Его строчная ось — высота, и авто-размер по ней зажимается
@@ -13,7 +13,7 @@ use crate::style::values::value::Len;
 /// раскладка сама.
 pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Computed) -> Vec<Node> {
     let has_vertical = children.iter().any(|n| match n {
-        Node::Element(ch) => !ch.inline && ch.style.vertical == Some(true),
+        Node::Element(ch) => !ch.inline && ch.style.wm().vertical(),
         _ => false,
     });
     if !has_vertical {
@@ -22,7 +22,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
     let mut out = children;
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
-        if ch.inline || ch.style.vertical != Some(true) {
+        if ch.inline || !ch.style.wm().vertical() {
             continue;
         }
         if !in_flow(&ch.style) {
@@ -48,7 +48,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // его уважают; для корня с ФОНОМ-КАРТИНКОЙ якорь ранее гасил
         // canvas-слой — тем страницам якорь не ставится (замерено).
         if matches!(ch.tag.as_str(), "html" | "body")
-            && ch.style.vertical_rl == Some(true)
+            && ch.style.wm().block_rl()
             && ch.style.align_self.is_none()
             && ch.style.bg_image.is_none()
         {
@@ -96,10 +96,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             && margins > 0.0
             && matches!(container.display, None | Some(Display::Block))
         {
-            let px = |l: Option<Len>| match l {
-                Some(Len::Px(v)) => v,
-                _ => 0.0,
-            };
+            let px = px_lossy_zero;
             // Предел — внутренний размер СБ: при `border-box` заданная
             // высота включает его рамки и отбивки по той же оси.
             let inner = if container.border_box == Some(true) {

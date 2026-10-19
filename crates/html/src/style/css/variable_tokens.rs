@@ -55,12 +55,11 @@ fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
             if is_var && open == '(' {
                 let clean = super::strip_comments(inner);
                 let args = super::split_top_level(&clean, ',');
-                let name = args[0].trim();
-                if !super::selector_tokens::ident(name)
-                    || !super::unescape(name).starts_with("--")
-                    || super::unescape(name) == "--"
-                    || !sequence(inner, true, depth + 1)
-                {
+                // css-variables-2 §3: the argument grammar is
+                // `var( <declaration-value> , <declaration-value>? )`; the
+                // name is checked against <custom-property-name> only at
+                // substitution time (`var(1px)`, `var(--)` parse fine).
+                if args[0].trim().is_empty() || !sequence(inner, true, depth + 1) {
                     return false;
                 }
             } else if !sequence(inner, false, depth + 1) {
@@ -159,7 +158,7 @@ mod tests {
 
     #[test]
     fn invalid_fallback_does_not_replace_a_previous_declaration() {
-        for fallback in ["!", "!important", ";", "var(1px)"] {
+        for fallback in ["!", "!important", ";", "var(,green)"] {
             let decls = parse_decls(&format!("--a: green; --a: var(--b,{fallback})"));
             assert_eq!(decls.get("--a").map(String::as_str), Some("green"));
         }
@@ -176,6 +175,8 @@ mod tests {
             "var(--a, var(--b, green))",
             "var(/* before */--a/* , */, green)",
             "1var(--a,!)",
+            "var(1px)",
+            "var(--, green)",
         ] {
             assert!(super::valid(value), "{value}");
         }

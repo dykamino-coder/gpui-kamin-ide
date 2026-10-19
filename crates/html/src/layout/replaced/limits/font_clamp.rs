@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_strict};
 
 /// Кегль для разрешения долей на атоме: свой размер шрифта уже разрешён в
 /// слитом стиле, иначе — базовый.
@@ -112,10 +112,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
     if !(kw(c.min_width) || kw(c.max_width) || kw(c.min_height) || kw(c.max_height)) {
         return e.clone();
     }
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => Some(v),
-        _ => None,
-    };
+    let px = px_strict;
     let ratio = c.aspect_ratio.filter(|r| r.is_finite() && *r > 0.0);
     let nat_w = match (px(c.height), ratio) {
         (Some(h), Some(r)) => Some(h * r),

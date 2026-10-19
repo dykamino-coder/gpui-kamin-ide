@@ -44,7 +44,8 @@ use setup::{
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
 pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let inherited_axes = axes::inherited(e, inherited);
+    let vcx = opts.cx.vcx();
+    let inherited_axes = axes::inherited(e, inherited, vcx);
     let e = inherited_axes.as_ref().unwrap_or(e);
     // Ключевое слово содержимого в `max-height` таблицы горизонтального
     // письма (блочная ось) ведёт себя как начальное `none`: высота таблицы и
@@ -63,7 +64,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // больше его не видит (`max-height-table`: `max-height: 0` сплющивал
     // ряд 5px в ноль).
     let unlimited;
-    let inherited = if inherited.vertical != Some(true)
+    let inherited = if !inherited.wm().vertical()
         && matches!(
             inherited.max_height,
             Some(Len::MinContent)
@@ -94,7 +95,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стилем, — а бесхозные ячейки и текст заворачиваются в анонимный ряд.
     // Без этого содержимое просто пропадало: сборщик рядов видел только
     // настоящие `<tr>` и группы.
-    let fixed = fixup_table_children(&e.children);
+    let fixed = fixup_table_children(&e.children, vcx);
     // `<thead>` встаёт первым, `<tfoot>` — последним (CSS 2.2 §17.5.3,
     // HTML §14.3.9) СТАБИЛЬНОЙ перестановкой ГРУПП: прочий порядок детей
     // не трогается. Прошлая попытка ломала css-position — она сдвигала
@@ -111,6 +112,17 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Группа — непрерывный кусок рядов с одним `<tbody>`; ряды прямо в
     // таблице (анонимная группа) идут одним куском.
     let (rows_left, cols) = rows_left_and_cols(&rows);
+    // css-tables-3 §table-grid: a cell-less `<col>` keeps its track only with a
+    // definite used width > 0 (Gecko/Blink; `col-definite-*-001`).
+    let definite_cols = crate::layout::table::columns::col_elements(&e.children)
+        .iter()
+        .rposition(|c| {
+            c.is_some_and(|c| {
+                crate::layout::table::columns::definite_col_px(c).is_some_and(|w| w > 0.0)
+            })
+        })
+        .map_or(0, |i| i + 1);
+    let cols = cols.max(u16::try_from(definite_cols).unwrap_or(u16::MAX));
 
     // ОДНА сетка на всю таблицу, а не по сетке на строку. Со строками-сетками
     // ширина колонки считалась внутри строки, и соседние строки расходились —
@@ -174,7 +186,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // стола (`fixed-table-layout-025/028..031`). Ширина стола АВТО в этот
     // гейт не попадает: на ней держится семья `margin-*-applies-to-*`, на
     // которой умерли три прошлых захода (см. записи ниже по ячейке).
-    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols);
+    let zero_cols = zero_width_cols(e, cols, &row_elements, &from_cols, opts.cx.cb_width);
     let busy: Vec<u16> = vec![0; cols as usize];
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,
@@ -188,7 +200,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
     // table-progression-htb-001 — письмо к рядам и группам НЕ применяется).
-    let table_is_vertical = e.style.vertical == Some(true) || inherited.vertical == Some(true);
+    let table_is_vertical = e.style.wm().vertical() || inherited.wm().vertical();
     measure_col_widths(
         e,
         inherited,

@@ -1,6 +1,8 @@
 //! Форма выреза флоата (shape-outside): коробки, отступ формы, многоугольник.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::tolerance::COORD_EPS;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn float_shape_of(
@@ -26,6 +28,7 @@ pub(super) fn float_shape_of(
     off: f32,
     sm: f32,
     vert_rl: bool,
+    vcx: ValueCx<'_>,
 ) -> super::super::shapes::FloatShape {
     if !vert_rl && let Some(at) = raw.find("circle(").or_else(|| raw.find("ellipse(")) {
         let inner = &raw[at..];
@@ -33,7 +36,7 @@ pub(super) fn float_shape_of(
             Some(end) => &inner[..=end],
             None => inner,
         };
-        match crate::paint::background::shape_params(inner, bw, bh, 1.0) {
+        match crate::paint::background::shape_params(inner, bw, bh, 1.0, vcx) {
             Some((cx, cy, rx, ry)) => {
                 // Координаты — от опорной коробки; переводим к margin-box.
                 let (cx, cy) = (cx + bx, cy + by);
@@ -51,8 +54,8 @@ pub(super) fn float_shape_of(
                 // оси зажат [0, mw] — как растровый путь
                 // (`background::shape_profile`). Лежащий внутри — прежней
                 // аналитикой, ни на сотую не меняется.
-                const EPS: f32 = 0.01;
-                let spills = cy - ry < -EPS || cy + ry > mh + EPS || cx + rx > mw + EPS;
+                let spills =
+                    cy - ry < -COORD_EPS || cy + ry > mh + COORD_EPS || cx + rx > mw + COORD_EPS;
                 if spills {
                     let rows = mh.ceil().max(1.0) as usize;
                     let ext: Vec<f32> = (0..rows)
@@ -132,7 +135,7 @@ pub(super) fn float_shape_of(
             threshold: f.style.shape_threshold.unwrap_or(0.0),
         };
         if let Some(shape) = (!vert_rl && sm <= 0.0)
-            .then(|| crate::paint::background::rounded_float(&raw, &sb, side))
+            .then(|| crate::paint::background::rounded_float(&raw, &sb, side, vcx))
             .flatten()
         {
             crate::layout::float::shapes::FloatShape::RoundedBox {
@@ -146,16 +149,15 @@ pub(super) fn float_shape_of(
                 // правый край (так его и строит `shape_profile_block`), у
                 // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
                 let pside = if line_left_bottom { -side } else { side };
-                crate::paint::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside).map(
-                    |mut p| {
+                crate::paint::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside, vcx)
+                    .map(|mut p| {
                         if vert_lr {
                             p.reverse();
                         }
                         p
-                    },
-                )
+                    })
             } else {
-                crate::paint::background::shape_profile(&raw, &sb, sm.max(0.0), side)
+                crate::paint::background::shape_profile(&raw, &sb, sm.max(0.0), side, vcx)
             };
             match profile {
                 Some(ext) => crate::layout::float::shapes::FloatShape::Profile {

@@ -1,6 +1,8 @@
 //! Generated-content functions retain the CSS token types of their arguments.
 //! CSS Lists 3 #counter-functions: quoted strings cannot name a counter or its style.
+
 use super::{ContentItem, unescape_content};
+use crate::document::state::ValueCx;
 
 /// Разбор значения `content` в список составляющих (css-content-3 §2).
 ///
@@ -15,7 +17,7 @@ use super::{ContentItem, unescape_content};
 // ни одна из ожидаемых `element-replacement*` не позеленела. Картинка в
 // `content` требует природного размера ДО раскладки строки (`cross-fade` —
 // от двух источников), а атом меряется после.
-pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
+pub(crate) fn parse_content(raw: &str, vcx: ValueCx<'_>) -> Option<Vec<ContentItem>> {
     let bytes = raw.as_bytes();
     let mut at = 0usize;
     let mut out = vec![];
@@ -114,7 +116,11 @@ pub(crate) fn parse_content(raw: &str) -> Option<Vec<ContentItem>> {
             // CSS Content 3 §2: a single image replaces the element. Keep
             // filter() intact so its result enters the replaced-image path.
             "filter"
-                if crate::paint::background::filter_image::parse(&raw[at..=close]).is_some() =>
+                if crate::style::computed::filter_image::parse_filter_image(
+                    &raw[at..=close],
+                    vcx,
+                )
+                .is_some() =>
             {
                 out.push(ContentItem::Image(raw[at..=close].to_string()));
             }

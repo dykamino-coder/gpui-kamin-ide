@@ -20,6 +20,7 @@ pub(crate) fn atom_line_align(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<crate::text::paragraph::AtomAlign> {
+    let vcx = opts.cx.vcx();
     use crate::text::paragraph::AtomAlign;
     let st = &e.style;
     let atomic = matches!(
@@ -66,7 +67,7 @@ pub(crate) fn atom_line_align(
                 // ради него значило вести тест рядом, а эталон строкой
                 // (`baseline-with-orthogonal-flow-001`).
                 let floated = k.style.float.is_some_and(|f| f != 0);
-                (k.style.vertical.is_some() && !sized_by_parent && floated)
+                (k.style.writing_mode.is_some() && !sized_by_parent && floated)
                     || has_vertical(&k.children, box_layout(&k.style))
             }
             _ => false,
@@ -86,10 +87,10 @@ pub(crate) fn atom_line_align(
     // baseline. Обратная ортогональность требует адаптера повёрнутой строки:
     // обычный атом и text-combine там пока идут общим прежним путём.
     let orthogonal_block = st.display == Some(Display::InlineBlock)
-        && st.vertical == Some(true)
-        && inherited.vertical != Some(true)
-        && inherited.rotated_line != Some(true);
-    if (st.vertical.is_some() && !box_layout(st) && !orthogonal_block)
+        && st.wm().vertical()
+        && !inherited.wm().vertical()
+        && !inherited.wm().turned();
+    if (st.writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {
         return None;
@@ -136,7 +137,7 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = inherit(inherited, st);
+    let merged = inherit(inherited, st, vcx);
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
@@ -152,7 +153,7 @@ pub(crate) fn atom_line_align(
                 if let Some(v) = st.vertical_shift_px {
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
-                    let family = merged.font_family.clone().unwrap_or_default();
+                    let family = merged.font_family.unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(Some(l), &family, size))
                 } else if let Some(k) = st.vertical_shift {
                     AtomAlign::Shift(-k * size)

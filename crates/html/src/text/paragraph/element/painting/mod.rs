@@ -9,6 +9,8 @@ use gpui::{
 };
 
 impl Paragraph {
+    // Keep the extracted GPUI Element paint signature intact.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn paint_impl(
         &mut self,
         id: Option<&GlobalElementId>,

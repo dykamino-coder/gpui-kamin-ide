@@ -3,7 +3,7 @@
 use crate::dom::Node;
 use crate::render::*;
 use crate::style::computed::{Align, Computed, Display, FlexDir};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn item_sizing(
@@ -47,7 +47,7 @@ pub(crate) fn item_sizing(
         // (`replaced-alignment-with-aspect-ratio-001/002`).
         // Вертикальную сетку не трогаем: оси там переставлены.
         let both_attrs = e.style.attr_sized.0 && e.style.attr_sized.1;
-        let transfer = both_attrs && sx != sy && inherited.vertical != Some(true);
+        let transfer = both_attrs && sx != sy && !inherited.wm().vertical();
         let free_x = e.style.attr_sized.0 && (sx || !e.style.attr_sized.1 || transfer);
         let free_y = e.style.attr_sized.1 && (sy || !e.style.attr_sized.0 || transfer);
         if free_x || free_y {
@@ -102,14 +102,11 @@ pub(crate) fn item_sizing(
     if matches!(
         inherited.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && inherited.vertical.is_none()
+    ) && inherited.writing_mode.is_none()
         && e.style.border_box != Some(true)
         && let Some(Len::Px(b)) = e.style.flex_basis
     {
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let px_of = px_lossy_zero;
         let bd = e.style.borders();
         let row = matches!(
             inherited.flex_dir,
@@ -142,7 +139,7 @@ pub(crate) fn item_sizing(
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
         && !positioned_out
-        && inherited.vertical.is_none()
+        && inherited.writing_mode.is_none()
     {
         let auto_w = matches!(e.style.width, None | Some(Len::Auto));
         let auto_h = matches!(e.style.height, None | Some(Len::Auto));

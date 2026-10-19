@@ -24,6 +24,10 @@ pub struct ProbeServer {
 impl ProbeServer {
     /// Стартует listener-поток на 127.0.0.1:`port` (0 = эфемерный).
     /// `token` — обязателен в каждом запросе, если задан.
+    #[allow(
+        clippy::print_stderr,
+        reason = "preserve probe panic diagnostics until a logger is injected"
+    )]
     pub fn start(
         port: u16,
         token: Option<String>,

@@ -1,7 +1,7 @@
 //! Обход html5ever-дерева: каскад и сборка узлов (walk).
 
 mod ancestor;
-use ancestor::element_ancestor;
+use ancestor::{element_ancestor, element_attrs};
 
 mod sibling_survey;
 pub(super) use sibling_survey::walk_children;
@@ -16,9 +16,11 @@ mod children;
 use crate::dom::walk::children::collect_children;
 
 mod cascade;
+mod form_appearance;
 use crate::dom::walk::cascade::cascade_element;
 
 mod animation_frames;
+mod details_content;
 mod finish_element;
 mod pseudo_styles;
 mod style_normalization;
@@ -28,6 +30,7 @@ use crate::dom::walk::pseudo_styles::pseudo_styles;
 use crate::dom::walk::style_normalization::normalize_style;
 
 use super::{content, initial_pseudos, language, presentational_hints};
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Display;
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -36,14 +39,15 @@ use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
-fn walk(
+fn build_dom_node(
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
-    path: &[Ancestor],
+    path: &mut Vec<Ancestor>,
     spot: Spot,
     preserve: bool,
     sibs: Sibs,
@@ -52,6 +56,7 @@ fn walk(
     level_pos: usize,
     out: &mut Vec<Node>,
 ) {
+    let vcx = tree.doc.values();
     match &handle.data {
         NodeData::Text { contents } => {
             walk_text(
@@ -67,11 +72,7 @@ fn walk(
             if DROP_TAGS.contains(&tag.as_str()) {
                 return;
             }
-            let attrs: Vec<(String, String)> = attrs
-                .borrow()
-                .iter()
-                .map(|a| (a.name.local.to_string(), a.value.to_string()))
-                .collect();
+            let attrs = element_attrs(&attrs.borrow());
             let mut me = element_ancestor(
                 handle,
                 &tag,
@@ -79,15 +80,18 @@ fn walk(
                 content::html_attributes(&name.ns),
                 spot,
                 sibs,
+                tree,
             );
-            let (mut style, own_vars, _scheme, shadow) =
-                cascade_element(&mut me, &attrs, &tag, handle, rules, vars, path, spot, sibs);
+            let (mut style, own_vars, _scheme, shadow) = cascade_element(
+                &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs,
+            );
             let vars = &own_vars;
-            normalize_style(&mut style, &tag, &attrs, path);
+            normalize_style(&mut style, &tag, &attrs, path, vcx);
+            content::snapshot_generated(&mut me, &style, path.last());
             // Правила с `:hover` собираются отдельным слоем: в базовый стиль
             // им нельзя, иначе элемент выглядел бы всегда наведённым.
             let (hover, first_letter, first_line, marker_layer) =
-                pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs);
+                pseudo_styles(&mut style, &tag, rules, vars, &me, path, sibs, vcx);
             // Обратный счётчик без числа: начальное значение — итог
             // предварительного обхода области (css-lists-3
             // §instantiating-counters). Считается ЗДЕСЬ, до применения
@@ -95,7 +99,7 @@ fn walk(
             let reversed_start =
                 |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
                     crate::style::generated::counters_scan::reversed_initial(
-                        rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
+                        tree, rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
                     )
                 };
 
@@ -106,6 +110,7 @@ fn walk(
                     attrs,
                     &me,
                     handle,
+                    tree,
                     rules,
                     vars,
                     frames,
@@ -159,12 +164,12 @@ fn walk(
             // before ::before; counter-* declared on ::marker (with DOM
             // inheritance of counter directives) apply right here, before the
             // marker's own content is evaluated (`marker-counter`).
-            if let Some(mut m) = marker_layer {
+            if let Some(mut m) = marker_layer.filter(|_| is_list_item) {
                 content::inherit_generated(&mut m, Some(&me));
                 counters.enter_marker();
                 language::pseudo(counters, &m, &me, path);
                 apply_counter_decls(&m, counters, "", &[], &mut false, &|_, _| 0);
-                if let Some(items) = host_content(&m, &me) {
+                if let Some(items) = host_content(&m, &me, vcx) {
                     let quotes = m.quotes.as_ref();
                     style.marker_text = Some(content_text(
                         &items,
@@ -172,6 +177,11 @@ fn walk(
                         &attrs,
                         quotes,
                         me.html_attrs,
+                        crate::style::generated::counter_style::Context::new(
+                            &m,
+                            me.counter_context,
+                        ),
+                        vcx,
                     ));
                     style.no_marker = Some(false);
                 } else if m.content_none == Some(true) {
@@ -182,8 +192,8 @@ fn walk(
             }
 
             let (mut children, scroll_pseudos) = collect_children(
-                handle, rules, vars, frames, counter, counters, &me, path, sibs, &style, &shadow,
-                preserve, &tag, &attrs,
+                handle, tree, rules, vars, frames, counter, counters, &me, path, sibs, &style,
+                &shadow, preserve, &tag, &attrs,
             );
             // CSS Lists §12.4.1: ordinary counters survive into following siblings.
             // Restore only the isolated subtree; remove_stale handles ordinary scopes.
@@ -206,7 +216,11 @@ fn walk(
                     c.style.implicit_anchor = Some(*counter);
                 }
             }
-            let anim = animation_frames(&style, frames, vars);
+            if tag == "details" {
+                children =
+                    details_content::wrap(children, &attrs, rules, vars, &me, path, sibs, vcx);
+            }
+            let anim = animation_frames(&style, frames, vars, vcx);
             finish_element(
                 style,
                 children,
@@ -220,10 +234,11 @@ fn walk(
                 first_line,
                 scroll_pseudos,
                 out,
+                vcx,
             );
         }
         _ => walk_children(
-            handle, rules, vars, frames, counter, counters, path, preserve, out,
+            handle, tree, rules, vars, frames, counter, counters, path, preserve, out,
         ),
     }
 }

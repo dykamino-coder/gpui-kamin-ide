@@ -20,6 +20,7 @@ pub(super) fn non_inline_columns(
     stretch: Option<f32>,
     all_inline: bool,
 ) -> Option<Option<AnyElement>> {
+    let vcx = opts.cx.vcx();
     if !all_inline {
         // Один-единственный блок с текстом — это тот же поток, только в своей
         // коробке: колонки режут его строки, а не обходят стороной. Разметка
@@ -31,14 +32,22 @@ pub(super) fn non_inline_columns(
         if only.style.position.is_some() || only.style.float.is_some_and(|f| f != 0) {
             return Some(None);
         }
+        // Пункт списка — не «тот же поток»: его `::marker` (css-lists-3 §3)
+        // принадлежит коробке, а текстовый путь рисует только строки
+        // (`multicol-span-all-006`: `<summary>` в ряду колонок перед
+        // спаннером терял ▾). Такой ряд идёт стопкой, где ребёнок
+        // рисуется целиком.
+        if only.list_item.is_some() {
+            return Some(None);
+        }
         // Вложенный многоколоночник с заданной высотой — не «тот же поток»: его
         // строки идут СВОИМИ колонками, рядами во внешних (`nested_rows_box`,
-        // `flow::OUTER_ROW`), а текстовый путь разложил бы их по внешним
+        // `FragCx::outer_row`), а текстовый путь разложил бы их по внешним
         // колонкам (`multicol-breaking-000…006`).
         if nested_rows_box(only) {
             return Some(None);
         }
-        let inside = inherit(inherited, &only.style);
+        let inside = inherit(inherited, &only.style, vcx);
         return Some(column_flow_in(
             only,
             &inside,

@@ -2,13 +2,14 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::hooks::IntoHooked;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
 use crate::render::{RenderOpts, block_level_in_flow, own_context, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 mod lift;
 pub(super) use lift::band_flow_rest_lift;
 use lift::flow_interior_plain;
@@ -18,10 +19,10 @@ mod build_kid;
 use build_kid::build_band_kid;
 
 thread_local! {
-    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост:
-    /// 0 — горизонтальное, 1 — `vertical-rl`, 2 — `vertical-lr`. Им гейты
+    /// Письмо содержащего блока, для которого `wrap_floats` собирает хост. Им гейты
     /// измеряемого хоста отличают ортогональный поток от своего.
-    pub(crate) static BAND_WM: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    pub(crate) static BAND_WM: std::cell::Cell<crate::style::computed::writing_mode::WritingMode> =
+        const { std::cell::Cell::new(crate::style::computed::writing_mode::WritingMode::INITIAL) };
 }
 
 thread_local! {
@@ -74,7 +75,7 @@ impl Drop for BandCbhGuard {
 }
 
 /// Вернуть прежнее письмо хоста по выходе из `blocks()`.
-pub(crate) struct BandWmGuard(pub(crate) u8);
+pub(crate) struct BandWmGuard(pub(crate) crate::style::computed::writing_mode::WritingMode);
 
 impl Drop for BandWmGuard {
     fn drop(&mut self) {
@@ -89,8 +90,10 @@ pub(super) fn band_orthogonal(c: &Computed) -> bool {
     // Письмо наследуется: незаданное у коробки — письмо содержащего блока,
     // ортогональна только коробка, ЗАДАВШАЯ другое.
     let wm = BAND_WM.with(std::cell::Cell::get);
-    c.vertical.is_some_and(|v| v != (wm != 0))
-        || (c.vertical == Some(true) && c.vertical_rl.is_some_and(|r| r != (wm == 1)))
+    c.vertical_decl().is_some_and(|v| v != wm.vertical())
+        || (c.wm().vertical()
+            && c.rl_decl()
+                .is_some_and(|r| r != (wm.vertical() && wm.block_rl())))
 }
 
 /// Есть ли в поддереве непустой текст.
@@ -126,20 +129,17 @@ pub(super) fn band_flow_block(c: &Element, em: f32) -> bool {
 /// строчные элементы, атомы) собирается в АНОНИМНЫЙ блок (CSS 2.1 §9.2.1.1)
 /// — у него своя строка и свои вырезы. Внепоточный сосед хост отменяет
 /// (как у `band_piece`).
-pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32) -> Option<Vec<Node>> {
-    band_flow_rest_lift(rest, em, None)
+pub(super) fn band_flow_rest(rest: Vec<Node>, em: f32, cb: Option<f32>) -> Option<Vec<Node>> {
+    band_flow_rest_lift(rest, em, None, cb)
 }
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
 /// `band_flow` зовёт на каждую пробу и на `prepaint`.
 pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let count: usize = e.attr("count").and_then(|c| c.parse().ok()).unwrap_or(0);
-    let em: f32 = e
-        .attr("em")
-        .and_then(|c| c.parse().ok())
-        .unwrap_or(opts.base_size());
-    let cbh: Option<f32> = e.attr("cbh").and_then(|c| c.parse().ok());
-    let cbw: Option<f32> = e.attr("cbw").and_then(|c| c.parse().ok());
+    let host = e.marks.shape_flow.unwrap_or_default();
+    let count = host.count;
+    let em: f32 = host.em.unwrap_or(opts.base_size());
+    let (cbh, cbw) = (host.cbh, host.cbw);
     let mut inherited = inherited.clone();
     if let Some(h) = cbh {
         inherited.height = Some(Len::Px(h));
@@ -154,14 +154,12 @@ pub(super) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         inherited,
         opts,
         em,
-        e.attr("adjoining-start") == Some("1"),
+        e.marks.adjoining_start,
     );
-    let flow =
-        crate::layout::float::band_flow::BandFlow::new(kids, e.attr("inflow-height") != Some("1"));
-    if inherited.vertical == Some(true) {
-        flow.vertical(inherited.vertical_rl == Some(true))
-            .into_any_element()
+    let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
+    if inherited.wm().vertical() {
+        flow.vertical(inherited.wm().block_rl()).hooked()
     } else {
-        flow.into_any_element()
+        flow.hooked()
     }
 }

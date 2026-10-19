@@ -62,10 +62,9 @@ pub(super) fn align(placed: &mut [Placed], n: usize, rows: bool) {
                             p.grid_baseline
                         };
                         let edge = if last { p.end - 1 } else { p.start };
+                        // Parallel horizontal items share both groups with a baseline
+                        // synthesized from their border box, as in ordinary grid.
                         participates
-                            // Match ordinary grid's first-baseline fallback for
-                            // parallel horizontal items; last groups still share the end edge.
-                            && (last || p.baseline_x_flags & 8 == 0)
                             && edge == track
                             && ((p.baseline_x_flags & 1 != 0) != last) == end_side
                     })

@@ -1,8 +1,10 @@
-//! Assignment for shadow; split out to keep the owning module within 250 lines.
+//! Discover declarative shadow roots, build their stylesheet scopes and assign slots.
 
-use super::{Scope, SlotInfo, Slotted, attr_of, is_slot, node_key};
+use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
+use crate::document::state::ValueCx;
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
-use crate::style::css::{Media, Rule, parse_stylesheet_media};
+use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
 use crate::style::select::has::{HasArg, collect_has_args, parse_has_arg};
 use crate::style::select::{Ancestor, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -13,7 +15,7 @@ use std::rc::Rc;
 /// shadowrootmode="open|closed">` (HTML §13.2.6.4.4: второй такой шаблон к
 /// хосту не крепится и остаётся обычным `<template>`). Возвращает сам
 /// шаблон (его надо вычесть из светлых детей) и содержимое — корень тени.
-pub(super) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
+pub(in crate::dom) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
     host.children.borrow().iter().find_map(|child| {
         let NodeData::Element {
             name,
@@ -38,21 +40,30 @@ pub(super) fn declarative_shadow(host: &Handle) -> Option<(Handle, Handle)> {
 /// Таблицы тени: копия листа агента + каждый `<style>` тени отдельной
 /// таблицей происхождения документа. Возвращает область и аргументы её
 /// `:has()` — отметки для них ставятся по дереву тени.
-pub(super) fn shadow_scope(root: &Handle, agent: &Scope, media: Media) -> (Rc<Scope>, Vec<HasArg>) {
+pub(super) fn shadow_scope(
+    root: &Handle,
+    agent: &Scope,
+    media: Media,
+    layers: &mut LayerRegistry,
+    vcx: ValueCx<'_>,
+) -> (Rc<Scope>, Vec<HasArg>) {
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
     let mut sheets: Vec<String> = vec![];
     collect_style_tags(root, &mut sheets);
     for css in &sheets {
         let base = rules.len();
-        for (i, r) in parse_stylesheet_media(css, media).into_iter().enumerate() {
+        for (i, r) in parse_document_sheet(css, media, layers, vcx)
+            .into_iter()
+            .enumerate()
+        {
             rules.push(Rule {
                 order: base + i,
                 origin: 1,
                 ..r
             });
         }
-        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media)));
+        frames.extend(crate::style::css::parse_keyframes_in(css, Some(media), vcx));
     }
     let mut raw: Vec<String> = vec![];
     rules.retain(|r| collect_has_args(&r.sel, &mut raw));
@@ -81,16 +92,17 @@ pub(super) fn assign_slots(
     light: &[Handle],
     outer: &Rc<Scope>,
     host_path: &Rc<Vec<Ancestor>>,
-    drafts: &mut HashMap<usize, SlotInfo>,
+    drafts: &mut HashMap<NodeKey, SlotInfo>,
+    tree: &TreeIndex,
 ) {
     let mut slots: Vec<Handle> = vec![];
     collect_slots(root, &mut slots);
     if slots.is_empty() {
         return;
     }
-    let (spots, all) = census_of(light);
+    let (spots, all) = census_of(light, tree);
     let light_all = Rc::new(all);
-    let mut assigned: HashMap<usize, Vec<Slotted>> = HashMap::new();
+    let mut assigned: HashMap<NodeKey, Vec<Slotted>> = HashMap::new();
     let mut pos = 0usize;
     for (idx, node) in light.iter().enumerate() {
         let (name, anc, elem_pos) = match &node.data {
@@ -114,20 +126,25 @@ pub(super) fn assign_slots(
         else {
             continue;
         };
-        assigned.entry(node_key(slot)).or_default().push(Slotted {
-            node: node.clone(),
-            light_idx: idx,
-            elem_pos,
-            anc,
-        });
+        assigned
+            .entry(NodeKey::of(slot))
+            .or_default()
+            .push(Slotted {
+                node: node.clone(),
+                light_idx: idx,
+                elem_pos,
+                anc,
+            });
     }
     for slot in slots {
-        let key = node_key(&slot);
+        let key = NodeKey::of(&slot);
+        let assigned = assigned.remove(&key).unwrap_or_default();
         drafts.insert(
             key,
             SlotInfo {
+                origin: None,
                 slot,
-                assigned: assigned.remove(&key).unwrap_or_default(),
+                assigned,
                 outer: outer.clone(),
                 host_path: host_path.clone(),
                 light: light.to_vec(),

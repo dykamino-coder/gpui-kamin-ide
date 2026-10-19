@@ -185,11 +185,26 @@ impl Paragraph {
         if self.text[..end].ends_with('\u{feff}') {
             return px(0.);
         }
-        let at = self.text[..end]
-            .char_indices()
-            .next_back()
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+        // Принудительный разрыв единицей письма не является: трекинг конца
+        // строки — у последнего знака ПЕРЕД ним (css-text-3 §8.2). Пока брался
+        // трекинг самого `\n`, строка с `<span>` вокруг перевода строки
+        // теряла или сохраняла лишний зазор (`letter-spacing-end-of-line-002`).
+        let body = self.text[..end].trim_end_matches('\n');
+        if body.is_empty() {
+            return px(0.);
+        }
+        let (at, last) = body.char_indices().next_back().unwrap_or((0, ' '));
+        // Before the `\n` may sit an inline box margin spacer or an atom
+        // carrier: their "tracking" is the box advance, not letter-spacing,
+        // and must not be removed (`text-indent-intrinsic-*`,
+        // `word-space-transform-011`).
+        if body.len() < end
+            && (matches!(last, '\u{feff}' | '\u{fffc}' | '\u{200b}')
+                || self.atom_boxes.iter().any(|b| b.at == at)
+                || self.spacers.contains(&at))
+        {
+            return px(0.);
+        }
         self.letter_spans
             .iter()
             .find(|(r, _)| r.contains(&at))

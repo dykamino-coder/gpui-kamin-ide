@@ -10,6 +10,7 @@
 //! Числа матриц — из спецификации (CSS Color 4, приложение о преобразованиях).
 //! Менять их «на глаз» нельзя: они согласованы между собой и с точками белого.
 
+use crate::document::state::ValueCx;
 pub(crate) use gradient_stop::{
     colour_at as gradient_colour_at, out_of_gamut, parse as interpolation_color,
 };
@@ -19,6 +20,8 @@ mod direct_gradient;
 pub(crate) use direct_gradient::DirectGradient;
 mod functions;
 mod gradient_stop;
+mod hsl_ramp;
+pub(crate) use hsl_ramp::HslRamp;
 mod icc;
 mod matrices;
 mod mix;
@@ -29,8 +32,8 @@ use convert::{
 use functions::color_fn;
 pub(crate) use functions::resolve_relative;
 pub(crate) use icc::apply_icc;
-pub use icc::load_profiles;
-use icc::{PROFILES, icc_to_srgb};
+pub(crate) use icc::load_profiles_sheets;
+use icc::{icc_to_srgb, profile};
 use matrices::{
     A98_TO_XYZ, D50, D50_TO_D65, D65_TO_D50, LINEAR_SRGB_TO_XYZ, P3_TO_XYZ, PROPHOTO_TO_XYZ,
     REC2020_TO_XYZ, XYZ_TO_LINEAR_SRGB, mul, srgb_gamma, srgb_linear,
@@ -68,7 +71,7 @@ fn number(raw: &str, base: f32) -> Option<f32> {
 }
 
 /// Разобрать одну из записей CSS Color 4. `None` — запись не наша.
-pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
+pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
     let text = raw.trim();
     let lower = text.to_ascii_lowercase();
     let inner = |name: &str| -> Option<&str> {
@@ -82,7 +85,7 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
     // `contrast-color()` — чёрный или белый, что контрастнее к данному цвету
     // (css-color-5 §3): сравниваются отношения контраста к обоим.
     if let Some(body) = inner("contrast-color") {
-        let c = crate::style::values::value::Color::parse(body)?;
+        let c = crate::style::values::value::Color::parse(body, vcx)?;
         let y = 0.2126 * srgb_linear(c.r) + 0.7152 * srgb_linear(c.g) + 0.0722 * srgb_linear(c.b);
         let against_white = 1.05 / (y + 0.05);
         let against_black = (y + 0.05) / 0.05;
@@ -105,10 +108,10 @@ pub fn parse(raw: &str) -> Option<(f32, f32, f32, f32)> {
         return lch(body, true);
     }
     if let Some(body) = inner("color") {
-        return color_fn(body);
+        return color_fn(body, vcx);
     }
     if let Some(body) = inner("color-mix") {
-        return color_mix(body);
+        return color_mix(body, vcx);
     }
     None
 }
@@ -147,4 +150,85 @@ fn lch(body: &str, ok: bool) -> Option<(f32, f32, f32, f32)> {
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    //! Тесты цветовых пространств: lab/lch/oklab, color(), color-mix(), относительный синтаксис.
+
+    use super::*;
+
+    /// Сравнение идёт по ЗАЖАТЫМ величинам: цвет шире sRGB выходит за
+    /// пределы, и зажимает его разбор цвета, а не преобразование.
+    fn close(a: (f32, f32, f32, f32), b: (f32, f32, f32), what: &str) {
+        let a = (
+            a.0.clamp(0.0, 1.0),
+            a.1.clamp(0.0, 1.0),
+            a.2.clamp(0.0, 1.0),
+            a.3,
+        );
+        for (got, want) in [(a.0, b.0), (a.1, b.1), (a.2, b.2)] {
+            assert!((got - want).abs() < 0.02, "{what}: {got} против {want}");
+        }
+    }
+
+    /// Белый и красный обязаны совпасть во всех записях.
+    #[test]
+    fn known_colors_survive_the_conversion() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        close(
+            parse("lab(100% 0 0)", vcx).unwrap(),
+            (1.0, 1.0, 1.0),
+            "lab белый",
+        );
+        close(
+            parse("oklch(0.628 0.2577 29.23)", vcx).unwrap(),
+            (1.0, 0.0, 0.0),
+            "oklch красный",
+        );
+        // Цвет шире охвата втягивается СЖАТИЕМ ЦВЕТНОСТИ (§13.1.5), а не
+        // срезом: зелёный остаётся насыщенным зелёным, но уже не (0,1,0).
+        let p3 = parse("color(display-p3 0 1 0)", vcx).unwrap();
+        assert!(
+            p3.1 > 0.9 && p3.0 < 0.3 && p3.2 < 0.5,
+            "p3 зелёный после втягивания: {p3:?}"
+        );
+        close(
+            parse("color(srgb 0.2 0.4 0.6)", vcx).unwrap(),
+            (0.2, 0.4, 0.6),
+            "srgb как есть",
+        );
+    }
+
+    /// `hwb`: белизна с чернотой в сумме за единицу дают серый.
+    #[test]
+    fn hwb_mixes_white_and_black() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        close(
+            parse("hwb(0 100% 0%)", vcx).unwrap(),
+            (1.0, 1.0, 1.0),
+            "белый",
+        );
+        close(
+            parse("hwb(0 0% 100%)", vcx).unwrap(),
+            (0.0, 0.0, 0.0),
+            "чёрный",
+        );
+        close(
+            parse("hwb(0 50% 50%)", vcx).unwrap(),
+            (0.5, 0.5, 0.5),
+            "серый",
+        );
+    }
+
+    /// Доли смешивания приводятся к единице.
+    #[test]
+    fn color_mix_honours_shares() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        close(
+            parse("color-mix(in srgb, white 25%, black 75%)", vcx).unwrap(),
+            (0.25, 0.25, 0.25),
+            "четверть белого",
+        );
+    }
+}

@@ -1,26 +1,46 @@
 //! Обход содержащих коробок и геометрия motion path.
 
 use super::{Cb, apply_offset_transform};
+use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, Position};
-use crate::style::values::value::Len;
+use crate::style::values::value::{Len, px_lossy_zero};
 
 /// `parent` — геометрия родителя и признак «родитель сам устанавливает
 /// содержащий блок для абсолютов» (нужен, чтобы не приписать абсолюту чужую
 /// опорную коробку).
-pub(super) fn walk(nodes: &mut [Node], parent: Option<(Cb, bool)>) {
+///
+/// `icb_open` — ни один предок не устанавливает содержащий блок: абсолют и
+/// `fixed` стоят тогда в НАЧАЛЬНОМ содержащем блоке (окне), размер которого
+/// знает только сборщик, поэтому их offset-трансформ откладывается до
+/// отрисовки (`apply_icb`, `Computed::offset_icb`).
+pub(super) fn apply_offset_transforms(
+    nodes: &mut [Node],
+    parent: Option<(Cb, bool)>,
+    icb_open: bool,
+    vcx: ValueCx<'_>,
+) {
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         // Геометрия снимается ДО правки стиля: `transform` на размеры коробки
         // не влияет, но порядок так честнее читается.
         let mine = cb_of(&e.style).map(|g| (g, crate::text::inline::establishes_cb(&e.style)));
-        if super::motion_style(&e.style).offset_path.is_some() {
+        let est = crate::text::inline::establishes_cb(&e.style);
+        let in_icb = match e.style.position {
+            Some(Position::Absolute) => icb_open,
+            Some(Position::Fixed) => true,
+            _ => false,
+        };
+        if super::motion_style(&e.style).offset_path.is_some() && in_icb {
+            e.style.offset_icb = true;
+        } else if super::motion_style(&e.style).offset_path.is_some() {
             let cb = parent
                 .filter(|(_, est)| cb_is_parent(&e.style, *est))
                 .map(|(g, _)| with_self(g, &e.style));
-            apply_offset_transform(&mut e.style, cb.as_ref());
+            let origin = svg_origin(e);
+            apply_offset_transform(&mut e.style, cb.as_ref(), origin, vcx);
         }
-        walk(&mut e.children, mine);
+        apply_offset_transforms(&mut e.children, mine, icb_open && !est, vcx);
     }
 }
 
@@ -43,10 +63,7 @@ pub(super) fn cb_is_parent(c: &Computed, parent_establishes: bool) -> bool {
 /// требуют раскладки, а её на этом шаге нет. Без размера возвращается `None`,
 /// и путь строится ровно теми ветками, которым содержащий блок не нужен.
 pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let (w, h) = match (p.width, p.height) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w, h),
         _ => return None,
@@ -109,10 +126,7 @@ pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
 /// стоит ещё один блок; там результат так и останется неверным, пока место в
 /// потоке не будет прокинуто с раскладки.
 pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
-    let px = |l: Option<Len>| match l {
-        Some(Len::Px(v)) => v,
-        _ => 0.0,
-    };
+    let px = px_lossy_zero;
     let abs = matches!(c.position, Some(Position::Absolute));
     // Вставки абсолюта считаются от PADDING-коробки блока (§10.1 п.4), сдвиг
     // относительного — от статической позиции в content-коробке (§9.4.3).
@@ -136,4 +150,18 @@ pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
         )
     };
     g
+}
+
+/// Левый верх `fill-box`/`stroke-box` SVG-фигуры (css-transforms-1
+/// §transform-box); у остальных элементов и при `view-box` — нулевой.
+fn svg_origin(e: &crate::dom::Element) -> (f32, f32) {
+    let stroke = match e.style.transform_box {
+        Some(1) => false,
+        Some(2) => true,
+        _ => return (0.0, 0.0),
+    };
+    if super::shapes::shape_d(e).is_none() && !matches!(e.tag.as_str(), "g" | "a") {
+        return (0.0, 0.0);
+    }
+    crate::svg::shape_reference_box(e, stroke).map_or((0.0, 0.0), |b| (b.0, b.1))
 }

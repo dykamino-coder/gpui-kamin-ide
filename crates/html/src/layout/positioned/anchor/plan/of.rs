@@ -4,8 +4,9 @@ use super::super::area::physical_area;
 use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
+use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
-use crate::style::values::value::{Len, anchor_get};
+use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
 
 impl AnchorPlan {
     /// План есть у абсолюта хотя бы с одной `anchor()`-вставкой, с
@@ -15,6 +16,7 @@ impl AnchorPlan {
     pub(in crate::layout::positioned::anchor) fn of(
         own: &Computed,
         inherited: &Computed,
+        vcx: ValueCx<'_>,
     ) -> Option<AnchorPlan> {
         if !matches!(
             own.position,
@@ -22,10 +24,7 @@ impl AnchorPlan {
         ) {
             return None;
         }
-        let m = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            _ => 0.0,
-        };
+        let m = px_lossy_zero;
         let margin = [
             m(own.margin.top),
             m(own.margin.right),
@@ -34,7 +33,7 @@ impl AnchorPlan {
         ];
         let side = |l: Option<Len>, margin: f32| -> Option<SidePlan> {
             let Some(Len::Anchor(i)) = l else { return None };
-            let f = anchor_get(i)?;
+            let f = anchor_get(i, vcx)?;
             // `anchor-size()` во вставке — величина, не край: сдвига не даёт.
             if f.size.is_some() {
                 return None;
@@ -90,7 +89,7 @@ impl AnchorPlan {
             justify_self: own.justify_self,
             safe_align: own.align_self_safe,
             safe_justify: own.justify_self_safe,
-            cb_vertical: inherited.vertical == Some(true),
+            cb_vertical: inherited.wm().vertical(),
             cb_node: own.cb_node,
             fixed: own.position == Some(Position::Fixed)
                 && !(inherited.transform_ancestor

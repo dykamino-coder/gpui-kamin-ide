@@ -40,7 +40,7 @@ pub(crate) fn counter_snapshot(style: &Computed) -> [Option<String>; 3] {
     ]
 }
 
-fn list_value_hint(style: &Computed, tag: &str, attrs: &[(String, String)]) -> Option<i32> {
+fn list_value_hint(style: &Computed, tag: &str, attrs: &[(String, String)]) -> Option<i64> {
     if tag != "li" || style.counter_set.is_some() {
         return None;
     }
@@ -66,7 +66,7 @@ pub(crate) fn apply_counter_decls(
     tag: &str,
     attrs: &[(String, String)],
     item_flag: &mut bool,
-    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i32,
+    reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i64,
 ) {
     // CSS Lists 3 §4.5: display:contents has no box, so its directives
     // do not apply, while the flattened descendants still participate.
@@ -74,7 +74,7 @@ pub(crate) fn apply_counter_decls(
         *item_flag = false;
         return;
     }
-    let num_attr = |key: &str| -> Option<i32> {
+    let num_attr = |key: &str| -> Option<i64> {
         attrs
             .iter()
             .find(|(k, _)| k == key)
@@ -91,8 +91,8 @@ pub(crate) fn apply_counter_decls(
         // У обратного списка отсчёт идёт вниз и начинается на единицу ВЫШЕ
         // названного, у обычного — на единицу ниже (§ua-stylesheet).
         let start = match (tag, num_attr("start")) {
-            ("ol", Some(v)) if reversed_list => v + 1,
-            ("ol", Some(v)) => v - 1,
+            ("ol", Some(v)) if reversed_list => v.saturating_add(1),
+            ("ol", Some(v)) => v.saturating_sub(1),
             // У обратного списка без `start` отсчёт начинается с числа его
             // пунктов.
             ("ol", None) if reversed_list => reversed_start("list-item", counters),
@@ -148,7 +148,7 @@ pub(crate) fn apply_counter_decls(
                 Some(_) => continue,
                 None => (name, false),
             };
-            let value = match it.peek().and_then(|n| n.parse::<i32>().ok()) {
+            let value = match it.peek().and_then(|n| n.parse::<i64>().ok()) {
                 Some(v) => {
                     it.next();
                     v

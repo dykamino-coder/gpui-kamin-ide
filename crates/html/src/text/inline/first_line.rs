@@ -1,4 +1,4 @@
-//! First line for inline; split out to keep the owning module within 250 lines.
+//! First line for inline.
 
 use super::Piece;
 use super::first_line_background;
@@ -19,6 +19,7 @@ pub fn style_first_line(
     let mut seen = 0usize;
     for p in pieces {
         match p {
+            Piece::Text { style: ref own, .. } if own.inline_control => out.push(p),
             Piece::Text { text, style: own } if seen < at => {
                 let dress = |base: &Computed| {
                     let mut c = base.clone();
@@ -101,4 +102,46 @@ pub fn style_first_line(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    //! Source offsets must survive generated bidi isolation around inline content.
+
+    use super::*;
+
+    #[test]
+    fn generated_controls_do_not_shorten_the_styled_source_range() {
+        let piece = |text: &str, inline_control| Piece::Text {
+            text: text.into(),
+            style: Computed {
+                inline_control,
+                ..Computed::default()
+            },
+        };
+        let first = Computed {
+            font_weight: Some(700),
+            ..Computed::default()
+        };
+        for (generated, at, expected) in [(true, 2, "ab"), (false, 5, "ab")] {
+            let pieces = style_first_line(
+                vec![piece("\u{2068}", generated), piece("abc", false)],
+                at,
+                &first,
+                &Computed::default(),
+            );
+            let styled: String = pieces
+                .iter()
+                .filter_map(|p| match p {
+                    Piece::Text { text, style }
+                        if !text.contains('\u{2068}') && style.font_weight == Some(700) =>
+                    {
+                        Some(text.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(styled, expected);
+        }
+    }
 }

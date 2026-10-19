@@ -1,5 +1,6 @@
 //! Rasterize axis-preserving SVG backgrounds in their final orientation.
 
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Corners, Pixels, TransformationMatrix, Window, point, px, size};
 
 pub(super) fn paint(
@@ -7,6 +8,7 @@ pub(super) fn paint(
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
     source: &super::Source,
+    vcx: ValueCx<'_>,
 ) -> bool {
     let super::Source::Vector { markup, .. } = source else {
         return false;
@@ -76,6 +78,7 @@ pub(super) fn paint(
             image,
             source,
             false,
+            vcx,
         );
     });
     true

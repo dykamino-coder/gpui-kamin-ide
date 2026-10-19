@@ -1,9 +1,20 @@
 //! Рост высоты колонок при балансировке: приросты, фрагменты, оценка прогонов.
 
-use crate::layout::fragment::types::{Kid, Rows, StackAxis};
+use crate::layout::fragment::types::{Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
+    fn growth_probe(
+        count: usize,
+        fixed_height: Option<f32>,
+        rows: Option<Rows>,
+        copies: usize,
+    ) -> Self {
+        let mut probe = Self::new(Vec::new(), count, 0.0, fixed_height, None, rows, None, None);
+        probe.copies = copies.max(1);
+        probe
+    }
+
     /// Точки роста от вытолкнутых монолитов (Blink `FinishFragmentation`,
     /// `fragmentation_utils.cc:641-656`: непоследний фрагмент коробки =
     /// `space_left`; css-flexbox-1 §fragmentation: «A forced break inside a
@@ -28,25 +39,7 @@ impl ColumnStack {
         rows: Option<Rows>,
         copies: usize,
     ) -> Vec<(usize, f32, f32, bool)> {
-        let probe = ColumnStack {
-            children: Vec::new(),
-            count: count.max(1),
-            gap: 0.0,
-            axis: StackAxis::Horizontal,
-            row_phase: 0.0,
-            fixed_height,
-            fill_shrink: false,
-            rule: None,
-            rule_to: None,
-            rows,
-            copies: copies.max(1),
-            gap_items: None,
-            intrinsic: None,
-            plan: std::cell::RefCell::new(Vec::new()),
-            col_w: std::cell::Cell::new(0.0),
-            lines_plan: std::cell::RefCell::new(Vec::new()),
-            spans_plan: std::cell::RefCell::new(Vec::new()),
-        };
+        let probe = Self::growth_probe(count, fixed_height, rows, copies);
         let (_, lines, plan, _) = probe.balance(kids);
         let count = probe.count;
         let mut out = Vec::new();
@@ -125,25 +118,7 @@ impl ColumnStack {
         rows: Option<Rows>,
         copies: usize,
     ) -> Vec<Vec<(f32, f32)>> {
-        let probe = ColumnStack {
-            children: Vec::new(),
-            count: count.max(1),
-            gap: 0.0,
-            axis: StackAxis::Horizontal,
-            row_phase: 0.0,
-            fixed_height,
-            fill_shrink: false,
-            rule: None,
-            rule_to: None,
-            rows,
-            copies: copies.max(1),
-            gap_items: None,
-            intrinsic: None,
-            plan: std::cell::RefCell::new(Vec::new()),
-            col_w: std::cell::Cell::new(0.0),
-            lines_plan: std::cell::RefCell::new(Vec::new()),
-            spans_plan: std::cell::RefCell::new(Vec::new()),
-        };
+        let probe = Self::growth_probe(count, fixed_height, rows, copies);
         let (_, _, plan, _) = probe.balance(kids);
         let mut out: Vec<Vec<(f32, f32)>> = vec![Vec::new(); kids.len()];
         for f in &plan {

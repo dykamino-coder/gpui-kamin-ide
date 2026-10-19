@@ -1,6 +1,7 @@
 //! Decode CSS background sources and resolve color images after text inheritance.
 
 use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_fragment};
+use crate::document::state::ValueCx;
 use std::{collections::HashMap, sync::Mutex};
 
 /// Ключ источника с учётом `image-orientation` (css-images-3 §5.4).
@@ -9,7 +10,7 @@ use std::{collections::HashMap, sync::Mutex};
 /// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
 /// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
 /// ключа дешевле, чем переписывание тринадцати мест вызова.
-pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
+pub fn key_exif(src: &str, c: &crate::style::computed::Computed, vcx: ValueCx<'_>) -> String {
     let gradient = crate::style::computed::resolve_gradient_colors(
         src,
         c.color.unwrap_or(crate::style::values::value::Color {
@@ -18,21 +19,29 @@ pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
             b: 0.0,
             a: 1.0,
         }),
+        vcx,
     );
     let src = gradient.as_ref();
-    let resolved = crate::style::computed::parse_image_color(src)
-        .and_then(|color| {
-            crate::style::values::color_space::resolve_relative(
-                color,
-                c.color.unwrap_or(crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                }),
-            )
+    let resolved = crate::style::computed::image_function::arguments(src, vcx).and_then(|image| {
+        let color = crate::style::values::color_space::resolve_relative(
+            image.color?,
+            c.color.unwrap_or(crate::style::values::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            }),
+            vcx,
+        )?;
+        let color = color_image(color);
+        Some(match image.raw_url {
+            Some(url) => format!(
+                "image({url}, {})",
+                crate::style::computed::parse_image_color(&color, vcx)?
+            ),
+            None => color,
         })
-        .map(color_image);
+    });
     let src = resolved.as_deref().unwrap_or(src);
     if c.image_orient_none == Some(true) {
         format!("exif-none|{src}")
@@ -41,12 +50,12 @@ pub fn key_exif(src: &str, c: &crate::style::computed::Computed) -> String {
     }
 }
 
-pub fn key(src: &str, c: &crate::style::computed::Computed) -> String {
-    key_exif(src, c)
+pub fn key(src: &str, c: &crate::style::computed::Computed, vcx: ValueCx<'_>) -> String {
+    key_exif(src, c, vcx)
 }
 
 /// Разобрать ссылку в источник картинки; результат запоминается.
-pub fn source(src: &str) -> Option<Source> {
+pub fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(map) = cache.lock()
         && let Some(hit) = map.get(src)
@@ -62,13 +71,20 @@ pub fn source(src: &str) -> Option<Source> {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
-    } else if let Some(color) = crate::style::computed::parse_image_color(src_plain)
-        .and_then(crate::style::values::value::Color::parse)
-    {
-        Some(Source::Gradient {
-            raw: color_image(color),
-        })
-    } else if let Some((url, list)) = super::filter_image::parse(src_plain) {
+    } else if let Some(image) = crate::style::computed::image_function::arguments(src_plain, vcx) {
+        image
+            .url
+            .as_deref()
+            .and_then(|url| load_url(url, orient))
+            .or_else(|| {
+                image
+                    .color
+                    .and_then(|c| crate::style::values::value::Color::parse(c, vcx))
+                    .map(|color| Source::Gradient {
+                        raw: color_image(color),
+                    })
+            })
+    } else if let Some((url, list)) = super::filter_image::parse_filter_image(src_plain, vcx) {
         // Filter Effects 1 §13 `filter()`: the filtered raster is its own
         // image, keyed by the whole function so each list caches apart.
         let key = if orient {
@@ -76,7 +92,7 @@ pub fn source(src: &str) -> Option<Source> {
         } else {
             format!("exif-none|{url}")
         };
-        source(&key).map(|image| Source::Filtered {
+        source(&key, vcx).map(|image| Source::Filtered {
             image: Box::new(image),
             list,
         })
@@ -95,21 +111,7 @@ pub fn source(src: &str) -> Option<Source> {
             raw: src_plain.to_string(),
         })
     } else {
-        // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
-        // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
-        // разбора путь с `#` не читался вовсе, и фон пропадал
-        // (`background-size-cover-svg-view`, `-contain-svg-view`).
-        let (path, view) = match src_plain.split_once('#') {
-            Some((p, f)) if !src_plain.starts_with("data:") => (p, Some(f)),
-            _ => (src_plain, None),
-        };
-        read_bytes(path)
-            .map(|b| match view {
-                Some(id) => svg_fragment::resolve(b, id),
-                None => b,
-            })
-            .as_deref()
-            .and_then(|b| decode(b, orient))
+        load_url(src_plain, orient)
     };
     if let Ok(mut map) = cache.lock() {
         if map.len() >= CACHE_CAP {
@@ -133,9 +135,14 @@ fn color_image(c: crate::style::values::value::Color) -> String {
 }
 
 /// Color image samples use straight alpha, as expected by GPUI's image shader.
-pub(super) fn raster_color(raw: &str, w: u32, h: u32) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let color = crate::style::computed::parse_image_color(raw)
-        .and_then(crate::style::values::value::Color::parse)?;
+pub(super) fn raster_color(
+    raw: &str,
+    w: u32,
+    h: u32,
+    vcx: ValueCx<'_>,
+) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    let color = crate::style::computed::parse_image_color(raw, vcx)
+        .and_then(|c| crate::style::values::value::Color::parse(c, vcx))?;
     let pixel = [
         (color.b * 255.0).round() as u8,
         (color.g * 255.0).round() as u8,
@@ -148,4 +155,68 @@ pub(super) fn raster_color(raw: &str, w: u32, h: u32) -> Option<std::sync::Arc<g
         .take((w * h * 4) as usize)
         .collect();
     gpui::bgra_bytes_to_image(w, h, bytes)
+}
+
+fn load_url(src: &str, orient: bool) -> Option<Source> {
+    // Фрагмент адреса рисунка — его `<view>` (SVG 2 §8.2 «Linking into
+    // SVG content»: `file.svg#id` показывает вид с тем `viewBox`): без
+    // разбора путь с `#` не читался вовсе, и фон пропадал
+    // (`background-size-cover-svg-view`, `-contain-svg-view`).
+    let (path, view) = match src.split_once('#') {
+        Some((p, f)) if !src.starts_with("data:") => (p, Some(f)),
+        _ => (src, None),
+    };
+    read_bytes(path)
+        .map(|b| match view {
+            Some(id) => svg_fragment::rewrite_svg_fragment(b, id),
+            None => b,
+        })
+        .as_deref()
+        .and_then(|b| decode(b, orient))
+}
+
+#[cfg(test)]
+mod tests {
+    //! URL decoding takes precedence over a dimensionless image() color fallback.
+
+    use super::{Source, key, source};
+    use crate::style::{computed::Computed, values::value::Color};
+
+    #[test]
+    fn decode_url_before_using_fallback() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let image = source("image('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%222%22 height=%223%22/%3E', red)", vcx).unwrap();
+        assert!(matches!(image, Source::Vector { .. }));
+        let size = image.intrinsic();
+        assert_eq!((size.w, size.h), (Some(2.0), Some(3.0)));
+        for url in [
+            "data:text/plain,not-an-image",
+            "missing-image-fallback-unit.png",
+        ] {
+            let image = source(&format!("image('{url}', green)"), vcx).unwrap();
+            assert!(matches!(image, Source::Gradient { .. }));
+            let size = image.intrinsic();
+            assert_eq!((size.w, size.h, size.ratio), (None, None, None));
+            assert!(source(&format!("image('{url}')"), vcx).is_none());
+        }
+    }
+
+    #[test]
+    fn fallback_current_color_resolves_after_inheritance_with_alpha() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let c = Computed {
+            color: Color::parse("rgba(0, 128, 0, 0.5)", vcx),
+            ..Computed::default()
+        };
+        let src = key("image('data:text/plain,invalid', currentColor)", &c, vcx);
+        let Some(Source::Gradient { raw }) = source(&src, vcx) else {
+            panic!("fallback missing")
+        };
+        assert_eq!(
+            crate::style::computed::parse_image_color(&raw, vcx).and_then(|c| Color::parse(c, vcx)),
+            c.color
+        );
+    }
 }

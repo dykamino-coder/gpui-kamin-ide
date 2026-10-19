@@ -1,5 +1,8 @@
 //! This module is a partial implementation of the CSS Grid Level 1 specification
 //! <https://www.w3.org/TR/css-grid-1>
+#[path = "../content_size_limits.rs"]
+mod content_size_limits;
+
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis};
 use crate::geometry::{Line, Point, Rect, Size};
 use crate::style::{
@@ -60,6 +63,7 @@ mod subgrid_tracks;
 mod subgrid;
 mod track_sizing;
 mod track_sum;
+mod table_collapse;
 mod types;
 mod util;
 /// The grid container's resolved box, size constraints, alignment styles and available space,
@@ -156,16 +160,16 @@ fn compute_container_constants<Tree: LayoutGridContainer>(
         Size::ZERO
     };
 
-    let min_size = style
+    let min_size = content_size_limits::for_measurement(style
         .min_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
+        .maybe_add(box_sizing_adjustment), inputs);
+    let max_size = content_size_limits::for_measurement(style
         .max_size()
         .maybe_resolve(parent_size, |val, basis| tree.calc(val, basis))
         .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+        .maybe_add(box_sizing_adjustment), inputs);
     let preferred_size = if inputs.sizing_mode == SizingMode::InherentSize {
         style
             .size()
@@ -473,6 +477,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         ),
     }
 
+    let table_collapse = style.table_collapsed_tracks().map(|(axis, rows)| (axis, rows.to_vec()));
     drop(grid_template_rows);
     drop(grid_template_columns);
     drop(grid_auto_rows);
@@ -680,19 +685,20 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         |track: &GridTrack, _, _| Some(track.base_size),
         has_baseline_aligned_item,
     );
-    let initial_row_sum = track_sum::base_size_sum(&rows);
+    let initial_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
 
     debug_log!("initial_column_sum", dbg:initial_column_sum);
     debug_log!(dbg: columns.iter().map(|track| track.base_size).collect::<Vec<_>>());
     debug_log!("initial_row_sum", dbg:initial_row_sum);
     debug_log!(dbg: rows.iter().map(|track| track.base_size).collect::<Vec<_>>());
 
+    let visible_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
     // 6. Compute container size
     let resolved_style_size = known_dimensions.or(preferred_size);
     let mut container_border_box = Size {
         width: resolved_style_size
             .get(AbstractAxis::Inline)
-            .unwrap_or_else(|| initial_column_sum + content_box_inset.horizontal_axis_sum())
+            .unwrap_or_else(|| visible_column_sum + content_box_inset.horizontal_axis_sum())
             .maybe_clamp(min_size.width, max_size.width)
             .max(padding_border_size.width),
         height: resolved_style_size
@@ -906,8 +912,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     if (intrinsic_column_contribution_changed && !has_percentage_column)
         || (intrinsic_row_contribution_changed && !has_percentage_row)
     {
-        let final_column_sum = track_sum::base_size_sum(&columns);
-        let final_row_sum = track_sum::base_size_sum(&rows);
+        let final_column_sum = table_collapse::visible_sum(&columns, table_collapse.as_ref(), true);
+        let final_row_sum = table_collapse::visible_sum(&rows, table_collapse.as_ref(), false);
 
         if intrinsic_column_contribution_changed && !has_percentage_column {
             container_border_box.width = resolved_style_size
@@ -939,6 +945,9 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         return LayoutOutput::from_outer_size(container_border_box);
     }
 
+    // CSS Tables 3: collapse only after the full logical grid has been sized.
+    table_collapse::apply(&mut columns, table_collapse.as_ref(), true);
+    table_collapse::apply(&mut rows, table_collapse.as_ref(), false);
     // 8. Track Alignment
 
     // Align columns
@@ -1030,18 +1039,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
         // (RTL columns, writing-mode rows), see `subgrid_flow::area`.
         let grid_area =
             subgrid_flow::area(&columns, &rows, item.column_indexes, item.row_indexes, flow);
-        // KaminIDE patch: `justify-items: baseline` не действует на элемент,
-        // параллельный горизонтальной сетке (см. `GridItem::justify_self`).
-        let item_alignment_styles = if item.baseline_x_flags & 8 != 0
-            && container_alignment_styles.horizontal.keyword == AlignItemsKeyword::Baseline
-        {
-            InBothAbsAxis {
-                horizontal: AlignItems::NORMAL,
-                vertical: container_alignment_styles.vertical,
-            }
-        } else {
-            container_alignment_styles
-        };
+        let item_alignment_styles = container_alignment_styles;
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
         let (overflow_contribution, y_position, height, first_baseline, last_baseline, x_lines) =
             align_and_position_item(
@@ -1053,6 +1051,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                     width: grid_area.right - grid_area.left,
                     height: grid_area.bottom - grid_area.top,
                 },
+                table_collapse.as_ref().map(|(horizontal, _)| if *horizontal { AbstractAxis::Inline } else { AbstractAxis::Block }),
                 item_alignment_styles,
                 Rect {
                     // KaminIDE patch: a baseline table cell is placed as
@@ -1070,6 +1069,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
                 item.baseline_x_flags & 1 != 0,
                 item.margin_trim,
                 direction,
+                Direction::Ltr,
                 container_border_box.width,
                 border,
                 #[cfg(feature = "content_size")]

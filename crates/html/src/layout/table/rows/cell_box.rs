@@ -6,6 +6,8 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
+// Cell preparation returns its element, geometry and border decoration together.
+#[allow(clippy::type_complexity)]
 pub(super) fn prepare_cell_box(
     e: &Element,
     cols_collapsed: &[bool],
@@ -112,12 +114,18 @@ pub(super) fn prepare_cell_box(
         table_is_vertical,
         spans_collapsed,
     );
-    let orthogonal_inline = cell.style.vertical == Some(true)
-        && e.style.vertical != Some(true)
-        && cell.style.width_from_inline;
+    let orthogonal_inline =
+        cell.style.wm().vertical() && !e.style.wm().vertical() && cell.style.width_from_inline;
     if !table_is_vertical
         && !orthogonal_inline
-        && matches!(cell.style.width, Some(Len::Px(_)) | Some(Len::Pct(_)))
+        // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
+        // Blink `table_layout_utils`: calculated lengths with percentages
+        // are treated as auto); left on the box it widened the table alone
+        // (`calc-width-table-auto-1` row 4).
+        && matches!(
+            cell.style.width,
+            Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
+        )
     {
         cell.style.width = None;
     }
@@ -128,12 +136,12 @@ pub(super) fn prepare_cell_box(
     // (table-cell-valign-003-ref). Ортогональную ячейку не трогаем:
     // её width — логический inline-size, он ниже перекладывается в
     // высоту.
-    if !(cell.style.vertical == Some(true)
-        && e.style.vertical != Some(true)
-        && cell.style.width_from_inline)
+    if !(cell.style.wm().vertical()
+        && !e.style.wm().vertical()
+        && cell.style.width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
-        && !table_is_vertical
+        || table_is_vertical)
         && matches!(
             cell.style.width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))

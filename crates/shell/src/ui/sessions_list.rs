@@ -120,6 +120,7 @@ pub fn sessions_sidebar(
             .into_any_element();
     };
     let active = snap.active_session_id.clone().unwrap_or_default();
+    crate::ui::sessions::status_dot::retain_known(snap.sessions.iter().map(|s| s.id.as_str()));
 
     // list: `padding: 0 var(--space-1) var(--space-2)` (оригинал)
     let mut list = div()

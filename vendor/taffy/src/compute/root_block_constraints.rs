@@ -24,7 +24,7 @@ pub(super) fn known(
             parent_size.width
         };
 
-        if style.is_block() {
+        if style.is_block() || style.is_flow_root() {
             // Pull these out earlier to avoid borrowing issues
             let aspect_ratio = style.aspect_ratio();
             let margin = style

@@ -29,6 +29,11 @@ pub struct WsClient {
 impl WsClient {
     /// Подключение к `ws://127.0.0.1:{port}/rpc?token={token}`.
     /// `on_disconnect` дёргается один раз при смерти сокета (после fail_all).
+    #[allow(
+        clippy::print_stderr,
+        clippy::disallowed_methods,
+        reason = "preserve transport tracing until configuration and logging are passed explicitly"
+    )]
     pub fn connect(
         port: u16,
         token: &str,

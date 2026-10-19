@@ -1,6 +1,7 @@
-//! Children for walk; split out to keep the owning module within 250 lines.
+//! Collect rendered children, shadow content and generated scroll controls.
 
-use super::{walk, walk_children};
+use super::{build_dom_node, walk_children};
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -13,29 +14,31 @@ use std::rc::Rc;
 #[allow(clippy::needless_borrow)]
 pub(super) fn collect_children(
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
-    path: &[Ancestor],
+    path: &mut Vec<Ancestor>,
     sibs: Sibs,
     style: &Computed,
     shadow: &Option<Rc<crate::dom::shadow::Shadow>>,
     preserve: bool,
-    tag: &String,
+    tag: &str,
     attrs: &[(String, String)],
 ) -> (Vec<Node>, ScrollPseudos) {
-    let mut path2 = path.to_vec();
-    path2.push(me.clone());
+    let vcx = tree.doc.values();
     let mut children = vec![];
     // Псевдоэлементы: коробка появляется, только если у правила есть
     // `content`. Значками, стрелками и разделителями в вёрстке
     // занимаются именно они, и без них разметка теряет часть смысла.
     // `::before` строится ДО детей, `::after` — после: счётчики они
     // видят в том же порядке, что и браузер (css-lists §counters).
-    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "before", &attrs) {
+    if let Some(el) = pseudo_box(
+        rules, vars, counters, &me, path, sibs, "before", &attrs, vcx,
+    ) {
         children.push(Node::Element(el));
     }
     let keep = style.preserve_newlines.unwrap_or(preserve);
@@ -46,21 +49,23 @@ pub(super) fn collect_children(
         // попадут в вывод только через `<slot>`.
         walk_children(
             &shadow.root,
+            tree,
             &shadow.scope.rules,
             vars,
             &shadow.scope.frames,
             counter,
             counters,
-            std::slice::from_ref(&shadow.marker),
+            &mut vec![shadow.marker.clone()],
             keep,
             &mut children,
         );
-    } else if let Some(slot) = slot_of(handle).filter(|s| !s.assigned.is_empty()) {
+    } else if let Some(slot) = tree.slot_of(handle).filter(|s| !s.assigned.is_empty()) {
         // Слот показывает распределённые узлы, fallback — только без
         // них (HTML §4.12.4). Распределённый ребёнок стилизуется
         // таблицами ОБЛАСТИ ХОСТА и сопоставляется в светлом контексте
         // (предки хоста + хост, светлые братья), а наследует — от
         // слота, своего родителя в плоском дереве (`vars`, `keep`).
+        let mut host_path = slot.host_path.as_ref().clone();
         for s in &slot.assigned {
             let sibs = Sibs {
                 all: &slot.light_all[..],
@@ -68,14 +73,15 @@ pub(super) fn collect_children(
                 is_elem: s.anc.is_some(),
                 rc: Some(&slot.light_all),
             };
-            walk(
+            build_dom_node(
                 &s.node,
+                tree,
                 &slot.outer.rules,
                 vars,
                 &slot.outer.frames,
                 counter,
                 counters,
-                &slot.host_path[..],
+                &mut host_path,
                 slot.light_spots[s.light_idx],
                 keep,
                 sibs,
@@ -86,19 +92,22 @@ pub(super) fn collect_children(
             );
         }
     } else {
+        path.push(me.clone());
         walk_children(
             handle,
+            tree,
             rules,
             vars,
             frames,
             counter,
             counters,
-            &path2,
+            path,
             keep,
             &mut children,
         );
+        path.pop();
     }
-    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs) {
+    if let Some(el) = pseudo_box(rules, vars, counters, &me, path, sibs, "after", &attrs, vcx) {
         children.push(Node::Element(el));
     }
     // css-overflow-5: скроллер со `scroll-marker-group` собирает
@@ -117,6 +126,7 @@ pub(super) fn collect_children(
         &style,
         &attrs,
         &mut children,
+        vcx,
     );
     if let Some(el) = pseudo_box(
         rules,
@@ -127,6 +137,7 @@ pub(super) fn collect_children(
         sibs,
         "scroll-marker",
         &attrs,
+        vcx,
     ) {
         children.push(Node::Element(el));
     }
@@ -136,7 +147,7 @@ pub(super) fn collect_children(
     // `display: table-column` с красным фоном ВНУТРИ ряда и требует
     // «no red». Без этой отсечки такой узел уехал бы в анонимную
     // ячейку и покрасился.
-    let holds_columns = matches!(tag.as_str(), "table" | "colgroup")
+    let holds_columns = matches!(tag, "table" | "colgroup")
         || style.col_role == Some(1)
         || matches!(
             style.display,

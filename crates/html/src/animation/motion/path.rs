@@ -166,7 +166,7 @@ pub(super) fn tokens(d: &str) -> Vec<String> {
     out
 }
 
-pub(super) fn length(p: &[(f32, f32)]) -> f32 {
+pub(super) fn polyline_length(p: &[(f32, f32)]) -> f32 {
     p.windows(2).map(|w| dist(w[0], w[1])).sum()
 }
 

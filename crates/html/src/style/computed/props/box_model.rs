@@ -1,5 +1,6 @@
 //! Computed::apply_one: width/height/min/max, logical sizes, padding*, margin*, aspect-ratio, box-sizing.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -7,10 +8,26 @@ mod logical_layout;
 mod sides;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_box_model(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_box_model(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
+        if self.declaration_parse != ParseResult::Inactive
+            && matches!(
+                key,
+                "width" | "height" | "min-width" | "min-height" | "max-width" | "max-height"
+            )
+        {
+            let mut parsed = None;
+            assign_size(&mut parsed, v, vcx);
+            if parsed.is_some()
+                || calc_size_arg(v).is_some()
+                || stretch_keyword(v)
+                || fit_content_arg(v, vcx).is_some()
+                || v == "none"
+            {
+                self.accept_declaration();
+            }
+        }
         match key {
-            "box-sizing" => self.border_box = Some(v == "border-box"),
+            "box-sizing" => self.border_box = accept_parsed!(self, Some(v == "border-box")),
 
             // Отрицательная длина делает объявление размера невалидным
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
@@ -44,15 +61,15 @@ impl Computed {
             "width" => {
                 self.width_inherit = v == "inherit";
                 self.stretch_size[0] = stretch_keyword(v);
-                self.fit_arg[0] = fit_content_arg(v);
+                self.fit_arg[0] = fit_content_arg(v, vcx);
                 self.calc_size[0] = None;
-                assign_size(&mut self.width, v);
+                assign_size(&mut self.width, v, vcx);
             }
             "height" => {
                 self.height_inherit = v == "inherit";
                 self.stretch_size[1] = stretch_keyword(v);
                 self.calc_size[1] = None;
-                assign_size(&mut self.height, v);
+                assign_size(&mut self.height, v, vcx);
             }
             // Пределы не наследуются, но `inherit` берёт значение родителя
             // явно (§6.2.1). Без этой ветки `assign_size` стирал слот в
@@ -60,26 +77,26 @@ impl Computed {
             "min-width" => {
                 self.minmax_inherit[0] = v == "inherit";
                 self.stretch_size[2] = stretch_keyword(v);
-                self.fit_arg[1] = fit_content_arg(v);
+                self.fit_arg[1] = fit_content_arg(v, vcx);
                 self.calc_size[2] = None;
-                assign_size(&mut self.min_width, v);
+                assign_size(&mut self.min_width, v, vcx);
             }
             "min-height" => {
                 self.minmax_inherit[1] = v == "inherit";
                 self.stretch_size[4] = stretch_keyword(v);
                 self.calc_size[3] = None;
-                assign_size(&mut self.min_height, v);
+                assign_size(&mut self.min_height, v, vcx);
             }
             "max-width" => {
                 self.minmax_inherit[2] = v == "inherit";
                 self.stretch_size[3] = stretch_keyword(v);
-                self.fit_arg[2] = fit_content_arg(v);
-                assign_size(&mut self.max_width, v);
+                self.fit_arg[2] = fit_content_arg(v, vcx);
+                assign_size(&mut self.max_width, v, vcx);
             }
             "max-height" => {
                 self.minmax_inherit[3] = v == "inherit";
                 self.stretch_size[5] = stretch_keyword(v);
-                assign_size(&mut self.max_height, v);
+                assign_size(&mut self.max_height, v, vcx);
             }
 
             "padding" => {
@@ -87,7 +104,7 @@ impl Computed {
                     self.padding_inherit = true;
                     return;
                 }
-                let parsed = Sides::shorthand(v);
+                let parsed = Sides::shorthand(v, vcx);
                 let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0);
                 if neg(&parsed.top)
                     || neg(&parsed.right)
@@ -97,10 +114,17 @@ impl Computed {
                     return;
                 }
                 self.padding = parsed;
+                if self.padding.top.is_some()
+                    && self.padding.right.is_some()
+                    && self.padding.bottom.is_some()
+                    && self.padding.left.is_some()
+                {
+                    self.accept_declaration();
+                }
                 // Спор с логическими сторонами решает порядок объявлений.
                 self.side_seq.padding = [self.decl_seq; 4];
             }
-            _ => self.apply_box_model_sides(key, val, v, hit),
+            _ => self.apply_box_model_sides(key, v, hit, vcx),
         }
     }
 }

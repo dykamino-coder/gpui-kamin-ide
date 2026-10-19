@@ -1,5 +1,6 @@
 //! Computed::apply_one: transform*, translate/rotate/scale, perspective*, offset-*.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::Len;
 
@@ -10,36 +11,54 @@ use functions::transform_function;
 use functions_3d::transform_function_3d;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(crate) fn apply_transform(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_transform(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
                 let mut it = v.split_whitespace();
-                let x = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
-                let y = it.next().and_then(Len::parse).unwrap_or(Len::Px(0.0));
-                self.translate = Some((x, y));
+                let x = it
+                    .next()
+                    .and_then(|s| Len::parse(s, vcx))
+                    .unwrap_or(Len::Px(0.0));
+                let y = it
+                    .next()
+                    .and_then(|s| Len::parse(s, vcx))
+                    .unwrap_or(Len::Px(0.0));
+                self.translate = accept_parsed!(self, Some((x, y)));
             }
 
             // --- Преобразования -----------------------------------------------
             // motion-1 §2: свойства пути хранятся СЫРЫМИ. Сэмплер зовётся
             // после каскада (`dom::walk`), когда известны и путь, и точка
             // отсчёта, и авторский `transform` — раньше собрать нечего.
-            "offset-path" => self.offset_path = (v.trim() != "none").then(|| v.trim().to_string()),
+            "offset-path" => {
+                self.offset_path =
+                    accept_parsed!(self, (v.trim() != "none").then(|| v.trim().to_string()))
+            }
             // `<length-percentage>`: смесь `calc(12.5% + 200px)` доживает
             // индексом арены — доля решается длиной пути во втором проходе
             // (`motion::path_css`; offset-path-shape-xywh-002).
-            "offset-distance" => self.offset_distance = Len::parse_mixed(v.trim()),
-            "offset-rotate" => self.offset_rotate = Some(v.trim().to_string()),
-            "offset-anchor" => self.offset_anchor = Some(v.trim().to_string()),
-            "offset-position" => self.offset_position = Some(v.trim().to_string()),
+            "offset-distance" => {
+                self.offset_distance = record_parsed!(self, Len::parse_mixed(v.trim(), vcx))
+            }
+            "offset-rotate" => {
+                self.offset_rotate = accept_parsed!(self, Some(v.trim().to_string()))
+            }
+            "offset-anchor" => {
+                self.offset_anchor = accept_parsed!(self, Some(v.trim().to_string()))
+            }
+            "offset-position" => {
+                self.offset_position = accept_parsed!(self, Some(v.trim().to_string()))
+            }
             "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
             "transform-origin" if v.trim() == "inherit" => {
                 self.inherit_bits |= inh::TRANSFORM_ORIGIN
             }
-            "transform" if has_font_units(v) => self.transform_raw = Some(v.to_string()),
+            "transform" if has_font_units(v) => {
+                self.transform_raw = accept_parsed!(self, Some(v.to_string()))
+            }
             "transform-origin" if has_font_units(v) => {
-                self.transform_origin_raw = Some(v.to_string())
+                self.transform_origin_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "transform" => {
                 let mut t = self.transform.unwrap_or_default();
@@ -122,12 +141,13 @@ impl Computed {
                         "none" | "initial" | "unset"
                     ) {
                         self.transform = None;
+                        self.accept_declaration();
                     }
                 } else if !invalid {
-                    self.transform = Some(t);
+                    self.transform = accept_parsed!(self, Some(t));
                 }
             }
-            _ => self.apply_transform_individual(key, val, v, hit),
+            _ => self.apply_transform_individual(key, v, hit, vcx),
         }
     }
 }

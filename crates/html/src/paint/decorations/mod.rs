@@ -1,33 +1,42 @@
 //! Украшения коробки: тени, рамки по форме, слои градиентов.
+
+use crate::document::state::ValueCx;
 mod borders;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
 
 // owner: A
 
+use crate::hooks::IntoHooked;
 use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
 use crate::paint::effects::mask::mask_def;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 mod backdrop;
 mod border_shape;
 mod gradient_stripes;
 mod outline;
+pub(crate) mod outline_phase;
 mod shadows;
+pub(crate) mod shaped_outset;
+pub(crate) mod shaped_ring;
 pub(crate) mod text_shadows;
 
 /// Слои, которые в GPUI выражаются только отдельным элементом.
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
+pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<AnyElement> {
+    if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
+        return Vec::new();
+    }
     let mut out: Vec<AnyElement> = vec![];
 
-    outer_shadows(c, &mut out);
+    outer_shadows(c, &mut out, vcx);
     if let Some(layer) = crate::paint::background::single_corner::layer(c) {
         out.push(layer);
     }
@@ -60,7 +69,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
                 id: id.to_string(),
                 fill,
             }
-            .into_any_element(),
+            .hooked(),
         );
     }
     // Filter Effects 2 §backdrop-filter (Overview.bs:61-66): the filtered
@@ -73,25 +82,25 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // остальным — тот же порядок, что в браузере.
     // Несколько слоёв (css-backgrounds-3 §2.1): плитки каждого слоя своей
     // механикой, снизу вверх — первый в списке рисуется последним, поверх.
-    if let Some(layers) = c.bg_layers() {
+    if let Some(layers) = c.bg_layers(vcx) {
         for l in layers.iter().rev() {
-            if let Some(layer) = crate::paint::background::layer(l) {
+            if let Some(layer) = crate::paint::background::layer(l, vcx) {
                 out.push(layer);
             }
         }
-    } else if let Some(layer) = crate::paint::background::layer(c) {
+    } else if let Some(layer) = crate::paint::background::layer(c, vcx) {
         out.push(layer);
     } else if c.gradient_as_tile() {
         // Градиент с размером/повтором/позицией — той же механикой плитки:
         // источник понимает записи `linear-gradient(...)`.
         let mut tiled = c.clone();
         tiled.bg_image = tiled.gradient_raw.clone();
-        if let Some(layer) = crate::paint::background::layer(&tiled) {
+        if let Some(layer) = crate::paint::background::layer(&tiled, vcx) {
             out.push(layer);
         }
     }
 
-    inset_shadows(c, &mut out);
+    inset_shadows(c, &mut out, vcx);
 
     // Рамка ПОВЕРХ слоя картинки (css-backgrounds-3 §3.7, прим.: «The
     // background is always drawn behind the border»; CSS 2.2 Прил. E; Blink
@@ -102,24 +111,24 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // стиль и скругление рамки и вынесен на толщину сторон — абсолютный
     // ребёнок отсчитывается от padding-box (как полосы сторон ниже).
     let start = out.len();
-    box_borders(c, &mut out);
+    box_borders(c, &mut out, vcx);
 
-    border_shape_layer(c, &mut out);
+    border_shape_layer(c, &mut out, vcx);
 
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
-    if let Some(layer) = crate::paint::border_image::layer(c) {
+    if let Some(layer) = crate::paint::border_image::layer(c, vcx) {
         out.push(layer);
     }
     stationary(c, &mut out, start);
 
     gradient_stripes(c, &mut out);
 
-    out.extend(outline::decorations(c));
+    out.extend(outline::decorations(c, vcx));
 
     // Разные цвета сторон рамки: у GPUI цвет рамки один на элемент, поэтому
     // несовпадающие стороны дорисовываются полосами поверх.
     let start = out.len();
-    coloured_borders(c, &mut out);
+    coloured_borders(c, &mut out, vcx);
     stationary(c, &mut out, start);
     out
 }

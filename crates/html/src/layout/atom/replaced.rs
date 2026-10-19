@@ -1,7 +1,6 @@
 //! Замещаемые атомы по тегу: контейнеры, img, svg, canvas.
 
 use crate::dom::Element;
-use crate::layout::block::containing::{AVAIL_W, CB_WIDTH};
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::replaced::image::{image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
@@ -19,11 +18,12 @@ pub(super) fn container_atom(
     opts: &RenderOpts,
     e: &Element,
 ) -> Option<Option<AnyElement>> {
+    let vcx = opts.cx.vcx();
     if e.style.display == Some(Display::GridLanes) {
         return Some(Some(element(e, inherited, opts)));
     }
     if multicol_container(&e.style) {
-        let merged = inherit(inherited, &e.style);
+        let merged = inherit(inherited, &e.style, vcx);
         let gap = match e.style.column_gap {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
@@ -46,7 +46,7 @@ pub(super) fn container_atom(
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
     if e.style.display == Some(Display::InlineTable) {
-        let built = table(e, &inherit(inherited, &e.style), opts);
+        let built = table(e, &inherit(inherited, &e.style, vcx), opts);
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
         // собственный `align-self`.
@@ -67,8 +67,9 @@ pub(super) fn container_atom(
 }
 
 pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
-    replaced_used_style::inline_percentage_width(&mut copy.style, AVAIL_W.get());
+    replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
     // ставит только `inline::inherit`: без переноса `apply` выбрасывал
@@ -82,24 +83,32 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         inherited.display,
         Some(Display::TableCell) | Some(Display::GridLanes)
     ) {
-        copy.style.cb_height_def = inherit(inherited, &e.style).cb_height_def;
+        copy.style.cb_height_def = inherit(inherited, &e.style, vcx).cb_height_def;
     }
     // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
     // строится из СЫРОГО стиля, а сворачивает их только слитый
     // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
     // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
-    copy.style.resolve_viewport(opts.viewport);
-    Some(image_with(&copy, Some(atom_base_font(inherited, opts))))
+    copy.style.resolve_viewport(opts.viewport, vcx);
+    if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
+        return Some(doc);
+    }
+    Some(image_with(
+        &copy,
+        Some(atom_base_font(inherited, opts)),
+        &opts.cx,
+    ))
 }
 
 pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     // Рисунок без собственного размера — stretch-fit от содержащего
     // блока (`svg::stretch_fit`): ширина родителя, когда она в
-    // точках, иначе ближайшая известная (`CB_WIDTH` — та же, что у
+    // точках, иначе ближайшая известная (`LayoutCx::cb_width` — та же, что у
     // картинки с одним соотношением в `image_with`).
     let cb_w = match inherited.width {
         Some(Len::Px(v)) if v > 0.0 => Some(v),
-        _ => CB_WIDTH.get().filter(|v| *v > 0.0),
+        _ => opts.cx.cb_width.filter(|v| *v > 0.0),
     };
     // Размер в единицах шрифта (`svg { width: 10ch }`) решается тем же
     // шагом, что у картинки (`image_with` → `resolve_em`): сырой стиль
@@ -107,20 +116,26 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // рисунок молча падал в размер по `viewBox` (`ch-unit-001-ref`:
     // 150×150 вместо 10ch).
     let mut sized = with_inherited_font(e, inherited);
-    sized.style.resolve_em(atom_base_font(inherited, opts));
+    sized.style.resolve_em(atom_base_font(inherited, opts), vcx);
     // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(&sized, &fitted, &shell).or_else(|| {
+    svg_replaced(&sized, &fitted, &shell, opts).or_else(|| {
         Some(image_with(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
+            &opts.cx,
         ))
     })
 }
 
-pub(super) fn canvas_atom(inherited: &Computed, e: &Element) -> Option<AnyElement> {
+pub(super) fn canvas_atom(
+    inherited: &Computed,
+    e: &Element,
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<AnyElement> {
+    let vcx = cx.vcx();
     // Доля высоты холста — в точки от содержащего блока, ровно как у
     // строчной картинки (`pct_height_to_px`): держатель стоит в
     // анонимном ряду строки с `height: auto`, и доля от ряда
@@ -129,8 +144,8 @@ pub(super) fn canvas_atom(inherited: &Computed, e: &Element) -> Option<AnyElemen
     // при высоте блока в `Px` и блочном `display` (оговорки там же).
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
-    let merged = inherit(inherited, &e.style);
-    let d = styled_div_with(e, &merged).flex_shrink_0();
+    let merged = inherit(inherited, &e.style, vcx);
+    let d = styled_div_with(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

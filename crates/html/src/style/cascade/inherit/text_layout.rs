@@ -40,7 +40,7 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     // `apply.rs`: `flex_cross_reverse` / `flip`).
     if c.parent_grid == 0
         && own.align_self_own_axis
-        && own.rtl.or(parent.rtl).unwrap_or(false) != parent.rtl.unwrap_or(false)
+        && own.rtl.or(parent.rtl).unwrap_or(false) != parent.wm().rtl()
     {
         c.align_self = match c.align_self {
             Some(crate::style::computed::Align::Start) => Some(crate::style::computed::Align::End),
@@ -92,6 +92,7 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     // `image-orientation` наследуется (css-images-3 §5.4, «Inherited: yes»):
     // в наборе его ставят на `body`, а действует он на каждой картинке.
     c.image_orient_none = own.image_orient_none.or(parent.image_orient_none);
+    c.font_oblique_only = own.font_oblique_only.or(parent.font_oblique_only);
     c.font_synth = (
         own.font_synth.0.or(parent.font_synth.0),
         own.font_synth.1.or(parent.font_synth.1),
@@ -99,6 +100,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     );
     c.keep_all = own.keep_all.or(parent.keep_all);
     c.hyphens_auto = own.hyphens_auto.or(parent.hyphens_auto);
+    c.hyphen_char = own
+        .hyphen_char
+        .clone()
+        .or_else(|| parent.hyphen_char.clone());
+    c.hyphen_limit_chars = own.hyphen_limit_chars.or(parent.hyphen_limit_chars);
+    c.hyphen_limit_lines = own.hyphen_limit_lines.or(parent.hyphen_limit_lines);
     c.lang = own.lang.clone().or(parent.lang.clone());
     c.break_after_spaces = own.break_after_spaces.or(parent.break_after_spaces);
     c.hyphenate = own.hyphenate.or(parent.hyphenate);
@@ -119,7 +126,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     c.font_size_adjust = own.font_size_adjust.or(parent.font_size_adjust);
     c.no_select = own.no_select.or(parent.no_select);
     c.pointer_events_none = own.pointer_events_none.or(parent.pointer_events_none);
-    c.line_clamp = own.line_clamp.or(parent.line_clamp);
+    // A `-webkit-box` that is not a block container (no vertical orient)
+    // is no line-clamp container and hands no clamp to its contents
+    // (`line-clamp-029`).
+    c.line_clamp = own
+        .line_clamp
+        .or(parent.line_clamp.filter(|_| parent.clamp_block_container()));
     // `block-ellipsis` наследуется (css-overflow-4 §block-ellipsis).
     c.clamp_mark = own.clamp_mark.clone().or_else(|| parent.clamp_mark.clone());
     c.clamp_legacy = own.clamp_legacy.or(parent.clamp_legacy);

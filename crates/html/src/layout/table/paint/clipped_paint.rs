@@ -1,81 +1,48 @@
 //! Отрисовка полосы ряда/группы, обрезанной ячейками: тени, контур и слой фона (gpui Element).
 
-use super::{BAND_WAIT_FRAMES, CellsClipped};
-use crate::layout::table::paint::BAND_RETRIES;
-use gpui::{
-    App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, LayoutId, Pixels, Window,
-};
+use super::CellsClipped;
+use crate::hooks::Hooks;
+use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
-impl Element for CellsClipped {
-    type RequestLayoutState = ();
-    type PrepaintState = ();
+impl Hooks for CellsClipped {
+    type Layout = ();
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, ()) {
-        let mut style = gpui::Style::default();
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         // Оверлей вне потока: раскладку таблицы полоса не трогает.
-        style.position = gpui::Position::Absolute;
+        let style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
         (window.request_layout(style, [], cx), ())
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
+        _state: &mut Self::Layout,
         _window: &mut Window,
         _cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
     }
 
+    // Border decoration records pair each edge's color and geometry.
+    #[allow(clippy::type_complexity)]
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
-        _state: &mut (),
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
         // Пробы ячеек пишут в PREPAINT, а вся подготовка кадра идёт до
-        // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра.
-        // Пустота возможна только на самом первом кадре документа.
+        // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра. Пусто —
+        // у полосы нет ячеек (`<col>` без рядов, `<col>` за краем сетки).
         let rects = std::mem::take(&mut *self.rects.borrow_mut());
         if rects.is_empty() {
-            // Пробы ячеек ещё не писали (первый кадр) — без нового кадра
-            // окно не перерисуется, и фон не появится никогда. Но ждать
-            // бесконечно нельзя: у полосы может не быть ячеек вовсе.
-            let key = std::rc::Rc::as_ptr(&self.rects) as usize;
-            let waited = BAND_RETRIES.with(|m| {
-                let mut m = m.borrow_mut();
-                let n = m.entry(key).or_insert(0);
-                *n = n.saturating_add(1);
-                *n
-            });
-            if waited <= BAND_WAIT_FRAMES {
-                window.request_animation_frame();
-            }
             return;
         }
-        BAND_RETRIES.with(|m| {
-            m.borrow_mut()
-                .remove(&(std::rc::Rc::as_ptr(&self.rects) as usize));
-        });
         // Область ряда/колонки — охват ТОЧНЫХ ячеек (span = 1): от неё
         // считается и размер плитки, и `background-position`. Объединённые
         // лежат и на чужих дорожках — они только маски.
@@ -119,7 +86,12 @@ impl Element for CellsClipped {
                 if let Some(bg) = self.style.background {
                     window.paint_quad(gpui::fill(rect, bg.to_hsla()));
                 }
-                crate::paint::background::paint_area(&self.style, positioning, window);
+                crate::paint::background::paint_area(
+                    &self.style,
+                    positioning,
+                    window,
+                    self.values.vcx(),
+                );
             });
         }
     }

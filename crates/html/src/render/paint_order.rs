@@ -1,8 +1,8 @@
 //! Порядок отложенной окраски позиционированных inline-коробок.
 
-use super::next_paint_key;
-use super::{UNKEYED, block_level_in_flow};
+use super::block_level_in_flow;
 use crate::dom::{Element, Node};
+use crate::layout::cx::LayoutCx;
 use crate::layout::positioned::predicates::positioned_later;
 use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement};
@@ -68,12 +68,11 @@ pub(super) fn unkeyed_positions(
 /// порядок разметки перевернётся — `position-relative-table-*`: ячейка
 /// `relative` после абсолютного красного индикатора). Узел вне обхода
 /// (порождённый сборщиком) — по братьям, как прежде.
-pub(super) fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
-    let known = UNKEYED.with(|u| {
-        let u = u.borrow();
+pub(super) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
+    let u = &*cx.unkeyed;
+    let known =
         u.0.get(&e.node_id)
-            .map(|&end| u.1.is_none_or(|last| last < end))
-    });
+            .map(|&end| u.1.is_none_or(|last| last < end));
     match known {
         Some(ok) => ok,
         None => !positioned_later(rest),
@@ -88,15 +87,14 @@ pub(super) fn paint_last_ok(e: &Element, rest: &[Node]) -> bool {
 /// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
-pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement) -> AnyElement {
-    let known = UNKEYED.with(|u| {
-        let u = u.borrow();
+pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
+    let u = &*cx.unkeyed;
+    let known =
         u.0.get(&e.node_id)
-            .map(|&end| u.1.is_none_or(|last| last < end))
-    });
+            .map(|&end| u.1.is_none_or(|last| last < end));
     if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
         gpui::PaintLast::new(el)
-            .key(next_paint_key())
+            .key(cx.next_paint_key())
             .into_any_element()
     } else {
         el

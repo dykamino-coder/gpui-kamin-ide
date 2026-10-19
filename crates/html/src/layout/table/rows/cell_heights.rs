@@ -22,8 +22,9 @@ pub(super) fn resolve_cell_heights(
         // где эталон меряет лежачим нулём (ch-units-vrl-007/008 —
         // расхождение путей резолва div-эмуляции, вернуться при
         // унификации resolve_em).
-        let upright = row.style.upright.or(inherited.upright) == Some(true);
-        let vertical = row.style.vertical.or(inherited.vertical) == Some(true);
+        let upright = row.style.text_orientation.or(inherited.text_orientation)
+            == Some(crate::style::computed::writing_mode::TextOrientation::Upright);
+        let vertical = row.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
@@ -42,8 +43,8 @@ pub(super) fn resolve_cell_heights(
     // подгонка под поворотную модель), но коробку ячейки никто не
     // вращает — её строчная ось физически ВЕРТИКАЛЬНА, и размер
     // обязан лечь высотой (table-cell-align-005/006).
-    if cell.style.vertical == Some(true)
-        && e.style.vertical != Some(true)
+    if cell.style.wm().vertical()
+        && !e.style.wm().vertical()
         && cell.style.height.is_none()
         && cell.style.width_from_inline
         && cell.style.width.is_some()
@@ -63,7 +64,7 @@ pub(super) fn resolve_cell_heights(
     // Предел ортогонального потока пересчитывается ПОСЛЕ переклада
     // inline-size в высоту: блок выше (у `let mut cm`) высоты ещё
     // не видел (table-cell-align-005/006).
-    if cell.style.vertical == Some(true)
+    if cell.style.wm().vertical()
         && cm.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell.style.height
     {
@@ -75,14 +76,15 @@ pub(super) fn resolve_cell_heights(
     // line-height 100).
     if cell
         .style
-        .vertical
-        .or(row.style.vertical)
-        .or(inherited.vertical)
+        .vertical_decl()
+        .or(row.style.vertical_decl())
+        .or(inherited.vertical_decl())
         == Some(true)
         && cell.style.min_width.is_none()
         && cell.style.width.is_none()
     {
-        let upright = row.style.upright.or(inherited.upright) == Some(true);
+        let upright = row.style.text_orientation.or(inherited.text_orientation)
+            == Some(crate::style::computed::writing_mode::TextOrientation::Upright);
         let base = match inherited.font_size {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),

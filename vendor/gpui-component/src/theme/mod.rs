@@ -7,8 +7,8 @@ use gpui::{
     prelude::FluentBuilder as _, px,
 };
 pub use gpui_base::{
-    ColorTokens, RadiusTokens, SemanticThemeTokens, ShadowTokens, SpacingTokens, TextStyleToken,
-    TypographyTokens,
+    ColorTokens, RadiusTokens, ScrollbarStyles, SemanticThemeTokens, ShadowTokens, SpacingTokens,
+    TextStyleToken, TypographyTokens,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,8 @@ mod mono_font;
 mod motion;
 mod registry;
 mod schema;
+#[cfg(test)]
+mod scrollbar_style_tests;
 mod system_font;
 mod theme_color;
 
@@ -101,16 +103,6 @@ const SCROLLBAR_THUMB_HOVER_WIDTH: Pixels = px(6.);
 const SCROLLBAR_THUMB_ACTIVE_WIDTH: Pixels = px(8.);
 /// Base's hovered and dragged thumb inset, restated for the same reason.
 const SCROLLBAR_THUMB_INSET: Pixels = px(4.);
-
-/// KaminIDE patch: ползунок оригинала — штатный `::-webkit-scrollbar`
-/// (`theme/global.css:25-29`): дорожка 8px, thumb НА ВСЮ ширину дорожки,
-/// радиус `--radius-xs` = 4, без инсетов и без «толстеющего» активного
-/// состояния. Вендорные 16px дорожки с 6/8px thumb'ом внутри давали заметно
-/// другой ползунок (ревью ц.35). В 0.5.1 это были константы
-/// `scroll/scrollbar.rs`; в 0.7.1 скроллбар уехал в gpui-base и берёт
-/// геометрию из `ScrollbarStyles` темы — патч перенесён сюда, в проекцию.
-const KAMIN_SCROLLBAR_WIDTH: Pixels = px(8.);
-const KAMIN_SCROLLBAR_THUMB_RADIUS: Pixels = px(4.);
 
 /// The plot hover motion this design system projects onto Base.
 ///
@@ -209,6 +201,10 @@ pub struct Theme {
     /// Show the scrollbar mode, default: Scrolling
     #[serde(alias = "scrollbar_show")]
     pub scrollbar_mode: ScrollbarMode,
+    /// KaminIDE patch: optional application style policy, applied after the
+    /// component's colors and platform defaults on every Base projection.
+    #[serde(skip)]
+    pub scrollbar_style: Option<fn(ScrollbarStyles) -> ScrollbarStyles>,
     /// The notification setting.
     #[serde(skip)]
     pub notification: NotificationSettings,
@@ -408,6 +404,13 @@ impl Theme {
         Self::edit(cx, true, |theme| theme.mode = mode);
     }
 
+    fn resolve_scrollbar_style(&self, styles: ScrollbarStyles) -> ScrollbarStyles {
+        match self.scrollbar_style {
+            Some(configure) => configure(styles),
+            None => styles,
+        }
+    }
+
     /// This theme projected onto the Base layer, which owns the scrollbar and
     /// resize handles and reads the semantic tokens.
     fn base_theme(&self) -> gpui_base::Theme {
@@ -422,69 +425,45 @@ impl Theme {
                 .with_mode(self.scrollbar_mode)
                 .with_motion(scrollbar_motion(self.scrollbar_mode))
                 .with_styles(
-                    gpui_base::ScrollbarStyles::default()
-                        .track(|style| {
-                            style
-                                .bg(self.scrollbar)
-                                // KaminIDE patch: дорожка 8px (см. KAMIN_SCROLLBAR_WIDTH).
-                                .when(!gpui_base::is_mobile(), |style| {
-                                    style.width(KAMIN_SCROLLBAR_WIDTH)
-                                })
-                        })
-                        .track_hover(|style| style.bg(self.scrollbar))
-                        .track_active(|style| style.bg(self.scrollbar).border_color(self.border))
-                        .thumb(|style| {
-                            style
-                                .bg(self.tokens.scrollbar_thumb)
-                                .radius(self.radius)
-                                // KaminIDE patch: thumb во всю дорожку, r=4, без инсета.
-                                .when(!gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(KAMIN_SCROLLBAR_WIDTH)
-                                        .inset(px(0.))
-                                        .radius(KAMIN_SCROLLBAR_THUMB_RADIUS)
-                                })
-                                .when(gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(MOBILE_SCROLLBAR_THUMB_WIDTH)
-                                        .inset(MOBILE_SCROLLBAR_THUMB_INSET)
-                                        .radius(RADIUS_FULL)
-                                })
-                        })
-                        .thumb_hover(|style| {
-                            style
-                                .bg(self.tokens.scrollbar_thumb_hover)
-                                .radius(self.radius)
-                                // KaminIDE patch: thumb во всю дорожку, r=4, без инсета.
-                                .when(!gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(KAMIN_SCROLLBAR_WIDTH)
-                                        .inset(px(0.))
-                                        .radius(KAMIN_SCROLLBAR_THUMB_RADIUS)
-                                })
-                                .when(gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(SCROLLBAR_THUMB_HOVER_WIDTH)
-                                        .inset(SCROLLBAR_THUMB_INSET)
-                                })
-                        })
-                        .thumb_active(|style| {
-                            style
-                                .bg(self.tokens.scrollbar_thumb_hover)
-                                .radius(self.radius)
-                                // KaminIDE patch: thumb во всю дорожку, r=4, без инсета.
-                                .when(!gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(KAMIN_SCROLLBAR_WIDTH)
-                                        .inset(px(0.))
-                                        .radius(KAMIN_SCROLLBAR_THUMB_RADIUS)
-                                })
-                                .when(gpui_base::is_mobile(), |style| {
-                                    style
-                                        .width(SCROLLBAR_THUMB_ACTIVE_WIDTH)
-                                        .inset(SCROLLBAR_THUMB_INSET)
-                                })
-                        }),
+                    self.resolve_scrollbar_style(
+                        gpui_base::ScrollbarStyles::default()
+                            .track(|style| style.bg(self.scrollbar))
+                            .track_hover(|style| style.bg(self.scrollbar))
+                            .track_active(|style| {
+                                style.bg(self.scrollbar).border_color(self.border)
+                            })
+                            .thumb(|style| {
+                                style
+                                    .bg(self.tokens.scrollbar_thumb)
+                                    .radius(self.radius)
+                                    .when(gpui_base::is_mobile(), |style| {
+                                        style
+                                            .width(MOBILE_SCROLLBAR_THUMB_WIDTH)
+                                            .inset(MOBILE_SCROLLBAR_THUMB_INSET)
+                                            .radius(RADIUS_FULL)
+                                    })
+                            })
+                            .thumb_hover(|style| {
+                                style
+                                    .bg(self.tokens.scrollbar_thumb_hover)
+                                    .radius(self.radius)
+                                    .when(gpui_base::is_mobile(), |style| {
+                                        style
+                                            .width(SCROLLBAR_THUMB_HOVER_WIDTH)
+                                            .inset(SCROLLBAR_THUMB_INSET)
+                                    })
+                            })
+                            .thumb_active(|style| {
+                                style
+                                    .bg(self.tokens.scrollbar_thumb_hover)
+                                    .radius(self.radius)
+                                    .when(gpui_base::is_mobile(), |style| {
+                                        style
+                                            .width(SCROLLBAR_THUMB_ACTIVE_WIDTH)
+                                            .inset(SCROLLBAR_THUMB_INSET)
+                                    })
+                            }),
+                    ),
                 ),
             resizable: gpui_base::ResizableTheme {
                 handle: Some(self.border),
@@ -814,6 +793,7 @@ impl From<&ThemeColor> for Theme {
             shadow: true,
             focus_ring: true,
             scrollbar_mode: ScrollbarMode::default(),
+            scrollbar_style: None,
             notification: NotificationSettings::default(),
             list: ListSettings::default(),
             colors: *colors,

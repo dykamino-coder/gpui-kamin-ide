@@ -23,7 +23,7 @@ pub(super) fn mark(nodes: &mut [Node]) {
             .all(|w| matches!(w, None | Some(Len::Px(0.0))));
         if bare && block_like(root) {
             root.style.float_tail = true;
-            let vertical = root.style.vertical.unwrap_or(false);
+            let vertical = root.style.wm().vertical();
             descend(root, vertical);
         }
     }
@@ -48,13 +48,13 @@ fn descend(parent: &mut crate::dom::Element, vertical: bool) {
     let Node::Element(child) = &mut parent.children[last] else {
         return;
     };
-    let child_vertical = child.style.vertical.unwrap_or(vertical);
+    let child_vertical = child.style.vertical_decl().unwrap_or(vertical);
     // Writing Modes 3 §3.2: a box orthogonal to its parent establishes an
     // independent formatting context, as do flex and grid items.
     if item_parent
         || child_vertical != vertical
         || !block_like(child)
-        || crate::render::own_context_style(&child.style)
+        || crate::style::computed::formatting_context::own_context_style(&child.style)
         || child.style.float.is_some_and(|f| f != 0)
     {
         return;

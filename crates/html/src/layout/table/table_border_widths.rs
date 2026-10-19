@@ -158,8 +158,11 @@ mod tests {
     #[test]
     fn vertical_columns_share_physical_bottom_and_top_borders() {
         let mut table = anon_element("table", vec![]);
-        table.style.vertical = Some(true);
-        table.style.vertical_rl = Some(true);
+        table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            true,
+            true,
+            table.style.wm().sideways(),
+        ));
         table.style.border_collapse = Some(true);
         table.style.border_width.right = Some(Len::Px(20.0));
         table.style.border_visible[1] = Some(true);
@@ -176,7 +179,11 @@ mod tests {
         assert_eq!(widths[&1], [0.0, 20.0, 100.0, 0.0]);
         assert_eq!(widths[&2], [100.0, 20.0, 0.0, 0.0]);
         assert_eq!(outer, [0.0, 20.0, 0.0, 0.0]);
-        table.style.vertical = Some(false);
+        table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
+            false,
+            table.style.wm().block_rl(),
+            table.style.wm().sideways(),
+        ));
         table.style.border_width = Sides::default();
         let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, 16.0, "");
         assert_eq!(widths[&1][2], 50.0);

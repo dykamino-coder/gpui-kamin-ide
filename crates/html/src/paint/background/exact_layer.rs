@@ -7,10 +7,9 @@
 //! snaps only the destination. The layer canvas received the device-snapped
 //! box, so a centred tile moved by up to half a device pixel against the same
 //! tile in a box of equal exact geometry (background-root-013a/b).
-use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Styled as _, Window, px,
-};
+
+use crate::hooks::Hooks;
+use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled as _, Window, px};
 use std::cell::Cell;
 
 thread_local! {
@@ -30,7 +29,7 @@ pub(crate) fn positioning(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
 type PaintFn = Box<dyn FnMut(Bounds<Pixels>, &mut Window)>;
 
 pub(crate) struct ExactLayer {
-    child: Option<AnyElement>,
+    child: AnyElement,
     paint: PaintFn,
     exact: Option<Bounds<Pixels>>,
 }
@@ -44,53 +43,35 @@ impl ExactLayer {
         paint: impl FnMut(Bounds<Pixels>, &mut Window) + 'static,
     ) -> Self {
         Self {
-            child: Some(
-                gpui::div()
-                    .absolute()
-                    .top(px(t))
-                    .right(px(r))
-                    .bottom(px(b))
-                    .left(px(l))
-                    .into_any_element(),
-            ),
+            child: gpui::div()
+                .absolute()
+                .top(px(t))
+                .right(px(r))
+                .bottom(px(b))
+                .left(px(l))
+                .into_any_element(),
             paint: Box::new(paint),
             exact: None,
         }
     }
 }
 
-impl Element for ExactLayer {
-    type RequestLayoutState = LayoutId;
-    type PrepaintState = ();
+impl Hooks for ExactLayer {
+    type Layout = LayoutId;
+    type Prepaint = ();
 
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (LayoutId, LayoutId) {
-        let layout_id = self.child.as_mut().unwrap().request_layout(window, cx);
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
+        let layout_id = self.child.request_layout(window, cx);
         (layout_id, layout_id)
     }
 
     fn prepaint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        layout_id: &mut LayoutId,
+        layout_id: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
-    ) {
+    ) -> Self::Prepaint {
         let exact = Bounds {
             origin: window.layout_origin_unrounded(*layout_id),
             size: window.layout_size_unrounded(*layout_id),
@@ -103,29 +84,19 @@ impl Element for ExactLayer {
             && near(exact.right(), bounds.right())
             && near(exact.bottom(), bounds.bottom()))
         .then_some(exact);
-        self.child.as_mut().unwrap().prepaint(window, cx);
+        self.child.prepaint(window, cx);
     }
 
     fn paint(
         &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _state: &mut LayoutId,
-        _prepaint: &mut (),
+        _state: &mut Self::Layout,
+        _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,
     ) {
         let outer = EXACT.with(|cell| cell.replace(self.exact.map(|exact| (bounds, exact))));
         (self.paint)(bounds, window);
         EXACT.with(|cell| cell.set(outer));
-    }
-}
-
-impl IntoElement for ExactLayer {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
     }
 }
