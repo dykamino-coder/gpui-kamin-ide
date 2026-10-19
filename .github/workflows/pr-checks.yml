@@ -111,7 +111,7 @@ jobs:
             fi
           }
 
-          set_scope root_node '^(src/|tests/|package(-lock)?\.json$|tsconfig\.json$|eslint\.config\.mjs$|vitest\.config\.[^/]+$|vite\.[^/]*\.config\.[^/]+$|scripts/.*\.(js|mjs|ts)$)'
+          set_scope root_node '^(src/|tests/|package(-lock)?\.json$|tsconfig\.json$|eslint\.config\.mjs$|vitest\.config\.[^/]+$|vite\.[^/]*\.config\.[^/]+$|scripts/.*\.(js|mjs|ts)$|\.github/(main-ruleset\.json|workflows/pr-metadata\.yml)$)'
           set_scope bridge_server '^extensions/claude-bridge/server/'
           set_scope bridge_dashboard '^extensions/claude-bridge/server/src/ui/'
           set_scope bridge_extension '^(extensions/claude-bridge/extension/|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'

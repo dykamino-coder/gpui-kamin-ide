@@ -19,4 +19,9 @@ test("owner ruleset requires the actual stable workflow checks without a bypass"
     assert.ok(checks.includes(name));
     assert.ok(readFileSync(`.github/workflows/${file}`, "utf8").includes(`    name: ${name}\n`));
   }
+  const workflow = readFileSync(".github/workflows/pr-checks.yml", "utf8");
+  const rootScope = new RegExp(workflow.match(/set_scope root_node '([^']+)'/)[1]);
+  for (const file of [".github/main-ruleset.json", ".github/workflows/pr-metadata.yml"]) {
+    assert.match(file, rootScope, `Changing ${file} must run this contract test`);
+  }
 });
