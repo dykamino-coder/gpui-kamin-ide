@@ -26,6 +26,15 @@ pub(crate) fn inline_node(
                 || !blank_text(t)
                 || (!pending.is_empty() && t.contains(' '))
         }
+        // The measured host keeps the hypothetical inline position in its paragraph.
+        Node::Element(e)
+            if inherited.band_kid
+                && !ordered_context
+                && at_static_position(&e.style)
+                && e.style.inline_display == Some(true) =>
+        {
+            true
+        }
         // Элемент с ЗАДАННЫМИ краями строчным не бывает: края он считает
         // от позиционированного предка, а не от строки. Куском абзаца он
         // получал содержащим блоком сам абзац — и `inset: 0` растягивал

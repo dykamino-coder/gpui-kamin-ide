@@ -108,7 +108,9 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
             Piece::Atom(_) => return None,
         }
     }
-    (!text.is_empty()).then_some((text, runs))
+    // OOF-only paragraphs retain a static point without creating a line.
+    (!text.is_empty() || pieces.iter().any(|p| matches!(p, Piece::Overlay(..))))
+        .then_some((text, runs))
 }
 
 /// Шрифт струта абзаца — тот же, каким набирался бы текст самого блока.

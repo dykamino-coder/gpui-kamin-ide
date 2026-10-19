@@ -48,14 +48,9 @@ pub(crate) fn paragraph_pieces_routed(
     // целиком, и щуп садится в НАЧАЛО rtl-строки (замер: x = 328 при верных
     // 168, снимки `target/scoutrtlv/target/wpt-shots/`).
     //
-    // Открыть текстовый путь при `direction: rtl` можно только абзацу, у
-    // которого этот путь ДОСТУПЕН: на пустом тексте `inline::text_and_runs`
-    // отдаёт `None` (`inline.rs:2543`), абзац всё равно сваливается в ряд, а
-    // там кусок вне потока заворачивается в `inline.rs: overlay_in_row` со
-    // СВОИМ, пустым `Spot` и теряет и `rtl`, и `next_line`. Ровно так устроена
-    // семья `css-position/static-position/inline-level-absolute-in-block-
-    // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
-    // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
+    // Overlay-only runs retain a phantom Paragraph: it owns the static point
+    // without adding a line or height. The measured host can therefore keep
+    // horizontal RTL out-of-flow boxes in the shared paragraph pipeline.
     let flow_text = has_flow_text(nodes);
     let atom = |e: &Element,
                 atom_cx: &inline::atom_parent::AtomCx,

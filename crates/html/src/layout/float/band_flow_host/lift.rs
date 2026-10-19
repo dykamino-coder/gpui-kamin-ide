@@ -157,6 +157,10 @@ pub(crate) fn band_flow_rest_lift(
                         l.push(n);
                         continue;
                     }
+                    if !wm.vertical() && c.style.inline_display == Some(true) {
+                        run.push(n);
+                        continue;
+                    }
                     return None;
                 }
                 if !block_level_in_flow(c) {
