@@ -9,7 +9,6 @@ pub(crate) use wrapper::grouped_wrapper;
 
 // owner: A
 
-use crate::paint::effects::mask::{PAINT_VIEWPORT, resolve_mask_refs};
 use crate::style::computed::Computed;
 use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
@@ -55,7 +54,7 @@ pub(super) fn grouped_with(
         _ => 16.0,
     };
     let poly_family = c.font_family.clone().unwrap_or_default();
-    let poly_vp = PAINT_VIEWPORT.with(|v| v.get());
+    let poly_vp = crate::document::state::current().paint.viewport();
     let poly_unit = |l: Len| -> Len {
         match l {
             Len::Px(_) | Len::Pct(_) => l,
@@ -148,13 +147,7 @@ pub(super) fn grouped_with(
             ch,
         )
     });
-    let mask = c
-        .mask_image
-        .clone()
-        .or(clip_shape)
-        .or(bshape)
-        .or(rrect)
-        .map(|m| resolve_mask_refs(&m));
+    let mask = c.mask_image.clone().or(clip_shape).or(bshape).or(rrect);
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся

@@ -1,4 +1,4 @@
-//! Box paint for element_nodes; split out to keep the owning module within 250 lines.
+//! Inherited inline decoration geometry and relative offsets.
 
 use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
@@ -8,7 +8,7 @@ use crate::text::inline::*;
 
 pub(super) fn element_style(e: &Element, inherited: &Computed) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style);
-    let viewport = crate::paint::effects::mask::PAINT_VIEWPORT.with(|v| v.get());
+    let viewport = crate::document::state::current().paint.viewport();
     merged.resolve_decor_inset_viewport(viewport);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.

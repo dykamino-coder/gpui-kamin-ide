@@ -72,8 +72,8 @@ pub(crate) fn resolve_mask(
     // Плитка слоя — его интринзик (auto), укладка от угла коробки;
     // уложенное полотно уходит одной плиткой без мощения.
     let referenced = layers.iter().any(|l| {
-        l.starts_with("svgsnap:")
-            || l.starts_with("clipsnap:")
+        l.starts_with('#')
+            || l.starts_with("clipref:")
             || l.starts_with("pathdef:")
             || l.starts_with("shapedef:")
             || (l.contains('#') && l.contains(".svg"))

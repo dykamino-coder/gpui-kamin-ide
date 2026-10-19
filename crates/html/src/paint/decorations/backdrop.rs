@@ -1,7 +1,7 @@
 //! `backdrop-filter` цветовой матрицей (filter-effects-2 §BackdropFilterProperty).
 // owner: A
 
-use crate::paint::effects::mask::{mask_def, svg_filter_matrix};
+use crate::paint::effects::mask::svg_filter_matrix;
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use gpui::{IntoElement, Styled, px};
@@ -26,7 +26,11 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>) {
         .or_else(|| {
             c.backdrop_ref
                 .as_deref()
-                .and_then(|id| mask_def(&format!("filter:{id}")))
+                .and_then(|id| {
+                    crate::document::state::current()
+                        .paint
+                        .markup(&format!("filter:{id}"))
+                })
                 .and_then(|def| svg_filter_matrix(&def))
         })
         .filter(|_| !c.backdrop_root_above);

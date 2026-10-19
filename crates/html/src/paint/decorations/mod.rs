@@ -10,7 +10,6 @@ use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
-use crate::paint::effects::mask::mask_def;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -49,7 +48,9 @@ pub(crate) fn decorations(c: &Computed, empty: bool) -> Vec<AnyElement> {
     // детей (filter-region-transformed-composited-child-001).
     if empty
         && let Some(id) = c.filter_ref.as_deref()
-        && let Some(def) = mask_def(&format!("filter:{id}"))
+        && let Some(def) = crate::document::state::current()
+            .paint
+            .markup(&format!("filter:{id}"))
     {
         let fill = match c.background {
             Some(col) if col.a > 0.0 => format!(

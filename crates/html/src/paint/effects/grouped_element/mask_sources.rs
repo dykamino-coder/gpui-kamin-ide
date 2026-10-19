@@ -20,7 +20,7 @@ pub(super) fn mask_layer_source(layer: &str) -> Option<String> {
     if t.contains("-gradient(") || t.starts_with("filter(") {
         return Some(t.to_string());
     }
-    if t.starts_with("clipsnap:") || t.starts_with("pathdef:") || t.starts_with("shapedef:") {
+    if t.starts_with("clipref:") || t.starts_with("pathdef:") || t.starts_with("shapedef:") {
         return Some(t.to_string());
     }
     let at = t.find("url(")?;
@@ -65,16 +65,15 @@ pub(super) fn svg_fragment(path: &str, id: &str) -> Option<(String, bool)> {
 
 /// Растр определения `<mask>`/`<clipPath>` из документа под коробку.
 ///
-/// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
+/// Содержимое сериализовано в контексте документа; маска берёт
 /// светимость своих красок, обрезка — покрытие (заливка принудительно
 /// белая), поэтому обе идут люминанс-растром.
 pub(super) fn rasterize_mask_def(
-    key: &str,
+    markup: &str,
     w: f32,
     h: f32,
     force_white: bool,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let markup = crate::paint::effects::mask::mask_snapshot(key)?;
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
     // (clip-path-shape-002: у эталона пропадала дырка evenodd).

@@ -44,6 +44,8 @@ pub struct Grouped {
     /// размер коробки (mask-size auto без своего размера = область,
     /// css-masking §7.4), а он известен только здесь.
     pub mask: Option<String>,
+    /// Immutable resources captured before deferred paint of this group.
+    pub(crate) mask_defs: std::sync::Arc<super::mask::MaskDefinitions>,
     /// Separate decoration and overflow contours for shaped corners.
     pub(crate) corner_clip: Option<super::corner_clip::CornerClip>,
     /// `mask-size`: размер плитки; None — auto (интринзик картинки).
@@ -165,6 +167,7 @@ impl Grouped {
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
+            mask_defs: crate::document::state::current().paint.definitions(),
             corner_clip: None,
             mask_size: None,
             mask_fit: 0,

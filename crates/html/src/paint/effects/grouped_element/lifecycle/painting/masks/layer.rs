@@ -35,19 +35,22 @@ pub(crate) fn mask_layer(
         scene.width = bw;
         scene.height = bh;
         (scene.rasterize()?, [0.0, 0.0, bw * sf, bh * sf], true)
-    } else if let Some(id) = l.strip_prefix("svgsnap:") {
+    } else if let Some(def) = l.strip_prefix('#').and_then(|id| group.mask_defs.get(id)) {
         // css-masking-1 §7.2: `match-source` у ссылки на
         // `<mask>` — его `mask-type` (светимость по
         // умолчанию); явный `mask-mode` главнее.
-        let alpha = !group.mask_luminance && (group.mask_alpha_mode || id.ends_with('A'));
+        let alpha = !group.mask_luminance && (group.mask_alpha_mode || def.alpha);
         (
-            rasterize_mask_def(id, bw, bh, false)?,
+            rasterize_mask_def(&def.markup, bw, bh, false)?,
             [0.0, 0.0, bw * sf, bh * sf],
             !alpha,
         )
-    } else if let Some(id) = l.strip_prefix("clipsnap:") {
+    } else if let Some(def) = l
+        .strip_prefix("clipref:")
+        .and_then(|id| group.mask_defs.get(id))
+    {
         (
-            rasterize_mask_def(id, bw, bh, true)?,
+            rasterize_mask_def(&def.markup, bw, bh, true)?,
             [0.0, 0.0, bw * sf, bh * sf],
             true,
         )
@@ -56,7 +59,7 @@ pub(crate) fn mask_layer(
         .filter(|(f, _)| f.ends_with(".svg"))
         .and_then(|(file, frag)| svg_fragment(file, frag))
     {
-        // Явный `mask-mode` главнее типа определения (§7.2), как у svgsnap.
+        // Явный `mask-mode` главнее типа определения (§7.2), как у ссылки на маску документа.
         let alpha = !group.mask_luminance && (group.mask_alpha_mode || alpha);
         // CSS Masking §7.1: a <mask> reference is distinct
         // from an SVG image URL with an ordinary fragment.

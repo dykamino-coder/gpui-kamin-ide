@@ -33,6 +33,8 @@ pub use scoped::Scoped;
 /// кадра и фазы GPUI — всегда в области этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// SVG resources and viewport owned by this document.
+    pub(crate) paint: crate::paint::effects::mask::PaintContext,
     /// Носитель и область просмотра, которыми разобран документ.
     pub(crate) media: Cell<Media>,
     /// Режим quirks (HTML §13.2.6.4.1), ставит разбор.
@@ -132,6 +134,7 @@ impl DocState {
     fn reset_parsed(&self, media: Media) {
         self.media.set(media);
         self.quirks.set(false);
+        self.paint.reset();
         *self.root.borrow_mut() = RootMetrics::default();
         self.page_rules.borrow_mut().clear();
         self.try_rules.borrow_mut().clear();

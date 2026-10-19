@@ -13,7 +13,6 @@ use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::native_intrinsic;
 use crate::paint::apply::{apply, apply_hover};
 use crate::paint::decorations::decorations;
-use crate::paint::effects::mask::mask_def;
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
@@ -55,9 +54,12 @@ pub(crate) fn styled_div_with(e: &Element, style: &Computed) -> gpui::Div {
     let paint = if c.background.is_some()
         && !c.transform_ancestor
         && c.transform.is_none()
-        && c.filter_ref
-            .as_deref()
-            .is_some_and(|id| mask_def(&format!("filter:{id}")).is_some())
+        && c.filter_ref.as_deref().is_some_and(|id| {
+            crate::document::state::current()
+                .paint
+                .markup(&format!("filter:{id}"))
+                .is_some()
+        })
         && !e.children.iter().any(|n| !is_blank(n))
     {
         unfilled = Computed {

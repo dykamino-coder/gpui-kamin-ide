@@ -80,6 +80,7 @@ pub(crate) fn parse_embedded_sized(
     // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.
     crate::animation::motion::settle(&mut nodes);
+    state.paint.collect(&nodes);
     drop(_scope);
     Embedded {
         nodes,

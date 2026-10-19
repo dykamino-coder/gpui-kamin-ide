@@ -217,6 +217,7 @@ fn parse_document(
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false);
     }
+    state.paint.collect(&nodes);
     drop(_scope);
     (state, nodes, root)
 }

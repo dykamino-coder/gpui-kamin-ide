@@ -17,7 +17,6 @@ use crate::dom::Node;
 use crate::layout::block::containing::AVAIL_W;
 use crate::layout::float::clear::without_inert_clear;
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
-use crate::paint::effects::mask::collect_mask_defs;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
 pub(super) mod content_wrapper;
@@ -120,7 +119,9 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     // Пойманная паника кадра внутри рамки оставляла счётчик глубины
     // навсегда — три такие паники, и рамки исчезали до перезапуска.
     IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    crate::document::state::current()
+        .paint
+        .begin(nodes, opts.viewport);
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
     // их края решает область просмотра (§10.1 п.4).
@@ -183,7 +184,9 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let node = nodes.get(index)?;
     crate::interactive::frame::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    crate::document::state::current()
+        .paint
+        .begin(nodes, opts.viewport);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.

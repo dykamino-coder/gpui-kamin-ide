@@ -11,7 +11,6 @@ use crate::layout::page::names::{
 };
 use crate::layout::page::{page_boxes, page_counters};
 use crate::layout::replaced::iframe::IFRAME_DEPTH;
-use crate::paint::effects::mask::collect_mask_defs;
 use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -64,7 +63,9 @@ pub fn render_paged_select(
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize();
     IFRAME_DEPTH.with(|d| d.set(0));
-    collect_mask_defs(nodes);
+    crate::document::state::current()
+        .paint
+        .begin(nodes, opts.viewport);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();
