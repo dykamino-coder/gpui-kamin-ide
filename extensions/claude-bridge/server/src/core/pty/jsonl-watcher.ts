@@ -52,7 +52,12 @@ export function conversationIdFromPath(jsonlPath: string): string {
 }
 
 async function pathExists(p: string): Promise<boolean> {
-  try { await fsp.access(p); return true } catch { return false }
+  try {
+    await fsp.access(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +66,7 @@ async function pathExists(p: string): Promise<boolean> {
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects')
 const DISCOVERY_POLL_MS = 1000
-const DISCOVERY_TIMEOUT_MS = 300_000  // 5 min — then slow-poll instead of error
+const DISCOVERY_TIMEOUT_MS = 300_000 // 5 min — then slow-poll instead of error
 const TAIL_POLL_MS = 200
 // Re-check delay after a backpressure DROP — fast enough that a briefly-slow
 // client recovers its missed lines within a blink, not the 10s safety poll.
@@ -83,7 +88,7 @@ const REPLAY_BACKPRESSURE_RETRY_MS = 250
 // not yet attached (a fresh resume attaches within a second or two).
 const PREVIEW_SEND_ATTEMPTS = 12
 const SUBAGENT_POLL_MS = 1000
-const SUBAGENT_DISCOVERY_TIMEOUT_MS = 120_000  // 2 min to wait for file to appear
+const SUBAGENT_DISCOVERY_TIMEOUT_MS = 120_000 // 2 min to wait for file to appear
 // Retire a subagent watcher after this long with no file growth — a completed
 // subagent shouldn't hold a live timer + inotify handle for the whole session.
 const SUBAGENT_RETIRE_MS = 5 * 60_000
@@ -302,7 +307,10 @@ export class JsonlWatcher {
     }
 
     if (!this.filePath || !this.slugDir) {
-      if (!this.loggedScanSkip) { this.loggedScanSkip = true; console.log(`[subagent] scan skip: filePath=${!!this.filePath} slugDir=${!!this.slugDir}`) }
+      if (!this.loggedScanSkip) {
+        this.loggedScanSkip = true
+        console.log(`[subagent] scan skip: filePath=${!!this.filePath} slugDir=${!!this.slugDir}`)
+      }
       return
     }
 
@@ -313,10 +321,16 @@ export class JsonlWatcher {
     try {
       files = await fsp.readdir(subagentsDir)
     } catch {
-      if (!this.loggedScanSkip) { this.loggedScanSkip = true; console.log(`[subagent] scan: no dir ${subagentsDir}`) }
+      if (!this.loggedScanSkip) {
+        this.loggedScanSkip = true
+        console.log(`[subagent] scan: no dir ${subagentsDir}`)
+      }
       return
     }
-    if (!this.loggedScanSkip) { this.loggedScanSkip = true; console.log(`[subagent] scan: ${files.length} files in ${subagentsDir}`) }
+    if (!this.loggedScanSkip) {
+      this.loggedScanSkip = true
+      console.log(`[subagent] scan: ${files.length} files in ${subagentsDir}`)
+    }
     try {
       for (const file of files) {
         if (this.stopped) return
@@ -360,7 +374,9 @@ export class JsonlWatcher {
           const raw = await fsp.readFile(metaPath, 'utf-8')
           const meta = JSON.parse(raw)
           if (meta.agentType) agentName = meta.agentType
-        } catch { /* use fallback name */ }
+        } catch {
+          /* use fallback name */
+        }
         if (this.stopped) return
 
         console.log(`[subagent] watcher start: ${agentName} (${path.basename(jsonlPath)})`)
@@ -377,7 +393,9 @@ export class JsonlWatcher {
         this.subagentWatchers.set(jsonlPath, watcher)
         void watcher.start()
       }
-    } catch { /* directory read error */ }
+    } catch {
+      /* directory read error */
+    }
   }
 
   /** Start periodic scanning of subagents directory */
@@ -406,15 +424,23 @@ export class JsonlWatcher {
    *  onto stale ones. */
   async streamFrom(offset: number, live: () => boolean): Promise<number> {
     if (!this.filePath) return offset
-    return this.readEntriesStreaming(this.filePath, offset, async (batch) => {
-      for (let i = 0; i < batch.length;) {
-        if (!live()) return
-        const slice = batch.slice(i, i + INITIAL_BATCH_SIZE)
-        if (this.sendEntries(slice, true) === false) { await delay(REPLAY_BACKPRESSURE_RETRY_MS); continue }
-        i += INITIAL_BATCH_SIZE
-        await delay(INITIAL_BATCH_DELAY_MS)
-      }
-    }, live)
+    return this.readEntriesStreaming(
+      this.filePath,
+      offset,
+      async (batch) => {
+        for (let i = 0; i < batch.length;) {
+          if (!live()) return
+          const slice = batch.slice(i, i + INITIAL_BATCH_SIZE)
+          if (this.sendEntries(slice, true) === false) {
+            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
+            continue
+          }
+          i += INITIAL_BATCH_SIZE
+          await delay(INITIAL_BATCH_DELAY_MS)
+        }
+      },
+      live,
+    )
   }
 
   stop(): void {
@@ -437,7 +463,9 @@ export class JsonlWatcher {
       this.tailRetryTimer = null
     }
     if (this.tailWatcher) {
-      try { this.tailWatcher.close() } catch {}
+      try {
+        this.tailWatcher.close()
+      } catch {}
       this.tailWatcher = null
     }
     if (this.compactionUnsub) {
@@ -472,8 +500,14 @@ export class JsonlWatcher {
         const found = await this.scanForJsonl()
         this.timing('discovery.tick', found ? 'FOUND' : 'no-file')
         if (found && !this.stopped) {
-          if (this.discoveryTimer) { clearInterval(this.discoveryTimer); this.discoveryTimer = null }
-          if (this.discoveryTimeout) { clearTimeout(this.discoveryTimeout); this.discoveryTimeout = null }
+          if (this.discoveryTimer) {
+            clearInterval(this.discoveryTimer)
+            this.discoveryTimer = null
+          }
+          if (this.discoveryTimeout) {
+            clearTimeout(this.discoveryTimeout)
+            this.discoveryTimeout = null
+          }
           this.filePath = found
           this.startTailing()
         } else if (!this.stopped && !announcedNothingToReplay) {
@@ -496,13 +530,17 @@ export class JsonlWatcher {
     // Scan immediately: waiting a poll interval delayed every session's open by
     // that much, and delayed the "nothing to replay" answer above with it.
     void tick()
-    this.discoveryTimer = setInterval(() => { void tick() }, DISCOVERY_POLL_MS)
+    this.discoveryTimer = setInterval(() => {
+      void tick()
+    }, DISCOVERY_POLL_MS)
 
     this.discoveryTimeout = setTimeout(() => {
       if (this.stopped || this.filePath) return
       if (this.discoveryTimer) clearInterval(this.discoveryTimer)
       this.sendStatus({ status: 'searching' })
-      this.discoveryTimer = setInterval(() => { void tick() }, 5000)
+      this.discoveryTimer = setInterval(() => {
+        void tick()
+      }, 5000)
     }, DISCOVERY_TIMEOUT_MS)
   }
 
@@ -523,9 +561,7 @@ export class JsonlWatcher {
     let bestMtime = 0
 
     const results = await Promise.all(
-      slugDirs
-        .filter((d) => d.isDirectory())
-        .map((d) => this.scanDirectory(path.join(PROJECTS_DIR, d.name))),
+      slugDirs.filter((d) => d.isDirectory()).map((d) => this.scanDirectory(path.join(PROJECTS_DIR, d.name))),
     )
     for (const found of results) {
       if (!found) continue
@@ -535,7 +571,9 @@ export class JsonlWatcher {
           bestMtime = stat.mtimeMs
           bestPath = found
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
     return bestPath
   }
@@ -565,7 +603,9 @@ export class JsonlWatcher {
               bestMtime = stat.mtimeMs
               bestPath = filePath
             }
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }),
     )
 
@@ -599,7 +639,9 @@ export class JsonlWatcher {
       dir: this.slugDir || path.dirname(this.filePath),
       currentFilePath: this.filePath,
       sessionCreatedAt: this.sessionCreatedAt,
-      onNewer: (candidate) => { if (!this.stopped) this.switchToFile(candidate) },
+      onNewer: (candidate) => {
+        if (!this.stopped) this.switchToFile(candidate)
+      },
     }
     this.compactionUnsub = compactionScanner.subscribe(this.compactionSub)
   }
@@ -615,13 +657,18 @@ export class JsonlWatcher {
       this.tailTimer = null
     }
     if (this.tailWatcher) {
-      try { this.tailWatcher.close() } catch {}
+      try {
+        this.tailWatcher.close()
+      } catch {}
       this.tailWatcher = null
     }
     // Kill any pending backpressure retry — it was scheduled against the OLD
     // file/offset; letting it fire after the switch would re-read the new file
     // from a stale offset and re-fire the per-entry stats/user hooks (#78).
-    if (this.tailRetryTimer) { clearTimeout(this.tailRetryTimer); this.tailRetryTimer = null }
+    if (this.tailRetryTimer) {
+      clearTimeout(this.tailRetryTimer)
+      this.tailRetryTimer = null
+    }
 
     this.filePath = newPath
     this.lastOffset = 0
@@ -656,7 +703,10 @@ export class JsonlWatcher {
    *  overlapping two parses (which could deliver stale-then-fresh out of order). */
   private async rebuildSegmentIndex(): Promise<void> {
     if (!this.filePath || this.stopped) return
-    if (this.rebuildingIndex) { this.rebuildIndexAgain = true; return }
+    if (this.rebuildingIndex) {
+      this.rebuildIndexAgain = true
+      return
+    }
     this.rebuildingIndex = true
     try {
       do {
@@ -666,11 +716,22 @@ export class JsonlWatcher {
         const all: JsonlEntry[] = []
         const live = () => !this.stopped && this.filePath === filePath
         try {
-          await this.readEntriesStreaming(filePath, 0, async (batch) => { all.push(...batch) }, live)
-        } catch { return }
+          await this.readEntriesStreaming(
+            filePath,
+            0,
+            async (batch) => {
+              all.push(...batch)
+            },
+            live,
+          )
+        } catch {
+          return
+        }
         if (!live()) return
         const bounds: number[] = []
-        all.forEach((e, i) => { if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i) })
+        all.forEach((e, i) => {
+          if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i)
+        })
         this.sendStatus({ status: 'watching', filePath, segmentIndex: buildSegmentIndex(all, bounds) })
       } while (this.rebuildIndexAgain && !this.stopped)
     } finally {
@@ -732,7 +793,11 @@ export class JsonlWatcher {
       lineStart += Buffer.byteLength(line, 'utf8') + 1
       if (!line.trim() || line.includes(SKIP_LINE_MARKER)) continue
       let parsed: JsonlEntry
-      try { parsed = JSON.parse(line) as JsonlEntry } catch { continue }
+      try {
+        parsed = JSON.parse(line) as JsonlEntry
+      } catch {
+        continue
+      }
       if (!parsed.uuid) continue
       const tagged = parsed as JsonlEntry & { _pos?: number; _posEnd?: number; _ord?: number }
       tagged._pos = thisLineStart
@@ -808,23 +873,37 @@ export class JsonlWatcher {
       // carries `_ord` (its position in file order) so the client keeps them
       // chronological regardless of this out-of-order delivery.
       const all: JsonlEntry[] = []
-      const endPos = await this.readEntriesStreaming(this.filePath, 0, async (batch) => { all.push(...batch) }, live)
+      const endPos = await this.readEntriesStreaming(
+        this.filePath,
+        0,
+        async (batch) => {
+          all.push(...batch)
+        },
+        live,
+      )
       if (!live()) return
       this.timing('fullParse.done', `${String(all.length)} records`)
       const base = globalOrdCounter
-      all.forEach((e, i) => { (e as JsonlEntry & { _ord?: number })._ord = base + i })
+      all.forEach((e, i) => {
+        ;(e as JsonlEntry & { _ord?: number })._ord = base + i
+      })
       globalOrdCounter = base + all.length
       // The tail picks up from where THIS read actually stopped — not from a
       // pre-read stat.size, which raced with concurrent CLI appends.
       this.lastOffset = endPos
       // Split into segments at each compact boundary.
       const bounds: number[] = []
-      all.forEach((e, i) => { if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i) })
+      all.forEach((e, i) => {
+        if (e.type === 'system' && (e as { subtype?: string }).subtype === 'compact_boundary') bounds.push(i)
+      })
       // Same pass, same data: the full compact-segment index for the strip.
       segmentIndex = buildSegmentIndex(all, bounds)
       const ranges: Array<[number, number]> = []
       let segStart = 0
-      for (const b of bounds) { ranges.push([segStart, b]); segStart = b }
+      for (const b of bounds) {
+        ranges.push([segStart, b])
+        segStart = b
+      }
       ranges.push([segStart, all.length])
       // Byte-progress of the replay, for the client's "loading history … N%".
       // `total` is the file size; `sentBytes` accumulates the byte span of every
@@ -850,7 +929,7 @@ export class JsonlWatcher {
         this.sendStatus({ status: 'watching', filePath: this.filePath!, replayProgress: { sent: sentBytes, total } })
       }
       const emitRange = async ([s, e]: [number, number]): Promise<void> => {
-        for (let i = s; i < e; ) {
+        for (let i = s; i < e;) {
           if (!live()) return
           const batch = all.slice(i, Math.min(e, i + INITIAL_BATCH_SIZE))
           // Honor backpressure (mirrors checkForNewContent / the #78 tail fix):
@@ -859,7 +938,10 @@ export class JsonlWatcher {
           // the renderer. Bounded by the session lifecycle: a truly dead socket
           // closes → stop() → live() false ends the loop.
           const delivered = this.sendEntries(batch, true)
-          if (delivered === false) { await delay(REPLAY_BACKPRESSURE_RETRY_MS); continue }
+          if (delivered === false) {
+            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
+            continue
+          }
           emitProgress(batch)
           i += INITIAL_BATCH_SIZE
           await delay(INITIAL_BATCH_DELAY_MS)
@@ -884,7 +966,11 @@ export class JsonlWatcher {
           const start = Math.max(s, end - INITIAL_BATCH_SIZE)
           const batch = all.slice(start, end)
           const delivered = this.sendEntries(batch, true)
-          if (delivered === false) { await delay(REPLAY_BACKPRESSURE_RETRY_MS); end += INITIAL_BATCH_SIZE; continue }
+          if (delivered === false) {
+            await delay(REPLAY_BACKPRESSURE_RETRY_MS)
+            end += INITIAL_BATCH_SIZE
+            continue
+          }
           emitProgress(batch)
           await delay(INITIAL_BATCH_DELAY_MS)
         }
@@ -897,7 +983,6 @@ export class JsonlWatcher {
         await emitRange(ranges[s]!) // older segments, newest → oldest, in background
       }
       if (!live()) return
-
     } catch (err) {
       if (!live()) return
       this.sendStatus({
@@ -939,11 +1024,22 @@ export class JsonlWatcher {
     // line the CLI appends during the reattach window, double-folding it into
     // the live stat counters. readInitialContent → startPolling re-arms the tail
     // from the fresh offset once it's known.
-    if (this.tailTimer) { clearInterval(this.tailTimer); this.tailTimer = null }
-    if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+    if (this.tailTimer) {
+      clearInterval(this.tailTimer)
+      this.tailTimer = null
+    }
+    if (this.tailWatcher) {
+      try {
+        this.tailWatcher.close()
+      } catch {}
+      this.tailWatcher = null
+    }
     // Same as switchToFile: a pending backpressure retry would race this fresh
     // replay and re-fire stats hooks against re-read entries (#78).
-    if (this.tailRetryTimer) { clearTimeout(this.tailRetryTimer); this.tailRetryTimer = null }
+    if (this.tailRetryTimer) {
+      clearTimeout(this.tailRetryTimer)
+      this.tailRetryTimer = null
+    }
     // Субагенты ТОЖЕ с нуля: живой watcher — skip в scanSubagents (его реплей
     // не повторится), завершённый — retired через 5 мин. В обоих случаях
     // реаттачнутый клиент открывал агента на «No messages from this agent
@@ -958,8 +1054,16 @@ export class JsonlWatcher {
 
   private startPolling(): void {
     // Clear previous timers/watchers if any (from switchToFile)
-    if (this.tailTimer) { clearInterval(this.tailTimer); this.tailTimer = null }
-    if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+    if (this.tailTimer) {
+      clearInterval(this.tailTimer)
+      this.tailTimer = null
+    }
+    if (this.tailWatcher) {
+      try {
+        this.tailWatcher.close()
+      } catch {}
+      this.tailWatcher = null
+    }
     if (!this.filePath) return
 
     // Primary: fs.watch (native FS events) — 0 CPU when idle, reacts within ms
@@ -981,7 +1085,12 @@ export class JsonlWatcher {
           // The underlying file was renamed/replaced — fall back to a fresh
           // poll so we pick up compactions / atomic writes without crashing
           // the watcher.
-          if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+          if (this.tailWatcher) {
+            try {
+              this.tailWatcher.close()
+            } catch {}
+            this.tailWatcher = null
+          }
           schedule()
           return
         }
@@ -991,7 +1100,12 @@ export class JsonlWatcher {
       // some FSes) AFTER creation; without this listener that throws → server
       // crash. Close it and lean on the polling fallback instead.
       this.tailWatcher.on('error', () => {
-        if (this.tailWatcher) { try { this.tailWatcher.close() } catch {}; this.tailWatcher = null }
+        if (this.tailWatcher) {
+          try {
+            this.tailWatcher.close()
+          } catch {}
+          this.tailWatcher = null
+        }
         if (!this.stopped) schedule()
       })
     } catch {
@@ -1004,10 +1118,13 @@ export class JsonlWatcher {
     // misses events only on rare filesystems (network, sshfs). When fs.watch is
     // live this is pure backup so it runs slowly (10s); without it we fall to
     // the aggressive TAIL_POLL_MS for streaming responsiveness.
-    this.tailTimer = setInterval(() => {
-      if (this.stopped || this.reading) return
-      this.checkForNewContent()
-    }, this.tailWatcher ? WATCH_SAFETY_POLL_MS : TAIL_POLL_MS)
+    this.tailTimer = setInterval(
+      () => {
+        if (this.stopped || this.reading) return
+        this.checkForNewContent()
+      },
+      this.tailWatcher ? WATCH_SAFETY_POLL_MS : TAIL_POLL_MS,
+    )
   }
 
   private async checkForNewContent(): Promise<void> {
@@ -1052,7 +1169,8 @@ export class JsonlWatcher {
       for (const parsed of entries) {
         this.onStatsEntry?.(parsed)
         if (parsed.type === 'user' && this.onUserEntry) this.onUserEntry(parsed)
-        if (parsed.type === 'system' && (parsed as { subtype?: string }).subtype === 'compact_boundary') sawBoundary = true
+        if (parsed.type === 'system' && (parsed as { subtype?: string }).subtype === 'compact_boundary')
+          sawBoundary = true
       }
       // A live /compact appends a compact_boundary to the SAME file, so it rides
       // the tail — not switchToFile (a NEW file, which re-runs readInitialContent
@@ -1095,8 +1213,9 @@ export class JsonlWatcher {
     let endPos = stat.size
     let parseable = lines
     if (tail.trim()) {
-      try { JSON.parse(tail) }
-      catch {
+      try {
+        JSON.parse(tail)
+      } catch {
         endPos = stat.size - Buffer.byteLength(tail, 'utf8')
         parseable = lines.slice(0, -1)
       }
@@ -1108,7 +1227,9 @@ export class JsonlWatcher {
         // Parse only — the stats + user-entry hooks fire in checkForNewContent
         // AFTER a successful send, so a backpressure re-read can't double-count.
         entries.push(JSON.parse(line) as JsonlEntry)
-      } catch { /* skip malformed */ }
+      } catch {
+        /* skip malformed */
+      }
     }
     return { entries, endPos }
   }
@@ -1180,7 +1301,9 @@ export class JsonlWatcher {
               await onBatch(batch)
               batch = []
             }
-          } catch { /* skip malformed */ }
+          } catch {
+            /* skip malformed */
+          }
         }
       }
       // Trailing partial line — file may have been mid-write. Try to parse;
@@ -1191,13 +1314,16 @@ export class JsonlWatcher {
         try {
           const parsed = JSON.parse(leftover) as JsonlEntry
           ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._pos = lineStart
-          ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._posEnd = lineStart + Buffer.byteLength(leftover, 'utf8') + 1
+          ;(parsed as JsonlEntry & { _pos?: number; _posEnd?: number })._posEnd =
+            lineStart + Buffer.byteLength(leftover, 'utf8') + 1
           batch.push(parsed)
           if (!isLive || isLive()) this.onStatsEntry?.(parsed)
           if (parsed.type === 'user' && this.onUserEntry) {
             this.onUserEntry(parsed)
           }
-        } catch { consumedLeftover = false /* truncated — tail will retry */ }
+        } catch {
+          consumedLeftover = false /* truncated — tail will retry */
+        }
       }
       if (batch.length > 0) await onBatch(batch)
       return consumedLeftover ? pos : pos - Buffer.byteLength(leftover, 'utf8')
