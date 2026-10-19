@@ -2,7 +2,7 @@
 
 use super::resolve::last_named;
 use super::settle::DefaultAnchor;
-use super::{AnchorPlan, AnchorRec, CB_PARENT, IMPLICIT, LAST_IMPLICIT, NAMED, tf_under};
+use super::{AnchorPlan, AnchorRec, tf_under};
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get};
@@ -36,17 +36,39 @@ impl AnchorPlan {
         // `anchor-size()`). Якорь ниже по дереву (`anchor-position-circular`)
         // фильтр отсекает.
         let named = |n: &str| {
-            NAMED
-                .with(|m| m.borrow().get(n).copied())
-                .or_else(|| last_named(n, self.seq))
+            self.values
+                .vcx()
+                .doc
+                .anchor_frame
+                .named
+                .borrow()
+                .get(n)
+                .copied()
+                .or_else(|| last_named(n, self.seq, self.values.vcx()))
         };
         let r = match name {
             Some(n) => named(n),
             None => match &self.default_anchor {
                 Some(DefaultAnchor::Named(n)) => named(n.as_str()),
-                Some(DefaultAnchor::Implicit(id)) => IMPLICIT
-                    .with(|m| m.borrow().get(id).copied())
-                    .or_else(|| LAST_IMPLICIT.with(|m| m.borrow().get(id).copied())),
+                Some(DefaultAnchor::Implicit(id)) => self
+                    .values
+                    .vcx()
+                    .doc
+                    .anchor_frame
+                    .implicit
+                    .borrow()
+                    .get(id)
+                    .copied()
+                    .or_else(|| {
+                        self.values
+                            .vcx()
+                            .doc
+                            .anchor_frame
+                            .last_implicit
+                            .borrow()
+                            .get(id)
+                            .copied()
+                    }),
                 None => None,
             },
         }?;
@@ -72,7 +94,16 @@ impl AnchorPlan {
             if n == 0 {
                 return false;
             }
-            match CB_PARENT.with(|m| m.borrow().get(&n).copied()) {
+            match self
+                .values
+                .vcx()
+                .doc
+                .anchor_frame
+                .cb_parent
+                .borrow()
+                .get(&n)
+                .copied()
+            {
                 Some(p) => n = p,
                 None => return true,
             }
@@ -88,7 +119,7 @@ impl AnchorPlan {
     /// приближение: берётся отображённая.
     fn lookup(&self, name: Option<&str>) -> Option<Bounds<Pixels>> {
         self.rec(name).map(|r| {
-            if r.tf_top == 0 || tf_under(r.tf_top) {
+            if r.tf_top == 0 || tf_under(r.tf_top, self.values.vcx()) {
                 r.rect
             } else {
                 r.rect_tf

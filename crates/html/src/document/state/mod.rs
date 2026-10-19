@@ -31,6 +31,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Anchor geometry and fallback selection belonging to this document.
+    pub(crate) anchor_frame: crate::layout::positioned::anchor::AnchorState,
     /// Font-face descriptors and source caches belonging to this document.
     pub(crate) font_faces: crate::text::fonts::FontFaces,
     /// Parsed MATH sources and registered native-family data of this document.

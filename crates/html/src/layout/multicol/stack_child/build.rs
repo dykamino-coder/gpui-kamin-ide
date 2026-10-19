@@ -222,7 +222,7 @@ pub(super) fn build_copy(
         &mut body,
         &opts.cx,
     );
-    let el = transformed(d.children(body).into_any_element(), inner, merged);
+    let el = transformed(d.children(body).into_any_element(), inner, merged, vcx);
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     if inner.clip_inset.is_some()

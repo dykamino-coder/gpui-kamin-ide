@@ -47,7 +47,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // `anchor-size()`, растяжка в клетке `position-area` — из реестра
     // ПРОШЛОГО кадра, до раскладки.
     merged.self_node = e.node_id;
-    merged.anchor_seq = crate::layout::positioned::anchor::next_seq();
+    merged.anchor_seq = crate::layout::positioned::anchor::next_seq(vcx);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
     // Вариант `position-try-fallbacks`, выбранный на прошлом кадре, — в стиль
     // ДО размеров и раскладки (§fallback: «the element keeps those styles»).
@@ -124,7 +124,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
         return crate::interactive::scroll_extent::project(
-            transformed(el, &merged, inherited),
+            transformed(el, &merged, inherited, vcx),
             scroll_projection,
         );
     }

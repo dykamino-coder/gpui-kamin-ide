@@ -144,6 +144,7 @@ pub(super) fn emit_cell(
         cell,
         inside,
         d,
+        opts.cx.vcx(),
     );
 }
 
@@ -170,11 +171,12 @@ pub(super) fn push_cell_wrapped(
     cell: &Element,
     inside: Vec<AnyElement>,
     d: gpui::Div,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     let mut built = d.children(inside).into_any_element();
     // Also without own transform: a `preserve-3d` cell or one under a
     // 3D row needs its wrapper for the context chain.
-    built = transformed(built, &cell.style, row_style);
+    built = transformed(built, &cell.style, row_style, vcx);
     let pure_shift = |t: &crate::style::computed::Transform| {
         !t.has_3d
             && t.lin == [[1.0, 0.0], [0.0, 1.0]]
@@ -198,7 +200,7 @@ pub(super) fn push_cell_wrapped(
         .as_ref()
         .is_some_and(|t| !pure_shift(t))
         .then(|| row_ref.clone());
-    built = transformed_with(built, &row.style, inherited, rb);
+    built = transformed_with(built, &row.style, inherited, rb, vcx);
     if let Some(g) = carry.3 {
         let rb = g
             .style
@@ -206,7 +208,7 @@ pub(super) fn push_cell_wrapped(
             .as_ref()
             .is_some_and(|t| !pure_shift(t))
             .then(|| group_refs.entry(g.node_id).or_default().clone());
-        built = transformed_with(built, &g.style, tbl_style, rb);
+        built = transformed_with(built, &g.style, tbl_style, rb, vcx);
     }
     if paint_layers && cell_paints_over(&cell.children, 24) {
         cells_over.push(built);

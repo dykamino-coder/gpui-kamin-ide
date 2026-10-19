@@ -97,7 +97,7 @@ pub(crate) fn styled_div_with(
     // из `style`: `c` может быть `paint_off()` без этого флага
     // (§position-visibility: anchor-visible, «anchor box is invisible»).
     if let Some(probe) =
-        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true))
+        crate::layout::positioned::anchor::probe_for(e, c, style.hidden == Some(true), vcx)
     {
         d = d.child(probe);
     }

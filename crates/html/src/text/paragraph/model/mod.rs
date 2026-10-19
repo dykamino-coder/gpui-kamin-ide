@@ -1,5 +1,4 @@
 //! Paragraph content, inline spans, and state shared with its layout probe.
-
 use crate::text::paragraph::{atom_fit, decor, tabs};
 mod configuration;
 mod construct;
@@ -12,6 +11,7 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 /// Абзац со своей раскладкой строк.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
+    pub(super) anchor_values: Option<crate::document::state::ValueDoc>,
     pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,

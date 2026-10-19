@@ -54,7 +54,7 @@ pub(super) fn atom_element_raw(
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(transformed(el, &e.style, inherited));
+        return Some(transformed(el, &e.style, inherited, vcx));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама

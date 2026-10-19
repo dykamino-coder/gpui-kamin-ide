@@ -47,5 +47,5 @@ pub(super) fn float_box(
             .into_any_element()
     };
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
-    grouped(transformed(el, &merged, inherited), &copy.style, vcx)
+    grouped(transformed(el, &merged, inherited, vcx), &copy.style, vcx)
 }

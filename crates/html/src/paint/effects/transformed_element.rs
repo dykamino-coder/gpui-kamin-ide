@@ -8,6 +8,7 @@ use gpui::{AnyElement, Pixels};
 
 pub struct Transformed {
     pub(crate) child: AnyElement,
+    pub(crate) values: crate::document::state::ValueDoc,
     /// Поворот в радианах, масштаб по осям, сдвиг в точках.
     pub rotate: f32,
     /// Скос по осям в радианах (`transform: skew`).
@@ -131,9 +132,10 @@ fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
 }
 
 impl Transformed {
-    pub fn new(child: AnyElement) -> Self {
+    pub fn new(child: AnyElement, vcx: crate::document::state::ValueCx<'_>) -> Self {
         Transformed {
             child,
+            values: vcx.keep(),
             rotate: 0.0,
             skew: (0.0, 0.0),
             scale: (1.0, 1.0),

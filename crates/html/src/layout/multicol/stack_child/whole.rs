@@ -110,7 +110,12 @@ pub(super) fn copy_whole_box(
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
         drop(frag_gap_guard.take());
-        return Some(transformed(table(&tc, inner, opts), inner, merged));
+        return Some(transformed(
+            table(&tc, inner, opts),
+            inner,
+            merged,
+            opts.cx.vcx(),
+        ));
     }
     None
 }

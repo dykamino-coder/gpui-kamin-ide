@@ -1,15 +1,8 @@
 //! Проба якорного элемента: ключ, неявный якорь, регистрация (probe_for).
 
-use super::CB;
 use super::{AnchorRec, reframe_if_stale, tf_map};
+use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::layout::positioned::anchor::CB_PARENT;
-use crate::layout::positioned::anchor::IMPLICIT;
-use crate::layout::positioned::anchor::LAST_IMPLICIT;
-use crate::layout::positioned::anchor::LAST_NAMED;
-use crate::layout::positioned::anchor::NAMED;
-use crate::layout::positioned::anchor::NAMED_SEQ;
-use crate::layout::positioned::anchor::USED_LAST;
 use crate::style::computed::{Computed, PositionAnchor};
 use crate::style::values::value::px_lossy_zero;
 use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, px};
@@ -39,7 +32,12 @@ pub(super) fn wants_implicit(c: &Computed) -> bool {
 /// её псевдоэлемент ссылается на неё как на неявный якорь. Канвас во всю
 /// коробку (`absolute` + `size_full`) — та же форма, что у `edge_probe`.
 /// `hidden` — `visibility: hidden` коробки (§position-visibility).
-pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<AnyElement> {
+pub fn probe_for(
+    e: &crate::dom::Element,
+    c: &Computed,
+    hidden: bool,
+    vcx: ValueCx<'_>,
+) -> Option<AnyElement> {
     let names: Vec<String> = e.style.anchor_name.clone().unwrap_or_default();
     let implicit = e.node_id != 0
         && e.children.iter().any(|n| {
@@ -61,12 +59,18 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
     let bw = px_lossy_zero;
     let b = e.style.borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
+    let values = vcx.keep();
     Some(
         gpui::canvas_with_unrounded_bounds(
             move |bounds: Bounds<Pixels>, window: &mut Window, _: &mut App| {
+                let vcx = values.vcx();
                 if cb {
-                    CB.with(|m| m.borrow_mut().insert(id, bounds));
-                    CB_PARENT.with(|m| m.borrow_mut().insert(id, own_cb));
+                    vcx.doc.anchor_frame.cb.borrow_mut().insert(id, bounds);
+                    vcx.doc
+                        .anchor_frame
+                        .cb_parent
+                        .borrow_mut()
+                        .insert(id, own_cb);
                 }
                 if names.is_empty() && !implicit {
                     return;
@@ -92,6 +96,7 @@ pub fn probe_for(e: &crate::dom::Element, c: &Computed, hidden: bool) -> Option<
                     },
                     outer,
                     window,
+                    vcx,
                 );
             },
             |_, _, _, _| {},
@@ -121,6 +126,7 @@ pub(crate) fn record(
     who: Entry,
     outer: Bounds<Pixels>,
     window: &mut Window,
+    vcx: ValueCx<'_>,
 ) {
     let Entry {
         id,
@@ -136,7 +142,7 @@ pub(crate) fn record(
     // по стеку предков (`tf_map`), выбирает её цель (`lookup`):
     // `transform-001/002/009` — якорь с `translate(-200px, -100px)
     // scale(2)` обязан стоять там, где нарисован.
-    let (rect_tf, tf_top) = tf_map(outer);
+    let (rect_tf, tf_top) = tf_map(outer, vcx);
     let rec = AnchorRec {
         rect: outer,
         clip: window.content_mask().bounds,
@@ -146,33 +152,40 @@ pub(crate) fn record(
         rect_tf,
         tf_top,
     };
-    NAMED.with(|m| {
+    {
+        let m = &vcx.doc.anchor_frame.named;
         let mut m = m.borrow_mut();
         for n in names {
             m.insert(n.clone(), rec);
         }
-    });
-    NAMED_SEQ.with(|v| {
+    };
+    {
+        let v = &vcx.doc.anchor_frame.named_seq;
         let mut v = v.borrow_mut();
         for n in names {
             v.push((n.clone(), seq, rec));
         }
-    });
+    };
     if implicit {
-        IMPLICIT.with(|m| m.borrow_mut().insert(id, rec));
+        vcx.doc.anchor_frame.implicit.borrow_mut().insert(id, rec);
     }
-    if USED_LAST.with(|u| u.get()) {
+    if vcx.doc.anchor_frame.used_last.get() {
         let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
-        let stale = names.iter().any(|n| {
-            !LAST_NAMED.with(|v| {
-                v.borrow()
-                    .iter()
-                    .any(|(k, s, r)| k == n && *s == seq && same(r))
-            })
+        let stale = names.iter().any(|n| !{
+            let v = &vcx.doc.anchor_frame.last_named;
+            v.borrow()
+                .iter()
+                .any(|(k, s, r)| k == n && *s == seq && same(r))
         }) || (implicit
-            && !LAST_IMPLICIT.with(|m| m.borrow().get(&id).is_some_and(same)));
+            && !vcx
+                .doc
+                .anchor_frame
+                .last_implicit
+                .borrow()
+                .get(&id)
+                .is_some_and(same));
         if stale {
-            reframe_if_stale(window);
+            reframe_if_stale(window, vcx);
         }
     }
 }

@@ -204,7 +204,7 @@ pub(super) fn collect_element(
     } else {
         kids
     };
-    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged);
+    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
     out.extend(shift_overlays(kids, &e.style, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(Piece::Text {

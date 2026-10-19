@@ -44,7 +44,12 @@ fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 
 /// Обернуть куски содержимого строчной коробки `e` метками краёв, если она
 /// именованный якорь или содержащий блок абсолютных потомков (тогда — только
 /// при внепоточных кусках внутри: иначе рамка никому не нужна).
-pub(super) fn mark_inline_box(pieces: Vec<Piece>, e: &Element, merged: &Computed) -> Vec<Piece> {
+pub(super) fn mark_inline_box(
+    pieces: Vec<Piece>,
+    e: &Element,
+    merged: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<Piece> {
     if e.node_id == 0 {
         return pieces;
     }
@@ -65,7 +70,7 @@ pub(super) fn mark_inline_box(pieces: Vec<Piece>, e: &Element, merged: &Computed
         names,
         cb,
         own_cb: merged.cb_node,
-        seq: crate::layout::positioned::anchor::next_seq(),
+        seq: crate::layout::positioned::anchor::next_seq(vcx),
         pad: px4(p.top, p.right, p.bottom, p.left),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.hidden == Some(true),
