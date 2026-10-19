@@ -39,11 +39,18 @@ pub struct Sticky {
     pub left: Option<f32>,
     pub right: Option<f32>,
     pub frame: StickyCell,
+    /// The shift this box applies to its subtree (`ShiftLink`).
+    pub(crate) link: crate::interactive::scroll_extent::StickyShift,
 }
 
 impl Sticky {
-    pub fn new(child: AnyElement, frame: StickyCell) -> Self {
+    pub(crate) fn new(
+        child: AnyElement,
+        frame: StickyCell,
+        link: crate::interactive::scroll_extent::StickyShift,
+    ) -> Self {
         Sticky {
+            link,
             child,
             top: None,
             bottom: None,
@@ -107,7 +114,7 @@ impl Wrap for Sticky {
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let shift = self.shift(bounds);
         let child = &mut self.child;
-        crate::interactive::scroll_extent::sticky_geometry(shift, || {
+        self.link.applied(shift, || {
             window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
         });
     }

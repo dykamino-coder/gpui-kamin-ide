@@ -1,4 +1,6 @@
 //! Принудительные разрывы и запреты.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
@@ -17,7 +19,7 @@ pub(crate) use edges::edge_break;
 /// добавляет страницы, пока оно не кончится, crbug 1402540;
 /// `monolithic-overflow-027`: абсолют `contain:size` 4in с ребёнком 8in —
 /// «four green pages»). Обрезка `overflow-y` переполнение гасит (`-028`).
-pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
+pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
     // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
     // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
     // `top: N00vh` — досягаемость была нулевой, лист один).
@@ -34,13 +36,15 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
     // Мера `None` (строчное содержимое) — не «пусто»: хотя бы точка высоты,
     // чтобы лист под самой строкой родился (`fixedpos-005-print`: `top:
     // 300vh` внутри `top: 100vh` — текст ровно на краю четвёртого листа).
-    let own = shape_full(e, 4, cx).map(|s| s.height).unwrap_or_else(|| {
-        if e.children.iter().all(is_blank) {
-            0.0
-        } else {
-            1.0
-        }
-    });
+    let own = shape_full(e, 4, cx, vcx)
+        .map(|s| s.height)
+        .unwrap_or_else(|| {
+            if e.children.iter().all(is_blank) {
+                0.0
+            } else {
+                1.0
+            }
+        });
     let clipped = matches!(
         e.style.overflow_y,
         Some(crate::style::computed::Overflow::Hidden)
@@ -54,7 +58,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
             .iter()
             .filter_map(|n| match n {
                 Node::Element(k) if !k.inline && !out_of_flow(&k.style) => {
-                    shape_full(k, 3, cx).map(|s| s.height + s.margin_top + s.margin_bottom)
+                    shape_full(k, 3, cx, vcx).map(|s| s.height + s.margin_top + s.margin_bottom)
                 }
                 _ => None,
             })
@@ -73,7 +77,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx) -> f32 {
                 Node::Element(k)
                     if k.style.position == Some(crate::style::computed::Position::Absolute) =>
                 {
-                    Some(oof_reach(k, cx))
+                    Some(oof_reach(k, cx, vcx))
                 }
                 _ => None,
             })

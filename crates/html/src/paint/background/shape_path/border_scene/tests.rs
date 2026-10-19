@@ -3,8 +3,10 @@ use super::*;
 
 #[test]
 fn border_offsets_match_ordered_svg_fill_and_stroke() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
     let raw = "polygon(0px 0px, 20px 0px, 20px 15px, 0px 15px)";
-    let contour = Contour::place((raw, [0.0; 4]), 20.0, 15.0, 7.3, 8.7).unwrap();
+    let contour = Contour::place((raw, [0.0; 4]), 20.0, 15.0, 7.3, 8.7, vcx).unwrap();
     for white in [false, true] {
         for distance in [-2.3f32, 0.0, 3.7] {
             let fill = if white { "white" } else { "black" };

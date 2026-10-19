@@ -6,33 +6,37 @@ use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use gpui::IntoElement;
 
-thread_local! {
-    /// Глубина позиционированных строчных предков текущего сбора кусков.
-    pub(super) static INLINE_CB_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    /// Атом, который строится прямо сейчас, лежит внутри такого предка.
-    pub(super) static ATOM_CB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// Атом ушёл абсолютом с краями от строчного содержащего блока.
-    pub(super) static ABS_CB_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+/// A positioned inline ancestor offered as the containing block of the atom
+/// being built (CSS 2.1 §10.1 item 4): the paragraph's atom builder makes the
+/// offer (`LayoutCx::inline_cb`), the first absolute atom that can use it
+/// takes it, and the builder learns whether it was taken.
+#[derive(Debug)]
+pub(crate) struct InlineCbOffer {
+    offered: std::cell::Cell<bool>,
+    taken: std::cell::Cell<bool>,
 }
 
-/// Строящийся атом — внутри позиционированного строчного (одноразово).
-pub(crate) fn take_atom_cb() -> bool {
-    ATOM_CB.with(|c| c.replace(false))
-}
+impl InlineCbOffer {
+    pub(crate) fn offered() -> std::rc::Rc<Self> {
+        std::rc::Rc::new(Self {
+            offered: std::cell::Cell::new(true),
+            taken: std::cell::Cell::new(false),
+        })
+    }
 
-/// Вернуть признак `take_atom_cb` перед постройкой атома.
-pub(crate) fn set_atom_cb(v: bool) {
-    ATOM_CB.with(|c| c.set(v));
-}
+    /// Is the offer still open? Asking consumes it (one atom per offer).
+    pub(crate) fn take(&self) -> bool {
+        self.offered.replace(false)
+    }
 
-/// Отметить, что атом построен для строчного содержащего блока.
-pub(crate) fn note_abs_cb() {
-    ABS_CB_TAKEN.with(|c| c.set(true));
-}
+    /// The atom was built for the inline containing block.
+    pub(crate) fn note_taken(&self) {
+        self.taken.set(true);
+    }
 
-/// Забрать отметку `note_abs_cb`.
-pub(crate) fn take_abs_cb() -> bool {
-    ABS_CB_TAKEN.with(|c| c.replace(false))
+    pub(crate) fn taken(&self) -> bool {
+        self.taken.get()
+    }
 }
 
 /// Отметить куски-абсолюты с краями (`OverlayAt::edges`) содержимого

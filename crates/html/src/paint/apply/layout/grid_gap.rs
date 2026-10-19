@@ -1,9 +1,10 @@
 //! apply_layout, этап сетки и промежутков: baseline на инлайн-оси сетки, justify-self, проекция выравнивания, aspect-ratio, gap.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
+pub(super) fn layout_grid_gap(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let real_grid = matches!(c.display, Some(Display::Grid) | Some(Display::InlineGrid));
     // CSS Align §9.1 / Blink baseline_utils.h: baseline sharing and synthesis
     // are decided for each item in its physical alignment axis. Dropping the
@@ -76,14 +77,14 @@ pub(super) fn layout_grid_gap(mut d: Div, c: &Computed) -> Div {
             // percentage basis, then layout resolves against the content box.
             // Preserve calc's constant term and percentage for those two phases.
             if real_grid && basis.is_none() {
-                return Some(len_to_gpui(l));
+                return Some(len_to_gpui(l, vcx));
             }
             if let Len::Calc(i) = l
-                && let Some((k, add)) = crate::style::values::value::calc_get(i).pct_px()
+                && let Some((k, add)) = crate::style::values::value::calc_get(i, vcx).pct_px()
             {
                 return basis.map(|b| px((add + k * b).max(0.0)).into());
             }
-            Some(len_to_gpui(l))
+            Some(len_to_gpui(l, vcx))
         };
         if let Some(r) = down.and_then(|r| gap_len(r, basis_y)) {
             d = d.gap_y(r);

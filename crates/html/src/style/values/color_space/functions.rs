@@ -1,9 +1,10 @@
 //! Функция color() с предопределёнными пространствами и относительный синтаксис цвета (`rgb(from …)`).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// `color(<пространство> c1 c2 c3[/A])` (§10).
-pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
+pub(super) fn color_fn(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
     let (list, a) = parts(body);
     if list.len() < 4 {
         return None;
@@ -68,7 +69,7 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
         "xyz-d50" => mul(D50_TO_D65, c),
         // Своё пространство из `@color-profile --имя { src: url(…) }`.
         custom if custom.starts_with("--") => {
-            let profile = profile(custom)?;
+            let profile = profile(custom, vcx)?;
             let (r, g, b) = icc_to_srgb(&profile, c)?;
             return Some((r, g, b, a));
         }
@@ -90,6 +91,7 @@ pub(super) fn color_fn(body: &str) -> Option<(f32, f32, f32, f32)> {
 pub(crate) fn resolve_relative(
     expr: &str,
     current: crate::style::values::value::Color,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
     use crate::style::values::value::Color;
     // Голое слово: цвет текста этого же элемента.
@@ -107,7 +109,7 @@ pub(crate) fn resolve_relative(
             (current.b * 255.0).round(),
             current.a
         );
-        return Color::parse(&low.replace("currentcolor", &rgb));
+        return Color::parse(&low.replace("currentcolor", &rgb), vcx);
     }
     let open = expr.find('(')?;
     let name = expr[..open].trim();
@@ -118,7 +120,7 @@ pub(crate) fn resolve_relative(
     let base = if base_tok.eq_ignore_ascii_case("currentcolor") {
         current
     } else {
-        Color::parse(base_tok)?
+        Color::parse(base_tok, vcx)?
     };
     // Прозрачность после косой: `alpha` — своя, число — новая.
     let mut channels: Vec<&str> = vec![];

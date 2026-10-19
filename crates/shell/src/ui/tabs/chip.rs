@@ -98,7 +98,6 @@ pub(crate) fn chip(
         // Зажатая ЛКМ над чипом → цель вставки reorder
         .on_mouse_move({
             let tx = tx.clone();
-            let id = id.clone();
             move |e: &gpui::MouseMoveEvent, _, _| {
                 if e.pressed_button == Some(gpui::MouseButton::Left) {
                     let _ = tx.try_send(ShellEvent::ChipDragOver(id.clone()));

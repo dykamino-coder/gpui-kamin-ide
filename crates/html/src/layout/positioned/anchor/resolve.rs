@@ -2,6 +2,7 @@
 
 use super::settle::{DefaultAnchor, default_anchor_of};
 use super::{AREA_LAST, AnchorRec, CELL_LAST, CHOSEN, LAST_IMPLICIT, LAST_NAMED, USED_LAST};
+use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 use std::rc::Rc;
@@ -15,7 +16,7 @@ use insets::fill_anchor_pairs;
 /// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
 /// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
 /// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut Computed) {
+pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
     if c.position_try_fallbacks.is_empty()
         || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
     {
@@ -29,9 +30,9 @@ pub fn apply_chosen(c: &mut Computed) {
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
     {
         if let Some(n) = &fb.name
-            && let Some(decls) = crate::style::css::try_rule(n)
+            && let Some(decls) = vcx.doc.try_rule(n)
         {
-            c.apply_decls(&decls);
+            c.apply_decls(&decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);
@@ -78,7 +79,7 @@ pub(super) fn last_named(n: &str, seq: u32) -> Option<AnchorRec> {
 ///
 /// Первый кадр отдаёт запасные значения, второй — верные; стенд ждёт
 /// устоявшихся кадров.
-pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
+pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         return;
     }
@@ -89,7 +90,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
         USED_LAST.with(|u| u.set(true));
-        let mut f = anchor_get(i);
+        let mut f = anchor_get(i, vcx);
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
@@ -120,7 +121,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed) {
             });
             match (hit, cur.fallback) {
                 (Some(v), _) => return Some(Len::Px(v)),
-                (None, Some(Len::Anchor(j))) => f = anchor_get(j),
+                (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),
                 (None, fb) => return fb,
             }
         }

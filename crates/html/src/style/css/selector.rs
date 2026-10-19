@@ -108,6 +108,12 @@ impl Selector {
 
     /// `.card > .title`, `.card .title`, `div.card` — всё сюда.
     pub fn parse(raw: &str) -> Option<Selector> {
+        Selector::parse_in(raw, &SelectorCx::default())
+    }
+
+    /// `parse` inside a stylesheet: type selectors see its `@namespace`
+    /// prologue (`cx`).
+    pub(crate) fn parse_in(raw: &str, cx: &SelectorCx) -> Option<Selector> {
         // Разбивка на составные части и комбинаторы МЕЖДУ ними. Внутри скобок
         // `+` и `~` — не комбинаторы, а часть записи `2n+1` в `:nth-child()`.
         // Пробел — комбинатор потомка, если рядом нет знакового.
@@ -184,13 +190,13 @@ impl Selector {
         }
         // Сборка слева направо: у `.a > .b + .c` предметом остаётся `.c`,
         // его сосед — `.b`, а предок соседа — `.a`.
-        let mut sel = Selector::parse_compound(&compounds[0])?;
+        let mut sel = Selector::parse_compound(&compounds[0], cx)?;
         for (comp, comb) in compounds[1..].iter().zip(&combs) {
             // A pseudo-element must end the complex selector (Selectors §3.1).
             if sel.has_pseudo_element() {
                 return None;
             }
-            let mut next = Selector::parse_compound(comp)?;
+            let mut next = Selector::parse_compound(comp, cx)?;
             match comb {
                 0 => next.ancestor = Some(Box::new((sel, false))),
                 1 => next.ancestor = Some(Box::new((sel, true))),

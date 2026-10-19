@@ -13,6 +13,7 @@ pub(crate) use grid_measured::inherit_item_metadata;
 mod content_radii;
 mod filtered;
 mod local;
+mod piped;
 use local::{fit_local_image, local_image_source};
 mod contained;
 use contained::contained_image;
@@ -21,8 +22,8 @@ use sized::sized_image;
 mod auto_sized;
 use auto_sized::auto_sized_image;
 
-pub(crate) fn image(e: &Element) -> AnyElement {
-    image_with(e, None)
+pub(crate) fn image(e: &Element, cx: &crate::layout::cx::LayoutCx) -> AnyElement {
+    image_with(e, None, cx)
 }
 
 /// Доля ВЫСОТЫ замещаемого, сведённая к точкам по содержащему блоку.
@@ -137,16 +138,21 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
 /// иначе из выреза — с соотношением выреза для одной заданной стороны.
 /// Только растр (`background::Source::Raster`); иначе — прежний путь.
-fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
+fn view_boxed(
+    e: &Element,
+    vb: (u8, [Len; 4]),
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<AnyElement> {
+    let vcx = cx.vcx();
     let src = e.attr("src")?;
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::source(&crate::paint::background::key(
-        local.unwrap_or(src),
-        &e.style,
-    ))?;
+    let source = crate::paint::background::source(
+        &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
+        vcx,
+    )?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {
@@ -219,7 +225,7 @@ fn view_boxed(e: &Element, vb: (u8, [Len; 4])) -> Option<AnyElement> {
         .overflow_hidden()
         .child(picture);
     Some(
-        styled_div(&boxed)
+        styled_div(&boxed, cx)
             .flex_shrink_0()
             .child(window)
             .into_any_element(),

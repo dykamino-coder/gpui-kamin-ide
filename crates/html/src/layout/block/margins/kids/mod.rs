@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 mod struts;
 pub(super) use struts::emit_margin_struts;
 
-pub(super) fn collapse_kid_margins(out: &mut [Node]) {
+pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
         if inline_level_box(e) {
@@ -59,7 +59,7 @@ pub(super) fn collapse_kid_margins(out: &mut [Node]) {
         if e.style.margin_trim & 1 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-            if leading_chain(&e.children, &mut path, &mut eat).is_some() {
+            if leading_chain(&e.children, &mut path, &mut eat, cb).is_some() {
                 for (p, deep) in &eat {
                     zero_at(&mut e.children, p, true, *deep);
                 }
@@ -78,7 +78,7 @@ pub(super) fn collapse_kid_margins(out: &mut [Node]) {
         if e.tag == "html" {
             continue;
         }
-        margin_edges::collapse_top(e);
+        margin_edges::collapse_top(e, cb);
         // То же СНИЗУ: отступ последнего ребёнка протекает наружу, если
         // родителя от него не отделяют ни рамка, ни внутренний отступ, ни
         // заданная высота. Иначе следующий за родителем блок отодвигался на

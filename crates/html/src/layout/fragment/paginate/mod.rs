@@ -13,6 +13,7 @@
 //! The resulting copy is a flow thread whose content is aligned to the
 //! fragmentainer grid, so it is sliced at the column edges.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::monolith_box;
 use crate::render::{is_blank, out_of_flow};
@@ -90,9 +91,9 @@ fn layout_parent(s: &crate::style::computed::Computed) -> bool {
 /// Collect the candidates of `c`'s subtree, or `None` when the subtree holds
 /// content whose geometry the copy's taffy tree does not expose (lines,
 /// floats, tables, nested fragmentation contexts).
-pub(crate) fn candidates(c: &Element) -> Option<Vec<(u64, Cand)>> {
+pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
-    walk(c, 8, &mut out)?;
+    walk(c, 8, &mut out, vcx)?;
     Some(out)
 }
 
@@ -113,7 +114,7 @@ pub(crate) fn avoid_row(p: &Element) -> bool {
         })
 }
 
-fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
+fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>, vcx: ValueCx<'_>) -> Option<()> {
     if depth == 0 {
         return None;
     }
@@ -159,8 +160,8 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
         }
         prev = Some((k.node_id, k.style.break_after_avoid));
         let edge = crate::layout::fragment::breaks::edge_break;
-        let forced = force_next || edge(k, false);
-        force_next = edge(k, true);
+        let forced = force_next || edge(k, false, vcx);
+        force_next = edge(k, true, vcx);
         // A forced break before an item of a flex row breaks the whole row
         // (Blink `row_break_between`), not just the item; clipped overflow is
         // not part of the flow thread.
@@ -192,7 +193,7 @@ fn walk(p: &Element, depth: u8, out: &mut Vec<(u64, Cand)>) -> Option<()> {
                 },
             ));
         }
-        walk(k, depth - 1, out)?;
+        walk(k, depth - 1, out, vcx)?;
     }
     Some(())
 }

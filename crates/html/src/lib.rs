@@ -1,8 +1,8 @@
 //! HTML+CSS → элементы GPUI.
 //!
 //! ```ignore
-//! let nodes = kamin_html::parse(html, theme_css);
-//! let elements = kamin_html::render(&nodes, &RenderOpts { text, ..Default::default() });
+//! let doc = kamin_html::Document::new(html, theme_css);
+//! let elements = doc.render(&RenderOpts { text, ..Default::default() });
 //! ```
 //!
 //! Что покрыто, что нет и почему — `docs/html-css-mapping.html`; там же по

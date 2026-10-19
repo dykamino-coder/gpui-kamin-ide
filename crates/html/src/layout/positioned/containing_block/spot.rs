@@ -87,6 +87,6 @@ pub struct Spot {
     /// the block strut's (`static_position::inline_static_self_align`).
     pub line_rect: bool,
     /// The line box `(top, height, start x)` of a probe that a text paragraph
-    /// placed as an overlay in its line (`with_line_box`).
+    /// placed as an overlay in its line (`LineBoxSlot`).
     pub line_box: Option<(Pixels, Pixels, Pixels)>,
 }

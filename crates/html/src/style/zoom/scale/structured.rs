@@ -96,9 +96,11 @@ mod tests {
 
     #[test]
     fn zoom_keeps_fractions_and_scales_nested_absolute_lengths() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.apply_one("grid-template-columns", "minmax(10px, 1fr) 25%");
-        c.apply_one("border-image-width", "2 10px 20% auto");
+        c.apply_one("grid-template-columns", "minmax(10px, 1fr) 25%", vcx);
+        c.apply_one("border-image-width", "2 10px 20% auto", vcx);
         scale(&mut c, 2.0);
         assert_eq!(
             c.grid_tracks,

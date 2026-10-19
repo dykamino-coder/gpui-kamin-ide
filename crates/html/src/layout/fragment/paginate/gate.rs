@@ -1,6 +1,7 @@
 //! Gate of layout-driven pagination: which multicol children take it.
 
 use super::candidates;
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::monolith_box;
 use crate::render::out_of_flow;
@@ -9,12 +10,17 @@ use crate::style::computed::Display;
 /// Gate of the path: a block-level, non-monolithic child of a horizontal
 /// multicol that is (or contains) a flex container and has at least one
 /// candidate. Everything else keeps the shape-estimate path.
-pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool) -> bool {
-    refusal(c, col_w, auto_fill).is_none()
+pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool, vcx: ValueCx<'_>) -> bool {
+    refusal(c, col_w, auto_fill, vcx).is_none()
 }
 
 /// Why `gate` refuses `c` (`None` — accepted).
-pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Option<&'static str> {
+pub(crate) fn refusal(
+    c: &Element,
+    col_w: Option<f32>,
+    auto_fill: bool,
+    vcx: ValueCx<'_>,
+) -> Option<&'static str> {
     // Flex gaps adjoining a break are truncated (Blink
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
     fn gapped(e: &Element, depth: u8) -> bool {
@@ -55,13 +61,13 @@ pub(crate) fn refusal(c: &Element, col_w: Option<f32>, auto_fill: bool) -> Optio
     }
     // Lines opened as parallel flows keep that model: it fixes the line
     // breaking before fragmentation (css-flexbox-1 §12), a strut would rewrap.
-    if auto_fill && crate::layout::fragment::flex_lines::explodes(c, col_w) {
+    if auto_fill && crate::layout::fragment::flex_lines::explodes(c, col_w, vcx) {
         return Some("exploded");
     }
     if gapped(c, 4) {
         return Some("gap");
     }
-    match candidates(c) {
+    match candidates(c, vcx) {
         None => Some("subtree"),
         // Row gaps alone keep the old path: this path paints gap decorations
         // half a gap low (css-gaps flex-gap-decorations-fragmentation-023/024/

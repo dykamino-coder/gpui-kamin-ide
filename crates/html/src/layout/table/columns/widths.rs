@@ -1,6 +1,7 @@
 //! Полосы колонок и ширины из элементов <col>/<colgroup>.
 
 use super::{col_role, col_span};
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::style::values::value::{Len, px_strict};
@@ -15,6 +16,7 @@ pub(crate) fn push_col_bands(
     have_rows: bool,
     rects_by_col: &mut [Option<crate::layout::table::paint::RowRects>],
     cells: &mut Vec<AnyElement>,
+    vcx: ValueCx<'_>,
 ) {
     let mut seen: Vec<u64> = vec![];
     // Один буфер на элемент: `<col span>` красит несколько дорожек одной
@@ -44,7 +46,9 @@ pub(crate) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(crate::layout::table::paint::CellsClipped::new(rects, band_style).hooked());
+            cells.push(
+                crate::layout::table::paint::CellsClipped::new(rects, band_style, vcx).hooked(),
+            );
         }
     }
 }

@@ -1,9 +1,16 @@
 //! apply_layout, этап размеров: природный размер холста, абсолютные, гибкие элементы, width/height/min/max с учётом border-box, aspect-ratio как автоминимум.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::values::value::px_strict;
 
-pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) -> Div {
+pub(super) fn layout_sizing(
+    mut d: Div,
+    c: &Computed,
+    pad_x: f32,
+    pad_y: f32,
+    vcx: ValueCx<'_>,
+) -> Div {
     // Природный размер холста под порогами — таблица CSS 2.1 §10.4 для
     // замещаемых с соотношением сторон. Обе оси `<canvas>` пришли из
     // атрибутов (`attr_sized`), то есть это natural size, а не заданный
@@ -92,7 +99,7 @@ pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) ->
         ) {
             continue;
         }
-        let Some(l) = size_percent::resolve_cyclic_size_percentage(c, l, f) else {
+        let Some(l) = size_percent::resolve_cyclic_size_percentage(c, l, f, vcx) else {
             continue;
         };
         // Доли считаются от родителя и компенсации не требуют.
@@ -132,13 +139,13 @@ pub(super) fn layout_sizing(mut d: Div, c: &Computed, pad_x: f32, pad_y: f32) ->
         // доля считается от родителя и поправки не требует. Новая пара НЕ
         // кладётся в арену (`calc_store` на каждом кадре раздувал бы её).
         let g = match l {
-            Len::Calc(i) => match crate::style::values::value::calc_get(i).pct_px() {
+            Len::Calc(i) => match crate::style::values::value::calc_get(i, vcx).pct_px() {
                 Some((pct, add)) => {
                     gpui::DefiniteLength::Calc(add + if f % 2 == 0 { pad_x } else { pad_y }, pct)
                 }
-                None => len_to_gpui(l),
+                None => len_to_gpui(l, vcx),
             },
-            _ => len_to_gpui(l),
+            _ => len_to_gpui(l, vcx),
         };
         d = match f {
             0 => d.w(g),

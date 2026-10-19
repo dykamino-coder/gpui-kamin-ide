@@ -4,19 +4,16 @@
 //!
 //! Владелец — `Document` (или вложенный документ рамки, `Embedded`), а не
 //! процесс: так устроены Blink (`StyleEngine`/`TreeScope` документа) и Stylo
-//! (`Stylist` на документ). Доступ — через стек областей потока: `enter`
-//! делает документ текущим на время разбора, сборки кадра и фаз GPUI его
-//! поддерева (`Scoped`), guard возвращает прежний документ при выходе и при
-//! панике. Вложенный документ входит в свою область — сохранять и
-//! возвращать состояние внешнего вручную не нужно.
+//! (`Stylist` на документ). Документ передаётся явно: разбор листа и дерева
+//! получает его параметром (`SheetCx`, `TreeIndex`), значения — контекстом
+//! `ValueCx`, сборка кадра — `LayoutCx`, фазы GPUI — элементы, которые
+//! держат его сами (`ValueDoc`).
 //!
 //! Арены `calc()`/`anchor()` документа и их ручки — `arena`.
-//!
-//! Вне любой области (тесты, `dom::parse`) действует «отсоединённый»
-//! документ потока: его заводит и чистит `dom::parse_media`.
 
 mod arena;
 mod scoped;
+mod value_cx;
 
 use crate::style::css::{Decls, Media, PageRule, Registered};
 use crate::style::generated::counter_style_rules::CounterStyles;
@@ -28,9 +25,10 @@ use std::rc::{Rc, Weak};
 pub use arena::ArenaKey;
 pub(crate) use arena::{Arena, load, store};
 pub use scoped::Scoped;
+pub use value_cx::{ValueCx, ValueDoc};
 
 /// Данные одного документа. Поля пишет его разбор, читают разбор, сборка
-/// кадра и фазы GPUI — всегда в области этого документа.
+/// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
     /// Носитель и область просмотра, которыми разобран документ.
@@ -61,60 +59,41 @@ pub struct DocState {
     this: Weak<DocState>,
 }
 
-thread_local! {
-    /// Стек областей: вершина — документ, который сейчас разбирается,
-    /// собирается или проходит фазу GPUI.
-    /// Флаг — область сборки кадра (записи арен идут в область кадра).
-    static STACK: RefCell<Vec<(Rc<DocState>, bool)>> = const { RefCell::new(Vec::new()) };
-    /// Отсоединённый документ потока (см. заголовок модуля).
-    static DETACHED: RefCell<Option<Rc<DocState>>> = const { RefCell::new(None) };
-}
-
 impl DocState {
     /// Пустое состояние документа, разбираемого носителем `media`.
     pub fn new(media: Media) -> Rc<Self> {
-        Rc::new_cyclic(|this| {
-            let mut state = Self::default();
-            state.this = this.clone();
-            state.media.set(media);
-            state.owner.set(arena::new_owner(this));
-            state.frame_owner.set(arena::new_owner(this));
-            state
+        Rc::new_cyclic(|this| Self {
+            this: this.clone(),
+            media: Cell::new(media),
+            owner: Cell::new(arena::new_owner()),
+            frame_owner: Cell::new(arena::new_owner()),
+            ..Self::default()
         })
-    }
-
-    /// Сделать документ текущим до конца жизни guard'а (разбор: записи
-    /// арен — в область документа).
-    pub fn enter(self: &Rc<Self>) -> DocScope {
-        self.push(false)
-    }
-
-    /// То же для сборки кадра и фаз GPUI: записи арен — в область кадра.
-    pub fn enter_frame(self: &Rc<Self>) -> DocScope {
-        self.push(true)
     }
 
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
         if self.painted.replace(false) {
-            arena::forget_owner(self.frame_owner.get());
-            self.frame_owner.set(arena::new_owner(&self.this));
+            self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();
             self.anchor.clear_frame();
         }
     }
 
-    fn push(self: &Rc<Self>, frame: bool) -> DocScope {
-        let depth = STACK.with(|s| {
-            let mut s = s.borrow_mut();
-            s.push((self.clone(), frame));
-            s.len()
-        });
-        DocScope {
-            depth,
-            _not_send: std::marker::PhantomData,
-        }
+    /// Режим quirks документа (HTML §13.2.6.4.1).
+    pub(crate) fn quirks(&self) -> bool {
+        self.quirks.get()
+    }
+
+    /// Объявления правила `@position-try` по имени (`--x`), копией.
+    pub(crate) fn try_rule(&self, name: &str) -> Option<crate::style::css::Decls> {
+        self.try_rules.borrow().get(name).cloned()
+    }
+
+    /// Копия реестра `@property` — его читает сборка переменных узла.
+    pub(crate) fn property_rules(&self) -> HashMap<String, Registered> {
+        self.property_rules.borrow().clone()
     }
 
     /// Правила `@page` документа (копией — их читает хост на каждом кадре).
@@ -126,75 +105,6 @@ impl DocState {
     pub fn media(&self) -> Media {
         self.media.get()
     }
-
-    /// Очистить всё, что пишет разбор: перед повторным разбором в том же
-    /// состоянии (отсоединённый документ потока).
-    fn reset_parsed(&self, media: Media) {
-        self.media.set(media);
-        self.quirks.set(false);
-        *self.root.borrow_mut() = RootMetrics::default();
-        self.page_rules.borrow_mut().clear();
-        self.try_rules.borrow_mut().clear();
-        self.property_rules.borrow_mut().clear();
-        self.counter_styles.borrow_mut().clear();
-    }
-}
-
-impl Drop for DocState {
-    fn drop(&mut self) {
-        arena::forget_owner(self.owner.get());
-        arena::forget_owner(self.frame_owner.get());
-    }
-}
-
-/// Guard области документа: при сбросе возвращает прежний текущий документ.
-pub struct DocScope {
-    depth: usize,
-    _not_send: std::marker::PhantomData<Rc<()>>,
-}
-
-impl Drop for DocScope {
-    fn drop(&mut self) {
-        STACK.with(|s| {
-            let mut s = s.borrow_mut();
-            debug_assert_eq!(
-                s.len(),
-                self.depth,
-                "области документов закрыты не по порядку"
-            );
-            s.truncate(self.depth - 1);
-        });
-    }
-}
-
-/// Текущий документ: вершина стека областей, иначе отсоединённый документ
-/// потока (заводится по первому требованию).
-pub(crate) fn current() -> Rc<DocState> {
-    current_mode().0
-}
-
-/// Текущий документ и флаг области сборки кадра.
-fn current_mode() -> (Rc<DocState>, bool) {
-    if let Some(top) = STACK.with(|s| s.borrow().last().cloned()) {
-        return top;
-    }
-    let doc = DETACHED.with(|d| {
-        d.borrow_mut()
-            .get_or_insert_with(|| DocState::new(Media::default()))
-            .clone()
-    });
-    (doc, false)
-}
-
-/// Отсоединённый документ потока, очищенный под новый разбор (`dom::parse`).
-pub(crate) fn detached_for_parse(media: Media) -> Rc<DocState> {
-    let state = DETACHED.with(|d| {
-        d.borrow_mut()
-            .get_or_insert_with(|| DocState::new(media))
-            .clone()
-    });
-    state.reset_parsed(media);
-    state
 }
 
 #[cfg(test)]

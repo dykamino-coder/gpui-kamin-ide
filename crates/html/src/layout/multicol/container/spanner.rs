@@ -24,6 +24,7 @@ pub(crate) fn multicol_spanner_segments(
     mut seg_open: bool,
     is_span: impl Fn(&Node) -> bool,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // `<fieldset>`: отрисованная легенда стоит ВНЕ колонок —
     // многоколоночность получает анонимная коробка содержимого
     // fieldset (HTML §15.3.13 «The fieldset and legend
@@ -128,7 +129,7 @@ pub(crate) fn multicol_spanner_segments(
                         is_blank(n)
                             || matches!(n, Node::Element(k)
                                 if !k.inline
-                                    && shape_full(k, 4, ShapeCx::COLUMNS).is_some())
+                                    && shape_full(k, 4, ShapeCx::COLUMNS, vcx).is_some())
                     })
                     && let Some(rest) = rest_h
                 {
@@ -158,7 +159,7 @@ pub(crate) fn multicol_spanner_segments(
             }
             seg_open = true;
             span_prev = Some(key);
-            let inner = inherit(&merged, &sp.style);
+            let inner = inherit(&merged, &sp.style, vcx);
             // Спаннер — независимый контекст форматирования
             // (§column-span). Голый `styled_div_with` — блок taffy,
             // и тот схлопывал поле первого/последнего ребёнка
@@ -170,7 +171,7 @@ pub(crate) fn multicol_spanner_segments(
             // пути (`d.flex().flex_col()` при пустом `display`), где
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
-            let shell = styled_div_with(sp, &inner);
+            let shell = styled_div_with(sp, &inner, &opts.cx);
             let shell =
                 if matches!(inner.display, None | Some(Display::Block)) && !inner.wm().vertical() {
                     shell.flex().flex_col()

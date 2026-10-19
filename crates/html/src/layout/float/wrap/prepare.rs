@@ -1,5 +1,6 @@
 //! Подготовка обтекания: узлы с поднятыми флоатами, ранний выход без флоатов, бандовый хост пробега.
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
 use crate::layout::float::band_flow_host::BAND_FL;
@@ -19,6 +20,7 @@ pub(super) fn unfloated_flow(
     measured_ok: bool,
     parent_bfc: bool,
     nodes: &mut Vec<Node>,
+    cb: Option<f32>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
@@ -31,7 +33,7 @@ pub(super) fn unfloated_flow(
         // `floats-bfc-003`). Хост начинается с такого блока.
         if measured_ok {
             for i in 0..nodes.len() {
-                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc) {
+                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
                     band_clearance::mark_start(&mut host, cb_top_open, &out);
                     out.push(Node::Element(host));
@@ -49,8 +51,10 @@ pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
     parent: &Computed,
     cb_top_open: bool,
+    cb_px: Option<f32>,
+    vcx: ValueCx<'_>,
 ) -> Vec<Node> {
-    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent);
+    let nodes = inline_floats::lift(float_clear_scope::used(nodes, parent), parent, vcx);
     // Флоат, записанный ВНУТРИ строчной коробки, принадлежит не ей, а
     // ближайшему блочному предку (§10.1, §9.5.1 п.1). Строчная обёртка, в
     // которой кроме флоата ничего нет, снимается ЗДЕСЬ — ДО проверки
@@ -107,7 +111,7 @@ pub(super) fn prepare_float_nodes(
             Some(c) if c < 0 => left,
             Some(_) => right,
             None => false,
-        } || bfc_no_fit(n, min_w))
+        } || bfc_no_fit(n, min_w, cb_px))
     {
         if let Node::Element(w) = &mut nodes[a] {
             w.style.height = None;
@@ -126,6 +130,7 @@ pub(super) fn host_for_run(
     nodes: &[Node],
     out: &[Node],
     i: usize,
+    cb_px: Option<f32>,
 ) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
     let lead_at = out
         .iter()
@@ -160,7 +165,7 @@ pub(super) fn host_for_run(
         .map(|(h, n, l)| (h, n, Some(lead_at), l))
         .or_else(|| {
             (measured_ok && text_lead)
-                .then(|| band_host_m(nodes, i, em, &out[text_at..]))
+                .then(|| band_host_m(nodes, i, em, &out[text_at..], cb_px))
                 .flatten()
                 .map(|(h, n, l)| (h, n, Some(text_at), l))
         })
@@ -171,7 +176,7 @@ pub(super) fn host_for_run(
         // (`band_flow.rs`, шаги F2/F3/F5).
         .or_else(|| {
             measured_ok
-                .then(|| band_host_m(nodes, i, em, &[]))
+                .then(|| band_host_m(nodes, i, em, &[], cb_px))
                 .flatten()
                 .map(|(h, n, l)| (h, n, None, l))
         })

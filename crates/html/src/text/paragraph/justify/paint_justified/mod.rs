@@ -1,5 +1,6 @@
-//! Paint justified for justify; split out to keep the owning module within 250 lines.
+//! Выключка строк при покраске: подготовка слов, логическое и визуальное размещение.
 
+mod gaps;
 mod logical_placement;
 mod visual_placement;
 mod word_paint;

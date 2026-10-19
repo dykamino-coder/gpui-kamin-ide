@@ -5,6 +5,7 @@ use crate::animation::motion::anchors::origin_shift;
 use crate::animation::motion::anchors::position_in;
 use crate::animation::motion::anchors::rotation;
 use crate::animation::motion::anchors::start_of;
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -18,6 +19,7 @@ pub(super) fn ray_css(
     args: &str,
     cb: Option<&Cb>,
     rb: Option<(f32, f32, f32, f32)>,
+    vcx: ValueCx<'_>,
 ) -> Option<String> {
     let toks: Vec<&str> = args.split_whitespace().collect();
     let bearing = toks.iter().find_map(|t| angle_rad(t))?;
@@ -30,8 +32,8 @@ pub(super) fn ray_css(
     // центр («If the element doesn't have an offset starting position either,
     // it behaves as `at center`»).
     let start = match (toks.iter().position(|t| *t == "at"), rb) {
-        (Some(i), Some(rb)) => position_in(&toks[i + 1..], rb),
-        _ => start_of(c, cb, rb),
+        (Some(i), Some(rb)) => position_in(&toks[i + 1..], rb, vcx),
+        _ => start_of(c, cb, rb, vcx),
     };
     let len = match (super::motion_style(c).offset_distance, rb) {
         (Some(Len::Px(v)), _) => v,
@@ -60,6 +62,7 @@ pub(super) fn ray_css(
         c,
         p,
         rotation(c, bearing - std::f32::consts::FRAC_PI_2),
+        vcx,
     ))
 }
 

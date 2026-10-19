@@ -1,6 +1,7 @@
 //! Настройка состояния Grouped после вычисления геометрии клипа.
 
 use super::rounded_rect_clip;
+use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;
 use crate::paint::effects::mask::mask_geometry;
 use crate::style::computed::Computed;
@@ -19,7 +20,9 @@ pub(crate) fn grouped_wrapper(
     el: AnyElement,
     bare_round: Option<Len>,
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
+    vcx: ValueCx<'_>,
 ) -> AnyElement {
+    let values = vcx.keep();
     let pure_isolation = blur <= 0.0
         && blend == 0
         && polygon.is_empty()
@@ -28,7 +31,7 @@ pub(crate) fn grouped_wrapper(
         && clip_inset.is_none()
         && c.clip_edges.is_none()
         && c.clip_xywh.is_none();
-    let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el);
+    let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el, vcx);
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
@@ -36,7 +39,7 @@ pub(crate) fn grouped_wrapper(
         // A mask wrapper can be built from the element's own style before
         // the normal inherited-style resolution. Resolve gradient lengths
         // here too; background and mask images share CSS Values 4 §6.1.1.
-        c.resolve_mask_image(raw)
+        c.resolve_mask_image(raw, vcx)
     });
     // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
     // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
@@ -50,7 +53,9 @@ pub(crate) fn grouped_wrapper(
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         let shadows = c.resolved_shadows(false);
+        let values = values.clone();
         wrapper.under = Some(Box::new(move |bw, bh, sl, st, aw, ah| {
+            let vcx = values.vcx();
             crate::paint::background::border_shape_shadow_scene(
                 (bs.outer.as_str(), outer_out),
                 inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
@@ -63,6 +68,7 @@ pub(crate) fn grouped_wrapper(
                 st,
                 aw,
                 ah,
+                vcx,
             )
         }));
     }
@@ -75,11 +81,13 @@ pub(crate) fn grouped_wrapper(
         && c.border_shape_clips()
     {
         let (stroke, colour) = c.border_shape_stroke();
-        let colour = crate::paint::background::border_paint(c, colour);
+        let colour = crate::paint::background::border_paint(c, colour, vcx);
         let outer_out = c.geometry_outsets(bs.outer_box);
         let inner = bs.inner.clone().map(|(s, k)| (s, c.geometry_outsets(k)));
         if (inner.is_some() || stroke > 0.0) && colour.a > 0.0 {
+            let values = values.clone();
             wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+                let vcx = values.vcx();
                 crate::paint::background::border_shape_ring_scene(
                     (bs.outer.as_str(), outer_out),
                     inner.as_ref().map(|(s, o)| (s.as_str(), *o)),
@@ -91,6 +99,7 @@ pub(crate) fn grouped_wrapper(
                     st,
                     aw,
                     ah,
+                    vcx,
                 )
             }));
         }
@@ -111,6 +120,7 @@ pub(crate) fn grouped_wrapper(
             .as_ref()
             .is_some_and(|o| o.style == Some(crate::style::computed::OUTLINE_DOUBLE));
         wrapper.over.push(Box::new(move |bw, bh, sl, st, aw, ah| {
+            let vcx = values.vcx();
             crate::paint::background::border_shape_outline_scene(
                 (bs.outer.as_str(), outer_out),
                 single,
@@ -125,6 +135,7 @@ pub(crate) fn grouped_wrapper(
                 st,
                 aw,
                 ah,
+                vcx,
             )
         }));
     }
@@ -132,12 +143,12 @@ pub(crate) fn grouped_wrapper(
     // (css-borders-4 §corner-shaping), подложкой и накладкой группы.
     {
         use crate::paint::decorations::shaped_outset as so;
-        if let Some(layer) = so::shadow_layer(c) {
+        if let Some(layer) = so::shadow_layer(c, vcx) {
             wrapper.under = Some(layer);
         }
-        wrapper.under_fills = so::shadow_fills(c);
-        wrapper.over_fills = so::outline_layer(c);
-        wrapper.deco_ext = so::reach(c);
+        wrapper.under_fills = so::shadow_fills(c, vcx);
+        wrapper.over_fills = so::outline_layer(c, vcx);
+        wrapper.deco_ext = so::reach(c, vcx);
     }
     super::apply_mask_style(&mut wrapper, c);
     // Коробки маски (css-masking §7.10-7.11): сдвиги краёв от border-box
@@ -199,7 +210,7 @@ pub(crate) fn grouped_wrapper(
         _ => [0.0; 4],
     };
     wrapper.ring_over = ring_over;
-    wrapper.corner_clip = crate::paint::effects::corner_clip::new(c, wrapper.mask.as_deref());
+    wrapper.corner_clip = crate::paint::effects::corner_clip::new(c, wrapper.mask.as_deref(), vcx);
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);
     }

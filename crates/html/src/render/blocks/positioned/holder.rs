@@ -13,6 +13,7 @@ pub(crate) fn inset_holder_box(
     opts: &RenderOpts,
     kw_len: &impl Fn(Option<Len>) -> bool,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let mut holder = Computed {
         position: e.style.position,
         inset: e.style.inset,
@@ -75,7 +76,7 @@ pub(crate) fn inset_holder_box(
         inner.style.margin.bottom = None;
     }
     inner.style.z_index = None;
-    crate::paint::apply::apply(div(), &holder)
+    crate::paint::apply::apply(div(), &holder, vcx)
         .child(element(&inner, inherited, opts))
         .into_any_element()
 }

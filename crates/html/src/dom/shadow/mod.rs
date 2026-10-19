@@ -9,6 +9,7 @@ pub(super) use crate::dom::shadow::assignment::declarative_shadow;
 pub(super) use crate::dom::shadow::flatten::finish_slots;
 pub(super) use prepare::prepare;
 
+use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{Keyframes, Rule};
 use crate::style::select::has::{HasArg, shadow_marks};
@@ -29,7 +30,7 @@ pub(crate) struct Scope {
 /// возвращает false) и по HTML §13.2.6.4.4 шаг 8.1.1 оставляет обычный
 /// `<template>` ребёнком хоста, а разметку тени — в его `template_contents`.
 /// Здесь это и есть корень тени.
-pub(super) struct Shadow {
+pub(crate) struct Shadow {
     pub(crate) root: Handle,
     /// Таблицы тени: лист агента + `<style>` тени. Правила документа сюда
     /// не попадают, правила тени — наружу (css-shadow-1 §3.2).
@@ -80,27 +81,6 @@ pub(crate) struct SlotInfo {
     pub(crate) flattened: Vec<Option<FlatCtx>>,
 }
 
-thread_local! {
-    /// Тени документа: адрес хоста → тень.
-    pub(super) static SHADOWS: std::cell::RefCell<HashMap<usize, Rc<Shadow>>> =
-        std::cell::RefCell::new(HashMap::new());
-    /// Слоты теней документа: адрес слота → распределение.
-    pub(super) static SLOTS: std::cell::RefCell<HashMap<usize, Rc<SlotInfo>>> =
-        std::cell::RefCell::new(HashMap::new());
-}
-
-fn node_key(handle: &Handle) -> usize {
-    Rc::as_ptr(handle) as usize
-}
-
-pub(super) fn shadow_of(handle: &Handle) -> Option<Rc<Shadow>> {
-    SHADOWS.with(|m| m.borrow().get(&node_key(handle)).cloned())
-}
-
-pub(crate) fn slot_of(handle: &Handle) -> Option<Rc<SlotInfo>> {
-    SLOTS.with(|m| m.borrow().get(&node_key(handle)).cloned())
-}
-
 fn is_slot(handle: &Handle) -> bool {
     matches!(&handle.data, NodeData::Element { name, .. } if local_name(&name.local) == "slot")
 }
@@ -127,9 +107,10 @@ pub(super) fn scan_shadows(
     scope: &Rc<Scope>,
     prepared: &prepare::Prepared,
     args: &[HasArg],
-    drafts: &mut HashMap<usize, SlotInfo>,
+    drafts: &mut HashMap<NodeKey, SlotInfo>,
+    tree: &mut TreeIndex,
 ) {
-    let (_, all) = census_of(children);
+    let (_, all) = census_of(children, tree);
     let all = Rc::new(all);
     let mut pos = 0usize;
     for child in children {
@@ -138,7 +119,7 @@ pub(super) fn scan_shadows(
         }
         let mut me = all[pos].clone();
         me.peers = Some((all.clone(), pos));
-        if let Some(slot) = drafts.get_mut(&node_key(child)) {
+        if let Some(slot) = drafts.get_mut(&NodeKey::of(child)) {
             slot.origin = Some(slotted::SlotContext {
                 scope: scope.clone(),
                 node: me.clone(),
@@ -149,7 +130,7 @@ pub(super) fn scan_shadows(
         }
         pos += 1;
         if let Some((template, root)) = declarative_shadow(child) {
-            let inner = prepared[&node_key(child)].1.clone();
+            let inner = prepared[&NodeKey::of(child)].1.clone();
             let host_path: Rc<Vec<Ancestor>> = Rc::new(
                 path.iter()
                     .cloned()
@@ -163,22 +144,20 @@ pub(super) fn scan_shadows(
                 .filter(|c| !Rc::ptr_eq(c, &template))
                 .cloned()
                 .collect();
-            assign_slots(&root, &light, scope, &host_path, drafts);
+            assign_slots(&root, &light, scope, &host_path, drafts, tree);
             let marker = Ancestor {
                 featureless: Some(Rc::new(path.clone())),
-                shadow_has_marks: shadow_marks(&root, args, &me),
+                shadow_has_marks: shadow_marks(&root, args, &me, tree),
                 ..me.clone()
             };
-            SHADOWS.with(|m| {
-                m.borrow_mut().insert(
-                    node_key(child),
-                    Rc::new(Shadow {
-                        root: root.clone(),
-                        scope: inner.clone(),
-                        marker: marker.clone(),
-                    }),
-                )
-            });
+            tree.shadows.insert(
+                NodeKey::of(child),
+                Rc::new(Shadow {
+                    root: root.clone(),
+                    scope: inner.clone(),
+                    marker: marker.clone(),
+                }),
+            );
             let shadow_kids: Vec<Handle> = root.children.borrow().clone();
             scan_shadows(
                 &shadow_kids,
@@ -187,14 +166,15 @@ pub(super) fn scan_shadows(
                 prepared,
                 args,
                 drafts,
+                tree,
             );
             path.push(me);
-            scan_shadows(&light, path, scope, prepared, args, drafts);
+            scan_shadows(&light, path, scope, prepared, args, drafts, tree);
             path.pop();
         } else {
             let kids: Vec<Handle> = child.children.borrow().clone();
             path.push(me);
-            scan_shadows(&kids, path, scope, prepared, args, drafts);
+            scan_shadows(&kids, path, scope, prepared, args, drafts, tree);
             path.pop();
         }
     }

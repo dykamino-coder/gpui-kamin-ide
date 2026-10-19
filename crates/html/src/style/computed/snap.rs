@@ -1,5 +1,7 @@
 //! CSS Scroll Snap 1: non-inherited snap type, alignment, snapport and snap area.
+
 use super::{Computed, Sides, split_outside_parens};
+use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -16,7 +18,7 @@ pub struct SnapStyle {
 }
 
 impl Computed {
-    pub(crate) fn apply_snap(&mut self, key: &str, v: &str, hit: &mut bool) {
+    pub(crate) fn apply_snap(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         let bit = match key {
             "scroll-snap-type" => 1,
             "scroll-snap-align" => 2,
@@ -103,7 +105,7 @@ impl Computed {
                         if padding && s == "auto" {
                             Some(Len::Auto)
                         } else {
-                            Len::parse_mixed(s).filter(|l| match *l {
+                            Len::parse_mixed(s, vcx).filter(|l| match *l {
                                 Len::Px(n)
                                 | Len::Em(n)
                                 | Len::Ch(n)
@@ -115,7 +117,8 @@ impl Computed {
                                 Len::Pct(n) => padding && n >= 0.0,
                                 Len::Calc(i) => {
                                     padding
-                                        || !crate::style::values::value::calc_get(i).has_percentage
+                                        || !crate::style::values::value::calc_get(i, vcx)
+                                            .has_percentage
                                 }
                                 Len::EmPx(_, _) | Len::LhPx(_, _) => true,
                                 _ => false,
@@ -125,7 +128,7 @@ impl Computed {
                     .collect();
                 let Some(lengths) = lengths else { return };
                 match key.strip_prefix(prefix).unwrap_or("") {
-                    "" if (1..=4).contains(&lengths.len()) => *sides = Sides::shorthand(v),
+                    "" if (1..=4).contains(&lengths.len()) => *sides = Sides::shorthand(v, vcx),
                     "-top" if lengths.len() == 1 => sides.top = Some(lengths[0]),
                     "-right" if lengths.len() == 1 => sides.right = Some(lengths[0]),
                     "-bottom" if lengths.len() == 1 => sides.bottom = Some(lengths[0]),
@@ -178,37 +181,41 @@ mod tests {
 
     #[test]
     fn snap_is_local_and_explicit_inheritance_copies_only_requested_properties() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut parent = Computed::default();
-        parent.apply_one("scroll-snap-type", "both mandatory");
-        parent.apply_one("scroll-snap-align", "end center");
-        parent.apply_one("scroll-padding", "10px 20px");
-        parent.apply_one("scroll-margin", "5px");
+        parent.apply_one("scroll-snap-type", "both mandatory", vcx);
+        parent.apply_one("scroll-snap-align", "end center", vcx);
+        parent.apply_one("scroll-padding", "10px 20px", vcx);
+        parent.apply_one("scroll-margin", "5px", vcx);
         let mut own = Computed::default();
-        assert_eq!(inherit(&parent, &own).snap.axis, 0);
-        own.apply_one("scroll-snap-type", "inherit");
-        own.apply_one("scroll-padding-left", "inherit");
-        let child = inherit(&parent, &own);
+        assert_eq!(inherit(&parent, &own, vcx).snap.axis, 0);
+        own.apply_one("scroll-snap-type", "inherit", vcx);
+        own.apply_one("scroll-padding-left", "inherit", vcx);
+        let child = inherit(&parent, &own, vcx);
         assert_eq!(child.snap.axis, 5);
         assert_eq!(child.snap.strictness, 2);
         assert_eq!(child.snap.align, [0; 2]);
         assert_eq!(child.snap.padding.left, Some(Len::Px(20.0)));
         assert_eq!(child.snap.padding.top, None);
         assert_eq!(child.snap.margin.top, None);
-        own.apply_one("scroll-snap-type", "initial");
-        assert_eq!(inherit(&parent, &own).snap.axis, 0);
+        own.apply_one("scroll-snap-type", "initial", vcx);
+        assert_eq!(inherit(&parent, &own, vcx).snap.axis, 0);
     }
 
     #[test]
     fn snap_invalid_values_preserve_valid_declarations() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.apply_one("scroll-snap-align", "start end");
-        c.apply_one("scroll-snap-align", "start invalid");
+        c.apply_one("scroll-snap-align", "start end", vcx);
+        c.apply_one("scroll-snap-align", "start invalid", vcx);
         assert_eq!(c.snap.align, [1, 2]);
-        c.apply_one("scroll-padding", "10px");
-        c.apply_one("scroll-padding", "-1px");
+        c.apply_one("scroll-padding", "10px", vcx);
+        c.apply_one("scroll-padding", "-1px", vcx);
         assert_eq!(c.snap.padding.top, Some(Len::Px(10.0)));
-        c.apply_one("scroll-margin", "-5px");
-        c.apply_one("scroll-margin", "50%");
+        c.apply_one("scroll-margin", "-5px", vcx);
+        c.apply_one("scroll-margin", "50%", vcx);
         assert_eq!(c.snap.margin.top, Some(Len::Px(-5.0)));
     }
 }

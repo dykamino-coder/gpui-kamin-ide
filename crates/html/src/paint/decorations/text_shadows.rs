@@ -19,6 +19,7 @@ fn shadow_layer(
     opts: &RenderOpts,
     same_paragraph: bool,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     let copy = if same_paragraph {
         let mut mask = style.clone();
         mask.text_shadow_ink = Some(shadow.color);
@@ -36,7 +37,7 @@ fn shadow_layer(
             .into_any_element()
     };
     let copy = if shadow.blur > 0.5 {
-        let mut group = crate::paint::effects::grouped_element::Grouped::new(copy);
+        let mut group = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
         group.blur = shadow.blur * 0.5;
         group.hooked()
     } else {

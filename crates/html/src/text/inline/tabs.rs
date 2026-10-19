@@ -99,6 +99,8 @@ mod tests {
 
     #[test]
     fn numeric_override_cancels_an_inherited_length() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let parent = Computed {
             tab_size_len: Some(Len::Px(200.0)),
             ..Default::default()
@@ -107,7 +109,7 @@ mod tests {
             tab_size: Some(5.0),
             ..Default::default()
         };
-        let child = crate::style::cascade::inherit::inherit(&parent, &own);
+        let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         assert_eq!(child.tab_size, Some(5.0));
         assert_eq!(child.tab_size_len, None);
     }

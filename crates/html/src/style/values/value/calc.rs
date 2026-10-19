@@ -1,6 +1,7 @@
 //! Вычисление calc(): дерево выражения, сравнение min/max/clamp, разбор.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Операнд выражения: голое число участвует только в умножении и делении.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -27,10 +28,10 @@ impl<'a> Calc<'a> {
         Some(c)
     }
 
-    pub(super) fn expr(&mut self) -> Option<Val> {
-        let mut acc = self.term()?;
+    pub(super) fn expr(&mut self, vcx: ValueCx<'_>) -> Option<Val> {
+        let mut acc = self.term(vcx)?;
         while let Some(op) = self.eat(&['+', '-']) {
-            let rhs = self.term()?;
+            let rhs = self.term(vcx)?;
             let sign = if op == '-' { -1.0 } else { 1.0 };
             acc = match (acc, rhs) {
                 (Val::Num(a), Val::Num(b)) => Val::Num(a + sign * b),
@@ -43,10 +44,10 @@ impl<'a> Calc<'a> {
         Some(acc)
     }
 
-    pub(super) fn term(&mut self) -> Option<Val> {
-        let mut acc = self.factor()?;
+    pub(super) fn term(&mut self, vcx: ValueCx<'_>) -> Option<Val> {
+        let mut acc = self.factor(vcx)?;
         while let Some(op) = self.eat(&['*', '/']) {
-            let rhs = self.factor()?;
+            let rhs = self.factor(vcx)?;
             acc = match (op, acc, rhs) {
                 ('*', Val::Len(a), Val::Num(k)) | ('*', Val::Num(k), Val::Len(a)) => {
                     Val::Len(a.scaled(k))
@@ -68,11 +69,11 @@ impl<'a> Calc<'a> {
         Some(acc)
     }
 
-    pub(super) fn factor(&mut self) -> Option<Val> {
+    pub(super) fn factor(&mut self, vcx: ValueCx<'_>) -> Option<Val> {
         self.rest = self.rest.trim_start();
         // round()/mod()/sin()/… (§10.3–§10.8) — своя ветвь в `calc_math`.
         if super::calc_math::is_math_fn(self.rest) {
-            return self.math_fn();
+            return self.math_fn(vcx);
         }
         // `min()`/`max()`/`clamp()` (css-values-4 §10.2): доводы — полные
         // выражения через запятую, сворачивает их `compare`.
@@ -85,9 +86,9 @@ impl<'a> Calc<'a> {
                 let mut sub = Calc {
                     rest: &rest[name.len()..],
                 };
-                let mut args = vec![sub.expr()?];
+                let mut args = vec![sub.expr(vcx)?];
                 while sub.eat(&[',']).is_some() {
-                    args.push(sub.expr()?);
+                    args.push(sub.expr(vcx)?);
                 }
                 sub.eat(&[')'])?;
                 self.rest = sub.rest;
@@ -105,7 +106,7 @@ impl<'a> Calc<'a> {
             });
         if let Some((body, open)) = inner {
             let mut sub = Calc { rest: body };
-            let val = sub.expr()?;
+            let val = sub.expr(vcx)?;
             sub.eat(&[')'])?;
             let used = self.rest.len() - sub.rest.len();
             debug_assert!(used >= open);
@@ -135,7 +136,7 @@ impl<'a> Calc<'a> {
         if let Some(v) = super::calc_math::constant_or_angle(head) {
             return Some(v);
         }
-        Sum::from_len(Len::parse(head)?).map(Val::Len)
+        Sum::from_len(Len::parse(head, vcx)?, vcx).map(Val::Len)
     }
 }
 
@@ -167,9 +168,9 @@ fn compare(kind: u8, args: &[Val]) -> Option<Val> {
     Some(args[at])
 }
 
-pub(super) fn eval_calc(inner: &str) -> Option<Sum> {
+pub(super) fn eval_calc(inner: &str, vcx: ValueCx<'_>) -> Option<Sum> {
     let mut calc = Calc { rest: inner };
-    let val = calc.expr()?;
+    let val = calc.expr(vcx)?;
     if !calc.rest.trim().is_empty() {
         return None;
     }
@@ -181,6 +182,6 @@ pub(super) fn eval_calc(inner: &str) -> Option<Sum> {
     }
 }
 
-pub(super) fn parse_calc(inner: &str) -> Option<Len> {
-    eval_calc(inner)?.collapse()
+pub(super) fn parse_calc(inner: &str, vcx: ValueCx<'_>) -> Option<Len> {
+    eval_calc(inner, vcx)?.collapse(vcx)
 }

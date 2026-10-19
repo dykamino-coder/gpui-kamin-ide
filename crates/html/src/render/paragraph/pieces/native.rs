@@ -1,6 +1,6 @@
 //! Построение абзаца с собственной раскладкой строк.
 
-use super::paragraph_spans;
+use super::{paragraph_spans, rotate_rel_spans};
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -84,7 +84,8 @@ pub(crate) fn native_paragraph(
         line,
         crate::text::paragraph::align_for(inherited),
         wrap,
-    );
+    )
+    .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)
         .edge_spans(edges)
         .line_boxes(
@@ -204,13 +205,15 @@ pub(crate) fn native_paragraph(
         .atoms(line_atoms)
         // Срез строки — только у абзаца, держащего первую/последнюю строку
         // срезающего контейнера (`text::line_trim`).
-        .ruby_trim(crate::text::line_trim::para(inherited.self_node).unwrap_or(
-            crate::text::line_trim::Trim {
-                start: inherited.text_box_trim_start,
-                end: inherited.text_box_trim_end,
-                over: 0.0,
-            },
-        ));
+        .ruby_trim(
+            crate::text::line_trim::para(opts.cx.trim_para, inherited.self_node).unwrap_or(
+                crate::text::line_trim::Trim {
+                    start: inherited.text_box_trim_start,
+                    end: inherited.text_box_trim_end,
+                    over: 0.0,
+                },
+            ),
+        );
     let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
@@ -220,29 +223,18 @@ pub(crate) fn native_paragraph(
     if native {
         native_request.unwrap().built.set(true);
     }
+    let projection = crate::interactive::scroll_extent::projection(
+        inherited.self_node,
+        None,
+        opts.cx.sticky.as_ref(),
+    );
+    let sticky = projection
+        .as_ref()
+        .map(|p| p.link().clone())
+        .or_else(|| opts.cx.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node).into_any_element(),
-        crate::interactive::scroll_extent::projection(inherited.self_node, None),
+        para.scroll_owner(inherited.self_node, sticky)
+            .into_any_element(),
+        projection,
     )
-}
-
-/// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
-/// is typeset horizontally and turned afterwards (css-writing-modes-4 §7.1),
-/// so the offset must be expressed in the pre-rotation frame: a clockwise turn
-/// sends the line axis (+x) to screen-down and the block axis (+y) to
-/// screen-left; `sideways-lr` turns the other way.
-// Rotation preserves each span's text range and two-axis displacements.
-#[allow(clippy::type_complexity)]
-fn rotate_rel_spans(
-    spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
-    inherited: &crate::style::computed::Computed,
-) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
-    if !inherited.wm().turned() {
-        return spans;
-    }
-    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
-    spans
-        .into_iter()
-        .map(|(r, d, b)| (r, turn(d), turn(b)))
-        .collect()
 }

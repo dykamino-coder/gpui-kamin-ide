@@ -1,5 +1,6 @@
 //! Animation frames for walk; split out to keep the owning module within 250 lines.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Keyframes};
 use std::collections::HashMap;
@@ -10,6 +11,7 @@ pub(super) fn animation_frames(
     style: &Computed,
     frames: &HashMap<String, Keyframes>,
     vars: &Decls,
+    vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Computed)>> {
     // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
     // уже нет, а интерполировать нужно готовые стили, а не текст.
@@ -27,7 +29,7 @@ pub(super) fn animation_frames(
                     if decls.contains_key("transform") {
                         c.transform = None;
                     }
-                    c.apply_decls_with_vars(decls, vars);
+                    c.apply_decls_with_vars(decls, vars, vcx);
                     (*at, c)
                 })
                 .collect();
@@ -54,7 +56,7 @@ pub(super) fn animation_frames(
             let mut base = style.clone();
             for name in &a.names {
                 if let Some(track) = resolve(name, &base)
-                    && let Some(sample) = crate::animation::frames::sample_at(&track, a, 0.0)
+                    && let Some(sample) = crate::animation::frames::sample_at(&track, a, 0.0, vcx)
                 {
                     base = sample;
                 }
@@ -103,9 +105,11 @@ mod tests {
 
     #[test]
     fn only_declared_margin_tracks_replace_normalized_flow_edges() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut base = Computed::default();
-        base.apply_one("animation", "a 1s linear");
-        base.apply_one("margin", "12px");
+        base.apply_one("animation", "a 1s linear", vcx);
+        base.apply_one("margin", "12px", vcx);
         for (property, value, expected) in [
             ("color", "blue", None),
             ("margin-left", "0px", Some(Len::Px(0.0))),
@@ -113,7 +117,7 @@ mod tests {
         ] {
             let decls = HashMap::from([(property.into(), value.into())]);
             let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
-            let frames = animation_frames(&base, &tracks, &HashMap::new()).unwrap();
+            let frames = animation_frames(&base, &tracks, &HashMap::new(), vcx).unwrap();
             for (_, frame) in frames {
                 assert_eq!(frame.margin.left, expected);
                 assert_eq!(

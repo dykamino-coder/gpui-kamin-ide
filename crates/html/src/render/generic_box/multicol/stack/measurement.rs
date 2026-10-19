@@ -31,6 +31,7 @@ pub(crate) fn measure_children(
     measure_ok: bool,
     pag_ok: bool,
 ) -> Option<Vec<(Element, Shape)>> {
+    let vcx = opts.cx.vcx();
     ge.children
         .iter()
         .filter(|n| !is_blank(n))
@@ -46,7 +47,7 @@ pub(crate) fn measure_children(
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
-                let c = &resolved_lengths(c, merged);
+                let c = &resolved_lengths(c, merged, vcx);
                 let (Some(hh), Some(cw)) = (outer_frag, line_col_w) else {
                     return None;
                 };
@@ -55,7 +56,7 @@ pub(crate) fn measure_children(
                         nested_auto.borrow_mut().push(c.node_id);
                         Some(((*c).clone(), h))
                     }
-                    None => shape_full(c, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h)),
+                    None => shape_full(c, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h)),
                 }
             }
             // Вложенный многоколоночник `height: auto` во внешних колонках с
@@ -75,7 +76,7 @@ pub(crate) fn measure_children(
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
-                let c = resolved_lengths(c, merged);
+                let c = resolved_lengths(c, merged, vcx);
                 measured_nested(&c, line_col_w?, measured_kids, nested_whole)
             }
             Node::Element(c)
@@ -87,7 +88,7 @@ pub(crate) fn measure_children(
                 // Высоту даёт раскладка самой копии (`StackChild::measure`):
                 // внутренний многоколоночник балансирует себя сам, и мера
                 // `shape_full` его колонок не видит (сумма детей).
-                let c = resolved_lengths(c, merged);
+                let c = resolved_lengths(c, merged, vcx);
                 let w = line_col_w?;
                 let m = |l: &Option<Len>| match l {
                     Some(Len::Px(v)) => Some(*v),
@@ -115,9 +116,10 @@ pub(crate) fn measure_children(
                         c,
                         line_col_w,
                         merged.column_fill_auto == Some(true),
+                        vcx,
                     ) =>
             {
-                let mut c = resolved_lengths(c, merged);
+                let mut c = resolved_lengths(c, merged, vcx);
                 let m = |l: &Option<Len>| match l {
                     Some(Len::Px(v)) => Some(*v),
                     None | Some(Len::Auto) => Some(0.0),
@@ -151,7 +153,7 @@ pub(crate) fn measure_children(
                 // клоном (`transpose_tree`), рисуется исходным.
                 // Длины коробки — в точках (`resolved_lengths`):
                 // и мере, и копиям, и распоркам роста — одно дерево.
-                let mut c = resolved_lengths(c, merged);
+                let mut c = resolved_lengths(c, merged, vcx);
                 // `text-box-trim` многоколоночника режет его ПЕРВУЮ и
                 // ПОСЛЕДНЮЮ отформатированную строку (css-inline-3
                 // §4.2) — у строчного блока-ребёнка с края потока они
@@ -170,9 +172,9 @@ pub(crate) fn measure_children(
                 let c = &c;
                 if col_vert {
                     let t = transpose_tree(c, col_rl)?;
-                    shape_full(&t, 4, ShapeCx::COLUMNS).map(|h| ((*c).clone(), h))
+                    shape_full(&t, 4, ShapeCx::COLUMNS, vcx).map(|h| ((*c).clone(), h))
                 } else {
-                    shape_full(c, 4, ShapeCx::COLUMNS)
+                    shape_full(c, 4, ShapeCx::COLUMNS, vcx)
                         .map(|h| ((*c).clone(), h))
                         .or_else(|| {
                             // Мера `shape_full` не выразила ребёнка (флоаты,

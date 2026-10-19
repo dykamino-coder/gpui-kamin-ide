@@ -39,8 +39,8 @@ pub(super) fn generic_box(
     {
         merged.baseline_orthogonal = true;
     }
-    let mut d = styled_div_with(e, &merged);
-    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited);
+    let mut d = styled_div_with(e, &merged, &opts.cx);
+    let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.positioning);
     if let Some(plan) = &overflow_plan {
         plan.prepare(d.style());
     }

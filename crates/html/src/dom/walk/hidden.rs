@@ -1,6 +1,7 @@
 //! Preserve root canvas styles and non-flow table columns during the walk.
 
 use super::walk_children;
+use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Computed;
 use crate::style::css::{Decls, Keyframes, Rule};
@@ -16,6 +17,7 @@ pub(super) fn hidden_element(
     attrs: Vec<(String, String)>,
     me: &Ancestor,
     handle: &Handle,
+    tree: &TreeIndex,
     rules: &[Rule],
     vars: &Decls,
     frames: &HashMap<String, Keyframes>,
@@ -62,6 +64,7 @@ pub(super) fn hidden_element(
         let mut raw: Vec<Node> = vec![];
         walk_children(
             handle,
+            tree,
             rules,
             vars,
             frames,

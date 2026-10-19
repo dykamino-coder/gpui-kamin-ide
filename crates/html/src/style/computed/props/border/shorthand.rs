@@ -1,6 +1,7 @@
 //! Стиль и сокращения рамки: set_border_style, set_visible, apply_border_shorthand (`border: 1px solid red` и стороны).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
     /// `border-left-style: solid` — рисунок одной стороны. Без рисунка её
@@ -37,7 +38,12 @@ impl Computed {
 
     /// `border: 1px solid #333` — ширина и цвет; стиль линии GPUI различает
     /// только solid/dashed на весь элемент, поэтому его не разбираем.
-    pub(crate) fn apply_border_shorthand(&mut self, v: &str, side: Option<usize>) {
+    pub(crate) fn apply_border_shorthand(
+        &mut self,
+        v: &str,
+        side: Option<usize>,
+        vcx: ValueCx<'_>,
+    ) {
         // Негодная часть роняет ВСЁ объявление (§4.2), а не пропускается:
         // `border: -1px solid red` не даёт ни рамки `medium`, ни красного
         // цвета. Проверка отдельным проходом — применение ниже правит поля по
@@ -46,13 +52,13 @@ impl Computed {
             token == "none"
                 || token == "hidden"
                 || border_style(token)
-                || line_width(token).is_some()
+                || line_width(token, vcx).is_some()
                 // CSS Backgrounds 3 §4.1 / Color 4 #currentcolor-color:
                 // Blink css_parsing_utils.cc:2779-2821 consumes a deferred
                 // currentColor as a <color>, resolved after inheritance;
                 // Color::parse cannot resolve it while parsing the shorthand.
                 || token.eq_ignore_ascii_case("currentcolor")
-                || Color::parse(token).is_some()
+                || Color::parse(token, vcx).is_some()
         };
         if !split_outside_parens(v)
             .iter()
@@ -70,9 +76,9 @@ impl Computed {
                 let t = token.as_str().trim();
                 if t == "none" || t == "hidden" || border_style(t) {
                     st += 1;
-                } else if line_width(t).is_some() {
+                } else if line_width(t, vcx).is_some() {
                     w += 1;
-                } else if Color::parse(t).is_some() || t.eq_ignore_ascii_case("currentcolor") {
+                } else if Color::parse(t, vcx).is_some() || t.eq_ignore_ascii_case("currentcolor") {
                     c += 1;
                 }
             }
@@ -106,9 +112,9 @@ impl Computed {
                 }
                 self.border_dashed = Some(token == "dashed");
                 self.border_dotted = Some(token == "dotted");
-            } else if let Some(l) = line_width(token) {
+            } else if let Some(l) = line_width(token, vcx) {
                 width = Some(l);
-            } else if let Some(c) = Color::parse(token) {
+            } else if let Some(c) = Color::parse(token, vcx) {
                 color = Some(c);
             }
         }
@@ -174,10 +180,12 @@ mod tests {
 
     #[test]
     fn currentcolor_does_not_invalidate_the_border_width_and_style() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut own = Computed::default();
-        own.apply_one("border", "1px solid currentColor");
-        own.color = Color::parse("green");
-        let painted = crate::style::cascade::inherit::inherit(&Computed::default(), &own);
+        own.apply_one("border", "1px solid currentColor", vcx);
+        own.color = Color::parse("green", vcx);
+        let painted = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
         assert_eq!(painted.borders().top, Some(Len::Px(1.0)));
         assert_eq!(painted.border_color, own.color);
         assert_eq!(painted.border_side_styles, [Some(9); 4]);
@@ -185,14 +193,16 @@ mod tests {
 
     #[test]
     fn two_color_components_invalidate_the_entire_declaration() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut c = Computed::default();
-        c.apply_one("border", "2px solid green");
+        c.apply_one("border", "2px solid green", vcx);
         let accepted = c.clone();
         for value in [
             "1px solid red currentcolor",
             "1px solid currentcolor currentcolor",
         ] {
-            c.apply_one("border", value);
+            c.apply_one("border", value, vcx);
             assert_eq!(c.border_width, accepted.border_width);
             assert_eq!(c.border_color, accepted.border_color);
         }

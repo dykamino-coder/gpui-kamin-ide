@@ -1,6 +1,7 @@
 //! Геометрия контура рамки и motion path из CSS-форм.
 
 use super::shape_is_linear;
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 use crate::style::computed::Computed;
 use crate::svg::path_commands::{Command, Sink};
@@ -76,7 +77,13 @@ fn corner(d: &mut impl Sink, (rx, ry): (f32, f32), x: f32, y: f32) {
 /// от левой точки против часовой. Прямоугольникам менять нечего:
 /// `rrect_d` уже начинает с левого конца верхней стороны и идёт по часовой —
 /// ровно как требует §paths.
-pub fn motion_shape_d(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Option<String> {
+pub fn motion_shape_d(
+    raw: &str,
+    w: f32,
+    h: f32,
+    radius: [(f32, f32); 4],
+    vcx: ValueCx<'_>,
+) -> Option<String> {
     let b = ShapeBox {
         mw: w,
         mh: h,
@@ -91,10 +98,10 @@ pub fn motion_shape_d(raw: &str, w: f32, h: f32, radius: [(f32, f32); 4]) -> Opt
         radius,
         threshold: 0.0,
     };
-    if let Some((rect, radii)) = rrect_of(raw, &b) {
+    if let Some((rect, radii)) = rrect_of(raw, &b, vcx) {
         return Some(rrect_d(rect, radii));
     }
-    svg_path_of(raw, &b).map(|(d, _)| d)
+    svg_path_of(raw, &b, vcx).map(|(d, _)| d)
 }
 
 /// Контур базовой фигуры `border-shape` в системе ОПОРНОЙ коробки (начало в
@@ -109,10 +116,11 @@ pub(super) fn border_commands(
     rw: f32,
     rh: f32,
     d: &mut impl Sink,
+    vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
     let raw = raw.trim();
     if raw.starts_with("circle(") || raw.starts_with("ellipse(") {
-        let (cx, cy, rx, ry) = shape_params(raw, rw, rh, 1.0)?;
+        let (cx, cy, rx, ry) = shape_params(raw, rw, rh, 1.0, vcx)?;
         if rx <= 0.0 || ry <= 0.0 {
             return Some("nonzero");
         }
@@ -136,11 +144,11 @@ pub(super) fn border_commands(
         radius: [(0.0, 0.0); 4],
         threshold: 0.0,
     };
-    if let Some((rect, radii)) = rrect_of(raw, &b) {
+    if let Some((rect, radii)) = rrect_of(raw, &b, vcx) {
         rrect_commands(rect, radii, d);
         return Some("nonzero");
     }
-    super::super::shape_profile::svg_path::path_commands(raw, &b, d)
+    super::super::shape_profile::svg_path::path_commands(raw, &b, d, vcx)
 }
 
 /// Альфа-маска базовой формы `clip-path` (css-shapes-1 §3.1).
@@ -159,15 +167,17 @@ pub(super) fn border_commands(
 /// и, для кольца рамки, `/ t r b l` — толщины сторон в CSS-точках.
 /// Доли резолвятся при растре от размера коробки — прежде `Pct` уходил
 /// нулём (`side()` в `render::grouped`).
-pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>) -> String {
+pub fn rrect_spec(c: &Computed, ring: Option<[f32; 4]>, vcx: ValueCx<'_>) -> String {
     let ell = c.radius_ell.unwrap_or([None; 4]);
     let tok = radius_lengths::token;
     let radii = [c.radius.tl, c.radius.tr, c.radius.br, c.radius.bl];
     let mut out = String::from("rrect(");
     for (i, r) in radii.iter().enumerate() {
         match ell[i] {
-            Some((rx, ry)) => out.push_str(&format!("{} {} ", tok(Some(rx)), tok(Some(ry)))),
-            None => out.push_str(&format!("{} {} ", tok(*r), tok(*r))),
+            Some((rx, ry)) => {
+                out.push_str(&format!("{} {} ", tok(Some(rx), vcx), tok(Some(ry), vcx)))
+            }
+            None => out.push_str(&format!("{} {} ", tok(*r, vcx), tok(*r, vcx))),
         }
     }
     let k = c.corner_shape.unwrap_or([1.0; 4]);

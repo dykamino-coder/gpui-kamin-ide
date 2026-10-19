@@ -3,6 +3,7 @@
 //! expands an ellipse of that aspect ratio through the selected corner.
 
 use super::len_px;
+use crate::document::state::ValueCx;
 use crate::style::{computed::parse_pos_words, values::value::Len};
 
 pub(super) enum Geometry {
@@ -17,7 +18,7 @@ pub(super) enum Geometry {
 }
 
 impl Geometry {
-    pub(super) fn new(raw: &str, size: (f32, f32), angle: f32) -> Option<Self> {
+    pub(super) fn new(raw: &str, size: (f32, f32), angle: f32, vcx: ValueCx<'_>) -> Option<Self> {
         let raw = raw.strip_prefix("repeating-").unwrap_or(raw);
         let Some(inner) = raw
             .strip_prefix("radial-gradient(")
@@ -39,6 +40,7 @@ impl Geometry {
         let head = parts.first()?.trim();
         let head = if crate::style::values::color_space::interpolation_color(
             super::split_top(head).first()?,
+            vcx,
         )
         .is_some()
         {
@@ -48,20 +50,20 @@ impl Geometry {
         };
         let head = head.split(" in ").next().unwrap_or(head);
         let (shape, position) = head.split_once("at ").unwrap_or((head, "center"));
-        let pos = parse_pos_words(position);
-        let center = (len_px(pos.x, size.0)?, len_px(pos.y, size.1)?);
+        let pos = parse_pos_words(position, vcx);
+        let center = (len_px(pos.x, size.0, vcx)?, len_px(pos.y, size.1, vcx)?);
         let words = super::split_top(shape);
         let explicit: Vec<_> = words
             .iter()
-            .filter_map(|w| Len::parse_mixed(w).filter(|l| !l.needs_unit_context()))
+            .filter_map(|w| Len::parse_mixed(w, vcx).filter(|l| !l.needs_unit_context(vcx)))
             .collect();
         let circle =
             words.contains(&"circle") || (explicit.len() == 1 && !words.contains(&"ellipse"));
         let radii = if let Some(first) = explicit.first() {
-            let x = len_px(Some(*first), size.0)?.max(0.0);
+            let x = len_px(Some(*first), size.0, vcx)?.max(0.0);
             let y = explicit
                 .get(1)
-                .map_or(Some(x), |v| len_px(Some(*v), size.1))?
+                .map_or(Some(x), |v| len_px(Some(*v), size.1, vcx))?
                 .max(0.0);
             (x, y)
         } else {
@@ -136,17 +138,20 @@ mod tests {
 
     #[test]
     fn radial_extent_uses_center_and_ellipse_ratio() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let size = (300.0, 200.0);
         let g = Geometry::new(
             "radial-gradient(closest-side at 25% 50%, red, blue)",
             size,
             0.0,
+            vcx,
         )
         .unwrap();
         assert_eq!(g.length(), 75.0);
         assert_eq!(g.at((150.0, 100.0), size), 1.0);
         assert_eq!(g.at((75.0, 0.0), size), 1.0);
-        let g = Geometry::new("radial-gradient(red, blue)", size, 0.0).unwrap();
+        let g = Geometry::new("radial-gradient(red, blue)", size, 0.0, vcx).unwrap();
         assert!((g.at((300.0, 200.0), size) - 1.0).abs() < 0.00001);
     }
 }

@@ -39,7 +39,11 @@ pub(super) fn place_oof_statics(
         });
         let probe = crate::layout::fragment::types::StackChild {
             measure: None,
-            el: crate::layout::positioned::containing_block::spot_probe(oof_spots[i].clone(), true),
+            el: crate::layout::positioned::containing_block::spot_probe(
+                oof_spots[i].clone(),
+                true,
+                None,
+            ),
             frags: Vec::new(),
             monolith: false,
             fit_whole: false,

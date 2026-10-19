@@ -1,6 +1,7 @@
 //! Border-shape outline bands built from ordered luminance coverage paths.
 
 use super::border_scene::Contour;
+use crate::document::state::ValueCx;
 use crate::svg::path_scene::*;
 
 /// Blink BorderShapePainter::PaintOutline: offset the outer path, then
@@ -20,11 +21,12 @@ pub(crate) fn border_shape_outline_scene(
     dy: f32,
     cw: f32,
     ch: f32,
+    vcx: ValueCx<'_>,
 ) -> Option<Scene> {
     if width <= 0.0 {
         return None;
     }
-    let contour = Contour::place(outer, bw, bh, dx, dy)?;
+    let contour = Contour::place(outer, bw, bh, dx, dy, vcx)?;
     if contour.is_empty() {
         return None;
     }

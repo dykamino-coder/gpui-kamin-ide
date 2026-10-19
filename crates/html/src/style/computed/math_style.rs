@@ -77,6 +77,8 @@ mod tests {
     use super::*;
     #[test]
     fn css_wide_style_reset_controls_auto_depth_font_size() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         use crate::style::{cascade::inherit::inherit, css::parse_decls};
         let parent = Computed {
             math_compact: Some(true),
@@ -85,14 +87,19 @@ mod tests {
             ..Computed::default()
         };
         for (reset, compact, size) in [("initial", false, 500.0), ("unset", true, 355.0)] {
-            let own = Computed::resolve(&mut vec![], &parse_decls(&format!("math-style: {reset}")));
-            let middle = inherit(&parent, &own);
+            let own = Computed::resolve(
+                &mut vec![],
+                &parse_decls(&format!("math-style: {reset}")),
+                vcx,
+            );
+            let middle = inherit(&parent, &own, vcx);
             assert_eq!(middle.math_compact, Some(compact));
             let own = Computed::resolve(
                 &mut vec![],
                 &parse_decls("font-size: math; math-depth: auto-add"),
+                vcx,
             );
-            let child = inherit(&middle, &own);
+            let child = inherit(&middle, &own, vcx);
             let Some(Len::Px(actual)) = child.font_size else {
                 panic!("computed pixels")
             };

@@ -1,9 +1,10 @@
 //! apply_box, хвостовые этапы: обрезка overflow, полосы прокрутки, ранний выход для непозиционированных; края inset, избыточные края и translate.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::style::values::value::px_lossy_zero;
 
-fn box_inset(mut d: Div, c: &Computed) -> Div {
+fn box_inset(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // §9.4.3: у относительно сдвинутой коробки с ОБОИМИ горизонтальными
     // краями один из них избыточен — «if neither is auto, one of them must be
     // ignored: for direction ltr `right`, for rtl `left`». Раскладка под нами
@@ -62,10 +63,10 @@ fn box_inset(mut d: Div, c: &Computed) -> Div {
         // of the containing block is not specified explicitly … the value
         // computes to auto»; Blink `relative_utils.cc::ResolveInset` отдаёт
         // `nullopt` при неопределённом размере).
-        if inset_percent::is_auto(c, l, f) {
+        if inset_percent::is_auto(c, l, f, vcx) {
             continue;
         }
-        let g = len_to_gpui(l);
+        let g = len_to_gpui(l, vcx);
         d = match f {
             0 => d.top(g),
             1 => d.right(g),
@@ -89,17 +90,17 @@ fn box_inset(mut d: Div, c: &Computed) -> Div {
             d = d.relative();
         }
         if let Some(l) = shift(c.inset.left, x) {
-            d = d.left(len_to_gpui(l));
+            d = d.left(len_to_gpui(l, vcx));
         }
         if let Some(t) = shift(c.inset.top, y) {
-            d = d.top(len_to_gpui(t));
+            d = d.top(len_to_gpui(t, vcx));
         }
     }
 
     d
 }
 
-pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
+pub(super) fn box_overflow(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Обрезка — ДО разбора краёв: ниже стоит ранний выход для непозиционированных,
     // и всё, что после него, у обычного блока не выполнялось вовсе. Из-за этого
     // `overflow: hidden` не обрезал ничего (проверено пробой: коробка с ним и
@@ -117,7 +118,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
     // кольцо рамки (абсолютный слой с выносом), и углы фигуры шире него
     // (border-shape-overflow-child-clip, -replaced-img/-iframe).
     let shaped =
-        c.border_shape.is_some() || crate::paint::effects::corner_clip::insets(c).is_some();
+        c.border_shape.is_some() || crate::paint::effects::corner_clip::insets(c, vcx).is_some();
     if !shaped && (c.overflow_x == Some(Overflow::Hidden) || c.overflow_x == Some(Overflow::Scroll))
     {
         d = d.overflow_x_hidden();
@@ -176,7 +177,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
         };
         d.style().overflow_clip_offset = Some(arr);
     }
-    d = crate::interactive::scrollbar_gutter::apply(d, c);
+    d = crate::interactive::scrollbar_gutter::apply(d, c, vcx);
     // Края двигают только позиционированный элемент. У обычного (`static`)
     // браузер их игнорирует, а мы сдвигали — блок с `top` в потоке уезжал.
     // `translate` (css-transforms-2 §individual-transforms) действует и на
@@ -214,5 +215,5 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed) -> Div {
         }
         return d;
     }
-    crate::interactive::scrollbar_gutter::positioned::apply(box_inset(d, c), c)
+    crate::interactive::scrollbar_gutter::positioned::apply(box_inset(d, c, vcx), c, vcx)
 }

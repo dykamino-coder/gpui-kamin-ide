@@ -6,6 +6,7 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+mod anonymous;
 mod direction;
 mod shared_style;
 pub use shared_style::SharedStyle;
@@ -19,6 +20,7 @@ mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
 pub(crate) mod style_sources;
+pub(crate) mod tree_index;
 pub(crate) mod xml;
 pub(crate) use xml::parse_current_xml;
 pub use xml::parse_xml;
@@ -34,12 +36,14 @@ mod ua_style;
 mod white_space_tests;
 use crate::dom::direction::first_strong;
 use crate::dom::direction::squeeze_parens;
-use crate::dom::parse_document::collect_style_tags;
 pub use crate::dom::parse_document::parse;
 pub(crate) use crate::dom::parse_document::parse_current;
 pub use crate::dom::parse_document::parse_media;
+mod parsed;
+use crate::dom::style_sources::collect_style_tags;
 use crate::dom::ua_style::BLOCK_TAGS;
 use crate::dom::ua_style::user_agent_css;
+pub use parsed::Parsed;
 
 mod containment;
 mod counter_decls;

@@ -86,7 +86,12 @@ impl Hooks for CellsClipped {
                 if let Some(bg) = self.style.background {
                     window.paint_quad(gpui::fill(rect, bg.to_hsla()));
                 }
-                crate::paint::background::paint_area(&self.style, positioning, window);
+                crate::paint::background::paint_area(
+                    &self.style,
+                    positioning,
+                    window,
+                    self.values.vcx(),
+                );
             });
         }
     }

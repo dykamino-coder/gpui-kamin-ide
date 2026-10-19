@@ -15,10 +15,11 @@ pub(crate) fn piece(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
+    let vcx = opts.cx.vcx();
     if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
         return None;
     }
-    let mut merged = inherit(inherited, &element.style);
+    let mut merged = inherit(inherited, &element.style, vcx);
     let count = merged.combine_upright?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);

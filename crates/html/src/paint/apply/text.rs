@@ -1,5 +1,6 @@
 //! Текст: шрифт, цвет, выравнивание (apply_text).
 
+use crate::document::state::ValueCx;
 use crate::style::computed::FontCx;
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::Len;
@@ -9,7 +10,7 @@ use gpui::{Div, Styled, px, relative};
 ///
 /// Открыта наружу для маркера списка: он рисуется отдельной коробкой и
 /// свойства пункта сам не получает.
-pub fn apply_text(mut d: Div, c: &Computed) -> Div {
+pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let ink = c.text_shadow_ink.or(c.color);
     // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
@@ -63,7 +64,7 @@ pub fn apply_text(mut d: Div, c: &Computed) -> Div {
             Len::Pct(mult) => d.line_height(relative(mult)),
             Len::Em(k) => d.line_height(px(k * 16.0)),
             l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => {
-                d.line_height(px(l.to_px(None, FontCx::FALLBACK).unwrap_or(16.0)))
+                d.line_height(px(l.to_px(None, FontCx::FALLBACK, vcx).unwrap_or(16.0)))
             }
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),

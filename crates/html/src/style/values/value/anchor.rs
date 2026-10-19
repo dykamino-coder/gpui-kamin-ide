@@ -1,6 +1,7 @@
 //! Функции anchor()/anchor-size() в длинах: стороны, размеры, пул выражений и их разбор (в том числе внутри min/max/calc).
 
 use super::*;
+use crate::document::state::ValueCx;
 
 /// Сторона якоря в `anchor()` (css-anchor-position-1 §anchor-fn);
 /// `center` разбирается как `Pct(0.5)` — спека так и определяет.
@@ -55,22 +56,23 @@ pub struct AnchorFn {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AnchorId(crate::document::state::ArenaKey);
 
-pub fn anchor_store(f: AnchorFn) -> AnchorId {
+pub fn anchor_store(f: AnchorFn, vcx: ValueCx<'_>) -> AnchorId {
     AnchorId(crate::document::state::store(
+        vcx,
         |d| &d.anchor,
         std::rc::Rc::new(f),
     ))
 }
 
 /// Функция по ручке — общим `Rc`, без копии вложенных `alts` на чтение.
-pub fn anchor_get(i: AnchorId) -> Option<std::rc::Rc<AnchorFn>> {
-    crate::document::state::load(|d| &d.anchor, i.0)
+pub fn anchor_get(i: AnchorId, vcx: ValueCx<'_>) -> Option<std::rc::Rc<AnchorFn>> {
+    crate::document::state::load(vcx, |d| &d.anchor, i.0)
 }
 
 /// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.
 /// Запятая ищется на верхнем уровне — запасным значением бывает вложенный
 /// `anchor(--a1 bottom)` (`position-anchor-none-pseudo-element-named`).
-pub(super) fn parse_anchor(inner: &str, add: f32, size_fn: bool) -> Option<Len> {
+pub(super) fn parse_anchor(inner: &str, add: f32, size_fn: bool, vcx: ValueCx<'_>) -> Option<Len> {
     let mut depth = 0i32;
     let mut cut = None;
     for (i, ch) in inner.char_indices() {
@@ -126,18 +128,21 @@ pub(super) fn parse_anchor(inner: &str, add: f32, size_fn: bool) -> Option<Len> 
         });
     }
     let fallback = match tail {
-        Some(t) if !t.is_empty() => Some(Len::parse(t)?),
+        Some(t) if !t.is_empty() => Some(Len::parse(t, vcx)?),
         _ => None,
     };
-    Some(Len::Anchor(anchor_store(AnchorFn {
-        name,
-        side: if size_fn { AnchorSide::Inside } else { side? },
-        size: size_fn.then(|| size.unwrap_or(AnchorSize::Implicit)),
-        fallback,
-        add,
-        alts: Vec::new(),
-        max: false,
-    })))
+    Some(Len::Anchor(anchor_store(
+        AnchorFn {
+            name,
+            side: if size_fn { AnchorSide::Inside } else { side? },
+            size: size_fn.then(|| size.unwrap_or(AnchorSize::Implicit)),
+            fallback,
+            add,
+            alts: Vec::new(),
+            max: false,
+        },
+        vcx,
+    )))
 }
 
 /// `min(anchor(…), …)` / `max(anchor(…), …)` во вставке абсолюта
@@ -146,7 +151,7 @@ pub(super) fn parse_anchor(inner: &str, add: f32, size_fn: bool) -> Option<Len> 
 /// верхнего уровня, каждый обязан быть `anchor()` (в том числе
 /// `calc(anchor() ± px)`); `anchor-size()` и смесь с длинами — негодны:
 /// крайний член сравнивается с краем якоря только в одной системе отсчёта.
-pub(super) fn parse_anchor_minmax(s: &str, max: bool) -> Option<Len> {
+pub(super) fn parse_anchor_minmax(s: &str, max: bool, vcx: ValueCx<'_>) -> Option<Len> {
     let inner = &s[4..s.len() - 1];
     let mut args = Vec::new();
     let mut depth = 0i32;
@@ -165,10 +170,10 @@ pub(super) fn parse_anchor_minmax(s: &str, max: bool) -> Option<Len> {
     args.push(inner[start..].trim());
     let mut fns = Vec::with_capacity(args.len());
     for a in args {
-        let Len::Anchor(i) = Len::parse(a)? else {
+        let Len::Anchor(i) = Len::parse(a, vcx)? else {
             return None;
         };
-        let f = anchor_get(i)?;
+        let f = anchor_get(i, vcx)?;
         if f.size.is_some() || !f.alts.is_empty() {
             return None;
         }
@@ -177,13 +182,13 @@ pub(super) fn parse_anchor_minmax(s: &str, max: bool) -> Option<Len> {
     let mut first = fns.remove(0);
     first.alts = fns;
     first.max = max;
-    Some(Len::Anchor(anchor_store(first)))
+    Some(Len::Anchor(anchor_store(first, vcx)))
 }
 
 /// `calc(anchor(…) ± <length>)`: функция вырезается и заменяется нулём,
 /// остаток обязан свернуться в точки — он и становится довеском. Доля или
 /// шрифтовая единица рядом с якорем честно не разбирается (запись падает).
-pub(super) fn parse_anchor_calc(s: &str) -> Option<Len> {
+pub(super) fn parse_anchor_calc(s: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let lower = s.to_ascii_lowercase();
     // `anchor-size(` не содержит подстроки `anchor(` — ветки не путаются.
     let (at, head, size_fn) = match lower.find("anchor-size(") {
@@ -208,9 +213,9 @@ pub(super) fn parse_anchor_calc(s: &str) -> Option<Len> {
     let end = end?;
     let body = &s[at + head..end];
     let rest = format!("{}0px{}", &s[..at], &s[end + 1..]);
-    let add = match Len::parse(&rest)? {
+    let add = match Len::parse(&rest, vcx)? {
         Len::Px(v) => v,
         _ => return None,
     };
-    parse_anchor(body, add, size_fn)
+    parse_anchor(body, add, size_fn, vcx)
 }

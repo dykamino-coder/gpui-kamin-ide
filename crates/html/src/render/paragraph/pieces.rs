@@ -11,6 +11,7 @@ pub(super) use native::native_paragraph;
 
 mod spans;
 pub(super) use spans::paragraph_spans;
+use spans::rotate_rel_spans;
 
 use crate::dom::{Element, Node};
 use crate::render::*;
@@ -28,6 +29,7 @@ pub(crate) fn paragraph_pieces_routed(
     first_line: &Computed,
     native_request: Option<&native_paragraph_route::Request<'_>>,
 ) -> AnyElement {
+    let vcx = opts.cx.vcx();
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
@@ -55,7 +57,12 @@ pub(crate) fn paragraph_pieces_routed(
     // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
     // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
     let flow_text = has_flow_text(nodes);
-    let atom = |e: &Element| -> Option<inline::Piece> { atom_piece(e, inherited, opts, flow_text) };
+    let atom = |e: &Element,
+                atom_cx: &inline::atom_parent::AtomCx,
+                ruby: &AtomRuby|
+     -> Option<inline::Piece> {
+        atom_piece(e, inherited, opts, flow_text, atom_cx, ruby)
+    };
     // Каждому атому — признак, можно ли поставить его В СТРОКУ абзаца
     // (`atom_line_align`): порядок записей совпадает с порядком `Piece::Atom`.
     // Руби несёт ещё и узлы своих аннотаций: по ним строка растёт
@@ -67,48 +74,38 @@ pub(crate) fn paragraph_pieces_routed(
             crate::text::paragraph::RubyExtents,
         )>,
     > = Vec::new();
-    let mut atom_noted = |e: &Element| -> Option<inline::Piece> {
-        let build = || crate::text::paragraph::collect_ruby_extents(|| atom(e));
-        let (piece, extents) = if replaced_tag(e)
-            || matches!(
-                e.style.display,
-                Some(
-                    crate::style::computed::Display::InlineBlock
-                        | crate::style::computed::Display::InlineFlex
-                        | crate::style::computed::Display::InlineGrid
-                        | crate::style::computed::Display::InlineTable
-                )
-            ) {
-            crate::text::ruby::layers::without_base(build)
-        } else {
-            build()
-        };
-        if matches!(piece, Some(inline::Piece::Atom(_))) {
-            let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
-                extents
-            } else {
-                crate::text::paragraph::RubyExtents::default()
-            };
-            // Абсолютная замещаемая — атом строки только РЯДОМ с текстом в
-            // потоке: строка из одних внепоточных коробок нулевая (CSS 2.1
-            // §9.4.2), а атом завёл бы ей струт (`clear-applies-to-001-ref`:
-            // `<div>` с одной абсолютной картинкой вырастал на строку).
-            let lone_abs = !flow_text
-                && matches!(
-                    e.style.position,
-                    Some(crate::style::computed::Position::Absolute)
-                        | Some(crate::style::computed::Position::Fixed)
+    let mut atom_noted =
+        |e: &Element, atom_cx: &inline::atom_parent::AtomCx| -> Option<inline::Piece> {
+            // Атом собирает узлы аннотаций руби, которые заведёт (`AtomRuby`).
+            let ruby = AtomRuby::for_atom(e);
+            let piece = atom(e, atom_cx, &ruby);
+            let extents = ruby.take_extents();
+            if matches!(piece, Some(inline::Piece::Atom(_))) {
+                let extents = if ruby_role(e) == Some(crate::style::computed::RubyRole::Container) {
+                    extents
+                } else {
+                    crate::text::paragraph::RubyExtents::default()
+                };
+                // Абсолютная замещаемая — атом строки только РЯДОМ с текстом в
+                // потоке: строка из одних внепоточных коробок нулевая (CSS 2.1
+                // §9.4.2), а атом завёл бы ей струт (`clear-applies-to-001-ref`:
+                // `<div>` с одной абсолютной картинкой вырастал на строку).
+                let lone_abs = !flow_text
+                    && matches!(
+                        e.style.position,
+                        Some(crate::style::computed::Position::Absolute)
+                            | Some(crate::style::computed::Position::Fixed)
+                    );
+                atom_aligns.push(
+                    (!lone_abs)
+                        .then(|| atom_line_align(e, inherited, opts))
+                        .flatten()
+                        .map(|a| (a, extents)),
                 );
-            atom_aligns.push(
-                (!lone_abs)
-                    .then(|| atom_line_align(e, inherited, opts))
-                    .flatten()
-                    .map(|a| (a, extents)),
-            );
-        }
-        piece
-    };
-    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted);
+            }
+            piece
+        };
+    let mut pieces = inline::collect(nodes, inherited, &mut atom_noted, &opts.cx);
     if pieces.is_empty() {
         return div().into_any_element();
     }
@@ -154,7 +151,7 @@ pub(crate) fn paragraph_pieces_routed(
     // `calc(50% - 3px)` несёт обе части разом: `Paragraph` складывает
     // `px + pct × ширина строки` сам (`lines.rs`, css-text-3 §2.1).
     let mixed = match inherited.text_indent {
-        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i).pct_px(),
+        Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx).pct_px(),
         _ => None,
     };
     let indent = crate::text::paragraph::Indent {

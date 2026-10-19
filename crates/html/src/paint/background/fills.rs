@@ -2,6 +2,7 @@
 
 use super::over;
 use super::{Source, key_exif, paint_tiles, source};
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use gpui::{Bounds, Pixels, px};
 
@@ -9,14 +10,17 @@ use gpui::{Bounds, Pixels, px};
 /// the area painted by the border» — одноцветный фон тогда просто лежит ПОД
 /// краской рамки. Рисуют его те же примитивы, что и рамку (квад, слой рамки,
 /// кольца `corner-shape` и `border-shape`), с той же геометрией стиля.
-pub(super) fn border_area_fill(c: &Computed) -> Option<crate::style::values::value::Color> {
+pub(super) fn border_area_fill(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<crate::style::values::value::Color> {
     if let Some(fill) = c.flat_border_background {
         return Some(fill);
     }
     if c.bg_clip != Some(crate::style::computed::BgClip::BorderArea) {
         return None;
     }
-    flat_fill(c)
+    flat_fill(c, vcx)
 }
 
 /// Цвет, которым красится рамка: свой `border-color` поверх заливки
@@ -24,19 +28,23 @@ pub(super) fn border_area_fill(c: &Computed) -> Option<crate::style::values::val
 pub(crate) fn border_paint(
     c: &Computed,
     colour: crate::style::values::value::Color,
+    vcx: ValueCx<'_>,
 ) -> crate::style::values::value::Color {
-    match border_area_fill(c) {
+    match border_area_fill(c, vcx) {
         Some(fill) => over(colour, fill),
         None => colour,
     }
 }
 
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
-pub(super) fn flat_colour(src: &str) -> Option<crate::style::values::value::Color> {
-    let image = match source(src)? {
+pub(super) fn flat_colour(
+    src: &str,
+    vcx: ValueCx<'_>,
+) -> Option<crate::style::values::value::Color> {
+    let image = match source(src, vcx)? {
         Source::Raster(image) => image,
         Source::Gradient { raw } => {
-            let gradient = crate::style::computed::parse_gradient(&raw)?;
+            let gradient = crate::style::computed::parse_gradient(&raw, vcx)?;
             let color = gradient.from;
             // An identical polar color can still travel around a longer hue arc.
             let constant = gradient.hue != 1
@@ -72,12 +80,16 @@ pub(super) fn flat_colour(src: &str) -> Option<crate::style::values::value::Colo
 pub(super) use crate::style::computed::flat_background::flat_fill;
 
 impl crate::style::computed::flat_background::BackgroundImageValues for Computed {
-    fn image_available(&self, raw: &str) -> bool {
-        source(&key_exif(raw, self)).is_some()
+    fn image_available(&self, raw: &str, vcx: ValueCx<'_>) -> bool {
+        source(&key_exif(raw, self, vcx), vcx).is_some()
     }
 
-    fn uniform_image_color(&self, raw: &str) -> Option<crate::style::values::value::Color> {
-        flat_colour(&key_exif(raw, self))
+    fn uniform_image_color(
+        &self,
+        raw: &str,
+        vcx: ValueCx<'_>,
+    ) -> Option<crate::style::values::value::Color> {
+        flat_colour(&key_exif(raw, self, vcx), vcx)
     }
 }
 
@@ -86,7 +98,12 @@ impl crate::style::computed::flat_background::BackgroundImageValues for Computed
 /// Отдельной функцией, а не замыканием слоя: фон РЯДА таблицы рисуется от
 /// области ряда, но обрезается прямоугольниками ячеек — вызывающий ставит
 /// маску сам и зовёт отрисовку с областью ряда.
-pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
+pub fn paint_area(
+    c: &Computed,
+    bounds: Bounds<Pixels>,
+    window: &mut gpui::Window,
+    vcx: ValueCx<'_>,
+) {
     // `background-attachment: fixed` и здесь считается от ОБЛАСТИ ПРОСМОТРА,
     // а красится внутри своей области — та же двухобластная модель, что у
     // обычной коробки (`layer`). Без неё полоса ряда и группы клала плитку от
@@ -97,8 +114,8 @@ pub fn paint_area(c: &Computed, bounds: Bounds<Pixels>, window: &mut gpui::Windo
             origin: gpui::point(px(0.0), px(0.0)),
             size: window.viewport_size(),
         };
-        paint_tiles(c, view, Some(bounds), window);
+        paint_tiles(c, view, Some(bounds), window, vcx);
         return;
     }
-    paint_tiles(c, bounds, None, window);
+    paint_tiles(c, bounds, None, window, vcx);
 }

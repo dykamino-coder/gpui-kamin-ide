@@ -1,13 +1,15 @@
 //! Preserve continuous geometry for rounded shape-outside boxes.
 
 use super::ShapeBox;
+use crate::document::state::ValueCx;
 
 pub fn rounded_float(
     raw: &str,
     b: &super::ShapeBox,
     side: i32,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::layout::float::rounded_box::RoundedBox> {
-    let (rect, radii) = rrect_of(raw, b)?;
+    let (rect, radii) = rrect_of(raw, b, vcx)?;
     Some(crate::layout::float::rounded_box::RoundedBox::new(
         rect,
         radii,
@@ -19,9 +21,13 @@ pub fn rounded_float(
 /// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
 // Rounded rectangles pair their bounds with the four corner radii.
 #[allow(clippy::type_complexity)]
-pub(super) fn rrect_of(raw: &str, b: &ShapeBox) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
+pub(super) fn rrect_of(
+    raw: &str,
+    b: &ShapeBox,
+    vcx: ValueCx<'_>,
+) -> Option<((f32, f32, f32, f32), [(f32, f32); 4])> {
     let len_px = |t: &str, base: f32| -> f32 {
-        match crate::style::values::value::Len::parse(t) {
+        match crate::style::values::value::Len::parse(t, vcx) {
             Some(crate::style::values::value::Len::Px(v)) => v,
             Some(crate::style::values::value::Len::Pct(k)) => k * base,
             _ => 0.0,

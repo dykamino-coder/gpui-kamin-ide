@@ -1,6 +1,7 @@
 //! Профили ICC (@color-profile): загрузка, теги, матрица и кривые, перевод в sRGB.
 
 use super::*;
+use crate::document::state::ValueCx;
 use crate::tolerance::GAMUT_SLACK;
 
 mod resources;
@@ -68,14 +69,10 @@ pub(crate) fn apply_icc(
     gpui::bgra_bytes_to_image(w, h, out)
 }
 
-/// Профиль `@color-profile` текущего документа по имени (`--foo`): имена
+/// Профиль `@color-profile` документа по имени (`--foo`): имена
 /// придумывает страница, реестр — её (`document::state`).
-pub(super) fn profile(name: &str) -> Option<Vec<u8>> {
-    crate::document::state::current()
-        .profiles
-        .borrow()
-        .get(name)
-        .cloned()
+pub(super) fn profile(name: &str, vcx: ValueCx<'_>) -> Option<Vec<u8>> {
+    vcx.doc.profiles.borrow().get(name).cloned()
 }
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.

@@ -1,16 +1,10 @@
 //! Сокращение background и background-color: inherit, валидность записи, список слоёв, цвет/картинка/положение/размер верхнего слоя. Тело ветви из Computed::apply_background.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_background_shorthand(
-        &mut self,
-        key: &str,
-        val: &str,
-        v: &str,
-        hit: &mut bool,
-    ) {
+    pub(super) fn apply_background_shorthand(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
         if v == "inherit" {
             self.background_inherit = true;
             // Сокращение наследует ВЕСЬ фон, а не только цвет
@@ -33,12 +27,12 @@ impl Computed {
         // умеет прочесть обратно (замерено: девять пар
         // `textarea-pre-wrap-*` уходили 0.00 → 0.76).
         // Негодное объявление не сбрасывает ничего (§4.1.7).
-        if key == "background" && background_shorthand_valid(v) {
+        if key == "background" && background_shorthand_valid(v, vcx) {
             self.accept_declaration();
             self.background = None;
             self.background_rcs = None;
         }
-        if key == "background-color" || background_shorthand_valid(v) {
+        if key == "background-color" || background_shorthand_valid(v, vcx) {
             self.bg_explicit = true;
         }
         // Цвет от `currentColor` решается не здесь: цвет элемента
@@ -65,7 +59,7 @@ impl Computed {
         let top = layers.first().copied().unwrap_or(v);
         let bottom = layers.last().copied().unwrap_or(v);
         if top.starts_with("linear-gradient(") || top.starts_with("radial-gradient(") {
-            self.background_gradient_layer(top, bottom);
+            self.background_gradient_layer(top, bottom, vcx);
             return;
         }
         // Сокращение принимает ЛЮБОЙ `<image>` (css-backgrounds-3
@@ -77,14 +71,14 @@ impl Computed {
         let v = top;
         if let Some(image) = split_outside_parens(v)
             .iter()
-            .find(|t| image_function::arguments(t).is_some())
+            .find(|t| image_function::arguments(t, vcx).is_some())
         {
-            self.apply_one("background-image", image);
+            self.apply_one("background-image", image, vcx);
         } else if gradient_as_raster(v) {
             self.bg_image = Some(v.to_string());
         } else if let Some(image) = split_outside_parens(v)
             .into_iter()
-            .find(|t| crate::style::computed::filter_image::parse_filter_image(t).is_some())
+            .find(|t| crate::style::computed::filter_image::parse_filter_image(t, vcx).is_some())
         {
             // `filter(url(…), …)` is one image (Filter Effects 1 §13); its
             // inner url is not the layer's image.
@@ -132,7 +126,7 @@ impl Computed {
                 && (token == "auto"
                     || token == "cover"
                     || token == "contain"
-                    || Len::parse_mixed(&token).is_some())
+                    || Len::parse_mixed(&token, vcx).is_some())
             {
                 words.push(token);
                 continue;
@@ -152,9 +146,9 @@ impl Computed {
                 t if t.starts_with("url(") => {}
                 // Ключевые слова осей и длины — это положение.
                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
-                t if Self::background_position_length(t) => pos.push(token.clone()),
+                t if Self::background_position_length(t, vcx) => pos.push(token.clone()),
                 t => {
-                    if let Some(c) = Color::parse(t) {
+                    if let Some(c) = Color::parse(t, vcx) {
                         self.background = accept_parsed!(self, Some(c));
                     }
                 }
@@ -164,15 +158,15 @@ impl Computed {
         // разбор пустой строки отдаёт «по центру», и каждый фон без
         // положения уехал бы в середину коробки.
         if !pos.is_empty() {
-            self.set_background_position(&pos.join(" "));
+            self.set_background_position(&pos.join(" "), vcx);
         }
         if let Some(words) = size_words.filter(|w| !w.is_empty()) {
-            self.apply_one("background-size", &words.join(" "));
+            self.apply_one("background-size", &words.join(" "), vcx);
         }
         // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
         if layers.len() > 1 {
             for token in split_outside_parens(bottom) {
-                if let Some(c) = Color::parse(&token) {
+                if let Some(c) = Color::parse(&token, vcx) {
                     self.background = Some(c);
                 }
             }

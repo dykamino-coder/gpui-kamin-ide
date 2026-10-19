@@ -11,8 +11,6 @@ use flow_children::flow_children;
 use crate::dom::Node;
 use crate::interactive::sticky::sticky_probe;
 use crate::layout::block::available_width;
-use crate::layout::block::containing::{AVAIL_W, AvailWGuard, CB_WIDTH, scopeguard_cb};
-use crate::layout::block::margins::CELL_BFC;
 use crate::layout::block::struts::zero_len;
 use crate::layout::float::band_flow_host::{
     BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard,
@@ -42,21 +40,29 @@ pub(crate) use crate::render::blocks::positioned::*;
 // линии, а эталоны семьи считают её по-своему. Возвращать вместе с
 // настоящей надстрочной аннотацией (сдвиг базовой линии без атома).
 pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
-    // Only the cell's own content list is the BFC root's (see `CELL_BFC`).
-    let cell_bfc = CELL_BFC.with(|c| c.replace(false));
-    let cb_prev = CB_WIDTH.get();
-    if let Some(Len::Px(w)) = inherited.width
-        && w > 0.0
-    {
-        CB_WIDTH.set(Some(w));
-    }
-    let _cb_guard = scopeguard_cb(cb_prev);
-    // Доступная ширина блочных детей этого уровня (см. `AVAIL_W`).
-    let avail_prev = AVAIL_W.get();
-    let _height_guard =
-        crate::layout::block::available_height::enter(inherited, avail_prev, opts.viewport.1);
-    AVAIL_W.set(available_width::inner(inherited, avail_prev));
-    let _avail_guard = AvailWGuard(avail_prev);
+    let vcx = opts.cx.vcx();
+    // Only the cell's own content list is the BFC root's (see `LayoutCx::cell_bfc`).
+    let cell_bfc = opts.cx.cell_bfc;
+    // Контекст детей этого уровня: ширина содержащего блока, доступные
+    // ширина и высота (см. `LayoutCx`).
+    let outer = &opts.cx;
+    let cb_width = match inherited.width {
+        Some(Len::Px(w)) if w > 0.0 => Some(w),
+        _ => outer.cb_width,
+    };
+    let avail_h = crate::layout::block::available_height::inner(
+        inherited,
+        outer.avail_h,
+        outer.avail_w,
+        opts.viewport.1,
+    );
+    let avail_w = available_width::inner(inherited, outer.avail_w);
+    let opts = &*opts.inner(|cx| {
+        cx.cb_width = cb_width;
+        cx.avail_w = avail_w;
+        cx.avail_h = avail_h;
+        cx.cell_bfc = false;
+    });
     // `content-visibility: hidden`: содержимое пропускается целиком
     // (css-contain-2 §4) — коробка остаётся, детей нет.
     let (collapsed, ordered_context, under_tf) = prepare_children(nodes, inherited, opts, cell_bfc);
@@ -124,7 +130,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
     let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
     let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
-    let collapsed = replaced_used_style::inline_nodes(collapsed, AVAIL_W.get());
+    let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
     let collapsed = by_layer(
         wrap_floats(
             collapsed,
@@ -137,6 +143,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             measured_ok,
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
+            opts.cx.cb_width,
+            vcx,
         ),
         flex_ctx,
     );

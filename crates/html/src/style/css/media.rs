@@ -1,12 +1,13 @@
 //! Медиазапросы: Media (носитель задаёт документ), сравнения диапазонов.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 
 mod calc;
 mod comparison;
 pub(crate) use comparison::MqCmp;
 mod custom;
-pub(crate) use custom::scan_custom_media;
+pub(crate) use custom::custom_media_of;
 mod features;
 mod query;
 use features::{mq_and, mq_base, mq_or};
@@ -84,7 +85,7 @@ fn take_parens(s: &str) -> Option<(&str, &str)> {
 /// вырожденном `0/0` деление даёт NaN, и Blink считает крест, см.
 /// `media_query_evaluator.cc::CompareAspectRatioValue`). Так `0/0`
 /// сравнивается как `0 >= 0`, то есть истинно (`aspect-ratio-003`).
-fn mq_operand(raw: &str) -> Option<(f32, f32)> {
+fn mq_operand(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     let s = raw.trim();
     // `calc(a / b)` — отношение внутри calc (`mq-calc-008`).
     let body = s
@@ -93,7 +94,7 @@ fn mq_operand(raw: &str) -> Option<(f32, f32)> {
         .filter(|b| balanced(b))
         .unwrap_or(s);
     if let Some((a, b)) = split_top_slash(body)
-        && let (Some(a), Some(b)) = (mq_scalar(a), mq_scalar(b))
+        && let (Some(a), Some(b)) = (mq_scalar(a, vcx), mq_scalar(b, vcx))
     {
         // Вырожденное отношение с НУЛЕВЫМ знаменателем — бесконечность.
         // `0/0` спека обращает в `1/0` (css-values-4 §7.2 «degenerate
@@ -105,11 +106,11 @@ fn mq_operand(raw: &str) -> Option<(f32, f32)> {
         }
         return Some((a, b));
     }
-    mq_scalar(s).map(|v| (v, 1.0))
+    mq_scalar(s, vcx).map(|v| (v, 1.0))
 }
 
 /// Скаляр: длина в точках, разрешение в dppx или голое число.
-fn mq_scalar(raw: &str) -> Option<f32> {
+fn mq_scalar(raw: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let s = raw.trim();
     // `calc()`/`sign()`/… — значение признака может быть любым выражением
     // (mediaqueries-4 §1.3, `mq-calc-sign-function-*`, `mq-calc-resolution`).
@@ -131,7 +132,7 @@ fn mq_scalar(raw: &str) -> Option<f32> {
     // каноническая единица <resolution>, арифметика над ней та же, что над
     // числом (css-values-4 §7.4).
     if s.contains('(') && s.contains("dppx") {
-        return crate::style::values::value::number(&s.replace("dppx", ""));
+        return crate::style::values::value::number(&s.replace("dppx", ""), vcx);
     }
     if let Some(n) = s.strip_suffix("dpi") {
         return n.trim().parse::<f32>().ok().map(|v| v / 96.0);
@@ -139,7 +140,7 @@ fn mq_scalar(raw: &str) -> Option<f32> {
     if let Some(n) = s.strip_suffix("dpcm") {
         return n.trim().parse::<f32>().ok().map(|v| v * 2.54 / 96.0);
     }
-    match crate::style::values::value::Len::parse(s) {
+    match crate::style::values::value::Len::parse(s, vcx) {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         Some(crate::style::values::value::Len::Em(k)) => Some(k * 16.0),
         // Единицы шрифта в медиа-запросе берутся от НАЧАЛЬНОГО шрифта, а не
@@ -152,7 +153,7 @@ fn mq_scalar(raw: &str) -> Option<f32> {
             Some(k * crate::text::metrics::ch_ex_px("", 16.0).0)
         }
         Some(crate::style::values::value::Len::Calc(id)) => {
-            let sum = crate::style::values::value::calc_get(id);
+            let sum = crate::style::values::value::calc_get(id, vcx);
             let rest = crate::style::values::value::Sum {
                 px: 0.0,
                 em: 0.0,
@@ -165,7 +166,7 @@ fn mq_scalar(raw: &str) -> Option<f32> {
             }
         }
         // Число, в том числе `calc(2 * sign(…))` (css-values-4 §10).
-        _ => crate::style::values::value::number(s),
+        _ => crate::style::values::value::number(s, vcx),
     }
 }
 
@@ -190,37 +191,4 @@ fn split_top_slash(s: &str) -> Option<(&str, &str)> {
         }
     }
     None
-}
-
-impl Media {
-    /// Выполняется ли условие `@media` — mediaqueries-5 §3 «Media Queries»
-    /// и §3.1 «Error Handling».
-    ///
-    /// Логика ТРЁХЗНАЧНАЯ. Нераспознанная скобка — это `<general-enclosed>`,
-    /// и её значение «неизвестно», а не «ложь»: `not (unknown)` обязано
-    /// остаться «неизвестно» (то есть на верхнем уровне ложью), тогда как
-    /// прежний двухзначный разбор переворачивал ложь в истину и применял
-    /// правило (`at-media-002`, `negation-001`, `mq-gamut-003`).
-    pub fn matches(&self, query: &str) -> bool {
-        let q = query.trim();
-        let q = q.strip_prefix("@media").unwrap_or(q).trim();
-        // Любой пробельный знак — тот же пробел (css-syntax-3 §4.2
-        // whitespace-token): `and` на отдельной строке
-        // (`mq-negative-range-001/002`) не должен ронять запрос.
-        let q = q.split_whitespace().collect::<Vec<_>>().join(" ");
-        let q = q.as_str();
-        // Пустой список запросов равен `all` (mediaqueries-5 §2.1:
-        // «An empty media query list evaluates to true»): пробел после
-        // `@media` необязателен, и `@media{ ... }` обязано примениться
-        // (`at-media-whitespace-optional-001/002`).
-        if q.is_empty() {
-            return true;
-        }
-        // Список запросов через запятую — «или». Негодный запрос НЕ валит
-        // список целиком (§3.1: он заменяется на `not all`), поэтому каждая
-        // часть считается сама по себе.
-        split_top_level(q, ',')
-            .into_iter()
-            .any(|alt| self.mq_query(alt) == SupTri::True)
-    }
 }

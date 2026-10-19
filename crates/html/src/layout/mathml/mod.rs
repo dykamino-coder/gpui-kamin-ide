@@ -35,11 +35,12 @@ fn build(
     opts: &RenderOpts,
     target: Option<stretch::Target>,
 ) -> Option<AnyElement> {
+    let vcx = opts.cx.vcx();
     if !e.style.mathml || e.style.math_layout.is_none() {
         return None;
     }
-    let mut style = inherit(inherited, &e.style);
-    style.resolve_viewport(opts.viewport);
+    let mut style = inherit(inherited, &e.style, vcx);
+    style.resolve_viewport(opts.viewport, vcx);
     let token = matches!(
         e.tag.as_str(),
         "mi" | "mn" | "mo" | "ms" | "mtext" | "annotation" | "annotation-xml"
@@ -104,7 +105,7 @@ fn build(
                             });
                             (op.flags, factory)
                         }));
-                        margins.push(margins_px(&inherit(&style, &child.style), opts));
+                        margins.push(margins_px(&inherit(&style, &child.style, vcx), opts));
                         let forwarded = if core.is_some() { target } else { None };
                         Some(build(child, &style, opts, forwarded).unwrap_or_else(|| {
                             crate::render::element::element(child, &style, opts)
@@ -132,7 +133,7 @@ fn build(
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
-    let mut outer = crate::render::box_div::styled_div_with(e, &style);
+    let mut outer = crate::render::box_div::styled_div_with(e, &style, &opts.cx);
     // The measured content owns its baseline, including an explicit zero.
     outer.style().align_items = Some(gpui::AlignItems::FlexStart);
     if e.tag == "math" && style.display == Some(crate::style::computed::Display::Block) {
@@ -150,8 +151,9 @@ fn build(
 /// Layout roots ignore their own margins, so they come from the computed style
 /// as `[top, right, bottom, left]`.
 fn margins_px(child: &Computed, opts: &RenderOpts) -> [f32; 4] {
+    let vcx = opts.cx.vcx();
     let mut child = child.clone();
-    child.resolve_viewport(opts.viewport);
+    child.resolve_viewport(opts.viewport, vcx);
     let m = &child.margin;
     [m.top, m.right, m.bottom, m.left].map(|side| px_strict(side).unwrap_or(0.0))
 }

@@ -1,4 +1,6 @@
 //! Intrinsic sizing wrappers preserve the preferred size seen by their parent.
+
+use crate::document::state::ValueCx;
 use crate::layout::writing_mode::native_intrinsic;
 #[path = "content_wrapper/axis_alignment.rs"]
 mod axis_alignment;
@@ -54,6 +56,7 @@ pub(crate) fn for_element(
     element: &Element,
     parent: &Computed,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
+    vcx: ValueCx<'_>,
 ) -> AnyElement {
     if super::replaced_tag(element) || native_intrinsic::eligible(element) {
         el
@@ -61,7 +64,7 @@ pub(crate) fn for_element(
         content_sized(
             el,
             &element.style,
-            &crate::style::cascade::inherit::inherit(parent, &element.style),
+            &crate::style::cascade::inherit::inherit(parent, &element.style, vcx),
             placement,
         )
     }

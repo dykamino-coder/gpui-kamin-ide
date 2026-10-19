@@ -7,6 +7,12 @@
 //! фоном — чтобы снимок отличался от браузерного только тем, что нарисовано,
 //! а не тем, где оно нарисовано.
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "process entry point owns console diagnostics"
+)]
+
 use gpui::{
     AppContext as _, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled,
     TitlebarOptions, Window, WindowBackgroundAppearance, WindowBounds, WindowDecorations,
@@ -36,6 +42,7 @@ impl Render for Page {
             // `line-height: normal` как в браузере, а не золотое сечение GPUI.
             normal_line_height: 1.31,
             doc_salt: 0,
+            cx: Default::default(),
             frag: Default::default(),
         };
         div()

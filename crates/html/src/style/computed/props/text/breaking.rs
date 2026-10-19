@@ -1,17 +1,23 @@
 //! Computed::apply_text, продолжение цепочки: text-indent, text-box*, hanging-punctuation, разрывы слов и строк, text-fit, text-wrap. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_vertical_clamp.
 
 use super::*;
+use crate::document::state::ValueCx;
 
 impl Computed {
-    #[allow(unused_variables)]
-    pub(super) fn apply_text_breaking(&mut self, key: &str, val: &str, v: &str, hit: &mut bool) {
+    pub(super) fn apply_text_breaking(
+        &mut self,
+        key: &str,
+        v: &str,
+        hit: &mut bool,
+        vcx: ValueCx<'_>,
+    ) {
         match key {
             // Отступ первой строки. Кроме длины значение несёт до двух
             // ключевых слов (css-text-3 §7.1): `each-line` повторяет отступ
             // после КАЖДОГО жёсткого разрыва, `hanging` переворачивает выбор —
             // отступ получают все строки, КРОМЕ той, что получила бы его.
             // Порядок слов свободный, поэтому значение разбирается по словам.
-            "text-indent" => text_indent::apply(self, v),
+            "text-indent" => text_indent::apply(self, v, vcx),
             // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
             // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
@@ -217,7 +223,7 @@ impl Computed {
                 // не должна оставаться коротким огрызком.
                 self.balance_lines = Some(v == "balance");
             }
-            _ => self.apply_text_vertical_clamp(key, val, v, hit),
+            _ => self.apply_text_vertical_clamp(key, v, hit, vcx),
         }
     }
 }

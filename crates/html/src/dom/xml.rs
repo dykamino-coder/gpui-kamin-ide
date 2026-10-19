@@ -25,7 +25,7 @@ pub(crate) fn is_xml() -> bool {
 }
 
 /// Parse `markup` as an XML document with the full cascade of `parse`.
-pub fn parse_xml(markup: &str, extra_css: &str) -> Vec<super::Node> {
+pub fn parse_xml(markup: &str, extra_css: &str) -> super::Parsed {
     XML.with(|x| x.set(true));
     let nodes = super::parse(markup, extra_css);
     XML.with(|x| x.set(false));
@@ -37,9 +37,10 @@ pub(crate) fn parse_current_xml(
     markup: &str,
     extra_css: &str,
     media: crate::style::css::Media,
+    doc: &std::rc::Rc<crate::document::state::DocState>,
 ) -> Vec<super::Node> {
     XML.with(|x| x.set(true));
-    let nodes = super::parse_current(markup, extra_css, media);
+    let nodes = super::parse_current(markup, extra_css, media, doc);
     XML.with(|x| x.set(false));
     nodes
 }

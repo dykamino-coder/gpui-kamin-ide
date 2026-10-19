@@ -20,6 +20,7 @@ pub(crate) fn atom_line_align(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> Option<crate::text::paragraph::AtomAlign> {
+    let vcx = opts.cx.vcx();
     use crate::text::paragraph::AtomAlign;
     let st = &e.style;
     let atomic = matches!(
@@ -136,7 +137,7 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = inherit(inherited, st);
+    let merged = inherit(inherited, st, vcx);
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
@@ -152,7 +153,7 @@ pub(crate) fn atom_line_align(
                 if let Some(v) = st.vertical_shift_px {
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
-                    let family = merged.font_family.clone().unwrap_or_default();
+                    let family = merged.font_family.unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(Some(l), &family, size))
                 } else if let Some(k) = st.vertical_shift {
                     AtomAlign::Shift(-k * size)

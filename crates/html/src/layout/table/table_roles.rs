@@ -35,6 +35,8 @@ mod tests {
 
     #[test]
     fn whitespace_around_inline_content_stays_in_its_anonymous_cell() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let node = |tag, text: &str| {
             Node::Element(crate::layout::table::anon::anon_element(
                 tag,
@@ -51,7 +53,7 @@ mod tests {
                 node("td", "d"),
             ],
         );
-        let fixed = crate::layout::table::anon::fixup_row_children(&row);
+        let fixed = crate::layout::table::anon::fixup_row_children(&row, vcx);
         let Node::Element(row) = &fixed[0] else {
             panic!("row")
         };
@@ -75,12 +77,14 @@ mod tests {
 
     #[test]
     fn block_td_is_content_of_an_anonymous_cell_and_retains_its_style() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut block =
             crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
         block.style.display = Some(Display::Block);
         block.node_id = 123;
         let row = crate::layout::table::anon::anon_element("tr", vec![Node::Element(block)]);
-        let fixed = crate::layout::table::anon::fixup_row_children(&row);
+        let fixed = crate::layout::table::anon::fixup_row_children(&row, vcx);
         let Node::Element(row) = &fixed[0] else {
             panic!("row")
         };

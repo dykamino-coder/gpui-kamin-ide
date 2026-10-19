@@ -1,10 +1,17 @@
 //! Параметры растеризации CSS basic shapes.
 
+use crate::document::state::ValueCx;
 use crate::paint::background::*;
 
 /// Параметры формы `circle(...)` / `ellipse(...)`: центр и радиусы в
 /// точках растра; `scale` переводит точечные величины записи (CSS) в них.
-pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32, f32, f32)> {
+pub fn shape_params(
+    raw: &str,
+    fw: f32,
+    fh: f32,
+    scale: f32,
+    vcx: ValueCx<'_>,
+) -> Option<(f32, f32, f32, f32)> {
     let (kind, rest) = raw.split_once('(')?;
     // Хвост после СВОЕЙ закрывающей скобки — опорная коробка
     // (`circle(50% at left 40px top 40px) border-box`, css-masking-1
@@ -48,10 +55,10 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             "right" | "bottom" => Some(side),
             // Смесь долей и точек в центре (`at calc(50% - 10px) …`).
             _ if t.starts_with("calc(") => {
-                let (p, add) = crate::style::values::value::calc_pct_px(t)?;
+                let (p, add) = crate::style::values::value::calc_pct_px(t, vcx)?;
                 Some(p * side + add * scale)
             }
-            _ => match crate::style::values::value::Len::parse(t)? {
+            _ => match crate::style::values::value::Len::parse(t, vcx)? {
                 crate::style::values::value::Len::Px(v) => Some(v * scale),
                 crate::style::values::value::Len::Pct(p) => Some(p * side),
                 _ => None,
@@ -136,7 +143,7 @@ pub fn shape_params(raw: &str, fw: f32, fh: f32, scale: f32) -> Option<(f32, f32
             "farthest-side" => Some(side_r("farthest-side", c, side)),
             "closest-corner" => Some(corner_r(false)),
             "farthest-corner" => Some(corner_r(true)),
-            _ => match crate::style::values::value::Len::parse(token)? {
+            _ => match crate::style::values::value::Len::parse(token, vcx)? {
                 crate::style::values::value::Len::Px(v) => Some(v * scale),
                 crate::style::values::value::Len::Pct(p) => Some(p * pct_base),
                 _ => None,

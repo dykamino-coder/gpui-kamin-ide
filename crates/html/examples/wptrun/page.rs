@@ -23,9 +23,9 @@ impl Render for Page {
         // показал 1041 → 1006 по css-text. Метрики системной подстановки
         // (кана в 0.82 кегля) совпадают с эталонами чаще, чем `MS Gothic`.
         text.font_size = px(16.).into();
-        // Правила и значения листа (`Len::parse` в `page_box`) читаются в
-        // области документа: `@page` — его правила, а не процесса.
-        let _scope = self.doc.enter();
+        // Правила и значения листа (`Len::parse` в `page_box`) — документа:
+        // `@page` — его правила, значения — его арены (`Document::values`).
+        let values = self.doc.values().keep();
         // Печатная пара: страница WPT по умолчанию 5in x 3in = 480x288
         // точек; `@page` может задать size/margin/фон/рамку. Область
         // просмотра документа = page area (css-page-3 §page-model).
@@ -94,6 +94,7 @@ impl Render for Page {
                     kamin_html::css::page_decls_in(&rules, i, name, rtl),
                     root_margin,
                     root_wm,
+                    values.vcx(),
                 )
             });
             let margins: kamin_html::render::PageMarginDeclsFn = {
@@ -115,6 +116,7 @@ impl Render for Page {
             text,
             normal_line_height: 1.31,
             doc_salt: self.doc.salt(),
+            cx: Default::default(),
             frag: Default::default(),
         };
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
@@ -151,7 +153,7 @@ impl Render for Page {
             });
             let stack = kamin_html::render::render_paged_select(
                 self.doc.nodes(),
-                &opts,
+                &self.doc.frame_opts(&opts),
                 geom_for,
                 Some(margins),
                 self.select.clone(),
@@ -161,7 +163,7 @@ impl Render for Page {
                 .h(px(f32::from(window.viewport_size().height)))
                 .bg(rgb(0xffffff))
                 .text_size(px(16.))
-                .font_family(opts.text.font_family.clone())
+                .font_family(opts.text.font_family)
                 .child(self.doc.scoped(stack))
                 .into_any_element();
         }
@@ -178,7 +180,7 @@ impl Render for Page {
             // своего семейства, нарисованные НЕ текстовым путём абзаца (ряд
             // слов при картинке вне потока, подпись `alt`), брали шрифт
             // интерфейса (Segoe UI) вместо Times (`background-bg-pos-204-ref`).
-            .font_family(opts.text.font_family.clone())
+            .font_family(opts.text.font_family)
             .children(children)
             .into_any_element()
     }

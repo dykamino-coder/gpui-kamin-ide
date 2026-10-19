@@ -1,6 +1,7 @@
 //! Сборка StackChild ребёнка стопки колонок: вложенный ряд, монолитность, число копий.
 
 use super::stack_child_of;
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::{plain_block_tree, size_monolith};
@@ -35,6 +36,7 @@ pub(super) fn finish_stack_child(
     nest_row: Option<f32>,
     whole: bool,
     build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
+    vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let (scrolls, monolith) = copy_monolith(copy, &cuts, nest_row);
     // Высоту меряет раскладка копии (`StackChild::measure`):
@@ -66,7 +68,7 @@ pub(super) fn finish_stack_child(
     let kid_copies = kid_copy_count(e, rows, copies, fixed, copy, h, over, measure, span);
     let mut child = stack_child_of(
         ix, mt, mb, kid_par, col_vert, rows, fixed, dec, copy, cuts, forced, solid, h, over, rel,
-        build, measure, monolith, span, kid_copies,
+        build, measure, monolith, span, kid_copies, vcx,
     );
     child.fit_whole = whole && fixed.is_some() && measure.is_some();
     child

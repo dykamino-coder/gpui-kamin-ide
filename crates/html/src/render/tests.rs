@@ -46,7 +46,7 @@ fn margin_collapse_matches_the_browser_on_the_fixture_case() {
              </div>",
     );
     let children = match &page[0] {
-        Node::Element(e) => collapse_margins(&e.children, false),
+        Node::Element(e) => collapse_margins(&e.children, false, None),
         _ => panic!("нет страницы"),
     };
     let stack = children
@@ -76,11 +76,11 @@ fn out_of_flow_neighbours_keep_their_margins() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false),
+        Node::Element(html) => collapse_margins(&html.children, false, None),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false),
+        Node::Element(b) => collapse_margins(&b.children, false, None),
         _ => panic!("нет body"),
     };
     for (i, n) in body.iter().enumerate() {
@@ -102,11 +102,11 @@ fn margins_in_em_collapse_too() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false),
+        Node::Element(html) => collapse_margins(&html.children, false, None),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false),
+        Node::Element(b) => collapse_margins(&b.children, false, None),
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
@@ -126,11 +126,11 @@ fn adjacent_margins_collapse_into_the_larger() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false),
+        Node::Element(html) => collapse_margins(&html.children, false, None),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false),
+        Node::Element(b) => collapse_margins(&b.children, false, None),
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
@@ -153,7 +153,7 @@ fn first_child_margin_leaks_through_a_borderless_parent() {
     // коробку цепи, а у всех внутренних снимается. Пока подъём шёл на
     // один уровень, то же поле поднималось повторно на каждом.
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false),
+        Node::Element(html) => collapse_margins(&html.children, false, None),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {

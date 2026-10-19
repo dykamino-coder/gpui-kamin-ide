@@ -1,4 +1,6 @@
 //! Элемент `ScrollArea`.
+
+use crate::document::state::ValueCx;
 // owner: A
 
 use gpui::{
@@ -22,12 +24,24 @@ pub struct ScrollArea {
     pub(crate) style: crate::style::computed::Computed,
     tree: Option<Rc<crate::dom::Element>>,
     parent_extent: Option<super::scroll_extent::Frame>,
+    /// Shift chain the area is built in (`ShiftLink`): its border box and
+    /// scrollport are recorded without those paint-time shifts.
+    sticky: Option<crate::interactive::scroll_extent::StickyShift>,
     pub(crate) build: ScrollBuilder,
+    /// Values of the document the area's style lengths come from.
+    values: crate::document::state::ValueDoc,
 }
 
 impl ScrollArea {
-    pub fn new(id: ElementId, horizontal: bool, vertical: bool, build: ScrollBuilder) -> Self {
+    pub fn new(
+        id: ElementId,
+        horizontal: bool,
+        vertical: bool,
+        build: ScrollBuilder,
+        vcx: ValueCx<'_>,
+    ) -> Self {
         ScrollArea {
+            values: vcx.keep(),
             id,
             horizontal,
             vertical,
@@ -35,6 +49,7 @@ impl ScrollArea {
             style: Default::default(),
             tree: None,
             parent_extent: None,
+            sticky: None,
         }
     }
 }
@@ -48,6 +63,14 @@ impl ScrollArea {
     pub(crate) fn with_tree(mut self, e: &crate::dom::Element) -> Self {
         self.parent_extent = super::scroll_extent::Frame::parent_for(e.node_id);
         self.tree = Some(Rc::new(e.clone()));
+        self
+    }
+
+    pub(crate) fn with_sticky(
+        mut self,
+        sticky: Option<crate::interactive::scroll_extent::StickyShift>,
+    ) -> Self {
+        self.sticky = sticky;
         self
     }
 }
@@ -143,7 +166,12 @@ impl Element for ScrollArea {
             bounds
         };
         if let (Some(parent), Some(tree)) = (&self.parent_extent, self.tree.as_deref()) {
-            parent.record_border_box(tree.node_id, &self.style, paint_bounds);
+            parent.record_border_box(
+                tree.node_id,
+                &self.style,
+                paint_bounds,
+                self.sticky.as_ref(),
+            );
         }
         child.2.set_decoration_clip(window.content_mask());
         child.2.within(self.tree.as_deref(), || {
@@ -155,7 +183,14 @@ impl Element for ScrollArea {
             });
         });
         if let Some(tree) = self.tree.as_deref()
-            && child.2.settle(tree, &self.style, &child.1, paint_bounds)
+            && child.2.settle(
+                tree,
+                &self.style,
+                &child.1,
+                paint_bounds,
+                self.sticky.as_ref(),
+                self.values.vcx(),
+            )
         {
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
             // this frame, once the native extent proxy has its measured size.

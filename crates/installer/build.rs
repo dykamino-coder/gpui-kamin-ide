@@ -5,6 +5,12 @@
 //! его собственной директивы — при переезде на свой распаковщик она пропала.
 //! Иконка та же, что у шелла: файл лежит в его крейте, второй копии не заводим.
 
+#![allow(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "Cargo build script emits directives and build diagnostics"
+)]
+
 fn main() {
     #[cfg(windows)]
     {

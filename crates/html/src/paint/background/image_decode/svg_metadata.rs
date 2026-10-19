@@ -1,6 +1,7 @@
 //! Размер и фон SVG для декодирования фоновых изображений.
 
 use super::Intrinsic;
+use crate::document::state::ValueCx;
 
 /// Своя величина рисунка: `width`/`height` корневого тега, иначе `viewBox`.
 ///
@@ -39,7 +40,10 @@ pub(super) fn degenerate_viewbox(markup: &str) -> bool {
 ///
 /// Это CSS-свойство замещаемого корня, а не SVG-контент — растеризатор его
 /// не рисует, и рисунок из одного фона выходил прозрачным (box-sizing-007).
-pub(crate) fn svg_root_background(markup: &str) -> Option<crate::style::values::value::Color> {
+pub(crate) fn svg_root_background(
+    markup: &str,
+    vcx: ValueCx<'_>,
+) -> Option<crate::style::values::value::Color> {
     let head = match markup.find("<svg") {
         Some(at) => {
             &markup[at..markup[at..]
@@ -57,7 +61,7 @@ pub(crate) fn svg_root_background(markup: &str) -> Option<crate::style::values::
     let v = decls
         .get("background")
         .or_else(|| decls.get("background-color"))?;
-    crate::style::values::value::Color::parse(v.split_whitespace().next()?)
+    crate::style::values::value::Color::parse(v.split_whitespace().next()?, vcx)
 }
 
 pub(crate) fn svg_size(markup: &str) -> Intrinsic {

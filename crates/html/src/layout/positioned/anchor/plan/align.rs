@@ -3,6 +3,7 @@
 use super::super::area::{Al, Tracks, default_al};
 use super::super::{AnchorPlan, CB};
 use super::axis::Edge;
+use crate::document::state::ValueCx;
 use crate::style::computed::Align;
 use crate::style::values::value::{Len, anchor_get};
 use gpui::{Bounds, Pixels, Window, px};
@@ -11,7 +12,7 @@ impl AnchorPlan {
     /// Сдвиг по оси стороны `k` (0 top, 1 right, 2 bottom, 3 left) — без
     /// `position-area`: коробка стоит у края содержащего блока на нулевой
     /// вставке.
-    pub(super) fn shift(&self, k: usize, own: Bounds<Pixels>) -> f32 {
+    pub(super) fn shift(&self, k: usize, own: Bounds<Pixels>, vcx: ValueCx<'_>) -> f32 {
         let Some(sp) = &self.sides[k] else { return 0.0 };
         let y_axis = k.is_multiple_of(2);
         let end_side = k == 1 || k == 2;
@@ -22,7 +23,7 @@ impl AnchorPlan {
             2 => f32::from(own.origin.y) + f32::from(own.size.height) + sp.margin,
             _ => f32::from(own.origin.x) - sp.margin,
         };
-        match self.resolve_anchor(sp.f.clone(), y_axis, end_side) {
+        match self.resolve_anchor(sp.f.clone(), y_axis, end_side, vcx) {
             Edge::Abs(want) => want - own_edge,
             // Запасная длина в точках — вставка от края содержащего
             // блока; раскладка уже поставила коробку на нулевую вставку.
@@ -40,19 +41,27 @@ impl AnchorPlan {
     /// Край inset-modified containing block со стороны `k`: край клетки,
     /// сдвинутый авторской вставкой (`auto` → 0; доля — от клетки, она и
     /// есть содержащий блок; `anchor()` — к краю якоря, §position-area).
-    pub(super) fn imcb_edge(&self, k: usize, cell_edge: f32, cell_len: f32) -> f32 {
+    pub(super) fn imcb_edge(
+        &self,
+        k: usize,
+        cell_edge: f32,
+        cell_len: f32,
+        vcx: ValueCx<'_>,
+    ) -> f32 {
         let y_axis = k.is_multiple_of(2);
         let end_side = k == 1 || k == 2;
         let sign = if end_side { -1.0 } else { 1.0 };
         match self.inset[k] {
             Some(Len::Px(v)) => cell_edge + sign * v,
             Some(Len::Pct(p)) => cell_edge + sign * p * cell_len,
-            Some(Len::Anchor(i)) => match anchor_get(i) {
-                Some(f) if f.size.is_none() => match self.resolve_anchor(f, y_axis, end_side) {
-                    Edge::Abs(w) => w,
-                    Edge::FromEdge(v) => cell_edge + sign * v,
-                    Edge::None => cell_edge,
-                },
+            Some(Len::Anchor(i)) => match anchor_get(i, vcx) {
+                Some(f) if f.size.is_none() => {
+                    match self.resolve_anchor(f, y_axis, end_side, vcx) {
+                        Edge::Abs(w) => w,
+                        Edge::FromEdge(v) => cell_edge + sign * v,
+                        Edge::None => cell_edge,
+                    }
+                }
                 _ => cell_edge,
             },
             _ => cell_edge,
