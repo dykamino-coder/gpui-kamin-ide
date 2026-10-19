@@ -29,75 +29,84 @@ pub(in crate::style::computed) fn box_shadow_valid(v: &str, vcx: ValueCx<'_>) ->
     })
 }
 
-pub(in crate::style::computed) fn parse_shadows(v: &str, vcx: ValueCx<'_>) -> Vec<Shadow> {
+#[derive(Clone, Debug, PartialEq)]
+pub(in crate::style::computed) struct ShadowValue {
+    pub lengths: [Option<Len>; 4],
+    pub color: Color,
+    pub inset: bool,
+}
+
+impl ShadowValue {
+    pub fn numeric(&self, vcx: ValueCx<'_>) -> Option<Shadow> {
+        let mut values = [0.0; 4];
+        for (slot, length) in values.iter_mut().zip(self.lengths) {
+            *slot = match length {
+                None => 0.0,
+                Some(length @ (Len::Px(_) | Len::Calc(_))) => {
+                    length.to_px(None, FontCx::FALLBACK, vcx)?
+                }
+                _ => return None,
+            };
+        }
+        Some(Shadow {
+            x: values[0],
+            y: values[1],
+            blur: values[2],
+            spread: values[3],
+            color: self.color,
+        })
+    }
+}
+
+/// Keep valid relative lengths for consumers that have a computed font context.
+pub(in crate::style::computed) fn shadow_values(v: &str, vcx: ValueCx<'_>) -> Vec<ShadowValue> {
     let mut out = vec![];
     for s in crate::style::css::split_args(v) {
-        // Внутренние тени не рисуются — но синтаксис их проверяется: одна
-        // невалидная тень роняет ВСЮ декларацию (css-backgrounds-3 §7.2).
-        let inner = s.contains("inset");
-        let mut lens = vec![];
+        let mut lengths = vec![];
         let mut color = None;
         for token in tokenize_shadow(s) {
             match Len::parse(&token, vcx) {
-                Some(Len::Px(px)) => lens.push(Some(px)),
-                // calc() из абсолютных единиц уже свёрнут в px; примесь
-                // процентов невалидна для тени.
-                Some(Len::Calc(id)) => {
-                    let sum = crate::style::values::value::calc_get(id, vcx);
-                    if sum.pct != 0.0 {
-                        return vec![];
-                    }
-                    // Шрифтовые/оконные слагаемые здесь не резолвятся —
-                    // тень пропускается, но декларация остаётся валидной.
-                    let bare = crate::style::values::value::Sum {
-                        px: 0.0,
-                        pct: 0.0,
-                        ..sum
-                    };
-                    lens.push(
-                        (bare == crate::style::values::value::Sum::default()).then_some(sum.px),
-                    );
-                }
                 Some(Len::Pct(_)) => return vec![],
-                // em/vh и прочее — валидно, но контекста тут нет.
-                Some(_) => lens.push(None),
+                Some(Len::Calc(id))
+                    if crate::style::values::value::calc_get(id, vcx).pct != 0.0 =>
+                {
+                    return vec![];
+                }
+                Some(length) => lengths.push(length),
                 None => {
                     if let Some(c) = Color::parse(&token, vcx) {
                         color = Some(c);
-                    } else if token == "currentcolor" {
-                        // Явный `currentColor` = как отсутствие цвета:
-                        // метка a = -1 дорешается при слиянии стилей.
-                    } else if token != "inset" {
+                    } else if token != "currentcolor" && token != "inset" {
                         return vec![];
                     }
                 }
             }
         }
-        // Длин бывает от двух до четырёх (§7.2).
-        if lens.len() < 2 || lens.len() > 4 {
+        if !(2..=4).contains(&lengths.len()) {
             return vec![];
         }
-        if inner || lens.iter().any(Option::is_none) {
-            continue;
-        }
-        let lens: Vec<f32> = lens.into_iter().flatten().collect();
-        out.push(Shadow {
-            x: lens[0],
-            y: lens[1],
-            blur: lens.get(2).copied().unwrap_or(0.0),
-            spread: lens.get(3).copied().unwrap_or(0.0),
-            // Тень без цвета берёт currentColor (css-backgrounds-3
-            // §7): цвет текста известен только после слияния стилей,
-            // отрицательная альфа — метка «дорешать там».
+        let mut value = ShadowValue {
+            lengths: [None; 4],
             color: color.unwrap_or(Color {
-                r: 0.,
-                g: 0.,
-                b: 0.,
                 a: -1.0,
+                ..Color::default()
             }),
-        });
+            inset: s.contains("inset"),
+        };
+        for (slot, length) in value.lengths.iter_mut().zip(lengths) {
+            *slot = Some(length);
+        }
+        out.push(value);
     }
     out
+}
+
+pub(in crate::style::computed) fn parse_shadows(v: &str, vcx: ValueCx<'_>) -> Vec<Shadow> {
+    shadow_values(v, vcx)
+        .iter()
+        .filter(|s| !s.inset)
+        .filter_map(|s| s.numeric(vcx))
+        .collect()
 }
 
 /// Разбиение тени на токены: `rgba(0, 0, 0, .4)` — один токен, а не четыре.

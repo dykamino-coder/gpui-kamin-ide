@@ -67,7 +67,9 @@ pub(crate) fn new(c: &Computed, mask: Option<&str>, vcx: ValueCx<'_>) -> Option<
     let layer = crate::paint::apply::apply_paint(layer, &own, vcx)
         .children(crate::paint::decorations::decorations(&own, false, vcx));
     let mut decoration = super::grouped_element::Grouped::new(layer.into_any_element(), vcx);
-    decoration.mask = Some(mask.to_string());
+    decoration.mask = Some(super::grouped_element::GroupMask::Geometry(
+        mask.to_string(),
+    ));
     Some(CornerClip {
         insets,
         decoration: decoration.hooked(),

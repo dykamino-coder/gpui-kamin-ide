@@ -1,61 +1,11 @@
-//! Decode CSS background sources and resolve color images after text inheritance.
+//! Select computed image operands and decode resource URLs with shared caching.
 
 use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_fragment};
 use crate::document::state::ValueCx;
 use std::{collections::HashMap, sync::Mutex};
 
-/// Ключ источника с учётом `image-orientation` (css-images-3 §5.4).
-///
-/// Разворот по EXIF — часть САМОЙ картинки: после него у неё другой природный
-/// размер, и кэш обязан различать развёрнутый растр и сырой. Отдельного
-/// параметра у `source` нет намеренно: кэш ключуется строкой, и приставка
-/// ключа дешевле, чем переписывание тринадцати мест вызова.
-pub fn key_exif(src: &str, c: &crate::style::computed::Computed, vcx: ValueCx<'_>) -> String {
-    let gradient = crate::style::computed::resolve_gradient_colors(
-        src,
-        c.color.unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        }),
-        vcx,
-    );
-    let src = gradient.as_ref();
-    let resolved = crate::style::computed::image_function::arguments(src, vcx).and_then(|image| {
-        let color = crate::style::values::color_space::resolve_relative(
-            image.color?,
-            c.color.unwrap_or(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            }),
-            vcx,
-        )?;
-        let color = color_image(color);
-        Some(match image.raw_url {
-            Some(url) => format!(
-                "image({url}, {})",
-                crate::style::computed::parse_image_color(&color, vcx)?
-            ),
-            None => color,
-        })
-    });
-    let src = resolved.as_deref().unwrap_or(src);
-    if c.image_orient_none == Some(true) {
-        format!("exif-none|{src}")
-    } else {
-        src.to_string()
-    }
-}
-
-pub fn key(src: &str, c: &crate::style::computed::Computed, vcx: ValueCx<'_>) -> String {
-    key_exif(src, c, vcx)
-}
-
 /// Разобрать ссылку в источник картинки; результат запоминается.
-pub fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
+pub fn source(src: &str, _vcx: ValueCx<'_>) -> Option<Source> {
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(map) = cache.lock()
         && let Some(hit) = map.get(src)
@@ -71,8 +21,6 @@ pub fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
         Some(Source::Shape {
             raw: shape.to_string(),
         })
-    } else if let Some(image) = crate::style::computed::ImageSource::parse(src_plain, vcx) {
-        computed_source(&image, orient)
     } else {
         load_url(src_plain, orient)
     };
@@ -87,18 +35,6 @@ pub fn source(src: &str, vcx: ValueCx<'_>) -> Option<Source> {
         map.insert(src.to_string(), found.clone());
     }
     found
-}
-
-/// Resolve currentColor without turning the color image into a CSS box fill.
-fn color_image(c: crate::style::values::value::Color) -> String {
-    let color = format!(
-        "rgba({}, {}, {}, {})",
-        c.r * 255.0,
-        c.g * 255.0,
-        c.b * 255.0,
-        c.a
-    );
-    format!("image({color})")
 }
 
 /// Resource selection from computed operands never re-enters a CSS parser.
@@ -122,6 +58,18 @@ pub(crate) fn computed_source(
         _ => Some(Source::Gradient {
             image: std::sync::Arc::new(image.clone()),
         }),
+    }
+}
+
+/// Replaced CSS content retains its computed image; HTML src remains a resource URL.
+pub(crate) fn element_source(
+    src: &str,
+    style: &crate::style::computed::Computed,
+) -> Option<Source> {
+    let orient = style.image_orient_none != Some(true);
+    match style.content_image() {
+        Some(image) => computed_source(image, orient),
+        None => load_url(src, orient),
     }
 }
 
@@ -167,14 +115,18 @@ fn decode_url(src: &str, orient: bool) -> Option<Source> {
 mod tests {
     //! URL decoding takes precedence over a dimensionless image() color fallback.
 
-    use super::{Source, key, source};
+    use super::{Source, computed_source};
+    use crate::style::computed::ImageSource;
+    fn parsed(raw: &str, vcx: crate::document::state::ValueCx<'_>) -> Option<Source> {
+        computed_source(&ImageSource::parse(raw, vcx)?, true)
+    }
     use crate::style::{computed::Computed, values::value::Color};
 
     #[test]
     fn decode_url_before_using_fallback() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let image = source("image('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%222%22 height=%223%22/%3E', red)", vcx).unwrap();
+        let image = parsed("image('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%222%22 height=%223%22/%3E', red)", vcx).unwrap();
         assert!(matches!(image, Source::Vector { .. }));
         let size = image.intrinsic();
         assert_eq!((size.w, size.h), (Some(2.0), Some(3.0)));
@@ -182,11 +134,11 @@ mod tests {
             "data:text/plain,not-an-image",
             "missing-image-fallback-unit.png",
         ] {
-            let image = source(&format!("image('{url}', green)"), vcx).unwrap();
+            let image = parsed(&format!("image('{url}', green)"), vcx).unwrap();
             assert!(matches!(image, Source::Gradient { .. }));
             let size = image.intrinsic();
             assert_eq!((size.w, size.h, size.ratio), (None, None, None));
-            assert!(source(&format!("image('{url}')"), vcx).is_none());
+            assert!(parsed(&format!("image('{url}')"), vcx).is_none());
         }
     }
 
@@ -198,8 +150,10 @@ mod tests {
             color: Color::parse("rgba(0, 128, 0, 0.5)", vcx),
             ..Computed::default()
         };
-        let src = key("image('data:text/plain,invalid', currentColor)", &c, vcx);
-        let Some(Source::Gradient { image }) = source(&src, vcx) else {
+        let mut src =
+            ImageSource::parse("image('data:text/plain,invalid', currentColor)", vcx).unwrap();
+        src.resolve_colors(c.color.unwrap());
+        let Some(Source::Gradient { image }) = computed_source(&src, true) else {
             panic!("fallback missing")
         };
         assert_eq!(

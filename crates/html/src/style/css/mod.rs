@@ -21,6 +21,7 @@ use crate::style::css::priority_tokens::top_level_bang;
 pub(crate) mod custom_properties;
 pub(super) mod selector;
 mod variable_tokens;
+pub(crate) use variable_tokens::block_end;
 pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod decls;

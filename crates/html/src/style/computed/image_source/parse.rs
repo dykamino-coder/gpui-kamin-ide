@@ -14,7 +14,8 @@ impl ImageSource {
             return None;
         }
         let nested = |raw: &str| Self::parse_inner(raw.trim(), vcx, depth + 1);
-        if raw.starts_with("url(")
+        if crate::style::css::at_url(raw)
+            && raw.ends_with(')')
             && let Some(url) = crate::style::computed::parse_url(raw)
         {
             return Some(Self::Url(url));

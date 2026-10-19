@@ -55,7 +55,10 @@ fn relative_stops_use_the_inherited_element_color() {
         green.gradient.unwrap().from,
         Color::parse("green", vcx).unwrap()
     );
-    assert!(green.gradient_raw.unwrap().contains("currentcolor"));
+    assert_eq!(
+        green.gradient_raw.unwrap().gradient().unwrap().0.from,
+        Color::parse("green", vcx).unwrap()
+    );
 }
 
 #[test]
@@ -88,7 +91,7 @@ fn typed_stop_colors_preserve_double_positions_without_css() {
         vcx,
     );
     // The inherited operand must not consult a textual paint source.
-    parent.gradient_raw = Some("not a gradient".into());
+    parent.gradient_raw = Some(crate::style::computed::ImageSource::Invalid);
     let mut child = Computed::default();
     child.apply_one("background-image", "inherit", vcx);
     child.apply_one("color", "red", vcx);

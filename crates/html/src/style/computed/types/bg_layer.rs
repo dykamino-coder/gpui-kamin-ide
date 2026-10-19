@@ -5,8 +5,7 @@ use crate::document::state::ValueCx;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BgLayer {
-    pub(super) pending: Option<String>,
-    image: Option<String>,
+    pub(super) image: Option<ImageSource>,
     size: BgSize,
     position: BgPos,
     pub(super) position_math: [Option<super::super::background_position::PositionExpression>; 2],
@@ -18,47 +17,16 @@ pub(crate) struct BgLayer {
 }
 
 impl BgLayer {
-    pub(super) fn parse(
-        prop: BgListProp,
-        raw: &str,
-        metrics: Option<(f32, f32, f32)>,
-        vcx: ValueCx<'_>,
-    ) -> Self {
-        let relative = has_font_units(raw);
-        let value = if relative {
-            let (font, ex, ch) = metrics.unwrap_or((16.0, 8.0, 8.0));
-            font_lengths_to_px(raw, font, 16.0, ex, ch)
-        } else {
-            raw.to_string()
-        };
+    pub(super) fn parse(prop: BgListProp, raw: &str, vcx: ValueCx<'_>) -> Self {
         let mut c = Computed::default();
-        c.apply_one(prop.key(), &value, vcx);
-        // A multi-layer gradient always takes the image-tile path. Extract
-        // its function here, rather than scanning the shorthand during paint.
-        if c.bg_image.is_none()
-            && c.gradient.is_some()
-            && let Some(at) = value.find("gradient(")
-        {
-            let start = value[..at]
-                .rfind(|ch: char| ch.is_whitespace() || ch == ',')
-                .map_or(0, |p| p + 1);
-            let mut depth = 0;
-            for (i, ch) in value[at..].char_indices() {
-                match ch {
-                    '(' => depth += 1,
-                    ')' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            c.bg_image = Some(value[start..at + i + 1].to_string());
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-            }
+        c.apply_one(prop.key(), raw, vcx);
+        if c.bg_image.is_none() {
+            c.bg_image = c.gradient.map(|value| ImageSource::Gradient {
+                value: Box::new(value),
+                repeating: false,
+            });
         }
         Self {
-            pending: (relative && metrics.is_none()).then(|| raw.to_string()),
             image: c.bg_image,
             size: c.bg_size,
             position: c.bg_pos,
@@ -68,6 +36,33 @@ impl BgLayer {
             clip: c.bg_clip,
             fixed: c.bg_fixed,
             blend: c.background_blend,
+        }
+    }
+
+    pub(super) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
+        let size = match self.size {
+            BgSize::Fixed(w, h) => [w, h],
+            _ => [None, None],
+        };
+        self.image
+            .as_ref()
+            .is_some_and(|i| i.needs_line_height(vcx))
+            || [self.position.x, self.position.y]
+                .into_iter()
+                .chain(size)
+                .flatten()
+                .any(|l| l.needs_line_height(vcx))
+    }
+
+    pub(super) fn resolve_lengths(&mut self, fix: &impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
+        if let Some(image) = &mut self.image {
+            image.resolve_lengths(fix, vcx);
+        }
+        fix(&mut self.position.x);
+        fix(&mut self.position.y);
+        if let BgSize::Fixed(w, h) = &mut self.size {
+            fix(w);
+            fix(h);
         }
     }
 

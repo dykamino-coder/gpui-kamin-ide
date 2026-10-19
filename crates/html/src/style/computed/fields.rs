@@ -376,7 +376,7 @@ pub struct Computed {
     pub clip_bare_box: bool,
     /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
     /// строкой до растра при сборке группы.
-    pub mask_image: Option<String>,
+    pub mask_image: Option<Vec<ImageSource>>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
     /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
@@ -590,7 +590,7 @@ pub struct Computed {
     pub border_dotted: Option<bool>,
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
-    pub gradient_raw: Option<String>,
+    pub gradient_raw: Option<ImageSource>,
     /// Authored currentColor expression, independent of background tiling.
     pub(crate) gradient_current: Option<Gradient>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
@@ -1419,7 +1419,7 @@ pub struct Computed {
     pub drop_shadow: Option<Shadow>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
-    pub bg_image: Option<String>,
+    pub bg_image: Option<ImageSource>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
     /// Percentage comparisons wait for the possibly negative image free space.
@@ -1588,4 +1588,6 @@ pub struct Computed {
     /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
     /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
     pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
+    /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
+    pub(crate) shape_image: Option<super::ImageSource>,
 }

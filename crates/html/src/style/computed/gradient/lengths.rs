@@ -6,11 +6,7 @@ use crate::style::values::value::calc_get;
 
 impl Gradient {
     pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
-        let needs_line = |length: &Option<Len>| match length {
-            Some(Len::Lh(_) | Len::LhPx(..)) => true,
-            Some(Len::Calc(id)) => calc_get(*id, vcx).lh != 0.0,
-            _ => false,
-        };
+        let needs_line = |length: &Option<Len>| length.is_some_and(|l| l.needs_line_height(vcx));
         self.stop_lengths.iter().any(needs_line)
             || match &self.shape {
                 GradientShape::Radial { position, size, .. } => {
@@ -87,11 +83,8 @@ impl Computed {
         fix: impl Fn(&mut Option<Len>),
         vcx: ValueCx<'_>,
     ) {
-        let uses_line = self
-            .border_image
-            .as_ref()
-            .and_then(|border| border.src.as_ref())
-            .is_some_and(|image| image.needs_line_height(vcx))
+        let uses_line = self.bg_lists.needs_line_height(vcx)
+            || self.image_operands().any(|i| i.needs_line_height(vcx))
             || [self.gradient.as_ref(), self.gradient_current.as_ref()]
                 .into_iter()
                 .flatten()
@@ -113,11 +106,9 @@ impl Computed {
         {
             gradient.resolve_lengths(&fix, vcx);
         }
-        if let Some(image) = self
-            .border_image
-            .as_mut()
-            .and_then(|border| border.src.as_mut())
-        {
+        // Layer positioning and size share the same computed length closure.
+        self.bg_lists.resolve_lengths(&fix, vcx);
+        for image in self.image_operands() {
             image.resolve_lengths(&fix, vcx);
         }
     }

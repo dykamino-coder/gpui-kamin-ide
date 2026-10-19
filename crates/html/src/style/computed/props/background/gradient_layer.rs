@@ -81,7 +81,10 @@ impl Computed {
                     || !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
                     || g.shape.corner_angle((1.0, 1.0)).is_some()
             })
-            .map(|_| top.to_string());
+            .map(|g| ImageSource::Gradient {
+                value: Box::new(g.clone()),
+                repeating: false,
+            });
         // Цвет ищется в НИЖНЕМ слое (он один его допускает);
         // при единственном слое нижний == верхний, и цвет стоит
         // там же, рядом с градиентом: `background: linear-… green`.

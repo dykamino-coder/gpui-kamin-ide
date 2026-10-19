@@ -15,9 +15,10 @@ pub struct ConicGradient {
     pub(crate) stops: Vec<(Color, f32)>,
     pub(crate) hints: Vec<(usize, f32)>,
     pub(crate) space: GradSpace,
+    pub(crate) explicit_interpolation: bool,
     pub(crate) hue: u8,
     pub(crate) polar: Option<DirectGradient>,
-    colors: Vec<ColorExpression>,
+    pub(super) colors: Vec<ColorExpression>,
 }
 
 impl ConicGradient {
@@ -132,6 +133,7 @@ impl ConicGradient {
             stops,
             hints,
             space,
+            explicit_interpolation: interpolation.is_some(),
             hue,
             polar,
             colors,

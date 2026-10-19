@@ -45,6 +45,7 @@ pub struct Gradient {
     pub(crate) stop_lengths: Vec<Option<Len>>,
     /// Пространство, в котором смешиваются цвета (css-color-4 §12.2).
     pub space: GradSpace,
+    pub(crate) explicit_interpolation: bool,
     /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,
     /// 2 increasing, 3 decreasing (css-color-4 §12.4).
     pub hue: u8,

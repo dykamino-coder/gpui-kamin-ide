@@ -9,7 +9,7 @@ mod fills;
 mod masks;
 pub(super) use masks::resolve_mask;
 
-use crate::paint::effects::grouped_element::{Grouped, mask_layer_source};
+use crate::paint::effects::grouped_element::{GroupMask, Grouped};
 use crate::paint::effects::{polygon_clip, rectangular_clip};
 use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
@@ -29,35 +29,15 @@ pub(super) fn paint_body(
     // §7.1). Все слои такие — элемент скрыт целиком (`mask-image-4a`:
     // `url(non-existent.png)` рисовался без маски). Ссылки на
     // определения, градиенты и формы сюда не входят.
-    if let Some(src) = group.mask.as_deref()
-        && src.contains("url(")
+    if let Some(GroupMask::Images(layers)) = group.mask.as_ref()
+        && !layers.is_empty()
+        && layers.iter().all(|image| {
+            matches!(image, crate::style::computed::ImageSource::Url(url)
+                if !url.contains('#') && !url.starts_with("data:") && !url.contains("://") && !url.contains('?')
+                    && group.mask_image_source(image).is_none())
+        })
     {
-        let layers: Vec<String> = crate::style::css::split_args(src)
-            .iter()
-            .filter_map(|l| mask_layer_source(l))
-            .collect();
-        let plain = |l: &str| {
-            !l.contains("-gradient(")
-                && !l.contains("snap:")
-                && !l.contains("def:")
-                && !l.contains('#')
-                && !l.starts_with("data:")
-                // Только ЛОКАЛЬНЫЙ файл без схемы и запроса: `invalid://`
-                // у SVG-элемента одиночным слоем игнорируется
-                // (`bad-mask-image-svg-2/3`), а серверный путь с
-                // `?pipe=` стенду недоступен вовсе
-                // (`mask-image-svg-loading-error`) — их держит прежняя
-                // ветка «маски нет».
-                && !l.contains("://")
-                && !l.contains('?')
-        };
-        if !layers.is_empty()
-            && layers
-                .iter()
-                .all(|l| plain(l) && group.mask_source(l, vcx).is_none())
-        {
-            return;
-        }
+        return;
     }
     // Размытая картинка выходит за края элемента — в браузере тоже.
     // Вчетверо шире радиуса: маска композита обязана лежать там, где
@@ -101,7 +81,7 @@ pub(super) fn paint_body(
     let mask = if let Some(scene) = contour_mask.as_ref().or(poly_mask.as_ref()) {
         masks::resolve_scene_mask(scene, group, contour_box, window)
     } else {
-        group.mask.as_deref().filter(|_| own_mask).and_then(|src| {
+        group.mask.as_ref().filter(|_| own_mask).and_then(|src| {
             resolve_mask(
                 src,
                 group,

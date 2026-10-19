@@ -5,7 +5,6 @@ use crate::style::{css, values::value::Color};
 
 pub(crate) struct Arguments<'a> {
     pub url: Option<String>,
-    pub raw_url: Option<&'a str>,
     pub color: Option<&'a str>,
 }
 
@@ -19,7 +18,6 @@ pub(crate) fn arguments<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<Arguments<
     if parts.len() == 1 && is_color(first, vcx) {
         return Some(Arguments {
             url: None,
-            raw_url: None,
             color: Some(first),
         });
     }
@@ -31,7 +29,6 @@ pub(crate) fn arguments<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<Arguments<
     };
     Some(Arguments {
         url: Some(url),
-        raw_url: Some(first),
         color,
     })
 }
@@ -61,11 +58,6 @@ fn source(raw: &str) -> Option<String> {
         _ if css::at_url(raw) && css::skip_url(raw) == raw.len() => super::parse_url(raw),
         _ => None,
     }
-}
-
-pub(crate) fn color_only<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
-    let args = arguments(raw, vcx)?;
-    args.url.is_none().then_some(args.color).flatten()
 }
 
 #[cfg(test)]

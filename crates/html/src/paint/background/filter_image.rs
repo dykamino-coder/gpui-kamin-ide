@@ -96,11 +96,15 @@ mod tests {
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
         let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
-        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap(), vcx)
-            .unwrap()
-            .raster((7.0, 5.0), vcx)
-            .unwrap();
-        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"), vcx)
+        let image =
+            crate::paint::background::computed_source(rendered.bg_image.as_ref().unwrap(), true)
+                .unwrap()
+                .raster((7.0, 5.0), vcx)
+                .unwrap();
+        let operand =
+            crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
+                .unwrap();
+        let expected = crate::paint::background::computed_source(&operand, true)
             .unwrap()
             .raster((7.0, 5.0), vcx)
             .unwrap();

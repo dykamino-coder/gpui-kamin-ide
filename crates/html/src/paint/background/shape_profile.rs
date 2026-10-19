@@ -1,6 +1,7 @@
 //! Профиль фигуры обтекания (shape-outside, shape-margin): маска, интервалы, расширение.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::ImageSource;
 pub(super) mod svg_path;
 pub(super) use svg_path::svg_path_of;
 
@@ -44,7 +45,7 @@ pub struct ShapeBox {
 /// (вызывающий откатывается к прямоугольнику коробки). Пустая форма —
 /// нули: «empty float area», НЕ фоллбек.
 pub fn shape_profile(
-    raw: &str,
+    (raw, image): (&str, Option<&ImageSource>),
     b: &ShapeBox,
     sm: f32,
     side: i32,
@@ -52,7 +53,7 @@ pub fn shape_profile(
 ) -> Option<Vec<f32>> {
     let rows = b.mh.ceil().max(1.0) as usize;
     let cols = b.mw.ceil().max(1.0) as usize;
-    let mask = shape_mask(raw, b, cols, rows, vcx)?;
+    let mask = shape_mask(raw, image, b, cols, rows, vcx)?;
     let mut iv = mask_intervals(&mask, cols, rows, b.threshold);
     // `shape-margin` раздувает фигуру наружу на своё расстояние
     // (css-shapes-1 §2.2): контур обтекания — множество точек не дальше
@@ -89,7 +90,7 @@ pub fn shape_profile(
 /// что и у строчного профиля: `dilate` не знает, какая ось «длинная», ей
 /// достаточно поменять местами два размера.
 pub fn shape_profile_block(
-    raw: &str,
+    (raw, image): (&str, Option<&ImageSource>),
     b: &ShapeBox,
     sm: f32,
     side: i32,
@@ -140,7 +141,7 @@ pub fn shape_profile_block(
                 .collect(),
         );
     }
-    let mask = shape_mask(raw, b, cols, rows, vcx)?;
+    let mask = shape_mask(raw, image, b, cols, rows, vcx)?;
     let t = (b.threshold.clamp(0.0, 1.0) * 255.0) as u8;
     let mut iv: Vec<Option<(i32, i32)>> = (0..cols)
         .map(|x| {
@@ -165,4 +166,38 @@ pub fn shape_profile_block(
             })
             .collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_alpha_profile_consumes_typed_source_without_css_replay() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut own = crate::style::computed::Computed::default();
+        own.apply_one(
+            "shape-outside",
+            "linear-gradient(to right, black 50%, transparent 50%)",
+            vcx,
+        );
+        let style = crate::style::cascade::inherit::inherit(&Default::default(), &own, vcx);
+        let b = ShapeBox {
+            mw: 8.0,
+            mh: 2.0,
+            rx: 0.0,
+            ry: 0.0,
+            rw: 8.0,
+            rh: 2.0,
+            cx: 0.0,
+            cy: 0.0,
+            cw: 8.0,
+            ch: 2.0,
+            radius: [(0.0, 0.0); 4],
+            threshold: 0.0,
+        };
+        let profile = shape_profile(("", style.shape_image.as_ref()), &b, 0.0, -1, vcx).unwrap();
+        assert_eq!(profile, vec![4.0, 4.0]);
+    }
 }

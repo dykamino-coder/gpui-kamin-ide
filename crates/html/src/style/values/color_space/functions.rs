@@ -81,15 +81,3 @@ pub(super) fn color_fn(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f
     let (r, g, b) = gamut_map(srgb_gamma(out[0]), srgb_gamma(out[1]), srgb_gamma(out[2]));
     Some((r, g, b, a))
 }
-
-/// Resolve a specified relative color through the computed operand parser.
-pub(crate) fn resolve_relative(
-    expr: &str,
-    current: crate::style::values::value::Color,
-    vcx: ValueCx<'_>,
-) -> Option<crate::style::values::value::Color> {
-    match ColorExpression::parse(expr, vcx)? {
-        ColorExpression::Color(_) => None,
-        expression => Some(expression.resolve(current)),
-    }
-}

@@ -51,7 +51,7 @@ fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
     for layer in layers.iter().rev() {
         let unavailable = layer
             .bg_image
-            .as_deref()
+            .as_ref()
             .is_some_and(|image| !layer.image_available(image, vcx));
         // CSS Backgrounds 3 §2.3: an image that cannot be displayed is
         // treated as none. It contributes transparent black to the stack,

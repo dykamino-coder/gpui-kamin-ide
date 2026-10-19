@@ -55,14 +55,10 @@ pub(super) fn inherit_paint(
             }
         }
         gradient_filter::apply(c, own, f, vcx);
-        // Растровый градиент (`conic`, `repeating-*`) живёт строкой в
-        // `bg_image`: его стопы красятся в самой записи
-        // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).
         if own.bg_image.is_some()
-            && let Some(img) = c.bg_image.as_deref()
-            && crate::style::computed::gradient_as_raster(img)
+            && let Some(image) = &mut c.bg_image
         {
-            c.bg_image = Some(crate::style::computed::filter_gradient_text(img, &f, vcx));
+            image.filter_stops(&f);
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {

@@ -84,7 +84,7 @@ impl BgLists {
     pub fn set(&mut self, prop: BgListProp, raw: String, vcx: ValueCx<'_>) {
         let layers = super::background_layers(&raw)
             .into_iter()
-            .map(|v| super::bg_layer::BgLayer::parse(prop, v, None, vcx))
+            .map(|v| super::bg_layer::BgLayer::parse(prop, v, vcx))
             .collect();
         self.set_layers(prop, layers);
     }
@@ -110,13 +110,25 @@ impl BgLists {
                 .flat_map(|layer| layer.position_math.iter_mut().flatten())
         })
     }
-    pub(crate) fn resolve_font(&mut self, font: f32, ex: f32, ch: f32, vcx: ValueCx<'_>) {
-        for (prop, layers) in &mut self.lists {
+    pub(crate) fn images(&mut self) -> impl Iterator<Item = &mut super::super::ImageSource> {
+        self.lists
+            .iter_mut()
+            .flat_map(|(_, layers)| layers.iter_mut().filter_map(|l| l.image.as_mut()))
+    }
+    pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
+        self.lists
+            .iter()
+            .flat_map(|(_, layers)| layers)
+            .any(|layer| layer.needs_line_height(vcx))
+    }
+    pub(crate) fn resolve_lengths(
+        &mut self,
+        fix: &impl Fn(&mut Option<super::super::Len>),
+        vcx: ValueCx<'_>,
+    ) {
+        for (_, layers) in &mut self.lists {
             for layer in layers {
-                if let Some(raw) = layer.pending.take() {
-                    *layer =
-                        super::bg_layer::BgLayer::parse(*prop, &raw, Some((font, ex, ch)), vcx);
-                }
+                layer.resolve_lengths(fix, vcx);
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Source consumers for the dom text part of the field audit.
 
 pub(super) const SOURCES: &[&str] = &[
-    include_str!("../../style/computed/filter_image.rs"),
+    include_str!("../../style/computed/image_source.rs"),
     include_str!("../../style/computed/flat_background.rs"),
     include_str!("../../style/computed/flat_background/stack.rs"),
     include_str!("../../style/computed/flat_background/stack/blend.rs"),

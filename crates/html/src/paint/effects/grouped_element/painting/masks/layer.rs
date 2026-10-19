@@ -9,6 +9,7 @@ use crate::svg::path_scene::*;
 #[derive(Clone, Copy)]
 pub(crate) enum MaskInput<'a> {
     Source(&'a str),
+    Image(&'a crate::style::computed::ImageSource),
     Scene(&'a Scene),
 }
 
@@ -26,7 +27,8 @@ pub(crate) fn mask_layer(
 ) -> Option<crate::paint::background::MaskLayer> {
     let l = match input {
         MaskInput::Source(source) => source,
-        MaskInput::Scene(_) => "",
+        MaskInput::Image(crate::style::computed::ImageSource::Url(url)) => url,
+        _ => "",
     };
     let mut space_gap = (0.0, 0.0);
     let mut space_once = (false, false);
@@ -111,7 +113,10 @@ pub(crate) fn mask_layer(
             true,
         )
     } else {
-        let source = group.mask_source(l, vcx)?;
+        let source = match input {
+            MaskInput::Image(image) => group.mask_image_source(image),
+            _ => group.mask_source(l, vcx),
+        }?;
         let (tw, th) = mask_size::tile(
             source.intrinsic(),
             group.mask_scale,

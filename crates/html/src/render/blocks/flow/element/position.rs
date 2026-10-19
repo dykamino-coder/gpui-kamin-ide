@@ -87,6 +87,15 @@ pub(crate) fn position_element(
         .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
     let outer_opts = opts;
     let opts = sticky_opts.as_deref().unwrap_or(opts);
+    // Mask image lengths and colors use the same inherited computed values as
+    // the element, while the wrapper retains its own positioning and clipping.
+    let mask_style = e.style.mask_image.as_ref().map(|_| {
+        let computed = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
+        let mut style = (*e.style).clone();
+        style.mask_image = computed.mask_image;
+        style
+    });
+    let group_style = mask_style.as_ref().unwrap_or(&e.style);
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
     } else if stacking_context(&e.style)
@@ -100,11 +109,11 @@ pub(crate) fn position_element(
         // красное кольцо (`-blended-element-with-transparent-pixels`),
         // lime вместо fuchsia (`-blended-with-3D-transform`). Blink —
         // `PaintLayer::HasNonIsolatedDescendantWithBlendMode`.
-        let mut iso = e.style.clone();
+        let mut iso = group_style.clone();
         iso.isolate = Some(true);
         grouped(animated(e, inherited, opts), &iso, vcx)
     } else {
-        grouped(animated(e, inherited, opts), &e.style, vcx)
+        grouped(animated(e, inherited, opts), group_style, vcx)
     };
     let built = if e.style.root_box && e.style.canvas_bg {
         crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())

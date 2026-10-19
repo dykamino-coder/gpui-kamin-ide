@@ -18,31 +18,10 @@ impl Computed {
                 .bg_lists
                 .position_expressions()
                 .any(|value| value.needs_font_resolution());
-        if !position_units
-            && ![&self.bg_image, &self.gradient_raw, &self.mask_image]
-                .into_iter()
-                .flatten()
-                .any(|raw| {
-                    raw.contains("gradient(")
-                        && (raw.contains("lh") || crate::style::computed::has_font_units(raw))
-                })
-        {
+        if !position_units {
             return;
         }
         let (font, ex, ch, line) = self.image_font_metrics();
-        for raw in [
-            &mut self.bg_image,
-            &mut self.gradient_raw,
-            &mut self.mask_image,
-        ]
-        .into_iter()
-        .flatten()
-        {
-            if !raw.contains("gradient(") {
-                continue;
-            }
-            *raw = lengths(raw, font, root_font_px(vcx), ex, ch, line);
-        }
         // Relative units become computed lengths before position inheritance;
         // only the percentage basis must remain for concrete image geometry.
         for expression in self
@@ -53,17 +32,6 @@ impl Computed {
         {
             expression.resolve_font(font, root_font_px(vcx), ex, ch, line, vcx);
         }
-    }
-
-    /// Resolve one paint-time mask without copying unrelated style properties.
-    pub(crate) fn resolve_mask_image(&self, raw: String, vcx: ValueCx<'_>) -> String {
-        if !raw.contains("gradient(")
-            || !(raw.contains("lh") || crate::style::computed::has_font_units(&raw))
-        {
-            return raw;
-        }
-        let (font, ex, ch, line) = self.image_font_metrics();
-        lengths(&raw, font, root_font_px(vcx), ex, ch, line)
     }
 
     pub(in crate::style::computed) fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
@@ -114,25 +82,4 @@ pub(in crate::style::computed) fn lengths(
     }
     flush(&mut token, &mut output);
     output
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn background_and_mask_share_computed_line_height() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut c = Computed {
-            font_size: Some(Len::Px(50.0)),
-            line_height: Some(Len::Pct(2.0)),
-            bg_image: Some("conic-gradient(at 1lh 1em, red, green)".into()),
-            mask_image: Some("conic-gradient(at 1lh 1em, red, green)".into()),
-            ..Computed::default()
-        };
-        c.resolve_image_lengths(vcx);
-        assert_eq!(c.bg_image, c.mask_image);
-        assert!(c.bg_image.unwrap().contains("at 100px 50px"));
-    }
 }

@@ -29,10 +29,11 @@ pub(super) fn raster(
     }?;
     let key = (image.id.0, list.clone(), w, h, pixelated);
     let cache = CACHE.get_or_init(Default::default);
-    if let Some(hit) = cache
-        .lock()
-        .ok()
-        .and_then(|c| c.iter().find(|(k, _)| k == &key).map(|(_, v)| v.clone()))
+    if list.cacheable()
+        && let Some(hit) = cache
+            .lock()
+            .ok()
+            .and_then(|c| c.iter().find(|(k, _)| k == &key).map(|(_, v)| v.clone()))
     {
         return hit;
     }
@@ -44,7 +45,9 @@ pub(super) fn raster(
         iw > 0 && ih > 0 && w >= iw && h >= ih && w.is_multiple_of(iw) && h.is_multiple_of(ih);
     let resized = resize(&image, w, h, pixelated || integral)?;
     let result = super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1));
-    if let Ok(mut cache) = cache.lock() {
+    if list.cacheable()
+        && let Ok(mut cache) = cache.lock()
+    {
         if cache.len() >= 32 {
             cache.clear();
         }
@@ -170,8 +173,15 @@ mod tests {
     fn radial_input_filters_rendered_samples_without_natural_dimensions() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let source =
-            super::super::source("filter(radial-gradient(red, orange), invert(1))", vcx).unwrap();
+        let source = super::super::computed_source(
+            &crate::style::computed::ImageSource::parse(
+                "filter(radial-gradient(red, orange), invert(1))",
+                vcx,
+            )
+            .unwrap(),
+            true,
+        )
+        .unwrap();
         assert!(source.intrinsic().w.is_none());
         let filtered = source.raster((7.0, 5.0), vcx).unwrap();
         let original = super::super::gradient_raster::tile(

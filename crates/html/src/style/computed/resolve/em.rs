@@ -187,7 +187,6 @@ impl Computed {
         }
         self.resolve_decor_inset_font(fix, &family, base, vcx);
         self.resolve_gradient_lengths(fix, vcx);
-        self.bg_lists.resolve_font(used, ex, ch, vcx);
         self.resolve_image_lengths(vcx);
     }
 }

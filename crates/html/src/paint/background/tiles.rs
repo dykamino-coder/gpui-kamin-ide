@@ -100,7 +100,7 @@ pub fn paint_tiles(
     // картинки с разным природным размером, и ключ обязан их различать
     // (`image-orientation-none-content-images`: четыре `<img>` с
     // `background-image` под `image-orientation: none`).
-    let Some(found) = source(&key_exif(&src, c, vcx), vcx) else {
+    let Some(found) = computed_source(&src, c.image_orient_none != Some(true)) else {
         return;
     };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки

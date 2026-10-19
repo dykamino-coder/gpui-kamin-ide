@@ -6,7 +6,8 @@ use crate::document::state::ValueCx;
 mod lifecycle;
 mod mask_sources;
 mod painting;
-use mask_sources::{mask_layer_source, rasterize_mask_def, svg_fragment};
+pub(crate) use mask_sources::GroupMask;
+use mask_sources::{rasterize_mask_def, svg_fragment};
 
 use gpui::AnyElement;
 
@@ -42,11 +43,8 @@ pub struct Grouped {
     /// Сдвиг опорной коробки формы от bounds наружу: верх/право/низ/лево
     /// (margin-box положительные, content-box отрицательные).
     pub poly_expand: [f32; 4],
-    /// Маска-изображение (`mask-image`): источник строкой — путь растра или
-    /// запись градиента. Резолвится при отрисовке: рисунку и градиенту нужен
-    /// размер коробки (mask-size auto без своего размера = область,
-    /// css-masking §7.4), а он известен только здесь.
-    pub mask: Option<String>,
+    /// Computed CSS image layers or a clip geometry payload.
+    pub(crate) mask: Option<GroupMask>,
     /// Immutable resources captured before deferred paint of this group.
     pub(crate) mask_defs: std::sync::Arc<super::mask::MaskDefinitions>,
     /// Separate decoration and overflow contours for shaped corners.

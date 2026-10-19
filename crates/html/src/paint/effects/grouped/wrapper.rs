@@ -13,7 +13,7 @@ pub(crate) fn grouped_wrapper(
     blur: f32,
     blend: u8,
     polygon: &[(Len, Len)],
-    mask: Option<std::string::String>,
+    mask: Option<crate::paint::effects::grouped_element::GroupMask>,
     clip_rect: Option<[Option<f32>; 4]>,
     clip_inset: Option<[Len; 4]>,
     c: &Computed,
@@ -35,12 +35,7 @@ pub(crate) fn grouped_wrapper(
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
     wrapper.blend = u32::from(blend);
-    wrapper.mask = mask.map(|raw| {
-        // A mask wrapper can be built from the element's own style before
-        // the normal inherited-style resolution. Resolve gradient lengths
-        // here too; background and mask images share CSS Values 4 §6.1.1.
-        c.resolve_mask_image(raw, vcx)
-    });
+    wrapper.mask = mask;
     // Наружные тени коробки с `border-shape` повторяют фигуру и лежат
     // СНАРУЖИ неё — под буфером группы и вне его маски (css-borders-4
     // §border-shape-shadow-interaction; Blink `PaintNormalBoxShadow`, ветка
@@ -210,7 +205,11 @@ pub(crate) fn grouped_wrapper(
         _ => [0.0; 4],
     };
     wrapper.ring_over = ring_over;
-    wrapper.corner_clip = crate::paint::effects::corner_clip::new(c, wrapper.mask.as_deref(), vcx);
+    wrapper.corner_clip = crate::paint::effects::corner_clip::new(
+        c,
+        wrapper.mask.as_ref().and_then(|m| m.geometry()),
+        vcx,
+    );
     if wrapper.corner_clip.is_some() {
         wrapper.opacity = c.opacity.unwrap_or(1.0);
     }

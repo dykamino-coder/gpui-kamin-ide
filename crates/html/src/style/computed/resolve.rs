@@ -129,11 +129,8 @@ impl Computed {
         {
             gradient.resolve_lengths(fix, vcx);
         }
-        if let Some(image) = self
-            .border_image
-            .as_mut()
-            .and_then(|border| border.src.as_mut())
-        {
+        self.bg_lists.resolve_lengths(&fix, vcx);
+        for image in self.image_operands() {
             image.resolve_lengths(&fix, vcx);
         }
         if let Some((row, col)) = self.gap.as_mut() {

@@ -111,6 +111,14 @@ impl Len {
         })
     }
 
+    pub(crate) fn needs_line_height(self, vcx: ValueCx<'_>) -> bool {
+        match self {
+            Len::Lh(_) | Len::LhPx(..) => true,
+            Len::Calc(id) => calc_get(id, vcx).lh != 0.0,
+            _ => false,
+        }
+    }
+
     /// Fold a computed line-height basis without resolving percentages.
     pub(crate) fn resolve_line_height(&mut self, line: f32, vcx: ValueCx<'_>) {
         match *self {

@@ -10,7 +10,6 @@ use crate::document::state::ValueCx;
 mod declaration_parse;
 pub(crate) use declaration_parse::ParseResult;
 mod appearance;
-pub(crate) mod filter_image;
 pub(crate) mod flat_background;
 pub(crate) mod formatting_context;
 pub(crate) mod math_style;
@@ -28,17 +27,10 @@ mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
 pub(crate) mod image_function;
+mod image_operands;
 mod image_source;
 pub(crate) use image_source::ConicGradient;
 pub use image_source::{ImageFilter, ImageSource};
-mod radius_mask;
-mod radius_parse;
-mod text_indent;
-mod white_space;
-/// Recognize dimensionless color images independently of URL fallback.
-pub(crate) fn parse_image_color<'a>(raw: &'a str, vcx: ValueCx<'_>) -> Option<&'a str> {
-    image_function::color_only(raw, vcx)
-}
 mod content_functions;
 mod counters;
 mod list_style;
@@ -47,8 +39,12 @@ mod mask_shorthand;
 mod mask_size;
 pub(crate) mod orthogonal;
 mod quotes;
+mod radius_mask;
+mod radius_parse;
 mod size_range;
 mod tab_size;
+mod text_indent;
+mod white_space;
 pub mod writing_mode;
 pub(crate) use content_functions::parse_content;
 mod outline_style;

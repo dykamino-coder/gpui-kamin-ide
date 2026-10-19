@@ -21,7 +21,8 @@ pub(super) fn outer(
     }
     let Some(spec) = group
         .mask
-        .as_deref()
+        .as_ref()
+        .and_then(|m| m.geometry())
         .and_then(|m| m.strip_prefix("shape:rrect("))
         .and_then(|s| s.strip_suffix(')'))
     else {

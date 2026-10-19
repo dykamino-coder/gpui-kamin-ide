@@ -149,15 +149,27 @@ pub(super) fn float_shape_of(
                 // правый край (так его и строит `shape_profile_block`), у
                 // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
                 let pside = if line_left_bottom { -side } else { side };
-                crate::paint::background::shape_profile_block(&raw, &sb, sm.max(0.0), pside, vcx)
-                    .map(|mut p| {
-                        if vert_lr {
-                            p.reverse();
-                        }
-                        p
-                    })
+                crate::paint::background::shape_profile_block(
+                    (&raw, f.style.shape_image.as_ref()),
+                    &sb,
+                    sm.max(0.0),
+                    pside,
+                    vcx,
+                )
+                .map(|mut p| {
+                    if vert_lr {
+                        p.reverse();
+                    }
+                    p
+                })
             } else {
-                crate::paint::background::shape_profile(&raw, &sb, sm.max(0.0), side, vcx)
+                crate::paint::background::shape_profile(
+                    (&raw, f.style.shape_image.as_ref()),
+                    &sb,
+                    sm.max(0.0),
+                    side,
+                    vcx,
+                )
             };
             match profile {
                 Some(ext) => crate::layout::float::shapes::FloatShape::Profile {

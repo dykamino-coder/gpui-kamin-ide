@@ -11,13 +11,11 @@ impl ImageSource {
             Self::Conic(value) => [value.position.x, value.position.y]
                 .into_iter()
                 .flatten()
-                .any(|l| match l {
-                    Len::Lh(_) | Len::LhPx(..) => true,
-                    Len::Calc(id) => crate::style::values::value::calc_get(id, vcx).lh != 0.0,
-                    _ => false,
-                }),
+                .any(|l| l.needs_line_height(vcx)),
             Self::CrossFade(items) => items.iter().any(|(image, _)| image.needs_line_height(vcx)),
-            Self::Filter { image, .. } => image.needs_line_height(vcx),
+            Self::Filter { image, program } => {
+                image.needs_line_height(vcx) || program.needs_line_height(vcx)
+            }
             _ => false,
         }
     }
@@ -31,7 +29,10 @@ impl ImageSource {
                     image.resolve_lengths(fix, vcx);
                 }
             }
-            Self::Filter { image, .. } => image.resolve_lengths(fix, vcx),
+            Self::Filter { image, program } => {
+                image.resolve_lengths(fix, vcx);
+                program.resolve_lengths(fix, vcx);
+            }
             _ => {}
         }
     }

@@ -42,11 +42,13 @@ pub(super) fn syntax_accepts(syntax: &str, value: &str, vcx: ValueCx<'_>) -> boo
 /// ждёт `file:///` с прямыми косыми (как пишет стенд для `<img src>`), а
 /// разбор стиля отдаёт голый путь. `None` — файла нет: такая картинка коробки
 /// не даёт (Servo `components/layout/replaced.rs:348`).
-pub(crate) fn content_image_src(src: &str, vcx: ValueCx<'_>) -> Option<String> {
-    if let Some((image, _)) = crate::style::computed::filter_image::parse_filter_image(src, vcx) {
-        content_image_src(&image, vcx)?;
-        return Some(src.to_string());
-    }
+pub(crate) fn content_image_src(image: &crate::style::computed::ImageSource) -> Option<String> {
+    use crate::style::computed::ImageSource;
+    let src = match image {
+        ImageSource::Url(src) => src,
+        ImageSource::Filter { image, .. } => return content_image_src(image),
+        _ => return None,
+    };
     if src.starts_with("data:") {
         return Some(src.to_string());
     }
@@ -171,14 +173,18 @@ pub(super) fn pseudo_box_named(
     for item in &list {
         if let crate::style::computed::ContentItem::Image(src) = item {
             flush(&mut run, &mut children, counters);
-            if let Some(src) = content_image_src(src, vcx) {
+            if let Some(src) = content_image_src(src) {
                 children.push(Node::Element(Element {
                     marks: Default::default(),
                     list_item: None,
                     node_id: 0,
                     anim: None,
                     tag: "img".into(),
-                    style: Computed::default().into(),
+                    style: Computed {
+                        content: Some(vec![item.clone()]),
+                        ..Computed::default()
+                    }
+                    .into(),
                     hover: None,
                     first_letter: None,
                     first_line: None,

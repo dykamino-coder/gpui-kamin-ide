@@ -5,6 +5,7 @@ use crate::document::state::ValueCx;
 use crate::style::values::{color_space::ColorExpression, value::Color};
 
 mod conic;
+mod filter;
 mod parse;
 mod resolve;
 pub(crate) use conic::ConicGradient;
@@ -49,22 +50,31 @@ pub enum ImageSource {
     Invalid,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ImageFilter {
     pub(crate) filter: Option<Filter>,
     pub(crate) shadow: Option<Shadow>,
     pub(crate) calls: usize,
+    pub(in crate::style::computed) shadow_current: bool,
+    pub(in crate::style::computed) blur_length: Option<Len>,
+    pub(in crate::style::computed) shadow_value: Option<super::parse_util::ShadowValue>,
 }
 
 impl ImageFilter {
+    pub(crate) fn color_filter(filter: Filter) -> Self {
+        Self {
+            filter: Some(Filter {
+                blur: 0.0,
+                ..filter
+            }),
+            calls: 8,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn parse(raw: &str, vcx: ValueCx<'_>) -> Self {
         let mut style = Computed::default();
-        style.apply_one("filter", raw, vcx);
-        Self {
-            filter: style.filter,
-            shadow: style.drop_shadow,
-            calls: raw.matches('(').count(),
-        }
+        style.parse_filter(raw, vcx)
     }
 }
 
@@ -78,11 +88,58 @@ impl ImageSource {
                     image.resolve_colors(current);
                 }
             }
-            Self::Filter { image, .. } => image.resolve_colors(current),
+            Self::Filter { image, program } => {
+                image.resolve_colors(current);
+                program.resolve_colors(current);
+            }
             Self::Color(color) => color.resolve(current),
             Self::Fallback {
                 color: Some(color), ..
             } => color.resolve(current),
+            _ => {}
+        }
+    }
+
+    /// Retain the historical element-filter stop quantization without CSS text.
+    pub(crate) fn filter_stops(&mut self, filter: &Filter) {
+        let apply = |color: &mut Color| {
+            *color = filter.apply(*color);
+            color.r = (color.r * 255.0).round() / 255.0;
+            color.g = (color.g * 255.0).round() / 255.0;
+            color.b = (color.b * 255.0).round() / 255.0;
+        };
+        match self {
+            Self::Gradient {
+                value,
+                repeating: true,
+            } => {
+                apply(&mut value.from);
+                apply(&mut value.to);
+                for (color, _) in &mut value.stops {
+                    apply(color);
+                }
+                for (color, _) in &mut value.stops_px {
+                    apply(color);
+                }
+                for (color, _, _) in &mut value.stops_raw {
+                    apply(color);
+                }
+                value.polar = None;
+                value.colors.clear();
+                if !value.explicit_interpolation {
+                    value.space = super::GradSpace::Srgb;
+                }
+            }
+            Self::Conic(value) => {
+                for (color, _) in &mut value.stops {
+                    apply(color);
+                }
+                value.polar = None;
+                value.colors.clear();
+                if !value.explicit_interpolation {
+                    value.space = super::GradSpace::Srgb;
+                }
+            }
             _ => {}
         }
     }
@@ -97,3 +154,12 @@ impl ImageSource {
 
 #[cfg(test)]
 mod tests;
+
+impl Computed {
+    pub(crate) fn content_image(&self) -> Option<&ImageSource> {
+        match self.content.as_deref() {
+            Some([super::ContentItem::Image(image)]) => Some(image),
+            _ => None,
+        }
+    }
+}

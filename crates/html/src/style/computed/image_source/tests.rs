@@ -111,3 +111,90 @@ fn arena_dependent_geometry_does_not_enter_global_cache() {
     .unwrap();
     assert!(!image.cacheable());
 }
+
+#[test]
+fn background_layers_inherit_computed_image_lengths_and_current_colors() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let mut own = Computed::default();
+    own.apply_one("font-size", "20px", vcx);
+    own.apply_one("line-height", "2", vcx);
+    own.apply_one("background-image", "conic-gradient(at 1lh 1em, currentcolor, blue), linear-gradient(currentcolor 1em, blue 2em)", vcx);
+    let parent = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
+    let mut own = Computed::default();
+    own.apply_one("background", "inherit", vcx);
+    own.apply_one("font-size", "80px", vcx);
+    own.apply_one("color", "green", vcx);
+    let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
+    let layers = child.bg_layers(vcx).unwrap();
+    let ImageSource::Conic(image) = layers[0].bg_image.as_ref().unwrap() else {
+        panic!("conic");
+    };
+    assert_eq!(image.position.x, Some(Len::Px(40.0)));
+    assert_eq!(image.position.y, Some(Len::Px(20.0)));
+    assert_eq!(image.stops[0].0, Color::parse("green", vcx).unwrap());
+    let image = layers[1].bg_image.as_ref().unwrap().gradient().unwrap().0;
+    assert_eq!(image.stops_px[0].1, 20.0);
+    assert_eq!(image.stops_px[1].1, 40.0);
+}
+
+#[test]
+fn layered_background_geometry_uses_own_line_height() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let mut own = Computed::default();
+    own.apply_one("font-size", "20px", vcx);
+    own.apply_one("line-height", "2", vcx);
+    own.apply_one("background-image", "url(a), url(b)", vcx);
+    own.apply_one("background-size", "1lh 2lh, 3lh 4lh", vcx);
+    own.apply_one("background-position", "1lh 2lh, 3lh 4lh", vcx);
+    let c = inherit(&Computed::default(), &own, vcx);
+    let layers = c.bg_layers(vcx).unwrap();
+    assert_eq!(layers[1].bg_pos.x, Some(Len::Px(120.0)));
+    assert_eq!(layers[1].bg_pos.y, Some(Len::Px(160.0)));
+    assert_eq!(
+        layers[0].bg_size,
+        super::super::BgSize::Fixed(Some(Len::Px(40.0)), Some(Len::Px(80.0)))
+    );
+}
+
+#[test]
+fn filtered_gradient_stops_keep_interpolation_without_color_replay() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    for (header, space) in [
+        ("", super::super::GradSpace::Srgb),
+        ("in oklab, ", super::super::GradSpace::Oklab),
+    ] {
+        let mut image = ImageSource::parse(
+            &format!("repeating-linear-gradient({header}currentcolor, oklab(50% 0.1 0.1))"),
+            vcx,
+        )
+        .unwrap();
+        image.resolve_colors(Color::parse("red", vcx).unwrap());
+        image.filter_stops(&Filter {
+            brightness: 0.5,
+            ..Filter::neutral()
+        });
+        let before = image.gradient().unwrap().0.stops.clone();
+        image.resolve_colors(Color::parse("green", vcx).unwrap());
+        let value = image.gradient().unwrap().0;
+        assert_eq!(value.space, space);
+        assert_eq!(value.stops, before);
+        assert_eq!(value.stops[0].0.r, 128.0 / 255.0);
+    }
+}
+#[test]
+fn url_function_names_keep_css_case_and_escape_rules() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    for raw in ["UrL(MixedCase.png)", r#"U\r\4c ("MixedCase.png")"#] {
+        let decls = crate::style::css::parse_decls(&format!("background: {raw}"));
+        let mut style = Computed::default();
+        style.apply_one("background", &decls["background"], vcx);
+        assert_eq!(
+            style.bg_image,
+            Some(ImageSource::Url("MixedCase.png".into()))
+        );
+    }
+}

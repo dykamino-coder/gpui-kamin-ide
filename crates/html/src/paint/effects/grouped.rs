@@ -153,7 +153,16 @@ pub(super) fn grouped_with(
             ch,
         )
     });
-    let mask = c.mask_image.clone().or(clip_shape).or(bshape).or(rrect);
+    let mask = c
+        .mask_image
+        .clone()
+        .map(super::grouped_element::GroupMask::Images)
+        .or_else(|| {
+            clip_shape
+                .or(bshape)
+                .or(rrect)
+                .map(super::grouped_element::GroupMask::Geometry)
+        });
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся

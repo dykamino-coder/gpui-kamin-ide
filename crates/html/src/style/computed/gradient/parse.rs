@@ -178,6 +178,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
             vec![]
         },
         space,
+        explicit_interpolation: interp.is_some(),
         hue: hue_arc,
         colors: if colors.iter().any(|c| c.depends_on_current()) {
             colors
