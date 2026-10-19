@@ -165,11 +165,17 @@ pub(super) fn band_host_m(
     // Orthogonal floats with native block children share their intrinsic
     // inline size at the root, as do nested floats. Plain inline paragraphs retain
     // their native fit-content claim when measured independently.
+    // Grid/flex/multicol roots already resolve their children through the native
+    // intrinsic solver. A definite physical size also constrains the native root;
+    // unconstrained orthogonal blocks still need shared root stretch.
     if lead.is_empty()
         && rest.iter().all(is_blank)
         && floaters.iter().any(|f| {
             band_orthogonal(&f.style, wm)
                 && subtree_has_text(f)
+                && !crate::layout::float::band_flow_host::own_layout_mode(&f.style)
+                && crate::style::values::value::px_strict(f.style.width).is_none()
+                && crate::style::values::value::px_strict(f.style.height).is_none()
                 && (crate::layout::writing_mode::native_vertical::has_in_flow_block_children(
                     &f.children,
                 ) || !crate::layout::float::band_flow_host::flow_interior_plain(f))

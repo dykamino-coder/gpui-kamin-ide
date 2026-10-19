@@ -141,15 +141,19 @@ fn inline_ruby_remains_in_the_measured_paragraph_across_breaks() {
 }
 
 #[test]
-fn orthogonal_inline_float_roots_use_native_claims_but_block_children_stay_guarded() {
+fn orthogonal_float_roots_keep_native_layout_ownership() {
     for mode in ["vertical-lr", "vertical-rl", "sideways-lr"] {
-        for (content, admitted) in [
-            ("<span>first second</span>", true),
-            ("<div>first</div><div>second</div>", false),
-            (r#"<span style="float:left">nested</span>"#, false),
+        for (layout, content, admitted) in [
+            ("", "<span>first second</span>", true),
+            ("", "<div>first</div><div>second</div>", false),
+            ("", r#"<span style="float:left">nested</span>"#, false),
+            ("width:100px", "<div>first</div><div>second</div>", true),
+            ("height:100px", "<div>first</div><div>second</div>", true),
+            ("display:grid", "<div>first</div><div>second</div>", true),
+            ("display:flex", "<div>first</div><div>second</div>", true),
         ] {
             let markup = format!(
-                r#"<div id="source"><div style="float:left;writing-mode:{mode}">{content}</div><div style="float:right;writing-mode:{mode}">{content}</div></div>"#
+                r#"<div id="source"><div style="float:left;writing-mode:{mode};{layout}">{content}</div><div style="float:right;writing-mode:{mode};{layout}">{content}</div></div>"#
             );
             let tree = parse(&markup, "");
             let nodes = &find(&tree, "source").expect("source").children;
@@ -163,7 +167,7 @@ fn orthogonal_inline_float_roots_use_native_claims_but_block_children_stay_guard
             if !admitted {
                 assert!(measured.is_none(), "block children require root sizing");
             } else {
-                let (host, end, lifted) = measured.expect("inline root owns its fit-content claim");
+                let (host, end, lifted) = measured.expect("root owns its intrinsic layout");
                 assert_eq!(end, nodes.len());
                 assert!(lifted.is_empty());
                 assert_eq!(
