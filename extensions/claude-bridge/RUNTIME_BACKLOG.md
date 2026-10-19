@@ -35,12 +35,13 @@ INC-0067/0068 и completion/acceptance flow. #380 / INC-0069 принят отд
 
 | INC | Текущее состояние | Следующий owner / artifact |
 | --- | --- | --- |
-| [INC-0067](runtime-issues/INC-2026-0067.md) | confirmed; #377 prepared; пересмотр gate для bounded host/listener contract | Текущий maintainer: exact-head CI, acceptance и merge; deployment owner: linked field checklist после выпуска |
-| [INC-0068](runtime-issues/INC-2026-0068.md) | confirmed; #378 prepared; bounded server shrink/replacement recovery | Текущий maintainer: exact-head CI, acceptance и merge; deployment owner: linked field checklist; same-identity regrowth remains a limit |
+| [INC-0067](runtime-issues/INC-2026-0067.md) | resolved bounded source contract; #377 merged `8f8d3bfa`, accepted CI/tests/builds; field не проверен | Maintainer: один release и Published fix; deployment owner: linked field checklist после выпуска |
+| [INC-0068](runtime-issues/INC-2026-0068.md) | resolved bounded source contract; #378 merged `84259a44`, accepted CI/dry run/tests; field не проверен | Maintainer: один release и Published fix; deployment owner: linked field checklist; same-identity regrowth remains a limit |
 
 Решение о классе сохраняет историческое требование и непроверенный field
 outcome; native BR-25/31 и hook INC-0037 остаются открыты по своим карточкам.
-После merge и публикации эти две строки и canonical cards обновляются отдельно.
+Source outcome проверен в `origin/main` `84259a44`. После публикации добавить
+проверенные delivery facts в эти строки и canonical cards отдельным docs PR.
 
 ## Как начать следующий проход
 
