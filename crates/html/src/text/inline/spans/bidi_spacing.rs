@@ -115,11 +115,16 @@ pub fn bidi_letter_spans(
 }
 
 /// Block tracking in pixels, resolved like the paragraph's own value.
-pub fn block_letter_spacing(style: &crate::style::computed::Computed, size: f32) -> Pixels {
+pub fn block_letter_spacing(
+    style: &crate::style::computed::Computed,
+    size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Pixels {
     gpui::px(crate::text::metrics::spacing_px(
         style.letter_spacing,
         &style.font_family.clone().unwrap_or_default(),
         size,
+        vcx,
     ))
 }
 

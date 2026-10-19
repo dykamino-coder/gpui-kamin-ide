@@ -157,9 +157,13 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
 /// `calc`). Ноль подставлять НЕЛЬЗЯ: ветка насквозь значение ЗАПИСЫВАЕТ
 /// обратно, и написанное пропадёт навсегда (`margin-bottom-103`: `50%`
 /// превращалось в `0`).
-pub(super) fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(super) fn margin_or_bail(
+    l: Option<Len>,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
     match l {
         None => Some(0.0),
-        Some(_) => margin_px(l, style),
+        Some(_) => margin_px(l, style, vcx),
     }
 }

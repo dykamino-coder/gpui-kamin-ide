@@ -8,6 +8,7 @@ pub(crate) fn children(
     parent: &Computed,
     reverse: bool,
     lead: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Node> {
     if matches!(
         parent.display,
@@ -32,7 +33,8 @@ pub(crate) fn children(
             _ => COLLAPSE_FONT_PX.with(std::cell::Cell::get),
         };
         let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
-        let out = crate::layout::block::margins::collapse_flow_margins(children, reverse, lead);
+        let out =
+            crate::layout::block::margins::collapse_flow_margins(children, reverse, lead, vcx);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));
         out
     }
@@ -57,6 +59,8 @@ mod tests {
 
     #[test]
     fn vertical_grid_and_flex_keep_asymmetric_item_margins_in_both_directions() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         for display in [
             Display::Grid,
             Display::InlineGrid,
@@ -72,7 +76,7 @@ mod tests {
                     )),
                     ..Computed::default()
                 };
-                for node in children(items(), &parent, reverse, Some(0.0)) {
+                for node in children(items(), &parent, reverse, Some(0.0), vcx) {
                     let Node::Element(item) = node else {
                         panic!("element expected")
                     };
@@ -85,13 +89,15 @@ mod tests {
 
     #[test]
     fn ordinary_vertical_blocks_still_collapse_adjacent_positive_margins() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         let parent = Computed {
             writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true, false, false,
             )),
             ..Computed::default()
         };
-        let result = children(items(), &parent, false, None);
+        let result = children(items(), &parent, false, None, vcx);
         let Node::Element(second) = &result[1] else {
             panic!("element expected")
         };
@@ -101,13 +107,15 @@ mod tests {
 
     #[test]
     fn inline_boxes_keep_their_margins_and_separate_block_neighbors() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         for reverse in [false, true] {
             let mut input = items();
             let Node::Element(middle) = &mut input[1] else {
                 unreachable!()
             };
             middle.style.display = Some(Display::InlineBlock);
-            let output = children(input, &Computed::default(), reverse, None);
+            let output = children(input, &Computed::default(), reverse, None, vcx);
             for index in [1, 2] {
                 let Node::Element(item) = &output[index] else {
                     unreachable!()
@@ -120,10 +128,12 @@ mod tests {
 
     #[test]
     fn text_lines_separate_block_margins_but_whitespace_does_not() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         for (text, expected_left) in [("text", 12.0), (" \n ", 6.0)] {
             let mut input = items();
             input.insert(1, Node::Text(text.into()));
-            let output = children(input, &Computed::default(), false, None);
+            let output = children(input, &Computed::default(), false, None, vcx);
             let Node::Element(second) = &output[2] else {
                 unreachable!()
             };

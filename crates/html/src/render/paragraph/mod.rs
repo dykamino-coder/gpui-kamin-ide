@@ -70,7 +70,11 @@ fn paragraph_routed(
             let line = match base.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => size * k,
-                _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
+                _ => crate::text::metrics::normal_px(
+                    normal_fraction(&base, opts),
+                    size,
+                    opts.cx.vcx(),
+                ),
             };
             let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;

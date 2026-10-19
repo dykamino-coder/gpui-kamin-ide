@@ -52,12 +52,12 @@ pub(crate) fn place_element(
                 if x_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.left, &e.style).unwrap_or(0.0)
+                    margin_px(e.style.margin.left, &e.style, opts.cx.vcx()).unwrap_or(0.0)
                 },
                 if y_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.top, &e.style).unwrap_or(0.0)
+                    margin_px(e.style.margin.top, &e.style, opts.cx.vcx()).unwrap_or(0.0)
                 },
             ),
             rtl: inherited.wm().rtl(),

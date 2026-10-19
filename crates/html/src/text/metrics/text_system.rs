@@ -1,8 +1,8 @@
-//! Text system for metrics; split out to keep the owning module within 250 lines.
+//! Thread-bound platform font service and uncached metric measurements.
 
-use super::MONO;
 use super::space;
-use super::{INSTALLED, MONO_FAMILIES, WRAP, install_probe, install_vprobe};
+use super::{INSTALLED, WRAP};
+use crate::document::state::ValueCx;
 
 thread_local! {
     static FONT_SYSTEM: std::cell::RefCell<Option<std::sync::Arc<gpui::TextSystem>>> =
@@ -11,7 +11,7 @@ thread_local! {
 
 /// Ruby's content edge uses the selected face, including generic family,
 /// weight and style (CSS Ruby 1 §3.4; Blink ruby_utils.cc ComputeEmHeight).
-pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
+pub(crate) fn font_extents(font: &gpui::Font, size: f32, vcx: ValueCx<'_>) -> (f32, f32) {
     FONT_SYSTEM.with(|cell| {
         let system = cell.borrow();
         if let Some(system) = system.as_ref() {
@@ -25,7 +25,7 @@ pub(crate) fn font_extents(font: &gpui::Font, size: f32) -> (f32, f32) {
                 ),
             )
         } else {
-            let (ascent, descent, _) = super::vmetrics_px(&font.family, size);
+            let (ascent, descent, _) = super::vmetrics_px(&font.family, size, vcx);
             (ascent, descent)
         }
     })
@@ -64,16 +64,7 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
             .map(|n| n.to_ascii_lowercase())
             .collect::<std::collections::HashSet<_>>();
     });
-    if let Some(found) = MONO_FAMILIES
-        .into_iter()
-        .find(|want| names.iter().any(|have| have.eq_ignore_ascii_case(want)))
-    {
-        MONO.with(|m| *m.borrow_mut() = found);
-    }
-    // Второму щупу (вертикальные метрики) нужен свой владелец `Arc`:
-    // первый забирает `text_system` в замыкание целиком.
-    let text_system2 = text_system.clone();
-    let text_system3 = text_system.clone();
+    let text_system3 = text_system;
     WRAP.with(|w| {
         *w.borrow_mut() = Some(Box::new(
             move |font: &gpui::Font, size: f32, text: &str, width: f32| {
@@ -90,7 +81,13 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
             },
         ));
     });
-    install_probe(move |family, size| {
+}
+
+pub(super) fn horizontal(family: &str, size: f32) -> Option<(f32, f32, f32, f32)> {
+    FONT_SYSTEM.with(|cell| {
+        let system = cell.borrow();
+        let text_system = system.as_ref()?;
+
         // Родовое имя системе шрифтов отдавать нельзя: `sans-serif` — это не
         // шрифт, а разряд, и поиск по нему кончается ничем. Подставляется то
         // же семейство, что и в каскаде за `sans-serif`.
@@ -127,23 +124,26 @@ pub fn use_text_system(text_system: std::sync::Arc<gpui::TextSystem>) {
             .ok()
             .filter(|_| text_system.has_glyph(id, '水'))
             .unwrap_or(0.0);
-        (ch, f32::from(text_system.x_height(id, size)), line, ic)
-    });
-    // Вертикальные метрики того же семейства: подъём и спуск ПОРОЗНЬ (в GPUI
-    // спуск отрицателен) плюс высота прописной — по ним `text-box-trim`
-    // считает срез (css-inline-3 §4.2).
-    install_vprobe(move |family, size| {
+        Some((ch, f32::from(text_system.x_height(id, size)), line, ic))
+    })
+}
+
+pub(super) fn vertical(family: &str, size: f32) -> Option<(f32, f32, f32)> {
+    FONT_SYSTEM.with(|cell| {
+        let system = cell.borrow();
+        let text_system = system.as_ref()?;
+
         let name: gpui::SharedString = if family.is_empty() {
             crate::style::computed::GENERIC_SANS.into()
         } else {
             family.to_string().into()
         };
-        let id = text_system2.resolve_font(&gpui::font(name));
+        let id = text_system.resolve_font(&gpui::font(name));
         let size = gpui::px(size);
-        (
-            f32::from(text_system2.ascent(id, size)),
-            -f32::from(text_system2.descent(id, size)),
-            f32::from(text_system2.cap_height(id, size)),
-        )
-    });
+        Some((
+            f32::from(text_system.ascent(id, size)),
+            -f32::from(text_system.descent(id, size)),
+            f32::from(text_system.cap_height(id, size)),
+        ))
+    })
 }

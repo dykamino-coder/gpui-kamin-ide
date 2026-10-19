@@ -21,6 +21,7 @@ pub(super) fn configure(para: Paragraph, block: &Computed, opts: &RenderOpts) ->
         _ => crate::text::metrics::normal_px(
             crate::text::text_box::normal_fraction(first, opts),
             size,
+            opts.cx.vcx(),
         ),
     };
     para.first_line_box(

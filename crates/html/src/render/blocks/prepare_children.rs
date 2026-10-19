@@ -202,6 +202,7 @@ pub(crate) fn prepare_children(
                     | Some(crate::style::computed::Position::Fixed)
             ),
             opts.cx.cb_width,
+            opts.cx.vcx(),
         );
         margin_height::zero_float_blocks(&mut out, inherited, vcx);
         COLLAPSE_FONT_PX.with(|c| c.set(prev));

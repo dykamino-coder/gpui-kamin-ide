@@ -86,7 +86,7 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     let lh = match inh.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        None => crate::text::metrics::normal_px(normal_fraction(&inh, &opts), size),
+        None => crate::text::metrics::normal_px(normal_fraction(&inh, &opts), size, opts.cx.vcx()),
         _ => return None,
     };
     if lh <= 0.0 {
@@ -100,8 +100,8 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     // полем у первого и последнего ребёнка — коробка ужимается) и срез у
     // разрыва: строка до разрыва кончается на своей метрике, строка после —
     // с неё начинается (`text-box-trim-multicol-001…012`).
-    let tt = trim_amount(&inh, size, lh, true);
-    let tb = trim_amount(&inh, size, lh, false);
+    let tt = trim_amount(&inh, size, lh, true, opts.cx.vcx());
+    let tb = trim_amount(&inh, size, lh, false, opts.cx.vcx());
     let shift = if c.style.text_box_trim_start || c.marks.host_trim_start {
         tt
     } else {

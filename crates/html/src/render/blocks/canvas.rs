@@ -79,7 +79,7 @@ pub(crate) fn canvas_layer(
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    crate::text::metrics::spacing_px(Some(l), &fam, em)
+                    crate::text::metrics::spacing_px(Some(l), &fam, em, vcx)
                 }
                 _ => 0.0,
             };

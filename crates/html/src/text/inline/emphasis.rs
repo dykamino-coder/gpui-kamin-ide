@@ -15,6 +15,7 @@ pub(crate) fn emphasis_spans(
     rotated: Option<bool>,
     // Слои аннотаций руби-базы, в которой абзац собирается (`LayoutCx::ruby_layers`).
     ruby: Option<&std::rc::Rc<crate::text::ruby::layers::Layers>>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<crate::text::paragraph::EmphSpan> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -33,7 +34,7 @@ pub(crate) fn emphasis_spans(
             let line_height = match style.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => crate::text::metrics::normal_px(normal, size),
+                _ => crate::text::metrics::normal_px(normal, size, vcx),
             };
             out.push(crate::text::paragraph::EmphSpan {
                 ruby: ruby.cloned(),

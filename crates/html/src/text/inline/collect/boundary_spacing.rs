@@ -9,7 +9,11 @@ use crate::text::inline::*;
 /// Только НЕатомарный строчный элемент без замещения: у атома и картинки
 /// межбуквенного интервала по краям Blink не ставит (интервал живёт в наборе
 /// текста, `shape_result.cc` `ApplySpacing`).
-pub(super) fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Option<f32> {
+pub(super) fn boundary_gap_after_box(
+    e: &Element,
+    inherited: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
     let inline_level = e.style.display.is_none() || e.style.inline_display == Some(true);
     let replaced = matches!(
         e.tag.as_str(),
@@ -36,6 +40,7 @@ pub(super) fn boundary_gap_after_box(e: &Element, inherited: &Computed) -> Optio
         inherited.letter_spacing,
         &inherited.font_family.clone().unwrap_or_default(),
         size,
+        vcx,
     );
     (gap != 0.0).then_some(gap)
 }

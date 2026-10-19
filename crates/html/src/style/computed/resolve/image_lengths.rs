@@ -25,7 +25,7 @@ impl Computed {
         {
             return;
         }
-        let (font, ex, ch, line) = self.image_font_metrics();
+        let (font, ex, ch, line) = self.image_font_metrics(vcx);
         for raw in [
             &mut self.bg_image,
             &mut self.gradient_raw,
@@ -53,22 +53,22 @@ impl Computed {
         {
             return raw;
         }
-        let (font, ex, ch, line) = self.image_font_metrics();
+        let (font, ex, ch, line) = self.image_font_metrics(vcx);
         lengths(&raw, font, root_font_px(vcx), ex, ch, line)
     }
 
-    fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
+    fn image_font_metrics(&self, vcx: crate::document::state::ValueCx<'_>) -> (f32, f32, f32, f32) {
         let font = match self.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
         let family = self.font_family.as_deref().unwrap_or("");
-        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font, vcx);
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
             _ => {
-                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font);
+                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font, vcx);
                 ascent + descent
             }
         };

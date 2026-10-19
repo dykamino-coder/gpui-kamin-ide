@@ -36,7 +36,7 @@ impl Computed {
             _ => {
                 let normal = crate::text::metrics::normal_line(family, vcx);
                 if normal > 0.0 {
-                    crate::text::metrics::normal_px(normal, font)
+                    crate::text::metrics::normal_px(normal, font, vcx)
                 } else {
                     1.2 * font
                 }

@@ -63,7 +63,7 @@ impl Computed {
                 String::new()
             }
         });
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, font_px);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, font_px, vcx);
         let px_of = |v: &str| -> String {
             if has_font_units(v) {
                 font_lengths_to_px(v, font_px, 16.0, ex, ch)

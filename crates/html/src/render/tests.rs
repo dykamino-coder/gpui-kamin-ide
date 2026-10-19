@@ -35,6 +35,8 @@ fn page_children(html: &str) -> Vec<Node> {
 
 #[test]
 fn margin_collapse_matches_the_browser_on_the_fixture_case() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     // Ровно тот случай, на котором сравнение с Chrome показало сдвиг на
     // 10 точек: блок-обёртка без своего отступа сверху и ребёнок с ним.
     let page = page_children(
@@ -46,7 +48,7 @@ fn margin_collapse_matches_the_browser_on_the_fixture_case() {
              </div>",
     );
     let children = match &page[0] {
-        Node::Element(e) => collapse_margins(&e.children, false, None),
+        Node::Element(e) => collapse_margins(&e.children, false, None, vcx),
         _ => panic!("нет страницы"),
     };
     let stack = children
@@ -68,6 +70,8 @@ fn margin_collapse_matches_the_browser_on_the_fixture_case() {
 
 #[test]
 fn out_of_flow_neighbours_keep_their_margins() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     // Плавающий блок в схлопывании не участвует: его поле стоит как
     // написано, и соседа он не обкрадывает.
     let nodes = parse(
@@ -76,11 +80,11 @@ fn out_of_flow_neighbours_keep_their_margins() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false, None),
+        Node::Element(html) => collapse_margins(&html.children, false, None, vcx),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false, None),
+        Node::Element(b) => collapse_margins(&b.children, false, None, vcx),
         _ => panic!("нет body"),
     };
     for (i, n) in body.iter().enumerate() {
@@ -95,6 +99,8 @@ fn out_of_flow_neighbours_keep_their_margins() {
 
 #[test]
 fn margins_in_em_collapse_too() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     // `margin: 1em 0` — самая частая запись отступа в разметке: без
     // перевода в точки схлопывание не срабатывало вовсе.
     let nodes = parse(
@@ -102,11 +108,11 @@ fn margins_in_em_collapse_too() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false, None),
+        Node::Element(html) => collapse_margins(&html.children, false, None, vcx),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false, None),
+        Node::Element(b) => collapse_margins(&b.children, false, None, vcx),
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
@@ -119,6 +125,8 @@ fn margins_in_em_collapse_too() {
 
 #[test]
 fn adjacent_margins_collapse_into_the_larger() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     // В CSS нижний отступ одного блока и верхний отступ следующего не
     // складываются: остаётся больший. Иначе документ растёт сверху вниз.
     let nodes = parse(
@@ -126,11 +134,11 @@ fn adjacent_margins_collapse_into_the_larger() {
         "",
     );
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false, None),
+        Node::Element(html) => collapse_margins(&html.children, false, None, vcx),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {
-        Node::Element(b) => collapse_margins(&b.children, false, None),
+        Node::Element(b) => collapse_margins(&b.children, false, None, vcx),
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
@@ -143,6 +151,8 @@ fn adjacent_margins_collapse_into_the_larger() {
 
 #[test]
 fn first_child_margin_leaks_through_a_borderless_parent() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     // Отступ первого ребёнка в CSS — тот же отступ, что у родителя, если
     // между ними нет ни рамки, ни внутреннего отступа.
     let nodes = parse(
@@ -153,7 +163,7 @@ fn first_child_margin_leaks_through_a_borderless_parent() {
     // коробку цепи, а у всех внутренних снимается. Пока подъём шёл на
     // один уровень, то же поле поднималось повторно на каждом.
     let inner = match &nodes[0] {
-        Node::Element(html) => collapse_margins(&html.children, false, None),
+        Node::Element(html) => collapse_margins(&html.children, false, None, vcx),
         _ => panic!("нет корня"),
     };
     let body = match &inner[0] {

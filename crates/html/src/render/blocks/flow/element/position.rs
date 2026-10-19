@@ -110,7 +110,13 @@ pub(crate) fn position_element(
     };
     let built = match root_box {
         Some(area) if e.style.root_box && e.style.canvas_bg => {
-            crate::paint::background::record_root_box(built, area, &e.style, opts.base_size())
+            crate::paint::background::record_root_box(
+                built,
+                area,
+                &e.style,
+                opts.base_size(),
+                opts.cx.vcx(),
+            )
         }
         _ => built,
     };

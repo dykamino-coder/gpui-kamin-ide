@@ -64,12 +64,12 @@ pub(crate) fn generic_children(
                 // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
                 // modes-4 §7.4).
                 let sealed = makes_bfc
-                    || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-                    || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+                    || margin_px(border, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0;
                 if sealed {
                     None
                 } else {
-                    Some(margin_px(own, &e.style).unwrap_or(0.0))
+                    Some(margin_px(own, &e.style, opts.cx.vcx()).unwrap_or(0.0))
                 }
             };
             // Доли полей/отступов — в точки от высоты контейнера ДО
@@ -81,6 +81,7 @@ pub(crate) fn generic_children(
                         &merged,
                         reverse,
                         lead_margin,
+                        opts.cx.vcx(),
                     ),
                     &merged,
                     opts.viewport.0,

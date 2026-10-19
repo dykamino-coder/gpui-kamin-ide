@@ -77,8 +77,8 @@ pub(crate) fn static_position_layer(
     // под нами поля у absolute без краёв не считает — сдвиг
     // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
     // эталонный зелёный стоял без своих margin: 50px).
-    let ml = margin_px(e.style.margin.left, &e.style).unwrap_or(0.0);
-    let mt = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
+    let ml = margin_px(e.style.margin.left, &e.style, cx.vcx()).unwrap_or(0.0);
+    let mt = margin_px(e.style.margin.top, &e.style, cx.vcx()).unwrap_or(0.0);
     // Под потоком (`below`) коробка остаётся абсолютной на месте
     // распорки, и поле от статической позиции ей уже даёт сама
     // раскладка (taffy: `static_position + margin`); обёртка
@@ -94,7 +94,7 @@ pub(crate) fn static_position_layer(
     // (min-content). Правый край — только при ltr в
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
-    let mr = margin_px(e.style.margin.right, &e.style).unwrap_or(0.0);
+    let mr = margin_px(e.style.margin.right, &e.style, cx.vcx()).unwrap_or(0.0);
     let stretch = !inherited.wm().rtl() && !inherited.wm().vertical();
     let built = if (ml != 0.0 || mt != 0.0) && !below {
         let wrap = div().absolute().left(px(ml)).top(px(mt));

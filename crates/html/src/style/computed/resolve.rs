@@ -154,7 +154,7 @@ impl Computed {
     /// делённая на ту же метрику шрифта `m′`. `none` и `from-font` (метрика
     /// своего же первого доступного шрифта, отношение ровно 1) кегль не
     /// трогают. Метрику, которую не удалось снять, спека велит не подгонять.
-    pub fn used_font_factor(&self, family: &str) -> f32 {
+    pub fn used_font_factor(&self, family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
         // Дескриптор `size-adjust` масштабирует ВСЕ метрики лица; поверх него
         // `font-size-adjust` сводит метрику к заданной доле, и множитель
         // дескриптора сокращается: `m / (m′·k) · k = m / m′`
@@ -174,7 +174,7 @@ impl Computed {
         );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
-                match crate::text::metrics::adjust_aspect(family, metric) {
+                match crate::text::metrics::adjust_aspect(family, metric, vcx) {
                     Some(have) if have > 0.0 => want / have,
                     _ => size_adjust,
                 }

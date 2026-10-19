@@ -136,7 +136,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
-        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size),
+        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size, vcx),
     };
     let flow = crate::layout::float::split_flow::FloatFlow::new(
         build,

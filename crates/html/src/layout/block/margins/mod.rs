@@ -21,7 +21,12 @@ use kids::{collapse_kid_margins, emit_margin_struts};
 /// высотой ноль» (§10.6.3) к его детям не применяется. `cb` — ширина
 /// содержащего блока в точках (`LayoutCx::cb_width`): по ней цепочка решает,
 /// влезает ли коробка своего контекста рядом с флоатами (`bfc_no_fit`).
-pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool, cb: Option<f32>) -> Vec<Node> {
+pub(crate) fn collapse_margins(
+    nodes: &[Node],
+    abs_parent: bool,
+    cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<Node> {
     let mut out: Vec<Node> = nodes.to_vec();
     margin_inline_boxes::prepare(&mut out);
     // CSS 2.1 §10.6.3: floats do not contribute to ordinary auto height.
@@ -35,14 +40,14 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool, cb: Option<f32>
             .children
             .iter()
             .any(|n| matches!(n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0)));
-        if has_float && through_strut_no_clear(e).is_some() {
+        if has_float && through_strut_no_clear(e, vcx).is_some() {
             e.style.height = Some(Len::Px(0.0));
         }
     }
     // Отступ первого ребёнка «протекает» наружу, если родителя от него не
     // отделяют ни рамка, ни внутренний отступ: в CSS это один и тот же отступ,
     // а не два. Без этого блок уезжает вниз на величину детского отступа.
-    collapse_kid_margins(&mut out, cb);
+    collapse_kid_margins(&mut out, cb, vcx);
     // Струна примыкающих полей соседей (§8.3.1). `emitted` — сколько точек уже
     // ЗАПИСАНО в стили этого зазора: раскладка складывает поля сама, и
     // верхнему полю следующего блока достаётся только разница.
@@ -51,7 +56,7 @@ pub(crate) fn collapse_margins(nodes: &[Node], abs_parent: bool, cb: Option<f32>
     // Последняя коробка прогона с клиренсом: её остаток поля остаётся ВНУТРИ
     // родителя и наружу не уходит.
     let mut cleared_run: Option<usize> = None;
-    emit_margin_struts(&mut out, &mut strut, &mut emitted, &mut cleared_run);
+    emit_margin_struts(&mut out, &mut strut, &mut emitted, &mut cleared_run, vcx);
     // Прогон кончился на коробке с клиренсом: остаток слитого поля пишется ей
     // самой — родителя он растит, но наружу не выходит.
     if let (Some(i), Some(s)) = (cleared_run, strut) {

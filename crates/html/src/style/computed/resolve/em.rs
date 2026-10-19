@@ -34,7 +34,7 @@ impl Computed {
                 Some(Len::Em(k)) => k * parent_font_px,
                 _ => parent_font_px,
             };
-            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
+            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font, vcx);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
                 self.apply_one("transform", &px, vcx);
@@ -61,7 +61,7 @@ impl Computed {
                 Some(Len::Em(k)) => k * parent_font_px,
                 _ => parent_font_px,
             };
-            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font);
+            let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font, vcx);
             let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
             if let Some(g) = parse_gradient_with_current(
                 &px,
@@ -84,22 +84,22 @@ impl Computed {
             .flatten()
         {
             for t in list.iter_mut() {
-                t.resolve_font(&family, own_px);
+                t.resolve_font(&family, own_px, vcx);
             }
         }
         match self.font_size {
             Some(Len::Em(k)) => self.font_size = Some(Len::Px(k * parent_font_px)),
             Some(Len::Ch(k)) => {
-                let (ch, _) = crate::text::metrics::ch_ex_px(&family, parent_font_px);
+                let (ch, _) = crate::text::metrics::ch_ex_px(&family, parent_font_px, vcx);
                 self.font_size = Some(Len::Px(k * ch));
             }
             Some(Len::Ex(k)) => {
-                let (_, ex) = crate::text::metrics::ch_ex_px(&family, parent_font_px);
+                let (_, ex) = crate::text::metrics::ch_ex_px(&family, parent_font_px, vcx);
                 self.font_size = Some(Len::Px(k * ex));
             }
             Some(Len::Ic(k)) => {
                 self.font_size = Some(Len::Px(
-                    k * crate::text::metrics::ic_px(&family, parent_font_px),
+                    k * crate::text::metrics::ic_px(&family, parent_font_px, vcx),
                 ));
             }
             _ => {}
@@ -120,7 +120,7 @@ impl Computed {
         // and ch but does not affect the size of em units». `em` и числовой
         // `line-height` остаются от `base`, метрики шрифта — от `used`, и сам
         // текст набирается `used` (`font_size`), а детям уходит `base`.
-        let used = base * self.used_font_factor(&family);
+        let used = base * self.used_font_factor(&family, vcx);
         if used != base && self.font_adjust_base.is_none() {
             self.font_adjust_base = Some((base, self.line_height));
             if let Some(Len::Pct(m)) = self.line_height {
@@ -128,7 +128,7 @@ impl Computed {
             }
             self.font_size = Some(Len::Px(used.max(0.01)));
         }
-        let (mut ch, ex) = crate::text::metrics::ch_ex_px(&family, used);
+        let (mut ch, ex) = crate::text::metrics::ch_ex_px(&family, used, vcx);
         // `ch` — продвижение нуля вдоль оси строки. При стоящих глифах в
         // вертикальном письме строка идёт сверху вниз, и продвижение равно
         // кеглю, а не ширине глифа (CSS Writing Modes §7.4).
@@ -136,11 +136,11 @@ impl Computed {
             ch = used;
         }
         // `ic` меряется по тому же семейству и тем же шагом, что `ch` и `ex`.
-        let ic = crate::text::metrics::ic_px(&family, used);
+        let ic = crate::text::metrics::ic_px(&family, used, vcx);
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let cap = crate::text::metrics::vmetrics_px(&family, used).2;
+        let cap = crate::text::metrics::vmetrics_px(&family, used, vcx).2;
         let to_px = move |l: &mut Option<Len>| match *l {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),

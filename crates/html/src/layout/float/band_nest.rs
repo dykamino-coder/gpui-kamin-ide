@@ -107,7 +107,13 @@ pub(super) fn band_nest(
     let vcx = opts.cx.vcx();
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
-    let seq = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb)?;
+    let seq = band_seq(
+        collapse_margins(&c.children, false, cb, opts.cx.vcx()),
+        inner_em,
+        wm,
+        cb,
+        opts.cx.vcx(),
+    )?;
     let merged = inherit(inherited, &c.style, vcx);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
     Some(crate::layout::float::band_flow::Nest {
@@ -127,6 +133,7 @@ pub(super) fn band_seq(
     em: f32,
     wm: WritingMode,
     cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut chunk: Vec<Node> = vec![];
@@ -158,9 +165,9 @@ pub(super) fn band_seq(
         {
             return None;
         }
-        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm, cb)?);
+        out.extend(band_flow_rest(std::mem::take(&mut chunk), em, wm, cb, vcx)?);
         out.push(n);
     }
-    out.extend(band_flow_rest(chunk, em, wm, cb)?);
+    out.extend(band_flow_rest(chunk, em, wm, cb, vcx)?);
     Some(out)
 }

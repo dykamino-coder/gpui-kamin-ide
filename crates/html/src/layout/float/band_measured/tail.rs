@@ -20,6 +20,7 @@ pub(super) fn band_host_m_tail(
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
     cb: FloatCb,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).
@@ -61,7 +62,7 @@ pub(super) fn band_host_m_tail(
         r.extend(rest);
         r
     };
-    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm, cb.margin_basis)?;
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm, cb.margin_basis, vcx)?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
     if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {

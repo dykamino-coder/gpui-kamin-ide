@@ -25,16 +25,16 @@ pub fn tab_stops(
     });
     let font = super::strut_font(block, base, vcx);
     let space = metrics::space_advance(&font, size)
-        .unwrap_or_else(|| metrics::ch_ex_px(family, size).0)
-        + metrics::spacing_px(block.letter_spacing, family, size)
-        + metrics::spacing_px(block.word_spacing, family, size);
+        .unwrap_or_else(|| metrics::ch_ex_px(family, size, vcx).0)
+        + metrics::spacing_px(block.letter_spacing, family, size, vcx)
+        + metrics::spacing_px(block.word_spacing, family, size, vcx);
     let step = |style: &Computed| match style.tab_size_len {
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => style.tab_size.unwrap_or(8.0).max(0.0) * space,
     };
     let mut stops = TabStops::uniform(step(block));
     // §4.2: позиция ближе `0.5ch` пропускается — следующая.
-    stops.min_gap = 0.5 * metrics::ch_ex_px(family, size).0;
+    stops.min_gap = 0.5 * metrics::ch_ex_px(family, size, vcx).0;
     let mut byte = 0;
     for piece in pieces {
         if let Piece::Text { text, style } = piece {
@@ -86,10 +86,13 @@ mod tests {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
         let expected = metrics::mono_family_for(None).to_string();
-        metrics::install_probe(move |family, size| {
-            let ch = if family == expected { 0.75 } else { 0.25 };
-            (size * ch, size * 0.5, size, size)
-        });
+        metrics::install_probe(
+            move |family, size| {
+                let ch = if family == expected { 0.75 } else { 0.25 };
+                (size * ch, size * 0.5, size, size)
+            },
+            vcx,
+        );
         let block = Computed {
             font_size: Some(Len::Px(20.0)),
             monospace: Some(true),

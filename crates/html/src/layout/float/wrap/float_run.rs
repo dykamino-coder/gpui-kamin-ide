@@ -28,10 +28,11 @@ pub(super) fn wrap_float_run(
     out: &mut Vec<Node>,
     i: &mut usize,
     side: i8,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> ControlFlow<()> {
     let cb_width = parent.width;
     let cb_px = cb.margin_basis;
-    let hosted = host_for_run(em, measured_ok, cb, &*nodes, &*out, *i);
+    let hosted = host_for_run(em, measured_ok, cb, &*nodes, &*out, *i, vcx);
     if let ControlFlow::Break(_) = wrap_into_host(
         parent,
         cb_top_open,
@@ -55,7 +56,7 @@ pub(super) fn wrap_float_run(
             || bfc_no_fit(next, run_min_w, cb_px)
     };
     let (mut rest, mut out_of_flow) = split_rest(&*nodes, &mut j, separates);
-    strut_for_next(cb_top_open, nodes, &*out, j, separates, &mut rest);
+    strut_for_next(cb_top_open, nodes, &*out, j, separates, &mut rest, vcx);
     if let ControlFlow::Break(_) = wrap_lone_float(
         parent,
         out,

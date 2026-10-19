@@ -172,7 +172,7 @@ pub(super) fn atom_element_raw(
                 Some(Len::Px(v)) => v,
                 _ => 16.0,
             },
-        )
+         opts.cx.vcx())
             // Инлайн с СОБСТВЕННЫМ письмом, отличным от родителя, — по
             // css-writing-modes-4 §3.1 «its display computes instead to
             // inline-block»: коробка со своими размерами

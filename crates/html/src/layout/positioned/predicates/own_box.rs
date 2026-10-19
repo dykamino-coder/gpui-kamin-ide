@@ -10,7 +10,11 @@ use crate::style::values::value::Len;
 /// боковая рамка, тень, прозрачность и три угла из четырёх у `<span>` молча
 /// пропадали. У настоящего `display: inline` размеры не проверяются: CSS их
 /// такому элементу и не даёт.
-pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
+pub(crate) fn has_own_box(
+    c: &Computed,
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> bool {
     // Нулевая величина коробки не создаёт: `padding: 0` и `border: 0` пишут
     // в стиль ноль, и по одному лишь «задано» кусок вынимался из строки —
     // а вынутый кусок рвёт соединение букв и общий перенос по словам.
@@ -113,8 +117,8 @@ pub(crate) fn has_own_box(c: &Computed, font_px: f32) -> bool {
     }
     let inline_level = c.display.is_none() || c.inline_display == Some(true);
     if inline_level
-        && (crate::text::inline::uniform_border(c, font_px).is_some()
-            || crate::text::inline::sided_border(c, font_px).is_some())
+        && (crate::text::inline::uniform_border(c, font_px, vcx).is_some()
+            || crate::text::inline::sided_border(c, font_px, vcx).is_some())
     {
         return false;
     }

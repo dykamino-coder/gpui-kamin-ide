@@ -16,13 +16,14 @@ pub(crate) fn record(
     area: Measurement,
     style: &Computed,
     base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {
     let em = match style.font_size {
         Some(Len::Px(v)) => v,
         _ => base_size,
     };
     let family = style.font_family.clone().unwrap_or_default();
-    let side = |v| crate::text::metrics::spacing_px(v, &family, em);
+    let side = |v| crate::text::metrics::spacing_px(v, &family, em, vcx);
     let b = style.borders();
     RootBox {
         child,

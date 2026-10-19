@@ -70,7 +70,7 @@ pub(super) fn blank_box(
                 String::new()
             }
         });
-        let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size);
+        let (asc, desc, _) = crate::text::metrics::vmetrics_px(&family, size, cx.vcx());
         let content = if asc + desc > 0.0 { asc + desc } else { size };
         let line = match merged.line_height {
             Some(Len::Px(v)) => v,
@@ -78,6 +78,7 @@ pub(super) fn blank_box(
             _ => crate::text::metrics::normal_px(
                 crate::text::metrics::normal_line(&family, cx.vcx()),
                 size,
+                cx.vcx(),
             ),
         };
         // Коробка стоит на области содержимого: она в середине

@@ -29,13 +29,14 @@ pub(super) fn strut_for_next(
     j: usize,
     separates: impl Fn(&Element) -> bool,
     rest: &mut Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     let laid_out = out
         .iter()
         .rev()
         .find(|n| !is_blank(n))
         .is_none_or(|n| match n {
-            Node::Element(prev) => through_strut(prev).is_none(),
+            Node::Element(prev) => through_strut(prev, vcx).is_none(),
             Node::Text(_) => true,
         });
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.09): убрать подмену целиком. §9.5.2 хочет
@@ -57,6 +58,7 @@ pub(super) fn strut_for_next(
         rest,
         laid_out,
         &mut clearance_strut,
+        vcx,
     );
 }
 
@@ -166,10 +168,11 @@ pub(super) fn clearance_before_next(
     rest: &mut Vec<Node>,
     laid_out: bool,
     clearance_strut: &mut bool,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     if let Some(Node::Element(next)) = nodes.get(j)
         && separates(next)
-        && let Some(top) = margin_px(next.style.margin.top, &next.style).filter(|v| *v > 0.0)
+        && let Some(top) = margin_px(next.style.margin.top, &next.style, vcx).filter(|v| *v > 0.0)
     {
         // §9.5.2 считает клиренс от ГИПОТЕТИЧЕСКОЙ позиции — «where the
         // actual top border edge would have been if the element's 'clear'

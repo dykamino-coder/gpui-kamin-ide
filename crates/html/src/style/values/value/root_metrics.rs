@@ -77,9 +77,9 @@ pub fn set_root_family(doc: &crate::document::state::DocState, family: &str) {
 pub(super) fn root_font_unit(unit: &str, vcx: ValueCx<'_>) -> f32 {
     let (family, size) = with_root(vcx, |r| (r.family.clone(), r.font_px));
     match unit {
-        "cap" => crate::text::metrics::vmetrics_px(&family, size).2,
-        "ch" => crate::text::metrics::ch_ex_px(&family, size).0,
-        "ex" => crate::text::metrics::ch_ex_px(&family, size).1,
-        _ => crate::text::metrics::ic_px(&family, size),
+        "cap" => crate::text::metrics::vmetrics_px(&family, size, vcx).2,
+        "ch" => crate::text::metrics::ch_ex_px(&family, size, vcx).0,
+        "ex" => crate::text::metrics::ch_ex_px(&family, size, vcx).1,
+        _ => crate::text::metrics::ic_px(&family, size, vcx),
     }
 }

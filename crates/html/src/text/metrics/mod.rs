@@ -10,34 +10,11 @@
 //! CSS сам разрешает его, когда нужного глифа в шрифте не нашлось.
 
 mod families;
+mod state;
+use crate::document::state::ValueCx;
+pub(crate) use state::Metrics;
 #[cfg(test)]
-mod tests {
-    //! Tests for metrics.
-
-    use super::*;
-
-    #[test]
-    fn falls_back_to_half_the_font_size() {
-        assert_eq!(ch_ex_px("нет такого шрифта", 20.0), (10.0, 10.0));
-    }
-
-    #[test]
-    fn probe_result_scales_with_the_font_size() {
-        install_probe(|family, size| {
-            // У Ahem все знаки в кегль, включая иероглиф.
-            if family == "Ahem" {
-                (size, size * 0.8, size, size)
-            } else {
-                (size * 0.5, size * 0.5, size * 1.2, size)
-            }
-        });
-        assert_eq!(ch_ex_px("Ahem", 20.0), (20.0, 16.0));
-        assert_eq!(ch_ex_px("Segoe UI", 20.0), (10.0, 10.0));
-        // Щуп снимается: иначе он утечёт в соседние тесты того же потока.
-        PROBE.with(|p| *p.borrow_mut() = None);
-        CACHE.with(|c| c.borrow_mut().clear());
-    }
-}
+mod tests;
 mod text_system;
 pub use crate::text::metrics::families::font_installed;
 pub use crate::text::metrics::families::fonts_known;
@@ -52,7 +29,6 @@ mod space;
 pub use crate::text::metrics::space::{install_space_probe, space_advance};
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 /// Щуп: по имени семейства и кеглю отдаёт ширину нуля и высоту строчной.
 type Probe = Box<dyn Fn(&str, f32) -> (f32, f32, f32, f32)>;
@@ -85,14 +61,6 @@ const MONO_FAMILIES: [&str; 3] = ["JetBrains Mono", "Consolas", "Courier New"];
 mod normal_px;
 pub use normal_px::{content_px, normal_px};
 
-thread_local! {
-    static PROBE: RefCell<Option<Probe>> = const { RefCell::new(None) };
-    static CACHE: RefCell<HashMap<String, (f32, f32, f32, f32)>> = RefCell::new(HashMap::new());
-    static MONO: RefCell<&'static str> = const { RefCell::new(MONO_FAMILIES[0]) };
-    static VPROBE: RefCell<Option<VProbe>> = const { RefCell::new(None) };
-    static VCACHE: RefCell<HashMap<String, (f32, f32, f32)>> = RefCell::new(HashMap::new());
-}
-
 /// Щуп переноса строк: сколько строк займёт текст шрифтом `font` кеглем `size`
 /// при ширине `width`. `\n` — принудительный разрыв.
 type WrapProbe = Box<dyn Fn(&gpui::Font, f32, &str, f32) -> usize>;
@@ -111,16 +79,17 @@ pub fn line_count(font: &gpui::Font, size: f32, text: &str, width: f32) -> Optio
 }
 
 /// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
-pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static) {
-    VPROBE.with(|p| *p.borrow_mut() = Some(Box::new(probe)));
-    VCACHE.with(|c| c.borrow_mut().clear());
+pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static, vcx: ValueCx<'_>) {
+    *vcx.doc.metrics.vprobe.borrow_mut() = Some(Box::new(probe));
+    vcx.doc.metrics.vcache.borrow_mut().clear();
+    vcx.doc.metrics.parts.borrow_mut().clear();
 }
 
 /// Подъём, спуск и высота прописной в ТОЧКАХ для семейства и кегля.
 ///
 /// Метрики линейны по кеглю, поэтому замер идёт один раз на семейство
 /// (`PROBE_SIZE`), а дальше — умножение.
-pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
+pub fn vmetrics_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32, f32) {
     // Имя из `@font-face` — придумка страницы: `font-family: CSSTest` при
     // файле, чьё семейство `CSSTest Basic`. Щуп по придуманному имени
     // получал ПОДСТАНОВОЧНЫЙ шрифт, и полулидинг среза расходился со
@@ -129,17 +98,21 @@ pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
     let real = crate::text::fonts::alias(family);
     let family = real.as_deref().unwrap_or(family);
     let key = family.to_ascii_lowercase();
-    if let Some(hit) = VCACHE.with(|c| c.borrow().get(&key).copied()) {
+    if let Some(hit) = vcx.doc.metrics.vcache.borrow().get(&key).copied() {
         return (hit.0 * size_px, hit.1 * size_px, hit.2 * size_px);
     }
-    let got = VPROBE.with(|p| {
-        p.borrow()
+    let got = {
+        vcx.doc
+            .metrics
+            .vprobe
+            .borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
+            .or_else(|| text_system::vertical(family, PROBE_SIZE))
             .map(|(a, d, c)| (a / PROBE_SIZE, d / PROBE_SIZE, c / PROBE_SIZE))
-    });
+    };
     let f = got.unwrap_or(V_FALLBACK);
-    VCACHE.with(|c| c.borrow_mut().insert(key, f));
+    vcx.doc.metrics.vcache.borrow_mut().insert(key, f);
     (f.0 * size_px, f.1 * size_px, f.2 * size_px)
 }
 
@@ -150,7 +123,10 @@ pub fn vmetrics_px(family: &str, size_px: f32) -> (f32, f32, f32) {
 /// пропорциональный шрифт, и всё, что держится на равной ширине знака,
 /// разъезжается. Поэтому семейство выбирается из НАЛИЧНЫХ.
 pub fn mono_family() -> &'static str {
-    MONO.with(|m| *m.borrow())
+    MONO_FAMILIES
+        .into_iter()
+        .find(|name| font_installed(name))
+        .unwrap_or(MONO_FAMILIES[0])
 }
 
 /// Семейство за родовое `monospace` с учётом языка текста. Хром на Windows
@@ -171,16 +147,19 @@ pub fn mono_family_for(lang: Option<&str>) -> &'static str {
     mono_family()
 }
 
-/// Поставить щуп метрик. Вызывается один раз при старте: замер шрифта
-/// возможен только там, где живёт система шрифтов.
-pub fn install_probe(probe: impl Fn(&str, f32) -> (f32, f32, f32, f32) + 'static) {
-    PROBE.with(|p| *p.borrow_mut() = Some(Box::new(probe)));
-    CACHE.with(|c| c.borrow_mut().clear());
+/// Override this document's measurements and invalidate its horizontal cache.
+pub fn install_probe(
+    probe: impl Fn(&str, f32) -> (f32, f32, f32, f32) + 'static,
+    vcx: ValueCx<'_>,
+) {
+    *vcx.doc.metrics.probe.borrow_mut() = Some(Box::new(probe));
+    vcx.doc.metrics.cache.borrow_mut().clear();
+    vcx.doc.metrics.parts.borrow_mut().clear();
 }
 
 /// Длина `1ch` и `1ex` в точках для семейства и кегля.
-pub fn ch_ex_px(family: &str, size_px: f32) -> (f32, f32) {
-    let (ch, ex, _, _) = fractions(family);
+pub fn ch_ex_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32) {
+    let (ch, ex, _, _) = fractions(family, vcx);
     (ch * size_px, ex * size_px)
 }
 
@@ -189,13 +168,13 @@ pub fn ch_ex_px(family: &str, size_px: f32) -> (f32, f32) {
 /// Своя метрика, а не синоним `em`: у текстового шрифта иероглиф либо шире
 /// кегля, либо его нет вовсе, и подмена кеглем врала на четверть
 /// (`ic-unit-*`).
-pub fn ic_px(family: &str, size_px: f32) -> f32 {
-    fractions(family).3 * size_px
+pub fn ic_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> f32 {
+    fractions(family, vcx).3 * size_px
 }
 
 /// Высота строки при `line-height: normal` — доля кегля по метрикам шрифта.
 pub fn normal_line(family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
-    crate::text::fonts::metric_overrides::normal_line(family, fractions(family).2, vcx)
+    crate::text::fonts::metric_overrides::normal_line(family, fractions(family, vcx).2, vcx)
 }
 
 /// Метрика шрифта в ДОЛЯХ КЕГЛЯ для `font-size-adjust` (css-fonts-5): 0 —
@@ -205,11 +184,11 @@ pub fn normal_line(family: &str, vcx: crate::document::state::ValueCx<'_>) -> f3
 /// Вертикального продвижения щуп не меряет. У полноширинного иероглифа оно
 /// равно горизонтальному, а без знака `水` обе метрики по css-values-4 §6.1.4
 /// считаются целым кеглем (`FALLBACK.3`).
-pub fn adjust_aspect(family: &str, metric: u8) -> Option<f32> {
-    let (ch, ex, _, ic) = fractions(family);
+pub fn adjust_aspect(family: &str, metric: u8, vcx: ValueCx<'_>) -> Option<f32> {
+    let (ch, ex, _, ic) = fractions(family, vcx);
     Some(match metric {
         0 => ex,
-        1 => vmetrics_px(family, 1.0).2,
+        1 => vmetrics_px(family, 1.0, vcx).2,
         2 => ch,
         3 | 4 => ic,
         _ => return None,

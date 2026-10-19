@@ -153,6 +153,7 @@ fn inherit_stage(
             Some(len),
             &c.font_family.clone().unwrap_or_default(),
             own_px,
+            vcx,
         ))),
         None if own.tab_size.is_some() => None,
         None => parent.tab_size_len,

@@ -82,6 +82,7 @@ pub(super) fn band_host_m(
     em: f32,
     lead: &[Node],
     cb: FloatCb,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     let wm = cb.wm;
     let mut floaters: Vec<Element> = vec![];
@@ -168,7 +169,7 @@ pub(super) fn band_host_m(
     {
         return None;
     }
-    band_host_m_tail(nodes, j, em, lead, floaters, rest, probes, cb)
+    band_host_m_tail(nodes, j, em, lead, floaters, rest, probes, cb, vcx)
 }
 
 /// The synthetic node of a measured float host: `shape_flow` hands it to

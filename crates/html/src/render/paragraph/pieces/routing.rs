@@ -63,6 +63,7 @@ pub(crate) fn route_pieces(
             opts.text.line_height = gpui::px(crate::text::metrics::normal_px(
                 normal_fraction(inherited, &opts),
                 biggest,
+                vcx,
             ))
             .into();
         }

@@ -33,7 +33,7 @@ pub(super) fn inherit_lh_units(
         _ => {
             let f = crate::text::metrics::normal_line(&parent_family, vcx);
             if f > 0.0 {
-                crate::text::metrics::normal_px(f, parent_font)
+                crate::text::metrics::normal_px(f, parent_font, vcx)
             } else {
                 1.2 * parent_font
             }
@@ -84,7 +84,7 @@ pub(super) fn inherit_lh_units(
         _ => {
             let f = crate::text::metrics::normal_line(&family, vcx);
             if f > 0.0 {
-                crate::text::metrics::normal_px(f, font)
+                crate::text::metrics::normal_px(f, font, vcx)
             } else {
                 1.2 * font
             }

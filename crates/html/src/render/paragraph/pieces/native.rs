@@ -4,8 +4,8 @@ use super::{paragraph_spans, rotate_rel_spans};
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use crate::text::inline;
 use crate::text::text_box::normal_fraction;
+use crate::text::{inline, metrics};
 use gpui::{AnyElement, IntoElement, SharedString};
 
 #[allow(clippy::too_many_arguments)]
@@ -39,15 +39,9 @@ pub(crate) fn native_paragraph(
     } else {
         inherited
     };
-    // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
-    // и от него же считается высота строки в долях.
-    //
-    // Per-run boxes below retain the block strut without changing this
-    // legacy fallback (`*-applies-to-008`).
-    // Куски у края строки в её струт не входят (§10.8.1): у
-    // `vertical-align-121` строка из 30px текста и прижатого вверх
-    // 60px куска — это 30px струта плюс вылет куска вниз, а не 60px
-    // с текстом посередине.
+    // Edge-aligned pieces protrude from the block strut (CSS 2.1 §10.8.1).
+    // Their size must not enlarge the central inline content's strut.
+    // Per-run boxes below retain that strut alongside the legacy fallback.
     let (flow_biggest, flow_lh) = if edges.is_empty() {
         (biggest, 0.0)
     } else {
@@ -67,6 +61,7 @@ pub(crate) fn native_paragraph(
             own_size(inherited, opts),
             opts.base_size(),
             normal_fraction(inherited, opts),
+            opts.cx.vcx(),
         )),
     };
     // Построчные коробки (`line_box_spans`): высота строки абзаца — СТРУТ
@@ -127,15 +122,17 @@ pub(crate) fn native_paragraph(
                     other => other,
                 }),
         )
-        .letter_spacing(gpui::px(crate::text::metrics::spacing_px(
+        .letter_spacing(gpui::px(metrics::spacing_px(
             inherited.letter_spacing,
             &family,
             biggest,
+            opts.cx.vcx(),
         )))
-        .word_spacing(gpui::px(crate::text::metrics::spacing_px(
+        .word_spacing(gpui::px(metrics::spacing_px(
             inherited.word_spacing,
             &family,
             biggest,
+            opts.cx.vcx(),
         )))
         .hanging(inherited.hanging)
         .indent(indent)

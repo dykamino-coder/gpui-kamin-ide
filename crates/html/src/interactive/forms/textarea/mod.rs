@@ -63,12 +63,16 @@ fn natural(e: &Element, c: &Computed, vcx: ValueCx<'_>) -> [f32; 2] {
         _ => 16.,
     };
     let family = c.font_family.as_deref().unwrap_or("");
-    let (ch, _) = crate::text::metrics::ch_ex_px(family, font);
+    let (ch, _) = crate::text::metrics::ch_ex_px(family, font, vcx);
     let line = c
         .line_height
         .and_then(|v| v.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or_else(|| {
-            crate::text::metrics::normal_px(crate::text::metrics::normal_line(family, vcx), font)
+            crate::text::metrics::normal_px(
+                crate::text::metrics::normal_line(family, vcx),
+                font,
+                vcx,
+            )
         });
     let vertical = c.wm().vertical();
     let gutter = gutters(c);

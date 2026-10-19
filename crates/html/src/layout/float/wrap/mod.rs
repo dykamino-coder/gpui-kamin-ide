@@ -53,7 +53,15 @@ pub(crate) fn wrap_floats(
         ..FloatCb::of(parent)
     };
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
-    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, cb, &mut nodes) {
+    if let Some(value) = unfloated_flow(
+        cb_top_open,
+        em,
+        measured_ok,
+        parent_bfc,
+        cb,
+        &mut nodes,
+        vcx,
+    ) {
         return value;
     }
     let mut out: Vec<Node> = vec![];
@@ -81,6 +89,7 @@ pub(crate) fn wrap_floats(
             &mut out,
             &mut i,
             side,
+            vcx,
         ) {
             continue;
         }

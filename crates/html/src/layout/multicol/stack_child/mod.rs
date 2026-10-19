@@ -88,7 +88,8 @@ pub(super) fn multicol_stack_child(
     // (`floats-clear-multicol-*`: `background:
     // red`); флоаты переполняют нулевую коробку, и
     // маска колонки режет их по разрезам меры.
-    if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy).is_some() {
+    if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy, opts.cx.vcx()).is_some()
+    {
         copy.style.height = Some(Len::Px(0.0));
     }
     // Параллельный поток (css-break-3 §3):

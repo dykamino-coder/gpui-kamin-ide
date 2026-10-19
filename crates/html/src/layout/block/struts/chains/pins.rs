@@ -8,7 +8,13 @@ use crate::style::values::value::Len;
 /// Обнулить поле по пути: наружу оно ушло одним полем родителя, и раскладка
 /// сложила бы его второй раз. `deep` — коробка схлопнулась насквозь: чистится
 /// она сама с обеих сторон.
-pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bool) {
+pub(crate) fn zero_at(
+    children: &mut [Node],
+    path: &[usize],
+    top: bool,
+    deep: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     let Some((&i, rest)) = path.split_first() else {
         return;
     };
@@ -16,10 +22,10 @@ pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bo
         return;
     };
     if !rest.is_empty() {
-        zero_at(&mut ch.children, rest, top, deep);
+        zero_at(&mut ch.children, rest, top, deep, vcx);
         return;
     }
-    pin_inherited_margins(ch, top || deep, !top || deep);
+    pin_inherited_margins(ch, top || deep, !top || deep, vcx);
     if deep {
         ch.style.margin.top = Some(Len::Px(0.0));
         ch.style.margin.bottom = Some(Len::Px(0.0));
@@ -42,7 +48,12 @@ pub(crate) fn zero_at(children: &mut [Node], path: &[usize], top: bool, deep: bo
 /// единицы — в точки по кеглю РОДИТЕЛЯ (наследуется вычисленная длина, «not
 /// 80px 120px 40px 160px»), доля остаётся долей и решается от своего
 /// содержащего блока (`margin-percentage-inherit-001`: 15% от 200, а не 60).
-pub(crate) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
+pub(crate) fn pin_inherited_margins(
+    e: &mut Element,
+    top: bool,
+    bottom: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     let own = e.style.margin;
     for n in e.children.iter_mut() {
         let Node::Element(ch) = n else { continue };
@@ -52,7 +63,7 @@ pub(crate) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
             }
             let pinned = match src {
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    margin_px(Some(l), &e.style).map(Len::Px).or(Some(l))
+                    margin_px(Some(l), &e.style, vcx).map(Len::Px).or(Some(l))
                 }
                 other => other,
             };
@@ -74,7 +85,11 @@ pub(crate) fn pin_inherited_margins(e: &mut Element, top: bool, bottom: bool) {
 /// элемент его задал, иначе базовый — унаследованного здесь ещё нет.
 /// Проценты не переводятся: они считаются от ширины родителя, а её тут никто
 /// не знает, и выдуманное число было бы хуже пропуска.
-pub(crate) fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(crate) fn margin_px(
+    l: Option<Len>,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
     // Кегль элемента: свой, если задан, иначе унаследованный от уровня
     // (см. `COLLAPSE_FONT_PX`). Прежде вместо унаследованного брались
     // постоянные 16 точек, и `table{font-size:50px} div{margin:1em 0}`
@@ -98,6 +113,7 @@ pub(crate) fn margin_px(l: Option<Len>, style: &Computed) -> Option<f32> {
             Some(l),
             &style.font_family.clone().unwrap_or_default(),
             base,
+            vcx,
         )),
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.

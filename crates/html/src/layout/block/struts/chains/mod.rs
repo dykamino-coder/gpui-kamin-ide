@@ -22,6 +22,7 @@ pub(crate) fn leading_chain(
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
     cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Strut> {
     let mut s = strut_of(0.0);
     // Нижняя оценка ширины флоатов, которые цепь уже прошла: они ПРИМЫКАЮТ к
@@ -85,9 +86,12 @@ pub(crate) fn leading_chain(
         }
         // Поле САМОГО ребёнка примыкает к полю родителя всегда — даже когда
         // ребёнок заводит свой контекст: запрет §8.3.1 лежит на РОДИТЕЛЕ.
-        s = adjoin(s, strut_of(margin_or_bail(ch.style.margin.top, &ch.style)?));
+        s = adjoin(
+            s,
+            strut_of(margin_or_bail(ch.style.margin.top, &ch.style, vcx)?),
+        );
         path.push(i);
-        if let Some(t) = through_strut(ch) {
+        if let Some(t) = through_strut(ch, vcx) {
             // Насквозь: поля всего поддерева уже в струне, идём к брату.
             s = adjoin(s, t);
             eat.push((path.clone(), true));
@@ -112,7 +116,9 @@ pub(crate) fn leading_chain(
                 _ => cb,
             };
             // Внуки меряют доли от содержимого `ch`, а не от уровня (§10.1 п.2).
-            let inner = with_inner_cb(&ch.style, || leading_chain(&ch.children, path, eat, cb));
+            let inner = with_inner_cb(&ch.style, || {
+                leading_chain(&ch.children, path, eat, cb, vcx)
+            });
             s = adjoin(s, inner?);
         }
         path.pop();
@@ -132,6 +138,7 @@ pub(crate) fn trailing_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Strut> {
     let mut s = strut_of(0.0);
     for (i, c) in children.iter().enumerate().rev() {
@@ -155,10 +162,10 @@ pub(crate) fn trailing_chain(
         }
         s = adjoin(
             s,
-            strut_of(margin_or_bail(ch.style.margin.bottom, &ch.style)?),
+            strut_of(margin_or_bail(ch.style.margin.bottom, &ch.style, vcx)?),
         );
         path.push(i);
-        if let Some(t) = through_strut(ch) {
+        if let Some(t) = through_strut(ch, vcx) {
             s = adjoin(s, t);
             eat.push((path.clone(), true));
             path.pop();
@@ -168,7 +175,7 @@ pub(crate) fn trailing_chain(
         // Заданная высота или нижняя рамка/отступ отрезают цепочку: поле
         // внука к краю контейнера уже не примыкает.
         if ch.style.height.is_none() && top_edge_open(ch) {
-            s = adjoin(s, trailing_chain(&ch.children, path, eat)?);
+            s = adjoin(s, trailing_chain(&ch.children, path, eat, vcx)?);
         }
         path.pop();
         return Some(s);

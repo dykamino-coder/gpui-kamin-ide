@@ -15,6 +15,8 @@ fn find<'a>(nodes: &'a [Node], id: &str) -> Option<&'a Element> {
 
 #[test]
 fn measured_host_keeps_float_order_and_containing_width() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     let tree = parse(
         r#"<div id="source"><i id="left" style="float:left;width:20px;height:10px"></i><i id="right" style="float:right;width:30px;height:10px"></i><div id="tail" style="overflow:hidden;width:10px;height:8px">tail</div></div>"#,
         "",
@@ -25,7 +27,7 @@ fn measured_host_keeps_float_order_and_containing_width() {
         ..Default::default()
     };
     let (host, end, lifted) =
-        band_host_m(nodes, 0, 16.0, &[], FloatCb::of(&parent)).expect("measured host");
+        band_host_m(nodes, 0, 16.0, &[], FloatCb::of(&parent), vcx).expect("measured host");
     assert_eq!(end, nodes.len());
     assert!(lifted.is_empty());
     assert_eq!(host.style.width, None);
@@ -50,10 +52,12 @@ fn measured_host_keeps_float_order_and_containing_width() {
 
 #[test]
 fn lifted_inline_runs_keep_paragraph_continuation() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     let tree = parse(r#"<div id="source">first<br>next</div>"#, "");
     let nodes = find(&tree, "source").expect("source").children.clone();
-    let runs =
-        band_flow_rest_lift(nodes, 16.0, None, WritingMode::default(), None).expect("inline runs");
+    let runs = band_flow_rest_lift(nodes, 16.0, None, WritingMode::default(), None, vcx)
+        .expect("inline runs");
     assert_eq!(runs.len(), 2);
     let marks: Vec<_> = runs
         .iter()

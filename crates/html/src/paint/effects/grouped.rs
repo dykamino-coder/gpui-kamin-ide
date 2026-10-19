@@ -145,7 +145,7 @@ pub(super) fn grouped_with(
             _ => 16.0,
         };
         let family = c.font_family.clone().unwrap_or_default();
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px, vcx);
         crate::style::computed::font_lengths_to_px(
             &s,
             px,
@@ -178,7 +178,12 @@ pub(super) fn grouped_with(
             let family = c.font_family.clone().unwrap_or_default();
             sides.map(|l| match l {
                 Some(Len::Px(v)) => Some(v),
-                Some(other) => Some(crate::text::metrics::spacing_px(Some(other), &family, base)),
+                Some(other) => Some(crate::text::metrics::spacing_px(
+                    Some(other),
+                    &family,
+                    base,
+                    vcx,
+                )),
                 None => None,
             })
         })

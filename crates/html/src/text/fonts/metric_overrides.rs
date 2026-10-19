@@ -105,7 +105,7 @@ pub(crate) fn normal_line(family: &str, native: f32, vcx: ValueCx<'_>) -> f32 {
     if ascent.is_none() && descent.is_none() && gap.is_none() {
         return native;
     }
-    let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0);
+    let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0, vcx);
     ascent.unwrap_or(a) + descent.unwrap_or(d) + gap.unwrap_or((native - a - d).max(0.0))
 }
 

@@ -21,12 +21,13 @@ pub(crate) fn band_host_nested(
     em: f32,
     parent_bfc: bool,
     cb: crate::layout::float::FloatCb,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize)> {
     let wm = cb.wm;
     let Node::Element(c) = &nodes[i] else {
         return None;
     };
-    if !has_flow_float(c) || !band_nest_ok(c, em, wm, cb.margin_basis) {
+    if !has_flow_float(c) || !band_nest_ok(c, em, wm, cb.margin_basis, vcx) {
         return None;
     }
     let mut j = i + 1;
@@ -50,7 +51,7 @@ pub(crate) fn band_host_nested(
     if !rest.iter().any(|n| !is_blank(n)) && !parent_bfc {
         return None;
     }
-    let rest = band_flow_rest(rest, em, wm, cb.margin_basis)?;
+    let rest = band_flow_rest(rest, em, wm, cb.margin_basis, vcx)?;
     if let Some(Node::Element(next)) = nodes[j..].iter().find(|n| !is_blank(n))
         && next.style.clear.is_some()
         && !band_clear_supported(next)
@@ -74,14 +75,26 @@ pub(crate) fn band_host_nested(
 
 /// Блок с флоатами или коробками своего контекста внутри годится в
 /// `Kind::Nest` целиком — со всеми потомками (шаг F7).
-pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode, cb: Option<f32>) -> bool {
+pub(crate) fn band_nest_ok(
+    c: &Element,
+    em: f32,
+    wm: WritingMode,
+    cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> bool {
     if !band_nest_block(c, em, wm) {
         return false;
     }
     let Some(inner_em) = band_em(&c.style, em) else {
         return false;
     };
-    let Some(seq) = band_seq(collapse_margins(&c.children, false, cb), inner_em, wm, cb) else {
+    let Some(seq) = band_seq(
+        collapse_margins(&c.children, false, cb, vcx),
+        inner_em,
+        wm,
+        cb,
+        vcx,
+    ) else {
         return false;
     };
     seq.iter().all(|n| match n {
@@ -91,7 +104,7 @@ pub(crate) fn band_nest_ok(c: &Element, em: f32, wm: WritingMode, cb: Option<f32
                 || band_piece_m(n, inner_em, wm).is_some()
                 || k.marks.anon
                 || band_flow_block(k, inner_em)
-                || band_nest_ok(k, inner_em, wm, cb)
+                || band_nest_ok(k, inner_em, wm, cb, vcx)
         }
     })
 }

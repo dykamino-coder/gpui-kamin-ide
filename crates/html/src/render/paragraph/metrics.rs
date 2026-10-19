@@ -18,7 +18,10 @@ pub(crate) fn flow_metrics(
     let strut = own_size(inherited, opts);
     let fraction = normal_fraction(inherited, opts);
     let em_base = opts.base_size();
-    let (mut size_max, mut lh_max) = (strut, crate::text::metrics::normal_px(fraction, strut));
+    let (mut size_max, mut lh_max) = (
+        strut,
+        crate::text::metrics::normal_px(fraction, strut, opts.cx.vcx()),
+    );
     let mut at = 0usize;
     for p in pieces {
         let inline::Piece::Text { text, style } = p else {
@@ -37,7 +40,7 @@ pub(crate) fn flow_metrics(
         let own = match style.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-            _ => crate::text::metrics::normal_px(fraction, size),
+            _ => crate::text::metrics::normal_px(fraction, size, opts.cx.vcx()),
         };
         size_max = size_max.max(size);
         lh_max = lh_max.max(own);
@@ -78,7 +81,7 @@ pub(crate) fn line_box_spans(
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * own,
         None | Some(Len::Auto) => {
-            crate::text::metrics::normal_px(normal_fraction(inherited, opts), own)
+            crate::text::metrics::normal_px(normal_fraction(inherited, opts), own, opts.cx.vcx())
         }
         _ => return None,
     };
@@ -104,7 +107,7 @@ pub(crate) fn line_box_spans(
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
             None | Some(Len::Auto) => {
-                crate::text::metrics::normal_px(normal_fraction(style, opts), size)
+                crate::text::metrics::normal_px(normal_fraction(style, opts), size, opts.cx.vcx())
             }
             _ => return None,
         };

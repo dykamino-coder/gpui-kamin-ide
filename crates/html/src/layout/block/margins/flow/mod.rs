@@ -22,14 +22,20 @@ pub(crate) fn collapse_flow_margins(
     children: Vec<Node>,
     reverse: bool,
     lead: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Node> {
     let mut out = children;
     let trailing: Option<f32> = lead.filter(|m| *m >= 0.0);
-    collapse_flow_kids(reverse, &mut out, trailing);
+    collapse_flow_kids(reverse, &mut out, trailing, vcx);
     out
 }
 
-pub(super) fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: Option<f32>) {
+pub(super) fn collapse_flow_kids(
+    reverse: bool,
+    out: &mut [Node],
+    mut trailing: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     for node in out.iter_mut() {
         let child = match node {
             Node::Element(child) => child,
@@ -89,7 +95,7 @@ pub(super) fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: 
             .find(|n| !is_blank(n))
             .is_some_and(|n| matches!(n, Node::Text(_)));
         if !own_context && !text_first {
-            absorb_margin(child, false, reverse);
+            absorb_margin(child, false, reverse, vcx);
         }
         // В обратном потоке ведущая сторона — правая.
         let lead = if reverse {
@@ -100,7 +106,7 @@ pub(super) fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: 
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
         // пропадало вовсе (wm-propagation-body-*).
-        let lead_px = margin_px(lead, &child.style).unwrap_or(0.0);
+        let lead_px = margin_px(lead, &child.style, vcx).unwrap_or(0.0);
         // Пустой блок пропускает поля СКВОЗЬ себя: хвост предыдущего брата,
         // его ведущее и его хвостовое поле сливаются в одно (наибольшее из
         // неотрицательных), и оно же становится хвостом для следующего.
@@ -116,7 +122,7 @@ pub(super) fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: 
         } else {
             child.style.margin.right
         };
-        let tail_px = margin_px(tail, &child.style).unwrap_or(0.0);
+        let tail_px = margin_px(tail, &child.style, vcx).unwrap_or(0.0);
         let prev = trailing.unwrap_or(0.0);
         if tail_px > 0.0 && lead_px >= 0.0 && prev >= 0.0 && collapses_through(child) {
             let combined = prev.max(lead_px).max(tail_px);
@@ -139,6 +145,6 @@ pub(super) fn collapse_flow_kids(reverse: bool, out: &mut [Node], mut trailing: 
                 child.style.margin.left = Some(Len::Px(kept));
             }
         }
-        trailing = Some(absorb_margin(child, true, reverse));
+        trailing = Some(absorb_margin(child, true, reverse, vcx));
     }
 }

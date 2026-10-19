@@ -62,9 +62,15 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
 /// который умеет строку растить и не умеет сжимать. У `font: 100px/1` строка
 /// выходила 132 вместо 100, а глиф садился по полулидингу на 16 точек ниже
 /// (§10.8: лидинг тут ноль — содержимое равно `line-height`).
-pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32) -> f32 {
+pub fn max_line_height(
+    pieces: &[Piece],
+    strut: f32,
+    em_base: f32,
+    fraction: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> f32 {
     pieces.iter().fold(
-        crate::text::metrics::normal_px(fraction, strut),
+        crate::text::metrics::normal_px(fraction, strut, vcx),
         |acc, p| match p {
             Piece::Text { style, .. } => {
                 let size = match style.font_size {
@@ -75,7 +81,7 @@ pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32
                 let own = match style.line_height {
                     Some(Len::Px(v)) => v,
                     Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                    _ => crate::text::metrics::normal_px(fraction, size),
+                    _ => crate::text::metrics::normal_px(fraction, size, vcx),
                 };
                 acc.max(own)
             }

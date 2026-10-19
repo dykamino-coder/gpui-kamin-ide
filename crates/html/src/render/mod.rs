@@ -107,7 +107,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
-    crate::text::metrics::set_doc_family(&opts.text.font_family);
+    crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
     crate::interactive::frame::frame_sanitize(vcx);
     collect_mask_defs(nodes, vcx);

@@ -36,6 +36,8 @@ fn transformed_float_keeps_untransformed_margins() {
 
 #[test]
 fn float_host_retains_a_preceding_invisible_inline_run() {
+    let metric_doc = crate::document::state::DocState::new(Default::default());
+    let vcx = metric_doc.values();
     let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
     span.inline = true;
     span.children = vec![crate::dom::Node::Text("\n  ".into())];
@@ -62,6 +64,7 @@ fn float_host_retains_a_preceding_invisible_inline_run() {
         16.,
         &lead,
         crate::layout::float::FloatCb::of(&Computed::default()),
+        vcx,
     )
     .expect("the paragraph owns invisible inline boxes");
     assert_eq!(next, nodes.len());

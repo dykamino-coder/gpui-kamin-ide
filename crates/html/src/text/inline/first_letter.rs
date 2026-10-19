@@ -115,9 +115,9 @@ fn float_band(letter: &mut Computed, vcx: crate::document::state::ValueCx<'_>) {
     let line = match letter.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => crate::text::metrics::normal_px(fraction, size),
+        _ => crate::text::metrics::normal_px(fraction, size, vcx),
     };
-    let Some(content) = crate::text::metrics::content_px(fraction, size) else {
+    let Some(content) = crate::text::metrics::content_px(fraction, size, vcx) else {
         return;
     };
     let half = ((line - content) / 2.0).max(0.0);

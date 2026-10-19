@@ -73,7 +73,7 @@ impl Computed {
             _ => 16.0,
         };
         let (ch, ex) =
-            crate::text::metrics::ch_ex_px(self.font_family.as_deref().unwrap_or(""), font);
+            crate::text::metrics::ch_ex_px(self.font_family.as_deref().unwrap_or(""), font, vcx);
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
@@ -81,6 +81,7 @@ impl Computed {
                 let (a, d, _) = crate::text::metrics::vmetrics_px(
                     self.font_family.as_deref().unwrap_or(""),
                     font,
+                    vcx,
                 );
                 a + d
             }

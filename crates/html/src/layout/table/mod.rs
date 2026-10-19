@@ -1,5 +1,4 @@
 //! Таблицы: драйвер раскладки.
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
@@ -194,8 +193,8 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
         &rows_left,
         cols,
-        table_font,
-        &table_family,
+        (table_font, &table_family),
+        vcx,
     );
     // Вертикальность САМОЙ таблицы: `inherited` внутри цикла рядов
     // перекрыт слоем группы строк (`<tbody>` с письмом травил гейты,
@@ -211,6 +210,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         table_family,
         busy,
         &win_edges,
+        vcx,
     );
     // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
     // «the next layer contains the column groups… on top of the column groups

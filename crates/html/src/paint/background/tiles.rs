@@ -63,9 +63,14 @@ pub(super) fn paint_tiles_in(
         // ЗАМЕРЕНО: сплошной перевод дал CSS2 4614 -> 4610, вся потеря в
         // семье `border-*-width-applies-to-00*`.
         let to_px = |l: Option<Len>| match l {
-            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => Some(
-                Len::Px(crate::text::metrics::spacing_px(Some(u), &family, font)),
-            ),
+            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
+                Some(Len::Px(crate::text::metrics::spacing_px(
+                    Some(u),
+                    &family,
+                    font,
+                    vcx,
+                )))
+            }
             other => other,
         };
         crate::style::computed::BgPos {
@@ -73,7 +78,7 @@ pub(super) fn paint_tiles_in(
             y: to_px(c.bg_pos.y),
         }
     };
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font, vcx);
     let border = c.bg_border_insets.map_or_else(
         || c.borders(),
         |[t, r, b, l]| crate::style::computed::Sides {

@@ -19,6 +19,7 @@ pub(super) fn unfloated_flow(
     parent_bfc: bool,
     cb: FloatCb,
     nodes: &mut Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
     let floated = nodes.iter().any(|n| match n {
         Node::Element(e) => e.style.float.is_some_and(|f| f != 0),
@@ -31,7 +32,7 @@ pub(super) fn unfloated_flow(
         // `floats-bfc-003`). Хост начинается с такого блока.
         if measured_ok {
             for i in 0..nodes.len() {
-                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb) {
+                if let Some((mut host, j)) = band_host_nested(nodes, i, em, parent_bfc, cb, vcx) {
                     let mut out: Vec<Node> = nodes[..i].to_vec();
                     band_clearance::mark_start(&mut host, cb_top_open, &out);
                     out.push(Node::Element(host));
@@ -142,6 +143,7 @@ pub(super) fn host_for_run(
     nodes: &[Node],
     out: &[Node],
     i: usize,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
     if !measured_ok {
         return None;
@@ -165,10 +167,10 @@ pub(super) fn host_for_run(
         .map_or(0, |p| p + 1);
     let text_lead = out[text_at..].iter().any(|n| !is_blank(n));
     text_lead
-        .then(|| band_host_m(nodes, i, em, &out[text_at..], cb))
+        .then(|| band_host_m(nodes, i, em, &out[text_at..], cb, vcx))
         .flatten()
         .map(|(h, n, l)| (h, n, Some(text_at), l))
-        .or_else(|| band_host_m(nodes, i, em, &[], cb).map(|(h, n, l)| (h, n, None, l)))
+        .or_else(|| band_host_m(nodes, i, em, &[], cb, vcx).map(|(h, n, l)| (h, n, None, l)))
 }
 
 #[allow(clippy::too_many_arguments)]

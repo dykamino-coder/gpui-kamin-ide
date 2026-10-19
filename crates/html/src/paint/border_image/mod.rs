@@ -33,7 +33,7 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
         _ => 16.0,
     };
     let border = c.borders();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size, vcx);
     // Толщина самой рамки нужна дважды: как умолчание ширины рамки-картинки и
     // как основа для записи её числом (`border-image-width: 2` — это два
     // значения `border-width`).

@@ -118,8 +118,9 @@ pub(super) fn band_flow_rest(
     em: f32,
     wm: WritingMode,
     cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
-    band_flow_rest_lift(rest, em, None, wm, cb)
+    band_flow_rest_lift(rest, em, None, wm, cb, vcx)
 }
 
 /// Сборка измеряемого хоста: каждому ребёнку — построитель, который
