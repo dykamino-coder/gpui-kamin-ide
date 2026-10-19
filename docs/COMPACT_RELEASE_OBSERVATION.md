@@ -9,11 +9,15 @@
 Автоматическая приёмка проверяет host/listener replay state и server file-I/O
 recovery на реальных обработчиках с искусственными данными. Она не доказывает
 причину старого screenshot, CEF delivery/paint или исчезновение field симптома.
-После публикации точные версии и accepted PR записываются в обеих карточках.
+Проверенная поставка: KaminIDE 1.0.77 / Bridge 6.3.154,
+[release](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.77).
+Точные accepted PR, source и delivery proof записаны в обеих карточках.
 
-Проверить после обычной выкладки совместимых клиента и Bridge с принятыми
-#377 и #378. Записать client/server versions, source revision или image digest
-и интервал UTC. Старый клиент не содержит исправления host/webview #377.
+Проверить после обычной выкладки обоих компонентов по
+[deployment runbook](../extensions/claude-bridge/server/DEPLOYMENT.md).
+Поставка содержит принятые #377 и #378. Записать client/server versions,
+source revision или image digest и интервал UTC. Старый клиент не содержит
+исправления host/webview #377.
 Не менять tokens, не удалять volumes, не перезапускать сервис только ради
 наблюдения и не запускать неизвестный cleanup hook на живом транскрипте.
 
@@ -49,6 +53,10 @@ metadata и screenshot через private intake; не помещать payloads
 примесь других сессий, потерю данных или общий hook cause доказанными по одному
 расхождению интерфейса.
 
-Ошибка `SessionStart:compact` отдельно принадлежит INC-0037: нужен полный stderr
-конкретного handler и происхождение его effective declaration. Этот release
-не объявляет неизвестный hook исправленным.
+Ошибка `SessionStart:compact` отдельно принадлежит
+[INC-0037](../extensions/claude-bridge/runtime-issues/INC-2026-0037.md).
+Сначала использовать уже восстановленный private supplement из карточки: там
+есть полный stderr связанных вызовов с `MODULE_NOT_FOUND`. Не запрашивать его
+повторно и не обещать новые исторические файлы. Для нового события сохранить
+его отличие и effective handler declaration/provenance; новый stderr нужен,
+если это другой вызов. Этот release не объявляет неизвестный hook исправленным.

@@ -35,13 +35,16 @@ INC-0067/0068 и completion/acceptance flow. #380 / INC-0069 принят отд
 
 | INC | Текущее состояние | Следующий owner / artifact |
 | --- | --- | --- |
-| [INC-0067](runtime-issues/INC-2026-0067.md) | resolved bounded source contract; #377 merged `8f8d3bfa`, accepted CI/tests/builds; field не проверен | Maintainer: один release и Published fix; deployment owner: linked field checklist после выпуска |
-| [INC-0068](runtime-issues/INC-2026-0068.md) | resolved bounded source contract; #378 merged `84259a44`, accepted CI/dry run/tests; field не проверен | Maintainer: один release и Published fix; deployment owner: linked field checklist; same-identity regrowth remains a limit |
+| [INC-0067](runtime-issues/INC-2026-0067.md) | resolved bounded source contract; #377 merged `8f8d3bfa`, accepted CI/tests/builds; field не проверен | Доставлен `kaminide-v1.0.77` / 6.3.154; deployment owner: linked field checklist после rollout |
+| [INC-0068](runtime-issues/INC-2026-0068.md) | resolved bounded source contract; #378 merged `84259a44`, accepted CI/dry run/tests; field не проверен | Доставлен `kaminide-v1.0.77` / 6.3.154; deployment owner: linked field checklist; same-identity regrowth remains a limit |
 
 Решение о классе сохраняет историческое требование и непроверенный field
 outcome; native BR-25/31 и hook INC-0037 остаются открыты по своим карточкам.
-Source outcome проверен в `origin/main` `84259a44`. После публикации добавить
-проверенные delivery facts в эти строки и canonical cards отдельным docs PR.
+Source outcome проверен в `origin/main` `84259a44`. Публикация #383 проверена:
+`kaminide-v1.0.77` / 6.3.154, source `32d0badf`; Published fix записан в обеих
+карточках. Owner для оставшегося field observation — оператор развёртывания.
+Ранее принятый #380 также доставлен; параллельные INC-0070/0071 из #384 остаются
+открытыми исследованиями вне этой пачки. Это не полный пересчёт backlog.
 
 ## Как начать следующий проход
 
