@@ -50,6 +50,7 @@ pub(crate) fn scrollable(
         .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
     let area_sticky = opts.cx.sticky.clone();
+    let freeze_scrollbars = opts.cx.freeze_scrollbars;
     let mut node = e.clone();
     node.style.overflow_x = scroll_style.overflow_x;
     node.style.overflow_y = scroll_style.overflow_y;
@@ -194,7 +195,7 @@ pub(crate) fn scrollable(
             build,
             vcx,
         )
-        .with_style(scroll_style)
+        .with_style(scroll_style, freeze_scrollbars)
         .with_tree(e)
         .with_sticky(area_sticky)
         .into_any_element(),

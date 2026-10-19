@@ -24,7 +24,6 @@ pub(crate) fn draw_tiles(
     px_of: impl Fn(Option<Len>) -> f32,
     vcx: ValueCx<'_>,
 ) {
-    let bounds = exact_layer::positioning(bounds);
     // Место под фон: свой край по `background-origin`.
     let bounds = Bounds {
         origin: gpui::point(

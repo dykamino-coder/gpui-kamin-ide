@@ -154,7 +154,8 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     Some(
         exact_layer::ExactLayer::inset(
             c.bg_border_insets.unwrap_or([0.0; 4]),
-            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+            move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
+                let bounds = geometry.snapped;
                 let vcx = values.vcx();
                 clip::paint(&style, bounds, window, |style, window| {
                     if style.bg_fixed == Some(true) {
@@ -165,9 +166,16 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
                             origin: gpui::point(px(0.0), px(0.0)),
                             size: window.viewport_size(),
                         };
-                        paint_tiles(style, view, Some(bounds), window, vcx);
+                        tiles::paint_tiles_in(
+                            style,
+                            view,
+                            Some(bounds),
+                            window,
+                            Some(geometry),
+                            vcx,
+                        );
                     } else {
-                        paint_area(style, bounds, window, vcx);
+                        tiles::paint_tiles_in(style, bounds, None, window, Some(geometry), vcx);
                     }
                 });
             },

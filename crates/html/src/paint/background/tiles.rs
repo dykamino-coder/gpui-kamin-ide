@@ -31,6 +31,18 @@ pub fn paint_tiles(
     window: &mut gpui::Window,
     vcx: ValueCx<'_>,
 ) {
+    paint_tiles_in(c, bounds, canvas, window, None, vcx);
+}
+
+pub(super) fn paint_tiles_in(
+    c: &Computed,
+    bounds: Bounds<Pixels>,
+    canvas: Option<Bounds<Pixels>>,
+    window: &mut gpui::Window,
+    geometry: Option<super::exact_layer::PaintGeometry>,
+    vcx: ValueCx<'_>,
+) {
+    let positioning = geometry.map_or(bounds, |geometry| geometry.positioning(bounds));
     let Some(src) = c.bg_image.clone() else {
         return;
     };
@@ -117,7 +129,7 @@ pub fn paint_tiles(
     } else if c.bg_border_insets.is_some() {
         // Expand before snapping: half a collapsed border can occupy a
         // fractional device pixel even when the layer's inner edge is snapped.
-        super::exact_layer::positioning(bounds)
+        positioning
     } else {
         bounds
     };
@@ -170,7 +182,19 @@ pub fn paint_tiles(
     // Область позиционирования — по неокруглённой коробке, когда слой её
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
-        c, bounds, canvas, window, inset, found, paint_box, size, repeat, pos, fixed_area, border,
-        px_of, vcx,
+        c,
+        positioning,
+        canvas,
+        window,
+        inset,
+        found,
+        paint_box,
+        size,
+        repeat,
+        pos,
+        fixed_area,
+        border,
+        px_of,
+        vcx,
     );
 }

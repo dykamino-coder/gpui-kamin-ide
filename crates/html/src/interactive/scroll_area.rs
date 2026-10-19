@@ -1,8 +1,6 @@
 //! Элемент `ScrollArea`.
 
 use crate::document::state::ValueCx;
-// owner: A
-
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window,
@@ -11,12 +9,7 @@ use std::rc::Rc;
 
 type ScrollBuilder = Rc<dyn Fn(&gpui::ScrollHandle, bool, bool) -> AnyElement>;
 
-/// Прокрутка содержимого — `overflow: auto` и `scroll`.
-///
-/// Раньше оба значения давали только обрезку: часть содержимого пропадала без
-/// возможности до неё добраться. Прокрутка в GPUI требует РУЧКИ, живущей между
-/// кадрами, — а память есть только у своего элемента. Сама лента и колесо мыши
-/// уже реализованы в `div`, поэтому здесь только ручка и её хранение.
+/// Сохраняет ручку GPUI между кадрами и строит содержимое с прокруткой.
 pub struct ScrollArea {
     pub(crate) id: ElementId,
     pub(crate) horizontal: bool,
@@ -30,6 +23,7 @@ pub struct ScrollArea {
     pub(crate) build: ScrollBuilder,
     /// Values of the document the area's style lengths come from.
     values: crate::document::state::ValueDoc,
+    freeze_scrollbars: bool,
 }
 
 impl ScrollArea {
@@ -42,6 +36,7 @@ impl ScrollArea {
     ) -> Self {
         ScrollArea {
             values: vcx.keep(),
+            freeze_scrollbars: false,
             id,
             horizontal,
             vertical,
@@ -52,10 +47,12 @@ impl ScrollArea {
             sticky: None,
         }
     }
-}
-
-impl ScrollArea {
-    pub(crate) fn with_style(mut self, style: crate::style::computed::Computed) -> Self {
+    pub(crate) fn with_style(
+        mut self,
+        style: crate::style::computed::Computed,
+        freeze: bool,
+    ) -> Self {
+        self.freeze_scrollbars = freeze;
         self.style = style;
         self
     }
@@ -203,6 +200,7 @@ impl Element for ScrollArea {
             });
         }
         let hitbars = super::scrollbars::interaction::prepaint(
+            self.freeze_scrollbars,
             &self.style,
             &child.1,
             child.2.bars(),
@@ -226,7 +224,9 @@ impl Element for ScrollArea {
     ) {
         child.2.set_decoration_clip(window.content_mask());
         child.0.paint(window, cx);
-        let alpha = child.4.paint(&paint_bounds.1, &child.1, window);
+        let alpha = child
+            .4
+            .paint(self.freeze_scrollbars, &paint_bounds.1, &child.1, window);
         crate::interactive::scrollbars::paint(
             &self.style,
             &child.1,

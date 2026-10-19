@@ -36,17 +36,6 @@ pub(crate) mod size;
 /// системном масштабе (125%, 150%) картинка иначе выглядит мыльной.
 const DENSITY: f32 = 2.0;
 
-thread_local! {
-    /// Размер опорной коробки `view-box` ближайшего вьюпорта (css-masking-1
-    /// §5.1 `view-box`): начало — в начале системы координат `viewBox`,
-    /// размер — его ширина и высота; без `viewBox` — размер самого `<svg>`.
-    static VIEW_BOX: std::cell::Cell<(f32, f32)> =
-        const { std::cell::Cell::new((300.0, 150.0)) };
-    /// Пишутся дети `<clipPath>`: свой `<clipPath>` рядом с ними синтезировать
-    /// нельзя — модель содержимого `<clipPath>` только фигуры, текст и `use`.
-    static IN_CLIP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
 pub(crate) fn element_with_html(
     e: &Element,

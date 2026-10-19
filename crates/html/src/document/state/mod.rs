@@ -31,6 +31,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Rasterized foreignObject layers of this document, bounded by the painter.
+    pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
     /// Носитель и область просмотра, которыми разобран документ.
     pub(crate) media: Cell<Media>,
     /// Режим quirks (HTML §13.2.6.4.1), ставит разбор.

@@ -15,6 +15,8 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Keep scrollbar hover and drag at rest for a static host capture.
+    pub freeze_scrollbars: bool,
     /// Containing-block width in px when the parent's style gives it. A
     /// replaced element without intrinsic size but with a ratio takes its
     /// width from the block equation, i.e. from the containing block (CSS 2.1
