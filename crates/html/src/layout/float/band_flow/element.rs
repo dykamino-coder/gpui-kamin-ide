@@ -195,7 +195,7 @@ impl Hooks for BandFlow {
             let el = frame(
                 kid.kind,
                 s.avail,
-                (kid.build)(cb, s.avail, s.shapes.clone(), s.h),
+                (kid.build)(cb, s.avail, s.shapes.clone(), s.h, None),
                 tap,
                 vert.is_some(),
             );

@@ -17,8 +17,11 @@ pub(super) fn deferred(
         drop(build(opts, 0.0, 0.0, None, None));
     }
     let opts = opts.clone();
-    Rc::new(move |cb, avail, shapes, height| {
+    Rc::new(move |cb, avail, shapes, height, inline_measure| {
         let probe = opts.inner(|cx| {
+            if let Some(measure) = &inline_measure {
+                cx.inline_measure = Some(measure.clone());
+            }
             if let Some(scope) = &scope {
                 cx.clamp_build = scope.build();
             }

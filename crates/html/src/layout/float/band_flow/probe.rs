@@ -34,7 +34,7 @@ pub(super) fn probe_of(
     let mut el = frame(
         kind,
         avail,
-        build(cb, avail, shapes, None),
+        build(cb, avail, shapes, None, None),
         tap.clone(),
         vert,
     );
@@ -76,8 +76,9 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
 pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
+    let measure = p.vert.then(crate::text::vertical::InlineMeasure::default);
     let mut el = Tap {
-        inner: build(0.0, 0.0, None, None),
+        inner: build(0.0, 0.0, None, None, measure.clone()),
         id: tap.clone(),
     }
     .hooked();
@@ -86,12 +87,12 @@ pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
         if vert {
             // Повёрнутый текст свою длину высотой не заявляет (растягивается
             // окном) — берём её у самого текста через сборщик
-            // `VT_INLINE_MAX`; коробка без текста отвечает раскладкой.
-            let prev = crate::text::vertical::VT_INLINE_MAX.with(|c| c.replace(Some(0.0)));
+            // intrinsic measurement; коробка без текста отвечает раскладкой.
+            if let Some(measure) = &measure {
+                measure.reset();
+            }
             el.layout_as_root(size(AvailableSpace::MaxContent, a), p.window, p.cx);
-            let text = crate::text::vertical::VT_INLINE_MAX
-                .with(|c| c.replace(prev))
-                .unwrap_or(0.0);
+            let text = measure.as_ref().map_or(0.0, |measure| measure.extent());
             let laid = unrounded(&tap, p.window).1;
             if text > 0.0 { text.min(laid) } else { laid }
         } else {

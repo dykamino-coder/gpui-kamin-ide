@@ -98,6 +98,7 @@ impl Paragraph {
         let ruby_layers = self.ruby_layers.clone();
         let measures = self.measures.clone();
         let paint_context = self.paint_context.clone();
+        let inline_measure = self.inline_measure.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -113,6 +114,7 @@ impl Paragraph {
                 );
                 probe.measures = measures.clone();
                 probe.paint_context = paint_context.clone();
+                probe.inline_measure = inline_measure.clone();
                 probe.vertical = vertical;
                 probe.lines_reversed = lines_reversed;
                 probe.vertical_central_baseline = vertical_central_baseline;

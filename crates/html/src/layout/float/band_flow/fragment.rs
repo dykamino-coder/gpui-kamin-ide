@@ -115,7 +115,7 @@ mod tests {
             monolithic: false,
             clear: None,
             margin: [Edge::Px(0.); 4],
-            build: Rc::new(|_, _, _, _| panic!("geometry does not rebuild children")),
+            build: Rc::new(|_, _, _, _, _| panic!("geometry does not rebuild children")),
             nest: None,
             anon: false,
             lead: None,

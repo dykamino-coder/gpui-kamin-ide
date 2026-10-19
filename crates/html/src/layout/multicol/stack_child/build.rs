@@ -63,9 +63,11 @@ pub(super) fn build_copy(
     let frag_gap_items = frag_gap_rules
         .as_ref()
         .map(|_| crate::paint::gap_rules::GapItems::default());
-    let mut frag_gap_guard = frag_gap_items
-        .clone()
-        .map(crate::paint::gap_rules::GapGuard::enter);
+    let child_opts = opts.inner(|cx| {
+        if let Some(items) = &frag_gap_items {
+            cx.gap_items = Some(items.clone());
+        }
+    });
     // css-break-3 §5.5: «Fragmentation … occurs
     // before relative positioning, transforms,
     // and any other graphical effects. Such
@@ -131,7 +133,6 @@ pub(super) fn build_copy(
         whole,
         part,
         &mut kids,
-        &mut frag_gap_guard,
     ) {
         return value;
     }
@@ -204,11 +205,10 @@ pub(super) fn build_copy(
             fixed_cb_layer_box(inner),
         )
     });
-    let mut body = blocks(&kids, src_inner, opts);
+    let mut body = blocks(&kids, src_inner, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
-    drop(frag_gap_guard);
     let d = frag_box_div(
         col_vert,
         col_rl,

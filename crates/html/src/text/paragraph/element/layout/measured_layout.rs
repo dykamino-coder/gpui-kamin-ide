@@ -117,11 +117,9 @@ pub(crate) fn measured_layout(
     // band host's intrinsic probe, like `VerticalText` does: the
     // box itself stretches to the window along the line axis.
     if vertical {
-        crate::text::vertical::VT_INLINE_MAX.with(|c| {
-            if let Some(v) = c.get() {
-                c.set(Some(v.max(f32::from(content))));
-            }
-        });
+        if let Some(measure) = &probe.inline_measure {
+            measure.report(f32::from(content));
+        }
     }
     let width = known_along.unwrap_or(content);
     // Шире отведённого коробка не бывает: у абзаца блочного уровня

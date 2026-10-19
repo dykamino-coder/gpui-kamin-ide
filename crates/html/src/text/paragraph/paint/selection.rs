@@ -30,6 +30,7 @@ impl Paragraph {
         let probe = Paragraph {
             anchor_values: self.anchor_values.clone(),
             paint_context: self.paint_context.clone(),
+            inline_measure: self.inline_measure.clone(),
             clamp_rows: self.clamp_rows.clone(),
             measures: self.measures.clone(),
             fragment: None,

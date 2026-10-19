@@ -12,6 +12,7 @@ use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, Tex
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
     pub(super) anchor_values: Option<crate::document::state::ValueDoc>,
+    pub(super) inline_measure: Option<crate::text::vertical::InlineMeasure>,
     pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,

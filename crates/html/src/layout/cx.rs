@@ -100,6 +100,10 @@ pub struct LayoutCx {
     /// medium and the arenas of its `calc()`/`anchor()` values. Set by
     /// `Document::render` and for each nested document.
     pub(crate) doc: BuildDoc,
+    /// Nearest gap-decorated container collecting child bounds.
+    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
+    /// Intrinsic inline-size measurement offered to this build only.
+    pub(crate) inline_measure: Option<crate::text::vertical::InlineMeasure>,
 }
 
 /// The document of a build. `Default` is an empty document: a host builds a

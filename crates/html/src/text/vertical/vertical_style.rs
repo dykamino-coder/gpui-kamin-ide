@@ -6,6 +6,7 @@ impl VerticalText {
     pub fn new(child: AnyElement) -> Self {
         VerticalText {
             paint_context: Default::default(),
+            inline_measure: None,
             child,
             natural: gpui::Size::default(),
             fit_limit: None,
@@ -26,6 +27,7 @@ impl VerticalText {
     /// Share measurements with the document that built this paragraph.
     pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
         self.paint_context = cx.vertical_paint.clone();
+        self.inline_measure = cx.inline_measure.clone();
         self
     }
 

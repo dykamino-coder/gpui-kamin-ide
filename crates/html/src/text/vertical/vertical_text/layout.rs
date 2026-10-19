@@ -1,6 +1,5 @@
 //! Vertical text measurement and physical layout claims.
 
-use super::VT_INLINE_MAX;
 use super::VerticalText;
 use crate::layout::writing_mode::orthogonal_measure;
 use crate::text::vertical::vertical_line_baseline;
@@ -35,11 +34,9 @@ impl VerticalText {
         // поворота). Наружу высотой он не заявляется (см. ниже), и пробе
         // флоата хоста полос (`band_flow::intrinsic`, письмо вертикальное)
         // его взять неоткуда — сборщик кладёт его сюда, когда открыт.
-        VT_INLINE_MAX.with(|c| {
-            if let Some(v) = c.get() {
-                c.set(Some(v.max(f32::from(self.natural.width))));
-            }
-        });
+        if let Some(measure) = &self.inline_measure {
+            measure.report(f32::from(self.natural.width));
+        }
         let mut style = gpui::Style {
             flex_shrink: 0.0,
             ..Default::default()

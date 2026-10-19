@@ -56,7 +56,15 @@ pub type Shapes = Arc<(Vec<FloatShape>, Vec<FloatShape>)>;
 /// высота содержимого) -> элемент`. Вызывается на каждую пробу заново (см.
 /// доккомент модуля). Высоту получает только `Kind::Nest`: его коробка
 /// строится БЕЗ детей и высотой из плана.
-pub type Build = Rc<dyn Fn(f32, f32, Option<Shapes>, Option<f32>) -> AnyElement>;
+pub type Build = Rc<
+    dyn Fn(
+        f32,
+        f32,
+        Option<Shapes>,
+        Option<f32>,
+        Option<crate::text::vertical::InlineMeasure>,
+    ) -> AnyElement,
+>;
 
 /// Длина поля: точки или доля ширины содержащего блока (§8.3: проценты
 /// полей — от ШИРИНЫ содержащего блока по обеим осям).

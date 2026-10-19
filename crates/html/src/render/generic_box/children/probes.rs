@@ -17,7 +17,7 @@ pub(crate) fn child_probes(
     is_clamp: bool,
     span: Option<crate::text::clamp::ClampSpan>,
 ) {
-    if let Some(items) = crate::paint::gap_rules::gap_context()
+    if let Some(items) = opts.cx.gap_items.clone()
         && !matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)

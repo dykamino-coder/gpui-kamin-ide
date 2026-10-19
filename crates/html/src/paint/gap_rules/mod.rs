@@ -14,39 +14,6 @@ mod items;
 pub use items::{GapBuffer, MulticolGaps, gap_item_probe};
 pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
 
-thread_local! {
-    /// Buffers of the gap-decorated containers whose children are being
-    /// BUILT (tree construction, not layout): a child box built while a
-    /// buffer is open gets a probe writing into it. The buffer itself is
-    /// owned by the container's painter and lives for one frame.
-    static GAP_STACK: std::cell::RefCell<Vec<GapItems>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// Сторож стека линеек на время сборки ДЕТЕЙ контейнера.
-pub struct GapGuard(pub(crate) bool);
-
-impl GapGuard {
-    pub fn enter(items: GapItems) -> Self {
-        GAP_STACK.with(|st| st.borrow_mut().push(items));
-        GapGuard(true)
-    }
-}
-
-impl Drop for GapGuard {
-    fn drop(&mut self) {
-        if self.0 {
-            GAP_STACK.with(|st| {
-                st.borrow_mut().pop();
-            });
-        }
-    }
-}
-
-/// Буфер контейнера линеек, в котором строится текущий элемент.
-pub fn gap_context() -> Option<GapItems> {
-    GAP_STACK.with(|st| st.borrow().last().cloned())
-}
-
 /// Правила линеек одной оси (css-gaps-1), уже в точках.
 #[derive(Clone, Debug)]
 pub struct GapAxisRule {

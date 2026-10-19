@@ -51,7 +51,6 @@ pub(super) fn copy_whole_box(
     whole: bool,
     part: usize,
     kids: &mut Vec<Node>,
-    frag_gap_guard: &mut Option<crate::paint::gap_rules::GapGuard>,
 ) -> Option<gpui::AnyElement> {
     if let Some(hh) = nest_row {
         let mut mc = copy.clone();
@@ -88,7 +87,6 @@ pub(super) fn copy_whole_box(
             mc.style.height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.border_box = None;
         }
-        drop(frag_gap_guard.take());
         return Some(element(
             &mc,
             merged,
@@ -103,13 +101,11 @@ pub(super) fn copy_whole_box(
         {
             mc.style.width = Some(Len::Px(w));
         }
-        drop(frag_gap_guard.take());
         return Some(element(&mc, merged, opts));
     }
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
-        drop(frag_gap_guard.take());
         return Some(transformed(
             table(&tc, inner, opts),
             inner,

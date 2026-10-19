@@ -18,9 +18,5 @@ mod paint_context;
 pub(crate) use measurements::VerticalMeasures;
 pub(crate) use paint_context::{TurnFrame, VerticalPaint};
 
-thread_local! {
-    /// Сборщик внутреннего строчного размера повёрнутого текста (`None` —
-    /// закрыт): наибольшая длина строки всех `VerticalText`, разложенных,
-    /// пока он открыт.
-    pub static VT_INLINE_MAX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-}
+mod inline_measure;
+pub use inline_measure::InlineMeasure;

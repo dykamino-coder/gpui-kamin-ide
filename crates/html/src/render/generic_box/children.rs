@@ -163,7 +163,7 @@ pub(crate) fn generic_children(
     let viewport = e.tag == "html-viewport";
     let viewport_scope = viewport
         .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
-    kids.extend(decorated_children(e, &merged, opts, || {
+    kids.extend(decorated_children(e, &merged, opts, |opts| {
         // A clamp container establishes an independent formatting context
         // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
         // receives only Computed, whose inherited clamp value cannot identify

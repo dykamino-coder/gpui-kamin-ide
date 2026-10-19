@@ -17,6 +17,7 @@ impl Paragraph {
         Paragraph {
             anchor_values: None,
             paint_context: Default::default(),
+            inline_measure: None,
             clamp_rows: Default::default(),
             measures: Default::default(),
             scroll_owner: None,
@@ -109,6 +110,7 @@ impl Paragraph {
         self.anchor_values = Some(cx.vcx().keep());
         self.measures = cx.doc().paragraph_measures.clone();
         self.paint_context = cx.vertical_paint.clone();
+        self.inline_measure = cx.inline_measure.clone();
         self.clamp_rows = cx.doc().paragraph_rows.clone();
         self
     }
