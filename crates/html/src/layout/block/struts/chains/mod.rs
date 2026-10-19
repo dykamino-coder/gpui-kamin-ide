@@ -4,7 +4,7 @@ use super::through::adjoin;
 use super::through::float_only_wrapper;
 use super::through::strut_of;
 use super::through::through_strut;
-use super::{Strut, inline_axis_edges, margin_or_bail, top_edge_open};
+use super::{Strut, inline_axis_edges, margin_or_bail, top_edge_open_at};
 use crate::dom::Node;
 use crate::layout::block::containing::with_inner_cb;
 use crate::layout::float::clear::bfc_no_fit;
@@ -108,7 +108,7 @@ pub(crate) fn leading_chain(
         // его первого ребёнка (и всё, что с ним схлопнулось) обрезано, наружу
         // примыкать нечему. Без этого поле 50 ребёнка уходило через контейнер
         // в `body`, и страница съезжала на 50 (`block-container-non-adjoining-item`).
-        if top_edge_open(ch) && ch.style.margin_trim & 1 == 0 {
+        if top_edge_open_at(ch, vcx.collapse.width) && ch.style.margin_trim & 1 == 0 {
             // Содержащий блок детей `ch` — сам `ch`: его ширина точками —
             // оценка для `bfc_no_fit` на спуске.
             let cb = match ch.style.width {
@@ -116,7 +116,7 @@ pub(crate) fn leading_chain(
                 _ => cb,
             };
             // Внуки меряют доли от содержимого `ch`, а не от уровня (§10.1 п.2).
-            let inner = with_inner_cb(&ch.style, || {
+            let inner = with_inner_cb(&ch.style, vcx, |vcx| {
                 leading_chain(&ch.children, path, eat, cb, vcx)
             });
             s = adjoin(s, inner?);
@@ -174,7 +174,7 @@ pub(crate) fn trailing_chain(
         eat.push((path.clone(), false));
         // Заданная высота или нижняя рамка/отступ отрезают цепочку: поле
         // внука к краю контейнера уже не примыкает.
-        if ch.style.height.is_none() && top_edge_open(ch) {
+        if ch.style.height.is_none() && top_edge_open_at(ch, vcx.collapse.width) {
             s = adjoin(s, trailing_chain(&ch.children, path, eat, vcx)?);
         }
         path.pop();

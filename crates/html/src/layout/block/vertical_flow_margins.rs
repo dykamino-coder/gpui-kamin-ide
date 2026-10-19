@@ -27,16 +27,15 @@ pub(crate) fn children(
         // (`render::blocks::prepare_children`); the collapse step runs before
         // the children's styles are inherited (`clearance-calculations-vrl-002`:
         // `margin-right: 4em` at 20px collapsed as 64px).
-        use crate::layout::block::margins::COLLAPSE_FONT_PX;
         let base = match parent.font_size {
             Some(crate::style::values::value::Len::Px(v)) => v,
-            _ => COLLAPSE_FONT_PX.with(std::cell::Cell::get),
+            _ => vcx.collapse.font,
         };
-        let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
-        let out =
-            crate::layout::block::margins::collapse_flow_margins(children, reverse, lead, vcx);
-        COLLAPSE_FONT_PX.with(|c| c.set(prev));
-        out
+        let vcx = vcx.with_collapse(crate::layout::block::margins::CollapseInputs {
+            font: base,
+            ..vcx.collapse
+        });
+        crate::layout::block::margins::collapse_flow_margins(children, reverse, lead, vcx)
     }
 }
 

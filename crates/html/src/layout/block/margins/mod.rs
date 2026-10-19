@@ -5,6 +5,8 @@ use crate::dom::Node;
 use crate::layout::block::margin_inline_boxes;
 use crate::layout::block::struts::{Strut, solve, through_strut_no_clear};
 use crate::style::values::value::Len;
+mod inputs;
+pub(crate) use inputs::CollapseInputs;
 mod flow;
 pub(super) use flow::collapse_flow_margins;
 mod kids;
@@ -68,18 +70,4 @@ pub(crate) fn collapse_margins(
         }
     }
     out
-}
-
-thread_local! {
-    /// Кегль РОДИТЕЛЯ на разбираемом уровне: единицы шрифта в отступах
-    /// меряются от кегля элемента, а он к моменту схлопывания ещё не
-    /// унаследован — наследование живёт ниже по пути (`inline::inherit`).
-    /// Значение ставит `blocks()` вокруг вызова `collapse_margins` и
-    /// возвращает на место после него.
-    pub(crate) static COLLAPSE_FONT_PX: std::cell::Cell<f32> = const { std::cell::Cell::new(16.0) };
-    /// Ширина содержащего блока уровня схлопывания (для процентных полей).
-    pub(crate) static COLLAPSE_CB_WIDTH_PX: std::cell::Cell<Option<f32>> = const { std::cell::Cell::new(None) };
-    /// Определена ли высота содержащего блока уровня схлопывания (§10.5):
-    /// доля высоты ребёнка при неопределённой ведёт себя как `auto`.
-    pub(crate) static COLLAPSE_CB_HEIGHT_DEF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }

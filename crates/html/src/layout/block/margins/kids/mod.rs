@@ -2,7 +2,6 @@
 
 use crate::dom::Node;
 use crate::layout::block::containing::with_inner_cb;
-use crate::layout::block::margins::COLLAPSE_CB_HEIGHT_DEF;
 use crate::layout::block::struts::{
     first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain, zero_at,
 };
@@ -125,7 +124,7 @@ pub(super) fn collapse_kid_margins(
         let behaves_auto = match e.style.height {
             None | Some(Len::Auto) => true,
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) => true,
-            Some(Len::Pct(_)) => !COLLAPSE_CB_HEIGHT_DEF.with(std::cell::Cell::get),
+            Some(Len::Pct(_)) => !vcx.collapse.height_def,
             _ => false,
         };
         if !zero(e.style.padding.bottom)
@@ -152,7 +151,7 @@ pub(super) fn collapse_kid_margins(
                     ))
             }))
             .and_then(|(i, ch)| {
-                with_inner_cb(&e.style, || {
+                with_inner_cb(&e.style, vcx, |vcx| {
                     margin_px(ch.style.margin.bottom, &ch.style, vcx)
                 })
                 .map(|_| i)

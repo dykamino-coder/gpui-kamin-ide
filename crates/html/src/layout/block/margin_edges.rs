@@ -5,7 +5,7 @@ use crate::layout::block::containing::with_inner_cb;
 use crate::layout::block::margin_height;
 use crate::layout::block::struts::{
     Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve,
-    strut_of, through_strut, through_strut_no_clear, top_edge_open, zero_at, zero_len,
+    strut_of, through_strut, through_strut_no_clear, top_edge_open_at, zero_at, zero_len,
 };
 use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
@@ -18,7 +18,7 @@ pub(super) fn collapse_top(
 ) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
     // parent-child collapse; bottom collapse has its own edge conditions.
-    if !top_edge_open(e) {
+    if !top_edge_open_at(e, vcx.collapse.width) {
         return;
     }
     // Верхнее поле родителя и ВСЯ ведущая цепочка полей потомков — одно
@@ -32,7 +32,7 @@ pub(super) fn collapse_top(
         Some(Len::Px(w)) if w > 0.0 => Some(w),
         _ => cb,
     };
-    let chain = with_inner_cb(&e.style, || {
+    let chain = with_inner_cb(&e.style, vcx, |vcx| {
         leading_chain(&e.children, &mut path, &mut eat, cb, vcx)
     });
     if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style, vcx))
@@ -49,7 +49,7 @@ pub(super) fn collapse_top(
 pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) {
     let mut path = Vec::new();
     let mut eat = Vec::new();
-    let chain = with_inner_cb(&e.style, || {
+    let chain = with_inner_cb(&e.style, vcx, |vcx| {
         bottom_chain(&e.children, &mut path, &mut eat, vcx)
     });
     let Some(chain) = chain else { return };
@@ -135,7 +135,7 @@ fn bottom_chain(
         {
             strut = adjoin(
                 strut,
-                with_inner_cb(&child.style, || {
+                with_inner_cb(&child.style, vcx, |vcx| {
                     bottom_chain(&child.children, path, eat, vcx)
                 })?,
             );

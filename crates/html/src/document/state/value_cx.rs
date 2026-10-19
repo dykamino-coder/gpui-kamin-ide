@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
+    pub(crate) collapse: crate::layout::block::margins::CollapseInputs,
     pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
@@ -25,6 +26,7 @@ impl DocState {
         ValueCx {
             doc: self,
             frame: false,
+            collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -34,6 +36,7 @@ impl DocState {
         ValueCx {
             doc: self,
             frame: true,
+            collapse: Default::default(),
             scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
@@ -53,6 +56,7 @@ impl std::fmt::Debug for ValueCx<'_> {
 pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
+    collapse: crate::layout::block::margins::CollapseInputs,
     scheme: crate::style::values::value::Scheme,
 }
 
@@ -61,12 +65,21 @@ impl ValueDoc {
         ValueCx {
             doc: &self.doc,
             frame: self.frame,
+            collapse: self.collapse,
             scheme: self.scheme,
         }
     }
 }
 
 impl ValueCx<'_> {
+    pub(crate) fn with_collapse(
+        mut self,
+        inputs: crate::layout::block::margins::CollapseInputs,
+    ) -> Self {
+        self.collapse = inputs;
+        self
+    }
+
     pub(crate) fn with_scheme(mut self, scheme: crate::style::values::value::Scheme) -> Self {
         self.scheme = scheme;
         self
@@ -83,6 +96,7 @@ impl ValueCx<'_> {
                 .upgrade()
                 .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
             frame: self.frame,
+            collapse: self.collapse,
             scheme: self.scheme,
         }
     }

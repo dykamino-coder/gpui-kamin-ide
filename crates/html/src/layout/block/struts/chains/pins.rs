@@ -1,7 +1,6 @@
 //! Нулевые поля, закреплённые унаследованные поля и поле в точках.
 
 use crate::dom::{Element, Node};
-use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -91,11 +90,11 @@ pub(crate) fn margin_px(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<f32> {
     // Кегль элемента: свой, если задан, иначе унаследованный от уровня
-    // (см. `COLLAPSE_FONT_PX`). Прежде вместо унаследованного брались
+    // (из входов уровня схлопывания). Прежде вместо унаследованного брались
     // постоянные 16 точек, и `table{font-size:50px} div{margin:1em 0}`
     // схлопывался по 16 вместо 50 — вся семья Hixie `margin-collapse-1xx`
     // расходилась с эталоном ровно на эту разницу.
-    let parent = COLLAPSE_FONT_PX.with(std::cell::Cell::get);
+    let parent = vcx.collapse.font;
     let base = match style.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) => k * parent,
@@ -117,9 +116,7 @@ pub(crate) fn margin_px(
         )),
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
-        Len::Pct(k) => COLLAPSE_CB_WIDTH_PX
-            .with(std::cell::Cell::get)
-            .map(|w| k * w),
+        Len::Pct(k) => vcx.collapse.width.map(|w| k * w),
         _ => None,
     }
 }
