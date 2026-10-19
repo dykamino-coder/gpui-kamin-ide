@@ -92,6 +92,19 @@ const SUBAGENT_DISCOVERY_TIMEOUT_MS = 120_000 // 2 min to wait for file to appea
 // Retire a subagent watcher after this long with no file growth — a completed
 // subagent shouldn't hold a live timer + inotify handle for the whole session.
 const SUBAGENT_RETIRE_MS = 5 * 60_000
+// Bound retired-file stats to once per minute per path, rather than every 4s
+// scan across hundreds of open sessions. A resumed subagent may wait up to 60s.
+const RETIRED_SUBAGENT_CHECK_MS = 60_000
+
+interface RetiredSubagent {
+  offset: number
+  size: number
+  dev: number
+  ino: number
+  mtimeMs: number
+  birthtimeMs: number
+  nextCheckAt: number
+}
 
 // ---------------------------------------------------------------------------
 // Slug computation — must match Claude CLI's xfA()
@@ -186,6 +199,8 @@ export class JsonlWatcher {
 
   /** Active subagent JSONL watchers (keyed by file path) */
   private subagentWatchers = new Map<string, SubagentJsonlWatcher>()
+  private retiredSubagents = new Map<string, RetiredSubagent>()
+  private scanningSubagents = false
   private subagentScanTimer: ReturnType<typeof setInterval> | null = null
   private loggedScanSkip = false
 
@@ -252,18 +267,42 @@ export class JsonlWatcher {
    * Key = agent name from meta.json (e.g. "alice", "bob")
    */
   async scanSubagents(): Promise<void> {
-    if (this.stopped || !this.sendSubagentEntries) return
+    if (this.stopped || !this.sendSubagentEntries || this.scanningSubagents) return
+    this.scanningSubagents = true
+    try {
+      await this.scanSubagentFiles()
+    } finally {
+      this.scanningSubagents = false
+    }
+  }
 
+  private async scanSubagentFiles(): Promise<void> {
     // Retire watchers for subagents that finished (JSONL is append-only +
     // terminal, so no growth for SUBAGENT_RETIRE_MS means done). Without this
     // every subagent a session ever spawned kept a live 2s stat timer + inotify
     // handle until the whole session ended — thousands accumulate over hours of
-    // team-spawning and burn a core / hit the inotify limit. A retired subagent
-    // that somehow resumes is re-discovered below (client dedups by uuid).
+    // team-spawning and burn a core / hit the inotify limit. Keep the consumed
+    // offset so rediscovery cannot replay a completed transcript forever.
     const now = Date.now()
     for (const [p, w] of this.subagentWatchers) {
       if (now - w.getLastActivityAt() > SUBAGENT_RETIRE_MS) {
+        let stat: fs.Stats
+        try {
+          stat = await fsp.stat(p)
+        } catch {
+          continue
+        }
+        if (this.stopped) return
         w.stop()
+        this.retiredSubagents.set(p, {
+          offset: w.getLastOffset(),
+          size: stat.size,
+          dev: stat.dev,
+          ino: stat.ino,
+          mtimeMs: stat.mtimeMs,
+          birthtimeMs: stat.birthtimeMs,
+          nextCheckAt: now + RETIRED_SUBAGENT_CHECK_MS,
+        })
         this.subagentWatchers.delete(p)
       }
     }
@@ -295,10 +334,37 @@ export class JsonlWatcher {
     }
     try {
       for (const file of files) {
+        if (this.stopped) return
         if (!file.endsWith('.jsonl')) continue
         const jsonlPath = path.join(subagentsDir, file)
         // Already watching this file?
         if (this.subagentWatchers.has(jsonlPath)) continue
+
+        const retired = this.retiredSubagents.get(jsonlPath)
+        let startOffset: number | undefined
+        if (retired) {
+          if (now < retired.nextCheckAt) continue
+          retired.nextCheckAt = now + RETIRED_SUBAGENT_CHECK_MS
+          let stat: fs.Stats
+          try {
+            stat = await fsp.stat(jsonlPath)
+          } catch {
+            continue
+          }
+          if (this.stopped) return
+          // dev/ino survive appends; birthtime/mtime are fallbacks for file
+          // systems without inode IDs. A changed identity or shrink is new data.
+          const sameFile =
+            stat.ino && retired.ino
+              ? stat.dev === retired.dev && stat.ino === retired.ino
+              : stat.birthtimeMs && retired.birthtimeMs
+                ? stat.birthtimeMs === retired.birthtimeMs
+                : stat.mtimeMs === retired.mtimeMs
+          if (sameFile && stat.size >= retired.size) {
+            if (stat.size <= retired.offset) continue
+            startOffset = retired.offset
+          }
+        }
 
         // Read .meta.json to get agent name
         const metaPath = jsonlPath.replace('.jsonl', '.meta.json')
@@ -312,12 +378,19 @@ export class JsonlWatcher {
         } catch {
           /* use fallback name */
         }
+        if (this.stopped) return
 
         console.log(`[subagent] watcher start: ${agentName} (${path.basename(jsonlPath)})`)
-        const watcher = new SubagentJsonlWatcher(agentName, jsonlPath, (entries) => {
-          console.log(`[subagent] send ${agentName}: ${entries.length} entries`)
-          return this.sendSubagentEntries!(agentName, entries, agentId)
-        })
+        const watcher = new SubagentJsonlWatcher(
+          agentName,
+          jsonlPath,
+          (entries) => {
+            console.log(`[subagent] send ${agentName}: ${entries.length} entries`)
+            return this.sendSubagentEntries!(agentName, entries, agentId)
+          },
+          { startOffset },
+        )
+        this.retiredSubagents.delete(jsonlPath)
         this.subagentWatchers.set(jsonlPath, watcher)
         void watcher.start()
       }
@@ -411,6 +484,7 @@ export class JsonlWatcher {
       watcher.stop()
     }
     this.subagentWatchers.clear()
+    this.retiredSubagents.clear()
   }
 
   // -------------------------------------------------------------------------
@@ -990,6 +1064,7 @@ export class JsonlWatcher {
     // watcher'ов реплеит их целиком; клиент дедупит по uuid.
     for (const w of this.subagentWatchers.values()) w.stop()
     this.subagentWatchers.clear()
+    this.retiredSubagents.clear()
     void this.scanSubagents()
     void this.readInitialContent()
   }

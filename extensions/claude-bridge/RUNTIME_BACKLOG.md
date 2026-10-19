@@ -25,6 +25,23 @@ Private storage IDs INC-0030/0035/0036 не создают дополнител�
 обновлять затронутые строки этого обзора вместе с canonical карточкой; дата/база
 показывают предел актуальности. При расхождении сначала проверить merged PR и evidence.
 
+## Выборочная сверка compact — 2026-10-20
+
+Source до решения: `9c965ea8` (включает accepted fix INC-0069/#380); остальные строки
+и численность выше относятся к датированному снимку 2026-10-19, а не к новому
+полному аудиту. Пачка `RC-2026-10-20-COMPACT` выбрана владельцем только для
+INC-0067/0068 и completion/acceptance flow. #380 / INC-0069 принят отдельно
+другим мейнтейнером; исходный accepted source сохраняется при интеграции #378.
+
+| INC | Текущее состояние | Следующий owner / artifact |
+| --- | --- | --- |
+| [INC-0067](runtime-issues/INC-2026-0067.md) | confirmed; #377 prepared; пересмотр gate для bounded host/listener contract | Текущий maintainer: exact-head CI, acceptance и merge; deployment owner: linked field checklist после выпуска |
+| [INC-0068](runtime-issues/INC-2026-0068.md) | confirmed; #378 prepared; bounded server shrink/replacement recovery | Текущий maintainer: exact-head CI, acceptance и merge; deployment owner: linked field checklist; same-identity regrowth remains a limit |
+
+Решение о классе сохраняет историческое требование и непроверенный field
+outcome; native BR-25/31 и hook INC-0037 остаются открыты по своим карточкам.
+После merge и публикации эти две строки и canonical cards обновляются отдельно.
+
 ## Как начать следующий проход
 
 Поручение владельца «делай runtime-задачи по RUNTIME_BACKLOG.md и maintainer flow,

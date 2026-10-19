@@ -2,12 +2,14 @@
 
 - **Status:** reported
 - **Registration author:** GitHub handle or task owner
+- **Completion target:** bounded behavior/contract and authorized final stage
 - **Diagnostic PR:** PR URL (replace `pending` before registration merge)
 - **Fix PR:** none
 - **Next step:** research / change / verify; bounded deliverable and owner
 - **Private evidence:** immutable private commit URL or explained `not required`
 - **Dependencies:** none
 - **Acceptance:** automated / Windows runtime / post-merge observation
+- **Acceptance rationale:** why these checks establish the claimed contract; separate field attribution/UX limits
 - **Deployment observation owner:** none
 
 ## Symptom
