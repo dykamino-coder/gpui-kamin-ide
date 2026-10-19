@@ -1,13 +1,15 @@
 # Runtime backlog: что осталось и как продолжать
 
 **Сверка доставки 2026-10-19:** public `origin/main`
-`23f5406fae25d63f07805d4659daeb912d585fd0`; последний опубликованный immutable
-release — KaminIDE **1.0.75 / server 6.3.152** (2026-10-16). Последующие
-HTML/WPT/cleanup commits не означают миграцию production CEF или новый release.
+`5790ee05ab3fd2b348db0f9fc7f160ca77f45b4b`; последний опубликованный immutable
+release — KaminIDE **1.0.76 / server 6.3.153** (2026-10-19),
+[#373](https://github.com/dykamino-coder/gpui-kamin-ide/pull/373).
+HTML/WPT/cleanup commits сами по себе не означают миграцию production CEF.
 Private evidence здесь не переаудировано целиком: metadata/link audit от
 2026-10-12 и его базы сохранены ниже; для INC-0065 сверены merged #347,
 immutable acceptance link и merged private #109. INC-0066 отдельно принят по
-source/native-CLI контракту #369 и private #110; его публикация пока ожидается.
+source/native-CLI контракту #369 и private #110; его доставка в 1.0.76 проверена
+по immutable Release, installer provenance и Docker revision/digest.
 
 На этом snapshot: **24 незавершённых BR из 32**, **34 незакрытых INC из 63**.
 Приняты **8 BR**, **28 INC resolved** и **1 INC rejected** в своей доказанной области.
@@ -191,7 +193,7 @@ INC-0002 и completion BR-25; outcome каждого acceptance записать
 | [INC-0060](runtime-issues/INC-2026-0060.md) | resolved; [#212](https://github.com/dykamino-coder/gpui-kamin-ide/pull/212) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
 | [INC-0061](runtime-issues/INC-2026-0061.md) | resolved; [#213](https://github.com/dykamino-coder/gpui-kamin-ide/pull/213) | published [1.0.65](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.65) |
 | [INC-0065](runtime-issues/INC-2026-0065.md#accepted-outcome--2026-10-19-reconciliation) | resolved; [#347](https://github.com/dykamino-coder/gpui-kamin-ide/pull/347), exact-head 8/8 GPU + 8/8 WARP accepted | published [1.0.75](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.75) |
-| [INC-0066](runtime-issues/INC-2026-0066.md#accepted-result--2026-10-19) | resolved; [#369](https://github.com/dykamino-coder/gpui-kamin-ide/pull/369), generated model pin and runtime instructions; automated + isolated native CLI acceptance | merged; publication pending |
+| [INC-0066](runtime-issues/INC-2026-0066.md#accepted-result--2026-10-19) | resolved; [#369](https://github.com/dykamino-coder/gpui-kamin-ide/pull/369), generated model pin and runtime instructions; automated + isolated native CLI acceptance | published [1.0.76](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.76) |
 
 BR `done`: [BR-01](RUNTIME_RELIABILITY.md#br-01--durable-incident-diagnostics), [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable), [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown), [BR-20](RUNTIME_RELIABILITY.md#br-20--restore-complete-claude-plan-usage-windows), [BR-26](RUNTIME_RELIABILITY.md#br-26--publish-agent-replay-state-atomically), [BR-27](RUNTIME_RELIABILITY.md#br-27--derive-active-and-completed-from-one-lifecycle-partition), [BR-28](RUNTIME_RELIABILITY.md#br-28--measure-sidebar-geometry-during-session-hover), [BR-30](RUNTIME_RELIABILITY.md#br-30--keep-incident-log-records-atomic-across-rotation). Их остаточные observations и соседние child tasks читаются по карточкам; первичный fix не повторять.
 
