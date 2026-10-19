@@ -33,7 +33,7 @@ fn paint_area(
         return;
     }
     let part = square(rect, i, r);
-    crate::render::paint_rect_minus(
+    crate::paint::decorations::rect_minus::paint_rect_minus(
         window,
         (
             rect.left().into(),
@@ -164,7 +164,7 @@ pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
             window.with_content_mask(Some(gpui::ContentMask { bounds: padding }), |window| {
                 if joined {
                     let part = square(bounds, i, r);
-                    crate::render::paint_rect_minus(
+                    crate::paint::decorations::rect_minus::paint_rect_minus(
                         window,
                         (
                             padding.left().into(),

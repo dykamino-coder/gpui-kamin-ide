@@ -2,7 +2,6 @@
 
 mod clipping;
 pub(super) use clipping::clip_layer;
-pub(crate) use clipping::paint_rect_minus;
 use clipping::shows_inside;
 
 use crate::dom::Element;

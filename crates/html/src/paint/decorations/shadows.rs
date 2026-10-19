@@ -4,7 +4,7 @@ use crate::document::state::ValueCx;
 // owner: A
 
 use crate::hooks::IntoHooked;
-use crate::render::paint_rect_minus;
+use crate::paint::decorations::rect_minus::paint_rect_minus;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{IntoElement, Styled, div, px};
