@@ -16,7 +16,6 @@ mod lift;
 mod nested_lift;
 pub(super) use lift::band_flow_rest_lift;
 pub(in crate::layout::float) use lift::flow_interior_plain;
-pub(in crate::layout::float) use lift::trimmed_clear;
 mod kids;
 pub(super) use kids::band_kids;
 mod build_kid;
