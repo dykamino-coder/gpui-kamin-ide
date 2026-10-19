@@ -21,7 +21,23 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
     let text = run.iter().any(|n| match n {
         Node::Text(t) => !t.trim().is_empty(),
         Node::Element(c) => {
-            inline_level(c)
+            // CSS 2.1 sections 9.2.2, 10.3.9: atomic inline containers
+            // are measured by the paragraph even without inline text.
+            // Blink line_breaker.cc HandleAtomicInline lays them out first.
+            // Ordinary inline fragments still need their own float lifting.
+            let container = c.style.inline_display != Some(true)
+                && matches!(
+                    c.style.display,
+                    Some(
+                        Display::InlineBlock
+                            | Display::InlineFlex
+                            | Display::InlineGrid
+                            | Display::InlineTable
+                    )
+                )
+                && band_piece(n) != Some(BandPiece::Atom);
+            container
+                || inline_level(c)
                 && band_piece(n) != Some(BandPiece::Atom)
                 && !replaced_tag(c)
                 // The paragraph also owns whitespace-only inline fragments on either

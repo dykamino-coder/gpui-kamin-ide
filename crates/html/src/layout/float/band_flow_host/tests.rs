@@ -42,3 +42,32 @@ fn invisible_inline_run_uses_the_paragraph_without_becoming_an_atom() {
         );
     }
 }
+
+#[test]
+fn unknown_atomic_container_sizes_belong_to_the_paragraph() {
+    for display in [
+        Display::InlineBlock,
+        Display::InlineFlex,
+        Display::InlineGrid,
+        Display::InlineTable,
+    ] {
+        let container = Element::synthetic(
+            "div",
+            Computed {
+                display: Some(display),
+                ..Default::default()
+            },
+            Default::default(),
+            vec![Node::Element(Element::synthetic(
+                "div",
+                Computed::default(),
+                Default::default(),
+                vec![],
+            ))],
+        );
+        assert_eq!(
+            inline_run::classify(&[Node::Element(container)]),
+            (false, true)
+        );
+    }
+}
