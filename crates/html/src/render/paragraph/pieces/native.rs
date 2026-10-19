@@ -220,6 +220,10 @@ pub(crate) fn native_paragraph(
                 },
             ),
         );
+    let para = para.fragment_flow(
+        opts.frag.watch.as_ref().map(|w| w.flow.clone()),
+        crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+    );
     let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())

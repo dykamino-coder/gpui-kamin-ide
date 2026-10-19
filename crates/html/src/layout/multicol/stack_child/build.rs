@@ -27,7 +27,6 @@ pub(super) fn build_copy(
     nest_row: Option<f32>,
     nest_phase_k: f32,
     inner: &Computed,
-    copy_ix: &std::cell::Cell<usize>,
     whole: bool,
     first: bool,
     part: usize,
@@ -61,13 +60,12 @@ pub(super) fn build_copy(
     let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
     let mut kids = copy_kids(copy, first, src, band);
     let frag_gap_rules = gap_rule_spec(copy, inner, opts);
-    let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
-        let ix = copy_ix.get();
-        copy_ix.set(ix + 1);
-        let key = (copy.node_id ^ opts.doc_salt) ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        crate::paint::gap_rules::fresh_gap_items(key).0
-    });
-    let mut frag_gap_guard = frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
+    let frag_gap_items = frag_gap_rules
+        .as_ref()
+        .map(|_| crate::paint::gap_rules::GapItems::default());
+    let mut frag_gap_guard = frag_gap_items
+        .clone()
+        .map(crate::paint::gap_rules::GapGuard::enter);
     // css-break-3 §5.5: «Fragmentation … occurs
     // before relative positioning, transforms,
     // and any other graphical effects. Such
@@ -219,7 +217,7 @@ pub(super) fn build_copy(
         src,
         src_inner,
         frag_gap_rules,
-        frag_gap_key,
+        frag_gap_items,
         kids,
         &mut body,
         &opts.cx,

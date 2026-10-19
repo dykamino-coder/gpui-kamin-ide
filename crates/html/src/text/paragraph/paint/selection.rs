@@ -1,4 +1,4 @@
-//! Выделение абзаца: снимок раскладки и поиск символа под мышью.
+//! Selection runs and mouse tracking over a paragraph layout snapshot.
 
 use crate::interactive::selection::{selected_runs, track_selection};
 use crate::text::paragraph::*;
@@ -31,6 +31,7 @@ impl Paragraph {
             paint_context: self.paint_context.clone(),
             clamp_rows: self.clamp_rows.clone(),
             measures: self.measures.clone(),
+            fragment: None,
             scroll_owner: None,
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,

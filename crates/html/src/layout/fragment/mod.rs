@@ -12,6 +12,7 @@ use crate::style::values::value::Len;
 pub mod breaks;
 pub mod clone;
 pub mod flex_lines;
+pub(crate) mod flow;
 pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;
@@ -192,9 +193,8 @@ mod tests {
             text: gpui::TextStyle::default(),
             viewport: (800.0, 600.0),
             normal_line_height: 1.2,
-            doc_salt: 0,
-            frag: Default::default(),
             cx: Default::default(),
+            frag: Default::default(),
         };
         let base = Computed::default();
         assert!(LINE_CX.with(|l| l.borrow().is_none()));

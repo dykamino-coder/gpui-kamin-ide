@@ -35,6 +35,8 @@ pub(super) fn paginate_of(
         cands,
         watched,
         rebuild: Box::new(move |struts, n| {
+            let mut opts = opts.clone();
+            opts.frag.float_struts = std::rc::Rc::new(struts.clone());
             let vcx = opts.cx.vcx();
             let mut c2 = copy.clone();
             if !apply(&mut c2, struts) {
@@ -44,7 +46,6 @@ pub(super) fn paginate_of(
             let mut inner = crate::style::cascade::inherit::inherit(&merged, &c2.style, vcx);
             inner.fragment_clip_ancestor = false;
             {
-                let copy_ix = std::cell::Cell::new(0usize);
                 let b = |first: bool, part: usize| {
                     side_margin_wrap(
                         build_copy(
@@ -61,7 +62,6 @@ pub(super) fn paginate_of(
                             None,
                             0.0,
                             &inner,
-                            &copy_ix,
                             false,
                             first,
                             part,

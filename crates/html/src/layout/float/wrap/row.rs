@@ -3,50 +3,6 @@
 use crate::dom::{Element, Node};
 use crate::style::computed::{Align, Computed, Display, FlexDir};
 use crate::style::values::value::Len;
-use std::ops::ControlFlow;
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn wrap_beside_covered(
-    nodes: &[Node],
-    out: &mut Vec<Node>,
-    i: &mut usize,
-    side: i8,
-    floaters: &mut Vec<Element>,
-    j: usize,
-    separates: impl Fn(&Element) -> bool,
-    rest: &mut Vec<Node>,
-    out_of_flow: &mut [Node],
-    clearance_strut: bool,
-    covered: Option<((f32, f32), (f32, f32))>,
-) -> ControlFlow<()> {
-    if side < 0
-        && floaters.len() == 1
-        && out_of_flow.is_empty()
-        // Хвост из одной распорки клиренса наложением не выражается:
-        // §9.5.2 держит зазор следующей коробки от НИЗА ФЛОАТА, а
-        // конструкция ниже флоат из потока убирает.
-        && !clearance_strut
-        // Следом РАЗДЕЛИТЕЛЬ (`separates`): его верх §9.5.2 считает от
-        // НИЗА ФЛОАТА, а наложение возвращает поток на низ соседа — без
-        // поля распорки нет, и очищающий брат вставал на низ соседа.
-        && !nodes
-            .get(j)
-            .is_some_and(|n| matches!(n, Node::Element(next) if separates(next)))
-        && let Some(((_, fh), (_, th))) = covered
-    {
-        let mut lone = floaters.remove(0);
-        // Ряда нет — сжатие плавающего куска, заданное подготовкой выше,
-        // здесь не при чём.
-        lone.style.flex_shrink = None;
-        lone.style.margin.top = Some(Len::Px(-th));
-        lone.style.margin.bottom = Some(Len::Px(th - fh));
-        out.extend(std::mem::take(rest));
-        out.push(Node::Element(lone));
-        *i = j;
-        return ControlFlow::Break(());
-    }
-    ControlFlow::Continue(())
-}
 
 pub(super) fn push_float_row(
     out: &mut Vec<Node>,

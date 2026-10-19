@@ -74,6 +74,10 @@ impl PageStack {
                     size(fixed, free)
                 };
                 let sz = k.el.layout_as_root(space, window, cx);
+                let measured_flow = k
+                    .flow
+                    .as_ref()
+                    .map(|f| f.at(point(px(0.0), px(0.0)), sz, self.axis, window));
                 let sz = if vertical {
                     size(sz.height, sz.width)
                 } else {
@@ -81,12 +85,28 @@ impl PageStack {
                 };
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
-                let (h, cuts, forced, solid) = match &k.shape {
+                let (mut h, mut cuts, forced, mut solid) = match &k.shape {
                     Some((h, cuts, forced, solid)) => {
                         (*h, cuts.clone(), forced.clone(), solid.clone())
                     }
                     None => (f32::from(sz.height), Vec::new(), Vec::new(), Vec::new()),
                 };
+                if let Some(flow) = measured_flow {
+                    // CSS Break 3 section 3.1: root floats participate in page
+                    // fragmentation. Their anonymous normal-flow wrapper can
+                    // have zero height, unlike the measured float border box.
+                    if k.shape.is_none()
+                        && let Some(id) = k.float_id
+                    {
+                        h = flow
+                            .floats
+                            .iter()
+                            .filter(|g| g.id == id)
+                            .map(|g| g.bottom)
+                            .fold(h, f32::max);
+                    }
+                    flow.merge(&mut cuts, &mut solid);
+                }
                 Kid {
                     h,
                     mt: k.mt,

@@ -8,28 +8,9 @@ use gpui::{App, LayoutId, Window};
 
 impl VerticalText {
     pub(crate) fn request_layout_impl(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        // Собственный корень раскладки: размер текста нужен ЗДЕСЬ, чтобы
-        // отдать его родителю перевёрнутым.
-        //
-        // ПРОБОВАЛИ И ОТКАТИЛИ: замер по запросу родителя
-        // (`request_measured_layout`), чтобы ограничение доходило до
-        // содержимого и вертикальный текст переносился. Не работает: на этом
-        // шаге раскладочный движок недоступен — повёрнутый блок сам живёт
-        // внутри чужого замера, и вызов падает на `layout_engine.unwrap()`
-        // (vendor/gpui/src/window.rs). Ограничение придётся доводить другим
-        // путём — например, осью потока в самом стиле.
-        //
-        // Ячейка вертикальной таблицы меряется по МИНИМАЛЬНОМУ содержимому
-        // вдоль строки: её вклад в дорожку колонки — это min-content
-        // («the outer min-content width of each cell that spans the column»,
-        // css-tables-3 §computing-column-measures), а не длина всей строки.
-        // Обёртка до поворота стоит при этом БЕЗ жёсткой ширины
-        // (`render.rs`, `col_min`), поэтому запрос доходит до самого абзаца:
-        // `Paragraph` на `AvailableSpace::MinContent` отвечает
-        // `probe.min_content(window)` (`lines.rs`). Дальше `natural.width` —
-        // инлайн-мера колонки (её заявит высотой `fit_within`), а
-        // `natural.height` — число строк при этой мере, то есть блочная
-        // толщина ряда.
+        // The atomic subtree is built once and keeps LayoutIds in this engine.
+        // A parent measure callback cannot move it to a nested engine: cached
+        // child LayoutIds would refer to the original tree. See measurements.
         let space = gpui::size(
             if self.col_min {
                 gpui::AvailableSpace::MinContent
@@ -78,7 +59,11 @@ impl VerticalText {
             self.natural.height
         } else {
             self.key
-                .and_then(|k| self.measures.measured.borrow().get(&k).copied())
+                .and_then(|k| {
+                    self.values
+                        .as_ref()
+                        .and_then(|v| v.vcx().doc.vertical_measures.get(k))
+                })
                 .unwrap_or(self.natural.height)
         };
         style.size.width = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

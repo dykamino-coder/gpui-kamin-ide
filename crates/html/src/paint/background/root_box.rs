@@ -6,19 +6,17 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 use std::{cell::Cell, rc::Rc};
 
+/// The root's padding box, written by the root's box at prepaint and read
+/// by the canvas background layer when it paints in the same frame.
 pub(crate) type Measurement = Rc<Cell<Option<Bounds<Pixels>>>>;
-pub(crate) fn capture() -> Measurement {
-    Rc::new(Cell::new(None))
-}
 
 /// The child remains the layout node: measuring cannot change margin collapse or sizing.
 pub(crate) fn record(
     child: AnyElement,
-    area: Option<Measurement>,
+    area: Measurement,
     style: &Computed,
     base_size: f32,
 ) -> AnyElement {
-    let Some(area) = area else { return child };
     let em = match style.font_size {
         Some(Len::Px(v)) => v,
         _ => base_size,

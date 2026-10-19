@@ -2,11 +2,8 @@
 
 use super::kid::{Kid, Kind};
 use super::place::place_seq;
-use super::{Build, COORD_EPS, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
-use crate::layout::float::band_flow::VERT;
+use super::{Build, COORD_EPS, Probe, Slot, clearance, intrinsic, intrinsic_of, probe, probe_of};
 use crate::layout::float::bands::FloatBands;
-use gpui::{App, Window};
-use std::cell::Cell;
 use std::ops::ControlFlow;
 
 #[allow(clippy::too_many_arguments)]
@@ -14,8 +11,7 @@ pub(super) fn place_float(
     x0: f32,
     x1: f32,
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
     cbw: f32,
     slots: &mut [Slot],
     y: f32,
@@ -39,19 +35,30 @@ pub(super) fn place_float(
     // is 0-width, so the float is min-content sized»). Пол — ширина
     // каркаса не уже min-content.
     if shrink {
-        let (mn, mx) = intrinsic(kid, window, cx);
-        avail = if VERT.with(Cell::get).is_some() {
+        let (mn, mx) = intrinsic(kid, p);
+        let own_layout = matches!(
+            kid.kind,
+            Kind::Float {
+                own_layout: true,
+                ..
+            }
+        );
+        avail = if p.vert || own_layout {
             // В вертикальном письме каркас — ряд, и поперечная ось
             // ряда (высота) у вертикального блока растягивается
             // до окна и при `align-items: flex-start`: строчный
             // размер флоата задаётся каркасу явно, полной формулой
             // §10.3.5 `min(max(min-content, доступно), max-content)`.
+            // Так же — флекс- и сеточному контейнеру: каркас его не
+            // сжимает (`row-001`,
+            // `flex-item-transferred-sizes-*`: флекс-флоат во всю ширину).
             mx.min(mn.max(avail))
         } else {
             avail.max(mn)
         };
     }
-    let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
+    let (bw, bh) = probe(kid, cbw, avail, None, p);
+    let geometry = p.last_geometry.clone();
     // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
     // потока (Servo `set_ceiling_from_non_floats`,
     // `flow/float.rs:371`). У пробега хоста `y` — ноль.
@@ -63,38 +70,47 @@ pub(super) fn place_float(
     let mut ceil = y + kid.margin_offset;
     // Высота набранного — с вырезами уже поставленных флоатов:
     // строки рядом с ними у́же и их больше.
-    let height_of = |b: &Build, bands: &mut FloatBands, window: &mut Window, cx: &mut App| {
+    let height_of = |b: &Build, bands: &mut FloatBands, p: &mut Probe| {
         let walls = bands.set_walls(x0, x1);
         let shapes = bands.shapes(y);
         bands.set_walls(walls.0, walls.1);
-        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), window, cx).1
+        probe_of(Kind::Flow, b, cbw, cbw, Some(shapes), p).1
     };
     // Строка флоата начинается под набранным до последнего
     // `<br>` (`floats-placement-vertical-004-ref`: «H<br>» и
     // флоат на второй строке рядом с первым флоатом).
     if let Some(base) = kid.lead_base.as_ref() {
-        ceil = y + height_of(base, bands, window, cx);
+        ceil = y + height_of(base, bands, p);
     }
     if let Some(lead) = kid.lead.as_ref() {
-        let lw = intrinsic_of(lead, window, cx).1;
+        let lw = intrinsic_of(lead, p).1;
         let (l, r) = bands.available(ceil, 0.0);
         if lw > COORD_EPS && lw + ml + bw + mr > r - l + COORD_EPS {
-            ceil += height_of(lead, bands, window, cx);
+            ceil += height_of(lead, bands, p);
         }
     }
-    bands.set_flow_ceiling(ceil);
+    // Fragmentation moves only the float, leaving preceding normal-flow lines
+    // in their fragmentainer (CSS Break 3 section 3, parallel flows).
+    bands.set_flow_ceiling(ceil + kid.pagination_offset);
     // Посадка margin-box: правила 1-9 §9.5.1 и clear §9.5.2 — в
     // `bands.add_float`.
     let (fx, fy) = if letter {
         bands.add_initial_letter(side, ml + bw + mr, mt + bh + mb, y)
     } else {
-        bands.add_float(side, ml + bw + mr, mt + bh + mb, clear)
+        let at = bands.add_float(side, ml + bw + mr, mt + bh + mb, clear);
+        if let Some(shape) = kid.shape.as_ref() {
+            bands.shape_last(shape(bw, bh, [mt, mr, mb, ml], cbw));
+        }
+        at
     };
     slots[k] = Slot {
+        geometry,
         x: fx + ml,
         y: fy + mt,
+        float_margins: [mt, mb],
         avail,
         b: bh,
+        i: bw,
         ..Slot::default()
     };
 }
@@ -107,8 +123,7 @@ pub(super) fn place_nest(
     adjoining0: bool,
     root: (f32, f32),
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
     cbw: f32,
     slots: &mut [Slot],
     y: &mut f32,
@@ -138,15 +153,15 @@ pub(super) fn place_nest(
     let walls = bands.set_walls(ix0, ix1);
     let inner_top = top + it;
     let adjoining = adjoining0 && (*y - y0).abs() < COORD_EPS && it == 0.0;
-    let (kids_slots, inner_end) = place_seq(
-        &nest.kids, ix0, ix1, inner_top, adjoining, root, bands, window, cx,
-    );
+    let (kids_slots, inner_end) =
+        place_seq(&nest.kids, ix0, ix1, inner_top, adjoining, root, bands, p);
     bands.set_walls(walls.0, walls.1);
     let h = nest.height.unwrap_or((inner_end - inner_top).max(0.0));
     slots[k] = Slot {
         x: bx0,
         y: top,
         avail: (bx1 - bx0).max(0.0),
+        i: (bx1 - bx0).max(0.0),
         h: Some(h),
         kids: kids_slots,
         b: it + h + ib,

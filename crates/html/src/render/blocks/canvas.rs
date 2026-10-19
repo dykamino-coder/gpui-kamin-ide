@@ -8,12 +8,15 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
+/// Push the canvas background layer of root `e`; return the root box
+/// measurement it reads, for the root's own box to fill at prepaint.
 pub(crate) fn canvas_layer(
     e: &Element,
     opts: &RenderOpts,
     out: &mut Vec<gpui::AnyElement>,
-    measured: Option<crate::paint::background::Measurement>,
-) {
+) -> Option<crate::paint::background::RootMeasurement> {
+    let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
+    let measurement = measured.clone();
     let vcx = opts.cx.vcx();
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
@@ -82,7 +85,6 @@ pub(crate) fn canvas_layer(
             };
             let b = e.style.borders();
             let area = crate::paint::background::RootArea {
-                vertical: Some(vcx.doc.vertical_measures.clone()),
                 measured,
                 left: side(e.style.margin.left) + side(b.left),
                 top: side(e.style.margin.top) + side(b.top),
@@ -105,7 +107,7 @@ pub(crate) fn canvas_layer(
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                left_key: (e.style.wm().block_rl()).then_some(opts.doc_salt),
+                measured_left: e.style.wm().block_rl(),
             };
             match &canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
@@ -226,4 +228,5 @@ pub(crate) fn canvas_layer(
         );
     }
     out.push(crate::interactive::scroll_target::canvas(layer));
+    measurement
 }

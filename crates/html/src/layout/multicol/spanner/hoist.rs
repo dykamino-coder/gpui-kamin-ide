@@ -61,7 +61,10 @@ pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {
     if !matches!(c.width, None | Some(Len::Auto)) {
         return false;
     }
+    // A band host removes placement properties from its measured copy; the
+    // box still has the float's shrink-to-fit intrinsic sizing (Multicol 1 §4).
     c.float.unwrap_or(0) != 0
+        || c.floated_box
         || matches!(
             c.position,
             Some(crate::style::computed::Position::Absolute)

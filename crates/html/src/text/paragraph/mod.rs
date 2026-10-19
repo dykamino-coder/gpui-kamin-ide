@@ -242,5 +242,6 @@ mod atoms;
 mod clamp;
 mod first_line;
 mod fit;
+mod fragment;
 pub(super) mod paint;
 use crate::text::paragraph::paint::*;

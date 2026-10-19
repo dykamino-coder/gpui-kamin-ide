@@ -30,6 +30,9 @@ impl Paragraph {
         let Some(last) = lines.pop() else {
             return lines;
         };
+        // The marker shares the line's float exclusions and text indent
+        // (CSS Overflow 4 section 5.2), just like its remaining text.
+        let limit = self.clamp_line_limit(lines.len(), last.indent, limit);
         let segs = self.measure(window);
         let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
@@ -106,5 +109,48 @@ impl Paragraph {
             indent: last.indent,
         });
         lines
+    }
+
+    fn clamp_line_limit(
+        &self,
+        row: usize,
+        indent: Pixels,
+        limit: Option<Pixels>,
+    ) -> Option<Pixels> {
+        limit.map(|w| w - indent - px(self.flow_cut(row).1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::float::shapes::FloatShape;
+
+    #[test]
+    fn marker_uses_the_final_line_exclusions() {
+        let mut paragraph = Paragraph::new(
+            "text".into(),
+            vec![],
+            px(16.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        std::sync::Arc::make_mut(&mut paragraph.flow)
+            .1
+            .push(FloatShape::Band {
+                top: 20.,
+                h: 20.,
+                w: 30.,
+            });
+        assert_eq!(
+            paragraph.clamp_line_limit(1, px(25.), Some(px(100.))),
+            Some(px(45.))
+        );
+        assert_eq!(
+            paragraph.clamp_line_limit(2, px(25.), Some(px(100.))),
+            Some(px(75.))
+        );
+        assert_eq!(paragraph.clamp_line_limit(1, px(25.), None), None);
     }
 }

@@ -49,6 +49,11 @@ pub struct DocState {
     pub(crate) quirks: Cell<bool>,
     /// Кегль, строка и семейство корня — базы `rem`, `rlh`, `rcap`…
     pub(crate) root: RefCell<RootMetrics>,
+    /// Left edge of the root's content-sized box under `vertical-rl`
+    /// (CSS 2.2 §14.2: the canvas background is positioned from the root
+    /// box). The body writes it at prepaint, the canvas layer reads it at
+    /// paint of the same frame; the previous frame's value is the fallback.
+    pub(crate) root_left: Cell<Option<f32>>,
     /// Правила `@page` в порядке появления (css-page-3 §cascading-and-page-context).
     pub(crate) page_rules: RefCell<Vec<PageRule>>,
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).
@@ -86,6 +91,7 @@ impl DocState {
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
+        self.vertical_measures.begin_frame();
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();

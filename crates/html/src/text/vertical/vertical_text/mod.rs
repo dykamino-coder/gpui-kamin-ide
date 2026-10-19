@@ -10,7 +10,6 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
 pub struct VerticalText {
     pub(crate) paint_context: std::rc::Rc<super::VerticalPaint>,
-    pub(crate) measures: std::rc::Rc<super::VerticalMeasures>,
     /// Own layout node: the unrounded box edge anchors the turned content.
     pub(crate) layout_id: Option<LayoutId>,
     /// Clockwise turn frame from prepaint: unrounded block extent and the
@@ -21,7 +20,7 @@ pub struct VerticalText {
     pub(crate) natural: gpui::Size<Pixels>,
     /// Потолок заявляемой высоты (см. `claiming_height`).
     pub(crate) claim_cap: Option<Pixels>,
-    /// Ключ двухкадрового замера (текст абзаца + соль документа).
+    /// Ключ замера в текущем документе (текст абзаца и номер вхождения).
     pub(crate) key: Option<u64>,
     /// Предел строки от родителя: если строка УЖЕ помещается, высота
     /// заявляется честно — иначе гибкая ячейка считает коробку нулевой и
@@ -48,6 +47,7 @@ pub struct VerticalText {
     /// Первая строка для базовой по оси x: шрифт, кегль, высота строки
     /// (`None` — `normal`) и центральная ли доминантная базовая.
     pub(crate) first_line: Option<(gpui::Font, Pixels, Option<Pixels>, bool)>,
+    pub(crate) values: Option<crate::document::state::ValueDoc>,
 }
 
 impl Wrap for VerticalText {

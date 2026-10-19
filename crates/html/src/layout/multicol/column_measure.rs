@@ -21,6 +21,7 @@ impl ColumnStack {
                     window,
                     cx,
                 );
+                c.measure_flow(sz, self.axis, window);
                 let h = f32::from(sz.height);
                 c.h = h;
                 // Видимое переполнение потомков — параллельный поток

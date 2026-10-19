@@ -2,7 +2,7 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
-use crate::paint::gap_rules::{GapGuard, fresh_gap_items, painter::GapRulePainter};
+use crate::paint::gap_rules::{GapGuard, GapItems, painter::GapRulePainter};
 use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
@@ -14,12 +14,10 @@ pub(crate) fn decorated_children(
     children: impl FnOnce() -> Vec<AnyElement>,
 ) -> Vec<AnyElement> {
     let spec = super::gap_rule_spec(e, merged, opts);
-    let context = spec
-        .as_ref()
-        .map(|_| fresh_gap_items(e.node_id ^ opts.doc_salt));
-    let _guard = context.as_ref().map(|(key, _)| GapGuard::enter(*key));
+    let context = spec.as_ref().map(|_| GapItems::default());
+    let _guard = context.clone().map(GapGuard::enter);
     let mut layers = Vec::new();
-    if let (Some((_, buffer)), Some(spec)) = (context, spec) {
+    if let (Some(buffer), Some(spec)) = (context, spec) {
         layers.push(GapRulePainter::new(buffer, spec).hooked());
     }
     layers.extend(children());

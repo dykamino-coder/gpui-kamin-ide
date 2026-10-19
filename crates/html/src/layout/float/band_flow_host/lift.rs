@@ -1,14 +1,11 @@
 //! Подъём хвоста потока в полосы: внутренний поток без полос, прижатые абсолюты.
 
-use super::{band_flow_block, subtree_has_text};
+use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
-use crate::layout::float::band_flow_host::BAND_WM;
-use crate::layout::float::band_host::{BandPiece, band_piece};
 use crate::layout::float::band_measured::{band_nest_ok, band_piece_m, has_ruby};
-use crate::render::{
-    block_level_in_flow, inline_level, is_blank, out_of_flow, own_context, replaced_tag,
-};
+use crate::render::{block_level_in_flow, inline_level, is_blank, out_of_flow, own_context};
 use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::Len;
 
 /// Внутри блока потока нет ни флоатов, ни блоков своего контекста — на
@@ -33,10 +30,7 @@ pub(super) fn flow_interior_plain(c: &Element) -> bool {
             // Срез по краю `text` (у Ahem он нулевой) хост держит верно:
             // гейт на любой `clear` отправлял и его на прежний путь, и
             // `text-box-trim-float-clear-br-001` терял 0.00 → 16.21.
-            if k.style.clear.is_some()
-                && c.style.text_box_trim_end
-                && c.style.text_box_under != crate::style::computed::TextEdge::Text
-            {
+            if trimmed_clear(c, k) {
                 return false;
             }
             if block_level_in_flow(k) {
@@ -54,6 +48,15 @@ pub(super) fn flow_interior_plain(c: &Element) -> bool {
             }
         }
     })
+}
+
+/// A child with `clear` (a `<br clear>`) in a block whose last line is
+/// trimmed to a non-text edge (css-inline-3 §text-box-trim): the trim must
+/// not move the clearance, which the measured host's runs do not express.
+pub(in crate::layout::float) fn trimmed_clear(c: &Element, k: &Element) -> bool {
+    k.style.clear.is_some()
+        && c.style.text_box_trim_end
+        && c.style.text_box_under != crate::style::computed::TextEdge::Text
 }
 
 /// Абсолютная коробка с заданными вставками по обеим осям: её место от
@@ -79,45 +82,42 @@ pub(crate) fn band_flow_rest_lift(
     rest: Vec<Node>,
     em: f32,
     mut lift: Option<&mut Vec<Node>>,
+    wm: WritingMode,
     cb: Option<f32>,
 ) -> Option<Vec<Node>> {
     let mut out: Vec<Node> = vec![];
     let mut run: Vec<Node> = vec![];
-    // Прогон без текста: сплошь атомы известного размера — строчный поток
-    // атомов `FlowRow` с вырезами полос (как у статического хоста); иначе
-    // (`<img>` без размеров, пустые строчные) — хост отменяется.
+    // A run of atoms of known size only is laid out by `FlowRow`, a run with
+    // text or empty atomic boxes is a paragraph; any other run (replaced
+    // elements of unknown size, inline boxes without text) keeps the floats
+    // off the host.
     let mut bad = false;
     // Прогон после `<br>` — продолжение того же абзаца (`cont`): без отступа
     // первой строки (`band_kids`).
     let mut cont = false;
-    let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool| {
+    // `clear` of the last `<br>`: the content after it starts below the
+    // floats of that side (HTML `br[clear]`, CSS 2.1 §9.5.2 on the following
+    // anonymous run); with nothing after it, an empty run still takes the
+    // clearance so the host's flow ends below those floats.
+    let mut pending_clear: Option<i8> = None;
+    let clearing = |clear: Option<i8>| {
+        Node::Element(Element::synthetic(
+            "div",
+            Computed {
+                clear,
+                ..Computed::default()
+            },
+            crate::dom::Marks {
+                anon: true,
+                ..Default::default()
+            },
+            Vec::new(),
+        ))
+    };
+    let mut flush = |run: &mut Vec<Node>, out: &mut Vec<Node>, cont: bool, clear: Option<i8>| {
         if run.iter().any(|n| !is_blank(n)) {
-            // `<br>` — строка, пусть и пустая: прогон `[<br>]` после разреза
-            // по `<br>` — строчный, а не «пустой» (иначе хост отменялся).
-            // Строчный элемент с текстом внутри (`<span>Inline box</span>`)
-            // — тоже строки: прогон без ГОЛОГО текста отменял хост, и флоат
-            // за таким прогоном уходил на следующую строку вместе с блоком
-            // (`box-generation-002`: флоат обязан встать на строку прогона
-            // слева от неё, §9.5.1 правило 6).
-            let text = run.iter().any(|n| match n {
-                Node::Text(t) => !t.trim().is_empty(),
-                Node::Element(c) => {
-                    inline_level(c)
-                        && band_piece(n) != Some(BandPiece::Atom)
-                        && !replaced_tag(c)
-                        && subtree_has_text(c)
-                }
-            }) || run
-                .iter()
-                .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
-            let atoms = !text
-                && run
-                    .iter()
-                    .all(|n| is_blank(n) || band_piece(n) == Some(BandPiece::Atom));
-            if !text && !atoms {
-                bad = true;
-            }
-            if atoms && BAND_WM.with(std::cell::Cell::get).vertical() {
+            let (atoms, hostable) = inline_run::classify(run);
+            if !hostable {
                 bad = true;
             }
             // Вырезы строк (`lines.rs` `flow_cut`) считают строки равной
@@ -127,20 +127,24 @@ pub(crate) fn band_flow_rest_lift(
             if run.iter().any(has_ruby) {
                 bad = true;
             }
-            out.push(Node::Element(Element::anonymous(
+            out.push(Node::Element(Element::synthetic(
                 "div",
-                Computed::default(),
-                std::mem::take(run),
-                false,
+                Computed {
+                    clear,
+                    ..Computed::default()
+                },
                 crate::dom::Marks {
                     anon: true,
                     atoms,
                     cont,
                     ..Default::default()
                 },
+                std::mem::take(run),
             )));
+            true
         } else {
             run.clear();
+            false
         }
     };
     for n in rest {
@@ -157,10 +161,16 @@ pub(crate) fn band_flow_rest_lift(
                     return None;
                 }
                 if !block_level_in_flow(c) {
-                    // Строчный `<br clear>` — разрыв с очисткой: прогон уходит
-                    // под флоаты, чего строки хоста не умеют.
+                    // `<br clear>`: the break ends the run, the next run
+                    // clears (`pending_clear`).
                     if c.style.clear.is_some() {
-                        return None;
+                        let mut br = c.clone();
+                        br.style.clear = None;
+                        run.push(Node::Element(br));
+                        flush(&mut run, &mut out, cont, pending_clear.take());
+                        pending_clear = c.style.clear;
+                        cont = true;
+                        continue;
                     }
                     // Прогон режется по `<br>` верхнего уровня: §9.5 сдвигает
                     // под флоат СТРОКУ, в которую ничего не влезло, а план
@@ -177,23 +187,28 @@ pub(crate) fn band_flow_rest_lift(
                     // вставал ПОСЛЕ буквицы вместо обтекания
                     // (`initial-letter-sunk-initial-vrl`: `3 2` даёт `<br>`
                     // осадки сразу за буквицей).
-                    let only_breaks = BAND_WM.with(std::cell::Cell::get).vertical()
+                    let only_breaks = wm.vertical()
                         && run
                             .iter()
                             .all(|n| is_blank(n) || matches!(n, Node::Element(e) if e.tag == "br"));
                     let br = c.tag == "br";
                     run.push(n);
+                    if br && !only_breaks && flush(&mut run, &mut out, cont, pending_clear) {
+                        pending_clear = None;
+                    }
                     if br && !only_breaks {
-                        flush(&mut run, &mut out, cont);
                         cont = true;
                     }
                     continue;
                 }
-                flush(&mut run, &mut out, cont);
+                if !flush(&mut run, &mut out, cont, pending_clear) && pending_clear.is_some() {
+                    out.push(clearing(pending_clear));
+                }
+                pending_clear = None;
                 cont = false;
-                if band_piece_m(&n, em).is_some()
+                if band_piece_m(&n, em, wm).is_some()
                     || band_flow_block(c, em)
-                    || band_nest_ok(c, em, cb)
+                    || band_nest_ok(c, em, wm, cb)
                 {
                     out.push(n);
                 } else {
@@ -202,6 +217,8 @@ pub(crate) fn band_flow_rest_lift(
             }
         }
     }
-    flush(&mut run, &mut out, cont);
+    if !flush(&mut run, &mut out, cont, pending_clear) && pending_clear.is_some() {
+        out.push(clearing(pending_clear));
+    }
     (!bad).then_some(out)
 }

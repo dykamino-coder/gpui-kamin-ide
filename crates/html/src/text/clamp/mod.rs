@@ -1,5 +1,7 @@
 //! Обрезка строк `line-clamp`.
 mod cut_element;
+mod deferred;
+pub(crate) use deferred::DeferredClamp;
 mod extent;
 pub use crate::text::clamp::extent::{extend_clip, hidden_after_point, hide_box_after_point};
 mod line_state;

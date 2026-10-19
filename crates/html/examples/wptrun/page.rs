@@ -115,7 +115,6 @@ impl Render for Page {
             )),
             text,
             normal_line_height: 1.31,
-            doc_salt: self.doc.salt(),
             cx: Default::default(),
             frag: Default::default(),
         };

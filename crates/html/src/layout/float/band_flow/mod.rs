@@ -30,7 +30,7 @@ mod kid;
 mod piece;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
-pub use kid::{Kid, Kind, Nest};
+pub use kid::{Kid, Kind, Nest, ShapeOf};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -41,6 +41,7 @@ mod flow_kid;
 use float_kid::{place_float, place_nest};
 use flow_kid::place_flow;
 mod element;
+mod fragment;
 pub use element::BandFlow;
 mod tap;
 use tap::Tap;
@@ -78,10 +79,13 @@ impl Edge {
 /// ребёнок строится заново в `prepaint`).
 #[derive(Clone, Debug, Default)]
 struct Slot {
+    geometry: crate::layout::fragment::flow::FlowGeometry,
     x: f32,
     y: f32,
     avail: f32,
     shapes: Option<Shapes>,
+    /// Resolved block margins of a float, preserved by fragmentation.
+    float_margins: [f32; 2],
     /// Высота содержимого `Kind::Nest`.
     h: Option<f32>,
     /// Места детей `Kind::Nest`.
@@ -89,25 +93,23 @@ struct Slot {
     /// Блочный размер border-box: в вертикальном письме по нему ставится
     /// физический левый край (`vertical-rl` идёт от ПРАВОГО края).
     b: f32,
+    /// Measured border-box inline extent, for a bottom-to-top line axis.
+    i: f32,
 }
 
-thread_local! {
-    /// Письмо хоста на время плана и сборки: `None` — горизонтальное,
-    /// `Some(true)` — `vertical-rl`, `Some(false)` — `vertical-lr` (шаг F10).
-    /// Полосы и весь план считают в ЛОГИЧЕСКИХ осях (inline = вертикаль,
-    /// block = горизонталь) — как Blink: `BfcOffset` строчно-относителен
-    /// (`geometry/bfc_offset.h:26-38`), в физику переводится один раз
-    /// (`geometry/writing_mode_converter.cc:80-102`). Каркас пробы и
-    /// держатели в `prepaint` — в физике, по этому признаку.
-    static VERT: Cell<Option<bool>> = const { Cell::new(None) };
-}
-
-/// Поставить письмо хоста на время `f`.
-fn with_vert<R>(v: Option<bool>, f: impl FnOnce() -> R) -> R {
-    let prev = VERT.with(|c| c.replace(v));
-    let r = f();
-    VERT.with(|c| c.set(prev));
-    r
+/// One plan's probe context: the window whose nested layout engine lays the
+/// probes out, and the host's axis. `vert`: the host is vertical (`vertical-rl`
+/// or `vertical-lr`), so the inline axis is the physical height. The plan and
+/// the bands work in LOGICAL axes like Blink, whose `BfcOffset` is
+/// line-relative (`geometry/bfc_offset.h:26-38`) and is converted to physical
+/// coordinates once (`geometry/writing_mode_converter.cc:80-102`); only the
+/// probe frames and the holders at `prepaint` are physical.
+pub(super) struct Probe<'a> {
+    pub(super) window: &'a mut Window,
+    pub(super) cx: &'a mut App,
+    pub(super) vert: bool,
+    fragment: Option<fragment::FragmentFlow>,
+    last_geometry: crate::layout::fragment::flow::FlowGeometry,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -126,11 +128,17 @@ pub(super) use crate::tolerance::COORD_EPS;
 /// элемента — fit-content = `min(max-content, max(min-content, доступно))`,
 /// то есть ровно shrink-to-fit §10.3.5. Кусок — в колонке с растяжением:
 /// `width: auto` у блока со своим контекстом заполняет окно (§10.3.3).
-fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>) -> AnyElement {
+fn frame(
+    kind: Kind,
+    avail: f32,
+    el: AnyElement,
+    tap: Rc<Cell<Option<LayoutId>>>,
+    vert: bool,
+) -> AnyElement {
     // Вертикальное письмо: строчная ось — физическая высота, каркас — ряд
     // высотой в окно, поперечная ось ряда и есть строчная (css-writing-modes-4
     // §7.1: shrink-to-fit §10.3.5 считается по строчной оси).
-    let col = if VERT.with(Cell::get).is_some() {
+    let col = if vert {
         div().flex().flex_row().h(px(avail.max(0.0)))
     } else {
         div().flex().flex_col().w(px(avail.max(0.0)))
@@ -153,9 +161,9 @@ fn frame(kind: Kind, avail: f32, el: AnyElement, tap: Rc<Cell<Option<LayoutId>>>
 }
 
 /// План раскладки при ширине контекста `cb`: позиции всех детей и высота.
-fn plan(kids: &[Kid], cb: f32, contain_floats: bool, window: &mut Window, cx: &mut App) -> Plan {
+fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
     let mut bands = FloatBands::new(cb);
-    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, window, cx);
+    let (slots, y) = place_seq(kids, 0.0, cb, 0.0, true, (0.0, cb), &mut bands, p);
     Plan {
         width: cb,
         // §§10.6.3, 10.6.7: only a formatting-context root contains floats.
@@ -168,22 +176,39 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, window: &mut Window, cx: &m
     }
 }
 
-/// Дети и их места плоским списком в порядке краски: `floats == false` —
-/// всё, кроме флоатов (коробка `Kind::Nest` раньше своих детей), `true` —
-/// одни флоаты, на любой глубине.
+/// Painting layer of a host child (CSS 2.1 Appendix E): in-flow block-level
+/// boxes paint their backgrounds (step 4) below floats (step 5), and inline
+/// content (step 7) above them. An anonymous inline run has no box of its
+/// own, so it is painted entirely in the inline layer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Layer {
+    Block,
+    Float,
+    Inline,
+}
+
+fn layer(kid: &Kid) -> Layer {
+    match kid.kind {
+        Kind::Float { .. } => Layer::Float,
+        _ if kid.anon => Layer::Inline,
+        _ => Layer::Block,
+    }
+}
+
+/// Дети слоя `layer` и их места плоским списком в порядке краски, на любой
+/// глубине (коробка `Kind::Nest` раньше своих детей).
 fn flatten<'a>(
     kids: &'a [Kid],
     slots: &'a [Slot],
-    floats: bool,
+    which: Layer,
     out: &mut Vec<(&'a Kid, &'a Slot)>,
 ) {
     for (kid, s) in kids.iter().zip(slots.iter()) {
-        let float = matches!(kid.kind, Kind::Float { .. });
-        if float == floats {
+        if layer(kid) == which {
             out.push((kid, s));
         }
         if let Some(nest) = kid.nest.as_ref() {
-            flatten(&nest.kids, &s.kids, floats, out);
+            flatten(&nest.kids, &s.kids, which, out);
         }
     }
 }

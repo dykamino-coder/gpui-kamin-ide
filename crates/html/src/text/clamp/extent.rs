@@ -21,9 +21,11 @@ pub fn extend_clip(style: &mut gpui::StyleRefinement, key: u64, cut: f32, pad_bo
 }
 
 /// A paragraph numbered after the clamp paragraph follows the clamp point:
-/// hidden for paint once the clip no longer hides it.
+/// hidden for paint. A fixed-height float can extend the container past the
+/// counted line without extending the separately measured overflow extent
+/// (CSS Overflow 4 section 5.3; Blink marks following boxes hidden for paint).
 pub fn hidden_after_point(key: u64, seq: u32) -> bool {
-    revealed_extent(key).is_some()
+    clamp_cut(key).is_some_and(f32::is_finite)
         && match clamp_para(key) {
             Some((s, _)) => seq > s,
             None => super::line_state::clamp_next(key).is_some_and(|n| seq >= n),
@@ -67,4 +69,41 @@ pub fn hide_box_after_point(
         d.style().visibility = Some(gpui::Visibility::Hidden);
     }
     d
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::text::clamp::line_state::{CLAMP_CUTS, CLAMP_EXTENT, CLAMP_PARA};
+
+    #[test]
+    fn atomic_box_has_no_independent_clamp_span() {
+        let mut cx = crate::layout::cx::LayoutCx::default();
+        let _container = super::super::ClampGuard::enter(903);
+        assert!(super::super::open_clamp_span(&cx).is_some());
+        cx.clamp_atom_depth = 1;
+        assert!(super::super::open_clamp_span(&cx).is_none());
+        // A nested clamp container still owns its independent sequence.
+        {
+            let cx = crate::layout::cx::LayoutCx::default();
+            let _inner = super::super::ClampGuard::enter(904);
+            assert!(super::super::open_clamp_span(&cx).is_some());
+        }
+        cx.clamp_atom_depth = 0;
+        assert!(super::super::open_clamp_span(&cx).is_some());
+    }
+
+    #[test]
+    fn counted_point_hides_later_paragraphs_below_a_tall_float() {
+        let key = 1;
+        CLAMP_CUTS.with(|m| m.borrow_mut().insert(key, 200.0));
+        CLAMP_EXTENT.with(|m| m.borrow_mut().insert(key, 128.0));
+        CLAMP_PARA.with(|m| m.borrow_mut().insert(key, (3, 1)));
+        assert!(revealed_extent(key).is_none());
+        assert!(!hidden_after_point(key, 3));
+        assert!(hidden_after_point(key, 4));
+        CLAMP_CUTS.with(|m| m.borrow_mut().insert(key, f32::INFINITY));
+        assert!(!hidden_after_point(key, 4));
+        crate::text::clamp::forget_clamp_buffers();
+    }
 }

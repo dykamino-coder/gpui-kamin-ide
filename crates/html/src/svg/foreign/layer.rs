@@ -43,7 +43,11 @@ pub(super) fn prepare(
         let density = (super::super::DENSITY * scale).clamp(1.0, 8.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         format!("{e:?}{merged:?}").hash(&mut hasher);
-        opts.doc_salt.hash(&mut hasher);
+        // Raster identity includes document content and the application text
+        // defaults; it does not depend on which document owns identical HTML.
+        format!("{:?}", opts.text).hash(&mut hasher);
+        opts.normal_line_height.to_bits().hash(&mut hasher);
+        (opts.viewport.0.to_bits(), opts.viewport.1.to_bits()).hash(&mut hasher);
         density.to_bits().hash(&mut hasher);
         (f32::from(origin.x).to_bits(), f32::from(origin.y).to_bits()).hash(&mut hasher);
         (w.to_bits(), h.to_bits(), window.scale_factor().to_bits()).hash(&mut hasher);

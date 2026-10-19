@@ -92,6 +92,7 @@ impl Paragraph {
         let spacer_edges = self.spacer_edges.clone();
         let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
+        let fragment = self.fragment.clone();
         let atom_fit = self.atom_fit.clone();
         let ruby_base_sink = self.ruby_base_sink.clone();
         let ruby_layers = self.ruby_layers.clone();
@@ -129,6 +130,7 @@ impl Paragraph {
                 probe.indent = indent;
                 probe.hanging = hanging;
                 probe.flow = flow.clone();
+                probe.fragment = fragment.clone();
                 probe.atom_boxes = atom_boxes.clone();
                 probe.edge_spans = edge_spans.clone();
                 probe.ruby_trim = ruby_trim;
@@ -162,6 +164,9 @@ impl Paragraph {
                 )
             },
         );
+        if let Some(f) = &self.fragment {
+            f.record(id);
+        }
         (id, id)
     }
 }

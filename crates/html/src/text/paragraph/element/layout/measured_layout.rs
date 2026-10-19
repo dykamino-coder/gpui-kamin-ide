@@ -1,4 +1,4 @@
-//! Measured layout for layout; split out to keep the owning module within 250 lines.
+//! Paragraph measurement under inline constraints, including line growth and break geometry.
 
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
@@ -168,6 +168,14 @@ pub(crate) fn measured_layout(
     let across = {
         probe.lines = lines.clone();
         let pads = probe.line_padding();
+        probe.publish_fragment_lines(
+            &pads,
+            f32::from(if vertical {
+                probe.line_height
+            } else {
+                line_height
+            }),
+        );
         if let Some(layers) = &probe.ruby_layers {
             layers.account_leading(&pads);
         }

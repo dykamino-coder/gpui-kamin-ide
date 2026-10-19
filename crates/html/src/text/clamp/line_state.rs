@@ -1,4 +1,4 @@
-//! Clamp container measurements, paragraph numbering, and build traversal scopes.
+//! Clamp counters, box-tree spans and computed cut state.
 
 use gpui::{Bounds, Pixels};
 
@@ -138,7 +138,11 @@ pub fn clamp_peek_seq(key: u64) -> u32 {
 /// opened before its children, closed after them.
 pub type ClampSpan = std::rc::Rc<std::cell::Cell<(u32, u32)>>;
 
-pub fn open_clamp_span() -> Option<ClampSpan> {
+pub fn open_clamp_span(cx: &crate::layout::cx::LayoutCx) -> Option<ClampSpan> {
+    // Atomic descendants belong to their enclosing line, not the next paragraph.
+    if cx.clamp_atom_depth != 0 {
+        return None;
+    }
     let (key, _) = clamp_context()?;
     let first = clamp_peek_seq(key);
     Some(std::rc::Rc::new(std::cell::Cell::new((first, u32::MAX))))

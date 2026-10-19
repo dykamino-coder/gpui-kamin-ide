@@ -1,6 +1,6 @@
 //! ColumnFlow как элемент gpui: структура и раскладка колонок.
 
-use super::columns::{intrinsic_column_width, measure_columns};
+use super::measure::{intrinsic_column_width, measure_columns};
 use crate::hooks::Hooks;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, Font, LayoutId, Pixels, SharedString, Style, Window,

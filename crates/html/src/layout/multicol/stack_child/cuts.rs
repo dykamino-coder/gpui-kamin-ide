@@ -154,6 +154,7 @@ pub(super) fn stack_child_of(
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     crate::layout::fragment::types::StackChild {
+        flow: None,
         measure,
         el: side_margin_wrap(build(true, 0, false), copy, col_vert),
         frags: if span {

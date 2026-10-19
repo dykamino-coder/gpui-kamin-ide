@@ -159,7 +159,7 @@ impl Document {
         self.state.media().print
     }
 
-    /// Хэш содержимого — соль для `RenderOpts::doc_salt`.
+    /// Хэш исходного содержимого, таблицы стилей и базового URL.
     pub fn salt(&self) -> u64 {
         self.key
     }

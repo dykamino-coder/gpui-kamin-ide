@@ -25,9 +25,8 @@ pub struct Paragraph {
     /// Выключка последней строки (`text-align-last`), если задана.
     pub(super) align_last: Option<Align>,
     pub(super) ruby_justify: bool,
-    /// `text-justify` opportunities besides word separators: 0 none
-    /// (`inter-word`), 1 CJK ideographs (`auto`), 2 every typographic
-    /// character unit (`inter-character`), see `justify_boundary`.
+    /// `text-justify`: 0 none, 1 CJK (`auto`), 2 every character
+    /// (`inter-character`); see `justify_boundary`.
     pub(super) justify_chars: u8,
     pub(super) ruby_unit: bool,
     /// Ruby text painted in the unrotated plane of a vertical line.
@@ -247,4 +246,5 @@ pub struct Paragraph {
     pub(super) first_strut: Option<super::first_line::Strut>,
     /// Границы строк в байтах для замера и отрисовки.
     pub(super) lines: Vec<Line>,
+    pub(super) fragment: Option<crate::layout::fragment::flow::FlowNode>,
 }

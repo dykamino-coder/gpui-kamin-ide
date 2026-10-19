@@ -18,6 +18,7 @@ use std::rc::Rc;
 /// the wrappers of its rebuilt copies.
 #[derive(Default)]
 pub(crate) struct Watched {
+    pub(crate) flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
     ids: HashSet<u64>,
     seen: RefCell<HashMap<u64, LayoutId>>,
 }
@@ -27,12 +28,21 @@ impl Watched {
         Rc::new(Watched {
             ids: ids.iter().copied().collect(),
             seen: RefCell::default(),
+            flow: Rc::default(),
+        })
+    }
+
+    pub(crate) fn for_lines() -> Rc<Self> {
+        Rc::new(Self {
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            ..Self::default()
         })
     }
 
     /// Forget recorded nodes before a measuring layout.
     pub(crate) fn reset(&self) {
         self.seen.borrow_mut().clear();
+        self.flow.reset();
     }
 
     /// Layout node recorded for `id` by the last layout.

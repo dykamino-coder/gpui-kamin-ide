@@ -111,4 +111,5 @@ properties! {
     GridAutoColumns: "grid-auto-columns" => [grid_auto_cols, grid_auto_cols_list];
     GridAutoRows: "grid-auto-rows" => [grid_auto_rows, grid_auto_rows_list];
     GridAutoFlow: "grid-auto-flow" => [grid_auto_flow];
+    ShapeOutside: "shape-outside" => [shape_outside];
 }

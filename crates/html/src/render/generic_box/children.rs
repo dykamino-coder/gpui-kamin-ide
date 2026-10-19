@@ -2,7 +2,7 @@
 
 mod formatting_context;
 mod probes;
-pub(super) use probes::child_probes;
+pub(crate) use probes::child_probes;
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -121,7 +121,7 @@ pub(crate) fn generic_children(
     // занимают (css-grid-1 §9), а пустой анонимный блок — это
     // распорка лент (`spacer()`), не элемент.
     // Paragraph numbers of this box's descendants (clamp point, tree order).
-    let clamp_span = crate::text::clamp::open_clamp_span();
+    let clamp_span = crate::text::clamp::open_clamp_span(&opts.cx);
     child_probes(
         e,
         &merged,
@@ -159,7 +159,16 @@ pub(crate) fn generic_children(
     let viewport_scope = viewport
         .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
     kids.extend(decorated_children(e, &merged, opts, || {
-        blocks(&children, &merged, opts)
+        // A clamp container establishes an independent formatting context
+        // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
+        // receives only Computed, whose inherited clamp value cannot identify
+        // the container. Preserve this box's known BFC boundary for its float
+        // containment without turning its descendants into clamp containers.
+        let formatting = is_clamp.then(|| Computed {
+            flow_root: Some(true),
+            ..merged.clone()
+        });
+        blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
     }));
     if let Some(scope) = viewport_scope {
         kids.extend(scope.finish());

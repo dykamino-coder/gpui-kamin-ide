@@ -89,7 +89,7 @@ pub(crate) fn finish_element(
         let side = px_lossy_zero;
         let root_b = inherited.borders();
         let offset = side(e.style.margin.left) + side(inherited.padding.left) + side(root_b.left);
-        done = crate::text::vertical::record_root_left(done, opts.doc_salt, offset, opts.cx.vcx());
+        done = crate::text::vertical::record_root_left(done, offset, vcx);
     }
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
     // flow): свой анкор-ряд вокруг ОДНОГО узла — соседей не трогает.

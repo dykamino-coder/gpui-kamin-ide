@@ -78,6 +78,7 @@ impl Paragraph {
             strut_box: (0.0, 0.0),
             first_strut: None,
             lines: Vec::new(),
+            fragment: None,
             clamp: None,
             clamp_force: false,
             text_overflow: false,
