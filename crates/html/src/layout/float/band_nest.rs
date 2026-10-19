@@ -14,7 +14,7 @@ use crate::render::{RenderOpts, block_level_in_flow, is_blank, own_context, repl
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::{Len, px_strict};
+use crate::style::values::value::Len;
 
 /// Прогон-продолжение после `<br>` (`cont`, `band_flow_rest`): его первая
 /// строка — не первая строка абзаца, и `text-indent` её не сдвигает
@@ -56,7 +56,7 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && (matches!(c.style.width, None | Some(Len::Auto))
             || (band_em(&c.style, em).and_then(|em| band_edge(&c.style.width, em)).is_some()
                 && c.style.border_box != Some(true)))
-        && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_)))
+        && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
         && c.style.min_height.is_none()
         && c.style.max_height.is_none()
         && band_margins(&c.style, em).is_some()
@@ -105,6 +105,16 @@ pub(super) fn band_nest(
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
     let mut merged = inherit(inherited, &c.style, vcx);
+    let height = crate::layout::block::available_height::inner(
+        &merged,
+        opts.cx.avail_h,
+        opts.cx.avail_w,
+        opts.viewport.1,
+    );
+    if let Some(height) = height {
+        merged.height = Some(Len::Px(height));
+    }
+    let opts = &*opts.inner(|cx| cx.avail_h = height);
     crate::render::pseudo_line_layers::install(c, &mut merged, vcx);
     // The first formatted line may belong to a nested in-flow block;
     // floats and positioned children cannot consume its pseudo layer.
@@ -123,7 +133,7 @@ pub(super) fn band_nest(
     Some(crate::layout::float::band_flow::Nest {
         kids,
         inset: band_inset(c, em)?,
-        height: px_strict(c.style.height),
+        height,
         width: if matches!(c.style.width, None | Some(Len::Auto)) {
             None
         } else {

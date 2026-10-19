@@ -63,6 +63,8 @@ pub(crate) fn band_host_nested(
     let host = measured_host(
         crate::dom::ShapeFlow {
             em: Some(em),
+            cbh: cb.height,
+            cbw: cb.width,
             wm,
             icb: cb.icb,
             ..Default::default()

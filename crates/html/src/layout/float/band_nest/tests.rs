@@ -55,3 +55,35 @@ fn nested_float_keeps_its_paragraph_and_completed_line_probe() {
     assert!(seq.iter().any(|n| matches!(n, Node::Element(c) if c.marks.anon
         && c.marks.lead.is_none() && c.children.iter().any(|n| matches!(n, Node::Text(t) if t == "after")))));
 }
+
+#[test]
+fn percentage_nest_uses_its_definite_containing_block_height() {
+    let c = Element::synthetic(
+        "div",
+        Computed {
+            height: Some(Len::Pct(0.6)),
+            ..Default::default()
+        },
+        Default::default(),
+        vec![],
+    );
+    for (basis, expected) in [(Some(200.), Some(120.)), (None, None)] {
+        let opts = RenderOpts {
+            text: Default::default(),
+            viewport: (800., 600.),
+            normal_line_height: 1.2,
+            cx: crate::layout::cx::LayoutCx {
+                avail_h: basis,
+                ..Default::default()
+            },
+            frag: Default::default(),
+        };
+        let nest = band_nest(&c, &Computed::default(), &opts, 16., WritingMode::default())
+            .expect("percentage block remains in the shared BFC");
+        match (nest.height, expected) {
+            (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 0.001),
+            (actual, expected) => assert_eq!(actual, expected),
+        }
+        assert_eq!(opts.cx.avail_h, basis);
+    }
+}

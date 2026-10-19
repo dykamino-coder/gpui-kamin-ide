@@ -125,6 +125,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
             opts.cx.cb_width,
+            opts.cx.avail_h,
             vcx,
         ),
         flex_ctx,
