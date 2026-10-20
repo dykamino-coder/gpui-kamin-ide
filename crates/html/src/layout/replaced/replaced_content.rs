@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::render::styled_div_with;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
@@ -94,7 +94,7 @@ pub(crate) fn empty_iframe(
         copy.attrs.retain(|(name, _)| name != "src");
         return crate::layout::replaced::image::image(&copy, &opts.cx);
     }
-    crate::render::styled_div(&copy, &opts.cx)
+    crate::paint::box_tree::styled::styled_div(&copy, &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }

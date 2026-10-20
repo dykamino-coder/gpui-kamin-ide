@@ -10,7 +10,7 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::render::styled_div;
+use crate::paint::box_tree::styled::styled_div;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
