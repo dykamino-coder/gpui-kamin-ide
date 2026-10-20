@@ -997,6 +997,9 @@ export async function restartWithEffort(
   // an interactive tool call pending at model/effort-change time would leak in the
   // shared pendingMcpCalls map forever.
   rejectPendingForSession(sessionId, 'Session restarting')
+  // The respawned CLI gets a new session id and its own MCP stream; the old
+  // id's stream and pending tools/list_changed flag go with it.
+  closeToolNotificationStream(sessionId)
   // Remove from sessions map (without broadcasting exit events)
   sessions.delete(sessionId)
 
@@ -1057,6 +1060,8 @@ export async function restartWithModel(
   // an interactive tool call pending at model/effort-change time would leak in the
   // shared pendingMcpCalls map forever.
   rejectPendingForSession(sessionId, 'Session restarting')
+  // Same as restartWithEffort: the old id's MCP stream and pending flag end here.
+  closeToolNotificationStream(sessionId)
   // Remove from sessions map (without broadcasting exit events)
   sessions.delete(sessionId)
 
@@ -1112,6 +1117,7 @@ export function shutdownAll(): void {
       session.ws.close()
     } catch {}
     clearSessionInputState(session)
+    closeToolNotificationStream(id)
     cleanupSessionDir(session.settingsDir)
   }
   sessions.clear()
@@ -1179,6 +1185,9 @@ function cleanupSession(sessionId: string): void {
   // long-lived SSE stream/heartbeat (interactive tools never time out) don't
   // leak after the session is gone.
   rejectPendingForSession(sessionId, 'Session destroyed')
+  // Normal exit/finalize: no MCP stream or undelivered tools/list_changed flag
+  // may outlive the session (destroySession covers only explicit teardown).
+  closeToolNotificationStream(sessionId)
   // Tear down the per-session MITM proxy (idempotent).
   if (session.streamingProxy) {
     void session.streamingProxy.stop().catch(() => {

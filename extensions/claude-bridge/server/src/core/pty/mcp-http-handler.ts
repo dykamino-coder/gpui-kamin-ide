@@ -766,10 +766,14 @@ export function handleMcpGet(c: Context): Response {
   if (session.teardown) {
     return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} is shutting down`), 409)
   }
-  return openToolNotificationStream(sessionId, () => {
-    const current = getSession(sessionId)
-    return current === session && !current.teardown
-  })
+  return openToolNotificationStream(
+    sessionId,
+    () => {
+      const current = getSession(sessionId)
+      return current === session && !current.teardown
+    },
+    c.req.raw.signal,
+  )
 }
 
 /**

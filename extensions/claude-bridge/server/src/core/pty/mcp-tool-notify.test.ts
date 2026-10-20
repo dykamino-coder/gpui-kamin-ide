@@ -14,10 +14,18 @@ vi.mock('../events/bus', () => ({ eventBus: { emit: mocks.emit } }))
 vi.mock('../logging', () => ({ debugLog: vi.fn(), warnLog: vi.fn(), errorLog: vi.fn() }))
 
 import { handleMcpGet, handleMcpRequest } from './mcp-http-handler'
+import { warnLog } from '../logging'
 import {
+  KEEPALIVE_MS,
+  MAX_PENDING_SESSIONS,
+  STALLED_KEEPALIVE_TICKS,
+  STREAM_QUEUE_FRAMES,
   TOOLS_LIST_CHANGED,
   closeToolNotificationStream,
+  hasPendingToolNotification,
   hasToolNotificationStream,
+  notifyToolListChanged,
+  pendingToolNotificationCount,
   replaceRegisteredTools,
   toolCatalogFingerprint,
 } from './mcp-tool-notify'
@@ -51,10 +59,16 @@ function tool(
   return { name, description, inputSchema }
 }
 
-function openStream(sessionId: string, token = `token-${sessionId}`, accept = 'text/event-stream') {
+function openStream(
+  sessionId: string,
+  token = `token-${sessionId}`,
+  accept = 'text/event-stream',
+  signal?: AbortSignal,
+) {
   return app.request(`/mcp/${sessionId}`, {
     method: 'GET',
     headers: { accept, authorization: `Bearer ${token}`, 'mcp-session-id': sessionId },
+    signal,
   })
 }
 
@@ -92,7 +106,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   for (const id of ['s1', 's2']) closeToolNotificationStream(id)
+  for (let i = 0; i <= MAX_PENDING_SESSIONS; i++) closeToolNotificationStream(`p${i}`)
 })
 
 describe('MCP tools/list_changed delivery', () => {
@@ -189,6 +205,82 @@ describe('MCP tools/list_changed delivery', () => {
     const fresh = sse(await openStream('s1'))
     expect(listChangedCount((await fresh.readUntil(() => false, 80)).text)).toBe(0)
     await fresh.cancel()
+  })
+
+  it('bounds the queue of a reader that does not read: changes coalesce', async () => {
+    makeSession('s1')
+    const res = await openStream('s1')
+    // 10 000 changes while nothing is read: only the queue's free slots are
+    // written, everything else collapses into one owed notification.
+    const results = { sent: 0, coalesced: 0, pending: 0, dropped: 0 }
+    for (let i = 0; i < 10_000; i++) results[notifyToolListChanged('s1')] += 1
+    expect(results.sent).toBe(STREAM_QUEUE_FRAMES - 1) // ': open' holds one slot
+    expect(results.coalesced).toBe(10_000 - results.sent)
+    expect(results.pending + results.dropped).toBe(0)
+
+    // Draining delivers the queued frames plus the single coalesced one.
+    const reader = sse(res)
+    const text = (await reader.readUntil((t) => listChangedCount(t) >= STREAM_QUEUE_FRAMES, 500)).text
+    expect(listChangedCount(text)).toBe(STREAM_QUEUE_FRAMES)
+    expect(text.length).toBeLessThan(1_000)
+    // Nothing else was owed.
+    expect(listChangedCount((await reader.readUntil(() => false, 80)).text)).toBe(0)
+    await reader.cancel()
+  })
+
+  it('closes a stalled reader with a warning and keeps its unsent change pending', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    makeSession('s1')
+    await openStream('s1') // never read
+    for (let i = 0; i < STREAM_QUEUE_FRAMES; i++) notifyToolListChanged('s1') // fills the queue, last one coalesces
+    vi.mocked(warnLog).mockClear()
+    vi.advanceTimersByTime(KEEPALIVE_MS * (STALLED_KEEPALIVE_TICKS - 1))
+    expect(hasToolNotificationStream('s1')).toBe(true)
+    vi.advanceTimersByTime(KEEPALIVE_MS)
+    expect(hasToolNotificationStream('s1')).toBe(false)
+    expect(warnLog).toHaveBeenCalledWith('MCP notification stream stalled — closing', expect.anything())
+    expect(hasPendingToolNotification('s1')).toBe(true)
+    vi.useRealTimers()
+
+    // The next stream receives exactly the one owed notification.
+    const fresh = sse(await openStream('s1'))
+    expect(listChangedCount((await fresh.readUntil((t) => t.includes(TOOLS_LIST_CHANGED))).text)).toBe(1)
+    expect(hasPendingToolNotification('s1')).toBe(false)
+    await fresh.cancel()
+  })
+
+  it('ends the stream when the request is aborted', async () => {
+    makeSession('s1')
+    const abort = new AbortController()
+    const res = await openStream('s1', 'token-s1', 'text/event-stream', abort.signal)
+    expect(res.status).toBe(200)
+    expect(hasToolNotificationStream('s1')).toBe(true)
+    abort.abort()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(hasToolNotificationStream('s1')).toBe(false)
+  })
+
+  it('reader cancel keeps an owed change for the next stream; teardown forgets it', async () => {
+    makeSession('s1')
+    const res = await openStream('s1')
+    for (let i = 0; i < STREAM_QUEUE_FRAMES; i++) notifyToolListChanged('s1') // last one is owed
+    await res.body!.cancel()
+    expect(hasToolNotificationStream('s1')).toBe(false)
+    expect(hasPendingToolNotification('s1')).toBe(true)
+    closeToolNotificationStream('s1')
+    expect(hasPendingToolNotification('s1')).toBe(false)
+  })
+
+  it('caps sessions holding a pending flag and logs the drop', () => {
+    const before = pendingToolNotificationCount()
+    for (let i = before; i < MAX_PENDING_SESSIONS; i++) expect(notifyToolListChanged(`p${i}`)).toBe('pending')
+    // Repeated changes of the same session stay one flag.
+    expect(notifyToolListChanged('p0')).toBe('pending')
+    expect(pendingToolNotificationCount()).toBe(MAX_PENDING_SESSIONS)
+    vi.mocked(warnLog).mockClear()
+    expect(notifyToolListChanged(`p${MAX_PENDING_SESSIONS}`)).toBe('dropped')
+    expect(warnLog).toHaveBeenCalledWith('MCP tools/list_changed dropped: pending cap reached', expect.anything())
+    expect(pendingToolNotificationCount()).toBe(MAX_PENDING_SESSIONS)
   })
 
   it('fingerprint ignores order but sees descriptions and schemas', () => {
