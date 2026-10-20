@@ -16,8 +16,7 @@ use paint_order::unkeyed_positions;
 use crate::dom::Node;
 pub(crate) use crate::dom::text_content::{gather_text, split_nodes};
 use crate::layout::float::clear::without_inert_clear;
-use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 pub(super) mod content_wrapper;
 mod first_line_text;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
@@ -45,63 +44,9 @@ pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
 pub(super) mod element;
 pub(super) mod generic_box;
+pub use crate::layout::options::RenderOpts;
 pub(crate) use crate::render::element::*;
 use crate::render::generic_box::*;
-
-/// Настройки отрисовки: то, что задаёт приложение, а не документ.
-#[derive(Clone)]
-pub struct RenderOpts {
-    /// Базовый стиль текста — от него считаются прогоны и наследование.
-    pub text: TextStyle,
-    /// Размер окна в точках — от него считаются `vh` и `vw`.
-    pub viewport: (f32, f32),
-    /// Множитель строки при `line-height: normal`.
-    ///
-    /// Браузер берёт его из метрик шрифта — у интерфейсных это около 1.31
-    /// кегля. Умолчание GPUI — золотое сечение (1.618), и без своего значения
-    /// КАЖДЫЙ блок текста выходил на четверть выше браузерного, а разница
-    /// копилась вниз по документу.
-    pub normal_line_height: f32,
-    /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
-    /// коробок внутри. Хост передаёт `LayoutCx::default()`, а документ свой
-    /// ставит `Document::render` (`Document::frame_opts`).
-    pub cx: crate::layout::cx::LayoutCx,
-    /// Контекст фрагментации сборки: его ставит код, строящий фрагменты
-    /// (копии детей стопки колонок, вложенный многоколоночник рядами), а
-    /// приложение передаёт `Default::default()`.
-    pub frag: crate::layout::fragment::types::FragCx,
-}
-
-impl RenderOpts {
-    /// Цвет подложки выделения.
-    ///
-    /// Отдельного поля в настройках нет, чтобы не ломать вызывающих: берём
-    /// цвет текста и делаем из него полупрозрачную подложку — она читается
-    /// и на светлой, и на тёмной теме.
-    pub(crate) fn selection_color(&self) -> gpui::Hsla {
-        let mut c = self.text.color;
-        c.a = 0.25;
-        c
-    }
-
-    pub(crate) fn base_size(&self) -> f32 {
-        f32::from(self.text.font_size.to_pixels(px(16.)))
-    }
-
-    /// Корневой стиль документа.
-    ///
-    /// Высота строки тут НЕ задаётся: `normal` по CSS — метрика шрифта, и
-    /// считает её `normal_fraction` по семейству элемента. Пока корень
-    /// навязывал постоянную долю, она наследовалась ВСЕМ, и замер шрифта не
-    /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
-    /// с `line-height: 1em` при одном и том же шрифте.
-    pub(crate) fn root_style(&self) -> Computed {
-        Computed {
-            icb: true,
-            ..Computed::default()
-        }
-    }
-}
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);

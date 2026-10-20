@@ -6,11 +6,11 @@
 //! already reaches every build function and is cloned into deferred build
 //! closures — a closure sees the context of the place that created it.
 //!
-//! [`RenderOpts::cx`]: crate::render::RenderOpts::cx
+//! [`RenderOpts::cx`]: crate::layout::options::RenderOpts::cx
 
 use crate::document::state::ValueCx;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::containing_block::Positioning;
-use crate::render::RenderOpts;
 use std::rc::Rc;
 
 #[derive(Clone, Default)]
