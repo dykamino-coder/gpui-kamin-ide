@@ -14,6 +14,9 @@ import { setSessionPromptReady, submitCoordinatedText, writeCoordinatedInput } f
 
 const OUTPUT_DEBOUNCE_MS = 8
 const OUTPUT_MAX_WAIT_MS = 32
+// Bound private batches even when onData fires faster than timers can run.
+// 8K UTF-16 units also bound JSON escaping to <50KB per output frame.
+const OUTPUT_BATCH_MAX_CHARS = 8192
 
 // CLI prints retry log lines like:
 //   "ConnectionRefused · https://api.anthropic.com/v1/messages?beta=true · retry in 529ms (attempt 1/10)"
@@ -93,7 +96,9 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
   // where a throw would escape to uncaughtException — dropping this one frame is
   // always better than that.
   try {
-    ws.send(JSON.stringify(msg))
+    const frame = JSON.stringify(msg)
+    if ((ws.bufferedAmount ?? 0) + Buffer.byteLength(frame, 'utf8') > WS_SEND_MAX_BUFFER) return false
+    ws.send(frame)
     return true
   } catch {
     return false
@@ -248,6 +253,8 @@ export function attachStartupAutoResponder(session: PtySession): void {
 // ---------------------------------------------------------------------------
 
 export function attachOutputDebounce(session: PtySession): void {
+  session.outputDebounce?.dispose()
+  let disposed = false
   let outputBuffer = ''
   let trailTimer: ReturnType<typeof setTimeout> | null = null
   let maxTimer: ReturnType<typeof setTimeout> | null = null
@@ -261,14 +268,30 @@ export function attachOutputDebounce(session: PtySession): void {
       clearTimeout(maxTimer)
       maxTimer = null
     }
-    if (outputBuffer && session.ws.readyState === 1 /* WS.OPEN */) {
-      sendToClient(session.ws, { type: 'session:output', data: outputBuffer })
-      outputBuffer = ''
+    const batch = outputBuffer
+    outputBuffer = ''
+    if (batch && !session.detachedAt && !disposed) {
+      sendToClient(session.ws, { type: 'session:output', data: batch })
     }
   }
 
-  session.pty.onData((data: string) => {
-    outputBuffer += data
+  function reset() {
+    outputBuffer = ''
+    flush()
+  }
+
+  session.outputDebounce = {
+    reset,
+    dispose() {
+      if (disposed) return
+      disposed = true
+      reset()
+      subscription.dispose()
+    },
+  }
+
+  const subscription = session.pty.onData((data: string) => {
+    if (disposed) return
 
     // Capture Anthropic API retry errors from the output stream — they
     // surface in CLI's terminal output well before any JSONL entry, so
@@ -464,6 +487,24 @@ export function attachOutputDebounce(session: PtySession): void {
       if (drop > 0) session.outputBuffer.splice(0, drop)
     }
 
+    // Detached output is recovered only through the bounded ring and the
+    // explicit resize resync in reattachSession, never a private backlog.
+    if (session.detachedAt || session.ws.readyState !== 1) {
+      reset()
+      return
+    }
+    for (let offset = 0; offset < data.length;) {
+      if (outputBuffer.length >= OUTPUT_BATCH_MAX_CHARS) flush()
+      let end = Math.min(data.length, offset + OUTPUT_BATCH_MAX_CHARS - outputBuffer.length)
+      // Keep a surrogate pair together when splitting a large chunk.
+      if (end < data.length && /[\uD800-\uDBFF]/.test(data[end - 1]!)) end--
+      if (end === offset) {
+        flush()
+        continue
+      }
+      outputBuffer += data.slice(offset, end)
+      offset = end
+    }
     if (trailTimer) clearTimeout(trailTimer)
     trailTimer = setTimeout(flush, OUTPUT_DEBOUNCE_MS)
     if (!maxTimer) {
