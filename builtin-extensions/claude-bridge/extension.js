@@ -2399,7 +2399,7 @@ var require_websocket = __commonJS({
     var http = require("http");
     var net2 = require("net");
     var tls = require("tls");
-    var { randomBytes: randomBytes4, createHash: createHash2 } = require("crypto");
+    var { randomBytes: randomBytes4, createHash: createHash3 } = require("crypto");
     var { Duplex, Readable } = require("stream");
     var { URL: URL2 } = require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -3080,7 +3080,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key2 + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3449,7 +3449,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter2 = require("events");
     var http = require("http");
     var { Duplex } = require("stream");
-    var { createHash: createHash2 } = require("crypto");
+    var { createHash: createHash3 } = require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -3756,7 +3756,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key2 + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key2 + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -12075,7 +12075,7 @@ function lookupOptions(options) {
   return {
     platform,
     env: options.env ?? process.env,
-    exists: options.exists ?? import_node_fs2.default.existsSync,
+    exists: options.exists ?? import_node_fs4.default.existsSync,
     which: options.which ?? ((command) => whichExecutable(command, platform))
   };
 }
@@ -12091,13 +12091,13 @@ async function findBashExecutable(options = {}) {
   if (configured && exists(configured)) return configured;
   const gitPath = await which("git");
   if (gitPath) {
-    const derived = import_node_path2.default.win32.resolve(import_node_path2.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
+    const derived = import_node_path3.default.win32.resolve(import_node_path3.default.win32.dirname(gitPath), "..", "bin", "bash.exe");
     if (exists(derived)) return derived;
   }
   const candidates = [
-    env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
-    env4["ProgramFiles(x86)"] && import_node_path2.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
-    env4.LOCALAPPDATA && import_node_path2.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
+    env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "Git", "bin", "bash.exe"),
+    env4["ProgramFiles(x86)"] && import_node_path3.default.win32.join(env4["ProgramFiles(x86)"], "Git", "bin", "bash.exe"),
+    env4.LOCALAPPDATA && import_node_path3.default.win32.join(env4.LOCALAPPDATA, "Programs", "Git", "bin", "bash.exe")
   ].filter((candidate) => Boolean(candidate));
   for (const candidate of candidates) {
     if (exists(candidate)) return candidate;
@@ -12110,8 +12110,8 @@ async function findPowerShellExecutable(options = {}) {
   if (pwsh) return pwsh;
   if (platform === "win32") {
     const candidates = [
-      env4.ProgramFiles && import_node_path2.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
-      env4.SystemRoot && import_node_path2.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+      env4.ProgramFiles && import_node_path3.default.win32.join(env4.ProgramFiles, "PowerShell", "7", "pwsh.exe"),
+      env4.SystemRoot && import_node_path3.default.win32.join(env4.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     ].filter((candidate) => Boolean(candidate));
     for (const candidate of candidates) {
       if (exists(candidate)) return candidate;
@@ -12178,13 +12178,13 @@ function shellSingleQuote(value) {
 function powerShellSingleQuote(value) {
   return `'${value.replace(/'/g, "''")}'`;
 }
-var import_node_child_process, import_node_fs2, import_node_path2;
+var import_node_child_process, import_node_fs4, import_node_path3;
 var init_command_runtime = __esm({
   "src/main/utils/command-runtime.ts"() {
     "use strict";
     import_node_child_process = require("node:child_process");
-    import_node_fs2 = __toESM(require("node:fs"), 1);
-    import_node_path2 = __toESM(require("node:path"), 1);
+    import_node_fs4 = __toESM(require("node:fs"), 1);
+    import_node_path3 = __toESM(require("node:path"), 1);
   }
 });
 
@@ -12203,7 +12203,7 @@ function localizeHookPayload(payload, cacheDir = process.env.KAMIN_CACHE_DIR) {
   for (const key2 of ["transcript_path", "agent_transcript_path"]) {
     const remotePath = localized[key2];
     if (typeof remotePath === "string" && remotePath.length > 0) {
-      localized[key2] = import_node_path3.default.join(cacheDir, "transcripts", portableBasename(remotePath));
+      localized[key2] = import_node_path4.default.join(cacheDir, "transcripts", portableBasename(remotePath));
     }
   }
   return localized;
@@ -12278,7 +12278,7 @@ async function executeHook(req) {
   if (req.pluginId) {
     const installed3 = await loadInstalledPluginsMap();
     const pluginRoot = installed3.get(req.pluginId)?.installPath;
-    if (!pluginRoot || !import_node_fs3.default.existsSync(pluginRoot)) {
+    if (!pluginRoot || !import_node_fs5.default.existsSync(pluginRoot)) {
       return {
         stdout: "",
         stderr: `Plugin ${req.pluginId} is not installed on the client host`,
@@ -12288,9 +12288,9 @@ async function executeHook(req) {
       };
     }
     const options = loadPluginOptions(req.pluginId);
-    const dataDir = import_node_path3.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+    const dataDir = import_node_path4.default.join(import_node_os2.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
-      import_node_fs3.default.mkdirSync(dataDir, { recursive: true });
+      import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
     } catch {
     }
     if (!execForm && /\$\{user_config\.[^}]+\}/.test(command)) {
@@ -12311,8 +12311,8 @@ async function executeHook(req) {
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
     pluginEnv.CLAUDE_PLUGIN_DATA = shell2 ? shellPluginEnvValue(dataDir, shell2) : dataDir;
-    const pluginBin = import_node_path3.default.join(pluginRoot, "bin");
-    if (import_node_fs3.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path3.default.delimiter}${process.env.PATH ?? ""}`;
+    const pluginBin = import_node_path4.default.join(pluginRoot, "bin");
+    if (import_node_fs5.default.existsSync(pluginBin)) pluginEnv.PATH = `${pluginBin}${import_node_path4.default.delimiter}${process.env.PATH ?? ""}`;
   }
   pluginEnv.CLAUDE_PROJECT_DIR = shell2 ? shellPluginEnvValue(cwd, shell2) : cwd;
   if (execForm) command = nativeNodeCommand(command);
@@ -12409,14 +12409,14 @@ spawn error: ${err.message}`,
     }
   });
 }
-var import_node_child_process2, import_node_os2, import_node_fs3, import_node_path3, DEFAULT_TIMEOUT_MS;
+var import_node_child_process2, import_node_os2, import_node_fs5, import_node_path4, DEFAULT_TIMEOUT_MS;
 var init_executor = __esm({
   "src/main/hooks/executor.ts"() {
     "use strict";
     import_node_child_process2 = require("node:child_process");
     import_node_os2 = __toESM(require("node:os"), 1);
-    import_node_fs3 = __toESM(require("node:fs"), 1);
-    import_node_path3 = __toESM(require("node:path"), 1);
+    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_path4 = __toESM(require("node:path"), 1);
     init_plugin_helpers();
     init_command_runtime();
     DEFAULT_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -18666,7 +18666,7 @@ async function grepFallback(pattern, searchPath, outputMode, caseInsensitive, he
     for (const entry of entries2) {
       if (headLimit > 0 && results.length >= headLimit) return;
       if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-      const fullPath = import_node_path4.default.join(dir, entry.name);
+      const fullPath = import_node_path5.default.join(dir, entry.name);
       if (entry.isDirectory()) {
         await searchDir(fullPath);
       } else if (entry.isFile()) {
@@ -18717,12 +18717,12 @@ ${matchingLines.join("\n")}`);
   if (headLimit > 0) output = output.split("\n").slice(0, headLimit).join("\n");
   return textResult2(output || "No matches found.");
 }
-var import_promises4, import_node_path4, import_node_child_process3;
+var import_promises4, import_node_path5, import_node_child_process3;
 var init_grep_tool = __esm({
   "src/main/mcp/tools/grep-tool.ts"() {
     "use strict";
     import_promises4 = __toESM(require("node:fs/promises"), 1);
-    import_node_path4 = __toESM(require("node:path"), 1);
+    import_node_path5 = __toESM(require("node:path"), 1);
     import_node_child_process3 = require("node:child_process");
     init_fs_shared();
   }
@@ -18792,7 +18792,7 @@ async function readFile(input) {
   if (!filePath) return errorResult2("file_path is required");
   if (isBlockedDevicePath(filePath)) return errorResult2(`Refusing to read blocking device path: ${filePath}`);
   try {
-    const ext = import_node_path5.default.extname(filePath).toLowerCase();
+    const ext = import_node_path6.default.extname(filePath).toLowerCase();
     if (ext === ".pdf") {
       return textResult2(
         "PDF reading requires the pdf-parse package. Use `Bash` tool with `pdftotext` or similar to extract PDF text."
@@ -18847,7 +18847,7 @@ async function writeFile(input) {
   if (!filePath) return errorResult2("file_path is required");
   if (typeof content !== "string") return errorResult2("content is required");
   try {
-    const dir = import_node_path5.default.dirname(filePath);
+    const dir = import_node_path6.default.dirname(filePath);
     await import_promises5.default.mkdir(dir, { recursive: true });
     await import_promises5.default.writeFile(filePath, content, "utf8");
     invalidateFileCache(filePath);
@@ -18977,12 +18977,12 @@ async function globSearch(input) {
     return errorResult2(err instanceof Error ? err.message : String(err));
   }
 }
-var import_promises5, import_node_path5, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
+var import_promises5, import_node_path6, import_fast_glob, LEFT_SINGLE_CURLY_QUOTE, RIGHT_SINGLE_CURLY_QUOTE, LEFT_DOUBLE_CURLY_QUOTE, RIGHT_DOUBLE_CURLY_QUOTE, MAX_GLOB_RESULTS;
 var init_file_system = __esm({
   "src/main/mcp/tools/file-system.ts"() {
     "use strict";
     import_promises5 = __toESM(require("node:fs/promises"), 1);
-    import_node_path5 = __toESM(require("node:path"), 1);
+    import_node_path6 = __toESM(require("node:path"), 1);
     import_fast_glob = __toESM(require_out4(), 1);
     init_notebook();
     init_file_read_cache();
@@ -19080,7 +19080,7 @@ async function shellEnv() {
   const binDirs = await listEnabledPluginBinDirs();
   return {
     ...process.env,
-    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path6.default.delimiter),
+    PATH: [...binDirs, process.env.PATH ?? ""].filter(Boolean).join(import_node_path7.default.delimiter),
     GIT_EDITOR: "true",
     CLAUDECODE: "1"
   };
@@ -19354,12 +19354,12 @@ ${stderr}`);
     });
   });
 }
-var import_node_child_process4, import_node_path6, MAX_OUTPUT_BYTES, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
+var import_node_child_process4, import_node_path7, MAX_OUTPUT_BYTES, WINDOWS_MODAL_SHIM, backgroundProcesses, backgroundOutput, nextBgId, MAX_BG_RETAINED, cachedBash, bashLookupInFlight, BG_OUTPUT_CAP, cachedPwsh, pwshLookupInFlight;
 var init_shell = __esm({
   "src/main/mcp/tools/shell.ts"() {
     "use strict";
     import_node_child_process4 = require("node:child_process");
-    import_node_path6 = __toESM(require("node:path"), 1);
+    import_node_path7 = __toESM(require("node:path"), 1);
     init_shell_snapshot();
     init_plugin_helpers();
     init_command_runtime();
@@ -36963,14 +36963,14 @@ async function getGitRoot(cwd) {
 async function exitWorktree(input) {
   const worktreePath = input.path;
   if (!worktreePath) return errorResult5("path is required");
-  const worktreeName = import_node_path7.default.basename(worktreePath);
+  const worktreeName = import_node_path8.default.basename(worktreePath);
   if (!/^[a-zA-Z0-9_-]+$/.test(worktreeName)) {
     return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
   try {
     const gitRoot = await getGitRoot();
     if (!gitRoot) return errorResult5("Not inside a git repository.");
-    if (!import_node_fs4.default.existsSync(worktreePath)) {
+    if (!import_node_fs6.default.existsSync(worktreePath)) {
       return errorResult5(`Worktree path does not exist: ${worktreePath}`);
     }
     await runGitLocal(["worktree", "remove", worktreePath, "--force"], { cwd: gitRoot, timeoutMs: 3e4 });
@@ -36981,7 +36981,7 @@ async function exitWorktree(input) {
   }
 }
 async function enterWorktree(input) {
-  const name = input.name || `worktree-${import_node_crypto.default.randomBytes(4).toString("hex")}`;
+  const name = input.name || `worktree-${import_node_crypto3.default.randomBytes(4).toString("hex")}`;
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
     return errorResult5("Invalid worktree name \u2014 only alphanumeric characters, hyphens, and underscores are allowed");
   }
@@ -36990,15 +36990,15 @@ async function enterWorktree(input) {
     if (!gitRoot) {
       return errorResult5("Not inside a git repository. Cannot create worktree.");
     }
-    const worktreesDir = import_node_path7.default.join(gitRoot, ".claude", "worktrees");
-    import_node_fs4.default.mkdirSync(worktreesDir, { recursive: true });
-    const worktreePath = import_node_path7.default.join(worktreesDir, name);
-    if (import_node_fs4.default.existsSync(worktreePath)) {
+    const worktreesDir = import_node_path8.default.join(gitRoot, ".claude", "worktrees");
+    import_node_fs6.default.mkdirSync(worktreesDir, { recursive: true });
+    const worktreePath = import_node_path8.default.join(worktreesDir, name);
+    if (import_node_fs6.default.existsSync(worktreePath)) {
       return errorResult5(`Worktree already exists at ${worktreePath}`);
     }
     const branchName = `worktree/${name}`;
     await runGitLocal(["worktree", "add", "-b", branchName, worktreePath, "HEAD"], { cwd: gitRoot, timeoutMs: 3e4 });
-    if (!import_node_fs4.default.existsSync(worktreePath)) {
+    if (!import_node_fs6.default.existsSync(worktreePath)) {
       return errorResult5("Worktree creation command succeeded but directory was not found");
     }
     return textResult5(
@@ -37011,14 +37011,14 @@ Based on: HEAD`
     return errorResult5(`Failed to create worktree: ${msg}`);
   }
 }
-var import_node_child_process5, import_node_path7, import_node_fs4, import_node_crypto;
+var import_node_child_process5, import_node_path8, import_node_fs6, import_node_crypto3;
 var init_git = __esm({
   "src/main/mcp/tools/git.ts"() {
     "use strict";
     import_node_child_process5 = require("node:child_process");
-    import_node_path7 = __toESM(require("node:path"), 1);
-    import_node_fs4 = __toESM(require("node:fs"), 1);
-    import_node_crypto = __toESM(require("node:crypto"), 1);
+    import_node_path8 = __toESM(require("node:path"), 1);
+    import_node_fs6 = __toESM(require("node:fs"), 1);
+    import_node_crypto3 = __toESM(require("node:crypto"), 1);
   }
 });
 
@@ -37411,12 +37411,12 @@ function setPluginLspProjectResolver(resolver) {
   resolveProject = resolver;
 }
 function isInside(root, candidate) {
-  const rel = import_node_path8.default.relative(import_node_path8.default.resolve(root), import_node_path8.default.resolve(candidate));
-  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path8.default.sep) && !import_node_path8.default.isAbsolute(rel);
+  const rel = import_node_path9.default.relative(import_node_path9.default.resolve(root), import_node_path9.default.resolve(candidate));
+  return rel === "" || rel !== ".." && !rel.startsWith(".." + import_node_path9.default.sep) && !import_node_path9.default.isAbsolute(rel);
 }
 function readJson(filePath) {
   try {
-    return JSON.parse(import_node_fs5.default.readFileSync(filePath, "utf-8"));
+    return JSON.parse(import_node_fs7.default.readFileSync(filePath, "utf-8"));
   } catch {
     return null;
   }
@@ -37432,12 +37432,12 @@ async function discoverPluginLspConfigs() {
   for (const plugin of await listEnabledInstalledPlugins()) {
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     const rawMap = {};
-    collectConfigMap(rawMap, readJson(import_node_path8.default.join(plugin.installPath, ".lsp.json")));
+    collectConfigMap(rawMap, readJson(import_node_path9.default.join(plugin.installPath, ".lsp.json")));
     const declared = manifest.lspServers;
     const declarations = Array.isArray(declared) ? declared : declared === void 0 ? [] : [declared];
     for (const item of declarations) {
       if (typeof item === "string") {
-        const resolved = import_node_path8.default.resolve(plugin.installPath, item);
+        const resolved = import_node_path9.default.resolve(plugin.installPath, item);
         if (isInside(plugin.installPath, resolved)) collectConfigMap(rawMap, readJson(resolved));
       } else {
         collectConfigMap(rawMap, item);
@@ -37448,7 +37448,7 @@ async function discoverPluginLspConfigs() {
       const config = raw;
       if (typeof config.command !== "string" || !config.command.trim()) continue;
       if (!config.extensionToLanguage || typeof config.extensionToLanguage !== "object" || Array.isArray(config.extensionToLanguage)) continue;
-      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
+      const subst = (value, project = "${CLAUDE_PROJECT_DIR}") => substituteUserConfig(value, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, plugin.installPath).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, import_node_path9.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", plugin.key.replace(/[^a-zA-Z0-9\-_]/g, "-"))).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, project).replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => name === "CLAUDE_PROJECT_DIR" ? match : process.env[name] ?? "");
       const env4 = {};
       for (const [key2, value] of Object.entries(config.env ?? {})) if (typeof value === "string") env4[key2] = subst(value);
       for (const [key2, value] of Object.entries(options)) env4[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
@@ -37476,7 +37476,7 @@ async function discoverPluginLspConfigs() {
   return out.sort((a, b) => a.id.localeCompare(b.id));
 }
 function fileUri(filePath) {
-  return (0, import_node_url.pathToFileURL)(import_node_path8.default.resolve(filePath)).href;
+  return (0, import_node_url.pathToFileURL)(import_node_path9.default.resolve(filePath)).href;
 }
 function matchLspLanguage(extensionToLanguage, file) {
   const lower = file.toLowerCase();
@@ -37487,14 +37487,14 @@ function matchLspLanguage(extensionToLanguage, file) {
   }
   return null;
 }
-var import_node_child_process6, import_node_fs5, import_node_os3, import_node_path8, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
+var import_node_child_process6, import_node_fs7, import_node_os3, import_node_path9, import_node_url, LSP_MAX_HEADER_BYTES, LSP_MAX_CONTENT_BYTES, LSP_MAX_STDOUT_BUFFER_BYTES, LspFrameDecoder, resolveProject, LspProcess, PluginLspManager, pluginLspManager;
 var init_plugin_lsp = __esm({
   "src/main/plugin-lsp.ts"() {
     "use strict";
     import_node_child_process6 = require("node:child_process");
-    import_node_fs5 = __toESM(require("node:fs"), 1);
+    import_node_fs7 = __toESM(require("node:fs"), 1);
     import_node_os3 = __toESM(require("node:os"), 1);
-    import_node_path8 = __toESM(require("node:path"), 1);
+    import_node_path9 = __toESM(require("node:path"), 1);
     import_node_url = require("node:url");
     init_plugin_helpers();
     LSP_MAX_HEADER_BYTES = 16 * 1024;
@@ -37545,7 +37545,7 @@ var init_plugin_lsp = __esm({
         }
       }
     };
-    resolveProject = (_tabId, file) => import_node_path8.default.dirname(file);
+    resolveProject = (_tabId, file) => import_node_path9.default.dirname(file);
     LspProcess = class {
       constructor(config, projectRoot) {
         this.config = config;
@@ -37603,21 +37603,21 @@ var init_plugin_lsp = __esm({
           }
           this.child = null;
         }
-        const dataDir = import_node_path8.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
-        import_node_fs5.default.mkdirSync(dataDir, { recursive: true });
+        const dataDir = import_node_path9.default.join(import_node_os3.default.homedir(), ".claude", "plugins", "data", this.config.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
+        import_node_fs7.default.mkdirSync(dataDir, { recursive: true });
         let cwd = this.projectRoot;
         if (this.config.workspaceFolder) {
-          const requested = import_node_path8.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
+          const requested = import_node_path9.default.resolve(this.projectRoot, this.substitute(this.config.workspaceFolder));
           if (isInside(this.projectRoot, requested)) cwd = requested;
         }
-        const pluginBin = import_node_path8.default.join(this.config.pluginRoot, "bin");
+        const pluginBin = import_node_path9.default.join(this.config.pluginRoot, "bin");
         const env4 = {
           ...process.env,
           ...Object.fromEntries(Object.entries(this.config.env).map(([k, v]) => [k, this.substitute(v)])),
           CLAUDE_PLUGIN_ROOT: this.config.pluginRoot,
           CLAUDE_PLUGIN_DATA: dataDir,
           CLAUDE_PROJECT_DIR: this.projectRoot,
-          PATH: [import_node_fs5.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path8.default.delimiter)
+          PATH: [import_node_fs7.default.existsSync(pluginBin) ? pluginBin : "", process.env.PATH ?? ""].filter(Boolean).join(import_node_path9.default.delimiter)
         };
         this.child = (0, import_node_child_process6.spawn)(this.substitute(this.config.command), this.config.args.map((arg) => this.substitute(arg)), {
           cwd,
@@ -37652,7 +37652,7 @@ var init_plugin_lsp = __esm({
         await this.request("initialize", {
           processId: process.pid,
           rootUri,
-          workspaceFolders: [{ uri: rootUri, name: import_node_path8.default.basename(this.projectRoot) }],
+          workspaceFolders: [{ uri: rootUri, name: import_node_path9.default.basename(this.projectRoot) }],
           capabilities: {
             workspace: { workspaceFolders: true, configuration: true },
             textDocument: {
@@ -37742,7 +37742,7 @@ var init_plugin_lsp = __esm({
             result = items.map(() => this.config.settings ?? null);
           } else if (message.method === "workspace/workspaceFolders") {
             const uri = fileUri(this.projectRoot);
-            result = [{ uri, name: import_node_path8.default.basename(this.projectRoot) }];
+            result = [{ uri, name: import_node_path9.default.basename(this.projectRoot) }];
           } else if (message.method === "workspace/applyEdit") {
             result = { applied: false, failureReason: "Plugin LSP edits are not applied automatically by the bridge" };
           }
@@ -37754,7 +37754,7 @@ var init_plugin_lsp = __esm({
       }
       async syncDocument(file, languageId) {
         const uri = fileUri(file);
-        const content = await import_node_fs5.default.promises.readFile(file, "utf-8");
+        const content = await import_node_fs7.default.promises.readFile(file, "utf-8");
         const previous = this.documents.get(uri);
         if (!previous) {
           this.documents.set(uri, { content, version: 1, languageId });
@@ -37841,11 +37841,11 @@ var init_plugin_lsp = __esm({
       }
       async matching(file, tabId) {
         if (this.definitions.length === 0) await this.refresh();
-        const projectRoot = resolveProject(tabId, file) ?? import_node_path8.default.dirname(file);
+        const projectRoot = resolveProject(tabId, file) ?? import_node_path9.default.dirname(file);
         for (const config of this.definitions) {
           const languageId = matchLspLanguage(config.extensionToLanguage, file);
           if (!languageId) continue;
-          const instanceKey = `${config.id}::${import_node_path8.default.resolve(projectRoot)}`;
+          const instanceKey = `${config.id}::${import_node_path9.default.resolve(projectRoot)}`;
           let process2 = this.instances.get(instanceKey);
           if (!process2) {
             process2 = new LspProcess(config, projectRoot);
@@ -40641,7 +40641,7 @@ var wrapper_default = import_websocket.default;
 
 // src/main/ws/connection-manager.ts
 var vscode4 = __toESM(require("vscode"), 1);
-var import_node_crypto2 = require("node:crypto");
+var import_node_crypto4 = require("node:crypto");
 
 // src/main/mcp/permission-manager.ts
 var import_node_fs = __toESM(require("node:fs"), 1);
@@ -41304,6 +41304,357 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
   };
 }
 
+// src/incident-diagnostics.ts
+var import_node_crypto2 = require("node:crypto");
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = require("node:path");
+
+// ../../../src/kamin-host/rolling-log.ts
+var import_node_fs2 = require("node:fs");
+function removeIfPresent(path46) {
+  try {
+    if ((0, import_node_fs2.existsSync)(path46)) (0, import_node_fs2.unlinkSync)(path46);
+  } catch {
+  }
+}
+function rotateLogFiles(path46, backups) {
+  if (backups <= 0) {
+    removeIfPresent(path46);
+    return !(0, import_node_fs2.existsSync)(path46);
+  }
+  removeIfPresent(`${path46}.${String(backups)}`);
+  for (let i = backups - 1; i >= 1; i -= 1) {
+    const from = `${path46}.${String(i)}`;
+    if (!(0, import_node_fs2.existsSync)(from)) continue;
+    const to = `${path46}.${String(i + 1)}`;
+    removeIfPresent(to);
+    try {
+      (0, import_node_fs2.renameSync)(from, to);
+    } catch {
+    }
+  }
+  if ((0, import_node_fs2.existsSync)(path46)) {
+    removeIfPresent(`${path46}.1`);
+    try {
+      (0, import_node_fs2.renameSync)(path46, `${path46}.1`);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+var RollingLogWriter = class {
+  constructor(path46, options) {
+    this.path = path46;
+    this.options = options;
+    if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
+      throw new Error("rolling log maxBytes must be a positive safe integer");
+    }
+    if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
+      throw new Error("rolling log backups must be a non-negative safe integer");
+    }
+    if (options.rotateOnOpen && (0, import_node_fs2.existsSync)(path46) && (0, import_node_fs2.statSync)(path46).size > 0) {
+      rotateLogFiles(path46, options.backups);
+    }
+    this.open();
+  }
+  path;
+  options;
+  fd = null;
+  bytes = 0;
+  permanentlyClosed = false;
+  /**
+   * Append one structured record atomically with respect to rotation.
+   *
+   * `write()` fills the remaining bytes of the current generation before it
+   * rotates — right for a raw stream, wrong for `[incident] <json>` lines:
+   * a rotation boundary inside the record left its head in `.1` and its tail
+   * in the new file, and neither fragment parsed as JSONL. Here a record that
+   * fits an empty generation but not the current remainder rotates first and
+   * is then written whole. A record larger than `maxBytes` is refused (returns
+   * `false`) instead of weakening the retention cap; the caller decides what
+   * bounded marker to emit instead.
+   */
+  writeRecord(record) {
+    if (this.permanentlyClosed) return false;
+    const data = Buffer.isBuffer(record) ? record : Buffer.from(record, "utf8");
+    if (data.length === 0) return true;
+    if (data.length > this.options.maxBytes) return false;
+    if (this.fd === null) this.open();
+    if (this.bytes > 0 && this.bytes + data.length > this.options.maxBytes) this.rotate();
+    const fd = this.descriptor();
+    if (fd === null) return false;
+    let offset = 0;
+    while (offset < data.length) {
+      try {
+        const written = (0, import_node_fs2.writeSync)(fd, data, offset, data.length - offset);
+        if (written <= 0) return false;
+        this.bytes += written;
+        offset += written;
+      } catch {
+        this.closeDescriptor();
+        return false;
+      }
+    }
+    return true;
+  }
+  write(chunk) {
+    if (this.permanentlyClosed) return;
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
+    let offset = 0;
+    while (offset < data.length) {
+      if (this.bytes >= this.options.maxBytes) this.rotate();
+      const remaining = this.options.maxBytes - this.bytes;
+      const size = Math.min(remaining, data.length - offset);
+      if (size <= 0) break;
+      try {
+        if (this.fd === null) this.open();
+        if (this.fd === null) return;
+        const written = (0, import_node_fs2.writeSync)(this.fd, data, offset, size);
+        if (written <= 0) return;
+        this.bytes += written;
+        offset += written;
+      } catch {
+        this.closeDescriptor();
+        return;
+      }
+    }
+  }
+  close() {
+    this.permanentlyClosed = true;
+    this.closeDescriptor();
+  }
+  descriptor() {
+    return this.fd;
+  }
+  closeDescriptor() {
+    if (this.fd === null) return;
+    try {
+      (0, import_node_fs2.closeSync)(this.fd);
+    } catch {
+    }
+    this.fd = null;
+  }
+  open() {
+    if (this.permanentlyClosed) return;
+    try {
+      this.fd = (0, import_node_fs2.openSync)(this.path, "a");
+      try {
+        this.bytes = (0, import_node_fs2.statSync)(this.path).size;
+      } catch {
+        this.closeDescriptor();
+        this.bytes = 0;
+        return;
+      }
+      if (this.bytes >= this.options.maxBytes) this.rotate();
+    } catch {
+      this.fd = null;
+      this.bytes = 0;
+    }
+  }
+  rotate() {
+    this.closeDescriptor();
+    const rotated = rotateLogFiles(this.path, this.options.backups);
+    this.bytes = 0;
+    try {
+      this.fd = (0, import_node_fs2.openSync)(this.path, rotated ? "a" : "w");
+      this.bytes = (0, import_node_fs2.statSync)(this.path).size;
+    } catch {
+      this.closeDescriptor();
+      this.bytes = 0;
+    }
+  }
+};
+
+// src/main/ws/conversation-ref.ts
+var import_node_crypto = require("node:crypto");
+function conversationRef(id) {
+  return (0, import_node_crypto.createHash)("sha256").update(`kamin-conversation-ref-v1:${id}`).digest("hex").slice(0, 12);
+}
+
+// src/incident-diagnostics.ts
+var MAX_TRACKED_TABS = 256;
+var MAX_TRACKED_RENDERERS = 16;
+var MAX_COUNTER = 1e9;
+var MIN_SAMPLE_INTERVAL_MS = 1e4;
+var INCIDENT_LOG_MAX_BYTES = 1 * 1024 * 1024;
+var INCIDENT_LOG_BACKUPS = 3;
+var TAB_REF_KEY = (0, import_node_crypto2.randomBytes)(32);
+var IDENTITY_ACTIONS = /* @__PURE__ */ new Set([
+  "bind",
+  "send-resume",
+  "send-create",
+  "adopt",
+  "hold",
+  "resume-not-found",
+  "establish-timeout",
+  "rapid-exit",
+  "resume-parked",
+  "notice",
+  "user-new",
+  "user-retry"
+]);
+var IDENTITY_REASONS = /* @__PURE__ */ new Set(["none", "restored", "discovered", "confirmed", "changed", "establish", "rapid-exit", "not-found"]);
+function convRef(value) {
+  return typeof value === "string" && value.length > 0 ? conversationRef(value) : null;
+}
+function boundedCount(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.min(MAX_COUNTER, Math.max(0, Math.trunc(value)));
+}
+function boundedHeap(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
+  return Math.min(MAX_COUNTER, Math.round(value * 10) / 10);
+}
+function safeStatus(value) {
+  if (value === "disconnected" || value === "connecting" || value === "connected" || value === "error") return value;
+  return "error";
+}
+function safeRole(value) {
+  if (value === "chat" || value === "tools" || value === "customize") return value;
+  return "unknown";
+}
+function classifyCause(value, status, closeCode) {
+  if (status !== "error" && status !== "disconnected") return "none";
+  if (closeCode === 1006 || closeCode === 1012 || closeCode === 1013 || closeCode === 1014) return "network";
+  if (typeof closeCode === "number") return "remote-close";
+  if (typeof value !== "string" || value.length === 0) return "unknown";
+  const text = value.toLowerCase();
+  if (text.includes("401") || text.includes("403") || text.includes("auth") || text.includes("token")) return "auth";
+  if (text.includes("timeout") || text.includes("timed out")) return "timeout";
+  if (text.includes("session")) return "session";
+  if (text.includes("closed") || text.includes("close code")) return "remote-close";
+  if (text.includes("network") || text.includes("socket") || text.includes("econn") || text.includes("dns")) return "network";
+  return "unknown";
+}
+function tabRef(value) {
+  const id = typeof value === "string" ? value : "missing";
+  return (0, import_node_crypto2.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
+}
+function normalizeConnectionTransition(tabId, raw) {
+  const state = raw && typeof raw === "object" ? raw : {};
+  const status = safeStatus(state.status);
+  return {
+    event: "connection-transition",
+    tabRef: tabRef(tabId),
+    status,
+    cause: classifyCause(state.error, status, state.closeCode),
+    retryAttempt: boundedCount(state.retryAttempt)
+  };
+}
+function normalizeRendererSample(raw) {
+  const sample = raw && typeof raw === "object" ? raw : {};
+  const windowState = sample.windowState === "within-configured-window" || sample.windowState === "over-configured-window" ? sample.windowState : "unknown";
+  return {
+    event: "renderer-sample",
+    role: safeRole(sample.role),
+    heapMB: boundedHeap(sample.heapMB),
+    retainedTabs: boundedCount(sample.retainedTabs),
+    retainedEntries: boundedCount(sample.retainedEntries),
+    activeEntries: boundedCount(sample.activeEntries),
+    storeWindow: boundedCount(sample.storeWindow),
+    scrollUpMax: boundedCount(sample.scrollUpMax),
+    windowState,
+    ...debugAgentRetention(sample.agentRetention)
+  };
+}
+function debugAgentRetention(raw) {
+  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {};
+  const r = raw;
+  return { agentRetention: {
+    slots: boundedCount(r.slots),
+    storedEntries: boundedCount(r.storedEntries),
+    uuidIndex: boundedCount(r.uuidIndex),
+    closedTabSlots: boundedCount(r.closedTabSlots)
+  } };
+}
+function normalizeConversationIdentity(tabId, raw) {
+  const r = raw && typeof raw === "object" ? raw : {};
+  if (typeof r.action !== "string" || !IDENTITY_ACTIONS.has(r.action)) return null;
+  const record = {
+    event: "conversation-identity",
+    tabRef: tabRef(tabId),
+    action: r.action,
+    storedRef: convRef(r.stored)
+  };
+  if ("next" in r) record.nextRef = convRef(r.next);
+  if (typeof r.reason === "string" && IDENTITY_REASONS.has(r.reason)) record.reason = r.reason;
+  if (r.count !== void 0) record.count = boundedCount(r.count);
+  return record;
+}
+function formatIncidentLine(record) {
+  return `[incident] ${JSON.stringify({
+    schema: 1,
+    ts: (/* @__PURE__ */ new Date()).toISOString(),
+    appVersion: process.env.KAMIN_APP_VERSION ?? "unknown",
+    processRole: "extension-host",
+    pid: process.pid,
+    ...record
+  })}`;
+}
+var lastConnectionByTab = /* @__PURE__ */ new Map();
+var lastSampleByRole = /* @__PURE__ */ new Map();
+var installed = false;
+var incidentLog = null;
+var dropMarked = false;
+function emit(record) {
+  const log2 = incidentLog;
+  if (!log2) return;
+  if (log2.writeRecord(`${formatIncidentLine(record)}
+`)) return;
+  if (dropMarked) return;
+  dropMarked = true;
+  log2.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}
+`);
+}
+function recordInvokeBoundary(record) {
+  emit(record);
+}
+function recordConversationIdentity(tabId, fields) {
+  const record = normalizeConversationIdentity(tabId, fields);
+  if (record) emit(record);
+}
+function recordBridgeOutbound(channel, args) {
+  if (channel !== "connection-state-changed") return;
+  const record = normalizeConnectionTransition(args[0], args[1]);
+  const signature = `${record.status}:${record.cause}:${String(record.retryAttempt)}`;
+  if (lastConnectionByTab.get(record.tabRef) === signature) return;
+  lastConnectionByTab.set(record.tabRef, signature);
+  while (lastConnectionByTab.size > MAX_TRACKED_TABS) {
+    const oldest = lastConnectionByTab.keys().next().value;
+    if (oldest === void 0) break;
+    lastConnectionByTab.delete(oldest);
+  }
+  emit(record);
+}
+function recordRendererSample(raw, now = Date.now()) {
+  const record = normalizeRendererSample(raw);
+  const last = lastSampleByRole.get(record.role) ?? 0;
+  if (now - last < MIN_SAMPLE_INTERVAL_MS) return;
+  lastSampleByRole.set(record.role, now);
+  while (lastSampleByRole.size > MAX_TRACKED_RENDERERS) {
+    const oldest = lastSampleByRole.keys().next().value;
+    if (oldest === void 0) break;
+    lastSampleByRole.delete(oldest);
+  }
+  emit(record);
+}
+function installIncidentDiagnostics(logDir, subscribe) {
+  if (installed) return;
+  installed = true;
+  dropMarked = false;
+  try {
+    (0, import_node_fs3.mkdirSync)(logDir, { recursive: true });
+    incidentLog = new RollingLogWriter((0, import_node_path2.join)(logDir, "incident.log"), {
+      maxBytes: INCIDENT_LOG_MAX_BYTES,
+      backups: INCIDENT_LOG_BACKUPS,
+      rotateOnOpen: true
+    });
+  } catch {
+  }
+  subscribe((sample) => recordRendererSample(sample));
+}
+
 // src/main/ws/connection-manager.ts
 var import_fs5 = __toESM(require("fs"), 1);
 var import_path6 = __toESM(require("path"), 1);
@@ -41410,6 +41761,7 @@ function handleServerMessage(msg, ctx) {
       ctx.clearJsonlCache();
       ctx.window.webContents.send("jsonl-status", ctx.tabId, { status: "searching" });
       if (msg.resumeNotFound) ctx.noteResumeNotFound();
+      else ctx.noteIdentityConfirmed();
       ctx.setState({ status: "authenticated", sessionId: msg.sessionId });
       const settingsDir = msg.settingsDir;
       if (settingsDir) ctx.setSettingsDir(settingsDir);
@@ -41596,8 +41948,7 @@ function handleServerMessage(msg, ctx) {
     }
     case "session:conversation-id": {
       const conversationId = msg.conversationId;
-      if (conversationId) {
-        ctx.setConversationId(conversationId);
+      if (conversationId && ctx.setConversationId(conversationId)) {
         ctx.notifyConversationId(conversationId);
       }
       break;
@@ -41785,6 +42136,9 @@ var ConnectionManager = class _ConnectionManager {
   static onSessionTitle = null;
   // Optional callback when conversationId is discovered (for session saving)
   static onConversationId = null;
+  // A conversation the server started in this tab while the tab kept its own
+  // identity (INC-2026-0070 hold): record it in history without rebinding the tab.
+  static onDetachedConversation = null;
   // Optional callback when session is authenticated — used to send external tool schemas
   static onAuthenticated = null;
   // Optional callback to get external MCP tool schemas for session:create
@@ -41816,7 +42170,7 @@ var ConnectionManager = class _ConnectionManager {
   static onActivity = null;
   ws = null;
   state = { status: "disconnected" };
-  stateAuthority = (0, import_node_crypto2.randomUUID)();
+  stateAuthority = (0, import_node_crypto4.randomUUID)();
   stateAuthorityGeneration = CONNECTION_AUTHORITY_GENERATION;
   stateAuthoritySequence = ++lastConnectionAuthoritySequence;
   /** Orders every state publication for this tab across async WS callbacks. */
@@ -41840,6 +42194,14 @@ var ConnectionManager = class _ConnectionManager {
   // session:created landed and how many resumes authenticated-then-died fast.
   lastSessionCreatedAt = 0;
   rapidResumeExits = 0;
+  // INC-2026-0070 identity guard. `identityHold` is set when the server could
+  // not resume the stored conversation and started a fresh one: the tab keeps
+  // its id, and the server's new id is only adopted on an explicit user choice.
+  // `resumeParked` pauses auto-reconnect after repeated fast resumed exits.
+  // `identityNoticeShown` keeps one notice per episode.
+  identityHold = null;
+  resumeParked = false;
+  identityNoticeShown = false;
   reconnectAttempt = 0;
   // Stability gate for the backoff reset. The server confirming the session
   // (authenticated) does NOT immediately zero reconnectAttempt — a socket that
@@ -41931,6 +42293,7 @@ var ConnectionManager = class _ConnectionManager {
     this.window = window9;
     this.tabId = tabId;
     if (conversationId) this.conversationId = conversationId;
+    this.logIdentity("bind", { reason: conversationId ? "restored" : "none" });
     this.batcher = new JsonlBatcher(window9, tabId);
     this.idleTracker = new SessionIdleTracker((rawTitle) => {
       _ConnectionManager.onSessionIdle?.(this.tabId, rawTitle);
@@ -41962,6 +42325,16 @@ var ConnectionManager = class _ConnectionManager {
    *  download can name its file WITHOUT first fetching the transcript. */
   getConversationId() {
     return this.conversationId;
+  }
+  /** True while the server runs a fresh conversation the tab has not adopted. */
+  isIdentityHeld() {
+    return this.identityHold !== null;
+  }
+  logIdentity(action, extra = {}) {
+    try {
+      recordConversationIdentity(this.tabId, { action, stored: this.conversationId, ...extra });
+    } catch {
+    }
   }
   /**
    * Initiate WebSocket connection to server. On open, sends session:create
@@ -42048,6 +42421,7 @@ var ConnectionManager = class _ConnectionManager {
     const basePrompt = _ConnectionManager.getBasePrompt?.() ?? "";
     const cacheDir = process.env.KAMIN_CACHE_DIR;
     const transcriptMirrorDir = cacheDir ? import_path6.default.join(cacheDir, "transcripts") : void 0;
+    this.logIdentity(this.conversationId ? "send-resume" : "send-create");
     if (this.conversationId) {
       this.sendRaw({
         type: "session:resume",
@@ -42077,16 +42451,18 @@ var ConnectionManager = class _ConnectionManager {
     this.armEstablishTimer();
   }
   /** Watchdog for a socket that opened but never got its session confirmed.
-   *  Tears the socket down (→ close → scheduleReconnect); after repeated resume
-   *  failures, drops the resume so the next attempt starts a fresh session. */
+   *  Tears the socket down (→ close → scheduleReconnect). Repeated failures
+   *  while RESUMING keep the stored id — the next attempt resumes it again — and
+   *  only offer the user a fresh conversation (INC-2026-0070). */
   armEstablishTimer() {
     this.clearEstablishTimer();
     this.establishTimer = setTimeout(() => {
       this.establishTimer = null;
       if (this.state.status === "authenticated") return;
       this.establishFailures += 1;
+      this.logIdentity("establish-timeout", { count: this.establishFailures });
       if (this.conversationId && this.establishFailures >= MAX_RESUME_FAILURES_BEFORE_FRESH) {
-        this.conversationId = null;
+        this.offerIdentityChoice("establish");
       }
       try {
         this.ws?.terminate();
@@ -42107,20 +42483,133 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** session:exit arrived — if this session authenticated then died within
    *  RESUME_LOOP_ALIVE_MS while RESUMING, it's a ghost-resume loop the establish
-   *  watchdog can't see (it authenticated). Count it; after enough, drop the
-   *  resume so the NEXT startSession creates a fresh conversation instead of
-   *  re-resuming the same dead id forever. A session that lived longer resets it. */
+   *  watchdog can't see (it authenticated). Count it; after enough, PARK the
+   *  reconnect loop and let the user choose between retrying the stored
+   *  conversation and starting a new one — never drop the id silently
+   *  (INC-2026-0070). A session that lived longer resets the counter. */
   noteSessionExit() {
     const alive = this.lastSessionCreatedAt > 0 ? Date.now() - this.lastSessionCreatedAt : Infinity;
     if (this.conversationId && alive < RESUME_LOOP_ALIVE_MS) {
       this.rapidResumeExits += 1;
+      this.logIdentity("rapid-exit", { count: this.rapidResumeExits });
       if (this.rapidResumeExits >= MAX_RESUME_FAILURES_BEFORE_FRESH) {
-        this.conversationId = null;
         this.rapidResumeExits = 0;
+        this.resumeParked = true;
+        this.logIdentity("resume-parked", { reason: "rapid-exit" });
+        this.cancelReconnect();
+        this.offerIdentityChoice("rapid-exit");
       }
     } else {
       this.rapidResumeExits = 0;
     }
+  }
+  /** The server could not find the stored conversation anywhere and started a
+   *  fresh one in this tab. Keep the stored id (a recreated container may simply
+   *  be missing its volume, and the next resume can succeed), stop mirroring
+   *  into the stored conversation's local copy, and let the user decide. */
+  noteResumeNotFound() {
+    this.rapidResumeExits = 0;
+    this.identityHold = { pendingId: null };
+    this.logIdentity("resume-not-found", { reason: "not-found" });
+    if (this.mirror) void this.mirror.close();
+    this.mirror = null;
+    this.mirrorHead = null;
+    this.offerIdentityChoice("not-found");
+  }
+  /** A session:created that resumed (or freshly created) as requested. */
+  noteIdentityConfirmed() {
+    if (this.identityHold?.pendingId) {
+      this.logIdentity("hold", { next: null, reason: "confirmed" });
+    }
+    this.identityHold = null;
+    this.resumeParked = false;
+    this.identityNoticeShown = false;
+  }
+  /** The server reported conversation `id` for this tab's live session. Returns
+   *  whether the tab adopted it (and so whether listeners should persist it). */
+  adoptConversationId(id) {
+    if (this.identityHold) {
+      this.identityHold.pendingId = id;
+      this.logIdentity("hold", { next: id, reason: "not-found" });
+      try {
+        _ConnectionManager.onDetachedConversation?.(this.tabId, id);
+      } catch {
+      }
+      return false;
+    }
+    const previous = this.conversationId;
+    this.logIdentity("adopt", { next: id, reason: !previous ? "discovered" : previous === id ? "confirmed" : "changed" });
+    if (previous && previous !== id && this.mirror) {
+      void this.mirror.close();
+      this.mirror = null;
+      this.mirrorHead = null;
+    }
+    this.conversationId = id;
+    this.ensureMirror();
+    return true;
+  }
+  /** Offer the user an explicit way out instead of silently rebinding the tab.
+   *  Non-blocking: auto-reconnect (unless parked) keeps resuming meanwhile. */
+  offerIdentityChoice(reason) {
+    if (this.identityNoticeShown) return;
+    this.identityNoticeShown = true;
+    this.logIdentity("notice", { reason });
+    const NEW = "Start new conversation";
+    const RETRY = "Retry";
+    const message = reason === "not-found" ? "This conversation was not found on the Bridge server. The tab stays linked to it; the session shown now is temporary until you choose." : reason === "rapid-exit" ? "Resuming this conversation keeps failing. The tab stays linked to it; reconnect is paused until you choose." : "Still trying to resume this conversation after a server restart. The tab stays linked to it.";
+    const items = reason === "establish" ? [NEW] : [NEW, RETRY];
+    let shown;
+    try {
+      shown = vscode4.window.showWarningMessage(message, ...items);
+    } catch {
+      shown = void 0;
+    }
+    void Promise.resolve(shown).then((choice) => {
+      if (choice === NEW) this.chooseNewConversation();
+      else if (choice === RETRY) this.retryStoredConversation();
+    }, () => {
+    });
+  }
+  /** Explicit user choice: bind this tab to a new conversation. */
+  chooseNewConversation() {
+    const pending = this.identityHold?.pendingId ?? null;
+    const heldLive = this.identityHold !== null && this.state.status === "authenticated";
+    this.logIdentity("user-new", { next: pending });
+    this.identityHold = null;
+    this.resumeParked = false;
+    this.identityNoticeShown = false;
+    this.establishFailures = 0;
+    this.rapidResumeExits = 0;
+    this.reconnectAttempt = 0;
+    if (pending) {
+      this.conversationId = null;
+      if (this.adoptConversationId(pending)) _ConnectionManager.onConversationId?.(this.tabId, pending);
+      return;
+    }
+    this.conversationId = null;
+    if (!heldLive) this.reconnectNow();
+  }
+  /** Explicit user choice: resume the stored conversation again. */
+  retryStoredConversation() {
+    this.logIdentity("user-retry");
+    this.resumeParked = false;
+    this.identityNoticeShown = false;
+    this.establishFailures = 0;
+    this.rapidResumeExits = 0;
+    this.reconnectAttempt = 0;
+    this.reconnectNow();
+  }
+  reconnectNow() {
+    if (this.intentionalDisconnect) return;
+    this.cancelReconnect();
+    if (this.ws) {
+      try {
+        this.ws.terminate();
+      } catch {
+      }
+      return;
+    }
+    this.connect();
   }
   /** Arm the stability-gated backoff reset: only zero reconnectAttempt after the
    *  connection has stayed up STABLE_RESET_MS. Cleared on close, so a socket that
@@ -42411,7 +42900,7 @@ var ConnectionManager = class _ConnectionManager {
    *  conversation id can be learned more than once (resume, restart). */
   ensureMirror() {
     const dir = process.env.KAMIN_CACHE_DIR;
-    if (!dir || !this.conversationId || this.mirror) return;
+    if (!dir || !this.conversationId || this.mirror || this.identityHold) return;
     try {
       const root = import_path6.default.join(dir, "transcripts");
       import_fs5.default.mkdirSync(root, { recursive: true });
@@ -42507,15 +42996,7 @@ var ConnectionManager = class _ConnectionManager {
       setSettingsDir: (d) => {
         this.settingsDir = d;
       },
-      setConversationId: (id) => {
-        if (this.conversationId && this.conversationId !== id && this.mirror) {
-          void this.mirror.close();
-          this.mirror = null;
-          this.mirrorHead = null;
-        }
-        this.conversationId = id;
-        this.ensureMirror();
-      },
+      setConversationId: (id) => this.adoptConversationId(id),
       scheduleReconnect: () => this.scheduleReconnect(),
       resetReconnectAttempt: () => {
         this.armStabilityReset();
@@ -42527,13 +43008,10 @@ var ConnectionManager = class _ConnectionManager {
         this.noteSessionExit();
       },
       noteResumeNotFound: () => {
-        this.conversationId = null;
-        this.rapidResumeExits = 0;
-        this.mirrorHead = null;
-        void this.mirror?.reset();
-        void vscode4.window.showWarningMessage(
-          "Conversation not found on this server \u2014 started a fresh one."
-        );
+        this.noteResumeNotFound();
+      },
+      noteIdentityConfirmed: () => {
+        this.noteIdentityConfirmed();
       },
       clearJsonlCache: () => {
         this.cachedJsonlEntries = [];
@@ -42695,6 +43173,10 @@ var ConnectionManager = class _ConnectionManager {
   scheduleReconnect() {
     if (this.intentionalDisconnect) return;
     if (this.reconnectTimer) return;
+    if (this.resumeParked) {
+      this.setState({ status: "error", error: "Resume keeps failing \u2014 choose Retry or Start new conversation" });
+      return;
+    }
     const delay = Math.min(
       RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt),
       RECONNECT_MAX_MS
@@ -45984,10 +46466,10 @@ function truncate(s, max) {
   if (s.length <= max) return s;
   return s.slice(0, max) + `\u2026 (+${s.length - max} chars)`;
 }
-var installed = false;
+var installed2 = false;
 function installConsoleCapture() {
-  if (installed) return;
-  installed = true;
+  if (installed2) return;
+  installed2 = true;
   const origErr = console.error.bind(console);
   const origWarn = console.warn.bind(console);
   console.error = (...args) => {
@@ -50617,7 +51099,7 @@ function wireConnectionCallbacks(tabManager, configStore) {
   ConnectionManager.onSessionTitle = (tabId, title) => {
     tabManager.updateTabSessionTitle(tabId, title);
     const tab = tabManager.getTab(tabId);
-    if (tab?.conversationId) {
+    if (tab?.conversationId && !tab.connection.isIdentityHeld()) {
       configStore.addSavedSession({
         conversationId: tab.conversationId,
         cwd: tab.config.cwd || "",
@@ -50643,6 +51125,19 @@ function wireConnectionCallbacks(tabManager, configStore) {
       messageCount: 0
     });
     tabManager.notifyTabListChangedPublic();
+  };
+  ConnectionManager.onDetachedConversation = (tabId, conversationId) => {
+    const tab = tabManager.getTab(tabId);
+    if (!tab) return;
+    configStore.addSavedSession({
+      conversationId,
+      cwd: tab.config.cwd || "",
+      label: tab.sessionTitle || tab.label,
+      folderName: tab.folderName,
+      model: tab.model || "",
+      lastActivity: (/* @__PURE__ */ new Date()).toISOString(),
+      messageCount: 0
+    });
   };
   ConnectionManager.onElicitationRequest = (tabId, { requestId, toolName, message }) => {
     spawnToast({ kind: "question", tabId, requestId, title: `${toolName} needs your answer`, message: (message || "").slice(0, 240), sticky: true });
@@ -50683,319 +51178,10 @@ function registerSyncIPC(ctx) {
   ipcMain.handle("sync:force", () => forceSync(ctx));
 }
 
-// src/incident-diagnostics.ts
-var import_node_crypto3 = require("node:crypto");
-var import_node_fs7 = require("node:fs");
-var import_node_path9 = require("node:path");
-
-// ../../../src/kamin-host/rolling-log.ts
-var import_node_fs6 = require("node:fs");
-function removeIfPresent(path46) {
-  try {
-    if ((0, import_node_fs6.existsSync)(path46)) (0, import_node_fs6.unlinkSync)(path46);
-  } catch {
-  }
-}
-function rotateLogFiles(path46, backups) {
-  if (backups <= 0) {
-    removeIfPresent(path46);
-    return !(0, import_node_fs6.existsSync)(path46);
-  }
-  removeIfPresent(`${path46}.${String(backups)}`);
-  for (let i = backups - 1; i >= 1; i -= 1) {
-    const from = `${path46}.${String(i)}`;
-    if (!(0, import_node_fs6.existsSync)(from)) continue;
-    const to = `${path46}.${String(i + 1)}`;
-    removeIfPresent(to);
-    try {
-      (0, import_node_fs6.renameSync)(from, to);
-    } catch {
-    }
-  }
-  if ((0, import_node_fs6.existsSync)(path46)) {
-    removeIfPresent(`${path46}.1`);
-    try {
-      (0, import_node_fs6.renameSync)(path46, `${path46}.1`);
-    } catch {
-      return false;
-    }
-  }
-  return true;
-}
-var RollingLogWriter = class {
-  constructor(path46, options) {
-    this.path = path46;
-    this.options = options;
-    if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
-      throw new Error("rolling log maxBytes must be a positive safe integer");
-    }
-    if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
-      throw new Error("rolling log backups must be a non-negative safe integer");
-    }
-    if (options.rotateOnOpen && (0, import_node_fs6.existsSync)(path46) && (0, import_node_fs6.statSync)(path46).size > 0) {
-      rotateLogFiles(path46, options.backups);
-    }
-    this.open();
-  }
-  path;
-  options;
-  fd = null;
-  bytes = 0;
-  permanentlyClosed = false;
-  /**
-   * Append one structured record atomically with respect to rotation.
-   *
-   * `write()` fills the remaining bytes of the current generation before it
-   * rotates — right for a raw stream, wrong for `[incident] <json>` lines:
-   * a rotation boundary inside the record left its head in `.1` and its tail
-   * in the new file, and neither fragment parsed as JSONL. Here a record that
-   * fits an empty generation but not the current remainder rotates first and
-   * is then written whole. A record larger than `maxBytes` is refused (returns
-   * `false`) instead of weakening the retention cap; the caller decides what
-   * bounded marker to emit instead.
-   */
-  writeRecord(record) {
-    if (this.permanentlyClosed) return false;
-    const data = Buffer.isBuffer(record) ? record : Buffer.from(record, "utf8");
-    if (data.length === 0) return true;
-    if (data.length > this.options.maxBytes) return false;
-    if (this.fd === null) this.open();
-    if (this.bytes > 0 && this.bytes + data.length > this.options.maxBytes) this.rotate();
-    const fd = this.descriptor();
-    if (fd === null) return false;
-    let offset = 0;
-    while (offset < data.length) {
-      try {
-        const written = (0, import_node_fs6.writeSync)(fd, data, offset, data.length - offset);
-        if (written <= 0) return false;
-        this.bytes += written;
-        offset += written;
-      } catch {
-        this.closeDescriptor();
-        return false;
-      }
-    }
-    return true;
-  }
-  write(chunk) {
-    if (this.permanentlyClosed) return;
-    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
-    let offset = 0;
-    while (offset < data.length) {
-      if (this.bytes >= this.options.maxBytes) this.rotate();
-      const remaining = this.options.maxBytes - this.bytes;
-      const size = Math.min(remaining, data.length - offset);
-      if (size <= 0) break;
-      try {
-        if (this.fd === null) this.open();
-        if (this.fd === null) return;
-        const written = (0, import_node_fs6.writeSync)(this.fd, data, offset, size);
-        if (written <= 0) return;
-        this.bytes += written;
-        offset += written;
-      } catch {
-        this.closeDescriptor();
-        return;
-      }
-    }
-  }
-  close() {
-    this.permanentlyClosed = true;
-    this.closeDescriptor();
-  }
-  descriptor() {
-    return this.fd;
-  }
-  closeDescriptor() {
-    if (this.fd === null) return;
-    try {
-      (0, import_node_fs6.closeSync)(this.fd);
-    } catch {
-    }
-    this.fd = null;
-  }
-  open() {
-    if (this.permanentlyClosed) return;
-    try {
-      this.fd = (0, import_node_fs6.openSync)(this.path, "a");
-      try {
-        this.bytes = (0, import_node_fs6.statSync)(this.path).size;
-      } catch {
-        this.closeDescriptor();
-        this.bytes = 0;
-        return;
-      }
-      if (this.bytes >= this.options.maxBytes) this.rotate();
-    } catch {
-      this.fd = null;
-      this.bytes = 0;
-    }
-  }
-  rotate() {
-    this.closeDescriptor();
-    const rotated = rotateLogFiles(this.path, this.options.backups);
-    this.bytes = 0;
-    try {
-      this.fd = (0, import_node_fs6.openSync)(this.path, rotated ? "a" : "w");
-      this.bytes = (0, import_node_fs6.statSync)(this.path).size;
-    } catch {
-      this.closeDescriptor();
-      this.bytes = 0;
-    }
-  }
-};
-
-// src/incident-diagnostics.ts
-var MAX_TRACKED_TABS = 256;
-var MAX_TRACKED_RENDERERS = 16;
-var MAX_COUNTER = 1e9;
-var MIN_SAMPLE_INTERVAL_MS = 1e4;
-var INCIDENT_LOG_MAX_BYTES = 1 * 1024 * 1024;
-var INCIDENT_LOG_BACKUPS = 3;
-var TAB_REF_KEY = (0, import_node_crypto3.randomBytes)(32);
-function boundedCount(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-  return Math.min(MAX_COUNTER, Math.max(0, Math.trunc(value)));
-}
-function boundedHeap(value) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return null;
-  return Math.min(MAX_COUNTER, Math.round(value * 10) / 10);
-}
-function safeStatus(value) {
-  if (value === "disconnected" || value === "connecting" || value === "connected" || value === "error") return value;
-  return "error";
-}
-function safeRole(value) {
-  if (value === "chat" || value === "tools" || value === "customize") return value;
-  return "unknown";
-}
-function classifyCause(value, status, closeCode) {
-  if (status !== "error" && status !== "disconnected") return "none";
-  if (closeCode === 1006 || closeCode === 1012 || closeCode === 1013 || closeCode === 1014) return "network";
-  if (typeof closeCode === "number") return "remote-close";
-  if (typeof value !== "string" || value.length === 0) return "unknown";
-  const text = value.toLowerCase();
-  if (text.includes("401") || text.includes("403") || text.includes("auth") || text.includes("token")) return "auth";
-  if (text.includes("timeout") || text.includes("timed out")) return "timeout";
-  if (text.includes("session")) return "session";
-  if (text.includes("closed") || text.includes("close code")) return "remote-close";
-  if (text.includes("network") || text.includes("socket") || text.includes("econn") || text.includes("dns")) return "network";
-  return "unknown";
-}
-function tabRef(value) {
-  const id = typeof value === "string" ? value : "missing";
-  return (0, import_node_crypto3.createHmac)("sha256", TAB_REF_KEY).update(id).digest("hex").slice(0, 12);
-}
-function normalizeConnectionTransition(tabId, raw) {
-  const state = raw && typeof raw === "object" ? raw : {};
-  const status = safeStatus(state.status);
-  return {
-    event: "connection-transition",
-    tabRef: tabRef(tabId),
-    status,
-    cause: classifyCause(state.error, status, state.closeCode),
-    retryAttempt: boundedCount(state.retryAttempt)
-  };
-}
-function normalizeRendererSample(raw) {
-  const sample = raw && typeof raw === "object" ? raw : {};
-  const windowState = sample.windowState === "within-configured-window" || sample.windowState === "over-configured-window" ? sample.windowState : "unknown";
-  return {
-    event: "renderer-sample",
-    role: safeRole(sample.role),
-    heapMB: boundedHeap(sample.heapMB),
-    retainedTabs: boundedCount(sample.retainedTabs),
-    retainedEntries: boundedCount(sample.retainedEntries),
-    activeEntries: boundedCount(sample.activeEntries),
-    storeWindow: boundedCount(sample.storeWindow),
-    scrollUpMax: boundedCount(sample.scrollUpMax),
-    windowState,
-    ...debugAgentRetention(sample.agentRetention)
-  };
-}
-function debugAgentRetention(raw) {
-  if (process.env.KAMIN_DEBUG_AGENT_RETENTION !== "1" || !raw || typeof raw !== "object") return {};
-  const r = raw;
-  return { agentRetention: {
-    slots: boundedCount(r.slots),
-    storedEntries: boundedCount(r.storedEntries),
-    uuidIndex: boundedCount(r.uuidIndex),
-    closedTabSlots: boundedCount(r.closedTabSlots)
-  } };
-}
-function formatIncidentLine(record) {
-  return `[incident] ${JSON.stringify({
-    schema: 1,
-    ts: (/* @__PURE__ */ new Date()).toISOString(),
-    appVersion: process.env.KAMIN_APP_VERSION ?? "unknown",
-    processRole: "extension-host",
-    pid: process.pid,
-    ...record
-  })}`;
-}
-var lastConnectionByTab = /* @__PURE__ */ new Map();
-var lastSampleByRole = /* @__PURE__ */ new Map();
-var installed2 = false;
-var incidentLog = null;
-var dropMarked = false;
-function emit(record) {
-  const log2 = incidentLog;
-  if (!log2) return;
-  if (log2.writeRecord(`${formatIncidentLine(record)}
-`)) return;
-  if (dropMarked) return;
-  dropMarked = true;
-  log2.writeRecord(`${formatIncidentLine({ event: "record-dropped", dropped: record.event })}
-`);
-}
-function recordInvokeBoundary(record) {
-  emit(record);
-}
-function recordBridgeOutbound(channel, args) {
-  if (channel !== "connection-state-changed") return;
-  const record = normalizeConnectionTransition(args[0], args[1]);
-  const signature = `${record.status}:${record.cause}:${String(record.retryAttempt)}`;
-  if (lastConnectionByTab.get(record.tabRef) === signature) return;
-  lastConnectionByTab.set(record.tabRef, signature);
-  while (lastConnectionByTab.size > MAX_TRACKED_TABS) {
-    const oldest = lastConnectionByTab.keys().next().value;
-    if (oldest === void 0) break;
-    lastConnectionByTab.delete(oldest);
-  }
-  emit(record);
-}
-function recordRendererSample(raw, now = Date.now()) {
-  const record = normalizeRendererSample(raw);
-  const last = lastSampleByRole.get(record.role) ?? 0;
-  if (now - last < MIN_SAMPLE_INTERVAL_MS) return;
-  lastSampleByRole.set(record.role, now);
-  while (lastSampleByRole.size > MAX_TRACKED_RENDERERS) {
-    const oldest = lastSampleByRole.keys().next().value;
-    if (oldest === void 0) break;
-    lastSampleByRole.delete(oldest);
-  }
-  emit(record);
-}
-function installIncidentDiagnostics(logDir, subscribe) {
-  if (installed2) return;
-  installed2 = true;
-  dropMarked = false;
-  try {
-    (0, import_node_fs7.mkdirSync)(logDir, { recursive: true });
-    incidentLog = new RollingLogWriter((0, import_node_path9.join)(logDir, "incident.log"), {
-      maxBytes: INCIDENT_LOG_MAX_BYTES,
-      backups: INCIDENT_LOG_BACKUPS,
-      rotateOnOpen: true
-    });
-  } catch {
-  }
-  subscribe((sample) => recordRendererSample(sample));
-}
-
 // src/invoke-diagnostics.ts
-var import_node_crypto4 = require("node:crypto");
-var key = (0, import_node_crypto4.randomBytes)(32);
-var boot = (0, import_node_crypto4.randomBytes)(8).toString("hex");
+var import_node_crypto5 = require("node:crypto");
+var key = (0, import_node_crypto5.randomBytes)(32);
+var boot = (0, import_node_crypto5.randomBytes)(8).toString("hex");
 var MAX_INPUT_CHARS = 256;
 var MAX_ID = Number.MAX_SAFE_INTEGER;
 var rendererStages = /* @__PURE__ */ new Set(["renderer-sent", "renderer-received", "renderer-duplicate", "renderer-unknown", "renderer-other-document", "renderer-ended", "renderer-send-threw"]);
@@ -51014,7 +51200,7 @@ var knownChannels = /* @__PURE__ */ new Set([
 ]);
 function ref(domain, value) {
   const input = typeof value === "string" && value.length <= MAX_INPUT_CHARS ? value : "unavailable";
-  return (0, import_node_crypto4.createHmac)("sha256", key).update(domain).update(input).digest("hex").slice(0, 24);
+  return (0, import_node_crypto5.createHmac)("sha256", key).update(domain).update(input).digest("hex").slice(0, 24);
 }
 function safeId(value) {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= MAX_ID ? value : 0;
