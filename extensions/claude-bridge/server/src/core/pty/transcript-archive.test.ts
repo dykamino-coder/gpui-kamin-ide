@@ -72,6 +72,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   if (envBefore.HOME === undefined) delete process.env.HOME
   else process.env.HOME = envBefore.HOME
   if (envBefore.USERPROFILE === undefined) delete process.env.USERPROFILE
@@ -217,7 +218,7 @@ describe('INC-2026-0054: явное удаление делает беседу �
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(true)
 
     const { deleteSessionByConversationId } = await import('./session-core')
-    await deleteSessionByConversationId(CONV, 'тест')
+    await deleteSessionByConversationId(CONV, 'тест', 'token_x')
 
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(false)
     expect(fs.existsSync(jsonl)).toBe(false)
@@ -233,10 +234,36 @@ describe('INC-2026-0054: явное удаление делает беседу �
     fs.rmSync(jsonl)
 
     const { deleteSessionByConversationId } = await import('./session-core')
-    await deleteSessionByConversationId(CONV, 'тест')
+    await deleteSessionByConversationId(CONV, 'тест', 'token_x')
 
     const { archivedTranscriptPath } = await import('./transcript-archive')
     expect(fs.existsSync(archivedTranscriptPath(CONV)!)).toBe(false)
     expect(helpers.findOrRecreateSettingsDir(CONV, 'token_x')).toBeNull()
   })
+})
+
+describe('AB-01 delete namespace isolation', () => {
+  it.each([undefined, 'attacker'])(
+    'refuses unknown/cross-token caller %s without touching victim data',
+    async (tokenId) => {
+      const { settingsDir, jsonl } = seedConversation()
+      if (tokenId)
+        fs.mkdirSync(path.join(home, '.claude', 'bridge-sessions', tokenId, 'own-session'), { recursive: true })
+      await freshHelpers()
+      const archive = await import('./transcript-archive')
+      archive.archiveTranscript(jsonl, CONV)
+      const { deleteSessionByConversationId } = await import('./session-core')
+      const logging = await import('../logging')
+      const refusal = vi.spyOn(logging, 'warnLog')
+      const remove = vi.spyOn(fs, 'rmSync')
+      const scan = vi.spyOn(fs, 'readdirSync')
+      await expect(deleteSessionByConversationId(CONV, 'unknown', tokenId!)).rejects.toThrow()
+      expect(refusal).toHaveBeenCalledWith(expect.stringContaining('deletion refused'), expect.any(Object))
+      expect(remove).not.toHaveBeenCalled()
+      expect(scan.mock.calls.some(([dir]) => String(dir) === path.join(home, '.claude', 'bridge-sessions'))).toBe(false)
+      expect(fs.existsSync(settingsDir)).toBe(true)
+      expect(fs.existsSync(jsonl)).toBe(true)
+      expect(fs.existsSync(archive.archivedTranscriptPath(CONV)!)).toBe(true)
+    },
+  )
 })
