@@ -9,6 +9,7 @@ import { JsonlBatcher } from './jsonl-batcher'
 import { McpResultOutbox } from './mcp-result-outbox'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
+import { recordConversationIdentity, type IdentityAction } from '../../incident-diagnostics'
 
 /** How much of the local copy is painted before the network answers. The chat
  *  windows ~150 rows and grows on scroll, so a couple of thousand records is
@@ -89,9 +90,11 @@ const SESSION_ESTABLISH_TIMEOUT_MS = 25000
 // therefore a FAILURE, not a slow transfer — and stretching the window only made
 // the user wait longer for the error. Keep it short so the failure surfaces fast.
 const DOWNLOAD_TIMEOUT_MS = 30_000
-// After this many consecutive establish-timeouts while RESUMING, drop the resume
-// and start a FRESH session so the user isn't wedged forever (the old conversation
-// still persists server-side in its JSONL; the tab just rebinds to a new one).
+// After this many consecutive establish-timeouts or fast resumed exits the user
+// is OFFERED a fresh conversation. The stored id is never dropped on its own
+// (INC-2026-0070): a server restart, a reconnect storm or a slow cold resume of a
+// long transcript looks exactly like this, and silently switching to session:create
+// rebound the tab to a new, empty conversation for good.
 const MAX_RESUME_FAILURES_BEFORE_FRESH = 3
 // A resume that AUTHENTICATES (session:created) and then the CLI exits within this
 // window is a "ghost resume" loop: the server passed `--resume <id>` to a CLI that
@@ -121,6 +124,9 @@ export class ConnectionManager {
   static onSessionTitle: ((tabId: string, title: string) => void) | null = null
   // Optional callback when conversationId is discovered (for session saving)
   static onConversationId: ((tabId: string, conversationId: string) => void) | null = null
+  // A conversation the server started in this tab while the tab kept its own
+  // identity (INC-2026-0070 hold): record it in history without rebinding the tab.
+  static onDetachedConversation: ((tabId: string, conversationId: string) => void) | null = null
   // Optional callback when session is authenticated — used to send external tool schemas
   static onAuthenticated: ((connection: ConnectionManager) => void) | null = null
   // Optional callback to get external MCP tool schemas for session:create
@@ -178,6 +184,14 @@ export class ConnectionManager {
   // session:created landed and how many resumes authenticated-then-died fast.
   private lastSessionCreatedAt = 0
   private rapidResumeExits = 0
+  // INC-2026-0070 identity guard. `identityHold` is set when the server could
+  // not resume the stored conversation and started a fresh one: the tab keeps
+  // its id, and the server's new id is only adopted on an explicit user choice.
+  // `resumeParked` pauses auto-reconnect after repeated fast resumed exits.
+  // `identityNoticeShown` keeps one notice per episode.
+  private identityHold: { pendingId: string | null } | null = null
+  private resumeParked = false
+  private identityNoticeShown = false
   private reconnectAttempt = 0
   // Stability gate for the backoff reset. The server confirming the session
   // (authenticated) does NOT immediately zero reconnectAttempt — a socket that
@@ -279,6 +293,7 @@ export class ConnectionManager {
     this.window = window
     this.tabId = tabId
     if (conversationId) this.conversationId = conversationId
+    this.logIdentity('bind', { reason: conversationId ? 'restored' : 'none' })
     this.batcher = new JsonlBatcher(window, tabId)
     this.idleTracker = new SessionIdleTracker((rawTitle) => {
       ConnectionManager.onSessionIdle?.(this.tabId, rawTitle)
@@ -303,6 +318,18 @@ export class ConnectionManager {
   /** The CLI conversation id — also the JSONL's basename on the server, so a
    *  download can name its file WITHOUT first fetching the transcript. */
   getConversationId(): string | null { return this.conversationId }
+
+  /** True while the server runs a fresh conversation the tab has not adopted. */
+  isIdentityHeld(): boolean { return this.identityHold !== null }
+
+  private logIdentity(
+    action: IdentityAction,
+    extra: { next?: string | null; reason?: Parameters<typeof recordConversationIdentity>[1]['reason']; count?: number } = {},
+  ): void {
+    try {
+      recordConversationIdentity(this.tabId, { action, stored: this.conversationId, ...extra })
+    } catch { /* diagnostics never affect the session */ }
+  }
 
   /**
    * Initiate WebSocket connection to server. On open, sends session:create
@@ -431,6 +458,7 @@ export class ConnectionManager {
     // resolves regardless of the tool shell's cwd/env.
     const cacheDir = process.env.KAMIN_CACHE_DIR
     const transcriptMirrorDir = cacheDir ? path.join(cacheDir, 'transcripts') : undefined
+    this.logIdentity(this.conversationId ? 'send-resume' : 'send-create')
     if (this.conversationId) {
       this.sendRaw({
         type: 'session:resume',
@@ -461,16 +489,18 @@ export class ConnectionManager {
   }
 
   /** Watchdog for a socket that opened but never got its session confirmed.
-   *  Tears the socket down (→ close → scheduleReconnect); after repeated resume
-   *  failures, drops the resume so the next attempt starts a fresh session. */
+   *  Tears the socket down (→ close → scheduleReconnect). Repeated failures
+   *  while RESUMING keep the stored id — the next attempt resumes it again — and
+   *  only offer the user a fresh conversation (INC-2026-0070). */
   private armEstablishTimer(): void {
     this.clearEstablishTimer()
     this.establishTimer = setTimeout(() => {
       this.establishTimer = null
       if (this.state.status === 'authenticated') return // already established
       this.establishFailures += 1
+      this.logIdentity('establish-timeout', { count: this.establishFailures })
       if (this.conversationId && this.establishFailures >= MAX_RESUME_FAILURES_BEFORE_FRESH) {
-        this.conversationId = null // next startSession will session:create fresh
+        this.offerIdentityChoice('establish')
       }
       try { this.ws?.terminate() } catch { /* already gone */ }
     }, SESSION_ESTABLISH_TIMEOUT_MS)
@@ -488,20 +518,144 @@ export class ConnectionManager {
 
   /** session:exit arrived — if this session authenticated then died within
    *  RESUME_LOOP_ALIVE_MS while RESUMING, it's a ghost-resume loop the establish
-   *  watchdog can't see (it authenticated). Count it; after enough, drop the
-   *  resume so the NEXT startSession creates a fresh conversation instead of
-   *  re-resuming the same dead id forever. A session that lived longer resets it. */
+   *  watchdog can't see (it authenticated). Count it; after enough, PARK the
+   *  reconnect loop and let the user choose between retrying the stored
+   *  conversation and starting a new one — never drop the id silently
+   *  (INC-2026-0070). A session that lived longer resets the counter. */
   private noteSessionExit(): void {
     const alive = this.lastSessionCreatedAt > 0 ? Date.now() - this.lastSessionCreatedAt : Infinity
     if (this.conversationId && alive < RESUME_LOOP_ALIVE_MS) {
       this.rapidResumeExits += 1
+      this.logIdentity('rapid-exit', { count: this.rapidResumeExits })
       if (this.rapidResumeExits >= MAX_RESUME_FAILURES_BEFORE_FRESH) {
-        this.conversationId = null // next startSession session:creates fresh
         this.rapidResumeExits = 0
+        this.resumeParked = true
+        this.logIdentity('resume-parked', { reason: 'rapid-exit' })
+        this.cancelReconnect() // an earlier exit's pending retry must not slip past the park
+        this.offerIdentityChoice('rapid-exit')
       }
     } else {
       this.rapidResumeExits = 0 // a session that ran a while → not a resume loop
     }
+  }
+
+  /** The server could not find the stored conversation anywhere and started a
+   *  fresh one in this tab. Keep the stored id (a recreated container may simply
+   *  be missing its volume, and the next resume can succeed), stop mirroring
+   *  into the stored conversation's local copy, and let the user decide. */
+  private noteResumeNotFound(): void {
+    this.rapidResumeExits = 0
+    this.identityHold = { pendingId: null }
+    this.logIdentity('resume-not-found', { reason: 'not-found' })
+    // The new session's records must not land in the stored conversation's
+    // mirror file. close(), not reset(): the local copy of the stored
+    // conversation stays intact for a later successful resume.
+    if (this.mirror) void this.mirror.close()
+    this.mirror = null
+    this.mirrorHead = null
+    this.offerIdentityChoice('not-found')
+  }
+
+  /** A session:created that resumed (or freshly created) as requested. */
+  private noteIdentityConfirmed(): void {
+    if (this.identityHold?.pendingId) {
+      // The fresh conversation that ran while held is no longer in this tab.
+      this.logIdentity('hold', { next: null, reason: 'confirmed' })
+    }
+    this.identityHold = null
+    this.resumeParked = false
+    this.identityNoticeShown = false
+  }
+
+  /** The server reported conversation `id` for this tab's live session. Returns
+   *  whether the tab adopted it (and so whether listeners should persist it). */
+  private adoptConversationId(id: string): boolean {
+    if (this.identityHold) {
+      this.identityHold.pendingId = id
+      this.logIdentity('hold', { next: id, reason: 'not-found' })
+      try { ConnectionManager.onDetachedConversation?.(this.tabId, id) } catch { /* history only */ }
+      return false
+    }
+    const previous = this.conversationId
+    this.logIdentity('adopt', { next: id, reason: !previous ? 'discovered' : previous === id ? 'confirmed' : 'changed' })
+    // A DIFFERENT conversation (compact chain, explicit new conversation) must
+    // not keep writing into the OLD conversation's mirror file — that corrupted
+    // A.jsonl with B's transcript and left B with no mirror at all.
+    if (previous && previous !== id && this.mirror) {
+      void this.mirror.close()
+      this.mirror = null
+      this.mirrorHead = null
+    }
+    this.conversationId = id
+    this.ensureMirror()
+    return true
+  }
+
+  /** Offer the user an explicit way out instead of silently rebinding the tab.
+   *  Non-blocking: auto-reconnect (unless parked) keeps resuming meanwhile. */
+  private offerIdentityChoice(reason: 'establish' | 'rapid-exit' | 'not-found'): void {
+    if (this.identityNoticeShown) return
+    this.identityNoticeShown = true
+    this.logIdentity('notice', { reason })
+    const NEW = 'Start new conversation'
+    const RETRY = 'Retry'
+    const message = reason === 'not-found'
+      ? 'This conversation was not found on the Bridge server. The tab stays linked to it; the session shown now is temporary until you choose.'
+      : reason === 'rapid-exit'
+        ? 'Resuming this conversation keeps failing. The tab stays linked to it; reconnect is paused until you choose.'
+        : 'Still trying to resume this conversation after a server restart. The tab stays linked to it.'
+    const items = reason === 'establish' ? [NEW] : [NEW, RETRY]
+    let shown: Thenable<string | undefined> | undefined
+    try { shown = vscode.window.showWarningMessage(message, ...items) } catch { shown = undefined }
+    void Promise.resolve(shown).then((choice) => {
+      if (choice === NEW) this.chooseNewConversation()
+      else if (choice === RETRY) this.retryStoredConversation()
+    }, () => { /* notice dismissed */ })
+  }
+
+  /** Explicit user choice: bind this tab to a new conversation. */
+  chooseNewConversation(): void {
+    const pending = this.identityHold?.pendingId ?? null
+    const heldLive = this.identityHold !== null && this.state.status === 'authenticated'
+    this.logIdentity('user-new', { next: pending })
+    this.identityHold = null
+    this.resumeParked = false
+    this.identityNoticeShown = false
+    this.establishFailures = 0
+    this.rapidResumeExits = 0
+    this.reconnectAttempt = 0
+    if (pending) {
+      // The fresh session is already running in this tab: adopt its id now.
+      this.conversationId = null
+      if (this.adoptConversationId(pending)) ConnectionManager.onConversationId?.(this.tabId, pending)
+      return
+    }
+    this.conversationId = null
+    // A held live session will report its id when the CLI writes it; otherwise
+    // start the new conversation now.
+    if (!heldLive) this.reconnectNow()
+  }
+
+  /** Explicit user choice: resume the stored conversation again. */
+  retryStoredConversation(): void {
+    this.logIdentity('user-retry')
+    this.resumeParked = false
+    this.identityNoticeShown = false
+    this.establishFailures = 0
+    this.rapidResumeExits = 0
+    this.reconnectAttempt = 0
+    this.reconnectNow()
+  }
+
+  private reconnectNow(): void {
+    if (this.intentionalDisconnect) return
+    this.cancelReconnect()
+    if (this.ws) {
+      // close → scheduleReconnect → startSession with the current identity.
+      try { this.ws.terminate() } catch { /* already gone */ }
+      return
+    }
+    this.connect()
   }
 
   /** Arm the stability-gated backoff reset: only zero reconnectAttempt after the
@@ -860,7 +1014,9 @@ export class ConnectionManager {
    *  conversation id can be learned more than once (resume, restart). */
   private ensureMirror(): void {
     const dir = process.env.KAMIN_CACHE_DIR
-    if (!dir || !this.conversationId || this.mirror) return
+    // While held, the live session is NOT the stored conversation: mirroring it
+    // under the stored id would corrupt that conversation's local copy.
+    if (!dir || !this.conversationId || this.mirror || this.identityHold) return
     try {
       const root = path.join(dir, 'transcripts')
       fs.mkdirSync(root, { recursive: true })
@@ -967,32 +1123,13 @@ export class ConnectionManager {
       terminateSessionWithError: (error) => this.terminateSessionWithError(error),
       setLastModel: (m) => { this.lastModel = m },
       setSettingsDir: (d) => { this.settingsDir = d },
-      setConversationId: (id) => {
-        // A DIFFERENT conversation (resume fell back to a fresh session:
-        // resumeNotFound / ghost-breaker) must not keep writing into the OLD
-        // conversation's mirror file — that corrupted A.jsonl with B's
-        // transcript and left B with no mirror at all.
-        if (this.conversationId && this.conversationId !== id && this.mirror) {
-          void this.mirror.close()
-          this.mirror = null
-          this.mirrorHead = null
-        }
-        this.conversationId = id
-        this.ensureMirror()
-      },
+      setConversationId: (id) => this.adoptConversationId(id),
       scheduleReconnect: () => this.scheduleReconnect(),
       resetReconnectAttempt: () => { this.armStabilityReset() },
       noteSessionCreated: () => { this.noteSessionCreated() },
       noteSessionExit: () => { this.noteSessionExit() },
-      noteResumeNotFound: () => {
-        this.conversationId = null
-        this.rapidResumeExits = 0
-        this.mirrorHead = null
-        void this.mirror?.reset()
-        void vscode.window.showWarningMessage(
-          'Conversation not found on this server — started a fresh one.',
-        )
-      },
+      noteResumeNotFound: () => { this.noteResumeNotFound() },
+      noteIdentityConfirmed: () => { this.noteIdentityConfirmed() },
       clearJsonlCache: () => {
         this.cachedJsonlEntries = []
         this.cachedSubagentEntries.clear()
@@ -1179,6 +1316,12 @@ export class ConnectionManager {
   private scheduleReconnect(): void {
     if (this.intentionalDisconnect) return
     if (this.reconnectTimer) return
+    if (this.resumeParked) {
+      // INC-2026-0070: repeated fast exits of the resumed CLI. Re-resuming would
+      // loop; a fresh session would silently rebind the tab. Wait for the user.
+      this.setState({ status: 'error', error: 'Resume keeps failing — choose Retry or Start new conversation' })
+      return
+    }
 
     const delay = Math.min(
       RECONNECT_BASE_MS * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempt),

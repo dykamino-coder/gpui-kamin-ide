@@ -4,6 +4,7 @@ import { join } from "node:path"
 
 import { RollingLogWriter } from "../../../../src/kamin-host/rolling-log.js"
 import type { SafeInvokeBoundary } from './invoke-diagnostics'
+import { conversationRef } from './main/ws/conversation-ref'
 
 const MAX_TRACKED_TABS = 256
 const MAX_TRACKED_RENDERERS = 16
@@ -29,7 +30,45 @@ export interface SafeConnectionTransition {
  *  пустое поколение даже тогда, когда исходная запись в него не поместилась. */
 export interface SafeRecordDropped {
   event: "record-dropped"
-  dropped: SafeConnectionTransition["event"] | SafeRendererSample["event"] | SafeInvokeBoundary['event']
+  dropped: SafeConnectionTransition["event"] | SafeRendererSample["event"] | SafeInvokeBoundary['event'] | SafeConversationIdentity["event"]
+}
+
+/** INC-2026-0070: every transition of a tab's conversation identity. Raw ids
+ *  never enter the log — only `conversationRef` pseudonyms, which match the
+ *  Bridge lifecycle journal's refs for the same conversation. */
+export type IdentityAction =
+  | "bind"              // connection created for a tab; storedRef = id it holds
+  | "send-resume"       // session:resume sent with storedRef
+  | "send-create"       // session:create sent (tab holds no id)
+  | "adopt"             // tab id set to nextRef (reason says why)
+  | "hold"              // server reported nextRef but the tab keeps storedRef
+  | "resume-not-found"  // server could not find storedRef and started fresh
+  | "establish-timeout" // socket open, session never confirmed (count)
+  | "rapid-exit"        // resumed session authenticated then exited fast (count)
+  | "resume-parked"     // auto-reconnect paused; the user must choose
+  | "notice"            // the user was offered a choice
+  | "user-new"          // the user chose to start a new conversation
+  | "user-retry"        // the user chose to retry the stored conversation
+type IdentityReason = "none" | "restored" | "discovered" | "confirmed" | "changed" | "establish" | "rapid-exit" | "not-found"
+
+export interface SafeConversationIdentity {
+  event: "conversation-identity"
+  tabRef: string
+  action: IdentityAction
+  storedRef: string | null
+  nextRef?: string | null
+  reason?: IdentityReason
+  count?: number
+}
+
+const IDENTITY_ACTIONS = new Set<IdentityAction>([
+  "bind", "send-resume", "send-create", "adopt", "hold", "resume-not-found", "establish-timeout",
+  "rapid-exit", "resume-parked", "notice", "user-new", "user-retry",
+])
+const IDENTITY_REASONS = new Set<IdentityReason>(["none", "restored", "discovered", "confirmed", "changed", "establish", "rapid-exit", "not-found"])
+
+function convRef(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? conversationRef(value) : null
 }
 
 export interface SafeRendererSample {
@@ -128,7 +167,22 @@ function debugAgentRetention(raw: unknown): Pick<SafeRendererSample, "agentReten
   } }
 }
 
-export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped | SafeInvokeBoundary): string {
+export function normalizeConversationIdentity(tabId: unknown, raw: unknown): SafeConversationIdentity | null {
+  const r = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}
+  if (typeof r.action !== "string" || !IDENTITY_ACTIONS.has(r.action as IdentityAction)) return null
+  const record: SafeConversationIdentity = {
+    event: "conversation-identity",
+    tabRef: tabRef(tabId),
+    action: r.action as IdentityAction,
+    storedRef: convRef(r.stored),
+  }
+  if ("next" in r) record.nextRef = convRef(r.next)
+  if (typeof r.reason === "string" && IDENTITY_REASONS.has(r.reason as IdentityReason)) record.reason = r.reason as IdentityReason
+  if (r.count !== undefined) record.count = boundedCount(r.count)
+  return record
+}
+
+export function formatIncidentLine(record: SafeConnectionTransition | SafeRendererSample | SafeRecordDropped | SafeInvokeBoundary | SafeConversationIdentity): string {
   return `[incident] ${JSON.stringify({
     schema: 1,
     ts: new Date().toISOString(),
@@ -152,7 +206,7 @@ let dropMarked = false
  *  оставалась в `.1`, хвост уходил в новое поколение, и ни один обломок не
  *  разбирался как JSONL (INC-2026-0026). `writeRecord` вращает журнал заранее
  *  и кладёт запись целиком. */
-function emit(record: SafeConnectionTransition | SafeRendererSample | SafeInvokeBoundary): void {
+function emit(record: SafeConnectionTransition | SafeRendererSample | SafeInvokeBoundary | SafeConversationIdentity): void {
   const log = incidentLog
   if (!log) return
   if (log.writeRecord(`${formatIncidentLine(record)}\n`)) return
@@ -165,6 +219,15 @@ function emit(record: SafeConnectionTransition | SafeRendererSample | SafeInvoke
 }
 
 export function recordInvokeBoundary(record: SafeInvokeBoundary): void { emit(record) }
+
+/** Raw ids are accepted here and pseudonymised before anything is written. */
+export function recordConversationIdentity(
+  tabId: string,
+  fields: { action: IdentityAction; stored: string | null; next?: string | null; reason?: IdentityReason; count?: number },
+): void {
+  const record = normalizeConversationIdentity(tabId, fields)
+  if (record) emit(record)
+}
 
 export function recordBridgeOutbound(channel: string, args: unknown[]): void {
   if (channel !== "connection-state-changed") return
