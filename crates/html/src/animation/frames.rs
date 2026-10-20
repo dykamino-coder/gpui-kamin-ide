@@ -7,7 +7,7 @@ pub(crate) use frozen::{bake_frozen, sample_at};
 // owner: A
 
 use crate::dom::Element;
-use crate::render::{RenderOpts, element};
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement};
@@ -33,7 +33,7 @@ pub(crate) fn transitioned(
         // стиль прыгнул бы поверх плавного.
         mixed.hover = None;
         mixed.style.transition = None;
-        element(&mixed, &inherited, &opts)
+        opts.cx.build.element(&mixed, &inherited, &opts)
     });
     Some(
         crate::animation::transition::Transition::new(

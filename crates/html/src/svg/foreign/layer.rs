@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display, Overflow, Position};
 use crate::style::values::value::Len;
@@ -85,7 +85,7 @@ pub(super) fn prepare(
             html.style.blend = None;
             let root = Computed::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
-                .unwrap_or_else(|| crate::render::element(&html, &root, opts));
+                .unwrap_or_else(|| opts.cx.build.element(&html, &root, opts));
             let size = gpui::size(
                 AvailableSpace::Definite(px(w)),
                 AvailableSpace::Definite(px(h)),
