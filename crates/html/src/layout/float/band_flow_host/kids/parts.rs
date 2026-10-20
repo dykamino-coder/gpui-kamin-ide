@@ -7,6 +7,7 @@ use crate::layout::float::band_host::px_margin_box;
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::band_nest::band_nest;
 use crate::render::RenderOpts;
+use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -15,6 +16,7 @@ pub(crate) fn band_kid_kind(
     inherited: &Computed,
     opts: &RenderOpts,
     em: f32,
+    wm: WritingMode,
     vert: Option<bool>,
     n: &Node,
     c: &Element,
@@ -33,16 +35,17 @@ pub(crate) fn band_kid_kind(
                 matches!(c.style.width, None | Some(Len::Auto))
             },
             letter: c.marks.initial_letter,
+            own_layout: super::super::own_layout_mode(&c.style),
         }
     } else {
-        match band_piece_m(n, em) {
+        match band_piece_m(n, em, wm) {
             Some(true) => Kind::Piece {
                 rtl: inherited.wm().rtl(),
                 table: c.tag == "table" || matches!(c.style.display, Some(Display::Table)),
             },
             Some(false) => Kind::Strut(px_margin_box(&c.style).map_or(0.0, |(_, h)| h)),
             None if c.marks.anon || band_flow_block(c, em) => Kind::Flow,
-            None => match band_nest(c, inherited, opts, em) {
+            None => match band_nest(c, inherited, opts, em, wm) {
                 Some(nn) => {
                     *nest = Some(nn);
                     Kind::Nest

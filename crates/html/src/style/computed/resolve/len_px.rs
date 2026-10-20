@@ -96,9 +96,9 @@ impl Len {
             }
             Len::Em(k) => k * font.font_px,
             Len::EmPx(k, add) => k * font.font_px + add,
-            Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px).0,
-            Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px).1,
-            Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px),
+            Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).0,
+            Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).1,
+            Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px, vcx),
             Len::Lh(k) => k * lh(),
             Len::LhPx(k, add) => k * lh() + add,
             Len::Vw(_)
@@ -109,6 +109,40 @@ impl Len {
             | Len::FitContent
             | Len::Anchor(_) => return None,
         })
+    }
+
+    pub(crate) fn needs_line_height(self, vcx: ValueCx<'_>) -> bool {
+        match self {
+            Len::Lh(_) | Len::LhPx(..) => true,
+            Len::Calc(id) => calc_get(id, vcx).lh != 0.0,
+            _ => false,
+        }
+    }
+
+    /// Fold a computed line-height basis without resolving percentages.
+    pub(crate) fn resolve_line_height(&mut self, line: f32, vcx: ValueCx<'_>) {
+        match *self {
+            Len::Lh(_) | Len::LhPx(..) => {
+                *self = self.font_units_to_px(
+                    FontCx {
+                        line_px: Some(line),
+                        ..FontCx::FALLBACK
+                    },
+                    vcx,
+                );
+            }
+            Len::Calc(id) => {
+                let mut sum = calc_get(id, vcx);
+                if sum.lh != 0.0 {
+                    sum.px += sum.lh * line;
+                    sum.lh = 0.0;
+                    if let Some(length) = sum.collapse_mixed(vcx) {
+                        *self = length;
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Шрифтовые единицы в точки по `font`, остальное — как было: шаг

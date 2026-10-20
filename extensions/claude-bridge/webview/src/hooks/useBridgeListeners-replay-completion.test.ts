@@ -5,7 +5,7 @@ vi.mock('@bridge/storage', () => ({ storage: { getItem: () => null, setItem: vi.
 import { useBridgeListeners } from './useBridgeListeners'
 import { activeTabId } from '../signals/tabs'
 import { tabJsonlLive, tabAgentTrees, tabAgentHistory, findAgentByName } from '../signals/agents'
-import { stagedAgentEntryCount } from '../signals/agent-replay'
+import { stagedAgentEntryCount, isAgentReplayStaging } from '../signals/agent-replay'
 import type { KaminBridgeApi } from '../../shared/types'
 
 const boundaries = vi.fn()
@@ -65,5 +65,52 @@ describe('INC-2026-0009 actual status listener completion', () => {
     vi.advanceTimersByTime(50)
     expect(tabJsonlLive.value.has('a')).toBe(false)
     expect(stagedAgentEntryCount('a')).toBe(0)
+  })
+})
+
+
+describe('INC-0067 metadata must not start another agent replay', () => {
+  const entries = (tab: string, rows: any[]): void => listeners.get('onJsonlEntries')!(tab, rows)
+  const meta = (data: any): void => listeners.get('onJsonlStatus')!('a', { status: 'watching', ...data })
+  const idle = (name: string): any => ({ type: 'user', uuid: `idle-${name}`, message: { role: 'user', content: `<teammate-message teammate_id="${name}">${JSON.stringify({ type: 'idle_notification', idleReason: 'available' })}</teammate-message>` } })
+  const hydrate = (): void => {
+    status(false)
+    entries('a', ['one', 'two', 'three', 'four', 'five'].map(agent))
+    status(true)
+    vi.advanceTimersByTime(50)
+  }
+  it('applies four idle events live after a compact-index status', () => {
+    hydrate()
+    meta({}) // the host sends boundaries separately; this status has no completion flag
+    entries('a', ['one', 'two', 'three', 'four'].map(idle))
+    expect(tabJsonlLive.value.has('a')).toBe(true)
+    expect(isAgentReplayStaging('a')).toBe(false)
+    const workers = tabAgentTrees.value.get('a')!.teams.get('test')!.agents
+    expect([...workers.values()].filter(a => a.status === 'running').map(a => a.name)).toEqual(['five'])
+  })
+  it('keeps staged rows and the completion timer through progress-only updates', () => {
+    status(false)
+    entries('a', [agent('first')])
+    meta({ replayProgress: { sent: 1, total: 2 } })
+    entries('a', [agent('second')])
+    status(true)
+    meta({ replayProgress: { sent: 2, total: 2 } })
+    vi.advanceTimersByTime(50)
+    expect(tabJsonlLive.value.has('a')).toBe(true)
+    expect(findAgentByName(tabAgentTrees.value.get('a'), 'first')).toBeDefined()
+    expect(findAgentByName(tabAgentTrees.value.get('a'), 'second')).toBeDefined()
+    expect(stagedAgentEntryCount('a')).toBe(0)
+  })
+  it('preserves another parent while the same-name child completes in this tab', () => {
+    hydrate()
+    listeners.get('onJsonlStatus')!('b', { status: 'watching', replayComplete: false })
+    entries('b', [agent('one')])
+    listeners.get('onJsonlStatus')!('b', { status: 'watching', replayComplete: true })
+    vi.advanceTimersByTime(50)
+    meta({})
+    entries('a', [idle('one')])
+    expect(findAgentByName(tabAgentTrees.value.get('a'), 'one')?.status).toBe('done')
+    expect(findAgentByName(tabAgentTrees.value.get('b'), 'one')?.status).toBe('running')
+    expect(tabJsonlLive.value.has('b')).toBe(true)
   })
 })

@@ -110,7 +110,7 @@ pub(super) fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> 
     Some(raw.len())
 }
 
-pub(super) fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
+pub(crate) fn block_end(raw: &str, start: usize, open: char) -> Option<usize> {
     let close = match open {
         '(' => ')',
         '[' => ']',

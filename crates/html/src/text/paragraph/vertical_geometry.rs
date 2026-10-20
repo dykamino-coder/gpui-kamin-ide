@@ -70,15 +70,7 @@ mod tests {
     fn clockwise_left_flow_anchors_content_in_a_stretched_physical_box() {
         let mut paragraph = Paragraph::empty().reversed_lines(true);
         paragraph.line_height = px(10.0);
-        paragraph.lines = vec![Line {
-            range: 0..0,
-            width: px(20.0),
-            ellipsis: false,
-            clamped: false,
-            vis_cut: None,
-            hyphen: false,
-            indent: px(0.0),
-        }];
+        paragraph.lines = vec![Line::test(0..0, px(20.0))];
         let bounds = Bounds {
             origin: point(px(17.0), px(29.0)),
             size: size(px(100.0), px(80.0)),
@@ -99,15 +91,7 @@ mod tests {
     fn left_flow_content_uses_absolute_device_edges_at_fractional_origins() {
         let mut paragraph = Paragraph::empty().reversed_lines(true);
         paragraph.line_height = px(17.71875);
-        paragraph.lines = vec![Line {
-            range: 0..0,
-            width: px(20.0),
-            ellipsis: false,
-            clamped: false,
-            vis_cut: None,
-            hyphen: false,
-            indent: px(0.0),
-        }];
+        paragraph.lines = vec![Line::test(0..0, px(20.0))];
         // With origin 0.3 at 125%, the edges round to 0 and 23 device
         // pixels. Rounding the width independently would produce 22.
         for (origin, expected) in [(0.0, 17.6), (0.3, 18.4), (0.6, 17.6)] {

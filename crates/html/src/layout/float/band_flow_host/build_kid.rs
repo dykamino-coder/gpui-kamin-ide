@@ -4,19 +4,15 @@ use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
-use crate::layout::replaced::image::image;
 use crate::layout::writing_mode::native_vertical;
 use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::render::{RenderOpts, blocks, content_wrapper, element, replaced_tag, styled_div_with};
-use crate::style::cascade::inherit::inherit;
+use crate::render::{RenderOpts, content_wrapper, element, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement};
+use gpui::AnyElement;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_band_kid(
-    depth: crate::paint::effects::paint_scope::Depth,
     float: bool,
     node: &Element,
     inherited: &Computed,
@@ -36,11 +32,13 @@ pub(super) fn build_band_kid(
     height: Option<f32>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let _depth = DepthScope::enter(depth);
     // Ширина содержащего блока — та, что намерил хост: замещаемым
     // без размеров (§10.3.2) и долям внутри (`LayoutCx::cb_width`), блочным
     // детям куска — ширина окна (`LayoutCx::avail_w`).
     let opts = &*opts.inner(|cx| {
+        if float {
+            cx.clamp_build = cx.clamp_build.bfc();
+        }
         if cb > 0.0 {
             cx.cb_width = Some(cb);
         }
@@ -52,7 +50,13 @@ pub(super) fn build_band_kid(
     // самой коробке они сдвинули бы её ещё раз — как у
     // статического хоста.
     copy.style.float = None;
-    copy.style.floated_box = true;
+    copy.style.floated_box |= float;
+    // CSS2 section 9.5: a completed float is not a flex item of the host.
+    // Blink floats_utils.cc:173-244 keeps its laid-out physical fragment
+    // while searching opportunities; the probe/final flex frame cannot shrink it.
+    if float {
+        copy.style.flex_shrink = Some(0.0);
+    }
     copy.style.band_kid = true;
     copy.style.clear = None;
     copy.style.margin = crate::style::computed::Sides::default();
@@ -151,8 +155,25 @@ pub(super) fn build_band_kid(
             .flow_shapes
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new((Vec::new(), Vec::new())));
-        return crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl())
-            .hooked();
+        let row = crate::layout::fragment::types::FlowRow::new(atoms, shapes, inherited.wm().rtl());
+        if !vertical {
+            return row.hooked();
+        }
+        // Vertical host: the atoms stack along the physical vertical (the
+        // inline axis) within the window's inline size, lines advancing from
+        // block-start — the right edge, or the left one in `vertical-lr`.
+        let row = row.vertical_rl().inline_limit(avail);
+        let row = if inherited.wm().block_rl() {
+            row
+        } else {
+            row.block_lr()
+        };
+        let row = if inherited.wm().sideways_lr() {
+            row.inline_up()
+        } else {
+            row
+        };
+        return row.hooked();
     }
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со
@@ -175,25 +196,18 @@ pub(super) fn build_band_kid(
     // physical size; placement uses the host's axes (Blink floats_utils.cc:71).
     // element() installs the vertical block axis and containing-block scopes.
     let own_vertical = copy.style.vertical_decl().or(inherited.vertical_decl()) == Some(true);
-    if float && !table && !replaced && !vertical && !own_vertical && !list_item {
+    if float && !vertical {
+        super::fit_own_layout(&mut copy.style, inherited, avail, cb, vcx);
+    }
+    // CSS Multicol 1: a floated multicol still balances and hoists spanners
+    // through element(), then contributes its measured outer box to bands.
+    let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style);
+    if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
         // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
         // же путём, что у статического хоста (`shape_flow`).
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
-        let mut merged = inherit(inherited, &copy.style, vcx);
-        merged.self_node = copy.node_id;
-        merged.margin = crate::style::computed::Sides::default();
-        if copy.tag == "img" {
-            grouped(image(&copy, &opts.cx), &copy.style, vcx)
-        } else {
-            grouped(
-                styled_div_with(&copy, &merged, &opts.cx)
-                    .children(blocks(&copy.children, &merged, opts))
-                    .into_any_element(),
-                &copy.style,
-                vcx,
-            )
-        }
+        super::float_box::float_box(&copy, node, cb, inherited, opts)
     } else {
         // Общий путь отрисовки узла — тот же, что в потоке:
         // таблица, замещаемый, список строятся своими ветками

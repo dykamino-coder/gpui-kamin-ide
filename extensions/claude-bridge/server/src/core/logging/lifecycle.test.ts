@@ -70,3 +70,61 @@ it('does not change application outcomes or print private paths when storage fai
   expect(warning).toHaveBeenCalledTimes(1)
   expect(warning.mock.calls.flat().join(' ')).not.toContain(directory)
 })
+it('INC-2026-0070: records conversation identity only as stable refs', async () => {
+  const conversation = '00000000-0000-4000-8000-000000000001'
+  const next = '00000000-0000-4000-8000-000000000002'
+  lifecycleLog('session_request', {
+    requestKind: 'resume',
+    resumeRequested: true,
+    resumeConversationId: conversation,
+  })
+  lifecycleLog('session_create', {
+    sessionId: 'fake-session',
+    resumeRequested: true,
+    resumeConversationId: conversation,
+    resumeNotFound: true,
+    settingsDirFound: false,
+    settingsDirSource: 'fresh_not_found',
+  })
+  lifecycleLog('conversation_id', {
+    sessionId: 'fake-session',
+    conversationId: next,
+    previousConversationId: conversation,
+    idSource: 'changed',
+  })
+  lifecycleLog('session_request', { requestKind: 'private-kind', settingsDirSource: '/private/dir', idSource: 'x' })
+  const content = fs.readFileSync(path.join(directory, 'lifecycle.jsonl'), 'utf8')
+  const rows = content
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line))
+  // Fixed vector shared with the client's incident log (same domain string).
+  const { conversationRef } = await import('./lifecycle')
+  expect(conversationRef(conversation)).toBe('53d31033b678')
+  expect(conversationRef(next)).toBe('a09e04d7ed68')
+  expect(rows[0]).toMatchObject({ event: 'session_request', requestKind: 'resume', resumeRef: '53d31033b678' })
+  expect(rows[1]).toMatchObject({
+    event: 'session_create',
+    resumeRequested: true,
+    resumeRef: '53d31033b678',
+    resumeNotFound: true,
+    settingsDirFound: false,
+    settingsDirSource: 'fresh_not_found',
+  })
+  expect(rows[2]).toMatchObject({
+    event: 'conversation_id',
+    conversationRef: 'a09e04d7ed68',
+    previousRef: '53d31033b678',
+    idSource: 'changed',
+  })
+  expect(rows[3]).toEqual({
+    v: 1,
+    timestamp: rows[3].timestamp,
+    boot: rows[3].boot,
+    sequence: rows[3].sequence,
+    event: 'session_request',
+  })
+  expect(content).not.toContain(conversation)
+  expect(content).not.toContain(next)
+  expect(content).not.toMatch(/private|fake-session/)
+})

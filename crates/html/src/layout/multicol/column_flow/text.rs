@@ -1,7 +1,6 @@
 //! Текст колонок: сбор, нормализация пробелов и построение колонок по разрезам.
 
 use crate::dom::Node;
-use crate::paint::effects::paint_scope::DepthScope;
 use crate::render::{RenderOpts, blocks, is_blank, split_nodes};
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -73,12 +72,10 @@ pub(super) fn build_text_columns(
     nodes: &[Node],
     inherited_owned: &Computed,
     opts_owned: &RenderOpts,
-    depth: crate::paint::effects::paint_scope::Depth,
     cuts: &[usize],
     used: usize,
     width: gpui::Pixels,
 ) -> AnyElement {
-    let _depth = DepthScope::enter(depth);
     // Куски текста по местам разрезов: каждый — своя колонка.
     let mut parts: Vec<Vec<Node>> = vec![];
     let mut rest = nodes.to_vec();

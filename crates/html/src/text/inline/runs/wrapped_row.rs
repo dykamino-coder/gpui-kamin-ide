@@ -1,4 +1,4 @@
-//! Wrapped row for runs; split out to keep the owning module within 250 lines.
+//! Wrapped atomic and text rows preserve inline ordering and static-position probes.
 
 use super::glue_atoms;
 use crate::style::computed::Computed;
@@ -49,7 +49,7 @@ pub fn as_wrapped_row(
     turned: Option<bool>,
     // Слои содержащих блоков сборки (`LayoutCx::positioning`): куда уходят
     // внепоточные куски строки.
-    positioning: &crate::layout::positioned::containing_block::Positioning,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     use crate::style::computed::{Align, TextAlign};
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
@@ -183,7 +183,7 @@ pub fn as_wrapped_row(
                     {
                         glued
                     }
-                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned, positioning)),
+                    Piece::Overlay(el, _) => glued.child(overlay_in_row(el, turned, cx)),
                     Piece::Text { text, style } => glued.child(render_text(text, &style)),
                 };
             }
@@ -199,7 +199,7 @@ pub fn as_wrapped_row(
                 Piece::Overlay(_, how) if how.cb_marker.is_some() || how.box_marker.is_some() => {
                     row
                 }
-                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned, positioning)),
+                Piece::Overlay(el, _) => row.child(overlay_in_row(el, turned, cx)),
                 Piece::Text { text, style } => {
                     // Пробел остаётся при слове: без него слова слиплись бы.
                     for (n, part) in text.split('\n').enumerate() {

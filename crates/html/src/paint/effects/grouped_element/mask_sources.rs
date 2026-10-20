@@ -1,9 +1,36 @@
 //! Mask sources preserve the element orientation when looking up cached images.
 
 use super::Grouped;
+use crate::style::computed::ImageSource;
+
+#[derive(Clone)]
+pub(crate) enum GroupMask {
+    Images(Vec<ImageSource>),
+    Geometry(String),
+}
+impl GroupMask {
+    pub(crate) fn geometry(&self) -> Option<&str> {
+        match self {
+            Self::Geometry(s) => Some(s),
+            Self::Images(_) => None,
+        }
+    }
+}
+
 use crate::document::state::ValueCx;
 
 impl Grouped {
+    pub(crate) fn mask_image_source(
+        &self,
+        image: &ImageSource,
+    ) -> Option<crate::paint::background::Source> {
+        if matches!(image, ImageSource::Invalid) {
+            // CSS Masking 1 section 7.1: none is a transparent black layer.
+            return gpui::bgra_bytes_to_image(1, 1, vec![0; 4])
+                .map(crate::paint::background::Source::Raster);
+        }
+        crate::paint::background::computed_source(image, !self.mask_orient_none)
+    }
     pub(crate) fn mask_source(
         &self,
         source: &str,
@@ -17,26 +44,6 @@ impl Grouped {
             crate::paint::background::source(source, vcx)
         }
     }
-}
-
-/// Голый источник слоя маски: содержимое `url(...)` либо запись градиента.
-pub(super) fn mask_layer_source(layer: &str) -> Option<String> {
-    let t = layer.trim();
-    if t.contains("-gradient(") || t.starts_with("filter(") {
-        return Some(t.to_string());
-    }
-    if t.starts_with("clipsnap:") || t.starts_with("pathdef:") || t.starts_with("shapedef:") {
-        return Some(t.to_string());
-    }
-    let at = t.find("url(")?;
-    let rest = &t[at + 4..];
-    let end = rest.find(')')?;
-    Some(
-        rest[..end]
-            .trim()
-            .trim_matches(|c| c == '"' || c == '\'')
-            .to_string(),
-    )
 }
 
 /// Содержимое `<mask id>`/`<clipPath id>` из ВНЕШНЕГО файла рисунка
@@ -70,16 +77,15 @@ pub(super) fn svg_fragment(path: &str, id: &str) -> Option<(String, bool)> {
 
 /// Растр определения `<mask>`/`<clipPath>` из документа под коробку.
 ///
-/// Содержимое сериализовано при сборе (`render::mask_def`); маска берёт
+/// Содержимое сериализовано в контексте документа; маска берёт
 /// светимость своих красок, обрезка — покрытие (заливка принудительно
 /// белая), поэтому обе идут люминанс-растром.
 pub(super) fn rasterize_mask_def(
-    key: &str,
+    markup: &str,
     w: f32,
     h: f32,
     force_white: bool,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let markup = crate::paint::effects::mask::mask_snapshot(key)?;
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
     // (clip-path-shape-002: у эталона пропадала дырка evenodd).

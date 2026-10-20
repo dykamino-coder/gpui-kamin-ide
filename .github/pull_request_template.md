@@ -17,6 +17,7 @@ Link the public card or owner request. Registration is not a functional fix. -->
 
 - Execution role: <!-- author / implementer / maintainer; may be combined -->
 - Authorized scope: <!-- owner request, task/batch and restrictions -->
+- Completion target: <!-- registration in main / prepared PR / accepted merge / verified publication; use the actual owner authorization -->
 
 <!-- Role comes from authorization, not this field or the GitHub account.
 Describe the final diff; a checked PR type does not override its contents. -->
@@ -31,7 +32,9 @@ Diagnostic registration describes the problem and next artifact, not a shipped f
 <!-- Commands/checks actually run, results and applicable acceptance class:
 automated merge gate / Windows runtime merge gate / production observation.
 Explain skipped checks and unavailable environments. Bare N/A is insufficient.
-CI build success does not prove a live Windows/CEF scenario. -->
+CI build success does not prove a live Windows/CEF scenario. Explain why the
+selected gate verifies this diff's contract; do not require live UI merely
+because the report included a screenshot. -->
 
 ## Risks and limitations
 

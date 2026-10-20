@@ -13,12 +13,13 @@ pub(super) fn resolve(
     groups: &[Option<&Element>],
     rows_left: &[usize],
     cols: u16,
-    table_font: f32,
-    table_family: &str,
+    (table_font, table_family): (f32, &str),
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> (HashMap<u64, [f32; 4]>, [f32; 4]) {
     let collapse_cells_pre = e.style.border_collapse == Some(true)
         || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
-    let px_of_pre = |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font);
+    let px_of_pre =
+        |l: Option<Len>| crate::text::metrics::spacing_px(l, table_family, table_font, vcx);
     let axes = super::axes::Axes::new(&e.style);
     let tb = e.style.borders();
     let bw_pre = axes.logical([
@@ -40,6 +41,7 @@ pub(super) fn resolve(
         cols as usize,
         table_font,
         table_family,
+        vcx,
     );
     if collapse_cells_pre {
         struct Cel {
@@ -157,6 +159,8 @@ mod tests {
 
     #[test]
     fn vertical_columns_share_physical_bottom_and_top_borders() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         let mut table = anon_element("table", vec![]);
         table.style.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
             true,
@@ -175,7 +179,7 @@ mod tests {
         second.style.border_width.top = Some(Len::Px(100.0));
         second.style.border_visible[0] = Some(true);
         let row = anon_element("tr", vec![Node::Element(first), Node::Element(second)]);
-        let (widths, outer) = resolve(&table, &[&row], &[None], &[1], 2, 16.0, "");
+        let (widths, outer) = resolve(&table, &[&row], &[None], &[1], 2, (16.0, ""), vcx);
         assert_eq!(widths[&1], [0.0, 20.0, 100.0, 0.0]);
         assert_eq!(widths[&2], [100.0, 20.0, 0.0, 0.0]);
         assert_eq!(outer, [0.0, 20.0, 0.0, 0.0]);
@@ -185,7 +189,7 @@ mod tests {
             table.style.wm().sideways(),
         ));
         table.style.border_width = Sides::default();
-        let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, 16.0, "");
+        let (widths, _) = resolve(&table, &[&row], &[None], &[1], 2, (16.0, ""), vcx);
         assert_eq!(widths[&1][2], 50.0);
         assert_eq!(widths[&2][0], 100.0);
     }

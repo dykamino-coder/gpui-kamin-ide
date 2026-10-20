@@ -3,8 +3,8 @@
 //! The continuous copy still owns layout and containing-block geometry. Only
 //! the effect reference box and the fragment's source clip change at paint.
 
+use crate::paint::context::PaintCx;
 use gpui::{Bounds, ContentMask, Pixels, TransformationMatrix, Window, point, px, size};
-use std::cell::RefCell;
 
 #[derive(Clone, Copy)]
 pub(crate) struct Scope {
@@ -13,24 +13,24 @@ pub(crate) struct Scope {
     pub clip: Bounds<Pixels>,
 }
 
-thread_local! {
-    static ACTIVE: RefCell<Option<Scope>> = const { RefCell::new(None) };
-}
-
-pub(crate) fn with<R>(scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
-    let previous = ACTIVE.with(|active| active.replace(scope));
+pub(crate) fn with<R>(owner: &PaintCx, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
+    let previous = owner.effect.replace(scope);
     let result = f();
-    ACTIVE.with(|active| active.replace(previous));
+    owner.effect.replace(previous);
     result
 }
 
 /// Краска идёт внутри фрагмента внешней фрагментации.
-pub(crate) fn active() -> bool {
-    ACTIVE.with(|active| active.borrow().is_some())
+pub(crate) fn active(owner: &PaintCx) -> bool {
+    owner.effect.borrow().is_some()
 }
 
-pub(crate) fn reference_box(bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
-    let scope = ACTIVE.with(|active| *active.borrow())?;
+pub(crate) fn reference_box(
+    owner: Option<&PaintCx>,
+    bounds: Bounds<Pixels>,
+) -> Option<Bounds<Pixels>> {
+    let scope = *owner?.effect.borrow();
+    let scope = scope?;
     let start = bounds.origin.y.max(scope.fragment.origin.y);
     let end = (bounds.origin.y + bounds.size.height)
         .min(scope.fragment.origin.y + scope.fragment.size.height);
@@ -52,12 +52,13 @@ pub(crate) fn reference_box(bounds: Bounds<Pixels>) -> Option<Bounds<Pixels>> {
 /// CSS Break 3 §5.4: slice the continuous shadow at internal fragment edges,
 /// retaining its ink overflow at the box's genuine outer edges.
 pub(crate) fn paint_shadow<R>(
+    owner: Option<&PaintCx>,
     bounds: Bounds<Pixels>,
     ink: (Pixels, Pixels),
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
-    let Some(scope) = ACTIVE.with(|active| *active.borrow()) else {
+    let Some(scope) = owner.and_then(|owner| *owner.effect.borrow()) else {
         return f(window);
     };
     let current = window.content_mask().bounds;
@@ -90,13 +91,14 @@ pub(crate) fn paint_shadow<R>(
 }
 
 pub(crate) fn paint<R>(
+    owner: Option<&PaintCx>,
     matrix: TransformationMatrix,
     clip_matrix: TransformationMatrix,
     clip_ancestor: bool,
     window: &mut Window,
     f: impl FnOnce(&mut Window) -> R,
 ) -> R {
-    let scope = ACTIVE.with(|active| *active.borrow());
+    let scope = owner.and_then(|owner| *owner.effect.borrow());
     let [[a, b], [c, d]] = matrix.rotation_scale;
     let axes = (b.abs() < 1e-4 && c.abs() < 1e-4) || (a.abs() < 1e-4 && d.abs() < 1e-4);
     // A descendant transform must not move a CSS ancestor's clip. Its
@@ -176,8 +178,9 @@ mod tests {
 
     #[test]
     fn continued_box_uses_the_remaining_border_box_not_the_continuous_height() {
-        with(Some(scope(49.71875, 100.0)), || {
-            let reference = reference_box(bounds(-50.28125, 120.0)).unwrap();
+        let owner = PaintCx::default();
+        with(&owner, Some(scope(49.71875, 100.0)), || {
+            let reference = reference_box(Some(&owner), bounds(-50.28125, 120.0)).unwrap();
             assert_eq!(reference.origin.y, px(49.71875));
             assert_eq!(reference.size.height, px(20.0));
         });
@@ -185,9 +188,10 @@ mod tests {
 
     #[test]
     fn overflow_only_reference_box_is_empty_at_fragmentainer_start() {
-        with(Some(scope(49.71875, 100.0)), || {
+        let owner = PaintCx::default();
+        with(&owner, Some(scope(49.71875, 100.0)), || {
             for y in [-150.28125, 149.71875] {
-                let reference = reference_box(bounds(y, 77.0)).unwrap();
+                let reference = reference_box(Some(&owner), bounds(y, 77.0)).unwrap();
                 assert_eq!(reference.origin.y, px(49.71875));
                 assert_eq!(reference.size.height, px(0.0));
             }
@@ -196,18 +200,19 @@ mod tests {
 
     #[test]
     fn nested_scope_restores_the_outer_fragment_reference() {
-        with(Some(scope(50.0, 100.0)), || {
-            with(Some(scope(100.0, 50.0)), || {
+        let owner = PaintCx::default();
+        with(&owner, Some(scope(50.0, 100.0)), || {
+            with(&owner, Some(scope(100.0, 50.0)), || {
                 assert_eq!(
-                    reference_box(bounds(0.0, 200.0)).unwrap(),
+                    reference_box(Some(&owner), bounds(0.0, 200.0)).unwrap(),
                     bounds(100.0, 50.0)
                 );
             });
             assert_eq!(
-                reference_box(bounds(0.0, 200.0)).unwrap(),
+                reference_box(Some(&owner), bounds(0.0, 200.0)).unwrap(),
                 bounds(50.0, 100.0)
             );
         });
-        assert!(reference_box(bounds(0.0, 200.0)).is_none());
+        assert!(reference_box(Some(&owner), bounds(0.0, 200.0)).is_none());
     }
 }

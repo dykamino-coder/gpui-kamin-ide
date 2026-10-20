@@ -1,8 +1,24 @@
 //! Expand a single mask layer into the existing mask longhand representation.
 
-use super::{Computed, split_outside_parens};
+use super::{Computed, ImageSource, split_outside_parens};
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
+
+/// Keep absent layers in the list: their indices select geometry and composition.
+pub(crate) fn images(value: &str, vcx: ValueCx<'_>) -> Option<Vec<ImageSource>> {
+    crate::style::css::split_args(value)
+        .into_iter()
+        .map(|layer| {
+            split_outside_parens(layer).into_iter().find_map(|word| {
+                if word == "none" {
+                    Some(ImageSource::Invalid)
+                } else {
+                    ImageSource::parse(&word, vcx)
+                }
+            })
+        })
+        .collect()
+}
 
 pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) -> bool {
     // Layer-specific size, origin, clip and mode lists need their own computed
@@ -128,7 +144,7 @@ pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) -> bool
     };
     // CSS Masking section 7.9: omitted shorthand components reset to their initial
     // values. Store only the image token, not its position or slash-size tail.
-    style.mask_image = image.filter(|i| *i != "none").map(str::to_owned);
+    style.mask_image = image.filter(|i| *i != "none").and_then(|i| images(i, vcx));
     for (key, value) in [
         (
             "mask-position",

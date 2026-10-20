@@ -1,30 +1,31 @@
 //! Separable CSS blend functions followed by source-over compositing.
 
+use crate::style::computed::BlendMode;
 use crate::style::values::value::Color;
 
-pub(super) fn composite(source: Color, backdrop: Color, mode: &str) -> Option<Color> {
+pub(super) fn composite(source: Color, backdrop: Color, mode: BlendMode) -> Option<Color> {
     let blend = |s: f32, b: f32| -> Option<f32> {
         Some(match mode {
-            "normal" => s,
-            "multiply" => s * b,
-            "screen" => b + s - b * s,
-            "darken" => b.min(s),
-            "lighten" => b.max(s),
-            "overlay" => {
+            BlendMode::Normal => s,
+            BlendMode::Multiply => s * b,
+            BlendMode::Screen => b + s - b * s,
+            BlendMode::Darken => b.min(s),
+            BlendMode::Lighten => b.max(s),
+            BlendMode::Overlay => {
                 if b <= 0.5 {
                     2.0 * b * s
                 } else {
                     1.0 - 2.0 * (1.0 - b) * (1.0 - s)
                 }
             }
-            "hard-light" => {
+            BlendMode::HardLight => {
                 if s <= 0.5 {
                     2.0 * b * s
                 } else {
                     1.0 - 2.0 * (1.0 - b) * (1.0 - s)
                 }
             }
-            "color-dodge" => {
+            BlendMode::ColorDodge => {
                 if b == 0.0 {
                     0.0
                 } else if s == 1.0 {
@@ -33,7 +34,7 @@ pub(super) fn composite(source: Color, backdrop: Color, mode: &str) -> Option<Co
                     (b / (1.0 - s)).min(1.0)
                 }
             }
-            "color-burn" => {
+            BlendMode::ColorBurn => {
                 if b == 1.0 {
                     1.0
                 } else if s == 0.0 {
@@ -42,7 +43,7 @@ pub(super) fn composite(source: Color, backdrop: Color, mode: &str) -> Option<Co
                     1.0 - ((1.0 - b) / s).min(1.0)
                 }
             }
-            "soft-light" => {
+            BlendMode::SoftLight => {
                 if s <= 0.5 {
                     b - (1.0 - 2.0 * s) * b * (1.0 - b)
                 } else {
@@ -54,8 +55,8 @@ pub(super) fn composite(source: Color, backdrop: Color, mode: &str) -> Option<Co
                     b + (2.0 * s - 1.0) * (d - b)
                 }
             }
-            "difference" => (b - s).abs(),
-            "exclusion" => b + s - 2.0 * b * s,
+            BlendMode::Difference => (b - s).abs(),
+            BlendMode::Exclusion => b + s - 2.0 * b * s,
             // Nonseparable modes retain the existing image/group path.
             _ => return None,
         })

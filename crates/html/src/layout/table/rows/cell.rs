@@ -117,6 +117,7 @@ pub(super) fn table_cell(
         spans_collapsed,
         clipped,
         &mut cell,
+        opts.cx.vcx(),
     );
     resolve_cell_heights(opts, e, row, inherited, &mut cm, &mut cell);
     let cell = &cell;

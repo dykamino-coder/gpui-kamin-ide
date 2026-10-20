@@ -86,8 +86,6 @@ use std::rc::Rc;
 // отвергать негодный woff2, и только потом подставлять `@import`.
 
 fn main() {
-    // Static captures use the same theme as live HTML, always at rest.
-    kamin_html::set_scrollbar_capture_mode(true);
     // Паника В КАДРЕ не роняет процесс: оконный вызов Windows её глотает, и
     // на экране молча остаётся предыдущая страница — стенд считает её пустой.
     // След в файле — единственный способ увидеть такую панику.

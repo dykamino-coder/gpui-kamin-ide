@@ -56,6 +56,8 @@ pub(super) const ELLIPSIS: &str = "…";
 /// Строка: что рисовать и сколько она занимает.
 #[derive(Clone, Debug)]
 pub(crate) struct Line {
+    /// Float avoidance before this real line; excluded from the line count.
+    pub(crate) clearance: gpui::Pixels,
     /// Байтовый отрезок исходного текста.
     pub(crate) range: std::ops::Range<usize>,
     /// Ширина без хвостовых пробелов — по ней идёт выключка.
@@ -90,4 +92,21 @@ pub struct Indent {
     pub each_line: bool,
     /// `hanging`: отступ получают все строки, КРОМЕ той, что получила бы его.
     pub hanging: bool,
+}
+
+#[cfg(test)]
+impl Line {
+    /// Unclamped, unindented line fixture shared by paragraph geometry tests.
+    pub(super) fn test(range: std::ops::Range<usize>, width: Pixels) -> Self {
+        Self {
+            clearance: gpui::px(0.0),
+            range,
+            width,
+            ellipsis: false,
+            clamped: false,
+            vis_cut: None,
+            hyphen: false,
+            indent: gpui::px(0.0),
+        }
+    }
 }

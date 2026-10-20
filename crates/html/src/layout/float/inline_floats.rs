@@ -61,7 +61,22 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     let Node::Element(e) = &node else {
         return vec![node];
     };
-    if !transparent(e) || !e.children.iter().any(contains_float) {
+    // CSS2 sections 9.2.2 and 9.5: a float-only inline still has an empty
+    // in-flow fragment. Keep its margins there, while the floats belong to
+    // the block's shared exclusion space, not an atomic paragraph child.
+    let margin_fragment = if !transparent(e) {
+        let mut bare = e.clone();
+        bare.style.margin = Default::default();
+        transparent(&bare)
+            && e.style.preserve_newlines.or(parent.preserve_newlines) != Some(true)
+            && e.style.keep_spaces.or(parent.keep_spaces) != Some(true)
+            && e.children
+                .iter()
+                .all(|n| crate::render::is_blank(n) || floated(n))
+    } else {
+        false
+    };
+    if (!transparent(e) && !margin_fragment) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
     let style = inherit(parent, &e.style, vcx);
@@ -102,7 +117,13 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     };
     let mut output = Vec::new();
     let mut pending = Vec::new();
+    if margin_fragment {
+        output.push(fragment(Vec::new()));
+    }
     for child in children {
+        if margin_fragment && crate::render::is_blank(&child) {
+            continue;
+        }
         if floated(&child) {
             if !pending.is_empty() {
                 output.push(fragment(std::mem::take(&mut pending)));

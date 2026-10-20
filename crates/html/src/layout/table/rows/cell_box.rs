@@ -24,6 +24,7 @@ pub(super) fn prepare_cell_box(
     spans_collapsed: bool,
     clipped: bool,
     cell: &mut Element,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(
     [f32; 4],
     [crate::style::values::value::Color; 4],
@@ -162,7 +163,7 @@ pub(super) fn prepare_cell_box(
             .font_family
             .clone()
             .unwrap_or_else(|| table_family.to_string());
-        super::cell_size::vertical_block_floor(&mut cell.style, size, &family);
+        super::cell_size::vertical_block_floor(&mut cell.style, size, &family, vcx);
     }
     // Письмо к рядам и группам рядов не применяется (css-writing-modes
     // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо

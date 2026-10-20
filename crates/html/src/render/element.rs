@@ -11,7 +11,6 @@ use crate::layout::list::list_item;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
-use crate::paint::effects::mask::PAINT_VIEWPORT;
 use crate::paint::effects::transform::transformed;
 use crate::render::*;
 use crate::style::cascade::inherit::inherit;
@@ -28,6 +27,8 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
 }
 
 fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     if e.marks.outside_block {
         return crate::layout::float::outside_block::render(e, inherited, opts);
@@ -47,7 +48,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // `anchor-size()`, растяжка в клетке `position-area` — из реестра
     // ПРОШЛОГО кадра, до раскладки.
     merged.self_node = e.node_id;
-    merged.anchor_seq = crate::layout::positioned::anchor::next_seq();
+    merged.anchor_seq = crate::layout::positioned::anchor::next_seq(vcx);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
     // Вариант `position-try-fallbacks`, выбранный на прошлом кадре, — в стиль
     // ДО размеров и раскладки (§fallback: «the element keeps those styles»).
@@ -90,7 +91,11 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     }
     merged.resolve_viewport(opts.viewport, vcx);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
-    let gutters = crate::interactive::scroll_extent::classic::model(e.node_id, &merged);
+    let gutters = crate::interactive::scroll_extent::classic::model(
+        opts.cx.scroll_frame.as_ref(),
+        e.node_id,
+        &merged,
+    );
     merged.scroll.used = gutters.used;
     merged.scroll.native = gutters.native;
     crate::layout::writing_mode::inline_definite::resolve_percentages(&mut merged, inherited);
@@ -104,8 +109,8 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         merged.icb_scroll_insets = Some(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
-    PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     let scroll_projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll_frame.as_ref(),
         inherited.self_node,
         Some(&merged),
         opts.cx.sticky.as_ref(),
@@ -119,7 +124,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // прямоугольник, что выглядит поломкой разметки.
     if let Some(el) = crate::interactive::forms::element(e, &merged, opts) {
         return crate::interactive::scroll_extent::project(
-            transformed(el, &merged, inherited),
+            transformed(el, &merged, inherited, vcx),
             scroll_projection,
         );
     }

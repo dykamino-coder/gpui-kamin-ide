@@ -9,6 +9,9 @@ pub(super) use width::column_measure_width;
 mod measurement;
 pub(super) use measurement::measure_children;
 
+#[cfg(test)]
+mod tests;
+
 use crate::dom::{Element, Node};
 use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
@@ -162,7 +165,7 @@ pub(crate) fn stack_box(
         .rev()
         .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
         .map(|n| n as *const Node);
-    let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, || {
+    let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, |opts| {
         measure_children(
             ge,
             &merged,
@@ -208,7 +211,13 @@ pub(crate) fn stack_box(
             measured_kids,
         ));
     }
-    let count = e.children.iter().filter(|n| !is_blank(n)).count().max(1);
+    // An empty multicol has no column boxes to place. In particular, the
+    // fallback grid must not give an empty shrink-to-fit box intrinsic gaps
+    // (css-contain/contain-size-multicol-002 compares it with size containment).
+    let count = e.children.iter().filter(|n| !is_blank(n)).count();
+    if count == 0 {
+        return Ok((d, merged));
+    }
     let rows = count.div_ceil(cols as usize).max(1) as u16;
     let gap = used_gap;
     d = d

@@ -9,16 +9,13 @@ impl Computed {
             self.accept_declaration();
             return;
         }
-        // Маска-ИЗОБРАЖЕНИЕ (url/градиент): источник хранится строкой,
-        // растрируется при сборке группы, альфа умножается в композите
-        // буфера (css-masking §7.1; mask-image-1a).
         if key != "clip-path" {
-            if v.contains("-gradient(") || v.contains("url(") {
-                // Слоёв может быть несколько (`url(a), url(b)`) —
-                // строка хранится ЦЕЛИКОМ, разбор при отрисовке.
-                self.mask_image = accept_parsed!(self, Some(v.trim().to_string()));
+            if let Some(images) = mask_shorthand::images(v, vcx) {
+                self.mask_image = accept_parsed!(self, Some(images));
+                if v.trim() == "none" {
+                    self.mask_image = None;
+                }
             }
-            // Сокращение `mask` несёт и укладку (css-masking §7.9).
             if v.contains("no-repeat") {
                 self.mask_no_repeat = Some((true, true));
             }

@@ -11,46 +11,8 @@ mod gap_segments;
 /// детей, а по ним слой-художник считает середины промежутков
 /// (css-gaps-1 §geometry: линейка идёт по ЦЕНТРАЛЬНОЙ ЛИНИИ промежутка).
 mod items;
-pub use items::{GapBuffer, MulticolGaps, fresh_gap_items, gap_item_probe};
+pub use items::{GapBuffer, MulticolGaps, gap_item_probe};
 pub type GapItems = std::rc::Rc<std::cell::RefCell<GapBuffer>>;
-
-thread_local! {
-    static GAP_ITEMS: std::cell::RefCell<std::collections::HashMap<u64, GapItems>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Стек контейнеров с линейками промежутков при ПОСТРОЕНИИ дерева.
-    /// Ровно как `CLAMP_STACK`: проба ставится только НЕПОСРЕДСТВЕННЫМ
-    /// детям, поэтому сторож кладёт ключ на время сборки детей.
-    static GAP_STACK: std::cell::RefCell<Vec<u64>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-pub fn gap_items_for(key: u64) -> GapItems {
-    GAP_ITEMS.with(|m| m.borrow_mut().entry(key).or_default().clone())
-}
-
-/// Сторож стека линеек на время сборки ДЕТЕЙ контейнера.
-pub struct GapGuard(pub(crate) bool);
-
-impl GapGuard {
-    pub fn enter(key: u64) -> Self {
-        GAP_STACK.with(|st| st.borrow_mut().push(key));
-        GapGuard(true)
-    }
-}
-
-impl Drop for GapGuard {
-    fn drop(&mut self) {
-        if self.0 {
-            GAP_STACK.with(|st| {
-                st.borrow_mut().pop();
-            });
-        }
-    }
-}
-
-/// Ключ контейнера линеек, в котором строится текущий элемент.
-pub fn gap_context() -> Option<u64> {
-    GAP_STACK.with(|st| st.borrow().last().copied())
-}
 
 /// Правила линеек одной оси (css-gaps-1), уже в точках.
 #[derive(Clone, Debug)]

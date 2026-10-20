@@ -36,7 +36,7 @@ pub(super) fn collect_captions(
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped
             // (`transform-transformed-caption-contains-fixed-position`).
-            let built = transformed(built, &cap.style, inherited);
+            let built = transformed(built, &cap.style, inherited, vcx);
             // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
             // у таблицы с верхней И нижней подписью рисовалась только верхняя
             // (`table-border-002/003/004`, снимок `table-border-004`: зелёное

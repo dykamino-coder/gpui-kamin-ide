@@ -1,4 +1,4 @@
-//! Overlays for collect; split out to keep the owning module within 250 lines.
+//! Static-position probes and relative shifts for overlays in inline rows.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
@@ -17,7 +17,7 @@ use gpui::{AnyElement, ParentElement, Styled};
 pub(crate) fn overlay_in_row(
     el: AnyElement,
     turned: Option<bool>,
-    positioning: &crate::layout::positioned::containing_block::Positioning,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     if let Some(rl) = turned {
@@ -27,8 +27,9 @@ pub(crate) fn overlay_in_row(
             ..Default::default()
         });
     }
-    let probe = crate::layout::positioned::containing_block::spot_probe(spot.clone(), false, None);
-    match positioning.late_push(spot, el) {
+    let probe =
+        crate::layout::positioned::containing_block::spot_probe(spot.clone(), false, None, cx);
+    match cx.positioning.late_push(spot, el) {
         None => probe,
         Some(kept) => {
             let mut hole = gpui::div().relative().w_0().h_0().flex_shrink_0();

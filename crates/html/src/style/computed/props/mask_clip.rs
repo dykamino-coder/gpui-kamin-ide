@@ -17,9 +17,8 @@ impl Computed {
             "shape-outside" => {
                 self.accept_declaration();
                 let t = v.trim();
-                if t != "none" {
-                    self.shape_outside = Some(t.to_string());
-                }
+                self.shape_outside = (t != "none").then(|| t.to_string());
+                self.shape_image = ImageSource::parse(t, vcx);
             }
             "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim(), vcx)),
             "shape-image-threshold" => {

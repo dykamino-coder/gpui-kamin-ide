@@ -155,3 +155,16 @@ impl<T: Hooks> Element for Hooked<T> {
         Hooks::paint(&mut self.0, bounds, layout, prepaint, window, cx);
     }
 }
+
+/// Identity hooks for native elements whose frame state is keyed by `self.id`.
+macro_rules! keyed_element_identity {
+    () => {
+        fn id(&self) -> Option<gpui::ElementId> {
+            Some(self.id.clone())
+        }
+        fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+            None
+        }
+    };
+}
+pub(crate) use keyed_element_identity;

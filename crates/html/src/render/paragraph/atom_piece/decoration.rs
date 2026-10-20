@@ -54,7 +54,7 @@ pub(crate) fn decorate_atom(
     ) {
         el
     } else {
-        transformed(el, &e.style, inherited)
+        transformed(el, &e.style, inherited, vcx)
     };
     // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
     // ряд строит базовую линию, а кускам с top/middle/bottom нужен
@@ -122,6 +122,8 @@ pub(crate) fn decorate_atom(
             el,
             inline::OverlayAt {
                 edges: abs_cb,
+                next_line: inherited.band_kid
+                    && !crate::layout::positioned::static_position::hypothetical_inline_level(e),
                 line_probe: line_box.filter(|_| {
                     !abs_cb
                         && (crate::layout::positioned::predicates::edge_set(e.style.inset.left)

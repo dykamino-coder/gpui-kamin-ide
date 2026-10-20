@@ -10,7 +10,7 @@ fn shorthand_carries_source_slice_and_repeat() {
     let mut c = Computed::default();
     c.apply_one("border-image", "url(C:/tmp/border.png) 27 round", vcx);
     let bi = c.border_image.expect("рамка-картинка разобрана");
-    assert_eq!(bi.src, "C:/tmp/border.png");
+    assert_eq!(bi.src, Some(ImageSource::Url("C:/tmp/border.png".into())));
     assert_eq!(bi.slice[0], BorderImageSlice::Px(27.0));
     assert_eq!(bi.repeat, (Tiling::Round, Tiling::Round));
 }
@@ -42,9 +42,10 @@ fn shorthand_keeps_filter_image_source() {
         vcx,
     );
     let bi = c.border_image.expect("рамка-картинка разобрана");
-    assert_eq!(
-        bi.src,
-        "filter(url(C:/tmp/b.png), drop-shadow(50px 0 0 green))"
-    );
+    let Some(ImageSource::Filter { image, program }) = bi.src else {
+        panic!("typed filter image")
+    };
+    assert_eq!(*image, ImageSource::Url("C:/tmp/b.png".into()));
+    assert_eq!(program.shadow.unwrap().x, 50.0);
     assert_eq!(bi.slice[0], BorderImageSlice::Px(75.0));
 }

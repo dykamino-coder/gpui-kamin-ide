@@ -1,7 +1,6 @@
-//! Width for measure; split out to keep the owning module within 250 lines.
+//! Shaped paragraph widths and the document measurement cache.
 
 use super::MEASURE_CACHE;
-use super::MEASURED;
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};
 
@@ -14,22 +13,24 @@ impl Paragraph {
     /// дорогая операция здесь.
     pub(crate) fn measure(&self, window: &mut Window) -> Vec<Seg> {
         let key = self.measure_key();
-        if let Some(hit) = MEASURED.with(|c| {
-            c.borrow()
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map(|(_, v)| v.clone())
-        }) {
+        let hit = self
+            .measures
+            .measured
+            .borrow()
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone());
+        if let Some(hit) = hit {
             return hit;
         }
         let out = self.measure_uncached(window);
-        MEASURED.with(|c| {
-            let mut cache = c.borrow_mut();
+        {
+            let mut cache = self.measures.measured.borrow_mut();
             if cache.len() >= MEASURE_CACHE {
                 cache.remove(0);
             }
             cache.push((key, out.clone()));
-        });
+        }
         out
     }
 }

@@ -34,7 +34,7 @@ impl Color {
         {
             let args = crate::style::css::split_args(&s[11..s.len() - 1]);
             if args.len() == 2 {
-                return Self::parse(args[usize::from(dark_scheme())], vcx);
+                return Self::parse(args[usize::from(dark_scheme(vcx))], vcx);
             }
             return None;
         }
@@ -76,7 +76,7 @@ impl Color {
                 a,
             });
         }
-        named(s)
+        named(s, vcx)
     }
 
     pub(super) fn parse_hex(hex: &str) -> Option<Self> {

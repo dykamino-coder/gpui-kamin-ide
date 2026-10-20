@@ -9,13 +9,13 @@ pub(super) use layer::{MaskInput, mask_layer};
 mod path;
 pub(super) use path::{polygon_scene, resolve_scene_mask};
 
-use crate::paint::effects::grouped_element::{Grouped, mask_layer_source};
+use crate::paint::effects::grouped_element::{GroupMask, Grouped};
 use crate::paint::effects::mask_size;
 use gpui::{Bounds, Pixels, Window, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_mask(
-    src: &str,
+    mask: &GroupMask,
     group: &Grouped,
     bounds: Bounds<Pixels>,
     _prepaint: &(Bounds<Pixels>, Bounds<Pixels>),
@@ -29,7 +29,7 @@ pub(crate) fn resolve_mask(
     // `border-shape` (css-borders-4): маска — внешний контур рамки,
     // Растр покрытия на расширенную область (обводка выходит за
     // border-box), одной плиткой без мощения; альфа = покрытие.
-    if let Some(spec) = src.strip_prefix("bordershape:") {
+    if let Some(spec) = mask.geometry().and_then(|s| s.strip_prefix("bordershape:")) {
         let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
         let (aw, ah) = (bw + sl + sr, bh + st + sb);
         let scene =
@@ -47,15 +47,11 @@ pub(crate) fn resolve_mask(
     }
     // Слои: `url(a), url(b)` — полотно, собранное по mask-composite;
     // одиночный слой идёт плиткой прямо в композит.
-    let layers: Vec<String> = if src.starts_with("shape:") {
-        vec![src.to_string()]
-    } else {
-        crate::style::css::split_args(src)
-            .iter()
-            .filter_map(|l| mask_layer_source(l))
-            .collect()
+    let inputs: Vec<_> = match mask {
+        GroupMask::Images(images) => images.iter().map(MaskInput::Image).collect(),
+        GroupMask::Geometry(raw) => vec![MaskInput::Source(raw)],
     };
-    let src: &str = layers.first().map(String::as_str)?;
+    let first = *inputs.first()?;
     let bounds = _prepaint.1;
     // Коробка укладки (`mask-origin`): плитка и её свободное место
     // считаются от неё, а не от border-box.
@@ -73,18 +69,26 @@ pub(crate) fn resolve_mask(
     // полотно, собранное по `mask-composite` (css-masking §7.12).
     // Плитка слоя — его интринзик (auto), укладка от угла коробки;
     // уложенное полотно уходит одной плиткой без мощения.
-    let referenced = layers.iter().any(|l| {
-        l.starts_with("svgsnap:")
-            || l.starts_with("clipsnap:")
-            || l.starts_with("pathdef:")
-            || l.starts_with("shapedef:")
-            || (l.contains('#') && l.contains(".svg"))
+    let referenced = inputs.iter().any(|input| {
+        let raw = match input {
+            MaskInput::Image(crate::style::computed::ImageSource::Url(url)) => url.as_str(),
+            MaskInput::Source(raw) => raw,
+            _ => return false,
+        };
+        raw.starts_with('#')
+            || raw.starts_with("clipref:")
+            || raw.starts_with("pathdef:")
+            || raw.starts_with("shapedef:")
+            || (raw.contains('#') && raw.contains(".svg"))
     });
-    if layers.len() > 1 || referenced || !group.mask_repeat_modes.is_empty() {
-        let inputs: Vec<_> = layers.iter().map(|l| MaskInput::Source(l)).collect();
+    if inputs.len() > 1 || referenced || !group.mask_repeat_modes.is_empty() {
         return composite_mask(group, &inputs, bounds, bw, bh, ol, ot, window, len, vcx);
     }
-    let source = group.mask_source(src, vcx)?;
+    let source = match first {
+        MaskInput::Image(image) => group.mask_image_source(image),
+        MaskInput::Source(raw) => group.mask_source(raw, vcx),
+        MaskInput::Scene(_) => None,
+    }?;
     let (img, tw, th) = match &source {
         crate::paint::background::Source::Raster(img) => {
             let (tw, th) = mask_size::tile(

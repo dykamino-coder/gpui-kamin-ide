@@ -88,7 +88,8 @@ pub(super) fn multicol_stack_child(
     // (`floats-clear-multicol-*`: `background:
     // red`); флоаты переполняют нулевую коробку, и
     // маска колонки режет их по разрезам меры.
-    if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy).is_some() {
+    if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy, opts.cx.vcx()).is_some()
+    {
         copy.style.height = Some(Len::Px(0.0));
     }
     // Параллельный поток (css-break-3 §3):
@@ -180,11 +181,13 @@ pub(super) fn multicol_stack_child(
     // раскладки копии, маска колонки (`flow.rs`,
     // `with_content_mask`) режет их вместе с
     // содержимым — вид `slice` css-break-3 §4.
-    let copy_ix = std::cell::Cell::new(0usize);
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
+    let watched = crate::layout::fragment::paginate::watch::Watched::new(&[]);
     let build = |first: bool, part: usize, band: bool| {
+        let mut opts = opts.in_stack_copy();
+        opts.frag.watch = (first && !band).then(|| watched.clone());
         build::build_copy(
-            &opts.in_stack_copy(), // копии — «внутри стопки» (`FragCx`)
+            &opts,
             col_vert,
             col_rl,
             line_col_w,
@@ -197,27 +200,14 @@ pub(super) fn multicol_stack_child(
             nest_row,
             nest_phase_k,
             &inner,
-            &copy_ix,
             whole,
             first,
             part,
             band,
         )
     };
-    // Монолиты (css-break-3 §4.1) — их разрыв
-    // запрещён, и в следующую колонку они уходят
-    // целиком: `break-inside: avoid`,
-    // прокручиваемая или обрезающая коробка,
-    // замещаемый элемент, таблица и ячейка,
-    // атомарная строчная коробка. Сюда же —
-    // сплошной СТРОЧНЫЙ набор: резать его можно
-    // только между строками, а строк укладка
-    // колонок не видит, и разрез приходился бы
-    // посреди строки.
-    // Монолитен ПРОКРУЧИВАЕМЫЙ контейнер (css-break-4
-    // §4.1 «scroll containers»); `hidden`/`clip` —
-    // обрезка, не прокрутка, и режется как блок
-    // (корень A4).
+    // CSS Break 3 section 4.1: scroll containers, replaced and atomic boxes
+    // are monolithic. Measured line edges provide breaks for ordinary flow.
     let paginate = paginate::paginate_of(opts, col_vert, col_rl, line_col_w, merged, &copy);
     let mut child = finish_stack_child(
         ix,
@@ -244,6 +234,7 @@ pub(super) fn multicol_stack_child(
         opts.cx.vcx(),
     );
     child.paginate = paginate;
+    child.flow = Some(watched.flow.clone());
     // CSS 2.1 §10.3.3: у переопределённых полей отбрасывается конец по
     // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
     // левого края (Blink `ComputeMarginsFor` по стилю контейнера).

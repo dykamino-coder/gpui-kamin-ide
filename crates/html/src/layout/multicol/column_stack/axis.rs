@@ -146,7 +146,7 @@ impl ColumnStack {
         for f in &plan {
             parts[f.kid] += 1;
         }
-        let nested_frag = crate::layout::fragment::effect_fragment::active();
+        let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
         for f in plan {
             let (c, ry) = self.place(f.col);
             let rel = self.children[f.kid].rel;

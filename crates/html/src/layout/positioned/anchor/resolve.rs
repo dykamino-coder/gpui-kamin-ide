@@ -1,7 +1,7 @@
 //! Выбранная запасная позиция и `anchor-size()` в стиле коробки.
 
+use super::AnchorRec;
 use super::settle::{DefaultAnchor, default_anchor_of};
-use super::{AREA_LAST, AnchorRec, CELL_LAST, CHOSEN, LAST_IMPLICIT, LAST_NAMED, USED_LAST};
 use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
@@ -23,8 +23,13 @@ pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
         return;
     }
     let base = Rc::new(c.clone());
-    let chosen = CHOSEN
-        .with(|m| m.borrow().get(&c.anchor_key).copied())
+    let chosen = vcx
+        .doc
+        .anchor_frame
+        .chosen
+        .borrow()
+        .get(&c.anchor_key)
+        .copied()
         .unwrap_or(0);
     if chosen > 0
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
@@ -45,13 +50,18 @@ pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
 /// именем, собранная РАНЬШЕ коробки (`seq`), — «the last element in tree
 /// order» среди «laid out strictly before» (§target anchor element);
 /// неявный — по `node_id` хозяина.
-fn last_lookup(name: Option<&str>, default: &Option<DefaultAnchor>, seq: u32) -> Option<AnchorRec> {
+fn last_lookup(
+    name: Option<&str>,
+    default: &Option<DefaultAnchor>,
+    seq: u32,
+    vcx: ValueCx<'_>,
+) -> Option<AnchorRec> {
     match name {
-        Some(n) => last_named(n, seq),
+        Some(n) => last_named(n, seq, vcx),
         None => match default {
-            Some(DefaultAnchor::Named(n)) => last_named(n, seq),
+            Some(DefaultAnchor::Named(n)) => last_named(n, seq, vcx),
             Some(DefaultAnchor::Implicit(id)) => {
-                LAST_IMPLICIT.with(|m| m.borrow().get(id).copied())
+                vcx.doc.anchor_frame.last_implicit.borrow().get(id).copied()
             }
             None => None,
         },
@@ -59,14 +69,15 @@ fn last_lookup(name: Option<&str>, default: &Option<DefaultAnchor>, seq: u32) ->
 }
 
 /// Последняя запись прошлого кадра с этим именем, собранная раньше `seq`.
-pub(super) fn last_named(n: &str, seq: u32) -> Option<AnchorRec> {
-    LAST_NAMED.with(|v| {
+pub(super) fn last_named(n: &str, seq: u32, vcx: ValueCx<'_>) -> Option<AnchorRec> {
+    {
+        let v = &vcx.doc.anchor_frame.last_named;
         v.borrow()
             .iter()
             .filter(|(k, s, _)| k == n && *s < seq)
             .max_by_key(|(_, s, _)| *s)
             .map(|(_, _, r)| *r)
-    })
+    }
 }
 
 /// Размеры абсолюта, зависящие от якоря, — В ТОЧКИ до раскладки (зовёт
@@ -89,13 +100,13 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     let own_vertical = c.wm().vertical();
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
-        USED_LAST.with(|u| u.set(true));
+        vcx.doc.anchor_frame.used_last.set(true);
         let mut f = anchor_get(i, vcx);
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
             let kind = cur.size?;
-            let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq).map(|r| {
+            let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq, vcx).map(|r| {
                 // Размер решается ДО раскладки, стека трансформов коробки ещё
                 // нет: под трансформированным предком считаем цепочку общей
                 // (до-трансформная рамка), без него — отображённую
@@ -138,9 +149,15 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     // `width: 100%` = ширина якоря, а не 800 окна).
     if c.position_area.is_some()
         && default_anchor.is_some()
-        && let Some((cw, ch)) = CELL_LAST.with(|m| m.borrow().get(&c.anchor_key).copied())
+        && let Some((cw, ch)) = vcx
+            .doc
+            .anchor_frame
+            .cell_last
+            .borrow()
+            .get(&c.anchor_key)
+            .copied()
     {
-        USED_LAST.with(|u| u.set(true));
+        vcx.doc.anchor_frame.used_last.set(true);
         let of = |l: Option<Len>, base: f32| match l {
             Some(Len::Pct(p)) => Some(Len::Px(p * base)),
             other => other,
@@ -168,15 +185,15 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     c.min_height = one(c.min_height, true);
     c.max_height = one(c.max_height, true);
     if c.position_area.is_none() {
-        fill_anchor_pairs(c, Some(is_grid(inherited)));
+        fill_anchor_pairs(c, Some(is_grid(inherited)), vcx);
     }
     if c.position_area.is_none() || default_anchor.is_none() {
         return;
     }
     if c.align_self == Some(Align::Stretch) || c.justify_self == Some(Align::Stretch) {
-        USED_LAST.with(|u| u.set(true));
+        vcx.doc.anchor_frame.used_last.set(true);
     }
-    let Some((w, h)) = AREA_LAST.with(|m| m.borrow().get(&c.anchor_key).copied()) else {
+    let Some((w, h)) = vcx.doc.anchor_frame.last_area(c.anchor_key) else {
         return;
     };
     let pxv = px_lossy_zero;

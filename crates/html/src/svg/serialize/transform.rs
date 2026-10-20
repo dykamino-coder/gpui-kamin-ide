@@ -6,7 +6,7 @@ use crate::dom::Element;
 use crate::svg::clip::reference_box;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
+pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, bool) {
     let attr_of = |name: &str| {
         e.attrs
             .iter()
@@ -28,7 +28,7 @@ pub(crate) fn element_transform(e: &Element) -> (Option<String>, bool) {
         _ => None,
     };
     let (bx, by, bw, bh) = ref_box.unwrap_or_else(|| {
-        let (w, h) = crate::svg::VIEW_BOX.with(|v| v.get());
+        let (w, h) = viewport;
         (0.0, 0.0, w, h)
     });
     let from_box = |v: f32, o: f32| if ref_box.is_some() { o + v } else { v };
@@ -177,15 +177,10 @@ mod tests {
         e.style.transform = Some(Default::default());
         e.style.transform_origin = Some((0.25, 0.5));
         e.style.translate = Some((Len::Pct(0.5), Len::Pct(0.25)));
-        crate::svg::VIEW_BOX.with(|v| {
-            let old = v.replace((200.0, 300.0));
-            let result = element_transform(&e).0;
-            v.set(old);
-            assert_eq!(
-                result.as_deref(),
-                Some("translate(50 150) translate(100 75)  translate(-50 -150)")
-            );
-        });
+        assert_eq!(
+            element_transform(&e, (200.0, 300.0)).0.as_deref(),
+            Some("translate(50 150) translate(100 75)  translate(-50 -150)")
+        );
     }
 
     #[test]
@@ -194,7 +189,7 @@ mod tests {
             r#"<svg><rect x="25" y="40" width="50" height="60" style="transform-box:fill-box" transform-origin="10px 20px" transform="scale(2)"/></svg>"#,
         );
         assert_eq!(
-            element_transform(&e).0.as_deref(),
+            element_transform(&e, (300.0, 150.0)).0.as_deref(),
             Some("translate(35 60) scale(2) translate(-35 -60)")
         );
     }
@@ -207,7 +202,7 @@ mod tests {
         e.style.rotate_prop = Some(std::f32::consts::FRAC_PI_2);
         e.style.scale_prop = Some((2.0, 3.0));
         assert_eq!(
-            element_transform(&e).0.as_deref(),
+            element_transform(&e, (300.0, 150.0)).0.as_deref(),
             Some("translate(3 4) rotate(90) scale(2 3) translate(10 20)")
         );
     }

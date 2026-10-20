@@ -22,6 +22,7 @@ use style::{pseudo_style, scan_style};
 /// Состояние обхода: набранная сумма и последний ненулевой шаг.
 struct Scan<'a> {
     tree: &'a crate::dom::tree_index::TreeIndex,
+    vcx: crate::document::state::ValueCx<'a>,
     rules: &'a [Rule],
     vars: &'a Decls,
     name: &'a str,
@@ -82,7 +83,7 @@ impl Scan<'_> {
     }
 
     fn node(&mut self, h: &Handle, me: &Ancestor, path: &[Ancestor], sibs: Sibs, root: bool) {
-        let vcx = self.tree.doc.values();
+        let vcx = self.vcx;
         if self.done {
             return;
         }
@@ -167,9 +168,11 @@ pub(crate) fn reversed_initial(
     level: &[Handle],
     spots: &[Spot],
     pos: usize,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> i64 {
     let mut scan = Scan {
         tree,
+        vcx,
         rules,
         vars,
         name,

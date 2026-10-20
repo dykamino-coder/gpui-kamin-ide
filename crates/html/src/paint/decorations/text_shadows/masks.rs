@@ -35,7 +35,7 @@ pub(super) fn masked_layer(
     mask.text_shadow = None;
     mask.text_shadow_rest.clear();
     mask.text_shadow_raw = None;
-    let masked = mask_nodes(nodes, block, group, shadow);
+    let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
     let copy = paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
@@ -58,6 +58,7 @@ pub(super) fn mask_nodes(
     parent: &ShadowStyle,
     group: &[Shadow],
     shadow: &Shadow,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Node> {
     nodes
         .iter()
@@ -65,7 +66,7 @@ pub(super) fn mask_nodes(
             Node::Text(_) => n.clone(),
             Node::Element(e) => {
                 let mut e = e.clone();
-                if atomic(&e) {
+                if atomic(&e, vcx) {
                     e.style.hidden = Some(true);
                     return Node::Element(e);
                 }
@@ -86,7 +87,7 @@ pub(super) fn mask_nodes(
                 s.text_shadow = None;
                 s.text_shadow_rest.clear();
                 s.text_shadow_raw = None;
-                e.children = mask_nodes(&e.children, &list, group, shadow);
+                e.children = mask_nodes(&e.children, &list, group, shadow, vcx);
                 Node::Element(e)
             }
         })

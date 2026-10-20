@@ -1,6 +1,4 @@
-//! Painting isolation and deferred drawing impose different geometry boundaries.
-
-use std::cell::Cell;
+//! Immutable paint-order and geometry boundaries offered to a box subtree.
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Depth {
@@ -8,70 +6,49 @@ pub(crate) struct Depth {
     deferred: usize,
 }
 
-thread_local! {
-    static DEPTH: Cell<Depth> = const { Cell::new(Depth { paint: 0, deferred: 0 }) };
-}
+impl Depth {
+    pub(crate) fn inside(self) -> bool {
+        self.paint > 0
+    }
 
-pub(crate) fn snapshot() -> Depth {
-    DEPTH.with(Cell::get)
-}
+    pub(crate) fn deferred(self) -> bool {
+        self.deferred > 0
+    }
 
-pub(crate) fn inside() -> bool {
-    snapshot().paint > 0
-}
-
-pub(crate) fn deferred() -> bool {
-    snapshot().deferred > 0
-}
-
-pub(crate) struct Guard {
-    paint: bool,
-    deferred: bool,
-}
-
-impl Guard {
-    pub(crate) fn enter(deferred: bool, stacking: bool) -> Self {
-        // CSS2 §10.1 and CSS Containment 2 §3.2: a positioned descendant
-        // still uses its containing ancestor across intervening static boxes.
-        // A stacking context only limits paint ordering (CSS2 Appendix E);
-        // actual GPUI deferred drawing must additionally limit relocation.
-        let guard = Self {
-            paint: deferred || stacking,
-            deferred,
-        };
-        DEPTH.with(|depth| {
-            let mut value = depth.get();
-            value.paint += usize::from(guard.paint);
-            value.deferred += usize::from(guard.deferred);
-            depth.set(value);
-        });
-        guard
+    pub(crate) fn enter(self, deferred: bool, stacking: bool) -> Self {
+        // CSS2 Appendix E limits paint ordering at a stacking context;
+        // only deferred GPUI drawing also limits geometry relocation.
+        Self {
+            paint: self.paint + usize::from(deferred || stacking),
+            deferred: self.deferred + usize::from(deferred),
+        }
     }
 }
 
-impl Drop for Guard {
-    fn drop(&mut self) {
-        DEPTH.with(|depth| {
-            let mut value = depth.get();
-            value.paint = value.paint.saturating_sub(usize::from(self.paint));
-            value.deferred = value.deferred.saturating_sub(usize::from(self.deferred));
-            depth.set(value);
-        });
-    }
-}
+#[cfg(test)]
+mod tests {
+    use crate::layout::cx::LayoutCx;
 
-// Lazy subtrees must restore both boundaries, rather than treating every
-// captured paint context as deferred GPUI drawing.
-pub(crate) struct DepthScope(Depth);
+    #[test]
+    fn stacking_and_deferred_boundaries_are_independent() {
+        let outer = LayoutCx::default();
+        let mut stacking = outer.clone();
+        stacking.paint_depth = stacking.paint_depth.enter(false, true);
+        assert!(stacking.paint_depth.inside());
+        assert!(!stacking.paint_depth.deferred());
+        let mut deferred = stacking.clone();
+        deferred.paint_depth = deferred.paint_depth.enter(true, false);
+        assert!(deferred.paint_depth.inside());
+        assert!(deferred.paint_depth.deferred());
+        assert!(!outer.paint_depth.inside());
+        assert!(!stacking.paint_depth.deferred());
 
-impl DepthScope {
-    pub(crate) fn enter(depth: Depth) -> Self {
-        Self(DEPTH.with(|current| current.replace(depth)))
-    }
-}
-
-impl Drop for DepthScope {
-    fn drop(&mut self) {
-        DEPTH.with(|current| current.set(self.0));
+        let captured = deferred;
+        let lazy = move || captured.paint_depth;
+        let mut sibling = outer;
+        sibling.paint_depth = sibling.paint_depth.enter(false, false);
+        assert!(!sibling.paint_depth.inside());
+        assert!(lazy().deferred());
+        assert!(!LayoutCx::default().paint_depth.inside());
     }
 }

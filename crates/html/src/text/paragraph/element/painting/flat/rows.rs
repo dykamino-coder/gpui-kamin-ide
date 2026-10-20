@@ -1,4 +1,4 @@
-//! Rows for flat; split out to keep the owning module within 250 lines.
+//! Paragraph row geometry, selection runs, and justified line painting.
 
 use crate::text::paragraph::*;
 use gpui::{Bounds, Pixels, point, px};
@@ -31,7 +31,7 @@ impl Paragraph {
                     })
                     .collect(),
             };
-            crate::text::clamp::publish_para_rows(tag, rows);
+            self.clamp_rows.publish(tag, rows);
         }
     }
 }

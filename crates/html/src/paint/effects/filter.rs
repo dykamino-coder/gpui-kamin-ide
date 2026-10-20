@@ -15,13 +15,6 @@ pub struct FilterLayer {
     pub fill: String,
 }
 
-thread_local! {
-    /// Растры слоёв фильтра по (разметка, размер): кадр за кадром одно и то же.
-    static FILTER_RASTERS: std::cell::RefCell<
-        std::collections::HashMap<(String, u32, u32), std::sync::Arc<gpui::RenderImage>>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
 impl Hooks for FilterLayer {
     type Layout = ();
     type Prepaint = ();
@@ -108,14 +101,7 @@ impl Hooks for FilterLayer {
             def, -x0, -y0
         );
         let (pw, ph) = ((cw * sf).round(), (ch * sf).round());
-        let key = (markup.clone(), pw as u32, ph as u32);
-        let image = FILTER_RASTERS
-            .with(|m| m.borrow().get(&key).cloned())
-            .or_else(|| {
-                let img = crate::svg::raster::rasterize(&markup, pw, ph)?;
-                FILTER_RASTERS.with(|m| m.borrow_mut().insert(key.clone(), img.clone()));
-                Some(img)
-            });
+        let image = crate::svg::raster::rasterize(&markup, pw, ph);
         let Some(image) = image else { return };
         let area = Bounds {
             origin: gpui::point(bounds.origin.x + px(x0), bounds.origin.y + px(y0)),

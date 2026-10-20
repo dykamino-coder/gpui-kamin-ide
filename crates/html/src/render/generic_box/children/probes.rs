@@ -17,7 +17,7 @@ pub(crate) fn child_probes(
     is_clamp: bool,
     span: Option<crate::text::clamp::ClampSpan>,
 ) {
-    if let Some(key) = crate::paint::gap_rules::gap_context()
+    if let Some(items) = opts.cx.gap_items.clone()
         && !matches!(
             e.style.position,
             Some(crate::style::computed::Position::Absolute)
@@ -37,12 +37,12 @@ pub(crate) fn child_probes(
         };
         let b = e.style.borders();
         kids.push(crate::paint::gap_rules::gap_item_probe(
-            crate::paint::gap_rules::gap_items_for(key),
+            items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
             [bw(merged.margin.right), bw(merged.margin.bottom)],
         ));
     }
-    if let Some((key, skip)) = crate::text::clamp::clamp_context() {
+    if let Some((key, skip)) = crate::text::clamp::clamp_context(&opts.cx) {
         // Строки дают пробы абзацев (paragraph_probed); здесь — только
         // коробка с краской: блок прячется целиком, если срез внутри.
         // Поточная коробка со СВОИМ контекстом форматирования точек
@@ -99,7 +99,7 @@ pub(crate) fn child_probes(
             Some(Len::Lh(k)) => Some(k * lh),
             _ => None,
         };
-        let end_margin = if in_flow_block {
+        let end_margin = if in_flow_block || merged.float.is_some_and(|f| f != 0) {
             len_px(merged.margin.bottom).unwrap_or(0.0)
         } else {
             0.0
@@ -120,7 +120,7 @@ pub(crate) fn child_probes(
             in_flow_block && (bp_after > 0.0 || end_margin != 0.0 || min_end > 0.0 || capped);
         if !is_clamp && (has_box_style_probe(&e.style) || monolithic || sized || ends) {
             kids.push(crate::text::clamp::clamp_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
                 0.0,
                 skip,
                 // `min-height` alone does not make the box monolithic: it
@@ -170,7 +170,7 @@ pub(crate) fn child_probes(
             && matches!(merged.display, None | Some(Display::Block))
         {
             kids.push(crate::text::clamp::clamp_empty_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
             ));
         }
     }

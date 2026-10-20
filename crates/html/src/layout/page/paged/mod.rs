@@ -10,7 +10,6 @@ use crate::layout::page::names::{
     PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers,
 };
 use crate::layout::page::{page_boxes, page_counters};
-use crate::paint::effects::mask::collect_mask_defs;
 use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -54,6 +53,13 @@ pub fn render_paged_select(
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
+    let opts = &*opts.inner(|cx| {
+        cx.paint_viewport = opts.viewport;
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
+        }
+    });
     let vcx = opts.cx.vcx();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
@@ -62,8 +68,8 @@ pub fn render_paged_select(
     let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
-    crate::interactive::frame::frame_sanitize();
-    collect_mask_defs(nodes, vcx);
+    crate::interactive::frame::frame_sanitize(vcx);
+    crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();

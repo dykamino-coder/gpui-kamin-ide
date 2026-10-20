@@ -11,7 +11,6 @@ pub(crate) use wrapper::grouped_wrapper;
 
 // owner: A
 
-use crate::paint::effects::mask::{PAINT_VIEWPORT, resolve_mask_refs};
 use crate::style::computed::Computed;
 use crate::style::computed::FontCx;
 use crate::style::values::value::Len;
@@ -44,7 +43,7 @@ pub(super) fn grouped_with(
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::decorations::outline_phase::context(el, c);
+    let el = crate::paint::decorations::outline_phase::context(el, c, vcx.paint);
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:
@@ -58,7 +57,7 @@ pub(super) fn grouped_with(
         _ => 16.0,
     };
     let poly_family = c.font_family.clone().unwrap_or_default();
-    let poly_vp = PAINT_VIEWPORT.with(|v| v.get());
+    let poly_vp = vcx.viewport;
     let poly_unit = |l: Len| -> Len {
         match l {
             Len::Px(_) | Len::Pct(_) => l,
@@ -145,7 +144,7 @@ pub(super) fn grouped_with(
             _ => 16.0,
         };
         let family = c.font_family.clone().unwrap_or_default();
-        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&family, px, vcx);
         crate::style::computed::font_lengths_to_px(
             &s,
             px,
@@ -157,10 +156,13 @@ pub(super) fn grouped_with(
     let mask = c
         .mask_image
         .clone()
-        .or(clip_shape)
-        .or(bshape)
-        .or(rrect)
-        .map(|m| resolve_mask_refs(&m));
+        .map(super::grouped_element::GroupMask::Images)
+        .or_else(|| {
+            clip_shape
+                .or(bshape)
+                .or(rrect)
+                .map(super::grouped_element::GroupMask::Geometry)
+        });
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся
@@ -178,7 +180,12 @@ pub(super) fn grouped_with(
             let family = c.font_family.clone().unwrap_or_default();
             sides.map(|l| match l {
                 Some(Len::Px(v)) => Some(v),
-                Some(other) => Some(crate::text::metrics::spacing_px(Some(other), &family, base)),
+                Some(other) => Some(crate::text::metrics::spacing_px(
+                    Some(other),
+                    &family,
+                    base,
+                    vcx,
+                )),
                 None => None,
             })
         })

@@ -12,16 +12,13 @@ use crate::dom::Node;
 use crate::interactive::sticky::sticky_probe;
 use crate::layout::block::available_width;
 use crate::layout::block::struts::zero_len;
-use crate::layout::float::band_flow_host::{
-    BAND_CBH, BAND_CBW, BAND_FL, BAND_WM, BandCbhGuard, BandCbwGuard, BandFlGuard, BandWmGuard,
-};
 use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::render::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::{Len, px_strict};
+use crate::style::values::value::Len;
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
@@ -99,37 +96,21 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
     // горизонтального письма: в гибком и сетке `float` не
     // действует (css-flexbox-1 §3, css-grid-1 §6.1).
-    // Хост работает и в вертикальном письме (шаг F10): план в
-    // логических осях, перевод в физику при сборке (`band_flow::VERT`).
-    // Horizontal float sides are physical (CSS 2.1 §9.5.1); paragraphs
-    // handle RTL within those bands. Vertical RTL still needs axis conversion.
-    // `sideways-rl` — тот же план, что `vertical-rl`: line-left — верх
-    // (css-writing-modes-4 §6.3), блоки справа налево. У `sideways-lr`
-    // line-left — низ, и плана для него нет.
-    let vert_host =
-        inherited.wm().vertical() && (!inherited.wm().sideways() || inherited.wm().block_rl());
-    // Вне хоста и там, где у раскладки свой счёт строк и разрывов: под
-    // `line-clamp` (точка среза считает строки и флоаты за ней —
-    // `line-clamp-with-floats-003/004`, `webkit-line-clamp-025`; отложенный
-    // ряд `float_flow` для этого и заведён) и на печатных листах (монолитная
-    // коробка хоста не режется между страницами —
-    // `monolithic-overflow-020-print`).
+    // Хост работает и в вертикальном письме: план в логических осях,
+    // перевод в физику при сборке. Float sides are line-relative (left =
+    // line-left), independent of `direction` (css-writing-modes-4 §6.3), so
+    // RTL hosts use the same plan; paragraphs handle RTL within the bands.
+    // `sideways-lr` uses the same logical bands; physical holders and shape
+    // profiles start at the bottom line edge (css-writing-modes-4 §6.3).
+    // Page stacks still need the measured host's break opportunities before
+    // they can fragment it (CSS Break 3 section 4.1). Deferred clamp children
+    // retain the counting scope, including the float's independent BFC.
     let measured_ok = !flex_ctx
-        && inherited.line_clamp.is_none()
-        && crate::text::clamp::clamp_context().is_none()
-        && opts.paged_build().is_none()
         && !matches!(
             inherited.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         )
-        && (!inherited.wm().vertical() || vert_host)
-        && (!inherited.wm().block_rl() || vert_host)
-        && (!inherited.wm().rtl() || !inherited.wm().vertical());
-    let _fl_guard =
-        BandFlGuard(BAND_FL.with(|f| f.replace(inherited.first_line.as_deref().cloned())));
-    let _cbh_guard = BandCbhGuard(BAND_CBH.with(|h| h.replace(px_strict(inherited.height))));
-    let _cbw_guard = BandCbwGuard(BAND_CBW.with(|w| w.replace(px_strict(inherited.width))));
-    let _wm_guard = BandWmGuard(BAND_WM.with(|w| w.replace(inherited.wm())));
+        && (!inherited.wm().block_rl() || inherited.wm().vertical());
     let collapsed = replaced_used_style::inline_nodes(collapsed, opts.cx.avail_w);
     let collapsed = by_layer(
         wrap_floats(
@@ -144,6 +125,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
             own_context_style(inherited) || inherited.flex_item,
             cell_bfc,
             opts.cx.cb_width,
+            opts.cx.avail_h,
             vcx,
         ),
         flex_ctx,

@@ -64,6 +64,21 @@ pub(crate) fn inline_node(
         {
             false
         }
+        // Only a free axis needs the paragraph's hypothetical static position.
+        // Fully pinned boxes retain their external containing block above.
+        Node::Element(e)
+            if inherited.band_kid
+                && !ordered_context
+                && matches!(
+                    e.style.position,
+                    Some(
+                        crate::style::computed::Position::Absolute
+                            | crate::style::computed::Position::Fixed
+                    )
+                ) =>
+        {
+            true
+        }
         // Абсолют строчного уровня (до блокификации — `inline-block` и
         // родня) с РОВНО ОДНОЙ заданной осью: свободная ось берётся от
         // гипотетической коробки при `position: static` (CSS 2.1 §10.3.7,
@@ -169,5 +184,47 @@ pub(crate) fn inline_node(
                     && e.style.float.is_none_or(|f| f == 0)
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Element;
+    use crate::style::computed::Position;
+
+    #[test]
+    fn band_paragraph_admits_static_position_probes_but_not_floats_or_pinned_boxes() {
+        let inherited = Computed {
+            band_kid: true,
+            ..Default::default()
+        };
+        let mut e = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
+        e.style.position = Some(Position::Absolute);
+        assert!(inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        e.style.inset.top = Some(Len::Px(0.));
+        assert!(inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        e.style.inset.left = Some(Len::Px(0.));
+        assert!(!inline_node(
+            &Node::Element(e.clone()),
+            &inherited,
+            false,
+            &[]
+        ));
+        *e.style = Computed {
+            float: Some(-1),
+            ..Default::default()
+        };
+        assert!(!inline_node(&Node::Element(e), &inherited, false, &[]));
     }
 }

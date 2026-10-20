@@ -4,14 +4,18 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod background;
+mod bg_layer;
 mod bg_lists;
+mod blend;
 mod boxes;
 mod decor;
+mod gradient_geometry;
 mod image;
 mod layout;
 mod text;
 pub use background::{BgClip, BgPos, BgRepeat, BgSize, Tiling, parse_pos_words};
 pub use bg_lists::{BgListProp, BgLists};
+pub use blend::BlendMode;
 pub use boxes::{
     BorderShape, Logical, Outline, Overflow, Position, PositionAnchor, SideSeq, TextEdge,
 };
@@ -22,6 +26,7 @@ pub use decor::{
 pub(super) use decor::{
     parse_decor_inset, parse_decor_length, parse_decor_style, parse_decor_thickness,
 };
+pub(crate) use gradient_geometry::{GradientShape, RadialExtent, RadialSize};
 pub use image::{BorderImage, BorderImageSlice, BorderImageWidth, GradSpace, Gradient, Shadow};
 pub use layout::{Align, AutoFlow, Display, FlexDir, GapInset, GapList, Justify, Placement};
 pub use text::{
@@ -117,5 +122,5 @@ pub enum ContentItem {
     /// `url(…)` — картинка-атом в `::before`/`::after` (css-content-3 §2).
     /// Строится настоящим `<img>`-ребёнком псевдоэлемента: природный размер
     /// меряет обычный путь картинок. В маркере и тексте не печатается.
-    Image(String),
+    Image(super::ImageSource),
 }

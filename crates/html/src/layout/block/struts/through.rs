@@ -28,17 +28,27 @@ pub(crate) fn solve(s: Strut) -> f32 {
 /// НЕ СОДЕРЖИТ СТРОЧНОЙ КОРОБКИ, и поля всех её детей в потоке тоже
 /// схлопываются. Возвращаются слитые поля — свои плюс поля всех
 /// насквозь-потомков: это и есть транзитивность примыкания.
-pub(crate) fn through_strut(e: &Element) -> Option<Strut> {
-    through_strut_inner(e, false)
+pub(crate) fn through_strut(
+    e: &Element,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Strut> {
+    through_strut_inner(e, false, vcx)
 }
 
 /// То же, но без вето по `clear`: нужно, чтобы отличить «не схлопывается
 /// вовсе» от «схлопнулась бы, если бы не клиренс».
-pub(crate) fn through_strut_no_clear(e: &Element) -> Option<Strut> {
-    through_strut_inner(e, true)
+pub(crate) fn through_strut_no_clear(
+    e: &Element,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Strut> {
+    through_strut_inner(e, true, vcx)
 }
 
-pub(super) fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Strut> {
+pub(super) fn through_strut_inner(
+    e: &Element,
+    ignore_clear: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Strut> {
     // Строчная пометка у блочной коробки (псевдоэлемент) — не строчный.
     if (e.inline && !inline_marked_block(e)) || !in_flow(&e.style) || own_context(e) {
         return None;
@@ -90,8 +100,8 @@ pub(super) fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Str
         return None;
     }
     let mut s = adjoin(
-        strut_of(margin_or_bail(e.style.margin.top, &e.style)?),
-        strut_of(margin_or_bail(e.style.margin.bottom, &e.style)?),
+        strut_of(margin_or_bail(e.style.margin.top, &e.style, vcx)?),
+        strut_of(margin_or_bail(e.style.margin.bottom, &e.style, vcx)?),
     );
     // «all of its in-flow children's margins collapse» — рекурсия по блочным
     // детям в потоке. Строчных здесь уже нет (проверка выше), вне потока —
@@ -112,7 +122,7 @@ pub(super) fn through_strut_inner(e: &Element, ignore_clear: bool) -> Option<Str
         {
             continue;
         }
-        let t = through_strut(ch)?;
+        let t = through_strut(ch, vcx)?;
         // Поля детей контейнера с `margin-trim` обрезаны (css-box-4
         // §margin-trim-block: «and any margins collapsed with it»): насквозь
         // схлопнутый ребёнок примыкает ОБОИМИ краями, значит его поля

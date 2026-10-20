@@ -46,7 +46,47 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
-## Текущая пачка `RV-2026-09-29` — остаток прежнего snapshot, приёмка открыта
+## Текущая пачка `RC-2026-10-20-COMPACT` — полный цикл двух source fixes
+
+**Status:** complete — both bounded source fixes accepted, one publication verified; field observation is not run and belongs to the deployment owner. **Snapshot:** public `origin/main` `9c965ea8c7403c8a1d526ef53884c0812c8f1fd6`.
+**Поручение 2026-10-20:** владелец поручил самому завершить fixes со скриншотов,
+прояснить future completion/acceptance flow, выпустить один release и отдельно
+проверить поведение после выкладки. Роль текущего агента — мейнтейнер; разрешены
+commit/push/review/merge и один coordinated release. Доступа к deployment нет.
+
+**Completion target:** оба ограниченных source-контракта приняты и находятся в
+`main`; одна публикация проверена; карточки/обзор согласованы; field observation
+имеет конкретный checklist, владельца и критерий переоткрытия. Публикация не
+означает, что неизвестная причина исходного field события установлена.
+
+| ID / PR snapshot | State / artifact | Gate и следующий результат |
+| --- | --- | --- |
+| INC-0067 / #377 | done / none | Source acceptance: candidate `a6bf138d`, merge `8f8d3bfa`; required CI, 175 host + 288 webview tests/builds. Deployment observation отдельно ниже |
+| INC-0068 / #378 | done / none | Source acceptance: candidate `fbf7b270`, merge `84259a44`; required CI/dry run, 362 server tests + 5 skips, combined probe; same-inode regrowth limit сохраняется |
+| Completion/acceptance documentation / #381 | done / none | Merge `3b7f27cf`: цель/полномочия/класс приёмки; исходные unperformed gates сохранены, CI не ослаблен |
+| Один release / #383 | done / none | `kaminide-v1.0.77` / server 6.3.154; source `32d0badf`; exact candidate принят, main quality и publication прошли, installer/provenance/image/latest проверены |
+| Field UX observation | ready / observation | Deployment owner после обычной выкладки обоих компонентов по [checklist](../../docs/COMPACT_RELEASE_OBSERVATION.md); `not run`, не новая очередь реализации |
+
+Выполнен порядок: decision/coordination #381 → #377 → повторный fetch → #378 →
+source close-out #382 → один release #383. Входящие чужие PR не включаются
+автоматически. #380 (INC-0069,
+retired subagent watcher) принят другим мейнтейнером в `9c965ea8` до этой
+coordination: это уже исходный accepted source, а не новая задача этой пачки.
+Пересечение с #378 по server watcher интегрировано без `ours`/`theirs`;
+применимые tests повторены, фактическая доставка отмечена в release notes.
+#302 и HTML/WPT не входят в поручение. Старый RV snapshot ниже
+сохраняет исходные состав, ограничения и незакрытые Windows gates.
+
+Доставка проверена: [quality run](https://github.com/dykamino-coder/gpui-kamin-ide/actions/runs/39338087219),
+[publication run](https://github.com/dykamino-coder/gpui-kamin-ide/actions/runs/39341597788),
+[immutable release](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.77).
+Source: `32d0badf496d5507809387fc2c0b66200fcfb5f0`; Docker 6.3.154/latest:
+`sha256:31f1d2cb2fc61e15464bebc5df33baeb51f5bb4e2e311aa9a20cf3a77cfcc69e`. #380 доставлен как ранее
+принятый source. При обновлении release branch сохранена параллельная регистрация
+#384 / INC-0070/0071: это открытые исследования, не fixes этой пачки.
+INC-0037, native BR-25/31 и исторические непройденные gates не закрыты.
+
+## История `RV-2026-09-29` — остаток прежнего snapshot, приёмка открыта
 
 На 2026-10-12 это последний **зафиксированный здесь** execution snapshot,
 а не состав всей текущей очереди и не утверждение, что более поздних PR не было.

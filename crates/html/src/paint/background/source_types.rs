@@ -19,7 +19,7 @@ pub enum Source {
     /// Filter after resolving the input image at its concrete object size.
     Filtered {
         image: Box<Source>,
-        list: String,
+        list: crate::style::computed::ImageFilter,
     },
     Vector {
         markup: String,
@@ -28,7 +28,7 @@ pub enum Source {
     /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
     /// берутся от области, а растрируется он точно в размер плитки.
     Gradient {
-        raw: String,
+        image: Arc<crate::style::computed::ImageSource>,
     },
     /// Базовая форма `clip-path` (`circle`/`ellipse`): альфа-маска буфера
     /// группы. Радиусы и центр считаются от размера плитки (= коробки).
@@ -44,26 +44,16 @@ impl Source {
         scale: f32,
         vcx: ValueCx<'_>,
     ) -> Option<Arc<RenderImage>> {
-        if let Source::Gradient { raw } = self
-            && conic::is_conic(raw)
-        {
-            // CSS Masking §7.8 uses the same concrete gradient as a background.
-            // Sample the angular discontinuity on the device grid, before a
-            // mask is composited; resizing a CSS-sized mask blurs hard rays.
-            return conic::rasterize(raw, tile, scale, vcx);
-        }
-        if let Source::Gradient { raw } = self
-            && !raw.starts_with("cross-fade(")
-            // Color images have their own straight-alpha raster path.
-            && crate::style::computed::parse_image_color(raw, vcx).is_none()
-        {
-            // CSS Masking section 7.8 uses CSS image sizing, but coverage is sampled
-            // at device pixel centres. Avoid resizing a CSS-resolution alpha
-            // bitmap across sharp stops at fractional window scales.
-            let css = (tile.0.clamp(1.0, 2048.0), tile.1.clamp(1.0, 2048.0));
-            let w = (css.0 * scale).round().clamp(1.0, 4096.0) as u32;
-            let h = (css.1 * scale).round().clamp(1.0, 4096.0) as u32;
-            return gradient_raster::raster(raw, w, h, css, true, vcx);
+        if let Source::Gradient { image } = self {
+            if let crate::style::computed::ImageSource::Conic(g) = image.as_ref() {
+                return conic::rasterize(g, tile, scale, vcx);
+            }
+            if image.gradient().is_some() {
+                let css = (tile.0.clamp(1.0, 2048.0), tile.1.clamp(1.0, 2048.0));
+                let w = (css.0 * scale).round().clamp(1.0, 4096.0) as u32;
+                let h = (css.1 * scale).round().clamp(1.0, 4096.0) as u32;
+                return gradient_raster::raster(image, w, h, css, true, vcx);
+            }
         }
         self.raster(tile, vcx)
     }
@@ -143,13 +133,13 @@ impl Source {
                 // density, never the viewport or preserveAspectRatio mapping.
                 crate::svg::raster::rasterize(&with_viewport(markup, tile), raster.0, raster.1)
             }
-            Source::Gradient { raw } => {
+            Source::Gradient { image } => {
                 const LIMIT: f32 = 2048.0;
                 let (w, h) = (
                     tile.0.clamp(1.0, LIMIT).round() as u32,
                     tile.1.clamp(1.0, LIMIT).round() as u32,
                 );
-                rasterize_gradient(raw, w, h, vcx)
+                rasterize_gradient(image, w, h, vcx)
             }
             Source::Shape { raw } => {
                 const LIMIT: f32 = 2048.0;

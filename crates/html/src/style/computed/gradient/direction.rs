@@ -7,27 +7,26 @@ use crate::document::state::ValueCx;
 /// between the two adjacent corners, rather than a fixed 45-degree bearing.
 /// Blink CSSLinearGradientValue::CreateGradient derives rise/run from the
 /// concrete image size before constructing its endpoints.
-pub(crate) fn corner_angle(raw: &str, (width, height): (f32, f32)) -> Option<f32> {
+#[cfg(test)]
+fn corner_angle(raw: &str, (width, height): (f32, f32)) -> Option<f32> {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    GradientShape::parse(raw, doc.values())?.corner_angle((width, height))
+}
+
+pub(in crate::style::computed) fn corner_direction(raw: &str) -> Option<(f32, f32)> {
     let inner = raw
         .strip_prefix("repeating-")
         .unwrap_or(raw)
         .strip_prefix("linear-gradient(")?
         .strip_suffix(')')?;
     let head = crate::style::css::split_args(inner).first()?.trim();
-    let direction = head.split(" in ").next()?.trim();
-    let (x, y) = match direction {
+    Some(match head.split(" in ").next()?.trim() {
         "to top right" | "to right top" => (1.0, -1.0),
         "to bottom right" | "to right bottom" => (1.0, 1.0),
         "to bottom left" | "to left bottom" => (-1.0, 1.0),
         "to top left" | "to left top" => (-1.0, -1.0),
         _ => return None,
-    };
-    Some(
-        (x * height)
-            .atan2(-y * width)
-            .to_degrees()
-            .rem_euclid(360.0),
-    )
+    })
 }
 
 pub(super) fn gradient_direction(
@@ -88,7 +87,12 @@ pub(super) fn gradient_direction(
         // цветом оно не разбирается, поэтому просто пропускается.
         first
             if radial
-                && Color::parse(first.split_whitespace().next().unwrap_or(""), vcx).is_none() =>
+                && split_outside_parens(first)
+                    .first()
+                    .and_then(|color| {
+                        crate::style::values::color_space::ColorExpression::parse(color, vcx)
+                    })
+                    .is_none() =>
         {
             idx = 1;
             180.0

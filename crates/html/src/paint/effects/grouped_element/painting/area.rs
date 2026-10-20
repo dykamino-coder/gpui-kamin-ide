@@ -17,34 +17,38 @@ pub(crate) fn group_area(
     // края, и содержимое в её пределах обязано остаться видимым
     // (clip-path-circle-closest-corner). Область композита расширяется
     // до объединения коробки с рамкой формы.
-    let shape_ext = group.mask.as_deref().and_then(|src| {
-        // `border-shape`: вынос области записан в спеке маски
-        // (`render::grouped` ← `Computed::border_shape_ext`): половина
-        // обводки наружу, margin-box, запас под митры. Порядок в записи
-        // t r b l, здесь — l t r b.
-        if let Some(spec) = src.strip_prefix("bordershape:") {
-            let head = spec.split_once(':')?.0;
-            let v: Vec<f32> = head
-                .split_whitespace()
-                .filter_map(|t| t.parse::<f32>().ok())
-                .collect();
-            if v.len() != 9 {
+    let shape_ext = group
+        .mask
+        .as_ref()
+        .and_then(|m| m.geometry())
+        .and_then(|src| {
+            // `border-shape`: вынос области записан в спеке маски
+            // (`render::grouped` ← `Computed::border_shape_ext`): половина
+            // обводки наружу, margin-box, запас под митры. Порядок в записи
+            // t r b l, здесь — l t r b.
+            if let Some(spec) = src.strip_prefix("bordershape:") {
+                let head = spec.split_once(':')?.0;
+                let v: Vec<f32> = head
+                    .split_whitespace()
+                    .filter_map(|t| t.parse::<f32>().ok())
+                    .collect();
+                if v.len() != 9 {
+                    return None;
+                }
+                return Some((v[8], v[5], v[6], v[7]));
+            }
+            let raw = src.strip_prefix("shape:")?;
+            if raw.starts_with("rrect(") {
                 return None;
             }
-            return Some((v[8], v[5], v[6], v[7]));
-        }
-        let raw = src.strip_prefix("shape:")?;
-        if raw.starts_with("rrect(") {
-            return None;
-        }
-        let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-        let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, bw, bh, 1.0, vcx)?;
-        let l = (rx - cx).max(0.0);
-        let t = (ry - cy).max(0.0);
-        let r = (cx + rx - bw).max(0.0);
-        let b = (cy + ry - bh).max(0.0);
-        (l + t + r + b > 0.0).then_some((l, t, r, b))
-    });
+            let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, bw, bh, 1.0, vcx)?;
+            let l = (rx - cx).max(0.0);
+            let t = (ry - cy).max(0.0);
+            let r = (cx + rx - bw).max(0.0);
+            let b = (cy + ry - bh).max(0.0);
+            (l + t + r + b > 0.0).then_some((l, t, r, b))
+        });
     let (sl, st, sr, sb) = shape_ext.unwrap_or((0.0, 0.0, 0.0, 0.0));
     let [t, r, b, l] = group.corner_clip.as_ref().map_or([0.0; 4], |c| c.insets);
     let guard = if group.corner_clip.is_some() {

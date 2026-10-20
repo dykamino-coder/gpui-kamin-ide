@@ -1,6 +1,6 @@
 //! Resolve anchor placement from logical geometry before device pixel snapping.
 
-use super::{AnchorPlace, CHOSEN, Placement};
+use super::{AnchorPlace, Placement};
 use crate::document::state::ValueCx;
 use gpui::{Bounds, LayoutId, Pixels, Window, px};
 
@@ -43,7 +43,7 @@ impl AnchorPlace {
         if places.len() == 1 {
             return (0, places[0]);
         }
-        if let Some(k) = CHOSEN.with(|m| m.borrow().get(&self.key).copied())
+        if let Some(k) = vcx.doc.anchor_frame.chosen.borrow().get(&self.key).copied()
             && k < places.len()
             && !places[k].overflow
         {

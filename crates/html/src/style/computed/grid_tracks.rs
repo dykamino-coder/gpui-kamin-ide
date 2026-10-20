@@ -40,25 +40,40 @@ pub enum Track {
 impl Track {
     /// Перевести отложенную длину в точки: единицы шрифта известны только
     /// после разрешения кегля узла.
-    pub(crate) fn resolve_font_one(&mut self, family: &str, size_px: f32) {
+    pub(crate) fn resolve_font_one(
+        &mut self,
+        family: &str,
+        size_px: f32,
+        vcx: crate::document::state::ValueCx<'_>,
+    ) {
         if let Track::Font(l) = *self {
-            *self = Track::Px(crate::text::metrics::spacing_px(Some(l), family, size_px));
+            *self = Track::Px(crate::text::metrics::spacing_px(
+                Some(l),
+                family,
+                size_px,
+                vcx,
+            ));
         }
     }
 }
 
 impl TrackSize {
     /// То же для обеих граней записи.
-    pub(crate) fn resolve_font(&mut self, family: &str, size_px: f32) {
+    pub(crate) fn resolve_font(
+        &mut self,
+        family: &str,
+        size_px: f32,
+        vcx: crate::document::state::ValueCx<'_>,
+    ) {
         match self {
-            TrackSize::Single(t) => t.resolve_font_one(family, size_px),
+            TrackSize::Single(t) => t.resolve_font_one(family, size_px, vcx),
             TrackSize::MinMax(a, b) => {
-                a.resolve_font_one(family, size_px);
-                b.resolve_font_one(family, size_px);
+                a.resolve_font_one(family, size_px, vcx);
+                b.resolve_font_one(family, size_px, vcx);
             }
             TrackSize::AutoRepeat { tracks, .. } => {
                 for t in tracks.iter_mut() {
-                    t.resolve_font(family, size_px);
+                    t.resolve_font(family, size_px, vcx);
                 }
             }
         }

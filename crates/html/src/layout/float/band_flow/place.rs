@@ -1,9 +1,8 @@
 //! Расстановка детей потока по полосам занятости: обход последовательности (place_seq).
 
 use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe};
+use super::{COORD_EPS, Probe, Slot, intrinsic, piece, place_float, place_flow, place_nest, probe};
 use crate::layout::float::bands::FloatBands;
-use gpui::{App, Window};
 use std::ops::ControlFlow;
 
 /// Последовательная раскладка детей одного содержащего блока со стенками
@@ -24,8 +23,7 @@ pub(super) fn place_seq(
     // блока.
     root: (f32, f32),
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
 ) -> (Vec<Slot>, f32) {
     let cbw = (x1 - x0).max(0.0);
     let mut slots = vec![Slot::default(); kids.len()];
@@ -40,10 +38,11 @@ pub(super) fn place_seq(
                 clear,
                 shrink,
                 letter,
+                ..
             } => {
                 place_float(
-                    x0, x1, bands, window, cx, cbw, &mut slots, y, k, kid, mt, mr, mb, ml, side,
-                    clear, shrink, letter,
+                    x0, x1, bands, p, cbw, &mut slots, y, k, kid, mt, mr, mb, ml, side, clear,
+                    shrink, letter,
                 );
             }
             Kind::Strut(h) => {
@@ -52,11 +51,7 @@ pub(super) fn place_seq(
             Kind::Piece { table, rtl } => {
                 // Пол ширины таблицы: каркас пробы жмёт её до окна, а
                 // переполнение содержимым ширины коробки не растит.
-                let floor = if table {
-                    intrinsic(kid, window, cx).0
-                } else {
-                    0.0
-                };
+                let floor = if table { intrinsic(kid, p).0 } else { 0.0 };
                 // Окно `[l, r)` → (левый край коробки, доступная ширина) по
                 // Blink `block_layout_algorithm.cc:2136-2178`: окно, не
                 // суженное флоатами, урезается полями; суженное — нет, поля
@@ -78,11 +73,11 @@ pub(super) fn place_seq(
                 // (`:2209`: блочный размер фрагмента не больше возможности);
                 // ниже по высоте окно у́же — проба в нём ещё раз (Servo
                 // `try_to_expand_for_auto_block_size`, `flow/float.rs:260`).
-                let try_at = |top: f32, window: &mut Window, cx: &mut App| -> Option<(f32, f32)> {
+                let try_at = |top: f32, p: &mut Probe| -> Option<(f32, f32)> {
                     let (l, r) = bands.available(top, 0.0);
                     let edge = piece::Edges::new(l, r, root, (x0, x1), (ml, mr));
                     let avail = edge.available();
-                    let (bw, bh) = probe(kid, cbw, avail, None, window, cx);
+                    let (bw, bh) = probe(kid, cbw, avail, None, p);
                     let bw = bw.max(floor);
                     let x = edge.origin(bw, rtl);
                     let (l2, r2) = bands.available(top, bh);
@@ -91,7 +86,7 @@ pub(super) fn place_seq(
                     }
                     let edge2 = piece::Edges::new(l2, r2, root, (x0, x1), (ml, mr));
                     let avail2 = edge2.available();
-                    let (bw2, bh2) = probe(kid, cbw, avail2, None, window, cx);
+                    let (bw2, bh2) = probe(kid, cbw, avail2, None, p);
                     let bw2 = bw2.max(floor);
                     let x2 = edge2.origin(bw2, rtl);
                     let (l3, r3) = bands.available(top, bh2);
@@ -110,7 +105,7 @@ pub(super) fn place_seq(
                 // «will need to separate its margin from the float, so that it
                 // doesn't affect the float»). Влезает — поле действует как есть.
                 let adjoining = adjoining0 && (y - y0).abs() < COORD_EPS && mt > 0.0;
-                let mt_eff = if adjoining && try_at(y, window, cx).is_none() {
+                let mt_eff = if adjoining && try_at(y, p).is_none() {
                     0.0
                 } else {
                     mt
@@ -123,7 +118,7 @@ pub(super) fn place_seq(
                 // `space_utils.cc:22-30`).
                 let mut top = bands.clearance(kid.clear, y + mt_eff);
                 let (x, t, avail) = loop {
-                    if let Some((x, avail)) = try_at(top, window, cx) {
+                    if let Some((x, avail)) = try_at(top, p) {
                         break (x, top, avail);
                     }
                     match bands.next_edge(top) {
@@ -132,26 +127,28 @@ pub(super) fn place_seq(
                         None => break (x0 + ml, top, (cbw - ml - mr).max(0.0)),
                     }
                 };
-                let (_, bh) = probe(kid, cbw, avail, None, window, cx);
+                let (bw, bh) = probe(kid, cbw, avail, None, p);
                 slots[k] = Slot {
                     x,
                     y: t,
+                    geometry: p.last_geometry.clone(),
                     avail,
                     b: bh,
+                    i: bw,
                     ..Slot::default()
                 };
                 y = t + bh + mb;
             }
             Kind::Flow => {
                 place_flow(
-                    x0, x1, y0, adjoining0, bands, window, cx, cbw, &mut slots, &mut y, k, kid, mt,
-                    mr, mb, ml,
+                    x0, x1, y0, adjoining0, bands, p, cbw, &mut slots, &mut y, k, kid, mt, mr, mb,
+                    ml,
                 );
             }
             Kind::Nest => {
                 if let ControlFlow::Break(_) = place_nest(
-                    x0, x1, y0, adjoining0, root, bands, window, cx, cbw, &mut slots, &mut y, k,
-                    kid, mt, mr, mb, ml,
+                    x0, x1, y0, adjoining0, root, bands, p, cbw, &mut slots, &mut y, k, kid, mt,
+                    mr, mb, ml,
                 ) {
                     continue;
                 }

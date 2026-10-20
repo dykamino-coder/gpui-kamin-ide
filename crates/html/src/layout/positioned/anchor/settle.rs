@@ -1,6 +1,5 @@
 //! Статическое сведение `anchor()` до сборки дерева и якорь по умолчанию.
 
-use super::{CHOSEN, REFRAMES};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
@@ -66,8 +65,8 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     }
     // Новый документ: выбор `position-try` прошлого документа с теми же
     // `node_id` не должен пережить сборку.
-    CHOSEN.with(|m| m.borrow_mut().clear());
-    REFRAMES.with(|r| r.set(0));
+    vcx.doc.anchor_frame.chosen.borrow_mut().clear();
+    vcx.doc.anchor_frame.reframes.set(0);
     let mut known = HashSet::new();
     names(nodes, &mut known);
     settle(nodes, &known, &None, vcx);

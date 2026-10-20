@@ -4,7 +4,7 @@ mod layout;
 mod painting;
 mod prepaint;
 
-use super::{ClampEntry, ClampLines, clamp_cut, clamp_para, take_para_rows};
+use super::{ClampEntry, ClampLines, clamp_cut, clamp_para};
 use crate::hooks::Hooks;
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
@@ -13,6 +13,8 @@ use gpui::{App, Bounds, LayoutId, Pixels, Window};
 /// поднимает срез к верху пересечённого блока и просит новый кадр, когда
 /// точка изменилась.
 pub struct ClampCut {
+    pub(crate) values: crate::document::state::ValueDoc,
+    pub(crate) rows: std::rc::Rc<super::ParagraphRows>,
     pub(crate) key: u64,
     pub(crate) lines: ClampLines,
     /// Число считаемых строк; None — `line-clamp: auto` (срез только по
@@ -57,8 +59,16 @@ impl Hooks for ClampCut {
 }
 
 impl ClampCut {
-    pub fn new(key: u64, lines: ClampLines, limit: Option<u32>, max_h: Option<f32>) -> Self {
+    pub fn new(
+        key: u64,
+        lines: ClampLines,
+        limit: Option<u32>,
+        max_h: Option<f32>,
+        cx: &crate::layout::cx::LayoutCx,
+    ) -> Self {
         ClampCut {
+            values: cx.vcx().keep(),
+            rows: Default::default(),
             key,
             lines,
             limit,
@@ -69,6 +79,12 @@ impl ClampCut {
 }
 
 impl ClampCut {
+    /// Share the row owner of the paragraphs in this document.
+    pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
+        self.rows = cx.doc().paragraph_rows.clone();
+        self
+    }
+
     /// Срез конца последней видимой строки (`text-box-trim`).
     pub fn trim_end(mut self, v: f32) -> Self {
         self.trim_end = v.max(0.0);

@@ -1,13 +1,20 @@
 //! CSS Overflow 3 §2.2: line boxes belong to scrollable overflow, unlike glyph ink.
 use super::*;
 use gpui::{Bounds, LayoutId, Pixels, Window, point, px, size};
+pub(super) struct ScrollOwner {
+    id: u64,
+    sticky: Option<crate::interactive::scroll_extent::StickyShift>,
+    frame: crate::interactive::scroll_extent::Frame,
+}
+
 impl Paragraph {
     pub(crate) fn scroll_owner(
         mut self,
         id: u64,
         sticky: Option<crate::interactive::scroll_extent::StickyShift>,
+        frame: Option<crate::interactive::scroll_extent::Frame>,
     ) -> Self {
-        self.scroll_owner = Some((id, sticky));
+        self.scroll_owner = frame.map(|frame| ScrollOwner { id, sticky, frame });
         self
     }
     pub(super) fn publish_scroll_overflow(
@@ -16,12 +23,10 @@ impl Paragraph {
         id: LayoutId,
         window: &mut Window,
     ) {
-        let Some((owner, sticky)) = &self.scroll_owner else {
+        let Some(owner) = &self.scroll_owner else {
             return;
         };
-        if !crate::interactive::scroll_extent::text_active()
-            || crate::text::vertical::in_rotated_frame()
-        {
+        if self.paint_context.is_rotated() {
             return;
         }
         let exact = Bounds {
@@ -70,7 +75,12 @@ impl Paragraph {
                     size(thickness, line.width),
                 )
             };
-            crate::interactive::scroll_extent::record_text(*owner, rect, sticky.as_ref());
+            crate::interactive::scroll_extent::record_text(
+                &owner.frame,
+                owner.id,
+                rect,
+                owner.sticky.as_ref(),
+            );
             block += thickness;
         }
     }

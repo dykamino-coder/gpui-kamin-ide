@@ -14,6 +14,7 @@ pub fn spot_probe(
     spot: SpotCell,
     full: bool,
     line: Option<super::super::LineBoxSlot>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let mut probe = gpui::div().h_0().flex_shrink_0();
     if full && spot.get().vertical {
@@ -38,7 +39,14 @@ pub fn spot_probe(
     // §10.8.1; an inline-block holding only an abspos aligns by its bottom
     // margin edge — `align-self-static-position-001-ref`).
     probe.style().no_inline_block_baseline = Some(true);
-    spot_geometry::probe(spot, full, line, probe.into_any_element())
+    spot_geometry::probe(
+        spot,
+        full,
+        line,
+        probe.into_any_element(),
+        cx.vertical_paint.clone(),
+        cx.paint.clone(),
+    )
 }
 
 /// Заместитель в конце списка: рисуется последним, но встаёт туда, где стояла

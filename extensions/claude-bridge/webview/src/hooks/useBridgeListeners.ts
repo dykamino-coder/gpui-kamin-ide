@@ -400,7 +400,9 @@ export function useBridgeListeners(
 
     const unsubJsonlStatus = bridge.onJsonlStatus((tabId: string, status: any) => {
       if (disposed) return
-      if (status.status === 'watching' && !status.replayComplete) {
+      // The host normalizes legacy replay starts to false. An absent flag is
+      // metadata (live compact index/progress), not another replay generation.
+      if (status.status === 'watching' && status.replayComplete === false) {
         cancelReplayCompletion(tabId)
         replayEpochs.set(tabId, ++nextReplayEpoch)
         tabJsonlLive.value = new Set([...tabJsonlLive.value].filter(id => id !== tabId))

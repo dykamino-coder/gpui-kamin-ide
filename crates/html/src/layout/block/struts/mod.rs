@@ -2,7 +2,6 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::block::margins::COLLAPSE_CB_WIDTH_PX;
 use crate::render::{holds_line_box, in_flow, inline_level_box, own_context, replaced_inline};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -116,14 +115,17 @@ pub(crate) fn zero_len(l: Option<Len>) -> bool {
 /// Открыт ли ВЕРХНИЙ край коробки для примыкания к полю первого ребёнка: нет
 /// ни рамки, ни поля сверху, и коробка не заводит своего контекста (§8.3.1).
 pub(crate) fn top_edge_open(e: &Element) -> bool {
+    top_edge_open_at(e, None)
+}
+
+/// Margin traversal supplies the current containing block explicitly.
+pub(crate) fn top_edge_open_at(e: &Element, width: Option<f32>) -> bool {
     // Доля отступа при содержащем блоке НУЛЕВОЙ ширины вычисляется в ноль
     // (§8.4: проценты — от ширины содержащего блока), и край открыт
     // (§8.3.1 «no top padding»): `margin-collapse-028` — `padding: 50%` внутри
     // `width: 0`, поле внука уходило внутрь, и зелёная полоса ехала на 40 ниже.
-    // Вызывается только внутри схлопывания: ширина — уровня или (в цепочке)
-    // содержимого родителя `e`, см. `with_inner_cb`.
-    let pct_zero = matches!(e.style.padding.top, Some(Len::Pct(_)))
-        && COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get) == Some(0.0);
+    // Ширина — уровня или (в цепочке) содержимого родителя `e`.
+    let pct_zero = matches!(e.style.padding.top, Some(Len::Pct(_))) && width == Some(0.0);
     !own_context(e)
         && (zero_len(e.style.padding.top) || pct_zero)
         && zero_len(e.style.borders().top)
@@ -157,9 +159,13 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
 /// `calc`). Ноль подставлять НЕЛЬЗЯ: ветка насквозь значение ЗАПИСЫВАЕТ
 /// обратно, и написанное пропадёт навсегда (`margin-bottom-103`: `50%`
 /// превращалось в `0`).
-pub(super) fn margin_or_bail(l: Option<Len>, style: &Computed) -> Option<f32> {
+pub(super) fn margin_or_bail(
+    l: Option<Len>,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
     match l {
         None => Some(0.0),
-        Some(_) => margin_px(l, style),
+        Some(_) => margin_px(l, style, vcx),
     }
 }

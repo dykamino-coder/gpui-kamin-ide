@@ -62,9 +62,15 @@ pub fn max_font_size(pieces: &[Piece], strut: f32, em_base: f32) -> f32 {
 /// который умеет строку растить и не умеет сжимать. У `font: 100px/1` строка
 /// выходила 132 вместо 100, а глиф садился по полулидингу на 16 точек ниже
 /// (§10.8: лидинг тут ноль — содержимое равно `line-height`).
-pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32) -> f32 {
+pub fn max_line_height(
+    pieces: &[Piece],
+    strut: f32,
+    em_base: f32,
+    fraction: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> f32 {
     pieces.iter().fold(
-        crate::text::metrics::normal_px(fraction, strut),
+        crate::text::metrics::normal_px(fraction, strut, vcx),
         |acc, p| match p {
             Piece::Text { style, .. } => {
                 let size = match style.font_size {
@@ -75,7 +81,7 @@ pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32
                 let own = match style.line_height {
                     Some(Len::Px(v)) => v,
                     Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                    _ => crate::text::metrics::normal_px(fraction, size),
+                    _ => crate::text::metrics::normal_px(fraction, size, vcx),
                 };
                 acc.max(own)
             }
@@ -90,7 +96,11 @@ pub fn max_line_height(pieces: &[Piece], strut: f32, em_base: f32, fraction: f32
 ///
 /// Отдаются отдельно, потому что выделение строит свой элемент из тех же
 /// прогонов, добавляя подложку на выделенный кусок.
-pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<TextRun>)> {
+pub fn text_and_runs(
+    pieces: &[Piece],
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(String, Vec<TextRun>)> {
     let mut text = String::new();
     let mut runs: Vec<TextRun> = vec![];
     for p in pieces {
@@ -100,7 +110,7 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
                     continue;
                 }
                 text.push_str(t);
-                runs.push(run_for(t, style, base));
+                runs.push(run_for(t, style, base, vcx));
             }
             // Кусок вне потока в текст не входит: его место помечает нулевой
             // пробел, а сам он рисуется поверх (см. `overlays`).
@@ -108,24 +118,35 @@ pub fn text_and_runs(pieces: &[Piece], base: &TextStyle) -> Option<(String, Vec<
             Piece::Atom(_) => return None,
         }
     }
-    (!text.is_empty()).then_some((text, runs))
+    // OOF-only paragraphs retain a static point without creating a line.
+    (!text.is_empty() || pieces.iter().any(|p| matches!(p, Piece::Overlay(..))))
+        .then_some((text, runs))
 }
 
 /// Шрифт струта абзаца — тот же, каким набирался бы текст самого блока.
-pub fn strut_font(style: &Computed, base: &TextStyle) -> gpui::Font {
-    run_for("x", style, base).font
+pub fn strut_font(
+    style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> gpui::Font {
+    run_for("x", style, base, vcx).font
 }
 
-pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun {
+pub(super) fn run_for(
+    text: &str,
+    style: &Computed,
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> TextRun {
     let mut font = base.font();
-    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks);
+    font.fallbacks = crate::style::computed::font_family::fallbacks(style, font.fallbacks, vcx);
     // Названное семейство сильнее родового: подстановкой занимается система.
     // Пустое имя — «шрифт документа» (разбор `font-family`): база как есть.
     if let Some(family) = style.font_family.as_ref().filter(|f| !f.is_empty()) {
         // Имя из разметки может быть придуманным (`@font-face`) — система
         // шрифтов знает файл под его собственным именем. Лиц у имени бывает
         // несколько, и нужное выбирает ширина начертания (§font-matching).
-        font.family = crate::text::fonts::alias_for(family, style)
+        font.family = crate::text::fonts::alias_for(family, style, vcx)
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
@@ -144,7 +165,7 @@ pub(super) fn run_for(text: &str, style: &Computed, base: &TextStyle) -> TextRun
     if let Some(pct) = style.font_stretch {
         font.stretch = gpui::FontStretch::from_percent(pct);
     }
-    let features = style.used_features();
+    let features = style.used_features(vcx);
     if !features.is_empty() {
         font.features = gpui::FontFeatures(std::sync::Arc::new(features));
     }

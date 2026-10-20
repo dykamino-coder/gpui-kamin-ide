@@ -9,7 +9,7 @@
 //! разрешает равенство («the large and small viewport sizes are
 //! equivalent»). Поэтому `svh`/`lvh`/`dvh` — тот же `vh`.
 
-use super::{Len, Sum, calc_store, css_number};
+use super::{Len, Sum};
 use crate::document::state::ValueCx;
 
 /// Номер единицы в `Sum::ext`.
@@ -34,34 +34,27 @@ pub const EXT_N: usize = 10;
 /// range of values the property allows».
 const LIMIT: f32 = 33_554_428.0;
 
-/// `<число><единица окна или контейнера>`; `None` — это не такая единица.
-pub(super) fn parse_unit(s: &str, vcx: ValueCx<'_>) -> Option<Len> {
-    const VIEW: [(&str, Option<Ext>, bool); 6] = [
-        ("vmin", Some(Ext::Vmin), false),
-        ("vmax", Some(Ext::Vmax), false),
-        ("vi", Some(Ext::Vi), false),
-        ("vb", Some(Ext::Vb), false),
-        ("vw", None, false),
-        ("vh", None, true),
-    ];
-    for (base, ext, high) in VIEW {
-        for pre in ["s", "l", "d", ""] {
-            let Some(num) = s
-                .strip_suffix(base)
-                .and_then(|r| r.strip_suffix(pre))
-                .and_then(css_number)
-            else {
-                continue;
-            };
-            let k = num / 100.0;
-            return Some(match ext {
-                Some(e) => ext_len(e, k, vcx),
-                None if high => Len::Vh(k),
-                None => Len::Vw(k),
-            });
+/// Unit identifiers map directly to the corresponding Sum nature, without arena storage.
+pub(super) fn parse_unit(unit: &str) -> Option<u8> {
+    for (base, nature) in [
+        ("vmin", 10),
+        ("vmax", 11),
+        ("vi", 12),
+        ("vb", 13),
+        ("vw", 9),
+        ("vh", 8),
+    ] {
+        for prefix in ["s", "l", "d", ""] {
+            if unit
+                .get(..prefix.len())
+                .is_some_and(|s| s.eq_ignore_ascii_case(prefix))
+                && unit[prefix.len()..].eq_ignore_ascii_case(base)
+            {
+                return Some(nature);
+            }
         }
     }
-    for (unit, e) in [
+    for (name, ext) in [
         ("cqmin", Ext::Cqmin),
         ("cqmax", Ext::Cqmax),
         ("cqw", Ext::Cqw),
@@ -69,17 +62,11 @@ pub(super) fn parse_unit(s: &str, vcx: ValueCx<'_>) -> Option<Len> {
         ("cqi", Ext::Cqi),
         ("cqb", Ext::Cqb),
     ] {
-        if let Some(num) = s.strip_suffix(unit).and_then(css_number) {
-            return Some(ext_len(e, num / 100.0, vcx));
+        if unit.eq_ignore_ascii_case(name) {
+            return Some(10 + ext as u8);
         }
     }
     None
-}
-
-fn ext_len(e: Ext, k: f32, vcx: ValueCx<'_>) -> Len {
-    let mut s = Sum::default();
-    s.ext[e as usize] = k;
-    Len::Calc(calc_store(s, vcx))
 }
 
 impl Sum {

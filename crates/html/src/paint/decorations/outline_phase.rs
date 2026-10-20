@@ -1,19 +1,29 @@
 //! CSS2 Appendix E: postpone outlines until the current paint phase finishes.
 
 use crate::hooks::{IntoHooked, Wrap};
+use crate::paint::context::PaintCx;
 use gpui::{AnyElement, App, Bounds, ContentMask, IntoElement, Pixels, Window};
-use std::cell::RefCell;
+use std::rc::Rc;
 
-type Outline = (AnyElement, ContentMask<Pixels>);
-thread_local! {
-    static PHASES: RefCell<Vec<Option<Vec<Outline>>>> = const { RefCell::new(Vec::new()) };
-}
-
+pub(crate) type Outline = (AnyElement, ContentMask<Pixels>);
 /// Each float and stacking context owns its outlines (Servo paint_traversal).
-pub(crate) fn paint(window: &mut Window, cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
-    PHASES.with(|phases| phases.borrow_mut().push(Some(Vec::new())));
+pub(crate) fn paint(
+    owner: Option<&Rc<PaintCx>>,
+    window: &mut Window,
+    cx: &mut App,
+    f: impl FnOnce(&mut Window, &mut App),
+) {
+    let Some(owner) = owner else {
+        return f(window, cx);
+    };
+    owner.outlines.borrow_mut().push(Some(Vec::new()));
     f(window, cx);
-    let outlines = PHASES.with(|phases| phases.borrow_mut().pop().flatten().unwrap());
+    let outlines = owner
+        .outlines
+        .borrow_mut()
+        .pop()
+        .flatten()
+        .unwrap_or_default();
     for (mut outline, clip) in outlines {
         window.with_content_mask_replaced(clip, |window| outline.paint(window, cx));
     }
@@ -21,33 +31,45 @@ pub(crate) fn paint(window: &mut Window, cx: &mut App, f: impl FnOnce(&mut Windo
 
 /// A formatting context does not itself establish a stacking context. Reuse
 /// the enclosing phase so nested flow outlines also follow outer floats.
-pub(crate) fn flow(window: &mut Window, cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
-    if PHASES.with(|phases| matches!(phases.borrow().last(), Some(Some(_)))) {
+pub(crate) fn flow(
+    owner: Option<&Rc<PaintCx>>,
+    window: &mut Window,
+    cx: &mut App,
+    f: impl FnOnce(&mut Window, &mut App),
+) {
+    if owner.is_some_and(|owner| matches!(owner.outlines.borrow().last(), Some(Some(_)))) {
         f(window, cx);
     } else {
-        paint(window, cx, f);
+        paint(owner, window, cx, f);
     }
 }
 
 /// Isolate outlines inside an effect only when an outer flow is collecting.
-pub(crate) fn scoped(window: &mut Window, cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
-    if PHASES.with(|phases| phases.borrow().is_empty()) {
+pub(crate) fn scoped(
+    owner: Option<&Rc<PaintCx>>,
+    window: &mut Window,
+    cx: &mut App,
+    f: impl FnOnce(&mut Window, &mut App),
+) {
+    if owner.is_none_or(|owner| owner.outlines.borrow().is_empty()) {
         f(window, cx);
     } else {
-        paint(window, cx, f);
+        paint(owner, window, cx, f);
     }
 }
 
-pub(crate) fn outline(child: AnyElement) -> AnyElement {
+pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
     Phase {
+        owner: owner.cloned(),
         child,
         mode: Mode::Outline,
     }
     .hooked()
 }
 
-pub(crate) fn scope(child: AnyElement) -> AnyElement {
+pub(crate) fn scope(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
     Phase {
+        owner: owner.cloned(),
         child,
         mode: Mode::Scope,
     }
@@ -56,17 +78,22 @@ pub(crate) fn scope(child: AnyElement) -> AnyElement {
 
 /// Native opacity is applied by Div while painting its descendants. Keep
 /// their outlines in-band rather than replaying outside that opacity scope.
-pub(crate) fn in_band(child: AnyElement) -> AnyElement {
+pub(crate) fn in_band(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
     Phase {
+        owner: owner.cloned(),
         child,
         mode: Mode::InBand,
     }
     .hooked()
 }
 
-pub(crate) fn context(child: AnyElement, c: &crate::style::computed::Computed) -> AnyElement {
+pub(crate) fn context(
+    child: AnyElement,
+    c: &crate::style::computed::Computed,
+    owner: Option<&Rc<PaintCx>>,
+) -> AnyElement {
     if c.opacity.is_some_and(|opacity| opacity < 1.0) {
-        in_band(child)
+        in_band(child, owner)
     } else {
         child
     }
@@ -78,6 +105,7 @@ enum Mode {
     InBand,
 }
 struct Phase {
+    owner: Option<Rc<PaintCx>>,
     child: AnyElement,
     mode: Mode,
 }
@@ -91,24 +119,32 @@ impl Wrap for Phase {
             Mode::Outline => {
                 // Inside an outline scope the laid-out child moves to the deferred outline
                 // pass (an unlaid `Empty` takes its place and is never painted).
-                let deferred = PHASES.with(|phases| match phases.borrow_mut().last_mut() {
-                    Some(Some(outlines)) => {
-                        let child =
-                            std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
-                        outlines.push((child, window.content_mask()));
-                        true
+                let deferred = self.owner.as_ref().is_some_and(|owner| {
+                    match owner.outlines.borrow_mut().last_mut() {
+                        Some(Some(outlines)) => {
+                            let child =
+                                std::mem::replace(&mut self.child, gpui::Empty.into_any_element());
+                            outlines.push((child, window.content_mask()));
+                            true
+                        }
+                        _ => false,
                     }
-                    _ => false,
                 });
                 if !deferred {
                     self.child.paint(window, cx);
                 }
             }
-            Mode::Scope => scoped(window, cx, |window, cx| self.child.paint(window, cx)),
+            Mode::Scope => scoped(self.owner.as_ref(), window, cx, |window, cx| {
+                self.child.paint(window, cx)
+            }),
             Mode::InBand => {
-                PHASES.with(|phases| phases.borrow_mut().push(None));
+                if let Some(owner) = &self.owner {
+                    owner.outlines.borrow_mut().push(None);
+                }
                 self.child.paint(window, cx);
-                let _ = PHASES.with(|phases| phases.borrow_mut().pop());
+                if let Some(owner) = &self.owner {
+                    owner.outlines.borrow_mut().pop();
+                }
             }
         }
     }

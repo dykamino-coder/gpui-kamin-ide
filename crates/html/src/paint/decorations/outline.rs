@@ -123,10 +123,12 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
                 // Blink core/paint/border_shape_painter.cc:312-326.
                 out.push(super::outline_phase::outline(
                     ring_at(off + w, third, corner).into_any_element(),
+                    vcx.paint,
                 ));
                 let inner_corner = (corner - w + third).max(0.0);
                 out.push(super::outline_phase::outline(
                     ring_at(off + third, third, inner_corner).into_any_element(),
+                    vcx.paint,
                 ));
                 return out;
             }
@@ -139,7 +141,10 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
                 Some(4) => ring = ring.border_dashed(),
                 _ => {}
             }
-            out.push(super::outline_phase::outline(ring.into_any_element()));
+            out.push(super::outline_phase::outline(
+                ring.into_any_element(),
+                vcx.paint,
+            ));
         }
     }
     out

@@ -4,7 +4,7 @@ use super::*;
 
 /// Именованные цвета. Полный список CSS — 148 имён; держим те, что реально
 /// встречаются в разметке модели и в нашей вёрстке, плюс базовые 16.
-pub(super) fn named(name: &str) -> Option<Color> {
+pub(super) fn named(name: &str, vcx: ValueCx<'_>) -> Option<Color> {
     let rgb = |r: u8, g: u8, b: u8| {
         Some(Color {
             r: r as f32 / 255.0,
@@ -153,6 +153,6 @@ pub(super) fn named(name: &str) -> Option<Color> {
         "whitesmoke" => rgb(245, 245, 245),
         "yellow" => rgb(255, 255, 0),
         "yellowgreen" => rgb(154, 205, 50),
-        other => super::system_colors::named(other, super::dark_scheme()),
+        other => super::system_colors::named(other, super::dark_scheme(vcx)),
     }
 }

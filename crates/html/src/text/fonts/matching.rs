@@ -1,5 +1,6 @@
 //! CSS Fonts 4 §5.2: select one face before using its metrics and features.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 
 #[derive(Clone)]
@@ -142,9 +143,9 @@ fn style(face: &Face, request: &Computed) -> (u8, f32) {
     }
 }
 
-pub(crate) fn select(family: &str, request: &Computed) -> Option<Face> {
-    super::FACES.with(|faces| {
-        let faces = faces.borrow();
+pub(crate) fn select(family: &str, request: &Computed, vcx: ValueCx<'_>) -> Option<Face> {
+    {
+        let faces = vcx.doc.font_faces.faces.borrow();
         let faces = faces.get(&family.to_ascii_lowercase())?;
         let width = request.font_stretch.unwrap_or(100.0);
         let rank = |face: &Face| {
@@ -168,19 +169,23 @@ pub(crate) fn select(family: &str, request: &Computed) -> Option<Face> {
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .cloned()
-    })
+    }
 }
 
-pub(crate) fn alias_for(family: &str, request: &Computed) -> Option<String> {
-    select(family, request)
+pub(crate) fn alias_for(family: &str, request: &Computed, vcx: ValueCx<'_>) -> Option<String> {
+    select(family, request, vcx)
         .map(|f| f.family)
-        .or_else(|| super::alias(family))
+        .or_else(|| super::alias(family, vcx))
 }
 
 /// Descriptor capabilities override binary style metadata: an oblique/bold
 /// face supplies that style even if its OS/2 flags say normal.
-pub(crate) fn features(family: &str, request: &Computed) -> Option<Vec<(String, u32)>> {
-    let face = select(family, request)?;
+pub(crate) fn features(
+    family: &str,
+    request: &Computed,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<(String, u32)>> {
+    let face = select(family, request, vcx)?;
     let mut out = face.features;
     let weight = request.font_weight.unwrap_or(400) as f32;
     // A regular request cannot need artificial bold. Keeping its flags equal
