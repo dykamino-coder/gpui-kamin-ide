@@ -21,6 +21,9 @@ import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
 import { matchesResourceTemplate } from './resource-template'
+import { openToolNotificationStream } from './mcp-tool-notify'
+import { PROJECT_SESSION_TOOLS, isProjectSessionTool, projectSessionToolsEnabled } from '../project-sessions/tools'
+import { runForSession } from '../project-sessions/session-glue'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
 
@@ -419,7 +422,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         jsonRpcResponse(body.id, {
           protocolVersion: clientVersion,
           capabilities: {
-            tools: {},
+            // listChanged: the extension's snapshot pushes are announced on the
+            // GET SSE stream (mcp-tool-notify.ts). Resources/prompts have no
+            // change producer, so they deliberately do not claim it.
+            tools: { listChanged: true },
             resources: {},
             prompts: {},
             elicitation: {},
@@ -459,8 +465,10 @@ Key tool capabilities:
     }
 
     case 'tools/list': {
-      // Merge built-in MCP_TOOLS with any external tools registered via WS
-      const builtinNames = new Set(MCP_TOOLS.map((t) => t.name))
+      // Merge built-in MCP_TOOLS, the server-side project session tools
+      // (INC-2026-0072) and any external tools registered via WS.
+      const serverTools = projectSessionToolsEnabled() ? PROJECT_SESSION_TOOLS : []
+      const builtinNames = new Set<string>([...MCP_TOOLS, ...serverTools].map((t) => t.name))
       const externalTools = session.registeredTools
         .filter((t) => !builtinNames.has(t.name))
         .map((t) => ({
@@ -468,7 +476,7 @@ Key tool capabilities:
           description: t.description,
           inputSchema: t.inputSchema,
         }))
-      const toolList = [...MCP_TOOLS, ...externalTools]
+      const toolList = [...MCP_TOOLS, ...serverTools, ...externalTools]
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
       debugLog('tools/list response', {
@@ -491,6 +499,24 @@ Key tool capabilities:
       if (!toolName) {
         logMcpRequest(session, 'tools/call', 'error', 'Missing tool name')
         return jsonResponse(jsonRpcError(body.id, -32602, 'Missing tool name'), 400)
+      }
+
+      // Project session tools read Bridge-side transcripts, so they run here and
+      // never reach the client host. Same SSE envelope and size cap as forwarded
+      // tools; scope comes from the authenticated session, not the arguments.
+      if (isProjectSessionTool(toolName) && projectSessionToolsEnabled()) {
+        return sseStreamResponse(body.id ?? null, async () => {
+          const result = await runForSession(session, toolName, toolInput)
+          logMcpRequest(
+            session,
+            `tools/call:${toolName}`,
+            result.isError ? 'error' : 'ok',
+            result.isError ? result.content[0]?.text : undefined,
+            Date.now() - reqStart,
+            false,
+          )
+          return jsonRpcResponse(body.id, truncateMcpResult(result as unknown as Record<string, unknown>, toolName))
+        })
       }
 
       // Check tool exists in built-in tools OR registered external tools
@@ -736,17 +762,40 @@ Key tool capabilities:
 }
 
 /**
- * Handle MCP GET request — SSE event stream (Streamable HTTP spec).
- * Claude Code may attempt to open an SSE stream for server-initiated messages.
- * We don't need server push, so return 405 with session header.
+ * Handle MCP GET request — server→client SSE stream (Streamable HTTP spec).
+ * Claude CLI opens it after `notifications/initialized`; Bridge uses it only
+ * for `notifications/tools/list_changed`. Same per-session bearer as POST, no
+ * stream for a missing/tearing-down session, and one stream per session.
  */
 export function handleMcpGet(c: Context): Response {
   const sessionId = c.req.param('sessionId') ?? ''
-  return new Response(null, {
-    status: 405,
-    statusText: 'Method Not Allowed',
-    headers: { 'Mcp-Session-Id': sessionId },
-  })
+  const accept = c.req.header('accept') ?? ''
+  if (!accept.includes('text/event-stream')) {
+    return new Response(null, {
+      status: 405,
+      statusText: 'Method Not Allowed',
+      headers: { 'Mcp-Session-Id': sessionId },
+    })
+  }
+  const session = sessionId ? getSession(sessionId) : undefined
+  if (!session) {
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} not found`), 404)
+  }
+  if (!timingSafeEqualStr(c.req.header('authorization'), `Bearer ${session.mcpToken}`)) {
+    warnLog('MCP stream auth failed', { sessionId })
+    return c.json(jsonRpcError(undefined, -32000, 'Unauthorized'), 401)
+  }
+  if (session.teardown) {
+    return c.json(jsonRpcError(undefined, -32000, `Session ${sessionId} is shutting down`), 409)
+  }
+  return openToolNotificationStream(
+    sessionId,
+    () => {
+      const current = getSession(sessionId)
+      return current === session && !current.teardown
+    },
+    c.req.raw.signal,
+  )
 }
 
 /**

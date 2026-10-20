@@ -3,27 +3,12 @@ import { useState } from 'preact/hooks'
 import type { JsonlEntryData } from '../../types/jsonl'
 import { JsonlTimestamp } from './JsonlTimestamp'
 import { renderMarkdown } from '../../utils/render-markdown'
-
-interface ContentBlock {
-  type: string
-  text?: string
-}
-
-function extractText(entry: JsonlEntryData): string {
-  const content = entry.message?.content
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    return (content as ContentBlock[])
-      .filter(b => b.type === 'text')
-      .map(b => b.text || '')
-      .join('\n\n')
-  }
-  return ''
-}
+import { compactSummaryText } from './entry-draws'
 
 export function CompactSummaryEntry({ entry }: { entry: JsonlEntryData }): JSX.Element | null {
   const [expanded, setExpanded] = useState(false)
-  const text = extractText(entry).trim()
+  // Shared with JsonlEntry (entry-draws.ts) so an empty summary is never mounted.
+  const text = compactSummaryText(entry)
   if (!text) return null
   const wordCount = text.split(/\s+/).length
   const preview = text.slice(0, 180)
