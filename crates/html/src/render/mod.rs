@@ -23,9 +23,8 @@ pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
 mod first_letter_descendants;
 mod first_letter_scope;
 pub(super) mod first_line_descendants;
-mod inline_splits;
 pub(super) mod pseudo_line_layers;
-pub(crate) use inline_splits::split_block_in_inline;
+pub(crate) use crate::layout::block::inline_splits::split_block_in_inline;
 pub(super) mod native_paragraph_route;
 
 pub(super) mod box_div;

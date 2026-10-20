@@ -4,6 +4,7 @@
 pub(crate) mod available_height;
 pub(crate) mod available_width;
 pub mod containing;
+pub(crate) mod inline_splits;
 mod margin_edges;
 pub(crate) mod margin_height;
 mod margin_inline_boxes;
