@@ -109,7 +109,10 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                 k.style.margin.top = Some(Len::Px(m + st.gap));
             }
             if let Some(&st) = struts.get(&k.node_id).filter(|s| s.by != 0.0) {
-                if as_margin {
+                if k.style.float.is_some_and(|f| f != 0) {
+                    // BandFlow consumes the same strut as a placement ceiling.
+                    // A normal-flow spacer would move the surrounding lines.
+                } else if as_margin {
                     let Some(m) = px_auto_zero(k.style.margin.top) else {
                         return false;
                     };

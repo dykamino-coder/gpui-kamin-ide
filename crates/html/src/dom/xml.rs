@@ -12,24 +12,13 @@ use html5ever::interface::{ElementFlags, NodeOrText, TreeSink};
 use html5ever::tendril::StrTendril;
 use html5ever::{Attribute, LocalName, Namespace, Prefix, QualName};
 use markup5ever_rcdom::{Handle, RcDom};
-use std::cell::Cell;
-
-thread_local! {
-    /// The document being parsed is an XML document (set by `parse_xml`).
-    static XML: Cell<bool> = const { Cell::new(false) };
-}
-
-/// Whether the document being parsed now is an XML document.
-pub(crate) fn is_xml() -> bool {
-    XML.with(|x| x.get())
-}
 
 /// Parse `markup` as an XML document with the full cascade of `parse`.
 pub fn parse_xml(markup: &str, extra_css: &str) -> super::Parsed {
-    XML.with(|x| x.set(true));
-    let nodes = super::parse(markup, extra_css);
-    XML.with(|x| x.set(false));
-    nodes
+    let media = crate::style::css::Media::default();
+    let doc = crate::document::state::DocState::new(media);
+    let nodes = parse_current_xml(markup, extra_css, media, &doc);
+    super::Parsed { nodes, doc }
 }
 
 /// The same as XML into the fresh state of the current document (`Document`).
@@ -39,10 +28,7 @@ pub(crate) fn parse_current_xml(
     media: crate::style::css::Media,
     doc: &std::rc::Rc<crate::document::state::DocState>,
 ) -> Vec<super::Node> {
-    XML.with(|x| x.set(true));
-    let nodes = super::parse_current(markup, extra_css, media, doc);
-    XML.with(|x| x.set(false));
-    nodes
+    super::parse_document::parse_input(markup, extra_css, media, doc, true)
 }
 
 /// Build the DOM of an XML document.

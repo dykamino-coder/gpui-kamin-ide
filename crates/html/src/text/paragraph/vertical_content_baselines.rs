@@ -76,15 +76,7 @@ mod tests {
             Wrap::default(),
         );
         paragraph.lines = (0..4)
-            .map(|index| Line {
-                range: index..index + 1,
-                width: px(10.0),
-                ellipsis: false,
-                clamped: false,
-                vis_cut: None,
-                hyphen: false,
-                indent: px(0.0),
-            })
+            .map(|index| Line::test(index..index + 1, px(10.0)))
             .collect();
         paragraph.strut = (8.0, 2.0, 4.0);
         paragraph

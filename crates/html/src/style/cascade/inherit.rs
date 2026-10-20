@@ -64,7 +64,7 @@ fn inherit_stage(
     inherit_sizes(parent, own, &mut c, vcx);
     inherit_explicit(parent, own, &mut c, vcx);
     inherit_fonts(parent, own, &mut c);
-    crate::style::computed::math_style::inherit(parent, &mut c);
+    crate::style::computed::math_style::inherit(parent, &mut c, vcx);
     inherit_text_layout(parent, own, &mut c);
     flow_align::resolve(parent, &mut c);
     c.resolve_gradient_current_color(vcx);
@@ -153,6 +153,7 @@ fn inherit_stage(
             Some(len),
             &c.font_family.clone().unwrap_or_default(),
             own_px,
+            vcx,
         ))),
         None if own.tab_size.is_some() => None,
         None => parent.tab_size_len,

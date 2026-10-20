@@ -183,3 +183,27 @@ pub(super) fn svg_has_box(c: &Computed) -> bool {
         || nz(c.padding.bottom)
         || nz(c.padding.left)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn empty_floated_iframe_keeps_replaced_dimensions() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let mut frame =
+            Element::synthetic("iframe", Computed::default(), Default::default(), vec![]);
+        frame.style.floated_box = true;
+        frame.style.flow_root = Some(true);
+        for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
+            frame.style.height = height;
+            let parent = Computed {
+                height: Some(Len::Px(192.0)),
+                cb_height_def: true,
+                ..Default::default()
+            };
+            let sized = empty_iframe_size(&frame, &parent, (800.0, 600.0), doc.values());
+            assert_eq!(sized.style.width, Some(Len::Px(300.0)));
+            assert_eq!(sized.style.height, Some(Len::Px(expected)));
+        }
+    }
+}

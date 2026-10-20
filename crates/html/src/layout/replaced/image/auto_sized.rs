@@ -20,15 +20,13 @@ pub(super) fn auto_sized_image(
     max_h: Option<f32>,
     limit: impl Fn(f32, Option<f32>, Option<f32>) -> f32,
     cb_width: Option<f32>,
-    vcx: ValueCx<'_>,
+    _vcx: ValueCx<'_>,
 ) -> gpui::Img {
     let both_auto = matches!(e.style.width, None | Some(Len::Auto))
         && matches!(e.style.height, None | Some(Len::Auto));
     if both_auto
-        && let Some(ready) = crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-            vcx,
-        )
+        && let Some(ready) =
+            crate::paint::background::element_source(local.unwrap_or(src), &e.style)
     {
         // Авто-размер замещаемого считается ЗДЕСЬ, а не отдаётся
         // загрузчику картинок: тот работает асинхронно, и в первом
@@ -95,10 +93,8 @@ pub(super) fn auto_sized_image(
                 .object_fit(gpui::ObjectFit::Fill);
         }
     } else if (max_w.is_some() || max_h.is_some())
-        && let Some(ready) = crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-            vcx,
-        )
+        && let Some(ready) =
+            crate::paint::background::element_source(local.unwrap_or(src), &e.style)
     {
         let side = ready.intrinsic();
         if let (Some(w0), Some(h0)) = (side.w, side.h)

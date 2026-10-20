@@ -1,31 +1,7 @@
-//! Static captures freeze the modern theme at rest; live HTML tracks the pointer.
-#[cfg(any(test, feature = "wpt-harness"))]
-use std::cell::Cell;
-#[cfg(any(test, feature = "wpt-harness"))]
-thread_local! { static CAPTURE: Cell<bool> = const { Cell::new(false) }; }
-
-/// Freeze scrollbar interaction for static captures on this UI thread.
-/// This changes neither appearance nor CSS sizing or authored scrollbar colors.
-#[cfg(any(test, feature = "wpt-harness"))]
-pub fn set_scrollbar_capture_mode(capture: bool) {
-    // Reference captures have a fixed at-rest appearance, independent of the
-    // desktop pointer.
-    CAPTURE.with(|value| value.set(capture));
-}
-pub(super) fn interactive() -> bool {
-    #[cfg(any(test, feature = "wpt-harness"))]
-    {
-        !CAPTURE.with(Cell::get)
-    }
-    #[cfg(not(any(test, feature = "wpt-harness")))]
-    {
-        true
-    }
-}
+//! Author scrollbar colors and independent host capture inputs.
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::style::computed::Computed;
 
     #[test]
@@ -37,13 +13,23 @@ mod tests {
         style.apply_one("scrollbar-color", "red blue", vcx);
         assert!(!super::super::uses_modern(&style));
         style.apply_one("scrollbar-color", "auto", vcx);
-        set_scrollbar_capture_mode(true);
-        assert!(!interactive());
-        set_scrollbar_capture_mode(false);
-        assert!(interactive());
         assert!(super::super::uses_modern(&style));
         assert_eq!(style.scroll.thickness(), 15.0);
         style.apply_one("scrollbar-width", "thin", vcx);
         assert_eq!(style.scroll.thickness(), 10.0);
+    }
+}
+
+#[cfg(test)]
+mod host_capture {
+    #[test]
+    fn deferred_context_keeps_its_host_capture_mode() {
+        let mut host = crate::layout::cx::LayoutCx::default();
+        assert!(!host.freeze_scrollbars);
+        host.freeze_scrollbars = true;
+        let deferred = host.clone();
+        host.freeze_scrollbars = false;
+        assert!(deferred.freeze_scrollbars);
+        assert!(!host.freeze_scrollbars);
     }
 }

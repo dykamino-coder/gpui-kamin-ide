@@ -1,8 +1,7 @@
-//! Families for metrics; split out to keep the owning module within 250 lines.
+//! Resolve document font families and cache their measured fractions.
 
-use super::CACHE;
-use super::{FALLBACK, PROBE, PROBE_SIZE};
-use std::cell::RefCell;
+use super::{FALLBACK, PROBE_SIZE};
+use crate::document::state::ValueCx;
 
 // Доли кегля для семейства: замер идёт один раз и запоминается.
 //
@@ -16,42 +15,36 @@ use std::cell::RefCell;
 //
 // Замер запоминается по НАСТОЯЩЕМУ имени: придуманное на соседней странице
 // значит другой файл, а имя семейства в системе одно на всех.
-thread_local! {
-    /// Семейство ДОКУМЕНТА (`RenderOpts::text.font_family`): им набирается
-    /// текст без своего `font-family`. Ставит `render::render`.
-    pub(super) static DOC_FAMILY: RefCell<String> = const { RefCell::new(String::new()) };
+/// Set the default family used by this document's measurements.
+pub fn set_doc_family(family: &str, vcx: ValueCx<'_>) {
+    vcx.doc.metrics.family.replace(family.to_owned());
 }
 
-/// Запомнить семейство документа для замеров без своего семейства.
-pub fn set_doc_family(family: &str) {
-    DOC_FAMILY.with(|d| {
-        if d.borrow().as_str() != family {
-            *d.borrow_mut() = family.to_string();
-        }
-    });
-}
-
-pub(super) fn fractions(family: &str) -> (f32, f32, f32, f32) {
+pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) {
     // Пустое семейство — это шрифт документа, а не родовой sans: щуп мерил
     // его как Segoe UI, и `1ch` выходил 0.56 кегля при наборе Times New Roman
     // с нулём в 0.5 (`white-space-wrap-after-nowrap-001`: «12345 67890»
     // влезало в `width: 10ch`). Та же развилка, что у `normal_fraction`.
     let doc;
     let family = if family.is_empty() {
-        doc = DOC_FAMILY.with(|d| d.borrow().clone());
+        doc = vcx.doc.metrics.family.borrow().clone();
         if doc.is_empty() { family } else { doc.as_str() }
     } else {
         family
     };
-    let real = crate::text::fonts::alias(family);
+    let real = crate::text::fonts::alias(family, vcx);
     let family = real.as_deref().unwrap_or(family);
-    if let Some(hit) = CACHE.with(|c| c.borrow().get(family).copied()) {
+    if let Some(hit) = vcx.doc.metrics.cache.borrow().get(family).copied() {
         return hit;
     }
-    let measured = PROBE.with(|p| {
-        p.borrow()
+    let measured = {
+        vcx.doc
+            .metrics
+            .probe
+            .borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
+            .or_else(|| super::text_system::horizontal(family, PROBE_SIZE))
             .map(|(ch, ex, line, ic)| {
                 (
                     ch / PROBE_SIZE,
@@ -60,7 +53,7 @@ pub(super) fn fractions(family: &str) -> (f32, f32, f32, f32) {
                     ic / PROBE_SIZE,
                 )
             })
-    });
+    };
     // Нулевая метрика — это не «шрифт шириной ноль», а неудавшийся замер:
     // такой ответ хуже запасного значения, потому что схлопывает коробку.
     let out = match measured {
@@ -79,10 +72,14 @@ pub(super) fn fractions(family: &str) -> (f32, f32, f32, f32) {
         && line > 0.0
         && line == out.2
     {
-        let (a, d, _) = super::vmetrics_px(family, 1.0);
-        super::normal_px::register(line, a, d);
+        let (a, d, _) = super::vmetrics_px(family, 1.0, vcx);
+        super::normal_px::register(line, a, d, vcx);
     }
-    CACHE.with(|c| c.borrow_mut().insert(family.to_string(), out));
+    vcx.doc
+        .metrics
+        .cache
+        .borrow_mut()
+        .insert(family.to_string(), out);
     out
 }
 

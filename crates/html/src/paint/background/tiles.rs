@@ -31,6 +31,18 @@ pub fn paint_tiles(
     window: &mut gpui::Window,
     vcx: ValueCx<'_>,
 ) {
+    paint_tiles_in(c, bounds, canvas, window, None, vcx);
+}
+
+pub(super) fn paint_tiles_in(
+    c: &Computed,
+    bounds: Bounds<Pixels>,
+    canvas: Option<Bounds<Pixels>>,
+    window: &mut gpui::Window,
+    geometry: Option<super::exact_layer::PaintGeometry>,
+    vcx: ValueCx<'_>,
+) {
+    let positioning = geometry.map_or(bounds, |geometry| geometry.positioning(bounds));
     let Some(src) = c.bg_image.clone() else {
         return;
     };
@@ -51,9 +63,14 @@ pub fn paint_tiles(
         // ЗАМЕРЕНО: сплошной перевод дал CSS2 4614 -> 4610, вся потеря в
         // семье `border-*-width-applies-to-00*`.
         let to_px = |l: Option<Len>| match l {
-            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => Some(
-                Len::Px(crate::text::metrics::spacing_px(Some(u), &family, font)),
-            ),
+            Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
+                Some(Len::Px(crate::text::metrics::spacing_px(
+                    Some(u),
+                    &family,
+                    font,
+                    vcx,
+                )))
+            }
             other => other,
         };
         crate::style::computed::BgPos {
@@ -61,7 +78,7 @@ pub fn paint_tiles(
             y: to_px(c.bg_pos.y),
         }
     };
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font, vcx);
     let border = c.bg_border_insets.map_or_else(
         || c.borders(),
         |[t, r, b, l]| crate::style::computed::Sides {
@@ -100,7 +117,7 @@ pub fn paint_tiles(
     // картинки с разным природным размером, и ключ обязан их различать
     // (`image-orientation-none-content-images`: четыре `<img>` с
     // `background-image` под `image-orientation: none`).
-    let Some(found) = source(&key_exif(&src, c, vcx), vcx) else {
+    let Some(found) = computed_source(&src, c.image_orient_none != Some(true)) else {
         return;
     };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки
@@ -117,7 +134,7 @@ pub fn paint_tiles(
     } else if c.bg_border_insets.is_some() {
         // Expand before snapping: half a collapsed border can occupy a
         // fractional device pixel even when the layer's inner edge is snapped.
-        super::exact_layer::positioning(bounds)
+        positioning
     } else {
         bounds
     };
@@ -170,7 +187,19 @@ pub fn paint_tiles(
     // Область позиционирования — по неокруглённой коробке, когда слой её
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
-        c, bounds, canvas, window, inset, found, paint_box, size, repeat, pos, fixed_area, border,
-        px_of, vcx,
+        c,
+        positioning,
+        canvas,
+        window,
+        inset,
+        found,
+        paint_box,
+        size,
+        repeat,
+        pos,
+        fixed_area,
+        border,
+        px_of,
+        vcx,
     );
 }

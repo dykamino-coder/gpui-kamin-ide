@@ -58,7 +58,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                                     }
                                 })
                                 .ok()
-                                .map(|png| layer::cache(layer.key, &png)),
+                                .map(|png| layer::cache(layer.key, &png, vcx)),
                         };
                         if let Some(uri) = uri {
                             layer::set_image(&mut tree, layer.node_id, uri);

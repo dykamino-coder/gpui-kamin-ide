@@ -2,7 +2,7 @@
 
 mod formatting_context;
 mod probes;
-pub(super) use probes::child_probes;
+pub(crate) use probes::child_probes;
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -64,12 +64,12 @@ pub(crate) fn generic_children(
                 // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
                 // modes-4 §7.4).
                 let sealed = makes_bfc
-                    || margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-                    || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+                    || margin_px(border, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0
+                    || margin_px(pad, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0;
                 if sealed {
                     None
                 } else {
-                    Some(margin_px(own, &e.style).unwrap_or(0.0))
+                    Some(margin_px(own, &e.style, opts.cx.vcx()).unwrap_or(0.0))
                 }
             };
             // Доли полей/отступов — в точки от высоты контейнера ДО
@@ -81,6 +81,7 @@ pub(crate) fn generic_children(
                         &merged,
                         reverse,
                         lead_margin,
+                        opts.cx.vcx(),
                     ),
                     &merged,
                     opts.viewport.0,
@@ -105,17 +106,27 @@ pub(crate) fn generic_children(
             && e.style.clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
-    let _clamp_guard = is_clamp.then(|| crate::text::clamp::ClampGuard::enter(e.node_id));
-    let clamp_outer = crate::text::clamp::clamp_context();
-    let _bfc_guard = (!is_clamp && makes_bfc && crate::text::clamp::clamp_context().is_some())
-        .then(crate::text::clamp::ClampGuard::enter_bfc);
+    let clamp_outer = if is_clamp {
+        Some((e.node_id, false))
+    } else {
+        crate::text::clamp::clamp_context(&opts.cx)
+    };
+    let child_opts = opts.inner(|cx| {
+        if is_clamp {
+            cx.clamp_atom_depth = 0;
+            cx.clamp_build = cx.clamp_build.container(e.node_id);
+        } else if makes_bfc {
+            cx.clamp_build = cx.clamp_build.bfc();
+        }
+    });
+    let opts = &child_opts;
     // Проба элемента сетки/гибкого контейнера: пишет свои разложенные
     // границы в буфер родителя. Ставится ДО clamp-пробы, чтобы её
     // ранний `return` не съел запись. Абсолютные дети дорожек не
     // занимают (css-grid-1 §9), а пустой анонимный блок — это
     // распорка лент (`spacer()`), не элемент.
     // Paragraph numbers of this box's descendants (clamp point, tree order).
-    let clamp_span = crate::text::clamp::open_clamp_span();
+    let clamp_span = crate::text::clamp::open_clamp_span(&opts.cx);
     child_probes(
         e,
         &merged,
@@ -152,13 +163,29 @@ pub(crate) fn generic_children(
     let viewport = e.tag == "html-viewport";
     let viewport_scope = viewport
         .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning));
-    kids.extend(decorated_children(e, &merged, opts, || {
-        blocks(&children, &merged, opts)
+    kids.extend(decorated_children(e, &merged, opts, |opts| {
+        // A clamp container establishes an independent formatting context
+        // (CSS Overflow 4 section continue; Blink LineClampData). blocks()
+        // receives only Computed, whose inherited clamp value cannot identify
+        // the container. Preserve this box's known BFC boundary for its float
+        // containment without turning its descendants into clamp containers.
+        let formatting = is_clamp.then(|| Computed {
+            flow_root: Some(true),
+            ..merged.clone()
+        });
+        blocks(&children, formatting.as_ref().unwrap_or(&merged), opts)
     }));
     if let Some(scope) = viewport_scope {
         kids.extend(scope.finish());
     }
-    let d = crate::text::clamp::hide_box_after_point(d, clamp_outer, clamp_span, &merged, is_clamp);
+    let d = crate::text::clamp::hide_box_after_point(
+        d,
+        clamp_outer,
+        clamp_span,
+        &merged,
+        is_clamp,
+        &opts.cx,
+    );
     if let Some(scope) = cb_scope {
         kids.extend(scope.finish());
     }
@@ -193,10 +220,12 @@ pub(crate) fn generic_children(
         kids.push(
             crate::text::clamp::ClampCut::new(
                 e.node_id,
-                crate::text::clamp::clamp_lines_for(e.node_id),
+                crate::text::clamp::clamp_lines_for(e.node_id, opts.cx.vcx()),
                 e.style.clamp_lines(),
                 max_h,
+                &opts.cx,
             )
+            .measure_context(&opts.cx)
             .trim_end(clamp_trim)
             .hooked(),
         );

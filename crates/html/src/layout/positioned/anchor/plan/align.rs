@@ -1,7 +1,7 @@
 //! Сдвиг и выравнивание в ячейке области: края IMCB, align-self, коробка CB.
 
+use super::super::AnchorPlan;
 use super::super::area::{Al, Tracks, default_al};
-use super::super::{AnchorPlan, CB};
 use super::axis::Edge;
 use crate::document::state::ValueCx;
 use crate::style::computed::Align;
@@ -113,7 +113,14 @@ impl AnchorPlan {
                 size: window.viewport_size(),
             });
         }
-        CB.with(|m| m.borrow().get(&self.cb_node).copied())
+        self.values
+            .vcx()
+            .doc
+            .anchor_frame
+            .cb
+            .borrow()
+            .get(&self.cb_node)
+            .copied()
     }
 
     /// Предел переполнения по оси — края, за которые коробку не выпускает

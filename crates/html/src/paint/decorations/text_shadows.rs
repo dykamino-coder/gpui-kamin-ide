@@ -72,7 +72,7 @@ pub(crate) fn with_text_shadow(
     // раскладки абзаца.
     let mut groups: Vec<Vec<Shadow>> = Vec::new();
     if flat && !all_text {
-        collect_groups(nodes, &context, &mut groups);
+        collect_groups(nodes, &context, &mut groups, opts.cx.vcx());
     }
     if !groups.is_empty() {
         let mut layers = Vec::new();
@@ -119,7 +119,7 @@ fn shadow_list(c: &Computed) -> Vec<Shadow> {
 
 /// Атомная или блочная коробка внутри абзаца: её содержимое в слой тени
 /// строк не идёт (рисуется своим путём).
-fn atomic(e: &crate::dom::Element) -> bool {
+fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     // Кусок со своей коробкой абзац ставит атомом со СВОИМ абзацем внутри,
     // и тень тот рисует сам (`render::has_own_box`).
     let font = match e.style.font_size {
@@ -127,7 +127,7 @@ fn atomic(e: &crate::dom::Element) -> bool {
         _ => 16.0,
     };
     !e.inline
-        || crate::layout::positioned::predicates::has_own_box(&e.style, font)
+        || crate::layout::positioned::predicates::has_own_box(&e.style, font, vcx)
         || matches!(
             e.tag.as_str(),
             "img"

@@ -97,55 +97,57 @@ pub(crate) fn nested_rows_shape(
     let mut mc = c.clone();
     mc.style.width = Some(Len::Px(w));
     let g = group_inline_runs(&mc).unwrap_or(mc);
-    let kids: Vec<crate::layout::fragment::types::Kid> = with_lines(&m, Some(col_w), opts, || {
-        g.children
-            .iter()
-            .filter(|n| !is_blank(n))
-            .map(|n| match n {
-                // Только строчное содержимое (анонимные блоки строк): ряды по
-                // строкам у нас сходятся с Blink, а блочные дети с
-                // переполнением своей коробки и монолиты выше ряда ведут себя
-                // иначе (`multicol-fill-balance-003/030`, `multicol-nested-026/
-                // 031` при блочных детях уходили 0.00 → «красное видно»).
-                Node::Element(k)
-                    if !k.inline
-                        && (inline_content(k) || plain_block_kid(k))
-                        && !out_of_flow(&k.style)
-                        && matches!(
-                            k.style.position,
-                            None | Some(crate::style::computed::Position::Relative)
-                        )
-                        && k.style.float.unwrap_or(0) == 0 =>
-                {
-                    let k = resolved_lengths(k, &m, vcx);
-                    let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
-                    if !inline_content(&k) && sh.solid.iter().any(|&(a, b)| b - a > hh + 0.01) {
-                        return None;
+    let kids: Vec<crate::layout::fragment::types::Kid> =
+        with_lines(&m, Some(col_w), opts, |opts| {
+            let vcx = opts.cx.vcx();
+            g.children
+                .iter()
+                .filter(|n| !is_blank(n))
+                .map(|n| match n {
+                    // Только строчное содержимое (анонимные блоки строк): ряды по
+                    // строкам у нас сходятся с Blink, а блочные дети с
+                    // переполнением своей коробки и монолиты выше ряда ведут себя
+                    // иначе (`multicol-fill-balance-003/030`, `multicol-nested-026/
+                    // 031` при блочных детях уходили 0.00 → «красное видно»).
+                    Node::Element(k)
+                        if !k.inline
+                            && (inline_content(k) || plain_block_kid(k))
+                            && !out_of_flow(&k.style)
+                            && matches!(
+                                k.style.position,
+                                None | Some(crate::style::computed::Position::Relative)
+                            )
+                            && k.style.float.unwrap_or(0) == 0 =>
+                    {
+                        let k = resolved_lengths(k, &m, vcx);
+                        let sh = shape_full(&k, 4, ShapeCx::COLUMNS, vcx)?;
+                        if !inline_content(&k) && sh.solid.iter().any(|&(a, b)| b - a > hh + 0.01) {
+                            return None;
+                        }
+                        Some(crate::layout::fragment::types::Kid {
+                            h: sh.height,
+                            mt: sh.margin_top,
+                            mb: sh.margin_bottom,
+                            monolith: solid_box(&k) && (!inline_content(&k) || sh.cuts.is_empty()),
+                            cuts: sh.cuts,
+                            force_before: edge_break(&k, false, vcx),
+                            force_after: edge_break(&k, true, vcx),
+                            avoid_before: edge_avoid(&k, false, vcx),
+                            avoid_after: edge_avoid(&k, true, vcx),
+                            forced: sh.forced,
+                            solid: sh.solid,
+                            span: false,
+                            over: sh.height,
+                            clone_dec: None,
+                            overflow_top: false,
+                            repeat: Default::default(),
+                            par: Default::default(),
+                        })
                     }
-                    Some(crate::layout::fragment::types::Kid {
-                        h: sh.height,
-                        mt: sh.margin_top,
-                        mb: sh.margin_bottom,
-                        monolith: solid_box(&k) && (!inline_content(&k) || sh.cuts.is_empty()),
-                        cuts: sh.cuts,
-                        force_before: edge_break(&k, false, vcx),
-                        force_after: edge_break(&k, true, vcx),
-                        avoid_before: edge_avoid(&k, false, vcx),
-                        avoid_after: edge_avoid(&k, true, vcx),
-                        forced: sh.forced,
-                        solid: sh.solid,
-                        span: false,
-                        over: sh.height,
-                        clone_dec: None,
-                        overflow_top: false,
-                        repeat: Default::default(),
-                        par: Default::default(),
-                    })
-                }
-                _ => None,
-            })
-            .collect::<Option<Vec<_>>>()
-    })?;
+                    _ => None,
+                })
+                .collect::<Option<Vec<_>>>()
+        })?;
     if kids.is_empty() {
         return None;
     }

@@ -27,7 +27,6 @@ pub(super) fn build_copy(
     nest_row: Option<f32>,
     nest_phase_k: f32,
     inner: &Computed,
-    copy_ix: &std::cell::Cell<usize>,
     whole: bool,
     first: bool,
     part: usize,
@@ -61,13 +60,14 @@ pub(super) fn build_copy(
     let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
     let mut kids = copy_kids(copy, first, src, band);
     let frag_gap_rules = gap_rule_spec(copy, inner, opts);
-    let frag_gap_key = frag_gap_rules.as_ref().map(|_| {
-        let ix = copy_ix.get();
-        copy_ix.set(ix + 1);
-        let key = (copy.node_id ^ opts.doc_salt) ^ (ix as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-        crate::paint::gap_rules::fresh_gap_items(key).0
+    let frag_gap_items = frag_gap_rules
+        .as_ref()
+        .map(|_| crate::paint::gap_rules::GapItems::default());
+    let child_opts = opts.inner(|cx| {
+        if let Some(items) = &frag_gap_items {
+            cx.gap_items = Some(items.clone());
+        }
     });
-    let mut frag_gap_guard = frag_gap_key.map(crate::paint::gap_rules::GapGuard::enter);
     // css-break-3 §5.5: «Fragmentation … occurs
     // before relative positioning, transforms,
     // and any other graphical effects. Such
@@ -133,7 +133,6 @@ pub(super) fn build_copy(
         whole,
         part,
         &mut kids,
-        &mut frag_gap_guard,
     ) {
         return value;
     }
@@ -206,11 +205,10 @@ pub(super) fn build_copy(
             fixed_cb_layer_box(inner),
         )
     });
-    let mut body = blocks(&kids, src_inner, opts);
+    let mut body = blocks(&kids, src_inner, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }
-    drop(frag_gap_guard);
     let d = frag_box_div(
         col_vert,
         col_rl,
@@ -219,12 +217,12 @@ pub(super) fn build_copy(
         src,
         src_inner,
         frag_gap_rules,
-        frag_gap_key,
+        frag_gap_items,
         kids,
         &mut body,
         &opts.cx,
     );
-    let el = transformed(d.children(body).into_any_element(), inner, merged);
+    let el = transformed(d.children(body).into_any_element(), inner, merged, vcx);
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     if inner.clip_inset.is_some()

@@ -17,6 +17,28 @@ use crate::style::values::value::Len;
 use crate::text::inline::*;
 use gpui::TextStyle;
 
+/// Text coordinates shared by all span collectors; atoms occupy no text bytes.
+fn text_ranges(
+    pieces: &[Piece],
+) -> impl Iterator<Item = (std::ops::Range<usize>, &str, &Computed)> {
+    let mut at = 0;
+    pieces.iter().filter_map(move |piece| {
+        let Piece::Text { text, style } = piece else {
+            return None;
+        };
+        let range = at..at + text.len();
+        at = range.end;
+        Some((range, text.as_str(), style))
+    })
+}
+
+fn text_size(style: &Computed, base: f32) -> f32 {
+    match style.font_size {
+        Some(Len::Px(v)) => v,
+        _ => base,
+    }
+}
+
 /// `word-space-transform: ideographic-space`.
 ///
 /// Пробел нулевой ширины между двумя иероглифами становится идеографическим:
@@ -37,20 +59,15 @@ pub fn wrap_spans(
     // запрещён вместе со всем абзацем.
     let whole = crate::text::paragraph::wrap_of(base);
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
         let w = crate::text::paragraph::wrap_of(style);
         if w != whole {
             out.push((at..end, w));
         }
-        at = end;
     }
     out
 }
@@ -65,24 +82,18 @@ pub fn line_height_spans(
     inherited: &Computed,
     base_size: f32,
     normal: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
         if style.line_height != inherited.line_height
             && let Some(lh) = style.line_height
         {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                _ => base_size,
-            };
+            let size = text_size(style, base_size);
             let px_of = match lh {
                 Len::Px(v) => Some(v),
                 Len::Pct(k) => Some(k * size),
@@ -93,11 +104,10 @@ pub fn line_height_spans(
                 Some(v) => out.push((at..end, gpui::px(v))),
                 None => out.push((
                     at..end,
-                    gpui::px(crate::text::metrics::normal_px(normal, size)),
+                    gpui::px(crate::text::metrics::normal_px(normal, size, vcx)),
                 )),
             }
         }
-        at = end;
     }
     out
 }
@@ -105,7 +115,11 @@ pub fn line_height_spans(
 /// Куски с украшениями (css-text-decor-3 §2.1) и их украшенные прогоны:
 /// смежные куски с тем же украшением на том же месте списка (Blink
 /// `ContinuesDecoratedRun`); атом прогон рвёт. Скрытый кусок не украшается.
-pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
+pub fn decor_spans(
+    pieces: &[Piece],
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
     let mut shadow_inks = Vec::new();
@@ -130,7 +144,7 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                             };
                             DecorItem {
                                 decor: d.clone(),
-                                font: run_for("x", &probe, base).font,
+                                font: run_for("x", &probe, base, vcx).font,
                                 group: at..end,
                             }
                         })

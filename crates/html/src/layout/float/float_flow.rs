@@ -3,8 +3,6 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{
     RenderOpts, blocks, gather_text, is_blank, measure_font, split_nodes, styled_div_with,
 };
@@ -85,10 +83,8 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let row_node = row.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
-    let depth = defer_depth();
     let build: crate::layout::float::split_flow::Split =
         std::rc::Rc::new(move |split: usize, width: gpui::Pixels| {
-            let _depth = DepthScope::enter(depth);
             let (beside, below) = split_nodes(&rest, split);
             let mut side = column_style.clone();
             side.display = Some(Display::Block);
@@ -136,7 +132,7 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
-        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size),
+        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size, vcx),
     };
     let flow = crate::layout::float::split_flow::FloatFlow::new(
         build,
@@ -161,12 +157,12 @@ pub(crate) fn float_flow(row: &Element, inherited: &Computed, opts: &RenderOpts)
     // даёт `ClampCut` признак «за точкой есть содержимое» — потолок снова на
     // низе N-й строки. Авто-режим не трогаем: там пересечённая коробка без
     // считаемых строк внутри ушла бы целиком.
-    match crate::text::clamp::clamp_context() {
+    match crate::text::clamp::clamp_context(&opts.cx) {
         Some((key, skip)) if inherited.line_clamp.is_some() => div()
             .relative()
             .child(flow)
             .child(crate::text::clamp::clamp_probe(
-                crate::text::clamp::clamp_lines_for(key),
+                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
                 0.0,
                 skip,
                 false,

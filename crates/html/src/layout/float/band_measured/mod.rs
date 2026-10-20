@@ -2,18 +2,21 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_flow_host::{band_orthogonal, subtree_has_text};
+use crate::layout::float::band_flow_host::band_orthogonal;
 use crate::layout::float::band_host::{BandPiece, band_margins, band_piece};
 use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
 use crate::style::computed::Display;
+use crate::style::computed::writing_mode::WritingMode;
+mod lead;
+pub(super) use lead::probes as lead_probes;
 mod tail;
 use tail::band_host_m_tail;
 mod nested;
 pub(super) use nested::band_host_nested;
 pub(super) use nested::band_nest_ok;
 pub(super) use nested::has_ruby;
-use nested::host_floats_shaped;
 
 /// Кусок хвоста измеряемого хоста: `Some(true)` — коробка, флоаты не
 /// перекрывающая (§9.5, последний абзац), `Some(false)` — распорка, `None` —
@@ -23,7 +26,7 @@ use nested::host_floats_shaped;
 /// нужны: ширину окна и высоту из содержимого даёт пробная раскладка
 /// (`band_flow::plan`). Атомы строки сюда НЕ пускаются: они делят строку, а
 /// здесь каждый кусок берёт своё окно.
-pub(super) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
+pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
     match band_piece(n) {
         Some(BandPiece::Strut) => return Some(false),
         Some(BandPiece::Atom) => return None,
@@ -49,12 +52,17 @@ pub(super) fn band_piece_m(n: &Node, em: f32) -> Option<bool> {
         // Строчный по природе тег строчен, только пока `display` не задан:
         // `<img style="display:block">` — блочного уровня.
         || (c.inline && c.style.display.is_none())
-        || band_orthogonal(&c.style)
         // Таблица и замещаемый блочного уровня §9.5 названы прямо; тег
         // `<table>` вида в стиле не несёт — его строит сборщик таблиц по тегу
         // (`"table" =>` в `element`); `<img style="display:block">` своего
         // контекста не заводит, но флоаты не перекрывает (`floats-039`).
-        || !(own_context(c) || c.tag == "table" || (block_level_in_flow(c) && replaced_tag(c)))
+        // Writing Modes 4 section 3.2: an orthogonal block establishes an
+        // independent formatting context. Its measured border box uses the
+        // same opportunity search as other non-overlapping pieces.
+        || !(own_context(c)
+            || band_orthogonal(&c.style, wm)
+            || c.tag == "table"
+            || (block_level_in_flow(c) && replaced_tag(c)))
     {
         return None;
     }
@@ -79,7 +87,8 @@ pub(super) fn band_host_m(
     i: usize,
     em: f32,
     lead: &[Node],
-    cb: Option<f32>,
+    cb: FloatCb,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
     let mut floaters: Vec<Element> = vec![];
     let mut j = i;
@@ -128,11 +137,13 @@ pub(super) fn band_host_m(
             // 7.02 с атомами в щупе).
             let inline_only = rest.iter().all(|n| match n {
                 Node::Text(_) => true,
+                // A `<br clear>` moves what follows below the floats: a
+                // float after it starts a run of its own.
+                Node::Element(c) if c.tag == "br" => c.style.clear.is_none(),
                 Node::Element(c) => {
-                    (c.tag == "br" && c.style.clear.is_none())
-                        || (!block_level_in_flow(c)
-                            && !out_of_flow(&c.style)
-                            && band_piece(n) != Some(BandPiece::Atom))
+                    !block_level_in_flow(c)
+                        && !out_of_flow(&c.style)
+                        && band_piece(n) != Some(BandPiece::Atom)
                 }
             });
             if next.style.float.is_some_and(|f| f != 0)
@@ -152,39 +163,25 @@ pub(super) fn band_host_m(
         rest.push(nodes[j].clone());
         j += 1;
     }
-    // An orthogonal float-only run still obtains its shared intrinsic inline
-    // size from the row. Independent band probes do not preserve that contract
-    // yet; use them when the floats actually interact with normal-flow content.
-    if lead.is_empty()
-        && rest.iter().all(is_blank)
-        && floaters
-            .iter()
-            .any(|f| band_orthogonal(&f.style) && subtree_has_text(f))
-    {
-        return None;
-    }
-    band_host_m_tail(nodes, i, j, em, lead, floaters, rest, probes, cb)
+    band_host_m_tail(nodes, j, em, lead, floaters, rest, probes, cb, vcx)
+}
+
+/// The synthetic node of a measured float host: `shape_flow` hands it to
+/// `band_flow_host`, which lays its children out with `band_flow::BandFlow`.
+fn measured_host(flow: crate::dom::ShapeFlow, children: Vec<Node>) -> Element {
+    let marks = crate::dom::Marks {
+        shape_flow: Some(crate::dom::ShapeFlow {
+            bands: Some(crate::dom::BandPath::Measured),
+            ..flow
+        }),
+        ..Default::default()
+    };
+    Element::synthetic("shape-flow", Default::default(), marks, children)
 }
 
 /// Годится ли флоат в измеряемый хост: `None` — хост отменяется.
 pub(super) fn band_float_m(next: &Element, em: f32) -> Option<()> {
-    {
-        // Вертикальный float меряется через собственный native element
-        // (Writing Modes 4 §7.3), затем полосы размещают физическую коробку
-        // в осях хоста. Горизонтальному ортогональному тексту ещё нужен
-        // fallback доступного строчного размера, поэтому он остаётся в ряду.
-        if band_orthogonal(&next.style) && subtree_has_text(next) && !next.style.wm().vertical() {
-            return None;
-        }
-        // Флоат с трансформацией — на прежнем пути: трансформацию даёт
-        // сборка узла `element`, а каркас флоата хоста её не несёт
-        // (`transform-scale-test`). Буквица — своим исключением строки
-        // (шаг F11, `Kind::Float { letter }`).
-        if next.style.transform.is_some() {
-            return None;
-        }
-        band_margins(&next.style, em)?;
-    }
+    band_margins(&next.style, em)?;
     Some(())
 }
 
@@ -199,3 +196,12 @@ fn has_flow_float(c: &Element) -> bool {
         }
     })
 }
+
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod construction_tests;
+
+#[cfg(test)]
+mod orthogonal_tests;

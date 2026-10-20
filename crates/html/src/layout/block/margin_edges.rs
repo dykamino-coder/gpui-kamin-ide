@@ -5,16 +5,20 @@ use crate::layout::block::containing::with_inner_cb;
 use crate::layout::block::margin_height;
 use crate::layout::block::struts::{
     Strut, adjoin, float_only_wrapper, leading_chain, margin_or_bail, pin_inherited_margins, solve,
-    strut_of, through_strut, through_strut_no_clear, top_edge_open, zero_at, zero_len,
+    strut_of, through_strut, through_strut_no_clear, top_edge_open_at, zero_at, zero_len,
 };
 use crate::render::{in_flow, inline_level_box, own_context, phantom_inline};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
-pub(super) fn collapse_top(e: &mut Element, cb: Option<f32>) {
+pub(super) fn collapse_top(
+    e: &mut Element,
+    cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     // CSS 2.1 section 8.3.1: a top border/padding prevents only top
     // parent-child collapse; bottom collapse has its own edge conditions.
-    if !top_edge_open(e) {
+    if !top_edge_open_at(e, vcx.collapse.width) {
         return;
     }
     // Верхнее поле родителя и ВСЯ ведущая цепочка полей потомков — одно
@@ -28,32 +32,34 @@ pub(super) fn collapse_top(e: &mut Element, cb: Option<f32>) {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
         _ => cb,
     };
-    let chain = with_inner_cb(&e.style, || {
-        leading_chain(&e.children, &mut path, &mut eat, cb)
+    let chain = with_inner_cb(&e.style, vcx, |vcx| {
+        leading_chain(&e.children, &mut path, &mut eat, cb, vcx)
     });
-    if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style))
+    if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style, vcx))
         && !eat.is_empty()
     {
-        pin_inherited_margins(e, true, false);
+        pin_inherited_margins(e, true, false, vcx);
         e.style.margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
         for (p, deep) in &eat {
-            zero_at(&mut e.children, p, true, *deep);
+            zero_at(&mut e.children, p, true, *deep, vcx);
         }
     }
 }
 
-pub(super) fn collapse_bottom(e: &mut Element) {
+pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) {
     let mut path = Vec::new();
     let mut eat = Vec::new();
-    let chain = with_inner_cb(&e.style, || bottom_chain(&e.children, &mut path, &mut eat));
+    let chain = with_inner_cb(&e.style, vcx, |vcx| {
+        bottom_chain(&e.children, &mut path, &mut eat, vcx)
+    });
     let Some(chain) = chain else { return };
-    let Some(own) = margin_or_bail(e.style.margin.bottom, &e.style) else {
+    let Some(own) = margin_or_bail(e.style.margin.bottom, &e.style, vcx) else {
         return;
     };
-    pin_inherited_margins(e, false, true);
+    pin_inherited_margins(e, false, true, vcx);
     e.style.margin.bottom = Some(Len::Px(solve(adjoin(strut_of(own), chain))));
     for (path, deep) in eat {
-        zero_at(&mut e.children, &path, false, deep);
+        zero_at(&mut e.children, &path, false, deep, vcx);
     }
 }
 
@@ -63,6 +69,7 @@ fn bottom_chain(
     children: &[Node],
     path: &mut Vec<usize>,
     eat: &mut Vec<(Vec<usize>, bool)>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<Strut> {
     let mut strut = strut_of(0.0);
     for (i, node) in children.iter().enumerate().rev() {
@@ -83,7 +90,7 @@ fn bottom_chain(
         }
         // Clearance adjoining a self-collapsing child's end margin keeps
         // the entire strut inside its parent (CSS 2.1 section 8.3.1).
-        if child.style.clear.is_some() && through_strut_no_clear(child).is_some() {
+        if child.style.clear.is_some() && through_strut_no_clear(child, vcx).is_some() {
             return None;
         }
         // A self-collapsing wrapper holding only floats places them at its
@@ -97,7 +104,11 @@ fn bottom_chain(
         path.push(i);
         strut = adjoin(
             strut,
-            strut_of(margin_or_bail(child.style.margin.bottom, &child.style)?),
+            strut_of(margin_or_bail(
+                child.style.margin.bottom,
+                &child.style,
+                vcx,
+            )?),
         );
         // A self-collapsing box that anchors floats keeps its top margin: its
         // floats sit at the position its top border edge would have with a
@@ -105,7 +116,9 @@ fn bottom_chain(
         // collapsed with the preceding sibling's. Eating that margin raised
         // the floats by it (`c414-flt-fit-002`); only its end margin joins
         // the parent's, as for a box that does not collapse through.
-        if let Some(through) = through_strut(child).filter(|_| !anchors_floats(&child.children)) {
+        if let Some(through) =
+            through_strut(child, vcx).filter(|_| !anchors_floats(&child.children))
+        {
             strut = adjoin(strut, through);
             eat.push((path.clone(), true));
             path.pop();
@@ -117,12 +130,14 @@ fn bottom_chain(
             && zero_len(child.style.borders().bottom)
             && zero_len(child.style.min_height)
             && matches!(child.style.height, None | Some(Len::Auto))
-            && !margin_height::lowers(child)
+            && !margin_height::lowers(child, vcx)
             && child.style.margin_trim & 2 == 0
         {
             strut = adjoin(
                 strut,
-                with_inner_cb(&child.style, || bottom_chain(&child.children, path, eat))?,
+                with_inner_cb(&child.style, vcx, |vcx| {
+                    bottom_chain(&child.children, path, eat, vcx)
+                })?,
             );
         }
         path.pop();

@@ -134,8 +134,10 @@ pub struct OverlayAt {
     pub box_marker: Option<(u32, bool)>,
     /// Разрешённые края такой коробки (кусок-носитель ставит
     /// `spacers::overlays` на место конечной метки): `InlineCb::id` — ключ
-    /// в таблице `inline_box`, края — относительно места куска.
+    /// сопоставляет метки; края — относительно места куска.
     pub inline_box: Option<InlineCb>,
+    /// Immutable properties carried by the end marker and resolved piece.
+    pub inline_box_info: Option<std::rc::Rc<inline_box::InlineBoxInfo>>,
     /// The piece is a static-position probe of an absolute box with one
     /// inset axis (`absolute_atom`): its prepaint gets the line box through
     /// this slot.

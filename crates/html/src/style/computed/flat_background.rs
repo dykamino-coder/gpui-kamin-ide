@@ -11,9 +11,9 @@ pub(crate) use stack::collapse as collapse_flat_stack;
 /// Color composition does not depend on decoded image or GUI element types.
 pub(crate) trait BackgroundImageValues {
     /// Whether the source can be displayed, as required by CSS Backgrounds 3 §2.3.
-    fn image_available(&self, raw: &str, vcx: ValueCx<'_>) -> bool;
+    fn image_available(&self, raw: &super::ImageSource, vcx: ValueCx<'_>) -> bool;
     /// A color only when every image pixel is identical and opaque.
-    fn uniform_image_color(&self, raw: &str, vcx: ValueCx<'_>) -> Option<Color>;
+    fn uniform_image_color(&self, raw: &super::ImageSource, vcx: ValueCx<'_>) -> Option<Color>;
 }
 
 /// Весь фон коробки одним цветом, если он таков: цвет фона, поверх него

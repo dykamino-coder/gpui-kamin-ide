@@ -1,7 +1,7 @@
 //! Source consumers for the dom text part of the field audit.
 
 pub(super) const SOURCES: &[&str] = &[
-    include_str!("../../style/computed/filter_image.rs"),
+    include_str!("../../style/computed/image_source.rs"),
     include_str!("../../style/computed/flat_background.rs"),
     include_str!("../../style/computed/flat_background/stack.rs"),
     include_str!("../../style/computed/flat_background/stack/blend.rs"),
@@ -38,6 +38,8 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../paint/apply/paint/borders.rs"),
     include_str!("../../paint/apply/paint/shadows.rs"),
     include_str!("../../paint/apply/text.rs"),
+    include_str!("../../dom/text_content.rs"),
+    include_str!("../../dom/text_content/split.rs"),
     include_str!("../../render/mod.rs"),
     include_str!("../../render/inline_splits/flush.rs"),
     include_str!("../../render/paint_order.rs"),

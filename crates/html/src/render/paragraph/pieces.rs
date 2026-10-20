@@ -33,8 +33,13 @@ pub(crate) fn paragraph_pieces_routed(
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и
     // чужой бюджет им доставаться не должен.
-    let clamp_budget = crate::text::clamp::take_para_budget();
-    let clamp_tag = crate::text::clamp::take_para_tag();
+    let clamp_budget = opts.cx.clamp_budget;
+    let clamp_tag = opts.cx.clamp_tag;
+    let child_opts = opts.inner(|cx| {
+        cx.clamp_budget = None;
+        cx.clamp_tag = None;
+    });
+    let opts = &child_opts;
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО: брать поперечное выравнивание ряда с самих
     // кусков, когда абзац своего не задал (`vertical-align: bottom` у
     // картинки). Ни это, ни `align-self` на самой картинке высоту строки не
@@ -48,14 +53,9 @@ pub(crate) fn paragraph_pieces_routed(
     // целиком, и щуп садится в НАЧАЛО rtl-строки (замер: x = 328 при верных
     // 168, снимки `target/scoutrtlv/target/wpt-shots/`).
     //
-    // Открыть текстовый путь при `direction: rtl` можно только абзацу, у
-    // которого этот путь ДОСТУПЕН: на пустом тексте `inline::text_and_runs`
-    // отдаёт `None` (`inline.rs:2543`), абзац всё равно сваливается в ряд, а
-    // там кусок вне потока заворачивается в `inline.rs: overlay_in_row` со
-    // СВОИМ, пустым `Spot` и теряет и `rtl`, и `next_line`. Ровно так устроена
-    // семья `css-position/static-position/inline-level-absolute-in-block-
-    // level-context-007..012` (rtl, абсолют `display: inline`, текста в абзаце
-    // НЕТ, все шесть 0.00) — гейт оставляет её на прежнем пути.
+    // Overlay-only runs retain a phantom Paragraph: it owns the static point
+    // without adding a line or height. The measured host can therefore keep
+    // horizontal RTL out-of-flow boxes in the shared paragraph pipeline.
     let flow_text = has_flow_text(nodes);
     let atom = |e: &Element,
                 atom_cx: &inline::atom_parent::AtomCx,
@@ -134,6 +134,7 @@ pub(crate) fn paragraph_pieces_routed(
                 atom_aligns
                     .iter()
                     .any(|a| a.as_ref().is_some_and(|(_, ex)| !ex.is_empty())),
+                &opts.cx,
             )
     };
     if atoms_in_line {
@@ -141,7 +142,7 @@ pub(crate) fn paragraph_pieces_routed(
     } else {
         inline::trim_edge_spaces(&mut pieces);
     }
-    pieces = style_pieces(pieces, inherited, first_line_at, first_line);
+    pieces = style_pieces(pieces, inherited, first_line_at, first_line, opts.cx.vcx());
     // Межсловный интервал и отступ первой строки требуют строки из слов, а
     // единый текстовый блок их не умеет — поэтому решение принимается ДО
     // сборки блока, иначе оба свойства молча пропадали.

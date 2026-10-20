@@ -81,7 +81,8 @@ pub(crate) fn multicol_column_stack(
     // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
     // в вертикальном письме их нет (следующий шаг).
     let (kid_parent, kid_starts, kid_par, kids) =
-        crate::layout::fragment::with_lines(&merged, line_col_w, opts, || {
+        crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
+            let vcx = opts.cx.vcx();
             column_kids(
                 &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, vcx,
             )
@@ -111,7 +112,7 @@ pub(crate) fn multicol_column_stack(
         .flatten();
     let gap_items = gap_spec
         .as_ref()
-        .map(|_| crate::paint::gap_rules::gap_items_for(e.node_id ^ opts.doc_salt ^ 0x4D43_4F4C));
+        .map(|_| crate::paint::gap_rules::GapItems::default());
     let rule = rule.filter(|_| gap_spec.is_none());
     // Где начинается ребёнок в первой внешней колонке — для
     // вложенного рядами с заданной высотой (`nest_row`): все
@@ -168,7 +169,7 @@ pub(crate) fn multicol_column_stack(
     // `out_of_flow_layout_part.cc`,
     // `LayoutFragmentainerDescendants`: позиция кандидата
     // считается относительно ФРАГМЕНТАИНЕРА.
-    let (children, oof_spots) = place_oof_statics(&merged, &oof_static, kid_starts, children);
+    let (children, oof_spots) = place_oof_statics(&merged, opts, &oof_static, kid_starts, children);
     // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
     // это высота, значит коробка кладёт её гибким рядом
     // (поперечная ось растягивает высоту), у `vertical-rl` —
@@ -176,7 +177,8 @@ pub(crate) fn multicol_column_stack(
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
-    let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).hooked()));
+    let d =
+        d.children(painter.map(|(b, s)| GapRulePainter::new(b, s, opts.cx.paint.clone()).hooked()));
     let mut d = column_stack_div(
         d,
         e,
@@ -195,6 +197,7 @@ pub(crate) fn multicol_column_stack(
         &gap_items,
         rule,
         children,
+        opts,
     );
     if let Some(layer) = fixed_layer {
         d = d.children(layer.finish());

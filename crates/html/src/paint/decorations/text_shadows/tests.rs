@@ -72,7 +72,7 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
         )),
     ];
     let mut groups = Vec::new();
-    collect_groups(&nodes, &ShadowStyle::new(&parent), &mut groups);
+    collect_groups(&nodes, &ShadowStyle::new(&parent), &mut groups, vcx);
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0][0].color, Color::parse("red", vcx).unwrap());
     assert_eq!(groups[1][0].color, Color::parse("green", vcx).unwrap());
@@ -94,7 +94,7 @@ fn mask_keeps_decoration_records_and_original_text_color() {
         owner.clone(),
         vec![Node::Text("x".into())],
     ))];
-    let masked = masks::mask_nodes(&nodes, &context, &group, &group[0]);
+    let masked = masks::mask_nodes(&nodes, &context, &group, &group[0], vcx);
     let Node::Element(mask) = &masked[0] else {
         panic!("missing span")
     };

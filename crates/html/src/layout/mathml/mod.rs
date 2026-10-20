@@ -116,6 +116,7 @@ fn build(
         (children, parameters::kind(e, &style, opts))
     };
     let content = Content {
+        values: opts.cx.vcx().keep(),
         children,
         factories,
         operator,
@@ -128,7 +129,7 @@ fn build(
         roots: vec![],
         rule: None,
         color: style.color.map_or(opts.text.color, |c| c.to_hsla()),
-        font: crate::text::inline::strut_font(&style, &opts.text),
+        font: crate::text::inline::strut_font(&style, &opts.text, opts.cx.vcx()),
         font_size: px_strict(style.font_size).unwrap_or(opts.base_size()),
         glyph: None,
         glyph_offset: (0.0, 0.0),

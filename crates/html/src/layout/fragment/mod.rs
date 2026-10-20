@@ -1,17 +1,11 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
 
-use crate::document::state::ValueCx;
 // owner: A
-
-use crate::dom::Element;
-use crate::layout::fragment::line_shape::{items_kind, line_content_w};
-use crate::render::RenderOpts;
-use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 
 pub mod breaks;
 pub mod clone;
 pub mod flex_lines;
+pub(crate) mod flow;
 pub mod grid_bands;
 pub mod line_shape;
 pub(crate) mod oof_reach;
@@ -78,144 +72,5 @@ impl ShapeCx {
     };
 }
 
-/// Кадр меры строк: наследованный стиль коробки и ширина её содержимого
-/// (`None` — неизвестна, строки не меряются).
-struct LineFrame {
-    pub(crate) inh: Computed,
-    pub(crate) w: Option<f32>,
-    /// Анонимный блок строк хоста (`group_inline_runs`): его срез — срез хоста.
-    pub(crate) anon: bool,
-    /// Ширина детей-элементов этой коробки (`items_kind`): 0 — блочный поток,
-    /// 1 — растянутые на всю ширину (колонка flex и сетка-стопка при
-    /// `stretch`), 2 — ширина по раскладке (ряд flex, прочая сетка): известна
-    /// лишь заданная в точках.
-    pub(crate) items: u8,
-}
-
-/// Контекст меры строк для `shape_full`: включается только вокруг меры детей
-/// стопки колонок (`with_lines`), где ширина колонки известна. `shape_full` о
-/// наследовании и ширине ничего не знает (ей дают голый элемент), поэтому
-/// кадры ведёт `LineScope` на входе в неё.
-struct LineCx {
-    pub(crate) opts: RenderOpts,
-    pub(crate) frames: Vec<LineFrame>,
-}
-
-thread_local! {
-    static LINE_CX: std::cell::RefCell<Option<LineCx>> = const { std::cell::RefCell::new(None) };
-}
-
-/// Выполнить `f` с контекстом меры строк: `base` — стиль многоколоночника,
-/// `w` — строчный размер колонки.
-pub(crate) fn with_lines<T>(
-    base: &Computed,
-    w: Option<f32>,
-    opts: &RenderOpts,
-    f: impl FnOnce() -> T,
-) -> T {
-    let _scope = LineContextScope(LINE_CX.with(|l| {
-        l.borrow_mut().replace(LineCx {
-            opts: opts.clone(),
-            frames: vec![LineFrame {
-                inh: base.clone(),
-                w,
-                anon: false,
-                items: 0,
-            }],
-        })
-    }));
-    f()
-}
-
-struct LineContextScope(Option<LineCx>);
-
-impl Drop for LineContextScope {
-    fn drop(&mut self) {
-        LINE_CX.with(|l| *l.borrow_mut() = self.0.take());
-    }
-}
-
-/// Кадр меры строк на время `shape_full(c)`.
-struct LineScope(pub(crate) bool);
-
-impl LineScope {
-    pub(crate) fn enter(c: &Element, vcx: ValueCx<'_>) -> Self {
-        LINE_CX.with(|l| {
-            let mut g = l.borrow_mut();
-            let Some(cx) = g.as_mut() else {
-                return LineScope(false);
-            };
-            let Some(top) = cx.frames.last() else {
-                return LineScope(false);
-            };
-            let inh = crate::style::cascade::inherit::inherit(&top.inh, &c.style, vcx);
-            let w = top.w.and_then(|pw| match top.items {
-                // Элемент flex/сетки шириной по раскладке: известна лишь
-                // заданная в точках.
-                2 if !matches!(c.style.width, Some(Len::Px(_))) => None,
-                // Растянутый элемент (css-flexbox-1 §9.4 шаг 11 / css-grid-2
-                // §11.3 `stretch`): ширина как у блока в потоке, если сам
-                // элемент выравнивание не переопределил.
-                1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,
-                _ => line_content_w(c, pw),
-            });
-            cx.frames.push(LineFrame {
-                inh,
-                w,
-                anon: c.tag == "anon-block",
-                items: items_kind(c),
-            });
-            LineScope(true)
-        })
-    }
-}
-
-impl Drop for LineScope {
-    fn drop(&mut self) {
-        if self.0 {
-            LINE_CX.with(|l| {
-                if let Some(cx) = l.borrow_mut().as_mut() {
-                    cx.frames.pop();
-                }
-            });
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn line_context_restores_nested_width_after_unwind() {
-        let opts = RenderOpts {
-            text: gpui::TextStyle::default(),
-            viewport: (800.0, 600.0),
-            normal_line_height: 1.2,
-            doc_salt: 0,
-            frag: Default::default(),
-            cx: Default::default(),
-        };
-        let base = Computed::default();
-        assert!(LINE_CX.with(|l| l.borrow().is_none()));
-        with_lines(&base, Some(120.0), &opts, || {
-            assert!(
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    with_lines(&base, Some(60.0), &opts, || {
-                        assert_eq!(
-                            LINE_CX.with(|l| l.borrow().as_ref().unwrap().frames[0].w),
-                            Some(60.0)
-                        );
-                        panic!("measurement failed");
-                    });
-                }))
-                .is_err()
-            );
-            assert_eq!(
-                LINE_CX.with(|l| l.borrow().as_ref().unwrap().frames[0].w),
-                Some(120.0)
-            );
-        });
-        assert!(LINE_CX.with(|l| l.borrow().is_none()));
-    }
-}
+mod line_context;
+pub(crate) use line_context::{LineCx, LineFrame, with_lines};

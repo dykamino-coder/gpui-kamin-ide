@@ -8,8 +8,8 @@ pub(super) use reference::reference_box;
 pub(super) use reference::shape_box;
 pub(super) use reference::translate_only;
 
+use super::serialize::SerializeCx;
 use super::serialize::escape_attr;
-use super::{IN_CLIP, VIEW_BOX};
 use crate::dom::Element;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -122,9 +122,10 @@ pub(super) fn synth_clip(
     e: &Element,
     out: &mut String,
     ids: &ClipIds,
+    cx: SerializeCx,
     vcx: ValueCx<'_>,
 ) -> Option<String> {
-    if e.tag.eq_ignore_ascii_case("svg") || IN_CLIP.with(|c| c.get()) {
+    if e.tag.eq_ignore_ascii_case("svg") || cx.in_clip {
         return None;
     }
     let has = |c: &crate::style::computed::Computed| {
@@ -156,7 +157,7 @@ pub(super) fn synth_clip(
     // border/margin и умолчание -> stroke-box; `view-box` — начало системы
     // `viewBox`, его размер.
     let rb = if view_box {
-        let (w, h) = VIEW_BOX.with(|v| v.get());
+        let (w, h) = cx.view_box;
         (0.0, 0.0, w, h)
     } else {
         shape_box(e, !matches!(c.clip_ref, Some(2) | Some(3)))?

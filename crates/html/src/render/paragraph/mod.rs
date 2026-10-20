@@ -20,8 +20,6 @@ pub(super) use edges::own_size;
 
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -70,17 +68,19 @@ fn paragraph_routed(
             let line = match base.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => size * k,
-                _ => crate::text::metrics::normal_px(normal_fraction(&base, opts), size),
+                _ => crate::text::metrics::normal_px(
+                    normal_fraction(&base, opts),
+                    size,
+                    opts.cx.vcx(),
+                ),
             };
-            let normal_font = crate::text::inline::strut_font(&base, &opts.text);
+            let normal_font = crate::text::inline::strut_font(&base, &opts.text, opts.cx.vcx());
             let base_lh = base.line_height;
             let for_build = first.clone();
-            let depth = defer_depth();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
             // среза строк (`LayoutCx::trim_para`) едут с ним в `opts_owned`.
             let build: crate::layout::float::split_flow::Split =
                 std::rc::Rc::new(move |at, width| {
-                    let _depth = DepthScope::enter(depth);
                     let mut styled = base.clone();
                     styled.first_line = Some(for_build.clone());
                     let mut para =
@@ -91,7 +91,7 @@ fn paragraph_routed(
             // Мерить надо ТЕМ начертанием, каким строка и будет набрана:
             // жирная первая строка занимает больше места, и разрез по
             // обычному шрифту не помещался бы в неё целиком.
-            let font = crate::text::inline::strut_font(&first, &opts.text);
+            let font = crate::text::inline::strut_font(&first, &opts.text, opts.cx.vcx());
             let measure_size = match first.font_size {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => k * size,

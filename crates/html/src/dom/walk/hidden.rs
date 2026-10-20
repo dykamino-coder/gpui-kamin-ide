@@ -27,6 +27,7 @@ pub(super) fn hidden_element(
     preserve: bool,
     reversed_start: &dyn Fn(&str, &mut crate::style::generated::counters::Counters) -> i64,
     out: &mut Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     // Table columns use an internal non-flow display, but still
     // generate boxes (CSS 2.1 §17.2). Their counter directives
@@ -73,6 +74,7 @@ pub(super) fn hidden_element(
             &mut path2,
             style.preserve_newlines.unwrap_or(preserve),
             &mut raw,
+            vcx,
         );
         kids = raw
             .into_iter()

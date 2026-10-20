@@ -28,8 +28,8 @@ pub(super) fn collect_children(
     preserve: bool,
     tag: &str,
     attrs: &[(String, String)],
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> (Vec<Node>, ScrollPseudos) {
-    let vcx = tree.doc.values();
     let mut children = vec![];
     // Псевдоэлементы: коробка появляется, только если у правила есть
     // `content`. Значками, стрелками и разделителями в вёрстке
@@ -58,6 +58,7 @@ pub(super) fn collect_children(
             &mut vec![shadow.marker.clone()],
             keep,
             &mut children,
+            vcx,
         );
     } else if let Some(slot) = tree.slot_of(handle).filter(|s| !s.assigned.is_empty()) {
         // Слот показывает распределённые узлы, fallback — только без
@@ -89,6 +90,7 @@ pub(super) fn collect_children(
                 &slot.light_spots,
                 s.light_idx,
                 &mut children,
+                vcx,
             );
         }
     } else {
@@ -104,6 +106,7 @@ pub(super) fn collect_children(
             path,
             keep,
             &mut children,
+            vcx,
         );
         path.pop();
     }

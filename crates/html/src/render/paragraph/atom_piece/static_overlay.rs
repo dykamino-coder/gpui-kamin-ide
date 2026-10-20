@@ -24,6 +24,8 @@ pub(crate) fn static_overlay(
     anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
+    let mut group_style = (*e.style).clone();
+    group_style.mask_image = merged.mask_image.clone();
     merged.position = None;
     merged.abs_static = true;
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
@@ -44,7 +46,7 @@ pub(crate) fn static_overlay(
         // `clip: rect(...)` и маска у картинки живут в буфере группы:
         // путь наложения идёт мимо `grouped`, и без обёртки картинка
         // рисовалась бы целиком (`clip-rect-v*`).
-        grouped(image(&copy, &opts.cx), &e.style, vcx)
+        grouped(image(&copy, &opts.cx), &group_style, vcx)
     } else {
         // Тот же буфер группы, что и у картинки: маска, обрезка и
         // фильтр иначе не доходят до коробки на статической позиции.
@@ -52,10 +54,13 @@ pub(crate) fn static_overlay(
             styled_div_with(e, &merged, &opts.cx)
                 .children(blocks(&e.children, &merged, opts))
                 .into_any_element(),
-            &e.style,
+            &group_style,
             vcx,
         )
     };
+    // Transform the actual out-of-flow box before anchoring it; the
+    // paragraph overlay has zero advance and is not a transform reference box.
+    let inner = crate::paint::effects::transform::transformed(inner, &e.style, inherited, vcx);
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:
@@ -101,7 +106,9 @@ pub(crate) fn static_overlay(
     Some(inline::Piece::Overlay(
         inner,
         inline::OverlayAt {
-            next_line: rot_block,
+            next_line: rot_block
+                || (inherited.band_kid
+                    && !crate::layout::positioned::static_position::hypothetical_inline_level(e)),
             bidi_hang: rotated_rtl && !rot_block,
             ..Default::default()
         },

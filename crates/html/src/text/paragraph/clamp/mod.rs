@@ -30,6 +30,9 @@ impl Paragraph {
         let Some(last) = lines.pop() else {
             return lines;
         };
+        // The marker shares the line's float exclusions and text indent
+        // (CSS Overflow 4 section 5.2), just like its remaining text.
+        let limit = self.clamp_line_limit(&lines, &last, limit);
         let segs = self.measure(window);
         let ell = self.suffix_width(self.clamp_str(), last.range.start, window);
         let head = last.range.start;
@@ -97,6 +100,7 @@ impl Paragraph {
                 px(0.)
             };
         lines.push(Line {
+            clearance: last.clearance,
             range: head..end,
             width,
             ellipsis: true,
@@ -106,5 +110,65 @@ impl Paragraph {
             indent: last.indent,
         });
         lines
+    }
+
+    fn clamp_line_limit(
+        &self,
+        before: &[Line],
+        last: &Line,
+        limit: Option<Pixels>,
+    ) -> Option<Pixels> {
+        limit.map(|w| {
+            w - last.indent
+                - px(self
+                    .candidate_cut(before, last.range.clone(), last.clearance)
+                    .1)
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::float::shapes::FloatShape;
+
+    #[test]
+    fn marker_uses_the_final_line_exclusions() {
+        let mut paragraph = Paragraph::new(
+            "text".into(),
+            vec![],
+            px(16.),
+            px(20.),
+            Align::Left,
+            Wrap::default(),
+        );
+        std::sync::Arc::make_mut(&mut paragraph.flow)
+            .1
+            .push(FloatShape::Band {
+                top: 20.,
+                h: 20.,
+                w: 30.,
+            });
+        let line = |clearance| Line {
+            range: 0..1,
+            clearance: px(clearance),
+            indent: px(25.),
+            width: px(10.),
+            ellipsis: false,
+            clamped: false,
+            vis_cut: None,
+            hyphen: false,
+        };
+        // Newly broken lines are not yet installed in paragraph.lines.
+        let before = [line(0.)];
+        assert_eq!(
+            paragraph.clamp_line_limit(&before, &line(0.), Some(px(100.))),
+            Some(px(45.))
+        );
+        assert_eq!(
+            paragraph.clamp_line_limit(&before, &line(20.), Some(px(100.))),
+            Some(px(75.))
+        );
+        assert_eq!(paragraph.clamp_line_limit(&before, &line(0.), None), None);
     }
 }

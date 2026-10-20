@@ -14,7 +14,7 @@ use crate::document::state::ValueCx;
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;
-pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
+pub(crate) use root_box::{Measurement as RootMeasurement, record as record_root_box};
 
 mod fills;
 use crate::hooks::IntoHooked;
@@ -27,9 +27,9 @@ mod source_types;
 pub use source_types::Source;
 
 use crate::style::computed::Computed;
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, RenderImage, Styled, px};
+use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 pub(crate) mod alpha_sampling;
 mod flat_vector;
 mod float_geometry;
@@ -44,11 +44,11 @@ mod mask_composite;
 mod mask_luminance;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
 pub(crate) use mask_luminance::luminance_mask_image;
-mod angle;
 mod clip;
 mod conic;
 mod sources;
-pub use sources::{key, key_exif, source};
+pub use sources::source;
+pub(crate) use sources::{computed_source, element_source};
 mod gradient_geometry;
 mod gradient_raster;
 mod svg_fragment;
@@ -81,27 +81,6 @@ const CACHE_CAP: usize = 32;
 /// миллионы копий.
 const MAX_TILES: f32 = 2048.0;
 
-/// Декодировать по ссылке из `url(...)`: `data:`-URI или путь на диске.
-///
-/// Сеть не трогаем по тем же причинам, что и в элементе-картинке: документ
-/// рисуется в чате, где загрузка чужих адресов недопустима.
-pub fn load(src: &str, vcx: ValueCx<'_>) -> Option<Arc<RenderImage>> {
-    match source(src, vcx)? {
-        Source::Raster(image) => Some(image),
-        filtered @ Source::Filtered { .. } => {
-            filtered.raster(default_size(filtered.intrinsic(), (300.0, 150.0)), vcx)
-        }
-        // Своя величина рисунка — то же, что для растра: он растрируется под
-        // неё, а нужный размер плитки посчитает вызывающий.
-        Source::Vector { markup, size } => {
-            let (w, h) = default_size(size, (300.0, 150.0));
-            crate::svg::raster::rasterize(&markup, w, h)
-        }
-        Source::Gradient { raw } => rasterize_gradient(&raw, 300, 150, vcx),
-        Source::Shape { raw } => rasterize_shape(&raw, 300, 150, 1.0, vcx),
-    }
-}
-
 /// Своя величина картинки в CSS-точках (css-images-3 §5.1, недостающее —
 /// §5.3 от места 300×150, как у `load`).
 ///
@@ -129,7 +108,7 @@ pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<An
                 let bounds = if style.bg_fixed == Some(true) {
                     clip
                 } else {
-                    area.rect(clip)
+                    area.rect(clip, vcx)
                 };
                 paint_tiles(&style, bounds, Some(clip), window, vcx);
             },
@@ -154,7 +133,8 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     Some(
         exact_layer::ExactLayer::inset(
             c.bg_border_insets.unwrap_or([0.0; 4]),
-            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+            move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
+                let bounds = geometry.snapped;
                 let vcx = values.vcx();
                 clip::paint(&style, bounds, window, |style, window| {
                     if style.bg_fixed == Some(true) {
@@ -165,9 +145,16 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
                             origin: gpui::point(px(0.0), px(0.0)),
                             size: window.viewport_size(),
                         };
-                        paint_tiles(style, view, Some(bounds), window, vcx);
+                        tiles::paint_tiles_in(
+                            style,
+                            view,
+                            Some(bounds),
+                            window,
+                            Some(geometry),
+                            vcx,
+                        );
                     } else {
-                        paint_area(style, bounds, window, vcx);
+                        tiles::paint_tiles_in(style, bounds, None, window, Some(geometry), vcx);
                     }
                 });
             },

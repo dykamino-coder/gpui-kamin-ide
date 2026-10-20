@@ -6,7 +6,7 @@
 
 use super::{BackgroundImageValues, flat_fill, over};
 use crate::document::state::ValueCx;
-use crate::style::computed::{BgClip, Computed};
+use crate::style::computed::{BgClip, BlendMode, Computed};
 use crate::style::values::value::Color;
 
 mod blend;
@@ -37,7 +37,7 @@ fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
         .any(|l| matches!(l.bg_clip, Some(BgClip::Text | BgClip::BorderArea)));
     let blended = layers
         .iter()
-        .any(|l| l.background_blend.as_deref().is_some_and(|v| v != "normal"));
+        .any(|l| l.background_blend.is_some_and(|v| v != BlendMode::Normal));
     if !special && !blended {
         return None;
     }
@@ -51,7 +51,7 @@ fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
     for layer in layers.iter().rev() {
         let unavailable = layer
             .bg_image
-            .as_deref()
+            .as_ref()
             .is_some_and(|image| !layer.image_available(image, vcx));
         // CSS Backgrounds 3 §2.3: an image that cannot be displayed is
         // treated as none. It contributes transparent black to the stack,
@@ -66,7 +66,7 @@ fn evaluate(c: &Computed, vcx: ValueCx<'_>) -> Option<[Color; 3]> {
                 *pixel = blend::composite(
                     color,
                     *pixel,
-                    layer.background_blend.as_deref().unwrap_or("normal"),
+                    layer.background_blend.unwrap_or(BlendMode::Normal),
                 )?;
             }
         }

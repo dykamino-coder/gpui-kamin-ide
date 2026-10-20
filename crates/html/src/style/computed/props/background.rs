@@ -62,7 +62,7 @@ impl Computed {
                 let inner = v[11..].trim_end();
                 let args = crate::style::css::split_args(inner.strip_suffix(')').unwrap_or(inner));
                 if let [light, dark] = args.as_slice() {
-                    let dark_now = crate::style::values::value::dark_scheme();
+                    let dark_now = crate::style::values::value::dark_scheme(vcx);
                     let pick = if dark_now { dark.trim() } else { light.trim() };
                     self.apply_background(key, pick, hit, vcx);
                 }
@@ -80,112 +80,37 @@ impl Computed {
                     self.gradient = None;
                     self.gradient_raw = None;
                     self.gradient_current = None;
-                } else if v.starts_with("linear-gradient(") || v.starts_with("radial-gradient(") {
-                    // Негодная запись роняет ОБЪЯВЛЕНИЕ (§4.2), прежняя
-                    // картинка живёт: `linear-gradient(green, green)` и следом
-                    // четыре негодных угла обязаны оставить зелёный.
-                    if let Some(g) = parse_gradient(v, vcx) {
-                        self.gradient = accept_parsed!(self, Some(g));
-                        self.gradient_current = v.contains("currentcolor").then(|| v.to_string());
-                        self.gradient_em = has_font_units(v).then(|| v.to_string());
-                        // Сырая запись нужна фону РЯДА таблицы: он рисуется
-                        // слоем картинки, и градиент туда идёт источником.
-                        self.gradient_raw = Some(v.to_string());
-                    }
-                } else if crate::style::computed::filter_image::parse_filter_image(v, vcx).is_some()
-                {
-                    // Filter the rendered image, preserving gradient geometry,
-                    // rather than rewriting its stops before interpolation.
-                    self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
-                } else if let Some(rest) = v.strip_prefix("filter(") {
-                    // `filter(<image>, <filter-list>)` (filter-effects-1 §12):
-                    // фильтр применяется К КАРТИНКЕ, не к элементу — цвета
-                    // градиента пересчитываются на месте.
-                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    let parts = crate::style::css::split_args(inner);
-                    if let Some(img) = parts.first().map(|p| p.trim())
-                        && (img.starts_with("linear-gradient(")
-                            || img.starts_with("radial-gradient("))
-                        && let Some(mut g) = parse_gradient(img, vcx)
-                    {
-                        let mut tmp = Self::default();
-                        tmp.apply_one("filter", &parts[1..].join(" "), vcx);
-                        if let Some(f) = tmp.filter {
-                            g.from = f.apply(g.from);
-                            g.to = f.apply(g.to);
-                            for stop in g.stops.iter_mut() {
-                                stop.0 = f.apply(stop.0);
-                            }
+                } else if let Some(image) = ImageSource::parse(v, vcx) {
+                    self.accept_declaration();
+                    match image {
+                        ImageSource::Gradient {
+                            ref value,
+                            repeating: false,
+                        } => {
+                            self.gradient = Some(*value.clone());
+                            self.gradient_current = self
+                                .gradient
+                                .as_ref()
+                                .filter(|g| !g.colors.is_empty())
+                                .cloned();
+                            self.gradient_raw = Some(image);
                         }
-                        self.gradient = accept_parsed!(self, Some(g));
-                    } else if let Some(img) = parts.first().map(|p| p.trim())
-                        && gradient_as_raster(img)
-                    {
-                        // Конический и повторяющиеся идут растровой плиткой
-                        // (`gradient_as_raster`): фильтр доносится до цветов
-                        // стопов прямо в записи — растеризатор получает уже
-                        // пересчитанные цвета (filter-effects-1 §12
-                        // `filter()`: фильтр применяется к КАРТИНКЕ).
-                        let mut tmp = Self::default();
-                        tmp.apply_one("filter", &parts[1..].join(" "), vcx);
-                        self.bg_image = accept_parsed!(
-                            self,
-                            Some(match tmp.filter {
-                                Some(f) => filter_gradient_text(img, &f, vcx),
-                                None => img.to_string(),
-                            })
-                        );
-                    } else if crate::style::computed::filter_image::parse_filter_image(v, vcx)
-                        .is_some()
-                    {
-                        // `filter(url(…), …)`: the raster loader filters it.
-                        self.bg_image = accept_parsed!(self, Some(v.trim().to_string()));
-                    }
-                } else if gradient_as_raster(v) {
-                    // Конический и ПОВТОРЯЮЩИЕСЯ GPU-путь не выражает — они
-                    // идут растровой плиткой (css-images-3 §3.6,
-                    // css-images-4 §2.3; растеризатор уже есть, а
-                    // `background::source` эти записи опознаёт с самого
-                    // начала — до `Computed` они просто не доезжали).
-                    self.bg_image = accept_parsed!(self, Some(v.to_string()));
-                } else if image_function::arguments(v, vcx).is_some() {
-                    // Keep fallback and currentColor until loading and inheritance.
-                    self.bg_image = accept_parsed!(self, Some(v.to_string()));
-                    self.gradient = None;
-                    self.gradient_raw = None;
-                    self.gradient_current = None;
-                } else if let Some(rest) = v
-                    .strip_prefix("image-set(")
-                    .or_else(|| v.strip_prefix("-webkit-image-set("))
-                {
-                    let inner = rest.rfind(')').map(|i| &rest[..i]).unwrap_or(rest);
-                    match image_set_pick(inner, vcx) {
-                        // Функция ПРЕДСТАВЛЯЕТ выбранный `<image>` (§2.5,
-                        // шаг 4): он разбирается тем же кодом, что без
-                        // обёртки, — адрес, градиент, конический, повтор.
-                        // Кандидат приходит СЫРОЙ записью (`url(...)`): голый
-                        // путь ни одна ветка не принимает, и прошлый заход
-                        // (09.09, +9/−17) терял на этом все адреса.
-                        Some(Some(chosen)) => self.apply_one("background-image", &chosen, vcx),
-                        // Годная запись без пригодных кандидатов — «invalid
-                        // image» (шаг 3): слой ГАСНЕТ, прежний не выживает.
-                        Some(None) => {
-                            self.accept_declaration();
+                        ImageSource::Invalid => {
                             self.bg_image = None;
                             self.gradient = None;
                             self.gradient_raw = None;
                             self.gradient_current = None;
                         }
-                        // Негодная запись (отрицательное разрешение числом —
-                        // css-values-4 §6.3): объявление не применяется (§4.2).
-                        None => {}
+                        other => {
+                            if matches!(other, ImageSource::Color(_) | ImageSource::Fallback { .. })
+                            {
+                                self.gradient = None;
+                                self.gradient_raw = None;
+                                self.gradient_current = None;
+                            }
+                            self.bg_image = Some(other);
+                        }
                     }
-                } else if v.trim_end().ends_with(')')
-                    && let Some(url) = parse_url(v)
-                {
-                    // Хвост после `url(...)` делает объявление недействительным
-                    // (§4.2): `background-image: url(x) repeat` не картинка.
-                    self.bg_image = accept_parsed!(self, Some(url));
                 }
             }
 

@@ -5,6 +5,8 @@ use gpui::{AnyElement, Pixels};
 impl VerticalText {
     pub fn new(child: AnyElement) -> Self {
         VerticalText {
+            paint_context: Default::default(),
+            inline_measure: None,
             child,
             natural: gpui::Size::default(),
             fit_limit: None,
@@ -18,7 +20,15 @@ impl VerticalText {
             first_line: None,
             layout_id: None,
             turn: None,
+            values: None,
         }
+    }
+
+    /// Share measurements with the document that built this paragraph.
+    pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
+        self.paint_context = cx.vertical_paint.clone();
+        self.inline_measure = cx.inline_measure.clone();
+        self
     }
 
     /// Строки поданы снизу вверх (`vertical-lr`): первая — левая колонка.
@@ -47,8 +57,9 @@ impl VerticalText {
 
     /// Включить двухкадровый замер: заявка ширины уточняется фактом
     /// прошлого кадра (перенос строк меняет число колонок).
-    pub fn keyed(mut self, key: u64) -> Self {
-        self.key = Some(key);
+    pub fn keyed(mut self, key: u64, vcx: crate::document::state::ValueCx<'_>) -> Self {
+        self.key = Some(vcx.doc.vertical_measures.next_key(key));
+        self.values = Some(vcx.keep());
         self
     }
 

@@ -16,7 +16,7 @@ pub(super) enum Kind {
 
 /// Вычислить `raw`, если оно — математическая функция. `None` — не функция
 /// или негодное выражение.
-pub(super) fn eval(raw: &str) -> Option<(f32, Kind)> {
+pub(super) fn eval(raw: &str, vcx: crate::document::state::ValueCx<'_>) -> Option<(f32, Kind)> {
     let s = raw.trim();
     let low = s.to_ascii_lowercase();
     let is_fn = ["calc(", "sign(", "abs(", "min(", "max(", "clamp("]
@@ -28,6 +28,7 @@ pub(super) fn eval(raw: &str) -> Option<(f32, Kind)> {
     let mut p = Parser {
         s: low.as_bytes(),
         at: 0,
+        vcx,
     };
     let v = p.sum()?;
     p.ws();
@@ -37,6 +38,7 @@ pub(super) fn eval(raw: &str) -> Option<(f32, Kind)> {
 struct Parser<'a> {
     s: &'a [u8],
     at: usize,
+    vcx: crate::document::state::ValueCx<'a>,
 }
 
 impl Parser<'_> {
@@ -175,7 +177,7 @@ impl Parser<'_> {
             self.at += 1;
         }
         let unit = std::str::from_utf8(&self.s[u0..self.at]).ok()?;
-        let (ch, ex) = crate::text::metrics::ch_ex_px("", 16.0);
+        let (ch, ex) = crate::text::metrics::ch_ex_px("", 16.0, self.vcx);
         Some(match unit {
             "" => (n, Kind::Num),
             "px" => (n, Kind::Px),
@@ -202,14 +204,19 @@ mod tests {
 
     #[test]
     fn sign_and_resolution_math() {
+        let metric_doc = crate::document::state::DocState::new(Default::default());
+        let vcx = metric_doc.values();
         assert_eq!(
-            eval("calc(1px * (1 + sign(16px - 1rem)))"),
+            eval("calc(1px * (1 + sign(16px - 1rem)))", vcx),
             Some((1.0, Kind::Px))
         );
-        assert_eq!(eval("calc(2 * sign(16px - 1rem))"), Some((0.0, Kind::Num)));
-        assert_eq!(eval("calc(2x - 96dpi)"), Some((1.0, Kind::Res)));
-        assert_eq!(eval("calc(1px + 2)"), None);
-        assert_eq!(eval("10px"), None);
+        assert_eq!(
+            eval("calc(2 * sign(16px - 1rem))", vcx),
+            Some((0.0, Kind::Num))
+        );
+        assert_eq!(eval("calc(2x - 96dpi)", vcx), Some((1.0, Kind::Res)));
+        assert_eq!(eval("calc(1px + 2)", vcx), None);
+        assert_eq!(eval("10px", vcx), None);
     }
 
     #[test]

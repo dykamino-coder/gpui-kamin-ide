@@ -1,28 +1,17 @@
 //! Кадр якорей: устаревание записей, запрос перестройки, сброс и порядковые номера.
 
-use super::CB;
-use crate::layout::positioned::anchor::AREA_LAST;
-use crate::layout::positioned::anchor::AREA_NOW;
-use crate::layout::positioned::anchor::CB_PARENT;
-use crate::layout::positioned::anchor::CELL_LAST;
-use crate::layout::positioned::anchor::CELL_NOW;
-use crate::layout::positioned::anchor::IMPLICIT;
-use crate::layout::positioned::anchor::LAST_IMPLICIT;
-use crate::layout::positioned::anchor::LAST_NAMED;
-use crate::layout::positioned::anchor::NAMED;
-use crate::layout::positioned::anchor::NAMED_SEQ;
-use crate::layout::positioned::anchor::REFRAMES;
-use crate::layout::positioned::anchor::SEQ;
-use crate::layout::positioned::anchor::TF_NEXT;
-use crate::layout::positioned::anchor::USED_LAST;
+use crate::document::state::ValueCx;
 use gpui::Window;
 
 /// Sizes resolved before layout from the previous frame are only correct once
 /// the anchor geometry they read has settled; nothing else repaints a static
 /// page, so ask for one more frame while it is still changing.
-pub(super) fn reframe_if_stale(window: &mut Window) {
-    if REFRAMES.with(|r| r.get()) < 8 {
-        REFRAMES.with(|r| r.set(r.get() + 1));
+pub(super) fn reframe_if_stale(window: &mut Window, vcx: ValueCx<'_>) {
+    if vcx.doc.anchor_frame.reframes.get() < 8 {
+        vcx.doc
+            .anchor_frame
+            .reframes
+            .set(vcx.doc.anchor_frame.reframes.get() + 1);
         request_rebuild(window);
     }
 }
@@ -41,30 +30,30 @@ pub(super) fn request_rebuild(window: &mut Window) {
 
 /// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
 /// кадра не выбрасываются, а переезжают в `LAST_*`.
-pub fn reset() {
-    NAMED.with(|m| m.borrow_mut().clear());
-    let named = NAMED_SEQ.with(|v| std::mem::take(&mut *v.borrow_mut()));
-    LAST_NAMED.with(|v| *v.borrow_mut() = named);
-    let implicit = IMPLICIT.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    LAST_IMPLICIT.with(|m| *m.borrow_mut() = implicit);
-    CB.with(|m| m.borrow_mut().clear());
-    crate::text::inline::inline_box::clear();
-    CB_PARENT.with(|m| m.borrow_mut().clear());
-    let area = AREA_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    AREA_LAST.with(|m| *m.borrow_mut() = area);
-    let cell = CELL_NOW.with(|m| std::mem::take(&mut *m.borrow_mut()));
-    CELL_LAST.with(|m| *m.borrow_mut() = cell);
-    SEQ.with(|s| s.set(0));
-    TF_NEXT.with(|n| n.set(0));
-    USED_LAST.with(|u| u.set(false));
+pub fn reset(vcx: ValueCx<'_>) {
+    vcx.doc.anchor_frame.named.borrow_mut().clear();
+    let named = std::mem::take(&mut *vcx.doc.anchor_frame.named_seq.borrow_mut());
+    *vcx.doc.anchor_frame.last_named.borrow_mut() = named;
+    let implicit = std::mem::take(&mut *vcx.doc.anchor_frame.implicit.borrow_mut());
+    *vcx.doc.anchor_frame.last_implicit.borrow_mut() = implicit;
+    vcx.doc.anchor_frame.cb.borrow_mut().clear();
+    vcx.doc.anchor_frame.cb_parent.borrow_mut().clear();
+    let area = std::mem::take(&mut *vcx.doc.anchor_frame.area_now.borrow_mut());
+    *vcx.doc.anchor_frame.area_last.borrow_mut() = area;
+    let cell = std::mem::take(&mut *vcx.doc.anchor_frame.cell_now.borrow_mut());
+    *vcx.doc.anchor_frame.cell_last.borrow_mut() = cell;
+    vcx.doc.anchor_frame.seq.set(0);
+    vcx.doc.anchor_frame.tf_next.set(0);
+    vcx.doc.anchor_frame.used_last.set(false);
 }
 
 /// Порядковый номер сборки элемента в кадре: зовёт `render::element` в
 /// порядке дерева, номер устойчив от кадра к кадру (дерево то же).
-pub fn next_seq() -> u32 {
-    SEQ.with(|s| {
+pub fn next_seq(vcx: ValueCx<'_>) -> u32 {
+    {
+        let s = &vcx.doc.anchor_frame.seq;
         let v = s.get() + 1;
         s.set(v);
         v
-    })
+    }
 }

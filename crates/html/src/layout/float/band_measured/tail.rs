@@ -1,32 +1,26 @@
 //! Хвост измеренного хоста полос (band_host_m_tail).
 
-use super::{band_piece_m, host_floats_shaped};
+use super::{band_piece_m, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
+use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_flow_host::{BAND_CBH, BAND_CBW, band_flow_rest_lift};
+use crate::layout::float::band_flow_host::band_flow_rest_lift;
 use crate::render::is_blank;
-use crate::style::computed::Computed;
 
 /// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn band_host_m_tail(
     nodes: &[Node],
-    i: usize,
     j: usize,
     em: f32,
     lead: &[Node],
     floaters: Vec<Element>,
     rest: Vec<Node>,
     probes: Vec<(usize, usize, Vec<Node>)>,
-    cb: Option<f32>,
+    cb: FloatCb,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<(Element, usize, Vec<Node>)> {
-    // Одинокий флоат без хвоста полосам не нужен — если перед ним в строке
-    // ничего нет: флоат ПОСЛЕ текста («Inner<float>») встаёт на его строку
-    // только в хосте.
-    if floaters.len() < 2 && !rest.iter().any(|n| !is_blank(n)) && lead.is_empty() {
-        return None;
-    }
     // Хвост: куски своего контекста, блоки потока и строчные прогоны
     // (шаг F4: строки блоков потока режутся полосами, `band_flow::Kind::Flow`).
     let mut lifted: Vec<Node> = vec![];
@@ -35,40 +29,7 @@ pub(super) fn band_host_m_tail(
     let lead_probe = (!lead.is_empty()).then_some(());
     let probe_nodes: Vec<Node> = probes
         .into_iter()
-        .flat_map(|(a, b, pre)| {
-            // Последний `<br>` верхнего уровня делит набранное: до него —
-            // основание (`lead-base`), после — строка флоата (`lead-for`).
-            let cut = pre
-                .iter()
-                .rposition(|n| matches!(n, Node::Element(c) if c.tag == "br"))
-                .map(|p| p + 1);
-            let (base, line) = match cut {
-                Some(p) => (Some(pre[..p].to_vec()), pre[p..].to_vec()),
-                None => (None, pre),
-            };
-            let probe = |children: Vec<Node>, base: bool| {
-                Node::Element(Element::anonymous(
-                    "div",
-                    Computed::default(),
-                    children,
-                    false,
-                    crate::dom::Marks {
-                        anon: true,
-                        lead: Some(crate::dom::LeadProbe {
-                            base,
-                            from: a,
-                            to: b,
-                        }),
-                        ..Default::default()
-                    },
-                ))
-            };
-            let mut v = vec![probe(line, false)];
-            if let Some(base) = base {
-                v.push(probe(base, true));
-            }
-            v
-        })
+        .flat_map(|(a, b, pre)| super::lead_probes(pre, a, b, cb.preserve_newlines))
         .collect();
     let rest = if lead.is_empty() {
         rest
@@ -77,7 +38,7 @@ pub(super) fn band_host_m_tail(
         r.extend(rest);
         r
     };
-    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb)?;
+    let rest = band_flow_rest_lift(rest, em, Some(&mut lifted), cb.wm, cb.margin_basis, vcx)?;
     // С содержимым перед флоатом первый кусок хвоста — его прогон: иначе
     // флоат не на той строке.
     if lead_probe.is_some() && !matches!(rest.first(), Some(Node::Element(c)) if c.marks.anon) {
@@ -86,7 +47,7 @@ pub(super) fn band_host_m_tail(
     // Блок потока или строчный прогон в хвосте (не кусок своего контекста).
     let flows = rest
         .iter()
-        .any(|n| matches!(n, Node::Element(_)) && band_piece_m(n, em).is_none());
+        .any(|n| matches!(n, Node::Element(_)) && band_piece_m(n, em, cb.wm).is_none());
     // За хвостом — очищающая коробка с верхним полем: её поле и clearance
     // (§9.5.2) решаются в паре с высотой хвоста, а хост их не видит —
     // остаётся распорке флекс-ряда (`adjoining-float-nested-forced-clearance-003`).
@@ -98,35 +59,22 @@ pub(super) fn band_host_m_tail(
     {
         return None;
     }
-    // Флоат с `shape-outside` рядом со СТРОКАМИ: строки обтекают ФОРМУ, а
-    // полосы держат только прямоугольник margin-box (css-shapes-1 §1) —
-    // такому пробегу место на живом пути форм `shape_flow`. Коробкам своего
-    // контекста форма не важна: они обходят margin-box.
-    if flows && host_floats_shaped(&nodes[i..j]) {
-        return None;
-    }
-    // Высота и ширина содержащего блока (`BAND_CBH`/`BAND_CBW`):
-    // `shape-flow` своих нет. Путь `Measured`: `shape_flow` отдаёт хост
-    // `band_flow`.
-    let mut host = Element::anonymous(
-        "shape-flow",
-        Computed::default(),
-        Vec::new(),
-        false,
-        crate::dom::Marks {
-            shape_flow: Some(crate::dom::ShapeFlow {
-                count: floaters.len(),
-                em: Some(em),
-                cbh: BAND_CBH.with(std::cell::Cell::get),
-                cbw: BAND_CBW.with(std::cell::Cell::get),
-                bands: Some(crate::dom::BandPath::Measured),
-                ..Default::default()
-            }),
+    // Высота, ширина и письмо содержащего блока: у хоста своих нет.
+    let count = floaters.len();
+    let mut children: Vec<Node> = floaters.into_iter().map(Node::Element).collect();
+    children.extend(rest);
+    children.extend(probe_nodes);
+    let host = measured_host(
+        crate::dom::ShapeFlow {
+            count,
+            em: Some(em),
+            cbh: cb.height,
+            cbw: cb.width,
+            wm: cb.wm,
+            icb: cb.icb,
             ..Default::default()
         },
+        children,
     );
-    host.children = floaters.into_iter().map(Node::Element).collect();
-    host.children.extend(rest);
-    host.children.extend(probe_nodes);
     Some((host, j, lifted))
 }

@@ -1,6 +1,7 @@
 //! Растровая маска и интервалы CSS shape-outside.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::ImageSource;
 mod dilation;
 pub(super) use dilation::dilate;
 
@@ -10,6 +11,7 @@ use crate::paint::background::*;
 /// Альфа-маска формы в холсте margin-box.
 pub(super) fn shape_mask(
     raw: &str,
+    image: Option<&ImageSource>,
     b: &ShapeBox,
     cols: usize,
     rows: usize,
@@ -91,24 +93,8 @@ pub(super) fn shape_mask(
         return Some(out);
     }
     // Картинка или градиент: альфа в content-box.
-    if raw.contains("url(") || raw.contains("-gradient(") {
-        let src = if raw.contains("-gradient(") {
-            let at = raw.find("-gradient(")?;
-            // Начало записи ищется от её ИМЕНИ: у `repeating-linear-gradient`
-            // перед `-gradient(` дефис, а не пробел, и обрезка по пробелу
-            // отдавала растеризатору всю строку целиком.
-            let head = raw[..at]
-                .rfind(|c: char| c.is_whitespace())
-                .map_or(0, |s| s + 1);
-            let start = raw[head..at].rfind("repeating-").map_or(head, |s| head + s);
-            crate::paint::background::source(
-                raw[start..].trim().trim_end_matches(|c| c != ')'),
-                vcx,
-            )
-            .and_then(|s| s.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx))
-        } else {
-            crate::style::computed::parse_url(raw).and_then(|u| load(&u, vcx))
-        }?;
+    if let Some(image) = image {
+        let src = computed_source(image, true)?.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx)?;
         let bytes = src.as_bytes(0)?;
         let sz = src.size(0);
         let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);

@@ -1,10 +1,7 @@
 //! `AnchorPlace`: сдвиг абсолютной коробки к якорю на подготовке кадра.
 
 use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
-use super::{
-    AREA_LAST, AREA_NOW, AnchorPlace, AnchorPlan, CELL_LAST, CELL_NOW, CHOSEN, USED_LAST, geometry,
-    reframe_if_stale, request_rebuild,
-};
+use super::{AnchorPlace, AnchorPlan, geometry, reframe_if_stale, request_rebuild};
 use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
@@ -71,22 +68,31 @@ impl Hooks for AnchorPlace {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
+        let vcx = self.values.vcx();
         let own = geometry::logical_own(*state, bounds, window);
         let (k, p) = self.choose(own, window, self.values.vcx());
         let plan = &self.plans[k];
         // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
         // при `auto`-размере (`resolve::fill_anchor_pairs`).
         {
-            AREA_NOW.with(|m| m.borrow_mut().insert(self.key, p.imcb));
-            CELL_NOW.with(|m| m.borrow_mut().insert(self.key, p.cell));
-            let stale = AREA_LAST.with(|m| m.borrow().get(&self.key) != Some(&p.imcb))
-                || CELL_LAST.with(|m| m.borrow().get(&self.key) != Some(&p.cell));
-            if stale && USED_LAST.with(|u| u.get()) {
-                reframe_if_stale(window);
+            vcx.doc
+                .anchor_frame
+                .area_now
+                .borrow_mut()
+                .insert(self.key, p.imcb);
+            vcx.doc
+                .anchor_frame
+                .cell_now
+                .borrow_mut()
+                .insert(self.key, p.cell);
+            let stale = vcx.doc.anchor_frame.area_last.borrow().get(&self.key) != Some(&p.imcb)
+                || vcx.doc.anchor_frame.cell_last.borrow().get(&self.key) != Some(&p.cell);
+            if stale && vcx.doc.anchor_frame.used_last.get() {
+                reframe_if_stale(window, vcx);
             }
         }
         if self.plans.len() > 1 {
-            let prev = CHOSEN.with(|m| m.borrow_mut().insert(self.key, k));
+            let prev = vcx.doc.anchor_frame.chosen.borrow_mut().insert(self.key, k);
             // Объявления выбранного правила лягут в стиль на следующей
             // сборке (`apply_chosen`) — попросить её.
             if prev != Some(k) {

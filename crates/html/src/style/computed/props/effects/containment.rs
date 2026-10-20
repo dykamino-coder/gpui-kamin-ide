@@ -151,25 +151,13 @@ impl Computed {
                 // включая те, где цвет берётся целиком (тон, насыщенность).
                 self.blend = accept_parsed!(
                     self,
-                    match v {
-                        "multiply" => Some(1),
-                        "screen" => Some(2),
-                        "darken" => Some(3),
-                        "lighten" => Some(4),
-                        "overlay" => Some(5),
-                        "color-dodge" => Some(6),
-                        "color-burn" => Some(7),
-                        "hard-light" => Some(8),
-                        "soft-light" => Some(9),
-                        "difference" => Some(10),
-                        "exclusion" => Some(11),
-                        "hue" => Some(12),
-                        "saturation" => Some(13),
-                        "color" => Some(14),
-                        "luminosity" => Some(15),
-                        "plus-lighter" => Some(16),
-                        _ => Some(0),
-                    }
+                    Some(if v == "plus-lighter" {
+                        16
+                    } else {
+                        BlendMode::parse(v)
+                            .filter(|mode| *mode != BlendMode::Inherit)
+                            .map_or(0, |mode| mode as u8)
+                    })
                 )
             }
             "image-rendering" => {

@@ -64,10 +64,7 @@ pub(super) fn fit_local_image(
     }
     let image = replaced_content::position(image, &e.style, vcx);
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
-        crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-            vcx,
-        )
+        crate::paint::background::element_source(local.unwrap_or(src), &e.style)
     {
         let mut style = (*e.style).clone();
         if fills_holder {
@@ -94,19 +91,20 @@ pub(super) fn local_image_source<'a>(
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
-        .or_else(|| crate::style::computed::filter_image::parse_filter_image(src, vcx).map(|_| src))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let key = crate::paint::background::key(local.unwrap_or(src), &e.style, vcx);
-    let own = crate::paint::background::source(&key, vcx).and_then(|s| match s {
-        crate::paint::background::Source::Raster(image) => Some(image),
-        filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
-            crate::paint::background::default_size(filtered.intrinsic(), (300.0, 150.0)),
-            vcx,
-        ),
-        crate::paint::background::Source::Vector { .. }
-        | crate::paint::background::Source::Gradient { .. }
-        | crate::paint::background::Source::Shape { .. } => None,
-    });
+    let own =
+        crate::paint::background::element_source(local.unwrap_or(src), &e.style).and_then(|s| {
+            match s {
+                crate::paint::background::Source::Raster(image) => Some(image),
+                filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
+                    crate::paint::background::default_size(filtered.intrinsic(), (300.0, 150.0)),
+                    vcx,
+                ),
+                crate::paint::background::Source::Vector { .. }
+                | crate::paint::background::Source::Gradient { .. }
+                | crate::paint::background::Source::Shape { .. } => None,
+            }
+        });
     let wants_pipe = e.style.object_position.is_some()
         || e.style
             .object_fit
@@ -114,7 +112,10 @@ pub(super) fn local_image_source<'a>(
             .is_some_and(|f| matches!(f, "fill" | "contain" | "cover" | "none" | "scale-down"));
     let mut d = d;
     if !wants_pipe
-        && crate::style::computed::filter_image::parse_filter_image(src, vcx).is_none()
+        && !matches!(
+            e.style.content_image(),
+            Some(crate::style::computed::ImageSource::Filter { .. })
+        )
         && let Some(image) = super::grid_measured::measured(e, local.unwrap_or(src), &mut d, vcx)
     {
         return Err(image);

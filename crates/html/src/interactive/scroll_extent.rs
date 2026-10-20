@@ -59,21 +59,12 @@ impl Default for Frame {
         }
     }
 }
-thread_local! { static CURRENT: RefCell<Option<Frame>> = const { RefCell::new(None) }; }
-struct Restore(Option<Frame>);
-impl Drop for Restore {
-    fn drop(&mut self) {
-        CURRENT.with(|slot| *slot.borrow_mut() = self.0.take());
-    }
-}
 impl Frame {
     pub(super) fn set_handle(&self, handle: gpui::ScrollHandle) {
         *self.handle.borrow_mut() = Some(handle);
     }
-    pub(super) fn parent_for(id: u64) -> Option<Self> {
-        CURRENT
-            .with(|slot| slot.borrow().clone())
-            .filter(|f| f.root.get() != Some(id))
+    pub(super) fn parent_for(frame: Option<&Self>, id: u64) -> Option<Self> {
+        frame.filter(|f| f.root.get() != Some(id)).cloned()
     }
     pub(super) fn record_border_box(
         &self,
@@ -109,7 +100,7 @@ impl Frame {
     pub(super) fn set_decoration_clip(&self, clip: gpui::ContentMask<Pixels>) {
         self.decoration_clip.set(Some(clip));
     }
-    pub(super) fn within<R>(&self, root: Option<&Element>, f: impl FnOnce() -> R) -> R {
+    pub(super) fn begin(&self, root: Option<&Element>) -> Option<Self> {
         self.boxes.borrow_mut().clear();
         self.text_boxes.borrow_mut().clear();
         self.grid_bounds.set(None);
@@ -118,18 +109,15 @@ impl Frame {
         self.root.set(root.map(|e| e.node_id));
         self.viewport
             .set(root.is_some_and(|e| e.tag == "html-viewport"));
-        let active = root.map(|_| self.clone());
-        let restore = Restore(CURRENT.with(|slot| slot.replace(active)));
-        let result = f();
-        drop(restore);
-        result
+        root.map(|_| self.clone())
     }
 }
 
 mod probes;
 mod projection;
 mod settle;
-pub(crate) use probes::{
-    decoration_clip, marker, probe, record_text, text_active, viewport_decoration,
-};
+pub(crate) use probes::{decoration_clip, marker, probe, record_text, viewport_decoration};
 pub(crate) use projection::{project, projection};
+
+#[cfg(test)]
+mod tests;

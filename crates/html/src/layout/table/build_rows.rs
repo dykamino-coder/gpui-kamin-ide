@@ -56,7 +56,7 @@ pub(super) fn table_rows_with_bands(
         _ => 16.0,
     };
     let table_family = inherited.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em, vcx);
     let table_border = e.style.borders();
     let bw = [
         px_of(table_border.top),
