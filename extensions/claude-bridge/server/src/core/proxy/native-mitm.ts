@@ -43,6 +43,14 @@ import { warnLog } from '../logging'
 const ANTHROPIC_HOST = 'api.anthropic.com'
 const ANTHROPIC_MESSAGES_PATH = '/v1/messages'
 
+// Keep reading SSE at full speed: throttling a slow CLI's upstream connection
+// has caused corporate proxies to reset it. Allow substantial bursts per turn,
+// but bound aggregate pending delivery across all sessions in this process.
+const MITM_RESPONSE_BUFFER_LIMIT_BYTES = 16 * 1024 * 1024
+const MITM_GLOBAL_BUFFER_LIMIT_BYTES = 256 * 1024 * 1024
+// Includes our queues AND writes accepted by res until their callbacks finish.
+let totalResponseQueuedBytes = 0
+
 /** undici throws a bare `TypeError: fetch failed` and hides the REAL reason —
  *  ECONNRESET, a corp TLS-interception cert error, ETIMEDOUT, ENOTFOUND, "socket
  *  hang up" — in `err.cause` (sometimes nested). Unwrap the whole chain so the
@@ -587,9 +595,10 @@ async function handleRequest(
   // SSE — observe the bytes for entry synthesis while forwarding to CLI.
   // Two things to get right (verified against claude-code-src behaviour):
   //
-  //  1. Respect CLI backpressure. Pause upstream until drain so a blocked
-  //     consumer cannot accumulate a whole response in the shared process.
-  //     A per-response queue budget also rejects an oversized single chunk.
+  //  1. NEVER pause upstream for CLI backpressure: corporate proxies reset
+  //     stalled upstream connections. Keep pulling at full speed, buffering CLI
+  //     delivery separately until drain. Explicit response/process byte budgets
+  //     abort only the request that would exceed a limit, without retry.
   //
   //  2. **`:keepalive` SSE comments pass through verbatim.** Tee only
   //     OBSERVES bytes for synthesis (reading via `tee.on('data')`); the
@@ -685,48 +694,96 @@ async function handleRequest(
   // A clean finish must not hard-abort synthesis when res emits close: that can
   // race the asynchronous tee tail. Interrupts still finalize partial entries.
   let sseCompleted = false
-  const responseBufferLimit = 256 * 1024
   const upstreamNode = Readable.fromWeb(upstream.body)
-  const resumeUpstream = () => {
-    if (!upstreamNode.destroyed && !ac.signal.aborted) upstreamNode.resume()
-  }
-  const abortUpstream = () => upstreamNode.destroy(ac.signal.reason as Error)
-  res.on('drain', resumeUpstream)
-  ac.signal.addEventListener('abort', abortUpstream, { once: true })
-  upstreamNode.once('close', () => {
-    res.removeListener('drain', resumeUpstream)
+  let queue: (Buffer | undefined)[] = []
+  let queueHead = 0
+  let queuedBytes = 0
+  let blocked = false
+  let forwardingClosed = false
+  let streamFailed = false
+  const releaseQueue = () => {
+    if (forwardingClosed) return
+    forwardingClosed = true
+    totalResponseQueuedBytes -= queuedBytes
+    queuedBytes = 0
+    queue = []
+    res.removeListener('drain', flushQueue)
     ac.signal.removeEventListener('abort', abortUpstream)
-  })
+  }
+  const endResponseIfReady = () => {
+    if (sseCompleted && queueHead === queue.length && !forwardingClosed && !res.writableEnded) {
+      try {
+        res.end()
+      } catch (err) {
+        failStream(err as Error)
+      }
+    }
+  }
+  const writeChunk = (chunk: Buffer) => {
+    try {
+      blocked = !res.write(chunk, () => {
+        // close/abort releases the whole budget once; late write callbacks must
+        // not subtract it again and let other sessions exceed the global cap.
+        if (forwardingClosed) return
+        queuedBytes -= chunk.length
+        totalResponseQueuedBytes -= chunk.length
+      })
+    } catch (err) {
+      failStream(err as Error)
+    }
+  }
+  function flushQueue() {
+    if (forwardingClosed || res.destroyed || ac.signal.aborted) return
+    blocked = false
+    while (queueHead < queue.length && !blocked) {
+      const chunk = queue[queueHead]!
+      queue[queueHead++] = undefined
+      writeChunk(chunk)
+    }
+    if (queueHead === queue.length) {
+      queue = []
+      queueHead = 0
+    }
+    endResponseIfReady()
+  }
+  function abortUpstream() {
+    releaseQueue()
+    upstreamNode.destroy(ac.signal.reason as Error)
+    // Upstream may already have ended while CLI delivery is still queued.
+    if (!res.writableEnded && !res.destroyed) res.destroy(ac.signal.reason as Error)
+  }
+  res.on('drain', flushQueue)
+  ac.signal.addEventListener('abort', abortUpstream, { once: true })
   upstreamNode.on('data', (chunk: Buffer) => {
-    if (res.writableEnded || res.destroyed || ac.signal.aborted) return
-    if (res.writableLength + chunk.length > responseBufferLimit) {
+    if (forwardingClosed || res.writableEnded || res.destroyed || ac.signal.aborted) return
+    const responseLimitExceeded = queuedBytes + chunk.length > MITM_RESPONSE_BUFFER_LIMIT_BYTES
+    if (responseLimitExceeded || totalResponseQueuedBytes + chunk.length > MITM_GLOBAL_BUFFER_LIMIT_BYTES) {
       const err = Object.assign(new Error('MITM response buffer limit exceeded'), {
-        code: 'MITM_RESPONSE_BUFFER_LIMIT',
+        code: responseLimitExceeded ? 'MITM_RESPONSE_BUFFER_LIMIT' : 'MITM_GLOBAL_BUFFER_LIMIT',
       })
       warnLog('[mitm] response buffer limit exceeded', {
         session: opts.ptySessionId,
         generation,
-        queuedBytes: res.writableLength,
+        queuedBytes,
+        totalQueuedBytes: totalResponseQueuedBytes,
         chunkBytes: chunk.length,
-        limitBytes: responseBufferLimit,
+        limitBytes: responseLimitExceeded ? MITM_RESPONSE_BUFFER_LIMIT_BYTES : MITM_GLOBAL_BUFFER_LIMIT_BYTES,
         reason: err.code,
       })
-      upstreamNode.destroy(err)
+      failStream(err)
       return
     }
+    queuedBytes += chunk.length
+    totalResponseQueuedBytes += chunk.length
     // Feed our entry synthesizer (observation-only — never blocks).
     try {
       tee.write(chunk)
     } catch {
       /* tee already destroyed */
     }
-    if (!res.writableEnded && !res.destroyed) {
-      try {
-        if (!res.write(chunk)) upstreamNode.pause()
-      } catch (err) {
-        upstreamNode.destroy(err as Error)
-      }
-    }
+    if (forwardingClosed || res.destroyed || ac.signal.aborted) return
+    if (blocked) queue.push(chunk)
+    else writeChunk(chunk)
   })
   upstreamNode.on('end', () => {
     sseCompleted = true
@@ -735,17 +792,16 @@ async function handleRequest(
     } catch {
       /* ignore */
     }
-    if (!res.writableEnded)
-      try {
-        res.end()
-      } catch {
-        /* ignore */
-      }
+    // Keep drain wired after upstream EOF; ending res before our queue drains
+    // would silently truncate a successful response to a slow CLI.
+    endResponseIfReady()
     // DIAG (#73): summarise what this SSE turn tee'd. `events:0` on a completed
     // SSE turn = parser/synth problem; healthy turns show hundreds of events.
     warnLog('[mitm][diag#73] SSE turn done', { session: opts.ptySessionId, generation, teeBytes, teeEvents })
   })
-  upstreamNode.on('error', (err: Error) => {
+  function failStream(err: Error) {
+    if (streamFailed) return
+    streamFailed = true
     warnLog('[mitm] upstream stream error', { session: opts.ptySessionId, generation, error: err.message })
     // Recycle the pool so the next request opens a fresh socket instead of
     // reusing the reset one; finalize the synth entry explicitly rather than
@@ -768,14 +824,15 @@ async function handleRequest(
       } catch {
         /* ignore */
       }
-  })
+  }
+  upstreamNode.on('error', failStream)
   // A late async write to a dead CLI socket emits 'error' on res; without this
   // listener it becomes an uncaughtException gated on the benign allowlist.
   res.on('error', (err: Error) => {
     warnLog('[mitm] res stream error', { error: err.message })
   })
   res.on('close', () => {
-    res.removeListener('drain', resumeUpstream)
+    releaseQueue()
     // `hard` only when the SSE had NOT completed — a genuine mid-stream interrupt.
     // A normal turn-end also fires 'close' and must not latch the synth off (that
     // races the async tee tail and truncates the response).
@@ -784,20 +841,14 @@ async function handleRequest(
     } catch {
       /* ignore */
     }
-    // Abort the upstream fetch so undici releases the socket (a silent
-    // mid-stream stall would otherwise pin it in the pool); pause first so
-    // already-queued 'data' events don't fire into the aborted synth.
+    // Abort the upstream fetch so undici releases the socket. The signal and
+    // forwardingClosed guard prevent queued data entering the aborted synth.
     try {
       ac.abort()
     } catch {
       /* ignore */
     }
     if (!upstreamNode.destroyed) {
-      try {
-        upstreamNode.pause()
-      } catch {
-        /* ignore */
-      }
       try {
         upstreamNode.destroy()
       } catch {

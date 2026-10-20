@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer'
 import { EventEmitter } from 'node:events'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { Readable, Writable } from 'node:stream'
+import { ReadableStream, type ReadableStreamDefaultController } from 'node:stream/web'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 // Fresh handler imports can be slow on a busy Windows runner. Keep asynchronous
@@ -82,6 +83,7 @@ function resetError() {
 
 beforeEach(() => {
   vi.resetModules()
+  vi.restoreAllMocks()
   vi.clearAllMocks()
   mocks.servers.length = 0
   mocks.ca = ''
@@ -127,25 +129,52 @@ it('late-old-generation-error cannot close the replacement shared pool', async (
   )
 })
 
-it('mitm-no-drain pauses upstream instead of buffering a 20 MiB SSE response', async () => {
+// Observe explicit flow control separately from Node's initial automatic resume
+// when the production handler attaches its first data listener.
+function observedUpstream(body: ReadableStream<Uint8Array>) {
+  const src = Readable.fromWeb(body)
+  const pause = vi.spyOn(src, 'pause')
+  const resume = vi.spyOn(src, 'resume')
+  vi.spyOn(Readable, 'fromWeb').mockReturnValueOnce(src)
+  return { src, pause, resume }
+}
+
+function heartbeat(bytes = 64 * 1024) {
+  const chunk = Buffer.alloc(bytes, 32)
+  chunk[0] = 58
+  chunk.write('\n\n', chunk.length - 2)
+  return chunk
+}
+
+it('mitm-no-drain aborts a 20 MiB SSE response at the 16 MiB cap without throttling upstream', async () => {
   const { startNativeMitm } = await import('./native-mitm')
   await startNativeMitm({ ptySessionId: 'blocked', onEntryUpdate: vi.fn() })
   let pulls = 0
-  const chunk = Buffer.alloc(64 * 1024, 32)
-  chunk[0] = 58 // an artificial SSE keepalive comment
-  chunk.write('\n\n', chunk.length - 2)
+  const chunk = heartbeat()
+  const cancel = vi.fn()
   const body = new ReadableStream({
     pull(controller) {
       if (pulls++ < 320) controller.enqueue(chunk)
       else controller.close()
     },
+    cancel,
   })
-  mocks.fetch.mockResolvedValue({ status: 200, headers: new Headers({ 'content-type': 'text/event-stream' }), body })
+  const flow = observedUpstream(body)
+  mocks.fetch.mockResolvedValue(streamResponse(body))
   const res = request(undefined, true)
-  await waitFor(() => expect(res.writableLength).toBeGreaterThan(0))
-  for (let i = 0; i < 10; i++) await tick()
-  expect(res.writableLength).toBeLessThanOrEqual(256 * 1024)
+  await waitFor(() => expect(res.destroyed).toBe(true))
+  expect(res.errored).toMatchObject({ code: 'MITM_RESPONSE_BUFFER_LIMIT' })
+  expect(mocks.log).toHaveBeenCalledWith(
+    '[mitm] response buffer limit exceeded',
+    expect.objectContaining({ reason: 'MITM_RESPONSE_BUFFER_LIMIT', limitBytes: 16 * 1024 * 1024 }),
+  )
+  expect(pulls).toBeGreaterThanOrEqual(256)
   expect(pulls).toBeLessThan(320)
+  expect(cancel).toHaveBeenCalledTimes(1)
+  expect(flow.pause).not.toHaveBeenCalled()
+  expect(flow.resume).toHaveBeenCalledTimes(1) // initial data-listener activation only
+  expect(mocks.fetch.mock.calls[0]![1].signal.reason).toMatchObject({ code: 'MITM_RESPONSE_BUFFER_LIMIT' })
+  expect(mocks.build.mock.results[0]!.value.close).not.toHaveBeenCalled()
   expect(mocks.fetch).toHaveBeenCalledTimes(1)
 })
 
@@ -234,7 +263,7 @@ it.each(['text/event-stream', 'application/json'])(
   },
 )
 
-it('interrupts a paused request and retires its pool without aborting a neighbor', async () => {
+it('interrupts a queued request and retires its pool without aborting a neighbor', async () => {
   const { startNativeMitm } = await import('./native-mitm')
   const opts = { ptySessionId: 'interrupt', onEntryUpdate: vi.fn() }
   const handle = await startNativeMitm(opts)
@@ -258,7 +287,7 @@ it('interrupts a paused request and retires its pool without aborting a neighbor
   expect(mocks.fetch.mock.calls[0]![1].signal.aborted).toBe(true)
   expect(mocks.fetch.mock.calls[1]![1].signal.aborted).toBe(false)
   expect(neighbor.destroyed).toBe(false)
-  expect(mocks.build.mock.results[0]!.value.close).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(mocks.build.mock.results[0]!.value.close).toHaveBeenCalledTimes(1))
   expect(res.listenerCount('drain')).toBe(0)
   expect(mocks.fetch).toHaveBeenCalledTimes(2)
 })
@@ -270,7 +299,7 @@ it('aborts and logs an oversized chunk explicitly without recycling the pool', a
     streamResponse(
       new ReadableStream({
         start(c) {
-          c.enqueue(Buffer.alloc(256 * 1024 + 1))
+          c.enqueue(heartbeat(16 * 1024 * 1024 + 1))
           c.close()
         },
       }),
@@ -284,8 +313,8 @@ it('aborts and logs an oversized chunk explicitly without recycling the pool', a
     '[mitm] response buffer limit exceeded',
     expect.objectContaining({
       reason: 'MITM_RESPONSE_BUFFER_LIMIT',
-      limitBytes: 262144,
-      chunkBytes: 262145,
+      limitBytes: 16 * 1024 * 1024,
+      chunkBytes: 16 * 1024 * 1024 + 1,
     }),
   )
   expect(mocks.build.mock.results[0]!.value.close).not.toHaveBeenCalled()
@@ -321,31 +350,161 @@ it('a late interrupted old response cannot retire the replacement pool', async (
   expect(mocks.fetch).toHaveBeenCalledTimes(1)
 })
 
-it('resumes on drain, preserving raw heartbeats and synthesis through clean completion', async () => {
+it('flushes a slow consumer below the cap after upstream EOF without pause/resume or truncation', async () => {
   const { startNativeMitm } = await import('./native-mitm')
   const onEntryUpdate = vi.fn()
   await startNativeMitm({ ptySessionId: 'drain', onEntryUpdate })
   const events = [
-    ':' + ' '.repeat(64 * 1024) + '\n\n',
+    heartbeat().toString().repeat(32),
     'event: message_start\ndata: {"type":"message_start","message":{"id":"msg-test","model":"claude-sonnet-4","role":"assistant","content":[]}}\n\n',
     'event: message_stop\ndata: {"type":"message_stop"}\n\n',
   ]
-  mocks.fetch.mockResolvedValue(
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      for (const e of events) c.enqueue(Buffer.from(e))
+      c.close()
+    },
+  })
+  const flow = observedUpstream(body)
+  mocks.fetch.mockResolvedValue(streamResponse(body))
+  const res = request(undefined, true)
+  await waitFor(() => expect(res.writableLength).toBeGreaterThan(0))
+  await waitFor(() => expect(flow.src.readableEnded).toBe(true))
+  expect(res.writableFinished).toBe(false)
+  expect(flow.pause).not.toHaveBeenCalled()
+  expect(flow.resume).toHaveBeenCalledTimes(1)
+  flow.resume.mockClear()
+  res.unblock()
+  await waitFor(() => expect(res.writableFinished).toBe(true))
+  expect(Buffer.concat(res.chunks).toString()).toBe(events.join(''))
+  expect(flow.pause).not.toHaveBeenCalled()
+  expect(flow.resume).not.toHaveBeenCalled()
+  expect(res.listenerCount('drain')).toBe(0)
+  expect(onEntryUpdate).toHaveBeenCalled()
+  expect(mocks.build.mock.results[0]!.value.close).not.toHaveBeenCalled()
+})
+
+it('enforces the process-wide 256 MiB cap across responses and releases capacity on abort/finish', async () => {
+  const { startNativeMitm } = await import('./native-mitm')
+  await startNativeMitm({ ptySessionId: 'global-budget', onEntryUpdate: vi.fn() })
+  const chunk = heartbeat(1024 * 1024)
+  const controllers: ReadableStreamDefaultController<Uint8Array>[] = []
+  mocks.fetch.mockImplementation(async () =>
     streamResponse(
       new ReadableStream({
         start(c) {
-          for (const e of events) c.enqueue(Buffer.from(e))
-          c.close()
+          controllers.push(c)
         },
       }),
     ),
   )
-  const res = request(undefined, true)
-  await waitFor(() => expect(res.writableLength).toBeGreaterThan(0))
-  expect(res.writableFinished).toBe(false)
-  res.unblock()
-  await waitFor(() => expect(res.writableFinished).toBe(true))
-  expect(Buffer.concat(res.chunks).toString()).toBe(events.join(''))
-  expect(onEntryUpdate).toHaveBeenCalled()
+  const blocked: CliResponse[] = []
+  // Sixteen responses each retain exactly 16 MiB, including the first write
+  // pending inside res. All are healthy at the exact per-response/global caps.
+  for (let i = 0; i < 16; i++) {
+    const res = request(undefined, true)
+    blocked.push(res)
+    await waitFor(() => expect(res.listenerCount('drain')).toBe(1))
+    for (let n = 0; n < 16; n++) controllers[i]!.enqueue(chunk)
+    controllers[i]!.close()
+    await waitFor(() =>
+      expect(mocks.log.mock.calls.filter(([msg]) => msg === '[mitm][diag#73] SSE turn done')).toHaveLength(i + 1),
+    )
+    expect(res.destroyed).toBe(false)
+  }
+  const rejected = request(undefined, true)
+  await waitFor(() => expect(rejected.listenerCount('drain')).toBe(1))
+  controllers[16]!.enqueue(chunk)
+  await waitFor(() => expect(rejected.destroyed).toBe(true))
+  expect(rejected.errored).toMatchObject({ code: 'MITM_GLOBAL_BUFFER_LIMIT' })
+  expect(mocks.log).toHaveBeenCalledWith(
+    '[mitm] response buffer limit exceeded',
+    expect.objectContaining({
+      reason: 'MITM_GLOBAL_BUFFER_LIMIT',
+      totalQueuedBytes: 256 * 1024 * 1024,
+      limitBytes: 256 * 1024 * 1024,
+    }),
+  )
+  expect(blocked.every((res) => !res.destroyed)).toBe(true)
+  // Closing an already-ended upstream's blocked CLI must release its queue.
+  blocked[0]!.destroy()
+  await waitFor(() => expect(blocked[0]!.listenerCount('drain')).toBe(0))
+  blocked[0]!.unblock() // late write callback after release must be ignored
+  const accepted = request(undefined, true)
+  await waitFor(() => expect(accepted.listenerCount('drain')).toBe(1))
+  for (let n = 0; n < 16; n++) controllers[17]!.enqueue(chunk)
+  controllers[17]!.close()
+  await waitFor(() =>
+    expect(mocks.log.mock.calls.filter(([msg]) => msg === '[mitm][diag#73] SSE turn done')).toHaveLength(17),
+  )
+  expect(accepted.destroyed).toBe(false)
+  const lateCallbackProbe = request(undefined, true)
+  await waitFor(() => expect(lateCallbackProbe.listenerCount('drain')).toBe(1))
+  controllers[18]!.enqueue(chunk)
+  await waitFor(() => expect(lateCallbackProbe.destroyed).toBe(true))
+  expect(lateCallbackProbe.errored).toMatchObject({ code: 'MITM_GLOBAL_BUFFER_LIMIT' })
+  // Successful drains must release pending writes as well as queued chunks.
+  for (const res of [...blocked.slice(1), accepted]) res.unblock()
+  await waitFor(() => expect(accepted.writableFinished).toBe(true))
+  expect(Buffer.concat(accepted.chunks).length).toBe(16 * 1024 * 1024)
   expect(mocks.build.mock.results[0]!.value.close).not.toHaveBeenCalled()
+  // A 16 MiB newcomer fits only if successful drains release reservations.
+  const finishedProbe = request(undefined, true)
+  await waitFor(() => expect(finishedProbe.listenerCount('drain')).toBe(1))
+  for (let n = 0; n < 16; n++) controllers[19]!.enqueue(chunk)
+  controllers[19]!.close()
+  await waitFor(() =>
+    expect(mocks.log.mock.calls.filter(([msg]) => msg === '[mitm][diag#73] SSE turn done')).toHaveLength(18),
+  )
+  expect(finishedProbe.destroyed).toBe(false)
+  expect(mocks.fetch).toHaveBeenCalledTimes(20)
+})
+
+it('interrupts pending CLI delivery even after upstream EOF without retry', async () => {
+  const { startNativeMitm } = await import('./native-mitm')
+  const handle = await startNativeMitm({ ptySessionId: 'interrupt-after-eof', onEntryUpdate: vi.fn() })
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(heartbeat())
+      c.enqueue(heartbeat())
+      c.close()
+    },
+  })
+  const flow = observedUpstream(body)
+  mocks.fetch.mockResolvedValue(streamResponse(body))
+  const res = request(undefined, true)
+  await waitFor(() => expect(flow.src.readableEnded).toBe(true))
+  handle.interrupt()
+  await waitFor(() => expect(res.destroyed).toBe(true))
+  expect(res.writableFinished).toBe(false)
+  expect(res.errored).toMatchObject({ name: 'AbortError' })
+  expect(res.listenerCount('drain')).toBe(0)
+  expect(flow.pause).not.toHaveBeenCalled()
+  expect(mocks.fetch).toHaveBeenCalledTimes(1)
+})
+
+it('aborts a CLI write exception while draining after upstream EOF', async () => {
+  const { startNativeMitm } = await import('./native-mitm')
+  await startNativeMitm({ ptySessionId: 'write-after-eof', onEntryUpdate: vi.fn() })
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(heartbeat())
+      c.enqueue(heartbeat())
+      c.close()
+    },
+  })
+  const flow = observedUpstream(body)
+  mocks.fetch.mockResolvedValue(streamResponse(body))
+  const res = request(undefined, true)
+  await waitFor(() => expect(flow.src.readableEnded).toBe(true))
+  const failure = new Error('synthetic CLI write failure')
+  vi.spyOn(res, 'write').mockImplementationOnce(() => {
+    throw failure
+  })
+  res.unblock()
+  await waitFor(() => expect(res.destroyed).toBe(true))
+  expect(res.errored).toBe(failure)
+  expect(mocks.fetch.mock.calls[0]![1].signal.reason).toBe(failure)
+  expect(res.listenerCount('drain')).toBe(0)
+  expect(mocks.fetch).toHaveBeenCalledTimes(1)
 })
