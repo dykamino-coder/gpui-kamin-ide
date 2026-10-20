@@ -1,11 +1,12 @@
 //! Проход размещения элементов сетки по рядам авто-полос.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Placement;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

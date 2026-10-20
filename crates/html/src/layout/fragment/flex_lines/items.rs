@@ -1,7 +1,8 @@
 //! Предикаты флекс-элементов: ограничение внутри, ширина в ряду, класс A, контейнер.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::render::{is_blank, out_of_flow};
+use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
