@@ -3,7 +3,6 @@
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table_clipped_content;
-use crate::render::blocks;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -93,7 +92,7 @@ pub(super) fn cell_contents(
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inside = blocks(
+    let inside = (opts.inner(|cx| cx.cell_bfc = true)).cx.build.blocks(
         flow.as_deref().unwrap_or(&cell.children),
         &cm,
         &opts.inner(|cx| cx.cell_bfc = true),

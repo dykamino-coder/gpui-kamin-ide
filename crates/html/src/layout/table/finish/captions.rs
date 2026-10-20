@@ -2,8 +2,8 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::transform::transformed;
-use crate::render::{blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -28,7 +28,11 @@ pub(super) fn collect_captions(
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
-            let inside = blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
+            let inside = (opts.inner(|cx| cx.cell_bfc = true)).cx.build.blocks(
+                &cap.children,
+                &cm,
+                &opts.inner(|cx| cx.cell_bfc = true),
+            );
             let built = styled_div_with(cap, &cm, &opts.cx)
                 .flex()
                 .flex_col()
