@@ -31,7 +31,7 @@ pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -
         // его строчная ось горизонтальна.
         if ch.inline
             || ch.style.vertical_decl() == Some(false)
-            || !crate::render::in_flow(&ch.style)
+            || !crate::layout::box_kind::in_flow(&ch.style)
             || !auto_inline(&ch.style)
         {
             continue;

@@ -3,14 +3,16 @@
 use super::nested_kid::{oof_in_plain_kids, plain_block_kid};
 use super::resolved_lengths::resolved_lengths;
 use super::{group_inline_runs, inline_content};
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::solid_box;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::carries_abspos;
-use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

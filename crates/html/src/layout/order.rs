@@ -1,17 +1,27 @@
-//! Порядок отложенной окраски позиционированных inline-коробок.
+//! Paint-order decisions of positioned boxes with `z-index: auto | 0`.
+//!
+//! CSS 2.1 Appendix E step 8 paints such boxes after the in-flow content of
+//! their stacking context, in tree order. The build hoists a box into the
+//! step-8 collector only when no later positioned box stays in the first
+//! pass; this module walks the document once (`unkeyed_positions`) and answers
+//! that question (`paint_last_ok`). The GPUI wrappers stay with the builders.
 
-use super::block_level_in_flow;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::block_level_in_flow;
 use crate::layout::cx::LayoutCx;
 use crate::layout::positioned::predicates::positioned_later;
 use crate::style::computed::Display;
-use gpui::{AnyElement, IntoElement};
+
+/// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
+/// позиционированного, который ключа краски не получает (см.
+/// `unkeyed_positions`).
+pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>);
 
 /// Позиционированный с `z-index: auto | 0`, которого сборщик не оборачивает
 /// в `PaintLast`: части таблицы (их строит табличный сборщик),
 /// `relative`/`sticky` строчного уровня и строчный абсолют — те идут в
 /// абзац. Такие красятся первым проходом там, где стоят.
-pub(super) fn unkeyed_positioned(e: &Element) -> bool {
+fn unkeyed_positioned(e: &Element) -> bool {
     if e.style.z_index.unwrap_or(0) != 0 {
         return false;
     }
@@ -36,7 +46,7 @@ pub(super) fn unkeyed_positioned(e: &Element) -> bool {
 /// Прямой обход документа: конец поддерева каждого узла (позиция за его
 /// последним потомком) и позиция последнего позиционированного без ключа
 /// краски.
-pub(super) fn unkeyed_positions(
+pub(crate) fn unkeyed_positions(
     nodes: &[Node],
 ) -> (std::collections::HashMap<u64, usize>, Option<usize>) {
     fn walk(
@@ -68,7 +78,18 @@ pub(super) fn unkeyed_positions(
 /// порядок разметки перевернётся — `position-relative-table-*`: ячейка
 /// `relative` после абсолютного красного индикатора). Узел вне обхода
 /// (порождённый сборщиком) — по братьям, как прежде.
-pub(super) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
+/// Whether an inline absolute box with `z-index: auto | 0` goes to the
+/// step-8 collector: it is a known node of this document walk and no later
+/// positioned box stays in the first paint pass (`unkeyed_positions`).
+pub(crate) fn hoists_inline_abs(e: &Element, cx: &LayoutCx) -> bool {
+    let u = &*cx.unkeyed;
+    let known =
+        u.0.get(&e.node_id)
+            .map(|&end| u.1.is_none_or(|last| last < end));
+    e.style.z_index.unwrap_or(0) == 0 && known == Some(true)
+}
+
+pub(crate) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
     let u = &*cx.unkeyed;
     let known =
         u.0.get(&e.node_id)
@@ -76,27 +97,5 @@ pub(super) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
     match known {
         Some(ok) => ok,
         None => !positioned_later(rest),
-    }
-}
-
-/// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
-/// приложения E CSS 2.1 — позиционированные рисуются ПОСЛЕ строчного
-/// содержимого (шаг 7) своего контекста наложения. Строки абзаца уходят в
-/// собиратель (`PaintInline`) и рисуются в его конце, а поздний слой — прямой
-/// ребёнок контейнера и красился раньше них: текст ложился поверх абсолюта
-/// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
-/// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
-/// на прежнем пути.
-pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
-    let u = &*cx.unkeyed;
-    let known =
-        u.0.get(&e.node_id)
-            .map(|&end| u.1.is_none_or(|last| last < end));
-    if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
-        gpui::PaintLast::new(el)
-            .key(cx.next_paint_key())
-            .into_any_element()
-    } else {
-        el
     }
 }

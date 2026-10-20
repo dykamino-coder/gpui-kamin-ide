@@ -3,8 +3,9 @@
 
 use crate::dom::Element;
 use crate::layout::block::reorder::orthogonal_vertical_children;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::responsive_embedded_sizing;
-use crate::render::{RenderOpts, blocks, styled_div};
+use crate::paint::box_tree::styled::styled_div;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
@@ -213,7 +214,7 @@ pub(crate) fn build_embedded(
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
     let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&sub.cx.positioning);
-    let mut kids = blocks(&nodes, &sub.root_style(), &sub);
+    let mut kids = sub.cx.build.blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(icb_layer.finish());
     kids.into_iter()
         .map(|k| crate::document::state::Scoped::wrap(&embedded.state, k))

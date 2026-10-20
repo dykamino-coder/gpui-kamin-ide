@@ -6,17 +6,19 @@
 //! already reaches every build function and is cloned into deferred build
 //! closures — a closure sees the context of the place that created it.
 //!
-//! [`RenderOpts::cx`]: crate::render::RenderOpts::cx
+//! [`RenderOpts::cx`]: crate::layout::options::RenderOpts::cx
 
 use crate::document::state::ValueCx;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::containing_block::Positioning;
-use crate::render::RenderOpts;
 use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
     /// Active clamp count root and paragraph sequence of this build.
     pub(crate) clamp_build: crate::text::clamp::ClampBuild,
+    /// Child-build requests of the render orchestrator (`ChildBuild`).
+    pub(crate) build: crate::layout::build_contracts::ChildBuild,
     /// Paint-order and deferred-geometry boundaries of the box being built.
     pub(crate) paint_depth: crate::paint::effects::paint_scope::Depth,
     /// Scrollable overflow owner captured by probes and deferred text elements.
@@ -74,7 +76,7 @@ pub struct LayoutCx {
     pub(crate) paint_keys: Rc<std::cell::Cell<u64>>,
     /// Positions of the document's nodes in a forward walk and of the LAST
     /// positioned node that keeps no paint key (`unkeyed_positions`).
-    pub(crate) unkeyed: Rc<crate::render::Unkeyed>,
+    pub(crate) unkeyed: Rc<crate::layout::order::Unkeyed>,
     /// How many documents (iframes, SVG document images) the box is nested
     /// in: a guard against cyclic embedding.
     pub(crate) frame_depth: u32,

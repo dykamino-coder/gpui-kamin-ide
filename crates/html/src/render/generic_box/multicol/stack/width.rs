@@ -1,8 +1,9 @@
 //! Строчный размер колонки для измерения строк.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::line_shape::{inline_content, nested_rows_box};
-use crate::render::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

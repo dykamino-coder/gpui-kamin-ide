@@ -1,8 +1,8 @@
 //! Monolithic descendants and indivisible column-copy classification.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::probe::size_monolith;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 
 /// A monolithic descendant overflows its fragmentainer instead of taking

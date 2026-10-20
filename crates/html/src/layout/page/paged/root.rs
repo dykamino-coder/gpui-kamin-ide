@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::render::is_blank;
+use crate::dom::whitespace::is_blank;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

@@ -2,7 +2,7 @@
 use super::{fraction, limits, scripts};
 use crate::style::values::value::px_strict;
 use crate::text::{fonts::math, inline::strut_font, metrics::math_metrics};
-use crate::{dom::Element, render::RenderOpts, style::computed::Computed};
+use crate::{dom::Element, layout::options::RenderOpts, style::computed::Computed};
 
 pub(super) struct FontParameters {
     pub fraction: fraction::Parameters,

@@ -1,10 +1,11 @@
 //! Коробка элемента: базовый стиль div, обрезка и покраска фона за вычетом области.
 
 mod clipping;
-pub(super) use clipping::clip_layer;
+pub(crate) use clipping::clip_layer;
 use clipping::shows_inside;
 
 use crate::dom::Element;
+use crate::dom::whitespace::is_blank;
 use crate::layout::block::margin_height;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::positioned::absolute_overflow;
@@ -12,7 +13,6 @@ use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::native_intrinsic;
 use crate::paint::apply::{apply, apply_hover};
 use crate::paint::decorations::decorations;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{ParentElement, Styled, div, px};

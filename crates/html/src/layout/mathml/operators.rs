@@ -2,7 +2,7 @@
 use crate::style::values::value::px_strict;
 use crate::{
     dom::{Element, Node},
-    render::RenderOpts,
+    layout::options::RenderOpts,
     style::computed::Computed,
 };
 #[path = "operator_data0.rs"]

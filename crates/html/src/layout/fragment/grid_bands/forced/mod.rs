@@ -2,10 +2,11 @@
 
 use super::grid_px_row_bands;
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::probe::size_monolith;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 mod stack;
 pub(crate) use stack::grid_stack;

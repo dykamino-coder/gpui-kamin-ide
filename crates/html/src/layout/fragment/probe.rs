@@ -2,8 +2,8 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::flex_lines::flex_gap_rules;
-use crate::render::out_of_flow;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 

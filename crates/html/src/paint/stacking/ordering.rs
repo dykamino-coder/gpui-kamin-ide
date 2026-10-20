@@ -1,8 +1,8 @@
 //! Порядок слоёв окраски; отделён от определения контекстов наложения.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::positioned::predicates::edge_set;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 
 /// Порядок наложения внутри одного родителя.

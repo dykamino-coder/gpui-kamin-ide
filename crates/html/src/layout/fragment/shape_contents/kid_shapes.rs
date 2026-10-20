@@ -2,6 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_break;
@@ -9,7 +10,6 @@ use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::layout::fragment::fragment_size::measure;
 use crate::layout::fragment::line_shape::{basis_sized, inline_content};
 use crate::layout::fragment::oof_reach::Reach;
-use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
 // Child shapes retain their offsets and break metadata as one record.

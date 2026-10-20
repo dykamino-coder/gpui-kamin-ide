@@ -3,9 +3,10 @@
 use crate::document::state::ValueCx;
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::real_inline;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::render::{is_blank, real_inline};
 use crate::style::cascade::inherit::inherit_unpainted;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};

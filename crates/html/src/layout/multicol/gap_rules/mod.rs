@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 mod children;

@@ -126,7 +126,7 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
         // Ordinary inline text participates in the principal root line (§8.2).
         // Their text participates in the root's used line orientation; block
         // pseudo boxes retain the root's original computed writing mode.
-        if !crate::render::inline_level(e) {
+        if !crate::layout::box_kind::inline_level(e) {
             e.style.writing_mode = e.style.writing_mode.or(Some(own.0.unwrap_or_default()));
         }
         e.style.rtl = e.style.rtl.or(Some(own.1.unwrap_or(false)));

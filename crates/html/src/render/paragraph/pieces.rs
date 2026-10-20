@@ -1,5 +1,12 @@
 //! Сборка строчных кусков абзаца (paragraph_pieces_routed).
 
+use crate::layout::options::RenderOpts;
+use crate::render::native_paragraph_route;
+use crate::render::paragraph::alignment::atom_line_align;
+use crate::render::paragraph::atom_piece::AtomRuby;
+use crate::render::paragraph::atom_piece::atom_piece;
+use crate::render::paragraph::edges::has_flow_text;
+use crate::render::paragraph::metrics::atoms_fit_line;
 mod styling;
 pub(super) use styling::style_pieces;
 
@@ -14,7 +21,6 @@ pub(super) use spans::paragraph_spans;
 use spans::rotate_rel_spans;
 
 use crate::dom::{Element, Node};
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;

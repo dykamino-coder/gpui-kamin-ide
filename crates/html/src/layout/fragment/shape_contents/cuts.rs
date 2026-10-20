@@ -1,14 +1,15 @@
 //! Вырезы формы: финальная обрезка по высоте, нижняя кромка, сквозной верх.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::grid_bands::{grid_row_forced, grid_row_gaps};
 use crate::layout::fragment::oof_reach::{Measure, Reach};
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{ShapeCx, fragment_size};
 use crate::layout::multicol::spanner::multicol_container;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 

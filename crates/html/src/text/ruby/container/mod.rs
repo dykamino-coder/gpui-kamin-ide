@@ -9,7 +9,7 @@ use crate::text::ruby::container::unit_boxes::unit_box;
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

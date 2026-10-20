@@ -7,8 +7,8 @@
 //! advances by its own em (§7.4), not by the container's.
 
 use crate::dom::Node;
+use crate::layout::options::RenderOpts;
 use crate::render::paragraph::{own_size, paragraph};
-use crate::render::*;
 use crate::style::computed::{Align, Computed, TextAlign};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -85,7 +85,7 @@ fn collect(
                 }
             }
             Node::Element(e) => {
-                if !crate::render::real_inline(e) || !plain_span(&e.style) {
+                if !crate::layout::box_kind::real_inline(e) || !plain_span(&e.style) {
                     return None;
                 }
                 let child = crate::style::cascade::inherit::inherit(style, &e.style, vcx);

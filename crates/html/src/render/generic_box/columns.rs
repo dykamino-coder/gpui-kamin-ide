@@ -2,7 +2,7 @@
 
 use crate::dom::Element;
 use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
-use crate::render::*;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

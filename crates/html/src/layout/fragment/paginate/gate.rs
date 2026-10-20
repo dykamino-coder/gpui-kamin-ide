@@ -3,8 +3,8 @@
 use super::candidates;
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_box;
-use crate::render::out_of_flow;
 use crate::style::computed::Display;
 
 /// Gate of the path: a block-level, non-monolithic child of a horizontal

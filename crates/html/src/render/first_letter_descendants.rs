@@ -1,7 +1,7 @@
 //! Route first-letter styling to the first in-flow block's formatted line.
 
-use super::{block_level_in_flow, out_of_flow};
 use crate::dom::Node;
+use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::blank_text;

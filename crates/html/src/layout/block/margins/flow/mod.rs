@@ -1,8 +1,9 @@
 //! Схлопывание полей в потоке: поглощение полей детей и сквозные коробки.
 
 use crate::dom::Node;
+use crate::dom::whitespace::is_blank;
 use crate::layout::block::struts::margin_px;
-use crate::render::{inline_level, is_blank};
+use crate::layout::box_kind::inline_level;
 use crate::style::values::value::Len;
 mod absorb;
 pub(super) use absorb::absorb_margin;

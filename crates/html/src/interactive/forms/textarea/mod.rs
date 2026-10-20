@@ -10,11 +10,11 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(super) fn textarea(
     e: &Element,
     style: &Computed,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut text = String::new();
-    crate::render::gather_text_public(&e.children, &mut text);
+    crate::dom::text_content::gather_text(&e.children, &mut text);
     let body = if text.is_empty() {
         div()
             .when_muted(true, style)
@@ -23,7 +23,7 @@ pub(super) fn textarea(
             ))
             .into_any_element()
     } else {
-        crate::render::paragraph_public(&e.children, style, opts)
+        opts.cx.build.paragraph(&e.children, style, opts)
     };
     let natural = natural(e, style, vcx);
     let mut paint = field_box(style, vcx)
