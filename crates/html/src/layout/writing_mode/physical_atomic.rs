@@ -8,6 +8,7 @@ use gpui::{
 };
 
 pub(super) struct PhysicalAtomic {
+    paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
     child: AnyElement,
     root: Option<LayoutId>,
     ccw: bool,
@@ -16,8 +17,14 @@ pub(super) struct PhysicalAtomic {
 }
 
 impl PhysicalAtomic {
-    pub(super) fn new(child: AnyElement, ccw: bool, central: bool) -> Self {
+    pub(super) fn new(
+        child: AnyElement,
+        ccw: bool,
+        central: bool,
+        paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
+    ) -> Self {
         Self {
+            paint_context,
             child,
             root: None,
             ccw,
@@ -86,13 +93,16 @@ impl Wrap for PhysicalAtomic {
             ),
             cx,
         );
-        let (physical, inverse_text) =
-            crate::layout::writing_mode::physical_atomic_frame::map(bounds, window.scale_factor());
+        let (physical, inverse_text) = crate::layout::writing_mode::physical_atomic_frame::map(
+            bounds,
+            window.scale_factor(),
+            self.paint_context.frame(),
+        );
         self.inverse_text = inverse_text;
         window.set_layout_root_origin(root, physical.origin);
-        crate::layout::writing_mode::physical_atomic_frame::without_frame(|| {
-            self.child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
-        });
+        let previous = self.paint_context.replace(None);
+        self.child.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+        self.paint_context.replace(previous);
     }
 
     fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {

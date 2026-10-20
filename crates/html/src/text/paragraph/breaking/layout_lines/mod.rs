@@ -1,4 +1,4 @@
-//! Layout lines for breaking; split out to keep the owning module within 250 lines.
+//! Greedy line breaking with float exclusions queried from candidate line boxes.
 
 mod opportunities;
 mod phrase_fallback;
@@ -43,6 +43,8 @@ impl Paragraph {
         let mut last_fit: Option<usize> = None;
         let opportunities = self.part_opportunities(&part);
         let mut i = 0usize;
+        let mut clearance = px(0.);
+        let mut shifts = 0;
         while i < opportunities.len() {
             let Stop { at, mandatory } = opportunities[i];
             // Once the consecutive-line limit is reached, ignore conditional
@@ -64,7 +66,7 @@ impl Paragraph {
             let ind = self.indent_of(head_of_part, first_part, limit);
             // Вырез обтекания сужает СВОЮ строку: левый входит в отступ
             // строки, правый просто отбирает ширину (css-shapes-1 §2).
-            let (fl, fr) = self.flow_cut(out.len());
+            let (fl, fr) = self.candidate_cut(&out, start..at, clearance);
             let ind = ind + px(fl);
             let limit = limit.map(|w| w - ind - px(fr));
             let (head, width, over) = self.candidate_width(start, at, part.end, segs, limit);
@@ -77,6 +79,7 @@ impl Paragraph {
                 // УСЛОВНО: влезшая часть занимает место (css-text-3 §4.1.3).
                 let width = self.conditional_width(segs, head, at, width, limit);
                 out.push(Line {
+                    clearance,
                     range: start..at,
                     width,
                     ellipsis: false,
@@ -85,6 +88,8 @@ impl Paragraph {
                     hyphen: false,
                     indent: ind,
                 });
+                clearance = px(0.);
+                shifts = 0;
                 start = bol(at);
                 // За жёстким разрывом начинается новый кусок: при `each-line`
                 // отступ повторяется, но «первым куском блока» он уже не будет.
@@ -101,17 +106,10 @@ impl Paragraph {
             if over
                 && last_fit.filter(|c| *c > start).is_none()
                 && (fl > 0.0 || fr > 0.0)
-                && out.len() < 4096
+                && shifts < 4096
             {
-                out.push(Line {
-                    range: start..start,
-                    width: px(0.),
-                    ellipsis: false,
-                    clamped: false,
-                    vis_cut: None,
-                    hyphen: false,
-                    indent: ind,
-                });
+                clearance += self.line_height.max(px(1.));
+                shifts += 1;
                 continue;
             }
             if over {
@@ -162,6 +160,7 @@ impl Paragraph {
                     px(0.)
                 };
                 out.push(Line {
+                    clearance,
                     range: start..self.drop_collapsible_tail(start, cut),
                     width: self.span(segs, head, tail) - self.tail_spacing(tail) + extra,
                     ellipsis: false,
@@ -170,6 +169,8 @@ impl Paragraph {
                     hyphen,
                     indent: ind,
                 });
+                clearance = px(0.);
+                shifts = 0;
                 start = bol(cut);
                 // Мягкий перенос кусок не кончает: следующая строка отступа
                 // не получает (кроме `hanging`, где его получают именно они).
@@ -191,6 +192,7 @@ impl Paragraph {
                 first_part,
                 segs,
                 limit,
+                clearance,
             );
         }
         out

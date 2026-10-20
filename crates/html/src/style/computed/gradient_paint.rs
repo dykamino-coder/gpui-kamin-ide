@@ -30,8 +30,8 @@ impl super::Computed {
                 // The angle cannot be resolved until the image's concrete
                 // size is known; the tile painter owns that geometry.
                 || (self.bg_clip != Some(crate::style::computed::BgClip::Text)
-                    && self.gradient_raw.as_deref().is_some_and(|raw| {
-                        super::corner_angle(raw, (1.0, 1.0)).is_some()
+                    && self.gradient.as_ref().is_some_and(|g| {
+                        g.shape.corner_angle((1.0, 1.0)).is_some()
                     }))
                 // Пространство смешения, которого GPU-путь не выражает
                 // (всё, кроме гамма-sRGB и OKLab — css-color-4 §12.2):

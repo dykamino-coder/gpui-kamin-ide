@@ -1,7 +1,6 @@
 //! Рамки строчных коробок в реестре якорей: строчный якорь и строчный содержащий блок.
 
 use super::probe::{Entry, record};
-use super::{CB, CB_PARENT};
 use crate::document::state::ValueCx;
 use gpui::{Bounds, Pixels, Window};
 
@@ -9,29 +8,29 @@ use gpui::{Bounds, Pixels, Window};
 /// начала первого фрагмента до конца последнего) — в реестр `CB`, как
 /// блочный содержащий блок у пробы (`probe_for`): по нему считают сетку
 /// `position-area` и приемлемость якоря (§target).
-pub fn register_inline_cb(node: u64, own_cb: u64, padding_box: Bounds<Pixels>) {
-    CB.with(|m| m.borrow_mut().insert(node, padding_box));
-    CB_PARENT.with(|m| m.borrow_mut().insert(node, own_cb));
+pub fn register_inline_cb(node: u64, own_cb: u64, padding_box: Bounds<Pixels>, vcx: ValueCx<'_>) {
+    vcx.doc
+        .anchor_frame
+        .cb
+        .borrow_mut()
+        .insert(node, padding_box);
+    vcx.doc
+        .anchor_frame
+        .cb_parent
+        .borrow_mut()
+        .insert(node, own_cb);
 }
 
 /// Строчный именованный якорь: рамка — объемлющий прямоугольник border
 /// box его фрагментов (§anchor box), запись — та же, что у блочной пробы.
 pub fn register_inline_anchor(
     names: &[String],
-    node: u64,
-    own_cb: u64,
-    seq: u32,
-    hidden: bool,
+    who: Entry,
     border_box: Bounds<Pixels>,
     window: &mut Window,
+    vcx: ValueCx<'_>,
 ) {
-    let who = Entry {
-        id: node,
-        cb: own_cb,
-        seq,
-        hidden,
-    };
-    record(names, false, who, border_box, window);
+    record(names, false, who, border_box, window, vcx);
 }
 
 /// Якорный шаг сборки для абсолюта, который строится строчным путём
@@ -45,7 +44,7 @@ pub fn prepare_inline_abs(
     vcx: ValueCx<'_>,
 ) {
     merged.self_node = e.node_id;
-    merged.anchor_seq = super::next_seq();
+    merged.anchor_seq = super::next_seq(vcx);
     merged.anchor_key = super::key_of(e);
     super::resolve::apply_chosen(merged, vcx);
     super::resolve::resolve_sizes(merged, inherited, vcx);

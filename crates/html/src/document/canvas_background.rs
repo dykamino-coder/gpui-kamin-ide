@@ -1,4 +1,4 @@
-//! Canvas background for document; split out to keep the owning module within 250 lines.
+//! Propagate the document canvas background through its viewport wrappers.
 
 use crate::dom::Node;
 use crate::style::values::value::Len;
@@ -83,7 +83,10 @@ pub(super) fn any_containment(e: &crate::dom::Element) -> bool {
 /// (`::before`, `::after`): наследуют они именно его.
 /// Отметить узел, чей фон красит канвас (CSS 2.2 §14.2): корневой `html`,
 /// а без его фона — `body`. `contain: paint` глушит распространение.
-pub(super) fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
+pub(super) fn mark_canvas_background(
+    mut nodes: Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<Node> {
     fn has_bg(e: &crate::dom::Element) -> bool {
         // Прозрачный цвет — НЕ краска: `html { background: transparent }`
         // отдаёт канвас телу, как и отсутствие объявления.
@@ -181,7 +184,7 @@ pub(super) fn mark_canvas_background(mut nodes: Vec<Node>) -> Vec<Node> {
                         | crate::style::values::value::Len::Ex(_)
                         | crate::style::values::value::Len::Ch(_),
                     ) => Some(crate::style::values::value::Len::Px(
-                        crate::text::metrics::spacing_px(l, &fam, em),
+                        crate::text::metrics::spacing_px(l, &fam, em, vcx),
                     )),
                     other => other,
                 };

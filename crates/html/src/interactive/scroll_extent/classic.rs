@@ -1,13 +1,15 @@
 //! Classic scrollbar visibility is computed from CSS overflow, not decoration bounds.
 //! Blink PaintLayerScrollableArea::UpdateAfterLayout relayouts after auto bars change.
-use super::{CURRENT, Frame};
+use super::Frame;
 use crate::style::computed::{Computed, Overflow};
 use gpui::{Bounds, Pixels};
 
-pub(crate) fn model(id: u64, c: &Computed) -> super::super::scrollbar_gutter::Model {
-    let frame = CURRENT
-        .with(|slot| slot.borrow().clone())
-        .filter(|f| f.root.get() == Some(id));
+pub(crate) fn model(
+    frame: Option<&Frame>,
+    id: u64,
+    c: &Computed,
+) -> super::super::scrollbar_gutter::Model {
+    let frame = frame.filter(|f| f.root.get() == Some(id));
     let cached = frame.as_ref().map_or([false; 2], |f| f.bars.get());
     let overflow = [c.overflow_x, c.overflow_y];
     let bars = std::array::from_fn(|axis| {
@@ -27,8 +29,8 @@ pub(crate) fn model(id: u64, c: &Computed) -> super::super::scrollbar_gutter::Mo
     }
     model
 }
-pub(crate) fn reserve(id: u64, c: &Computed) -> [bool; 2] {
-    model(id, c).bars
+pub(crate) fn reserve(frame: Option<&Frame>, id: u64, c: &Computed) -> [bool; 2] {
+    model(frame, id, c).bars
 }
 
 pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {

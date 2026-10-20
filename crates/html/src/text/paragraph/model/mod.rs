@@ -1,5 +1,4 @@
-//! Model for paragraph; split out to keep the owning module within 250 lines.
-
+//! Paragraph content, inline spans, and state shared with its layout probe.
 use crate::text::paragraph::{atom_fit, decor, tabs};
 mod configuration;
 mod construct;
@@ -10,11 +9,15 @@ pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
 
 /// Абзац со своей раскладкой строк.
-// Paragraph span records retain their text ranges, geometry and decoration state.
 #[allow(clippy::type_complexity)]
 pub struct Paragraph {
+    pub(super) anchor_values: Option<crate::document::state::ValueDoc>,
+    pub(super) inline_measure: Option<crate::text::vertical::InlineMeasure>,
+    pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
+    pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
+    pub(super) measures: std::rc::Rc<super::MeasureCache>,
     /// Scroll owner and the shift chain the paragraph is built in.
-    pub(super) scroll_owner: Option<(u64, Option<crate::interactive::scroll_extent::StickyShift>)>,
+    pub(super) scroll_owner: Option<super::scroll_overflow::ScrollOwner>,
     pub(super) text: SharedString,
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,
@@ -23,15 +26,13 @@ pub struct Paragraph {
     /// Выключка последней строки (`text-align-last`), если задана.
     pub(super) align_last: Option<Align>,
     pub(super) ruby_justify: bool,
-    /// `text-justify` opportunities besides word separators: 0 none
-    /// (`inter-word`), 1 CJK ideographs (`auto`), 2 every typographic
-    /// character unit (`inter-character`), see `justify_boundary`.
+    /// `text-justify`: 0 none, 1 CJK (`auto`), 2 every character
+    /// (`inter-character`); see `justify_boundary`.
     pub(super) justify_chars: u8,
     pub(super) ruby_unit: bool,
     /// Ruby text painted in the unrotated plane of a vertical line.
     pub(super) ruby_rotated: bool,
-    /// Ruby base paragraph: where to report its content width for the ruby
-    /// overhang computation (`ruby_base_with_overhang`).
+    /// Ruby base width shared with the ruby overhang computation.
     pub(super) ruby_base_sink: Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,
     /// `unicode-bidi: plaintext` — сторона письма выбирается для КАЖДОГО
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В
@@ -56,8 +57,7 @@ pub struct Paragraph {
     /// Знак строки обрыва `line-clamp` (`block-ellipsis`): None — U+2026,
     /// пустая строка — `no-ellipsis`.
     pub(super) clamp_marker: Option<String>,
-    /// (ключ клэмп-контейнера, номер абзаца): отрисовка сообщает строки
-    /// вычислителю среза (`interact::publish_para_rows`).
+    /// Container/paragraph identity for rows shared with the clamp cut.
     pub(super) clamp_tag: Option<(u64, u32)>,
     /// Шаги строк абзаца ДО балансировки (`text-wrap: balance` в
     /// клэмп-контейнере, пока бюджета нет): точка среза определяется до
@@ -246,4 +246,5 @@ pub struct Paragraph {
     pub(super) first_strut: Option<super::first_line::Strut>,
     /// Границы строк в байтах для замера и отрисовки.
     pub(super) lines: Vec<Line>,
+    pub(super) fragment: Option<crate::layout::fragment::flow::FlowNode>,
 }

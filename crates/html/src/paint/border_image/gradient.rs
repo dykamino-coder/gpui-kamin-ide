@@ -14,17 +14,17 @@ pub(super) fn paint(
     (dx, dy, dw, dh): (f32, f32, f32, f32),
     vcx: ValueCx<'_>,
 ) -> bool {
-    let Source::Gradient { raw } = source else {
+    let Source::Gradient { image: value } = source else {
         return false;
     };
-    let Some(g) = crate::style::computed::parse_gradient(raw, vcx) else {
+    let Some((g, repeating)) = value.gradient() else {
         return false;
     };
-    if g.radial || raw.starts_with("repeating-") {
+    if g.radial || repeating {
         return false;
     }
     let (kx, ky) = (dw / sw, dh / sh);
-    let angle = crate::style::computed::corner_angle(raw, image).unwrap_or(g.angle_deg);
+    let angle = g.shape.corner_angle(image).unwrap_or(g.angle_deg);
     let axis_aligned = (angle / 90.0 - (angle / 90.0).round()).abs() < 0.0001;
     if (!axis_aligned && (kx - ky).abs() > 0.0001)
         || ((!g.stops_px.is_empty() || !g.stops_raw.is_empty()) && (kx != 1.0 || ky != 1.0))

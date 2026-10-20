@@ -2,9 +2,11 @@
 
 use crate::document::state::ValueCx;
 mod expressions;
+mod value;
 use super::{Computed, parse_pos_words};
 use crate::style::values::value::Len;
-use expressions::{capture, math, resolve_position_math};
+use expressions::{capture, math};
+pub(crate) use value::PositionExpression;
 
 impl Computed {
     pub(crate) fn set_background_position(&mut self, raw: &str, vcx: ValueCx<'_>) {
@@ -63,42 +65,17 @@ impl Computed {
         &self,
         fallback: (f32, f32),
         free: (f32, f32),
-        vcx: ValueCx<'_>,
+        _vcx: ValueCx<'_>,
     ) -> (f32, f32) {
         if self.bg_position_math.iter().all(Option::is_none) {
             return fallback;
         }
-        let font = match self.font_size {
-            Some(Len::Px(v)) => v,
-            _ => 16.0,
-        };
-        let (ch, ex) =
-            crate::text::metrics::ch_ex_px(self.font_family.as_deref().unwrap_or(""), font);
-        let line = match self.line_height {
-            Some(Len::Px(v)) => v,
-            Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
-            _ => {
-                let (a, d, _) = crate::text::metrics::vmetrics_px(
-                    self.font_family.as_deref().unwrap_or(""),
-                    font,
-                );
-                a + d
-            }
-        };
         let mut used = [fallback.0, fallback.1];
-        for (i, raw) in self.bg_position_math.iter().enumerate() {
-            if let Some(raw) = raw {
-                let raw = super::resolve::image_lengths::lengths(
-                    raw,
-                    font,
-                    crate::style::values::value::root_font_px(vcx),
-                    ex,
-                    ch,
-                    line,
-                );
-                if let Some(value) = resolve_position_math(&raw, [free.0, free.1][i], vcx) {
-                    used[i] = value;
-                }
+        for (i, expression) in self.bg_position_math.iter().enumerate() {
+            if let Some(expression) = expression
+                && let Some(value) = expression.evaluate([free.0, free.1][i])
+            {
+                used[i] = value;
             }
         }
         (used[0], used[1])
@@ -151,6 +128,33 @@ mod tests {
         assert_eq!(
             child.background_position_used((0.0, 0.0), (50.0, 50.0), vcx),
             (20.0, 50.0)
+        );
+    }
+
+    #[test]
+    fn layer_position_expressions_resolve_the_owning_line_height() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut c = Computed {
+            font_size: Some(Len::Px(30.0)),
+            line_height: Some(Len::Px(80.0)),
+            ..Computed::default()
+        };
+        c.apply_one("background-image", "url(a), url(b)", vcx);
+        c.apply_one(
+            "background-position",
+            "min(100%, 1lh) 0px, max(100%, 2lh) 0px",
+            vcx,
+        );
+        c.resolve_em(16.0, vcx);
+        let layers = c.bg_layers(vcx).unwrap();
+        assert_eq!(
+            layers[0].background_position_used((0.0, 0.0), (100.0, 100.0), vcx),
+            (80.0, 0.0)
+        );
+        assert_eq!(
+            layers[1].background_position_used((0.0, 0.0), (100.0, 100.0), vcx),
+            (160.0, 0.0)
         );
     }
 }

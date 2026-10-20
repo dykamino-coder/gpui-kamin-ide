@@ -1,4 +1,4 @@
-//! Construct for model; split out to keep the owning module within 250 lines.
+//! Paragraph construction and explicit document measurement and ruby inputs.
 
 use super::Paragraph;
 use super::{Align, Indent, Wrap};
@@ -15,6 +15,11 @@ impl Paragraph {
         wrap: Wrap,
     ) -> Self {
         Paragraph {
+            anchor_values: None,
+            paint_context: Default::default(),
+            inline_measure: None,
+            clamp_rows: Default::default(),
+            measures: Default::default(),
             scroll_owner: None,
             ruby_base_sink: None,
             ruby_layers: None,
@@ -75,6 +80,7 @@ impl Paragraph {
             strut_box: (0.0, 0.0),
             first_strut: None,
             lines: Vec::new(),
+            fragment: None,
             clamp: None,
             clamp_force: false,
             text_overflow: false,
@@ -99,6 +105,16 @@ impl Paragraph {
 }
 
 impl Paragraph {
+    /// Measurement owner shared with other paragraphs in this document.
+    pub(crate) fn measure_context(mut self, cx: &crate::layout::cx::LayoutCx) -> Self {
+        self.anchor_values = Some(cx.vcx().keep());
+        self.measures = cx.doc().paragraph_measures.clone();
+        self.paint_context = cx.vertical_paint.clone();
+        self.inline_measure = cx.inline_measure.clone();
+        self.clamp_rows = cx.doc().paragraph_rows.clone();
+        self
+    }
+
     /// Ruby context of the place where the paragraph is built: the base-width
     /// sink of the ruby column (the first paragraph built under it takes it)
     /// and the base's annotation layers.

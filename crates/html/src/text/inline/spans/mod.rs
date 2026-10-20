@@ -65,6 +65,7 @@ pub fn line_height_spans(
     inherited: &Computed,
     base_size: f32,
     normal: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -93,7 +94,7 @@ pub fn line_height_spans(
                 Some(v) => out.push((at..end, gpui::px(v))),
                 None => out.push((
                     at..end,
-                    gpui::px(crate::text::metrics::normal_px(normal, size)),
+                    gpui::px(crate::text::metrics::normal_px(normal, size, vcx)),
                 )),
             }
         }
@@ -105,7 +106,11 @@ pub fn line_height_spans(
 /// Куски с украшениями (css-text-decor-3 §2.1) и их украшенные прогоны:
 /// смежные куски с тем же украшением на том же месте списка (Blink
 /// `ContinuesDecoratedRun`); атом прогон рвёт. Скрытый кусок не украшается.
-pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::paragraph::DecorSpan> {
+pub fn decor_spans(
+    pieces: &[Piece],
+    base: &TextStyle,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<crate::text::paragraph::DecorSpan> {
     use crate::text::paragraph::{DecorItem, DecorSpan};
     let mut out: Vec<DecorSpan> = Vec::new();
     let mut shadow_inks = Vec::new();
@@ -130,7 +135,7 @@ pub fn decor_spans(pieces: &[Piece], base: &TextStyle) -> Vec<crate::text::parag
                             };
                             DecorItem {
                                 decor: d.clone(),
-                                font: run_for("x", &probe, base).font,
+                                font: run_for("x", &probe, base, vcx).font,
                                 group: at..end,
                             }
                         })

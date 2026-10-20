@@ -15,6 +15,7 @@ pub(crate) fn emit_margin_struts(
     strut: &mut Option<(f32, f32)>,
     emitted: &mut f32,
     cleared_run: &mut Option<usize>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     for (idx, node) in out.iter_mut().enumerate() {
         let Node::Element(e) = node else {
@@ -44,9 +45,9 @@ pub(crate) fn emit_margin_struts(
             band_clearance::remember_float_margin(e, *strut, *emitted);
             continue;
         }
-        let top = margin_px(e.style.margin.top, &e.style).unwrap_or(0.0);
-        let bottom = margin_px(e.style.margin.bottom, &e.style).unwrap_or(0.0);
-        let through = through_strut(e);
+        let top = margin_px(e.style.margin.top, &e.style, vcx).unwrap_or(0.0);
+        let bottom = margin_px(e.style.margin.bottom, &e.style, vcx).unwrap_or(0.0);
+        let through = through_strut(e, vcx);
         let mut merged = match *strut {
             Some(s) => {
                 let m = adjoin(s, strut_of(top));
@@ -54,7 +55,7 @@ pub(crate) fn emit_margin_struts(
                 // разрешается струна до неё вместе с её верхним полем. Та же
                 // строка даёт это и обычной коробке: нижнее поле соседа
                 // раскладка уже поставила, верхнему достаётся разница.
-                pin_inherited_margins(e, true, false);
+                pin_inherited_margins(e, true, false, vcx);
                 e.style.margin.top = Some(Len::Px(solve(m) - *emitted));
                 *emitted = solve(m);
                 m
@@ -72,9 +73,10 @@ pub(crate) fn emit_margin_struts(
         // does not collapse with the bottom margin of the parent block».
         // Верхнее поле уже выложено рядом обтекания, поэтому наружу идёт
         // только остаток.
-        if through.is_none() && e.style.clear.is_some() && through_strut_no_clear(e).is_some() {
+        if through.is_none() && e.style.clear.is_some() && through_strut_no_clear(e, vcx).is_some()
+        {
             *emitted = top;
-            pin_inherited_margins(e, false, true);
+            pin_inherited_margins(e, false, true, vcx);
             e.style.margin.bottom = Some(Len::Px(0.0));
             *strut = Some(adjoin(strut_of(top), strut_of(bottom)));
             *cleared_run = Some(idx);
@@ -84,7 +86,7 @@ pub(crate) fn emit_margin_struts(
             merged = adjoin(merged, own);
             // Своё нижнее поле коробка не ставит: оно ушло в струну, и
             // раскладка сложила бы его второй раз.
-            pin_inherited_margins(e, false, true);
+            pin_inherited_margins(e, false, true, vcx);
             e.style.margin.bottom = Some(Len::Px(0.0));
             // ЗАМЕРЕНО И ОТКАЧЕНО: снимать поля и у ДЕТЕЙ насквозь-коробки
             // (`zero_margins_deep`) — CSS2 4675 -> 4672, потери

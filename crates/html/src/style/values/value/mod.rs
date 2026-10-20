@@ -15,7 +15,14 @@ mod calc_tests;
 mod units_tests;
 
 mod anchor;
+pub(crate) mod angle;
+mod atom;
 mod calc;
+mod calc_arguments;
+mod calc_expression;
+mod calc_function;
+mod calc_value;
+pub(crate) use calc_expression::LengthExpression;
 mod calc_math;
 mod calc_pool;
 mod color;
@@ -47,8 +54,6 @@ pub use root_metrics::{
     RootMetrics, root_font_px, root_line_px, set_root_family, set_root_font_view, set_root_metrics,
 };
 use root_metrics::{root_font_unit, root_font_view};
+pub(crate) use scheme::{Scheme, embedding_dark_scheme, resolve_scheme};
 pub use scheme::{dark_scheme, set_dark_scheme};
-pub(crate) use scheme::{
-    embedding_dark_scheme, reset_scheme, resolve_scheme, restore_scheme, scheme_state,
-};
 pub use units::Ext;

@@ -43,3 +43,26 @@ fn typed_scene_and_path_definition_have_identical_layer_contracts() {
         assert_eq!(direct.luminance, parsed.luminance);
     }
 }
+
+#[test]
+fn none_image_retains_a_transparent_composition_layer() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let mut group = Grouped::new(gpui::div().into_any_element(), vcx);
+    group.mask_composite = vec![2, 3];
+    let image = crate::style::computed::ImageSource::Invalid;
+    let layer = mask_layer(
+        1,
+        MaskInput::Image(&image),
+        &group,
+        10.0,
+        10.0,
+        1.0,
+        &|_, _, _| (0.0, 0.0),
+        &|_| (false, false),
+        vcx,
+    )
+    .unwrap();
+    assert_eq!(layer.op, 3);
+    assert!(layer.image.as_bytes(0).unwrap().iter().all(|&b| b == 0));
+}

@@ -42,16 +42,26 @@ pub fn parse_media(html: &str, extra_css: &str, media: Media) -> Parsed {
 pub(crate) fn parse_current(
     html: &str,
     extra_css: &str,
-    mut media: Media,
+    media: Media,
     doc: &Rc<crate::document::state::DocState>,
 ) -> Vec<Node> {
+    parse_input(html, extra_css, media, doc, false)
+}
+
+/// Parse one input with its parser mode and document-local host-language rules.
+pub(super) fn parse_input(
+    html: &str,
+    extra_css: &str,
+    mut media: Media,
+    doc: &Rc<crate::document::state::DocState>,
+    xml: bool,
+) -> Vec<Node> {
     let vcx = doc.values();
-    let _content_document = content::document(html);
+    let xhtml = content::is_xhtml(html);
     // `@font-feature-values` — от прошлого разбора (слои `@layer` — свои у
     // разбора, `LayerRegistry` ниже).
-    crate::text::fonts::alternates::reset();
+    crate::text::fonts::alternates::reset(vcx);
     // XML document (`super::xml`): XML parser, no HTML tree-builder fixups.
-    let xml = super::xml::is_xml();
     let html = if xml {
         std::borrow::Cow::Borrowed(html)
     } else {
@@ -65,7 +75,7 @@ pub(crate) fn parse_current(
     if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark) {
         media.dark = dark;
     }
-    crate::style::values::value::reset_scheme(media.dark);
+    let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). Документ XHTML в quirks не бывает никогда (HTML §2.1, «XML
     // documents … always in no-quirks mode»), а мы разбираем и его HTML-
@@ -156,7 +166,7 @@ pub(crate) fn parse_current(
     // Тени (`<template shadowrootmode>`): области стилей и распределение
     // слотов считаются ДО обхода, как отметки `:has`; обход получает их
     // индексом по узлу. Документ без теней предпроход не платит.
-    let mut tree = TreeIndex::new(doc.clone());
+    let mut tree = TreeIndex::new(doc.clone(), xhtml);
     let doc = Rc::new(Scope { rules, frames });
     if html.contains("shadowrootmode") {
         let mut drafts: HashMap<NodeKey, SlotInfo> = HashMap::new();
@@ -197,6 +207,7 @@ pub(crate) fn parse_current(
         &mut Vec::new(),
         false,
         &mut out,
+        vcx,
     );
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     resolve_display_inherit(&mut out, (None, None, None, None, None));

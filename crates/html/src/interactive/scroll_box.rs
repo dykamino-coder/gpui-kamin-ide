@@ -5,8 +5,6 @@ use hoisting::hoist_from_scroll;
 // owner: A
 
 use crate::dom::Element;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, element, in_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -40,6 +38,7 @@ pub(crate) fn scrollable(
         return None;
     }
     let scroll_projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll_frame.as_ref(),
         inherited.self_node,
         Some(&scroll_style),
         opts.cx.sticky.as_ref(),
@@ -50,20 +49,18 @@ pub(crate) fn scrollable(
         .map(|p| opts.inner(|cx| cx.sticky = Some(p.link().clone())));
     let opts = projected_opts.as_deref().unwrap_or(opts);
     let area_sticky = opts.cx.sticky.clone();
+    let parent_frame = opts.cx.scroll_frame.clone();
+    let freeze_scrollbars = opts.cx.freeze_scrollbars;
     let mut node = e.clone();
     node.style.overflow_x = scroll_style.overflow_x;
     node.style.overflow_y = scroll_style.overflow_y;
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
-    let node = node;
-    let inherited = inherited.clone();
-    let opts = opts.clone();
-    let depth = defer_depth();
+    let (inherited, opts) = (inherited.clone(), opts.clone());
     let build = std::rc::Rc::new(
-        move |handle: &gpui::ScrollHandle, h: bool, v: bool| -> AnyElement {
+        move |handle: &gpui::ScrollHandle, h: bool, v: bool, frame| -> AnyElement {
             let vcx = opts.cx.vcx();
-            let _depth = DepthScope::enter(depth);
             // Keep CSS overflow on the native box; `scroller` only prevents
             // recursive adapters while its ScrollHandle is attached.
             let mut inner = node.clone();
@@ -104,15 +101,19 @@ pub(crate) fn scrollable(
             // содержимое было видно ниже края панели.
             let outer_margin = inner.style.margin;
             inner.style.margin = Default::default();
-            let (built, native_box) = crate::interactive::scroll_target::build(
+            let target = crate::interactive::scroll_target::Target::new(
                 node.node_id,
                 handle,
                 h,
                 v,
                 outer_margin,
-                || element(&inner, &inherited, &opts),
             );
-            if native_box {
+            let inner_opts = opts.inner(|cx| {
+                cx.scroll_target = Some(target.clone());
+                cx.scroll_frame = frame;
+            });
+            let built = element(&inner, &inherited, &inner_opts);
+            if target.applied() {
                 return built;
             }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
@@ -194,8 +195,8 @@ pub(crate) fn scrollable(
             build,
             vcx,
         )
-        .with_style(scroll_style)
-        .with_tree(e)
+        .with_style(scroll_style, freeze_scrollbars)
+        .with_tree(e, parent_frame.as_ref())
         .with_sticky(area_sticky)
         .into_any_element(),
         scroll_projection,
@@ -218,11 +219,8 @@ pub(crate) fn resizable(
         _ => crate::interactive::resizable::ResizeAxis::Vertical,
     };
     let node = e.clone();
-    let inherited = inherited.clone();
-    let opts = opts.clone();
-    let depth = defer_depth();
+    let (inherited, opts) = (inherited.clone(), opts.clone());
     let build = std::rc::Rc::new(move |w: Option<f32>, h: Option<f32>| {
-        let _depth = DepthScope::enter(depth);
         // Заданный мышью размер побеждает разметку — как и в браузере, где
         // он пишется в инлайн-стиль элемента.
         let mut mixed = node.clone();

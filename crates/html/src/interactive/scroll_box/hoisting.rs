@@ -2,7 +2,6 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
-use crate::paint::effects::paint_scope::inside as inside_deferred;
 use crate::render::{RenderOpts, blocks};
 use crate::style::computed::{Computed, Display};
 
@@ -27,7 +26,7 @@ use crate::style::computed::{Computed, Display};
 pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &RenderOpts) {
     let vcx = opts.cx.vcx();
     use crate::style::computed::Position;
-    if !opts.cx.positioning.icb_active() || inside_deferred() {
+    if !opts.cx.positioning.icb_active() || opts.cx.paint_depth.inside() {
         return;
     }
     let merged = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);

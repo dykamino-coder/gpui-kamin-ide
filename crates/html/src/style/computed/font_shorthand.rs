@@ -107,7 +107,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: ValueCx<'_>) {
     style.font_weight = Some(400);
     style.font_weight_step = 0;
     style.font_kerning = Some(2);
-    style.font_alternates = Some(crate::text::fonts::alternates::normal());
+    style.font_alternates = Some(crate::text::fonts::alternates::normal(vcx));
     style.line_height = Some(Len::Auto);
     for token in split_outside_parens(head) {
         let t = token.as_str();

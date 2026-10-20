@@ -81,7 +81,7 @@ impl Computed {
                         return;
                     }
                     let Some(alternates) =
-                        crate::text::fonts::alternates::parse(v, key == "font-variant")
+                        crate::text::fonts::alternates::parse(v, key == "font-variant", vcx)
                     else {
                         return;
                     };

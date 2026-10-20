@@ -31,12 +31,41 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Clamp probes and previous-frame cuts belonging to this document.
+    pub(crate) clamp: std::rc::Rc<crate::text::clamp::ClampState>,
+    /// Anchor geometry and fallback selection belonging to this document.
+    pub(crate) anchor_frame: crate::layout::positioned::anchor::AnchorState,
+    /// Font-face descriptors and source caches belonging to this document.
+    pub(crate) font_faces: crate::text::fonts::FontFaces,
+    /// Parsed MATH sources and registered native-family data of this document.
+    pub(crate) font_math: crate::text::fonts::math::MathFonts,
+    /// Font measurement caches scoped to this document.
+    pub(crate) metrics: crate::text::metrics::Metrics,
+    /// Vertical paragraph measurements and root paint geometry of this document.
+    pub(crate) vertical_measures: Rc<crate::text::vertical::VerticalMeasures>,
+    /// Paragraph paint rows consumed by this document's clamp cuts.
+    pub(crate) paragraph_rows: Rc<crate::text::clamp::ParagraphRows>,
+    /// CSS font-face metric descriptors, scoped to this document.
+    pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
+    /// Shaped paragraphs and fit results shared only inside this document.
+    pub(crate) paragraph_measures: Rc<crate::text::paragraph::MeasureCache>,
+    /// Named font-feature definitions owned by this document.
+    pub(crate) font_alternates: RefCell<crate::text::fonts::alternates::Definitions>,
+    /// Rasterized foreignObject layers of this document, bounded by the painter.
+    pub(crate) foreign_rasters: RefCell<HashMap<u64, String>>,
+    /// SVG mask/filter definitions retained by deferred groups of this document.
+    pub(crate) masks: crate::paint::effects::mask::MaskResources,
     /// Носитель и область просмотра, которыми разобран документ.
     pub(crate) media: Cell<Media>,
     /// Режим quirks (HTML §13.2.6.4.1), ставит разбор.
     pub(crate) quirks: Cell<bool>,
     /// Кегль, строка и семейство корня — базы `rem`, `rlh`, `rcap`…
     pub(crate) root: RefCell<RootMetrics>,
+    /// Left edge of the root's content-sized box under `vertical-rl`
+    /// (CSS 2.2 §14.2: the canvas background is positioned from the root
+    /// box). The body writes it at prepaint, the canvas layer reads it at
+    /// paint of the same frame; the previous frame's value is the fallback.
+    pub(crate) root_left: Cell<Option<f32>>,
     /// Правила `@page` в порядке появления (css-page-3 §cascading-and-page-context).
     pub(crate) page_rules: RefCell<Vec<PageRule>>,
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).
@@ -62,18 +91,21 @@ pub struct DocState {
 impl DocState {
     /// Пустое состояние документа, разбираемого носителем `media`.
     pub fn new(media: Media) -> Rc<Self> {
-        Rc::new_cyclic(|this| Self {
+        let doc = Rc::new_cyclic(|this| Self {
             this: this.clone(),
             media: Cell::new(media),
             owner: Cell::new(arena::new_owner()),
             frame_owner: Cell::new(arena::new_owner()),
             ..Self::default()
-        })
+        });
+        doc.root.borrow_mut().resolve_units(doc.values());
+        doc
     }
 
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
+        self.vertical_measures.begin_frame();
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();

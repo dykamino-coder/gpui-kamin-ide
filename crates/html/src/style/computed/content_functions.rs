@@ -9,14 +9,6 @@ use crate::document::state::ValueCx;
 /// `None` — запись негодна целиком: неизвестная функция, лишний или
 /// недостающий аргумент, незакрытая кавычка. Такое объявление применять
 /// нельзя, иначе его остатки печатаются литеральным текстом.
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `content: url()`/`image-set()` как
-// замещаемый строчный атом (`ContentItem::Image`, картинка через
-// `background::source`; патч `target/scout-content-2026-09.md` §6). Срез 1509
-// пар (lists/pseudo/content/counter-styles/images): 1192 -> 1190, +0/-2 —
-// `cross-fade-natural-size` 0.00 -> 38.95, `disclosure-styles` 0.19 -> 0.62;
-// ни одна из ожидаемых `element-replacement*` не позеленела. Картинка в
-// `content` требует природного размера ДО раскладки строки (`cross-fade` —
-// от двух источников), а атом меряется после.
 pub(crate) fn parse_content(raw: &str, vcx: ValueCx<'_>) -> Option<Vec<ContentItem>> {
     let bytes = raw.as_bytes();
     let mut at = 0usize;
@@ -112,25 +104,10 @@ pub(crate) fn parse_content(raw: &str, vcx: ValueCx<'_>) -> Option<Vec<ContentIt
                     .or_else(|| (!explicit_type).then(|| "\"\"".to_string()));
                 out.push(ContentItem::Attr(name, fallback));
             }
-            "url" if args.len() <= 1 => out.push(ContentItem::Image(arg(0).unwrap_or_default())),
-            // CSS Content 3 §2: a single image replaces the element. Keep
-            // filter() intact so its result enters the replaced-image path.
-            "filter"
-                if crate::style::computed::filter_image::parse_filter_image(
-                    &raw[at..=close],
-                    vcx,
-                )
-                .is_some() =>
-            {
-                out.push(ContentItem::Image(raw[at..=close].to_string()));
-            }
-            // ПРОБОВАЛИ И ОТКАТИЛИ: принимать `url()` (§12.2 объявляет его
-            // действительным) и класть в псевдоэлемент синтетический `<img>`.
-            // Проба по 195 парам `generated-content`: флипов ноль, потеряна
-            // `before-after-table-whitespace-001` (0.15 -> 0.58) и просела
-            // `before-after-images-001` (0.00 -> 0.41). Обе требуют, чтобы
-            // НЕНАЙДЕННАЯ картинка давала коробку НУЛЕВОГО размера — сперва
-            // это, потом уже `url()`.
+            "url" | "filter" => out.push(ContentItem::Image(super::ImageSource::parse(
+                &raw[at..=close],
+                vcx,
+            )?)),
             _ => return None,
         }
         at = close + 1;

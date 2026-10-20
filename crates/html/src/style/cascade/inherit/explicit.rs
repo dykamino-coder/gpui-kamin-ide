@@ -2,12 +2,13 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BgListProp;
 
 pub(super) fn inherit_explicit(
     parent: &Computed,
     own: &Computed,
     c: &mut Computed,
-    vcx: ValueCx<'_>,
+    _vcx: ValueCx<'_>,
 ) {
     // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
@@ -63,6 +64,13 @@ pub(super) fn inherit_explicit(
             c.gradient = parent.gradient.clone();
             c.gradient_raw = parent.gradient_raw.clone();
             c.gradient_current = parent.gradient_current.clone();
+            if let Some(layers) = parent
+                .bg_lists
+                .get(BgListProp::Image)
+                .or_else(|| parent.bg_lists.get(BgListProp::Shorthand))
+            {
+                c.bg_lists.set_layers(BgListProp::Image, layers.to_vec());
+            }
         }
         if on(inh::BG_POS) {
             c.bg_pos = parent.bg_pos;
@@ -147,6 +155,14 @@ pub(super) fn inherit_explicit(
         c.background = parent.background;
         c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());
         if own.background_all_inherit {
+            c.bg_lists.retain(|p| p == BgListProp::BlendMode);
+            for (prop, layers) in parent
+                .bg_lists
+                .iter()
+                .filter(|(p, _)| *p != BgListProp::BlendMode)
+            {
+                c.bg_lists.set_layers(prop, layers.to_vec());
+            }
             c.bg_image = parent.bg_image.clone();
             c.bg_repeat = parent.bg_repeat;
             c.bg_pos = parent.bg_pos;
@@ -168,10 +184,6 @@ pub(super) fn inherit_explicit(
             b: 0.0,
             a: 1.0,
         });
-        if let Some(resolved) =
-            crate::style::values::color_space::resolve_relative(&expr, current, vcx)
-        {
-            c.background = Some(resolved);
-        }
+        c.background = Some(expr.resolve(current));
     }
 }

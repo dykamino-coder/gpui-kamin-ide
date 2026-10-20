@@ -56,92 +56,36 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
     )
 }
 
-/// Градиент как источник картинки: считается по своей формуле в растр 64×64.
-///
-/// Для рамки-картинки соотношение сторон источника роли не играет — куски всё
-/// равно растягиваются под свои места, поэтому мелкого растра достаточно.
-/// Линейный и конический считаются честно; радиальный отдаёт осевой ход
-/// цвета — девятке рамки радиальной решётки и не нужно.
-/// `cross-fade(<cf-image>#)` (css-images-4 §2.6, `csswg-drafts/css-images-4/
-/// Overview.bs` «cross-fade»): взвешенная сумма картинок в
-/// премультиплицированных цветах. Доли: без своей доли картинка делит
-/// остаток до 100% поровну с такими же; сумма больше 100% нормируется к 100%;
-/// меньше — результат частично прозрачен. Слагаемое — цвет (или
-/// `image(<color>)`), градиент или `url()`; растр приводится к размеру плитки
-/// ближайшей точкой.
+/// Premultiplied cross-fade over the computed operand weights.
 // Pixel channel indices address the source and accumulator buffers together.
 #[allow(clippy::needless_range_loop)]
 pub(super) fn rasterize_cross_fade(
-    src: &str,
+    src: &crate::style::computed::ImageSource,
     w: u32,
     h: u32,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    let inner = src.strip_prefix("cross-fade(")?;
-    let inner = &inner[..inner.rfind(')')?];
+    let crate::style::computed::ImageSource::CrossFade(operands) = src else {
+        return None;
+    };
     let n = (w * h) as usize;
-    let mut items: Vec<(Option<f32>, Vec<u8>)> = vec![];
-    for part in crate::style::css::split_args(inner) {
-        let mut pct = None;
-        let mut img = None;
-        for t in split_top(part.trim()) {
-            match t.strip_suffix('%').and_then(|v| v.parse::<f32>().ok()) {
-                Some(p) => pct = Some((p / 100.0).clamp(0.0, 1.0)),
-                None => img = Some(t),
+    let mut items = Vec::new();
+    for (operand, weight) in operands {
+        let image = sources::computed_source(operand, true)?.raster((w as f32, h as f32), vcx)?;
+        let size = image.size(0);
+        let (iw, ih) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
+        let bytes = image.as_bytes(0)?;
+        let mut out = Vec::with_capacity(n * 4);
+        for y in 0..h {
+            let sy = (y * ih / h.max(1)).min(ih - 1);
+            for x in 0..w {
+                let sx = (x * iw / w.max(1)).min(iw - 1);
+                let at = ((sy * iw + sx) * 4) as usize;
+                out.extend_from_slice(bytes.get(at..at + 4)?);
             }
         }
-        let img = img?;
-        let colour = crate::style::values::value::Color::parse(
-            img.strip_prefix("image(")
-                .and_then(|t| t.strip_suffix(')'))
-                .unwrap_or(img),
-            vcx,
-        );
-        let buf = if let Some(c) = colour {
-            let px = [
-                (c.b * 255.0).round() as u8,
-                (c.g * 255.0).round() as u8,
-                (c.r * 255.0).round() as u8,
-                (c.a * 255.0).round() as u8,
-            ];
-            px.iter().copied().cycle().take(n * 4).collect()
-        } else {
-            let image = if img.contains("gradient(") {
-                rasterize_gradient(img, w, h, vcx)?
-            } else {
-                let url = crate::style::computed::parse_url(img)?;
-                source(&url, vcx)?.raster((w as f32, h as f32), vcx)?
-            };
-            let size = image.size(0);
-            let (iw, ih) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
-            let bytes = image.as_bytes(0)?;
-            let mut out = Vec::with_capacity(n * 4);
-            for y in 0..h {
-                let sy = (y * ih / h.max(1)).min(ih - 1);
-                for x in 0..w {
-                    let sx = (x * iw / w.max(1)).min(iw - 1);
-                    let at = ((sy * iw + sx) * 4) as usize;
-                    out.extend_from_slice(bytes.get(at..at + 4)?);
-                }
-            }
-            out
-        };
-        items.push((pct, buf));
+        items.push((*weight, out));
     }
-    if items.is_empty() {
-        return None;
-    }
-    let given: f32 = items.iter().filter_map(|i| i.0).sum();
-    let free = items.iter().filter(|i| i.0.is_none()).count() as f32;
-    let weights: Vec<f32> = items
-        .iter()
-        .map(|i| match i.0 {
-            Some(p) if given > 1.0 => p / given,
-            Some(p) => p,
-            None if given >= 1.0 => 0.0,
-            None => (1.0 - given) / free,
-        })
-        .collect();
     // Точки слоёв и результата — с ПРЯМОЙ альфой (так их отдаёт растеризатор
     // и так их ждёт отрисовка плитки); сумма — в премультиплицированных
     // (css-images-4 §2.6), назад к прямой — делением на итоговую альфу.
@@ -151,10 +95,10 @@ pub(super) fn rasterize_cross_fade(
     let mut out = vec![0u8; n * 4];
     for p in 0..n {
         let (mut acc, mut alpha) = ([0.0f32; 3], 0.0f32);
-        for (it, wt) in items.iter().zip(&weights) {
-            let a = it.1[p * 4 + 3] as f32 / 255.0 * wt;
+        for (wt, bytes) in &items {
+            let a = bytes[p * 4 + 3] as f32 / 255.0 * wt;
             for ch in 0..3 {
-                acc[ch] += it.1[p * 4 + ch] as f32 * a;
+                acc[ch] += bytes[p * 4 + ch] as f32 * a;
             }
             alpha += a;
         }
@@ -171,26 +115,38 @@ pub(super) fn rasterize_cross_fade(
 }
 
 pub(super) fn rasterize_gradient(
-    src: &str,
+    src: &crate::style::computed::ImageSource,
     w: u32,
     h: u32,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    if crate::style::computed::parse_image_color(src, vcx).is_some() {
-        return sources::raster_color(src, w, h, vcx);
+    use crate::style::computed::ImageSource;
+    match src {
+        ImageSource::Color(color) => {
+            let c = color.value;
+            let pixel = [
+                (c.b * 255.0).round() as u8,
+                (c.g * 255.0).round() as u8,
+                (c.r * 255.0).round() as u8,
+                (c.a * 255.0).round() as u8,
+            ];
+            gpui::bgra_bytes_to_image(
+                w,
+                h,
+                pixel
+                    .into_iter()
+                    .cycle()
+                    .take((w * h * 4) as usize)
+                    .collect(),
+            )
+        }
+        ImageSource::CrossFade(_) => rasterize_cross_fade(src, w, h, vcx),
+        ImageSource::Conic(g) => conic::rasterize(g, (w as f32, h as f32), 1.0, vcx),
+        ImageSource::Gradient { .. } => {
+            gradient_raster::raster(src, w, h, (w as f32, h as f32), false, vcx)
+        }
+        _ => sources::computed_source(src, true)?.raster((w as f32, h as f32), vcx),
     }
-    if src.starts_with("cross-fade(") {
-        return rasterize_cross_fade(src, w, h, vcx);
-    }
-    if conic::is_conic(src) {
-        return conic::rasterize(src, (w as f32, h as f32), 1.0, vcx);
-    }
-    gradient_raster::raster(src, w, h, (w as f32, h as f32), false, vcx)
-}
-
-/// Угол позиции стопа в долях оборота: `90deg`, `25%`, `0.25turn`, голый `0`.
-pub(super) fn angle_fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
-    angle::fraction(token, vcx)
 }
 
 pub(crate) use crate::style::computed::place_stops;

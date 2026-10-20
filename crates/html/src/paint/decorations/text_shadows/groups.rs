@@ -58,7 +58,12 @@ fn raw_list(style: &Computed) -> Vec<Shadow> {
         .collect()
 }
 
-pub(super) fn collect_groups(nodes: &[Node], current: &ShadowStyle, out: &mut Vec<Vec<Shadow>>) {
+pub(super) fn collect_groups(
+    nodes: &[Node],
+    current: &ShadowStyle,
+    out: &mut Vec<Vec<Shadow>>,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     let resolved = current.resolved();
     for node in nodes {
         match node {
@@ -67,7 +72,9 @@ pub(super) fn collect_groups(nodes: &[Node], current: &ShadowStyle, out: &mut Ve
                     out.push(resolved.clone());
                 }
             }
-            Node::Element(e) if !atomic(e) => collect_groups(&e.children, &current.child(e), out),
+            Node::Element(e) if !atomic(e, vcx) => {
+                collect_groups(&e.children, &current.child(e), out, vcx)
+            }
             Node::Element(_) => {}
         }
     }

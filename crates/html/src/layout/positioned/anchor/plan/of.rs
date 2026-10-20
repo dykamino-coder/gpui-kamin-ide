@@ -78,6 +78,7 @@ impl AnchorPlan {
             return None;
         }
         Some(AnchorPlan {
+            values: vcx.keep(),
             sides,
             default_anchor,
             cb_flipped: flipped(inherited),

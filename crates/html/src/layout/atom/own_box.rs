@@ -151,9 +151,10 @@ pub(super) fn own_box_atom(
             crate::paint::stacking::fixed_cb_layer_box(&merged),
         )
     });
-    let mut kids = crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, || {
-        blocks(&e.children, &merged, opts)
-    });
+    let mut kids =
+        crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, |opts| {
+            blocks(&e.children, &merged, opts)
+        });
     if let Some(layer) = cb_layer {
         kids.extend(layer.finish());
     }

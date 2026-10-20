@@ -154,7 +154,12 @@ pub(crate) fn atom_line_align(
                     AtomAlign::Shift(-v)
                 } else if let Some(l) = st.vertical_shift_len {
                     let family = merged.font_family.unwrap_or_default();
-                    AtomAlign::Shift(crate::text::metrics::spacing_px(Some(l), &family, size))
+                    AtomAlign::Shift(crate::text::metrics::spacing_px(
+                        Some(l),
+                        &family,
+                        size,
+                        vcx,
+                    ))
                 } else if let Some(k) = st.vertical_shift {
                     AtomAlign::Shift(-k * size)
                 } else if let Some(k) = st.vertical_shift_pct {
@@ -162,7 +167,11 @@ pub(crate) fn atom_line_align(
                     let own = match merged.line_height {
                         Some(Len::Px(v)) => v,
                         Some(Len::Pct(f)) | Some(Len::Em(f)) => f * size,
-                        _ => crate::text::metrics::normal_px(normal_fraction(&merged, opts), size),
+                        _ => crate::text::metrics::normal_px(
+                            normal_fraction(&merged, opts),
+                            size,
+                            vcx,
+                        ),
                     };
                     AtomAlign::Shift(-k * own)
                 } else {

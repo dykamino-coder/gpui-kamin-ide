@@ -6,7 +6,11 @@ use crate::style::computed::Computed;
 /// CSS 2.1 §5.12.2 and CSS Pseudo §first-letter-tree permit a first letter
 /// spanning multiple elements, including generated punctuation. Select the
 /// complete typographic unit before mapping it back to individual runs.
-pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
+pub fn split_first_letter(
+    pieces: Vec<Piece>,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<Piece> {
     let mut text = String::new();
     let mut ranges = Vec::with_capacity(pieces.len());
     let mut blocked = false;
@@ -61,7 +65,7 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
                 }
                 out.push(Piece::Text {
                     text: text[a..b].into(),
-                    style: letter_style(&own, style),
+                    style: letter_style(&own, style, vcx),
                 });
                 if b < text.len() {
                     out.push(Piece::Text {
@@ -76,7 +80,11 @@ pub fn split_first_letter(pieces: Vec<Piece>, style: &Computed) -> Vec<Piece> {
     out
 }
 
-fn letter_style(own: &Computed, style: &Computed) -> Computed {
+fn letter_style(
+    own: &Computed,
+    style: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Computed {
     let mut letter = own.clone();
     letter.font_size = style.font_size.or(own.font_size);
     letter.line_height = style.line_height.or(own.line_height);
@@ -87,7 +95,7 @@ fn letter_style(own: &Computed, style: &Computed) -> Computed {
     if let Some(bg) = style.background {
         letter.inline_bg = Some(bg);
         if style.float.is_some_and(|f| f != 0) {
-            float_band(&mut letter);
+            float_band(&mut letter, vcx);
         }
     }
     letter
@@ -97,19 +105,19 @@ fn letter_style(own: &Computed, style: &Computed) -> Computed {
 /// background fills the box, as tall as its line height, not only the
 /// glyphs' content area. The letter is painted as an inline piece, so its
 /// band is padded by the half-leading on both sides.
-fn float_band(letter: &mut Computed) {
+fn float_band(letter: &mut Computed, vcx: crate::document::state::ValueCx<'_>) {
     use crate::style::values::value::Len;
     let Some(Len::Px(size)) = letter.font_size else {
         return;
     };
     let family = letter.font_family.clone().unwrap_or_default();
-    let fraction = crate::text::metrics::normal_line(&family);
+    let fraction = crate::text::metrics::normal_line(&family, vcx);
     let line = match letter.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-        _ => crate::text::metrics::normal_px(fraction, size),
+        _ => crate::text::metrics::normal_px(fraction, size, vcx),
     };
-    let Some(content) = crate::text::metrics::content_px(fraction, size) else {
+    let Some(content) = crate::text::metrics::content_px(fraction, size, vcx) else {
         return;
     };
     let half = ((line - content) / 2.0).max(0.0);

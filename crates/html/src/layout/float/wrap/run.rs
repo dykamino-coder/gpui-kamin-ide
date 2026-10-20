@@ -29,13 +29,14 @@ pub(super) fn strut_for_next(
     j: usize,
     separates: impl Fn(&Element) -> bool,
     rest: &mut Vec<Node>,
-) -> bool {
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     let laid_out = out
         .iter()
         .rev()
         .find(|n| !is_blank(n))
         .is_none_or(|n| match n {
-            Node::Element(prev) => through_strut(prev).is_none(),
+            Node::Element(prev) => through_strut(prev, vcx).is_none(),
             Node::Text(_) => true,
         });
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (01.09): убрать подмену целиком. §9.5.2 хочет
@@ -47,16 +48,6 @@ pub(super) fn strut_for_next(
     // `-142` 2.47 → «красное видно». Значит распорка держит положение, и
     // чинить надо не её удаление, а канал «поле участвует в схлопывании,
     // не двигая коробку».
-    // Распорка — ПРОТЕЗ §9.5.2, а не коробка разметки: она ничего не
-    // красит, и накрывать её флоатом (`covered_flow_tail` ниже) нечего.
-    // Зато наложение снимает с флоата плавающую природу, и очищающая
-    // коробка, ради которой распорка и поставлена, теряет тот нижний
-    // край флоата, от которого считает зазор. Флаг гасит наложение
-    // ровно на этом случае (проба §2.2: `margin-collapse-clear-003`,
-    // `-009` и `nested-clearance-new-formatting-context` — все три
-    // потери держит распорка `0 × остаток поля`, прошедшая гейт
-    // `covered_flow_tail`, потому что ширины у неё нет, а
-    // `px_missing_zero(None) = 0`).
     let mut clearance_strut = false;
     clearance_before_next(
         cb_top_open,
@@ -67,8 +58,8 @@ pub(super) fn strut_for_next(
         rest,
         laid_out,
         &mut clearance_strut,
+        vcx,
     );
-    clearance_strut
 }
 
 pub(super) fn split_rest(
@@ -177,10 +168,11 @@ pub(super) fn clearance_before_next(
     rest: &mut Vec<Node>,
     laid_out: bool,
     clearance_strut: &mut bool,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
     if let Some(Node::Element(next)) = nodes.get(j)
         && separates(next)
-        && let Some(top) = margin_px(next.style.margin.top, &next.style).filter(|v| *v > 0.0)
+        && let Some(top) = margin_px(next.style.margin.top, &next.style, vcx).filter(|v| *v > 0.0)
     {
         // §9.5.2 считает клиренс от ГИПОТЕТИЧЕСКОЙ позиции — «where the
         // actual top border edge would have been if the element's 'clear'

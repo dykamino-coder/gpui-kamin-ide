@@ -1,8 +1,7 @@
-//! Prepaint for vertical_text; split out to keep the owning module within 250 lines.
+//! Resolved vertical text measurement and rotated prepaint geometry.
 
 use super::VerticalText;
-use super::{VT_FRAME, VT_MEASURED};
-use crate::text::vertical::{VT_CCW, VT_PHASE};
+use crate::text::vertical::TurnFrame;
 use gpui::{App, Bounds, Pixels, Window, px};
 
 impl VerticalText {
@@ -33,28 +32,23 @@ impl VerticalText {
             // Факт для следующего кадра: высота содержимого при решённой
             // длине строки — она и есть настоящая ширина повёрнутого блока.
             if let Some(k) = self.key
+                && let Some(values) = &self.values
                 && sized.height > gpui::px(0.)
             {
-                VT_MEASURED.with(|c| {
-                    let mut map = c.borrow_mut();
-                    if map.len() >= 256 {
-                        map.clear();
-                    }
-                    map.insert(k, sized.height);
-                });
+                values.vcx().doc.vertical_measures.record(k, sized.height);
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
         // до-поворотной точки в экранную у `sideways-lr` зеркально (см. `vt_map`).
         let (frame, phase) = self.turn_frame(bounds, window);
-        let prev_ccw = VT_CCW.with(|c| c.replace(self.ccw));
-        let prev = VT_FRAME.with(|c| c.replace(Some(frame)));
-        let prev_phase = VT_PHASE.with(|c| c.replace(phase));
+        let previous = self.paint_context.replace(Some(TurnFrame {
+            bounds: frame,
+            ccw: self.ccw,
+            phase,
+        }));
         let flat = gpui::point(bounds.origin.x, bounds.origin.y + phase);
         self.child.prepaint_at(flat, window, cx);
-        VT_PHASE.with(|c| c.set(prev_phase));
-        VT_FRAME.with(|c| c.set(prev));
-        VT_CCW.with(|c| c.set(prev_ccw));
+        self.paint_context.replace(previous);
         self.turn = Some((frame.size.width, phase));
     }
 

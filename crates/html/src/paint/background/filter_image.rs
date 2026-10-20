@@ -6,31 +6,24 @@
 //! sized by the image's concrete size; callers resolve and scale the input
 //! before applying the list here.
 
-use crate::document::state::ValueCx;
 use gpui::RenderImage;
 use std::sync::Arc;
-
-pub(crate) use crate::style::computed::filter_image::parse_filter_image;
 
 /// Applies the filter list to a straight-BGRA raster. Unsupported lists
 /// (blurs, a drop shadow mixed with other functions) yield `None`.
 pub(super) fn apply(
     image: &Arc<RenderImage>,
-    list: &str,
+    style: &crate::style::computed::ImageFilter,
     scale: (f32, f32),
-    vcx: ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    let mut style = crate::style::computed::Computed::default();
-    style.apply_one("filter", list, vcx);
-    let calls = list.matches('(').count();
     let size = image.size(0);
     let (w, h) = (size.width.0.max(0) as usize, size.height.0.max(0) as usize);
     let src = image.as_bytes(0)?;
     let mut out = src.to_vec();
-    if let Some(shadow) = style.drop_shadow {
+    if let Some(shadow) = style.shadow {
         // Filter Effects 1 §drop-shadow: a blur-free shadow is the source
         // alpha offset by (dx, dy) in the shadow colour, under the source.
-        if calls != 1 || shadow.blur > 0.0 {
+        if style.calls != 1 || shadow.blur > 0.0 {
             return None;
         }
         let (dx, dy) = (
@@ -103,11 +96,15 @@ mod tests {
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
         let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
-        let image = crate::paint::background::source(rendered.bg_image.as_deref().unwrap(), vcx)
-            .unwrap()
-            .raster((7.0, 5.0), vcx)
-            .unwrap();
-        let expected = crate::paint::background::source(&format!("filter({raw}, invert(1))"), vcx)
+        let image =
+            crate::paint::background::computed_source(rendered.bg_image.as_ref().unwrap(), true)
+                .unwrap()
+                .raster((7.0, 5.0), vcx)
+                .unwrap();
+        let operand =
+            crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
+                .unwrap();
+        let expected = crate::paint::background::computed_source(&operand, true)
             .unwrap()
             .raster((7.0, 5.0), vcx)
             .unwrap();

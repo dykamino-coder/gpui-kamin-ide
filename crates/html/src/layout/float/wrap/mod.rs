@@ -6,10 +6,10 @@ use crate::document::state::ValueCx;
 use std::ops::ControlFlow;
 
 use crate::dom::Node;
+use crate::layout::float::FloatCb;
 use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
-mod covered;
 mod float_run;
 mod lone;
 mod row;
@@ -42,16 +42,28 @@ pub(crate) fn wrap_floats(
     // Ширина содержащего блока в точках (`LayoutCx::cb_width`) — для
     // `bfc_no_fit`.
     cb_px: Option<f32>,
+    cb_height: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
-    let cb_width = parent.width;
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
+    let cb = FloatCb {
+        margin_basis: cb_px,
+        height: cb_height.or_else(|| crate::style::values::value::px_strict(parent.height)),
+        ..FloatCb::of(parent)
+    };
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
-    if let Some(value) = unfloated_flow(cb_top_open, em, measured_ok, parent_bfc, &mut nodes, cb_px)
-    {
+    if let Some(value) = unfloated_flow(
+        cb_top_open,
+        em,
+        measured_ok,
+        parent_bfc,
+        cb,
+        &mut nodes,
+        vcx,
+    ) {
         return value;
     }
     let mut out: Vec<Node> = vec![];
@@ -74,12 +86,12 @@ pub(crate) fn wrap_floats(
             measured_ok,
             parent_bfc,
             cell_bfc,
-            cb_width,
-            cb_px,
+            cb,
             &mut nodes,
             &mut out,
             &mut i,
             side,
+            vcx,
         ) {
             continue;
         }

@@ -10,7 +10,17 @@ impl ColumnStack {
         rows: Option<Rows>,
         copies: usize,
     ) -> Self {
-        let mut probe = Self::new(Vec::new(), count, 0.0, fixed_height, None, rows, None, None);
+        let mut probe = Self::new(
+            Vec::new(),
+            count,
+            0.0,
+            fixed_height,
+            None,
+            rows,
+            None,
+            None,
+            Default::default(),
+        );
         probe.copies = copies.max(1);
         probe
     }

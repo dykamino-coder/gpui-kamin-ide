@@ -1,6 +1,12 @@
 //! Child kinds and margin channels for measured float placement.
 
 use crate::layout::float::band_flow::{Build, Edge};
+use crate::layout::float::shapes::FloatShape;
+
+/// `shape-outside` of a float as a function of its border-box size, its
+/// margins (top, right, bottom, left) and the containing block width
+/// (css-shapes-1 §2, §3: percentages and `shape-margin` against it).
+pub type ShapeOf = std::rc::Rc<dyn Fn(f32, f32, [f32; 4], f32) -> FloatShape>;
 
 /// Чем ребёнок хоста участвует в полосах.
 #[derive(Clone, Copy, Debug)]
@@ -14,6 +20,9 @@ pub enum Kind {
         /// Буквица (`initial-letter`, шаг F11): исключение у начала строки
         /// потока, а не флоат (`FloatBands::add_initial_letter`).
         letter: bool,
+        /// A flex or grid container: the probe frame does not shrink it, so
+        /// its shrink-to-fit inline size is set from the formula.
+        own_layout: bool,
     },
     /// Коробка, флоаты НЕ перекрывающая (§9.5, последний абзац): свой
     /// контекст, таблица, атом известного размера. `table` — коробка не уже
@@ -46,15 +55,21 @@ pub struct Nest {
     /// Заданная высота содержимого в точках; `None` — из детей в потоке
     /// (§10.6.3: флоаты в высоту обычного блока не входят).
     pub height: Option<f32>,
-    /// Заданная ширина содержимого в точках; `None` — на всю ширину
+    /// Заданная ширина содержимого (точки или доля содержащего блока); `None` — на всю ширину
     /// содержащего блока (§10.3.3). `width: 0` — законный содержащий блок
     /// для флоатов (`letter-spacing-206`: `.squash {width: 0}` с дюжиной
     /// плавающих абзацев внутри).
-    pub width: Option<f32>,
+    pub width: Option<Edge>,
 }
 
 pub struct Kid {
     pub kind: Kind,
+    /// Source identity for the canonical pagination recorder.
+    pub node_id: u64,
+    /// Independent float displacement returned by the pagination solver.
+    pub pagination_offset: f32,
+    /// CSS Break 3 section 4.1: an indivisible box, independent of its height.
+    pub monolithic: bool,
     /// `clear` куска или блока потока (шаг F6): верх его border-box не выше
     /// низа флоатов названной стороны (§9.5.2). У флоата `clear` живёт в
     /// `Kind::Float`.
@@ -79,4 +94,6 @@ pub struct Kid {
     pub margin_offset: f32,
     /// Whether this containing block permits block-start margin collapse.
     pub start_open: bool,
+    /// The float's `shape-outside` line exclusion.
+    pub shape: Option<ShapeOf>,
 }

@@ -46,12 +46,9 @@ pub(super) fn sized_image(
         let cw = limit((w - sub_w).max(0.0), clamp(e.style.min_width, sub_w), max_w);
         let ch = match ratio_of() {
             Some(r) if r > 0.0 => transfer(cw, r, true),
-            _ => crate::paint::background::source(
-                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-                vcx,
-            )
-            .and_then(|s| s.intrinsic().h)
-            .unwrap_or(150.0),
+            _ => crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+                .and_then(|s| s.intrinsic().h)
+                .unwrap_or(150.0),
         };
         // §10.4: пределы держат ВЫВЕДЕННУЮ сторону тоже — заданная
         // остаётся как написана, а высота из соотношения обязана влезть
@@ -93,12 +90,9 @@ pub(super) fn sized_image(
         );
         let cw = match ratio_of() {
             Some(r) if r > 0.0 => transfer(ch, r, false),
-            _ => crate::paint::background::source(
-                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-                vcx,
-            )
-            .and_then(|s| s.intrinsic().w)
-            .unwrap_or(300.0),
+            _ => crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+                .and_then(|s| s.intrinsic().w)
+                .unwrap_or(300.0),
         };
         let cw_free = cw;
         let cw = limit(cw, clamp(e.style.min_width, sub_w), max_w);

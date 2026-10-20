@@ -33,7 +33,7 @@ pub(super) fn resolve_cell_heights(
             base
         } else {
             let family = inherited.font_family.clone().unwrap_or_default();
-            crate::text::metrics::ch_ex_px(&family, base).0
+            crate::text::metrics::ch_ex_px(&family, base, opts.cx.vcx()).0
         };
         cell.style.height = Some(Len::Px(k * ch));
     }
@@ -101,7 +101,7 @@ pub(super) fn resolve_cell_heights(
                 k * base
             } else {
                 let family = inherited.font_family.clone().unwrap_or_default();
-                k * crate::text::metrics::ch_ex_px(&family, base).0
+                k * crate::text::metrics::ch_ex_px(&family, base, opts.cx.vcx()).0
             }),
             _ => None,
         };

@@ -249,7 +249,7 @@ pub struct Computed {
     /// Относительный цвет фона (css-color-5): функция с `from currentColor`
     /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
     /// цвета каждого элемента заново.
-    pub background_rcs: Option<String>,
+    pub background_rcs: Option<crate::style::values::color_space::ColorExpression>,
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
@@ -376,7 +376,7 @@ pub struct Computed {
     pub clip_bare_box: bool,
     /// Маска-изображение (`mask-image: url(...)|<gradient>`): источник
     /// строкой до растра при сборке группы.
-    pub mask_image: Option<String>,
+    pub mask_image: Option<Vec<ImageSource>>,
     pub letter_spacing: Option<Len>,
     pub ellipsis: Option<bool>,
     /// Маркер обрезки `text-overflow: <string>` (css-overflow-4 §5);
@@ -590,19 +590,14 @@ pub struct Computed {
     pub border_dotted: Option<bool>,
     /// Сырая запись градиента фона: источник для слоя-картинки там, где
     /// градиент рисуется плиткой (фон ряда таблицы).
-    pub gradient_raw: Option<String>,
+    pub gradient_raw: Option<ImageSource>,
     /// Authored currentColor expression, independent of background tiling.
-    pub(crate) gradient_current: Option<String>,
+    pub(crate) gradient_current: Option<Gradient>,
     /// CSS Compositing 1: each image blends with the isolated background stack.
-    pub(crate) background_blend: Option<String>,
+    pub(crate) background_blend: Option<BlendMode>,
     /// Resolved opaque, constant background stacks retain their clip regions.
     pub(crate) flat_text_background: Option<Color>,
     pub(crate) flat_border_background: Option<Color>,
-    /// Градиент фона с длинами в единицах шрифта (`green 4em`): позиция
-    /// стопа в `em` разбором не читается и терялась (стоп становился «без
-    /// позиции»). Ждёт своего кегля и переразбирается в `resolve_em`
-    /// (`white-space-intrinsic-size-017/018`).
-    pub gradient_em: Option<String>,
     /// `border-spacing` таблицы: горизонтальный и вертикальный зазор.
     pub border_spacing: Option<(Option<Len>, Option<Len>)>,
     pub outline: Option<Outline>,
@@ -1424,11 +1419,11 @@ pub struct Computed {
     pub drop_shadow: Option<Shadow>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
-    pub bg_image: Option<String>,
+    pub bg_image: Option<ImageSource>,
     pub bg_size: BgSize,
     pub bg_pos: BgPos,
     /// Percentage comparisons wait for the possibly negative image free space.
-    pub(crate) bg_position_math: [Option<String>; 2],
+    pub(crate) bg_position_math: [Option<super::background_position::PositionExpression>; 2],
     /// `object-position` замещаемого содержимого (css-images-3 §5.2).
     pub object_position: Option<BgPos>,
     /// `object-view-box` (css-images-4 §object-view-box): видимая область
@@ -1593,4 +1588,9 @@ pub struct Computed {
     /// changes `ch` (the zero advances along the vertical line), `sideways` makes the
     /// alphabetic baseline dominant (§4.2). Read through `Computed::wm()`.
     pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
+    /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
+    pub(crate) shape_image: Option<super::ImageSource>,
+    /// The style of the initial containing block (`RenderOpts::root_style`),
+    /// whose box is the embedder's; not inherited.
+    pub(crate) icb: bool,
 }

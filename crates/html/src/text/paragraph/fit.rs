@@ -125,7 +125,7 @@ impl Paragraph {
         if (k - 1.0).abs() < 0.001 {
             return;
         }
-        remember_fit(self.fit_key(), k);
+        self.measures.remember_fit(self.fit_key(), k);
         self.scale_by(k);
     }
 
@@ -140,12 +140,14 @@ impl Paragraph {
             return;
         }
         let key = self.fit_key();
-        if let Some(k) = FITTED.with(|c| {
-            c.borrow()
-                .iter()
-                .find(|(hit, _)| *hit == key)
-                .map(|(_, k)| *k)
-        }) {
+        let fitted = self
+            .measures
+            .fitted
+            .borrow()
+            .iter()
+            .find(|(hit, _)| *hit == key)
+            .map(|(_, k)| *k);
+        if let Some(k) = fitted {
             self.scale_by(k);
         }
         self.fit = None;
@@ -206,5 +208,37 @@ mod tests {
         assert!(!p.justify_boundary(0, 3));
         assert!(p.justify_boundary(0, 6));
         assert!(!p.justify_boundary(0, 9));
+    }
+    #[test]
+    fn measured_fit_reaches_paint_only_inside_its_document() {
+        let a = crate::layout::cx::LayoutCx::default();
+        let b = crate::layout::cx::LayoutCx::default();
+        let paragraph = |cx: &crate::layout::cx::LayoutCx| {
+            let mut p = Paragraph::new(
+                "x".into(),
+                vec![],
+                px(16.),
+                px(16.),
+                Align::Left,
+                Wrap::default(),
+            )
+            .measure_context(cx);
+            p.fit = Some(crate::style::computed::TextFit {
+                grow: true,
+                shrink: false,
+                per_line: false,
+                all: false,
+                target: None,
+            });
+            p
+        };
+        let measured = paragraph(&a);
+        let mut painted = paragraph(&a);
+        let mut other = paragraph(&b);
+        measured.measures.remember_fit(measured.fit_key(), 2.);
+        painted.apply_measured_fit();
+        other.apply_measured_fit();
+        assert_eq!(painted.font_size, px(32.));
+        assert_eq!(other.font_size, px(16.));
     }
 }

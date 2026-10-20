@@ -3,18 +3,16 @@
 //! Private font feature tags carry the selected face's metrics through GPUI's
 //! font aliases. They do not change glyph shaping or the native font's metrics.
 
-use std::cell::RefCell;
+use crate::document::state::ValueCx;
 use std::collections::HashMap;
 
 const TAGS: [&str; 3] = ["kasc", "kdsc", "kgap"];
 type Overrides = [Option<f32>; 3];
 
-thread_local! {
-    static FACES: RefCell<HashMap<String, Vec<(u8, Overrides)>>> = RefCell::new(HashMap::new());
-}
+pub(crate) type MetricFaces = HashMap<String, Vec<(u8, Overrides)>>;
 
-pub(super) fn clear() {
-    FACES.with(|faces| faces.borrow_mut().clear());
+pub(super) fn clear(vcx: ValueCx<'_>) {
+    vcx.doc.font_metric_faces.borrow_mut().clear();
 }
 
 fn percentage(value: &str) -> Option<f32> {
@@ -22,7 +20,7 @@ fn percentage(value: &str) -> Option<f32> {
     (value.is_finite() && value >= 0.0).then_some(value / 100.0)
 }
 
-pub(super) fn register(family: &str, slope: u8, block: &str) {
+pub(super) fn register(family: &str, slope: u8, block: &str, vcx: ValueCx<'_>) {
     let mut values = [None; 3];
     const NAMES: [&str; 3] = ["ascent-override", "descent-override", "line-gap-override"];
     for declaration in block.split(';') {
@@ -41,18 +39,19 @@ pub(super) fn register(family: &str, slope: u8, block: &str) {
             values[index] = Some(value);
         }
     }
-    FACES.with(|faces| {
-        faces
+    {
+        vcx.doc
+            .font_metric_faces
             .borrow_mut()
             .entry(family.to_string())
             .or_default()
             .push((slope, values));
-    });
+    }
 }
 
-fn selected(family: &str, slope: u8) -> Overrides {
-    FACES.with(|faces| {
-        let faces = faces.borrow();
+fn selected(family: &str, slope: u8, vcx: ValueCx<'_>) -> Overrides {
+    {
+        let faces = vcx.doc.font_metric_faces.borrow();
         let Some(faces) = faces.get(&family.to_ascii_lowercase()) else {
             return [None; 3];
         };
@@ -72,12 +71,12 @@ fn selected(family: &str, slope: u8) -> Overrides {
             }
         }
         [None; 3]
-    })
+    }
 }
 
-pub(crate) fn features(family: &str, slope: u8) -> Vec<(String, u32)> {
+pub(crate) fn features(family: &str, slope: u8, vcx: ValueCx<'_>) -> Vec<(String, u32)> {
     TAGS.into_iter()
-        .zip(selected(family, slope))
+        .zip(selected(family, slope, vcx))
         .filter_map(|(tag, value)| value.map(|v| (tag.to_string(), v.to_bits())))
         .collect()
 }
@@ -101,12 +100,12 @@ pub(crate) fn extents(font: &gpui::Font, size: f32, native: (f32, f32)) -> (f32,
     (result[0], result[1])
 }
 
-pub(crate) fn normal_line(family: &str, native: f32) -> f32 {
-    let [ascent, descent, gap] = selected(family, 0);
+pub(crate) fn normal_line(family: &str, native: f32, vcx: ValueCx<'_>) -> f32 {
+    let [ascent, descent, gap] = selected(family, 0, vcx);
     if ascent.is_none() && descent.is_none() && gap.is_none() {
         return native;
     }
-    let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0);
+    let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0, vcx);
     ascent.unwrap_or(a) + descent.unwrap_or(d) + gap.unwrap_or((native - a - d).max(0.0))
 }
 
@@ -125,30 +124,47 @@ mod tests {
 
     #[test]
     fn last_valid_descriptor_wins_and_normal_restores_native_metrics() {
-        clear();
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
+        clear(vcx);
         register(
             "face",
             0,
             "ascent-override:50%;ascent-override:normal;descent-override:20%;descent-override:-10%;line-gap-override:10%;LINE-GAP-OVERRIDE:30%",
+            vcx,
         );
-        assert_eq!(selected("face", 0), [None, Some(0.2), Some(0.3)]);
-        clear();
+        assert_eq!(selected("face", 0, vcx), [None, Some(0.2), Some(0.3)]);
+        clear(vcx);
     }
 
     #[test]
     fn css_aliases_keep_independent_extents_and_leave_glyph_metrics_alone() {
-        clear();
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
+        clear(vcx);
         register(
             "overridden",
             0,
             "ascent-override:100%;descent-override:50%;line-gap-override:100%",
+            vcx,
         );
         let mut font = gpui::font("Ahem");
-        font.features = gpui::FontFeatures(std::sync::Arc::new(features("overridden", 0)));
+        font.features = gpui::FontFeatures(std::sync::Arc::new(features("overridden", 0, vcx)));
         assert_eq!(extents(&font, 40.0, (32.0, 8.0)), (40.0, 20.0));
-        assert_eq!(normal_line("overridden", 1.0), 2.5);
-        assert_eq!(normal_line("Ahem", 1.0), 1.0);
-        assert!(features("Ahem", 0).is_empty());
-        clear();
+        assert_eq!(normal_line("overridden", 1.0, vcx), 2.5);
+        assert_eq!(normal_line("Ahem", 1.0, vcx), 1.0);
+        assert!(features("Ahem", 0, vcx).is_empty());
+        clear(vcx);
+    }
+    #[test]
+    fn same_family_descriptors_stay_with_their_document() {
+        let a = crate::document::state::DocState::new(Default::default());
+        let b = crate::document::state::DocState::new(Default::default());
+        register("shared", 0, "ascent-override:50%", a.values());
+        register("shared", 0, "ascent-override:150%", b.values());
+        assert_eq!(selected("shared", 0, a.values())[0], Some(0.5));
+        assert_eq!(selected("shared", 0, b.values())[0], Some(1.5));
+        clear(b.values());
+        assert_eq!(selected("shared", 0, a.values())[0], Some(0.5));
     }
 }

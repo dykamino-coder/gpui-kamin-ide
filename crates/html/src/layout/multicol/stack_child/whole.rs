@@ -51,17 +51,13 @@ pub(super) fn copy_whole_box(
     whole: bool,
     part: usize,
     kids: &mut Vec<Node>,
-    frag_gap_guard: &mut Option<crate::paint::gap_rules::GapGuard>,
 ) -> Option<gpui::AnyElement> {
     if let Some(hh) = nest_row {
         let mut mc = copy.clone();
         mc.children = std::mem::take(kids);
-        // Своя метка узла на каждую копию: буфер линеек
-        // промежутков (`gap_items_for` по `node_id`) у
-        // копий одного узла сливался в один, и первая
-        // копия забирала линейки всех рядов — во
-        // втором и третьем ряду их не было
-        // (`multicol-breaking-002`, 0.65).
+        // Своя метка узла на каждую копию: состояние,
+        // ключённое по `node_id`, у копий одного узла
+        // иначе сливается в одно (`multicol-breaking-002`).
         mc.node_id ^= (part as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
         // Ширина `auto` — по колонке (CSS 2.1 §10.3.3):
         // копия кладётся корнем, и её многоколоночнику
@@ -91,7 +87,6 @@ pub(super) fn copy_whole_box(
             mc.style.height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.border_box = None;
         }
-        drop(frag_gap_guard.take());
         return Some(element(
             &mc,
             merged,
@@ -106,14 +101,17 @@ pub(super) fn copy_whole_box(
         {
             mc.style.width = Some(Len::Px(w));
         }
-        drop(frag_gap_guard.take());
         return Some(element(&mc, merged, opts));
     }
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
-        drop(frag_gap_guard.take());
-        return Some(transformed(table(&tc, inner, opts), inner, merged));
+        return Some(transformed(
+            table(&tc, inner, opts),
+            inner,
+            merged,
+            opts.cx.vcx(),
+        ));
     }
     None
 }

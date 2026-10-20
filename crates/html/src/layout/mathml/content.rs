@@ -6,6 +6,7 @@ use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
 pub(super) struct Content {
+    pub values: crate::document::state::ValueDoc,
     pub children: Vec<AnyElement>,
     pub kind: Kind,
     pub factories: Vec<Option<(u8, super::stretch::Factory)>>,
@@ -63,6 +64,7 @@ impl Hooks for Content {
                     target.length,
                     target.vertical,
                     window,
+                    self.values.vcx(),
                 );
                 if let Some(glyph) = &self.glyph {
                     self.children.clear();
@@ -79,6 +81,7 @@ impl Hooks for Content {
                     base.ascent + base.descent + p.gap + p.rule,
                     true,
                     window,
+                    self.values.vcx(),
                 );
                 let surd = self
                     .glyph

@@ -1,6 +1,6 @@
 //! Measured CSS boxes and extent proxies belonging to the current HTML scrollport.
 
-use super::{CURRENT, Clip, snap};
+use super::{Clip, Frame, snap};
 use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
@@ -8,22 +8,26 @@ use std::{cell::Cell, rc::Rc};
 
 // The viewport probe pairs its four insets with the shared decoration clip.
 #[allow(clippy::type_complexity)]
-pub(crate) fn viewport_decoration()
--> Option<([f32; 4], Rc<Cell<Option<gpui::ContentMask<Pixels>>>>)> {
-    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+pub(crate) fn viewport_decoration(
+    frame: Option<&Frame>,
+) -> Option<([f32; 4], Rc<Cell<Option<gpui::ContentMask<Pixels>>>>)> {
+    let frame = frame?.clone();
     frame
         .viewport
         .get()
         .then(|| (frame.insets.get(), frame.decoration_clip.clone()))
 }
 
-pub(crate) fn decoration_clip(id: u64) -> Option<Rc<Cell<Option<gpui::ContentMask<Pixels>>>>> {
-    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+pub(crate) fn decoration_clip(
+    frame: Option<&Frame>,
+    id: u64,
+) -> Option<Rc<Cell<Option<gpui::ContentMask<Pixels>>>>> {
+    let frame = frame?.clone();
     (frame.root.get() == Some(id)).then(|| frame.decoration_clip.clone())
 }
 
-pub(crate) fn marker(id: u64) -> Option<AnyElement> {
-    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+pub(crate) fn marker(frame: Option<&Frame>, id: u64) -> Option<AnyElement> {
+    let frame = frame?.clone();
     if frame.root.get() != Some(id) {
         return None;
     }
@@ -40,11 +44,12 @@ pub(crate) fn marker(id: u64) -> Option<AnyElement> {
 }
 
 pub(crate) fn probe(
+    frame: Option<&Frame>,
     id: u64,
     c: &Computed,
     sticky: Option<&super::exact_probe::StickyShift>,
 ) -> Option<AnyElement> {
-    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+    let frame = frame?.clone();
     if frame.root.get() == Some(id) {
         return super::grid::probe(frame, c, sticky.cloned());
     }
@@ -92,18 +97,13 @@ pub(crate) fn probe(
     )
 }
 
-pub(crate) fn text_active() -> bool {
-    CURRENT.with(|slot| slot.borrow().is_some())
-}
 /// Line boxes contribute to scrollable overflow, never text-decoration ink.
 pub(crate) fn record_text(
+    frame: &Frame,
     id: u64,
     mut b: Bounds<Pixels>,
     sticky: Option<&super::exact_probe::StickyShift>,
 ) {
-    let Some(frame) = CURRENT.with(|slot| slot.borrow().clone()) else {
-        return;
-    };
     b.origin -= super::exact_probe::sticky_shift(sticky);
     let rect = [
         f32::from(b.left()),

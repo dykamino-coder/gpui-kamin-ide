@@ -26,7 +26,9 @@ pub(super) fn piped_image(
             });
         use crate::style::computed::BgSize;
         let bgc = crate::style::computed::Computed {
-            bg_image: Some(local.unwrap_or(src).to_string()),
+            bg_image: Some(e.style.content_image().cloned().unwrap_or_else(|| {
+                crate::style::computed::ImageSource::Url(local.unwrap_or(src).to_string())
+            })),
             bg_repeat: Some(crate::style::computed::BgRepeat::NoRepeat),
             bg_pos: pos,
             // Стиль трубы собран с нуля, и отказ от EXIF-разворота в него надо
@@ -41,14 +43,12 @@ pub(super) fn piped_image(
                 Some("scale-down") => {
                     // Меньшее из `none` и `contain`: влезает — своим
                     // размером, нет — вписать.
-                    let fits = crate::paint::background::source(
-                        &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-                        vcx,
-                    )
-                    .map(|s| s.intrinsic())
-                    .is_some_and(|i| {
-                        i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
-                    });
+                    let fits =
+                        crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+                            .map(|s| s.intrinsic())
+                            .is_some_and(|i| {
+                                i.w.is_some_and(|iw| iw <= w) && i.h.is_some_and(|ih| ih <= h)
+                            });
                     if fits { BgSize::Auto } else { BgSize::Contain }
                 }
                 _ => BgSize::Fixed(Some(Len::Pct(1.0)), Some(Len::Pct(1.0))),

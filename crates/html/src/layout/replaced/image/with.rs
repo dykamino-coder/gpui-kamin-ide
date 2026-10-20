@@ -64,7 +64,10 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     if src.starts_with("data:")
         || src.starts_with("file:")
         || src.starts_with('/')
-        || crate::style::computed::filter_image::parse_filter_image(src, vcx).is_some()
+        || matches!(
+            e.style.content_image(),
+            Some(crate::style::computed::ImageSource::Filter { .. })
+        )
     {
         // Локальный файл отдаётся ПУТЁМ, а не строкой адреса. Строку со схемой
         // `file:` система разбирает как сетевой адрес и уходит его скачивать —
@@ -86,14 +89,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // Векторный источник штатный загрузчик не рисует вовсе — растрируем
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
-        let vector: Option<String> = crate::paint::background::source(
-            &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-            vcx,
-        )
-        .and_then(|s| match s {
-            crate::paint::background::Source::Vector { markup, .. } => Some(markup),
-            _ => None,
-        });
+        let vector: Option<String> =
+            crate::paint::background::element_source(local.unwrap_or(src), &e.style).and_then(
+                |s| match s {
+                    crate::paint::background::Source::Vector { markup, .. } => Some(markup),
+                    _ => None,
+                },
+            );
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
             let mut out = match crate::svg::raster::rasterize(m, w, h) {
@@ -169,17 +171,14 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // изменили, коробка обязана ужаться вместе с рисунком.
         let узкая: Option<(f32, f32)> = None;
         let natural_ratio = || {
-            crate::paint::background::source(
-                &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-                vcx,
-            )
-            .map(|s| s.intrinsic())
-            .and_then(|i| {
-                i.ratio.or(match (i.w, i.h) {
-                    (Some(w), Some(h)) if h > 0.0 => Some(w / h),
-                    _ => None,
+            crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+                .map(|s| s.intrinsic())
+                .and_then(|i| {
+                    i.ratio.or(match (i.w, i.h) {
+                        (Some(w), Some(h)) if h > 0.0 => Some(w / h),
+                        _ => None,
+                    })
                 })
-            })
         };
         let ratio_of = || {
             // CSS Sizing 4 #aspect-ratio: authored ratio overrides the natural ratio.

@@ -55,8 +55,8 @@ fn build_dom_node(
     spots: &[Spot],
     level_pos: usize,
     out: &mut Vec<Node>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) {
-    let vcx = tree.doc.values();
     match &handle.data {
         NodeData::Text { contents } => {
             walk_text(
@@ -77,14 +77,15 @@ fn build_dom_node(
                 handle,
                 &tag,
                 &attrs,
-                content::html_attributes(&name.ns),
+                content::html_attributes(&name.ns, tree.xhtml),
                 spot,
                 sibs,
                 tree,
             );
-            let (mut style, own_vars, _scheme, shadow) = cascade_element(
-                &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs,
+            let (mut style, own_vars, scheme, shadow) = cascade_element(
+                &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs, vcx,
             );
+            let vcx = vcx.with_scheme(scheme);
             let vars = &own_vars;
             normalize_style(&mut style, &tag, &attrs, path, vcx);
             content::snapshot_generated(&mut me, &style, path.last());
@@ -100,6 +101,7 @@ fn build_dom_node(
                 |nm: &str, _counters: &mut crate::style::generated::counters::Counters| {
                     crate::style::generated::counters_scan::reversed_initial(
                         tree, rules, vars, nm, handle, &me, path, sibs, level, spots, level_pos,
+                        vcx,
                     )
                 };
 
@@ -120,6 +122,7 @@ fn build_dom_node(
                     preserve,
                     &reversed_start,
                     out,
+                    vcx,
                 );
                 return;
             }
@@ -193,7 +196,7 @@ fn build_dom_node(
 
             let (mut children, scroll_pseudos) = collect_children(
                 handle, tree, rules, vars, frames, counter, counters, &me, path, sibs, &style,
-                &shadow, preserve, &tag, &attrs,
+                &shadow, preserve, &tag, &attrs, vcx,
             );
             // CSS Lists §12.4.1: ordinary counters survive into following siblings.
             // Restore only the isolated subtree; remove_stale handles ordinary scopes.
@@ -238,7 +241,7 @@ fn build_dom_node(
             );
         }
         _ => walk_children(
-            handle, tree, rules, vars, frames, counter, counters, path, preserve, out,
+            handle, tree, rules, vars, frames, counter, counters, path, preserve, out, vcx,
         ),
     }
 }

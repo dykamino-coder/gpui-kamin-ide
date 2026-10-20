@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::BgListProp;
+use crate::style::computed::{BgListProp, BlendMode};
 
 mod gradient_filter;
 
@@ -13,11 +13,11 @@ pub(super) fn inherit_paint(
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {
-    if c.background_blend.as_deref() == Some("inherit") {
-        c.background_blend = parent.background_blend.clone();
+    if c.background_blend == Some(BlendMode::Inherit) {
+        c.background_blend = parent.background_blend;
         c.bg_lists.remove(BgListProp::BlendMode);
         if let Some(list) = parent.bg_lists.get(BgListProp::BlendMode) {
-            c.bg_lists.set(BgListProp::BlendMode, list.to_string());
+            c.bg_lists.set_layers(BgListProp::BlendMode, list.to_vec());
         }
     }
     // Фильтр в CSS красит элемент И ВСЁ поддерево. Наследуем его сами и
@@ -55,14 +55,10 @@ pub(super) fn inherit_paint(
             }
         }
         gradient_filter::apply(c, own, f, vcx);
-        // Растровый градиент (`conic`, `repeating-*`) живёт строкой в
-        // `bg_image`: его стопы красятся в самой записи
-        // (`filter-function-repeating-*-ref`: `filter: invert(1)` на фоне).
         if own.bg_image.is_some()
-            && let Some(img) = c.bg_image.as_deref()
-            && crate::style::computed::gradient_as_raster(img)
+            && let Some(image) = &mut c.bg_image
         {
-            c.bg_image = Some(crate::style::computed::filter_gradient_text(img, &f, vcx));
+            image.filter_stops(&f);
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {

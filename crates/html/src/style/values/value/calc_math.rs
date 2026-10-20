@@ -50,16 +50,14 @@ pub(super) fn rebuild(nature: u8, v: f32) -> Val {
 
 /// Общая природа доводов и их величины. Нулевая длина (`0px`, пустая сумма)
 /// совместима с любой длиной: `round(0em, 1em)` — однородная запись.
-pub(super) fn same(args: &[Val]) -> Option<(u8, Vec<f32>)> {
-    let keys: Vec<(u8, f32, bool)> = args
-        .iter()
-        .map(|a| key(a).map(|(n, v)| (n, v, matches!(a, Val::Len(_)) && n == 0 && v == 0.0)))
-        .collect::<Option<_>>()?;
-    let nature = keys.iter().find(|k| !k.2).or(keys.first()).map(|k| k.0)?;
-    let ok = keys
-        .iter()
-        .all(|k| k.0 == nature || (k.2 && nature < u8::MAX - 1));
-    ok.then(|| (nature, keys.iter().map(|k| k.1).collect()))
+fn same(args: &[Val]) -> Option<(u8, [f32; 2])> {
+    let mut common = super::calc_arguments::Homogeneous::default();
+    let mut values = [0.0; 2];
+    for (value, slot) in args.iter().zip(values.iter_mut()) {
+        *slot = common.push(*value)?;
+    }
+    let nature = common.nature()?;
+    Some((nature, values))
 }
 
 /// `round(<strategy>, A, B)` (§10.3, «Argument Ranges»).
@@ -106,7 +104,7 @@ fn modulo(rem: bool, a: f32, b: f32) -> f32 {
     if rem { a % b } else { a - b * (a / b).floor() }
 }
 
-fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
+pub(super) fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
     let num = |i: usize| match args.get(i)? {
         Val::Num(n) => Some(*n),
         _ => None,
@@ -132,10 +130,6 @@ fn apply(name: &str, strategy: &str, args: &[Val]) -> Option<Val> {
         ("exp", 1) => Val::Num(num(0)?.exp()),
         ("log", 1) => Val::Num(num(0)?.ln()),
         ("log", 2) => Val::Num(num(0)?.ln() / num(1)?.ln()),
-        ("hypot", 1..) => {
-            let (k, v) = same(args)?;
-            rebuild(k, v.iter().map(|x| x * x).sum::<f32>().sqrt())
-        }
         ("abs", 1) => {
             let (k, v) = key(&args[0])?;
             rebuild(k, v.abs())
@@ -167,9 +161,7 @@ impl Calc<'_> {
     /// истинно). Доводы — полные выражения через запятую.
     pub(super) fn math_fn(&mut self, vcx: ValueCx<'_>) -> Option<Val> {
         let name = math_name(self.rest)?;
-        let mut sub = Calc {
-            rest: &self.rest[name.len() + 1..],
-        };
+        let mut sub = self.sub(&self.rest[name.len() + 1..]);
         let mut strategy = "nearest";
         if name == "round" {
             let head = sub.rest.trim_start();
@@ -188,27 +180,28 @@ impl Calc<'_> {
                 }
             }
         }
-        let mut args = vec![sub.expr(vcx)?];
-        while sub.eat(&[',']).is_some() {
-            args.push(sub.expr(vcx)?);
-        }
-        sub.eat(&[')'])?;
-        self.rest = sub.rest;
-        apply(name, strategy, &args)
+        let function = super::calc_function::Function::Math(name, strategy);
+        let mut arguments = super::calc_function::Arguments::new(function);
+        let count = sub.arguments(vcx, |value| arguments.push(value))?;
+        sub.record_call(function, count)?;
+        self.resume(sub);
+        arguments.finish()
     }
 }
 
 /// Константа или угол в одиночном операнде (§10.7.1, §7.1).
 pub(super) fn constant_or_angle(head: &str) -> Option<Val> {
-    let low = head.to_ascii_lowercase();
-    let c = match low.as_str() {
-        "e" => Some(E),
-        "pi" => Some(PI),
-        "infinity" | "+infinity" => Some(f32::INFINITY),
-        "-infinity" => Some(f32::NEG_INFINITY),
-        "nan" => Some(f32::NAN),
-        _ => None,
-    };
+    let c = [
+        ("e", E),
+        ("pi", PI),
+        ("infinity", f32::INFINITY),
+        ("+infinity", f32::INFINITY),
+        ("-infinity", f32::NEG_INFINITY),
+        ("nan", f32::NAN),
+    ]
+    .into_iter()
+    .find(|(name, _)| head.eq_ignore_ascii_case(name))
+    .map(|(_, value)| value);
     if let Some(c) = c {
         return Some(Val::Num(c));
     }
@@ -218,7 +211,11 @@ pub(super) fn constant_or_angle(head: &str) -> Option<Val> {
         ("rad", 1.0),
         ("turn", 2.0 * PI),
     ] {
-        if let Some(v) = low.strip_suffix(unit).and_then(super::css_number) {
+        if let Some(v) = head.len().checked_sub(unit.len()).and_then(|at| {
+            head.get(at..)
+                .filter(|suffix| suffix.eq_ignore_ascii_case(unit))?;
+            super::css_number(&head[..at])
+        }) {
             return Some(Val::Ang(v * k));
         }
     }

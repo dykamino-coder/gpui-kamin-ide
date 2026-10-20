@@ -15,6 +15,27 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Active clamp count root and paragraph sequence of this build.
+    pub(crate) clamp_build: crate::text::clamp::ClampBuild,
+    /// Paint-order and deferred-geometry boundaries of the box being built.
+    pub(crate) paint_depth: crate::paint::effects::paint_scope::Depth,
+    /// Scrollable overflow owner captured by probes and deferred text elements.
+    pub(crate) scroll_frame: Option<crate::interactive::scroll_extent::Frame>,
+    /// Native scroll handle offered to this CSS box by its scroll-area builder.
+    pub(crate) scroll_target: Option<Rc<crate::interactive::scroll_target::Target>>,
+    /// Prepaint frame shared only by elements of this render tree.
+    /// Traversal state captured by this render tree's deferred painters.
+    pub(crate) paint: Rc<crate::paint::context::PaintCx>,
+    pub(crate) vertical_paint: Rc<crate::text::vertical::VerticalPaint>,
+    /// Enclosing atomic inlines relative to this clamp count root.
+    pub(crate) clamp_atom_depth: u32,
+    /// Inputs offered only to the paragraph currently being built.
+    pub(crate) clamp_budget: Option<usize>,
+    pub(crate) clamp_tag: Option<(u64, u32)>,
+    /// Build a physical row of atoms without turning its enclosing text line.
+    pub(crate) pure_atom_paragraph: bool,
+    /// Keep scrollbar hover and drag at rest for a static host capture.
+    pub freeze_scrollbars: bool,
     /// Containing-block width in px when the parent's style gives it. A
     /// replaced element without intrinsic size but with a ratio takes its
     /// width from the block equation, i.e. from the containing block (CSS 2.1
@@ -81,6 +102,14 @@ pub struct LayoutCx {
     /// medium and the arenas of its `calc()`/`anchor()` values. Set by
     /// `Document::render` and for each nested document.
     pub(crate) doc: BuildDoc,
+    /// Nearest gap-decorated container collecting child bounds.
+    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
+    /// Intrinsic inline-size measurement offered to this build only.
+    pub(crate) inline_measure: Option<crate::text::vertical::InlineMeasure>,
+    /// CSS viewport retained by deferred effects and nested document trees.
+    pub(crate) paint_viewport: (f32, f32),
+    /// Immutable parent frames of this fragmentation measurement.
+    pub(crate) lines: Option<Rc<crate::layout::fragment::LineCx>>,
 }
 
 /// The document of a build. `Default` is an empty document: a host builds a
@@ -105,7 +134,12 @@ impl LayoutCx {
     /// Values of the build: `calc()`/`anchor()` bodies parsed while building
     /// the frame go to the document's frame arena.
     pub(crate) fn vcx(&self) -> ValueCx<'_> {
-        self.doc.0.frame_values()
+        self.doc
+            .0
+            .frame_values()
+            .with_lines(self.lines.as_ref())
+            .with_viewport(self.paint_viewport)
+            .with_paint(Some(&self.paint))
     }
 
     /// The next step-8 paint key: taken on entering an element, before its

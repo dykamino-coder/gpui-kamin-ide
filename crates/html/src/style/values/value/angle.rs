@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-pub(super) fn fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
+pub(crate) fn fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let token = token.trim();
     if token.starts_with("calc(") || token.starts_with("min(") || token.starts_with("max(") {
         // CSS Values 4 §angle-percentage: 100% is one turn. Map both

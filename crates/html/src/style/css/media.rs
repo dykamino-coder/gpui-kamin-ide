@@ -114,7 +114,7 @@ fn mq_scalar(raw: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let s = raw.trim();
     // `calc()`/`sign()`/… — значение признака может быть любым выражением
     // (mediaqueries-4 §1.3, `mq-calc-sign-function-*`, `mq-calc-resolution`).
-    if let Some((v, _)) = calc::eval(s) {
+    if let Some((v, _)) = calc::eval(s, vcx) {
         return Some(v);
     }
     // Разрешение: `dppx` и его короткая запись `x`. Проверять надо ИМЕННО
@@ -147,10 +147,10 @@ fn mq_scalar(raw: &str, vcx: ValueCx<'_>) -> Option<f32> {
         // от корневого элемента (mediaqueries-5 §1.3): `:root{font-size:
         // 30000px}` на них не влияет (`mq-calc-003`, `mq-calc-004`).
         Some(crate::style::values::value::Len::Ex(k)) => {
-            Some(k * crate::text::metrics::ch_ex_px("", 16.0).1)
+            Some(k * crate::text::metrics::ch_ex_px("", 16.0, vcx).1)
         }
         Some(crate::style::values::value::Len::Ch(k)) => {
-            Some(k * crate::text::metrics::ch_ex_px("", 16.0).0)
+            Some(k * crate::text::metrics::ch_ex_px("", 16.0, vcx).0)
         }
         Some(crate::style::values::value::Len::Calc(id)) => {
             let sum = crate::style::values::value::calc_get(id, vcx);

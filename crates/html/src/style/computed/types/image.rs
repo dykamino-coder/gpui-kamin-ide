@@ -22,6 +22,8 @@ pub struct Shadow {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct Gradient {
     pub angle_deg: f32,
+    pub(crate) shape: GradientShape,
+    pub(crate) polar: Option<crate::style::values::color_space::DirectGradient>,
     /// Радиальный: угол не участвует, цвет идёт от центра к краям.
     pub radial: bool,
     /// `circle` — окружность вместо эллипса по краям коробки.
@@ -39,11 +41,16 @@ pub struct Gradient {
     /// точечная позиция теряется и стоп встаёт «поровну» (blue 170px в
     /// 50px-градиенте красил край синим вместо интерполяции).
     pub stops_raw: Vec<(Color, Option<f32>, Option<f32>)>,
+    /// Parsed relative stop lengths, aligned with expanded color stops.
+    pub(crate) stop_lengths: Vec<Option<Len>>,
     /// Пространство, в котором смешиваются цвета (css-color-4 §12.2).
     pub space: GradSpace,
+    pub(crate) explicit_interpolation: bool,
     /// Дуга тона для полярных пространств: 0 shorter (умолчание), 1 longer,
     /// 2 increasing, 3 decreasing (css-color-4 §12.4).
     pub hue: u8,
+    /// Parsed stop operands retained for inherited currentColor resolution.
+    pub(crate) colors: Vec<crate::style::values::color_space::ColorExpression>,
 }
 
 /// Пространство интерполяции цвета градиента (css-color-4 §12.2).
@@ -77,7 +84,7 @@ pub enum GradSpace {
 /// этого разбора, лежит здесь, а рисование — в `border_image`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BorderImage {
-    pub src: String,
+    pub src: Option<crate::style::computed::ImageSource>,
     /// Срезы образа: верх, право, низ, лево.
     pub slice: [BorderImageSlice; 4],
     /// `fill` — рисовать и середину.

@@ -70,6 +70,7 @@ pub(super) fn replaced_abs_atom(
             spot.clone(),
             false,
             opts.cx.line_box.clone(),
+            &opts.cx,
         );
         return match inline_replaced_position::push(
             spot,

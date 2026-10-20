@@ -112,10 +112,17 @@ pub(crate) fn brk_trim(frames: &[LineFrame], side: impl Fn(&Computed) -> bool) -
 /// Срез `text-box-trim` с одной стороны строки (css-inline-3 §4.2): полулидинг
 /// плюс расстояние от подъёма/спуска до метрики края — та же арифметика, что у
 /// `blocks()` (`trim_for`).
-pub(crate) fn trim_amount(s: &Computed, size: f32, lh: f32, start: bool) -> f32 {
+pub(crate) fn trim_amount(
+    s: &Computed,
+    size: f32,
+    lh: f32,
+    start: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> f32 {
     let family = s.font_family.clone().unwrap_or_default();
-    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
+    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size, vcx);
     let half = (lh - (ascent + descent)) / 2.0;
-    let edge = crate::text::text_box::edge_inset(s, &family, size, (ascent, descent, cap), start);
+    let edge =
+        crate::text::text_box::edge_inset(s, &family, size, (ascent, descent, cap), start, vcx);
     (half + edge).max(0.0)
 }

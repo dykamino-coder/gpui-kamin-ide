@@ -1,9 +1,3 @@
-//! ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-anchorpos-2026-09.md`
-//! MC-OOF-COPIES + ANCHOR-FRAGMENT-UNION, 4 хунка): `drop_escaping_oof`
-//! вычёркивает из копий фрагмента не только `fixed`, но и абсолют, чей
-//! содержащий блок вне многоколоночника; `union_rect` объединяет рамки
-//! фрагментов якоря. Обещание +2…+4. Замер срезом 113 пар вместе с CLAMP-BFC:
-//! −5 на фрагментации флекса и сетки. Возвращать вместе с FRAG-OOF.
 //! Якорное позиционирование (css-anchor-position-1), шаг 1: `anchor-name`,
 //! `position-anchor` и функция `anchor()` во вставках абсолютной коробки.
 //!
@@ -30,6 +24,9 @@
 //! которого в документе нет) сводятся ДО сборки (`settle_static`): их место
 //! — статическая позиция, а её выбирает сборщик дерева по `edge_set`.
 
+mod state;
+pub(crate) use probe::Entry;
+pub(crate) use state::AnchorState;
 mod area;
 mod geometry;
 mod inline;
@@ -41,8 +38,6 @@ pub(crate) mod resolve;
 pub(crate) mod settle;
 
 use gpui::{AnyElement, Bounds, Pixels};
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 
 use crate::style::computed::Align;
 use crate::style::values::value::{AnchorFn, Len};
@@ -95,63 +90,6 @@ struct Placement {
     cell: (f32, f32),
 }
 
-thread_local! {
-    /// Именованные якоря кадра: имя → запись. Повтор имени
-    /// перезаписывает — «the last element in tree order» (§target anchor
-    /// element, п.3); «ближайший предок» пока не отличается.
-    static NAMED: RefCell<HashMap<String, AnchorRec>> = RefCell::new(HashMap::new());
-    /// Неявные якоря: `node_id` порождающего элемента → его запись (для
-    /// псевдоэлементов с `position-anchor: auto`, §implicit).
-    static IMPLICIT: RefCell<HashMap<u64, AnchorRec>> = RefCell::new(HashMap::new());
-    /// Те же именованные пробы кадра С ПОРЯДКОМ СБОРКИ (`Computed::anchor_seq`):
-    /// на следующем кадре станут `LAST_NAMED`, и размер по `anchor-size()`
-    /// возьмёт «последний якорь с этим именем раньше меня по дереву».
-    static NAMED_SEQ: RefCell<Vec<(String, u32, AnchorRec)>> = const { RefCell::new(Vec::new()) };
-    /// Реестры ПРОШЛОГО кадра — для величин, которые нужны ДО раскладки
-    /// (`anchor-size()`, растяжка в клетке `position-area`): размер решает
-    /// taffy, а рамки известны только на подготовке; стенд ждёт устоявшихся
-    /// кадров, и значение из кадра N−1 доезжает к N+1.
-    /// Полная запись (не только рамка): прошлый кадр подменяет текущий и там,
-    /// где якорь ещё не подготовлен (`AnchorPlan::rec`), — нужны `id`/`cb`
-    /// для приемлемости.
-    static LAST_NAMED: RefCell<Vec<(String, u32, AnchorRec)>> = const { RefCell::new(Vec::new()) };
-    static LAST_IMPLICIT: RefCell<HashMap<u64, AnchorRec>> = RefCell::new(HashMap::new());
-    /// Рамки СОДЕРЖАЩИХ БЛОКОВ кадра (padding box): `node_id` элемента с
-    /// `establishes_cb` → рамка. Нужны сетке `position-area`.
-    static CB: RefCell<HashMap<u64, Bounds<Pixels>>> = RefCell::new(HashMap::new());
-    /// Размер inset-modified containing block (клетки за вычетом вставок) по
-    /// ключу коробки: текущий кадр и прошлый — для `place-self: stretch`.
-    static AREA_NOW: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
-    static AREA_LAST: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
-    /// Размер САМОЙ клетки (без вставок) — база долей размеров, полей и
-    /// отбивок: текущий кадр и прошлый (`resolve_sizes`).
-    static CELL_NOW: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
-    static CELL_LAST: RefCell<HashMap<u64, (f32, f32)>> = RefCell::new(HashMap::new());
-    /// Счётчик порядка сборки элементов в кадре (`next_seq`).
-    static SEQ: Cell<u32> = const { Cell::new(0) };
-    /// Стек плоских трансформов предков на подготовке кадра: номер и
-    /// аффинная `[[a, b, tx], [c, d, ty]]` в css-точках окна. Кладёт
-    /// `interact::Transformed::prepaint` вокруг ребёнка; номера идут заново
-    /// каждый кадр (`reset`), дерево то же — номера те же.
-    static TF: RefCell<Vec<(u32, [[f32; 3]; 2])>> = const { RefCell::new(Vec::new()) };
-    static TF_NEXT: Cell<u32> = const { Cell::new(0) };
-    /// Цепочка содержащих блоков: `node_id` блока → `node_id` его ближайшего
-    /// содержащего блока (0 — начальный). Нужна приемлемости якоря (§target:
-    /// содержащий блок коробки должен быть в цепочке содержащих блоков якоря).
-    static CB_PARENT: RefCell<HashMap<u64, u64>> = RefCell::new(HashMap::new());
-    /// Последний удачный вариант `position-try-fallbacks` по ключу коробки
-    /// (§fallback: «the element keeps those styles until it overflows again»):
-    /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
-    /// чистится на сборке документа (`settle_static`).
-    static CHOSEN: RefCell<HashMap<u64, usize>> = RefCell::new(HashMap::new());
-    /// This frame's build sized a box from the PREVIOUS frame's anchor
-    /// registry (`anchor-size()`, `position-area` cell percentages).
-    static USED_LAST: Cell<bool> = const { Cell::new(false) };
-    /// Extra frames requested for this document because those previous-frame
-    /// values changed (bounded, so an oscillating page cannot loop forever).
-    static REFRAMES: Cell<u32> = const { Cell::new(0) };
-}
-
 /// Одна вставка с `anchor()` и поле коробки по этой стороне: функция
 /// выравнивает край ПОЛЕЙ («edge of the … inset-modified containing block»),
 /// а `prepaint` видит рамку без полей.
@@ -162,6 +100,7 @@ struct SidePlan {
 }
 
 pub struct AnchorPlan {
+    values: crate::document::state::ValueDoc,
     /// По часовой: top, right, bottom, left — как `Sides`.
     sides: [Option<SidePlan>; 4],
     default_anchor: Option<DefaultAnchor>,
@@ -240,3 +179,6 @@ mod tests {
         assert_eq!(match_parent(&plain), (PositionAnchor::None, None));
     }
 }
+
+#[cfg(test)]
+mod state_tests;

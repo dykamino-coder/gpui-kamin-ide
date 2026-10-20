@@ -26,11 +26,8 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
     })
 }
 
-pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
-    // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
-    // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
-    // повторение делает растеризатор, заворачивая долю точки.
-    let v = v.strip_prefix("repeating-").unwrap_or(v);
+pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Option<Gradient> {
+    let authored = v;
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов
     // мостится вдоль линии (css-images-3 §3.6): разбор у них общий, а
     // повторение делает растеризатор, заворачивая долю точки.
@@ -49,9 +46,7 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
     }
     let mut idx = 0usize;
     let circle = radial && parts[0].contains("circle");
-    // Способ ИНТЕРПОЛЯЦИИ (css-images-4 §3.4.1.1): `to right in hsl longer
-    // hue` — суффикс отделяется от направления, иначе матч направления
-    // промахивался и первый аргумент уходил в стопы.
+    // Interpolation follows the optional ending-shape/direction head.
     let (head, interp) = match parts[0].find(" in ") {
         Some(at) => (parts[0][..at].trim(), Some(parts[0][at + 4..].trim())),
         None if parts[0].trim_start().starts_with("in ") => {
@@ -59,78 +54,46 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
         }
         None => (parts[0].trim(), None),
     };
-    // Дуга тона нужна ЛЮБОМУ полярному пространству, не только `hsl`
-    // (css-color-4 §12.4); умолчание — shorter.
-    let hue_arc: u8 = interp.map_or(0, |i| {
-        if i.contains("longer") {
-            1
-        } else if i.contains("increasing") {
-            2
-        } else if i.contains("decreasing") {
-            3
-        } else {
-            0
-        }
-    });
-    // Пространство смешения: явное из записи, иначе решается ниже по составу
-    // стопов (css-color-4 §12.2).
-    let named_space: Option<GradSpace> =
-        interp
-            .and_then(|i| i.split_whitespace().next())
-            .and_then(|s| match s {
-                "srgb" => Some(GradSpace::Srgb),
-                "srgb-linear"
-                | "xyz"
-                | "xyz-d50"
-                | "xyz-d65"
-                | "display-p3-linear"
-                | "rec2020-linear"
-                | "a98-rgb-linear"
-                | "prophoto-rgb-linear" => Some(GradSpace::Linear),
-                "oklab" => Some(GradSpace::Oklab),
-                "oklch" => Some(GradSpace::Oklch),
-                "lab" => Some(GradSpace::Lab),
-                "lch" => Some(GradSpace::Lch),
-                "hsl" => Some(GradSpace::Hsl),
-                "hwb" => Some(GradSpace::Hwb),
-                // Пространства с собственным охватом (`display-p3`, `a98-rgb`,
-                // `rec2020`, `prophoto-rgb`) гамма-кодированы, и для цветов
-                // ВНУТРИ охвата sRGB смешение в них от sRGB не отличается:
-                // кривая одна и та же, а матрица первичных с интерполяцией
-                // коммутирует. Заводить их отдельно нечем.
-                _ => None,
-            });
     if interp.is_some() && head.is_empty() {
         idx = 1;
     }
     let (angle, direction_idx) = gradient_direction(head, radial, idx, vcx)?;
     idx = direction_idx;
 
-    // Стоп несёт до ДВУХ позиций (css-images-4 §3.4.1): `yellow 0% 25%` — это
-    // два стопа одного цвета, так записывают жёсткие полосы. Цвет с запятыми
-    // внутри (`rgba(…)`) остаётся одним словом только при резке вне скобок.
+    // Color operands align with both positions of a double-position stop.
     let mut raw: Vec<(Color, Option<f32>)> = vec![];
     let mut raw_px: Vec<(Color, Option<f32>)> = vec![];
     let mut any_pct = false;
+    let mut lengths = Vec::new();
     // Умолчание пространства держится на ЗАПИСИ цветов, а не на их значениях
     // (css-color-4 §12.2), поэтому решается прямо здесь, пока текст стопа
     // ещё под рукой.
     let mut all_legacy = true;
+    let mut colors = Vec::new();
     for p in &parts[idx..] {
         let words = split_outside_parens(p);
-        let Some(colour) = words
+        let Some(expression) = words
             .first()
-            .and_then(|w| crate::style::values::color_space::interpolation_color(w, vcx))
+            .and_then(|w| crate::style::values::color_space::ColorExpression::parse(w, vcx))
         else {
             continue;
         };
-        all_legacy &= legacy_srgb_color(words[0].as_str());
+        let colour = expression.resolve_for_interpolation(current);
+        all_legacy &= super::legacy_srgb_color(words[0].as_str())
+            && !matches!(
+                expression,
+                crate::style::values::color_space::ColorExpression::Relative(_)
+            );
         if words.len() == 1 {
+            lengths.push(None);
+            colors.push(expression);
             raw.push((colour, None));
             raw_px.push((colour, None));
             continue;
         }
         for t in &words[1..] {
+            let before = raw.len();
+            let length = Len::parse_mixed(t, vcx);
             if let Some(n) = t
                 .strip_suffix('%')
                 .and_then(|n| n.trim().parse::<f32>().ok())
@@ -138,36 +101,32 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
                 any_pct = true;
                 raw.push((colour, Some(n / 100.0)));
                 raw_px.push((colour, None));
-            } else if let Some(Len::Px(v)) = Len::parse(t, vcx) {
+            } else if let Some(Len::Px(v)) = length {
                 // Позиция в точках: долей не выразить, длина оси известна
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if let Some((pct, px)) = pct_px_pair(t, vcx) {
-                // `calc(100% - 10px)` (css-images-4 §3.4.1: `<color-stop-length>`
-                // = `<length-percentage>{1,2}`): доля и точки едут ПАРОЙ в
-                // `stops_raw`, растр сложит их по длине оси. Прежде такой стоп
-                // отбрасывался целиком, а градиент из одних `calc`-стопов
-                // (`#five` в calc-background-linear-gradient-1) гас вовсе.
+            } else if let Some((pct, px)) = length.and_then(|length| match length {
+                Len::Calc(id) => crate::style::values::value::calc_get(id, vcx).pct_px(),
+                _ => None,
+            }) {
+                // Percentage and pixels remain paired until the axis is known.
                 any_pct = true;
                 raw.push((colour, Some(pct)));
                 raw_px.push((colour, Some(px)));
-            } else if !t.trim().is_empty()
-                && Len::parse(t, vcx).is_none()
-                && t.trim().parse::<f32>().is_err()
-            {
+            } else if !t.trim().is_empty() && length.is_none() && t.trim().parse::<f32>().is_err() {
                 continue;
             } else {
                 raw.push((colour, None));
                 raw_px.push((colour, None));
             }
+            if raw.len() > before {
+                lengths.push(length);
+                colors.push(expression.clone());
+            }
         }
     }
-    // css-images-4 §3.4.1 «Color Stop Lists»: список из ОДНОГО и более
-    // стопов законен, и градиент из одного стопа красит этим цветом всю
-    // картинку. Разворачиваем в пару одинаковых стопов на краях линии:
-    // ниже `last = raw.len() - 1` при одном стопе давал 0/0 = NaN, а
-    // `return None` гасил фон вовсе (`gradient-single-stop-001/-002/-004`).
+    // A single stop expands to two identical endpoint colors (Images 4 §3.4.1).
     if raw.is_empty() {
         return None;
     }
@@ -177,15 +136,12 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
         // Точечный список остаётся ПУСТЫМ: у сплошного цвета полос в точках
         // нет, а `stops_px` собирается только когда позиция есть у всех.
         raw_px = vec![(colour, None), (colour, None)];
+        colors = vec![colors[0].clone(); 2];
+        lengths = vec![None; 2];
     }
-    // Фиксация по css-images-3 §3.5.3: позиция не меньше предыдущей, стопы
-    // без позиции — поровну между соседями С позициями (а не по номеру в
-    // списке). Тот же расклад, что у растра.
+    // CSS Images 3 §3.5.3 fixes decreasing and omitted stop positions.
     let last = raw.len() - 1;
     let stops: Vec<(Color, f32)> = crate::style::computed::place_stops(raw.clone());
-    // TODO(gradient): `in hsl longer hue` — дуга тона синтетическими стопами
-    // (css-images-4 §3.4.1.1) была за отладочным флагом HSL_ARC, замерена в
-    // минус (−13/+2) и удалена; вернуться с точной математикой полос.
     // Точечные стопы пригодны к отрисовке, только когда позиции есть у ВСЕХ:
     // смешение точек с долями требует длины оси уже при разборе.
     let stops_px: Vec<(Color, f32)> = if !any_pct && raw_px.iter().all(|(_, p)| p.is_some()) {
@@ -198,7 +154,12 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
         .zip(raw_px.iter())
         .map(|((c, f), (_, p))| (*c, *f, *p))
         .collect();
+    let (space, hue_arc) = super::interpolation_method(interp, all_legacy);
+    let polar =
+        crate::style::values::color_space::DirectGradient::new(authored, stops.len(), space, vcx);
     Some(Gradient {
+        shape: GradientShape::parse(authored, vcx)?,
+        polar,
         angle_deg: angle,
         radial,
         circle,
@@ -207,37 +168,22 @@ pub(super) fn parse_gradient(v: &str, vcx: ValueCx<'_>) -> Option<Gradient> {
         stops,
         stops_px,
         stops_raw,
-        // §12.2: без записи — sRGB, пока ВСЕ цвета устаревших форм, иначе
-        // OKLab. Именно эта оговорка и держит совместимость: почти весь набор
-        // пишет градиенты именами, `#hex` и `rgb()`, и остаётся в sRGB.
-        space: named_space.unwrap_or(if all_legacy {
-            GradSpace::Srgb
+        stop_lengths: if lengths
+            .iter()
+            .flatten()
+            .any(|l| !matches!(l, Len::Px(_) | Len::Pct(_)))
+        {
+            lengths
         } else {
-            GradSpace::Oklab
-        }),
-        hue: hue_arc,
-    })
-}
-
-/// Записан ли цвет УСТАРЕВШЕЙ формой sRGB: имя, `#hex`, `rgb()`, `rgba()`,
-/// `hsl()`, `hsla()`, `hwb()` и их формы с прозрачностью (css-color-4 §12.2).
-/// От ответа зависит пространство интерполяции по умолчанию.
-fn legacy_srgb_color(token: &str) -> bool {
-    let t = token.trim().to_ascii_lowercase();
-    if t.starts_with('#') {
-        return true;
-    }
-    match t.split_once('(') {
-        // `rgb()` с `none` устаревшей записью не выражается: Blink вычисляет
-        // его в `color(srgb …)`, и умолчание смешения становится OKLab
-        // (`gradient-analogous-missing-components-004`, `gradient-eval-004`).
-        // У `hsl()`/`hwb()` пространство и с `none` остаётся устаревшим.
-        Some((name, body)) => match name.trim() {
-            "rgb" | "rgba" => !body.contains("none"),
-            "hsl" | "hsla" | "hwb" => true,
-            _ => false,
+            vec![]
         },
-        // Имя цвета, `transparent` и `currentcolor` — тоже устаревшие формы.
-        None => true,
-    }
+        space,
+        explicit_interpolation: interp.is_some(),
+        hue: hue_arc,
+        colors: if colors.iter().any(|c| c.depends_on_current()) {
+            colors
+        } else {
+            vec![]
+        },
+    })
 }

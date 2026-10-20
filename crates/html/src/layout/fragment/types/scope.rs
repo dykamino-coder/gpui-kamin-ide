@@ -26,7 +26,10 @@ pub struct FragCx {
     /// Строится копия ребёнка, разбиваемого на фрагменты собственной
     /// раскладкой (`fragment::paginate`): `render::element` оборачивает её
     /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
+    /// BandFlow exports measured line edges through the same recorder.
     pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    /// Numeric pagination displacements of floats in this rebuilt copy.
+    pub(crate) float_struts: std::rc::Rc<crate::layout::fragment::paginate::Struts>,
     /// Строятся дети стопки страниц (`PagedBuild`).
     pub(crate) paged: Option<std::rc::Rc<crate::layout::page::paged::PagedBuild>>,
 }
@@ -138,9 +141,8 @@ mod tests {
             text: Default::default(),
             viewport: (800.0, 600.0),
             normal_line_height: 1.2,
-            doc_salt: 0,
-            frag: Default::default(),
             cx: Default::default(),
+            frag: Default::default(),
         }
     }
 

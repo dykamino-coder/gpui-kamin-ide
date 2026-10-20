@@ -16,8 +16,6 @@ use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::float::float_flow::float_flow;
 use crate::layout::replaced::limits::content_limit_swapped;
-use crate::paint::effects::paint_scope;
-use crate::paint::effects::paint_scope::inside as inside_deferred;
 use crate::paint::stacking::{defers, layered, stacking_context};
 use crate::render::*;
 use crate::style::cascade::inherit::inherit;
@@ -43,12 +41,14 @@ pub(crate) fn paint_element(
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
     let paint_key = opts.cx.next_paint_key();
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
-    let layer_ok = !inside_deferred();
-    let geometry_layer_ok = !paint_scope::deferred();
-    let _deferred_guard = paint_scope::Guard::enter(
-        defers(&e.style, inherited, under_tf),
-        stacking_context(&e.style),
-    );
+    let layer_ok = !opts.cx.paint_depth.inside();
+    let geometry_layer_ok = !opts.cx.paint_depth.deferred();
+    let opts = &*opts.inner(|cx| {
+        cx.paint_depth = cx.paint_depth.enter(
+            defers(&e.style, inherited, under_tf),
+            stacking_context(&e.style),
+        );
+    });
     // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
     if e.marks.float_row {
         out.push(letter_scope.flow(&e.children, inherited, |s| float_flow(e, s, opts)));
@@ -57,7 +57,8 @@ pub(crate) fn paint_element(
     if let Some(el) = scrollable(e, inherited, opts) {
         // CSS Transforms 1: transform the viewport and its bars together;
         // preserve the parent 3D context, backface and plane as for other boxes.
-        let el = crate::paint::effects::transform::transformed(el, &e.style, inherited);
+        let el =
+            crate::paint::effects::transform::transformed(el, &e.style, inherited, opts.cx.vcx());
         out.push(layered(el, &e.style, inherited, layer_ok, under_tf));
         return;
     }
@@ -180,8 +181,9 @@ pub(crate) fn paint_element(
         && inherited.wm().block_rl()
         && !matches!(inherited.width, Some(Len::Px(_)));
     let canvas_stripped;
+    let mut root_box = None;
     let e = if canvas_paint {
-        canvas_layer(e, opts, out);
+        root_box = canvas_layer(e, opts, out);
         let mut copy = e.clone();
         copy.style.background = None;
         copy.style.gradient = None;
@@ -216,5 +218,6 @@ pub(crate) fn paint_element(
         hoist_margins,
         placement,
         record_root,
+        root_box,
     )
 }

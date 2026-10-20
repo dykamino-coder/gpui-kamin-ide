@@ -36,7 +36,7 @@ impl Paragraph {
         let above = |i: usize| -> Pixels { px(pads.get(i).copied().unwrap_or((0.0, 0.0)).0) };
         // Horizontal rows are published at prepaint (`ClampCut` reads them
         // in this frame's paint); the rotated frame keeps the paint-time path.
-        if self.selection_vertical.is_some() || crate::text::vertical::in_rotated_frame() {
+        if self.selection_vertical.is_some() || self.paint_context.is_rotated() {
             self.publish_rows(bounds, count, &step);
         }
         let mut rev_off = self.reversed_offset(count, &step);

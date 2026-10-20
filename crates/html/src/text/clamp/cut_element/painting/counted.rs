@@ -1,4 +1,4 @@
-//! Counted line budgets and ancestor sizes from probe geometry.
+//! Counted line-clamp cuts and the end edges retained by intersecting boxes.
 
 use super::ClampEntry;
 use super::geometry::ClampGeometry;
@@ -79,7 +79,7 @@ impl ClampGeometry {
                         let floor = blocks
                             .iter()
                             .filter(|b| b.fixed && b.y0 < bottom && bottom < b.y1)
-                            .map(|b| b.y1)
+                            .map(|b| b.flow_end())
                             .fold(bottom, f32::max);
                         cut = Some(super::chain_end(bottom, &chain).max(floor));
                         *sizes = super::chain_sizes(bottom, &chain);
@@ -96,5 +96,71 @@ impl ClampGeometry {
             }
         }
         (cut, num_para, by_count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Bounds, point, px, size};
+
+    fn paragraph(seq: u32, top: f32) -> ClampEntry {
+        ClampEntry {
+            bounds: Bounds {
+                origin: point(px(0.0), px(top)),
+                size: size(px(100.0), px(20.0)),
+            },
+            line: 20.0,
+            skip_count: false,
+            fixed_height: false,
+            bp_after: 0.0,
+            end_margin: 0.0,
+            min_end: 0.0,
+            capped: false,
+            node: 0,
+            seq: Some(seq),
+            clamped: None,
+            empty: false,
+            span: None,
+            bt_before: 0.0,
+            positioned: false,
+        }
+    }
+
+    #[test]
+    fn counted_cut_contains_the_intersecting_float_end_margin() {
+        let counter = ClampGeometry {
+            limit: Some(1),
+            max_h: None,
+            trim_end: 0.0,
+        };
+        let entries = [paragraph(1, 0.0), paragraph(2, 20.0)];
+        let mut blocks = [super::super::ClampBox {
+            y0: 0.0,
+            y1: 200.0,
+            fixed: true,
+            bp: 0.0,
+            margin: 5.0,
+            min_end: 0.0,
+            node: 3,
+            span: None,
+        }];
+        let split = |e: &ClampEntry| {
+            let top = f32::from(e.bounds.origin.y);
+            vec![(top, top + 20.0)]
+        };
+        let mut sizes = Vec::new();
+        assert_eq!(
+            counter.counted_cut(None, &entries, &blocks, &split, &mut sizes),
+            (Some(205.0), Some((1, 1)), true)
+        );
+        // A negative margin cannot clip the float's visible border box.
+        blocks[0].margin = -5.0;
+        assert_eq!(
+            counter
+                .counted_cut(None, &entries, &blocks, &split, &mut sizes)
+                .0,
+            Some(200.0)
+        );
     }
 }

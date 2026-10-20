@@ -15,8 +15,9 @@ pub(crate) fn draw_rule(
     main_like: bool,
     spec: &GapRuleSpec,
     bounds: Bounds<Pixels>,
+    owner: &crate::paint::context::PaintCx,
 ) {
-    let scope = crate::layout::fragment::gap_fragment::current()
+    let scope = crate::layout::fragment::gap_fragment::current(owner)
         .filter(|_| {
             !spec.vertical
                 && spec.kind != GapLayout::Multicol

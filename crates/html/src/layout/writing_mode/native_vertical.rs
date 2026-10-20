@@ -17,10 +17,7 @@ pub(crate) fn claim_float_inline_size(
     }
     // Native block children already establish the float's inline size and stretch together.
     // Only the rotated inline paragraph needs an explicit outer size claim.
-    if children.iter().any(|node| {
-        matches!(node, crate::dom::Node::Element(child)
-        if !crate::render::inline_level(child) && crate::render::in_flow(&child.style))
-    }) {
+    if has_in_flow_block_children(children) {
         return;
     }
     if style.vertical_decl().or(parent.vertical_decl()) == Some(true)
@@ -33,6 +30,14 @@ pub(crate) fn claim_float_inline_size(
         style.hug_inline = true;
         style.hug_claim = true;
     }
+}
+
+/// Native block children share their float root's intrinsic inline size.
+pub(crate) fn has_in_flow_block_children(children: &[crate::dom::Node]) -> bool {
+    children.iter().any(|node| {
+        matches!(node, crate::dom::Node::Element(child)
+        if !crate::render::inline_level(child) && crate::render::in_flow(&child.style))
+    })
 }
 
 pub(crate) fn constraint(style: &Computed, fallback: f32) -> Option<InlineConstraint> {

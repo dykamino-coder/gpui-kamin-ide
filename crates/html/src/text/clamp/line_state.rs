@@ -1,7 +1,7 @@
-//! Line state for clamp; split out to keep the owning module within 250 lines.
+//! Clamp counters, box-tree spans and computed cut state.
 
-use super::{PARA_BUDGET, PARA_ROWS};
-use crate::text::clamp::PARA_TAG;
+use crate::document::state::ValueCx;
+use crate::layout::cx::LayoutCx;
 use gpui::{Bounds, Pixels};
 
 /// Бюджет строк обрезки (`line-clamp`, css-overflow-3/4): точка среза —
@@ -77,170 +77,81 @@ pub struct BoxEnds {
 
 pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
 
-thread_local! {
-    pub(super) static CLAMP_LINES: std::cell::RefCell<std::collections::HashMap<u64, ClampLines>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Вычисленные точки среза (высота от верха контейнера) прошлого кадра.
-    pub(super) static CLAMP_CUTS: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Стек активных clamp-контейнеров при ПОСТРОЕНИИ дерева:
-    /// (ключ, граница BFC уже пройдена).
-    pub(super) static CLAMP_STACK: std::cell::RefCell<Vec<(u64, bool)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-    /// Знак обрыва АВТО-режима, посчитанный на прошлом кадре:
-    /// ключ контейнера → (номер абзаца, сколько его строк остаётся).
-    /// Абзац в контейнере ровно один — тот, на чьей последней строке
-    /// перед точкой среза стоит знак (css-overflow-4 §5.3).
-    pub(super) static CLAMP_PARA: std::cell::RefCell<std::collections::HashMap<u64, (u32, usize)>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Low edge (from the container's content top) of the content placed
-    /// BEFORE the clamp point in box-tree order: css-overflow-4 §5.3 hides
-    /// only what follows the clamp point, so lines overflowing an earlier
-    /// fixed-height block stay visible below the cut (Blink hides the
-    /// following boxes for paint instead of clipping the container).
-    pub(super) static CLAMP_EXTENT: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Clamp point BETWEEN blocks (no paragraph carries the ellipsis):
-    /// container key → number of the first paragraph after the point.
-    pub(super) static CLAMP_NEXT: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Boxes fragmented at a clamp point: node → used border-box height
-    /// (the content ends at the point; css-overflow-4 §5.3, Blink sizes
-    /// every box of the `LineClampAncestorChain`).
-    pub(super) static CLAMP_BOXES: std::cell::RefCell<std::collections::HashMap<u64, f32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Счётчик абзацев контейнера при ПОСТРОЕНИИ поддерева.
-    pub(super) static CLAMP_SEQ: std::cell::RefCell<std::collections::HashMap<u64, u32>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-pub fn clamp_lines_for(key: u64) -> ClampLines {
-    CLAMP_LINES.with(|m| m.borrow_mut().entry(key).or_default().clone())
+pub fn clamp_lines_for(key: u64, vcx: ValueCx<'_>) -> ClampLines {
+    vcx.doc
+        .clamp
+        .lines
+        .borrow_mut()
+        .entry(key)
+        .or_default()
+        .clone()
 }
 
 /// Выдать следующему абзацу клэмп-контейнера его номер. Счётчик сбрасывает
-/// вход в сам контейнер (`ClampGuard::enter`), поэтому нумерация одна и та
+/// вход в сам контейнер (`ClampBuild::container`), поэтому нумерация одна и та
 /// же на каждом кадре, пока не меняется дерево.
-pub fn clamp_next_seq(key: u64) -> u32 {
-    CLAMP_SEQ.with(|m| {
+pub fn clamp_next_seq(key: u64, cx: &LayoutCx) -> u32 {
+    {
+        let m = &cx.clamp_build.seq;
         let mut m = m.borrow_mut();
         let n = m.entry(key).or_insert(0);
         let v = *n;
         *n += 1;
         v
-    })
+    }
 }
 
 /// Number the next paragraph of the clamp container would get.
-pub fn clamp_peek_seq(key: u64) -> u32 {
-    CLAMP_SEQ.with(|m| m.borrow().get(&key).copied().unwrap_or(0))
+pub fn clamp_peek_seq(key: u64, cx: &LayoutCx) -> u32 {
+    cx.clamp_build.seq.borrow().get(&key).copied().unwrap_or(0)
 }
 
 /// Paragraph-number span of a box being built inside a clamp container:
 /// opened before its children, closed after them.
 pub type ClampSpan = std::rc::Rc<std::cell::Cell<(u32, u32)>>;
 
-pub fn open_clamp_span() -> Option<ClampSpan> {
-    let (key, _) = clamp_context()?;
-    let first = clamp_peek_seq(key);
+pub fn open_clamp_span(cx: &crate::layout::cx::LayoutCx) -> Option<ClampSpan> {
+    // Atomic descendants belong to their enclosing line, not the next paragraph.
+    if cx.clamp_atom_depth != 0 {
+        return None;
+    }
+    let (key, _) = clamp_context(cx)?;
+    let first = clamp_peek_seq(key, cx);
     Some(std::rc::Rc::new(std::cell::Cell::new((first, u32::MAX))))
 }
 
-pub fn close_clamp_span(span: Option<ClampSpan>) {
-    if let (Some(span), Some((key, _))) = (span, clamp_context()) {
-        span.set((span.get().0, clamp_peek_seq(key)));
+pub fn close_clamp_span(span: Option<ClampSpan>, cx: &LayoutCx) {
+    if let (Some(span), Some((key, _))) = (span, clamp_context(cx)) {
+        span.set((span.get().0, clamp_peek_seq(key, cx)));
     }
 }
 
-pub fn clamp_cut(key: u64) -> Option<f32> {
-    CLAMP_CUTS.with(|m| m.borrow().get(&key).copied())
+pub fn clamp_cut(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
+    vcx.doc.clamp.cuts.borrow().get(&key).copied()
 }
 
 /// Бюджет строк абзаца со знаком обрыва: (номер абзаца, сколько строк
 /// оставить). Считает `ClampCut::paint` прошлого кадра.
-pub fn clamp_para(key: u64) -> Option<(u32, usize)> {
-    CLAMP_PARA.with(|m| m.borrow().get(&key).copied())
+pub fn clamp_para(key: u64, vcx: ValueCx<'_>) -> Option<(u32, usize)> {
+    vcx.doc.clamp.para.borrow().get(&key).copied()
 }
 
 /// Used border-box height of a box fragmented at a clamp point.
-pub fn clamp_box_height(node: u64) -> Option<f32> {
-    CLAMP_BOXES.with(|m| m.borrow().get(&node).copied())
+pub fn clamp_box_height(node: u64, vcx: ValueCx<'_>) -> Option<f32> {
+    vcx.doc.clamp.boxes.borrow().get(&node).copied()
 }
 
 /// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).
-pub fn clamp_next(key: u64) -> Option<u32> {
-    CLAMP_NEXT.with(|m| m.borrow().get(&key).copied())
+pub fn clamp_next(key: u64, vcx: ValueCx<'_>) -> Option<u32> {
+    vcx.doc.clamp.next.borrow().get(&key).copied()
 }
 
 /// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
-pub fn clamp_extent(key: u64) -> Option<f32> {
-    CLAMP_EXTENT.with(|m| m.borrow().get(&key).copied())
+pub fn clamp_extent(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
+    vcx.doc.clamp.extent.borrow().get(&key).copied()
 }
 
-pub fn forget_clamp_buffers() {
-    CLAMP_EXTENT.with(|m| m.borrow_mut().clear());
-    CLAMP_LINES.with(|m| m.borrow_mut().clear());
-    CLAMP_CUTS.with(|m| m.borrow_mut().clear());
-    CLAMP_STACK.with(|st| st.borrow_mut().clear());
-    CLAMP_PARA.with(|m| m.borrow_mut().clear());
-    CLAMP_NEXT.with(|m| m.borrow_mut().clear());
-    CLAMP_BOXES.with(|m| m.borrow_mut().clear());
-    CLAMP_SEQ.with(|m| m.borrow_mut().clear());
-    PARA_BUDGET.with(|c| c.set(None));
-    PARA_ROWS.with(|m| m.borrow_mut().clear());
-    PARA_TAG.with(|c| c.set(None));
-}
-
-/// Сторож стека clamp-контекста на время построения поддерева.
-pub struct ClampGuard(pub(crate) bool, Option<u32>);
-
-impl ClampGuard {
-    /// Вход в сам clamp-контейнер.
-    pub fn enter(key: u64) -> Self {
-        CLAMP_STACK.with(|st| st.borrow_mut().push((key, false)));
-        // Нумерация абзацев контейнера начинается заново на каждом кадре:
-        // иначе номер рос бы от кадра к кадру и бюджет прошлого кадра
-        // никогда не находил бы своего абзаца.
-        CLAMP_SEQ.with(|m| {
-            m.borrow_mut().insert(key, 0);
-        });
-        // A clamp container is its own count root even when it is an
-        // atomic inline of another paragraph (`display: inline-block` /
-        // `-webkit-inline-box`): the atom nesting restarts inside it.
-        ClampGuard(true, Some(super::paragraph_rows::swap_para_depth(0)))
-    }
-
-    /// Вход в элемент с собственным контекстом форматирования: строки
-    /// глубже не считаются.
-    pub fn enter_bfc() -> Self {
-        let pushed = CLAMP_STACK.with(|st| {
-            let mut st = st.borrow_mut();
-            match st.last().copied() {
-                Some((key, false)) => {
-                    st.push((key, true));
-                    true
-                }
-                _ => false,
-            }
-        });
-        ClampGuard(pushed, None)
-    }
-}
-
-impl Drop for ClampGuard {
-    fn drop(&mut self) {
-        if let Some(depth) = self.1 {
-            super::paragraph_rows::swap_para_depth(depth);
-        }
-        if self.0 {
-            CLAMP_STACK.with(|st| {
-                st.borrow_mut().pop();
-            });
-        }
-    }
-}
-
-/// Текущий clamp-контекст построения: (ключ, внутри вложенного BFC).
-pub fn clamp_context() -> Option<(u64, bool)> {
-    CLAMP_STACK.with(|st| st.borrow().last().copied())
+/// Active container and its BFC counting boundary for this build.
+pub fn clamp_context(cx: &LayoutCx) -> Option<(u64, bool)> {
+    cx.clamp_build.context
 }

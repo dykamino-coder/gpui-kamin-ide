@@ -187,10 +187,10 @@ impl Computed {
                     // вложенный вызов того же свойства его бы снял.
                     let first = background_layers(v)[0].to_string();
                     self.apply_one(key, &first, vcx);
-                    self.bg_lists.set(prop, v.to_string());
+                    self.bg_lists.set(prop, v.to_string(), vcx);
                     return;
                 }
-                self.bg_lists.set(prop, v.to_string());
+                self.bg_lists.set(prop, v.to_string(), vcx);
             }
         }
         self.apply_property(key, v, vcx);

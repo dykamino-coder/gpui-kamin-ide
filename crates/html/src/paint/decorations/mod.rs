@@ -12,7 +12,6 @@ use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
 use crate::paint::decorations::shadows::{inset_shadows, outer_shadows};
-use crate::paint::effects::mask::mask_def;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -21,6 +20,7 @@ mod border_shape;
 mod gradient_stripes;
 mod outline;
 pub(crate) mod outline_phase;
+pub(crate) mod rect_minus;
 mod shadows;
 pub(crate) mod shaped_outset;
 pub(crate) mod shaped_ring;
@@ -30,7 +30,12 @@ pub(crate) mod text_shadows;
 ///
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
-pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<AnyElement> {
+pub(crate) fn decorations(
+    c: &Computed,
+    empty: bool,
+    vcx: ValueCx<'_>,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+) -> Vec<AnyElement> {
     if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
         return Vec::new();
     }
@@ -51,7 +56,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     // детей (filter-region-transformed-composited-child-001).
     if empty
         && let Some(id) = c.filter_ref.as_deref()
-        && let Some(def) = mask_def(&format!("filter:{id}"))
+        && let Some(def) = vcx.doc.masks.markup(&format!("filter:{id}"))
     {
         let fill = match c.background {
             Some(col) if col.a > 0.0 => format!(
@@ -76,7 +81,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     // backdrop is drawn first and the element's background, borders and
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
-    backdrop_matrix(c, &mut out);
+    backdrop_matrix(c, &mut out, vcx);
 
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.
@@ -119,7 +124,7 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     if let Some(layer) = crate::paint::border_image::layer(c, vcx) {
         out.push(layer);
     }
-    stationary(c, &mut out, start);
+    stationary(c, &mut out, start, cx);
 
     gradient_stripes(c, &mut out);
 
@@ -129,15 +134,23 @@ pub(crate) fn decorations(c: &Computed, empty: bool, vcx: ValueCx<'_>) -> Vec<An
     // несовпадающие стороны дорисовываются полосами поверх.
     let start = out.len();
     coloured_borders(c, &mut out, vcx);
-    stationary(c, &mut out, start);
+    stationary(c, &mut out, start, cx);
     out
 }
 
-fn stationary(c: &Computed, out: &mut Vec<AnyElement>, start: usize) {
+fn stationary(
+    c: &Computed,
+    out: &mut Vec<AnyElement>,
+    start: usize,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+) {
     let layers = out.split_off(start);
-    out.extend(
-        layers
-            .into_iter()
-            .map(|el| crate::interactive::scroll_target::stationary(c.self_node, el)),
-    );
+    out.extend(layers.into_iter().map(|el| {
+        crate::interactive::scroll_target::stationary(
+            cx.and_then(|cx| cx.scroll_frame.as_ref()),
+            cx.and_then(|cx| cx.scroll_target.as_deref()),
+            c.self_node,
+            el,
+        )
+    }));
 }

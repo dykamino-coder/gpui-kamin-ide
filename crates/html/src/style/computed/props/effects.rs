@@ -4,6 +4,7 @@ use crate::document::state::ValueCx;
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 mod containment;
+mod filter;
 mod timing;
 
 impl Computed {

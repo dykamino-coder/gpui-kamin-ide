@@ -1,4 +1,4 @@
-//! Мелкие общие помощники сборки: шрифт замера, деление узлов, ключи текста, сбор текста.
+//! Помощники сборки: шрифт замера, ключи текста, тени и доступ к тексту поддерева.
 
 use crate::dom::Node;
 use crate::render::*;
@@ -6,9 +6,10 @@ use crate::style::computed::Computed;
 
 pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     let mut font = opts.text.font();
-    font.fallbacks = crate::style::computed::font_family::fallbacks(c, font.fallbacks);
+    font.fallbacks =
+        crate::style::computed::font_family::fallbacks(c, font.fallbacks, opts.cx.vcx());
     if let Some(family) = c.font_family.as_ref().filter(|f| !f.is_empty()) {
-        font.family = crate::text::fonts::alias_for(family, c)
+        font.family = crate::text::fonts::alias_for(family, c, opts.cx.vcx())
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {
@@ -22,61 +23,6 @@ pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
     }
     font.features = crate::text::fonts::with_css_weight(&font.features);
     font
-}
-
-/// Разрезать список узлов по смещению в их общем тексте.
-///
-/// Смещение считается по тому же тексту, что уходит в переносчик, поэтому
-/// элементы режутся вместе с ним: `<b>` на границе разреза становится двумя.
-pub(crate) fn split_nodes(nodes: &[Node], at: usize) -> (Vec<Node>, Vec<Node>) {
-    let mut before = vec![];
-    let mut after = vec![];
-    let mut seen = 0usize;
-    for node in nodes {
-        if seen >= at {
-            after.push(node.clone());
-            continue;
-        }
-        match node {
-            Node::Text(t) => {
-                let len = t.len();
-                if seen + len <= at {
-                    before.push(node.clone());
-                } else {
-                    // Режем по границе символа, ближайшей к месту разреза.
-                    let mut cut = at - seen;
-                    while cut < t.len() && !t.is_char_boundary(cut) {
-                        cut += 1;
-                    }
-                    if cut > 0 {
-                        before.push(Node::Text(t[..cut].to_string()));
-                    }
-                    if cut < t.len() {
-                        after.push(Node::Text(t[cut..].to_string()));
-                    }
-                }
-                seen += len;
-            }
-            Node::Element(e) => {
-                let mut text = String::new();
-                gather_text(&e.children, &mut text);
-                let len = text.len();
-                if seen + len <= at {
-                    before.push(node.clone());
-                } else {
-                    let (head, tail) = split_nodes(&e.children, at - seen);
-                    let mut a = e.clone();
-                    a.children = head;
-                    let mut b = e.clone();
-                    b.children = tail;
-                    before.push(Node::Element(a));
-                    after.push(Node::Element(b));
-                }
-                seen += len;
-            }
-        }
-    }
-    (before, after)
 }
 
 /// Устойчивый номер абзаца для памяти выделения.
@@ -114,13 +60,4 @@ pub(crate) fn normalize_for_shadow(raw: &str) -> String {
 /// Текст поддерева — нужен формам (`<textarea>`, `<option>`).
 pub fn gather_text_public(nodes: &[Node], out: &mut String) {
     gather_text(nodes, out)
-}
-
-pub(crate) fn gather_text(nodes: &[Node], out: &mut String) {
-    for n in nodes {
-        match n {
-            Node::Text(t) => out.push_str(t),
-            Node::Element(e) => gather_text(&e.children, out),
-        }
-    }
 }

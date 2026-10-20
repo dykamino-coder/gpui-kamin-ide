@@ -45,7 +45,10 @@ impl Computed {
                 || low.contains("(from ")
                 || (low.starts_with("color-mix(") && low.contains("currentcolor")))
         {
-            self.background_rcs = accept_parsed!(self, Some(v.to_string()));
+            self.background_rcs = accept_parsed!(
+                self,
+                crate::style::values::color_space::ColorExpression::parse(v, vcx)
+            );
             return;
         }
         // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
@@ -70,21 +73,10 @@ impl Computed {
         // ПУСТЫМИ и сходились с пустым же тестом.
         let v = top;
         if let Some(image) = split_outside_parens(v)
-            .iter()
-            .find(|t| image_function::arguments(t, vcx).is_some())
-        {
-            self.apply_one("background-image", image, vcx);
-        } else if gradient_as_raster(v) {
-            self.bg_image = Some(v.to_string());
-        } else if let Some(image) = split_outside_parens(v)
             .into_iter()
-            .find(|t| crate::style::computed::filter_image::parse_filter_image(t, vcx).is_some())
+            .find_map(|token| ImageSource::parse(&token, vcx))
         {
-            // `filter(url(…), …)` is one image (Filter Effects 1 §13); its
-            // inner url is not the layer's image.
             self.bg_image = Some(image);
-        } else if let Some(url) = parse_url(v) {
-            self.bg_image = Some(url);
         }
         // Значение режется по пробелам ВНЕ скобок: иначе
         // `rgba(0, 0, 0, .5)` распадался на куски, ни один из которых

@@ -2,17 +2,15 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::float::band_flow_host::band_flow_host;
+use crate::layout::float::shapes::float_shape_of;
 use crate::render::{RenderOpts, blocks};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
 mod float_place;
 use float_place::place_shape_float;
-mod shape;
-use shape::float_shape_of;
 mod host;
-use host::{atoms_flow, band_host_flow, shape_host_div};
+use host::{atoms_flow, shape_host_div};
 
 /// Обтекание плавающих блоков ФОРМОЙ (`shape-outside`, css-shapes-1 §2).
 ///
@@ -22,12 +20,6 @@ use host::{atoms_flow, band_host_flow, shape_host_div};
 /// формы считается от выбранной опорной коробки (по умолчанию margin-box),
 /// затем переводится в координаты margin-box (позиция флоата).
 pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    if e.marks
-        .shape_flow
-        .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Measured))
-    {
-        return band_flow_host(e, inherited, opts);
-    }
     let px_of = |l: &Option<Len>| match l {
         None => 0.0,
         Some(Len::Px(v)) => *v,
@@ -105,29 +97,6 @@ pub(crate) fn shape_flow(e: &Element, inherited: &Computed, opts: &RenderOpts) -
     for f in floats {
         host = host.child(f);
     }
-    // Блочные коробки среди полос (§9.5, последний абзац): «The border box of
-    // a table, a block-level replaced element, or an element in the normal
-    // flow that establishes a new block formatting context must not overlap
-    // the margin box of any floats in the same block formatting context».
-    // Такая коробка ищет ОКНО на всю свою высоту и съезжает вниз, пока не
-    // найдёт (`bands.place_among`), а не встаёт «ниже всех флоатов»
-    // (`floats-wrap-bfc-004`: BFC встаёт на y=6, оставаясь сбоку от флоата с
-    // низом 20).
-    //
-    // Ветка включается только на бандовом хосте и только когда в хвосте есть
-    // хоть один НЕ-атом: сплошные инлайн-блоки обязаны идти строчным потоком
-    // `FlowRow` — они делят строку, а здесь каждый кусок берёт свою.
-    //
-    // Вертикальное письмо сюда не пускается: дальняя стенка полос там
-    // недостижимая (`NO_WALL`, `:4845-4850`), и окна не сузятся.
-    let band_host = e
-        .marks
-        .shape_flow
-        .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Static));
-    let host = match band_host_flow(e, inherited, opts, vert_lr, bands, &rest, host, band_host) {
-        Ok(value) => return value,
-        Err(host) => host,
-    };
     // Картина из инлайн-блоков с известными размерами — построчный поток
     // атомов (FlowRow): flex-переносом вырезы по строкам не выразить, а
     // абзац таких детей не набирает.

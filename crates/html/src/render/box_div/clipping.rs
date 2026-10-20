@@ -6,43 +6,6 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, div, px};
 
-/// Fill `outer` minus `hole` (both `(left, top, right, bottom)` in window
-/// points) with up to four rectangles whose edges snap to the device grid —
-/// the shape of a sharp, square box shadow (css-backgrounds-3 §7.1). An empty
-/// or disjoint hole leaves `outer` whole.
-pub(crate) fn paint_rect_minus(
-    window: &mut gpui::Window,
-    (ol, ot, or, ob): (f32, f32, f32, f32),
-    (hl, ht, hr, hb): (f32, f32, f32, f32),
-    fill: gpui::Hsla,
-) {
-    let sf = window.scale_factor();
-    let snap = |v: f32| (v * sf).round() / sf;
-    let mut paint = |x0: f32, y0: f32, x1: f32, y1: f32| {
-        let (x0, y0, x1, y1) = (snap(x0), snap(y0), snap(x1), snap(y1));
-        if x1 > x0 && y1 > y0 {
-            window.paint_quad(gpui::fill(
-                gpui::Bounds::from_corners(
-                    gpui::point(px(x0), px(y0)),
-                    gpui::point(px(x1), px(y1)),
-                ),
-                fill,
-            ));
-        }
-    };
-    if hl >= hr || ht >= hb {
-        paint(ol, ot, or, ob);
-        return;
-    }
-    // Above and below the hole: full width.
-    paint(ol, ot, or, ht.min(ob));
-    paint(ol, hb.max(ot), or, ob);
-    // Beside the hole, within its rows.
-    let (y0, y1) = (ht.max(ot), hb.min(ob));
-    paint(ol, y0, hl.min(or), y1);
-    paint(hr.max(ol), y0, or, y1);
-}
-
 /// То же, но со стилем, уже разрешённым по родителю.
 ///
 /// Наследование даёт две вещи: текстовые свойства и разрешённые `em` — без
@@ -78,7 +41,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
     }
     let size = own_size(c, opts);
     let family = c.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size, vcx);
     let border = c.borders();
     // Абсолютный слой в раскладке отсчитывается уже от padding-box
     // (`vendor/taffy/src/compute/block.rs`, как в CSS 2.1 §10.1): рамку

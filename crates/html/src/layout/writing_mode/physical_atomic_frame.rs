@@ -1,20 +1,17 @@
 //! Native atomic subtrees prepare in screen coordinates while surrounding text stays flat.
 //! Cancelling the text frame preserves enclosing CSS transforms and native hitboxes.
-use crate::text::vertical::{VT_CCW, VT_FRAME, VT_PHASE};
+use crate::text::vertical::TurnFrame;
 use gpui::{Bounds, Pixels, TransformationMatrix, point, size};
 
-pub(super) fn map(flat: Bounds<Pixels>, scale: f32) -> (Bounds<Pixels>, TransformationMatrix) {
-    let Some(frame) = VT_FRAME.with(|frame| frame.get()) else {
+pub(super) fn map(
+    flat: Bounds<Pixels>,
+    scale: f32,
+    frame: Option<TurnFrame>,
+) -> (Bounds<Pixels>, TransformationMatrix) {
+    let Some(frame) = frame else {
         return (flat, TransformationMatrix::unit());
     };
-    let phase = VT_PHASE.with(|phase| phase.get());
-    project(
-        frame,
-        phase,
-        flat,
-        scale,
-        VT_CCW.with(|direction| direction.get()),
-    )
+    project(frame.bounds, frame.phase, flat, scale, frame.ccw)
 }
 
 fn project(
@@ -26,7 +23,7 @@ fn project(
 ) -> (Bounds<Pixels>, TransformationMatrix) {
     let (x, y) = (frame.origin.x, frame.origin.y);
     let along = flat.origin.x - x;
-    // The clockwise frame lays flat content out from `y + phase` (VT_PHASE).
+    // The clockwise frame lays flat content out from `y + phase` (the turn phase).
     let across = flat.origin.y - y - if ccw { Pixels::ZERO } else { phase };
     let physical = Bounds {
         origin: if ccw {
@@ -49,17 +46,6 @@ fn project(
         }
     };
     (physical, inverse)
-}
-
-pub(super) fn without_frame<R>(f: impl FnOnce() -> R) -> R {
-    struct Restore(Option<Bounds<Pixels>>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            VT_FRAME.with(|frame| frame.set(self.0));
-        }
-    }
-    let _restore = Restore(VT_FRAME.with(|frame| frame.replace(None)));
-    f()
 }
 
 #[cfg(test)]

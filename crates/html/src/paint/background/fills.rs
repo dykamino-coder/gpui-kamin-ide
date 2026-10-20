@@ -1,7 +1,7 @@
 //! Заливки областей фона и текстовых клипов, отдельно от загрузки изображений.
 
 use super::over;
-use super::{Source, key_exif, paint_tiles, source};
+use super::{Source, computed_source, paint_tiles};
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use gpui::{Bounds, Pixels, px};
@@ -38,13 +38,13 @@ pub(crate) fn border_paint(
 
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
 pub(super) fn flat_colour(
-    src: &str,
-    vcx: ValueCx<'_>,
+    src: &crate::style::computed::ImageSource,
+    _vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
-    let image = match source(src, vcx)? {
+    let image = match computed_source(src, true)? {
         Source::Raster(image) => image,
-        Source::Gradient { raw } => {
-            let gradient = crate::style::computed::parse_gradient(&raw, vcx)?;
+        Source::Gradient { image } => {
+            let (gradient, _) = image.gradient()?;
             let color = gradient.from;
             // An identical polar color can still travel around a longer hue arc.
             let constant = gradient.hue != 1
@@ -80,16 +80,20 @@ pub(super) fn flat_colour(
 pub(super) use crate::style::computed::flat_background::flat_fill;
 
 impl crate::style::computed::flat_background::BackgroundImageValues for Computed {
-    fn image_available(&self, raw: &str, vcx: ValueCx<'_>) -> bool {
-        source(&key_exif(raw, self, vcx), vcx).is_some()
+    fn image_available(
+        &self,
+        raw: &crate::style::computed::ImageSource,
+        _vcx: ValueCx<'_>,
+    ) -> bool {
+        computed_source(raw, self.image_orient_none != Some(true)).is_some()
     }
 
     fn uniform_image_color(
         &self,
-        raw: &str,
+        raw: &crate::style::computed::ImageSource,
         vcx: ValueCx<'_>,
     ) -> Option<crate::style::values::value::Color> {
-        flat_colour(&key_exif(raw, self, vcx), vcx)
+        flat_colour(raw, vcx)
     }
 }
 

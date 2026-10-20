@@ -63,7 +63,7 @@ pub fn number(s: &str, vcx: ValueCx<'_>) -> Option<f32> {
         // `pow(2, 3)`, `round(2.5)` — числовые функции верхнего уровня.
         .or_else(|| super::calc_math::is_math_fn(s).then_some(s));
     if let Some(inner) = body {
-        let mut calc = Calc { rest: inner };
+        let mut calc = Calc::new(inner);
         return match calc.expr(vcx)? {
             // Верхний уровень: NaN -> 0 (css-values-4 §10.13).
             Val::Num(n) if calc.rest.trim().is_empty() => Some(if n.is_nan() { 0.0 } else { n }),
@@ -81,14 +81,8 @@ pub fn number(s: &str, vcx: ValueCx<'_>) -> Option<f32> {
 /// природа (`em`, `vw`…) — `None`.
 pub fn calc_pct_px(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     let inner = raw.trim().strip_prefix("calc(")?.strip_suffix(')')?;
-    let s = eval_calc(inner, vcx)?;
-    let rest = Sum {
-        px: 0.0,
-        pct: 0.0,
-        has_percentage: false,
-        ..s
-    };
-    (rest == Sum::default()).then_some((s.pct, s.px))
+    let s = Calc::new(inner).sum(vcx)?;
+    s.length_percentage()
 }
 
 /// Свернуть простые `calc(a op b)` (одно действие, единица не больше чем у

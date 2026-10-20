@@ -7,6 +7,7 @@ use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
 use crate::style::values::value::Color;
 
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct DirectGradient {
     colors: Vec<[f32; 3]>,
     ok: bool,

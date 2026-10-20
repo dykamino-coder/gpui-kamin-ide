@@ -66,6 +66,7 @@ pub(crate) fn for_element(
             &element.style,
             &crate::style::cascade::inherit::inherit(parent, &element.style, vcx),
             placement,
+            vcx,
         )
     }
 }
@@ -75,6 +76,7 @@ pub(crate) fn content_sized(
     c: &Computed,
     item_style: &Computed,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {
     let track = |l: Option<Len>| match l {
         Some(Len::MinContent) => Some(gpui::GridTrack::MinContent),
@@ -132,7 +134,7 @@ pub(crate) fn content_sized(
         let family = c.font_family.clone().unwrap_or_default();
         match l {
             Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_)) => {
-                let v = crate::text::metrics::spacing_px(l, &family, size);
+                let v = crate::text::metrics::spacing_px(l, &family, size, vcx);
                 (v < 0.0).then_some(v)
             }
             _ => None,

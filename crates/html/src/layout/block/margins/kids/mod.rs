@@ -2,7 +2,6 @@
 
 use crate::dom::Node;
 use crate::layout::block::containing::with_inner_cb;
-use crate::layout::block::margins::COLLAPSE_CB_HEIGHT_DEF;
 use crate::layout::block::struts::{
     first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain, zero_at,
 };
@@ -14,7 +13,11 @@ use crate::style::values::value::Len;
 mod struts;
 pub(super) use struts::emit_margin_struts;
 
-pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
+pub(super) fn collapse_kid_margins(
+    out: &mut [Node],
+    cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     for node in out.iter_mut() {
         let Node::Element(e) = node else { continue };
         if inline_level_box(e) {
@@ -59,18 +62,18 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
         if e.style.margin_trim & 1 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-            if leading_chain(&e.children, &mut path, &mut eat, cb).is_some() {
+            if leading_chain(&e.children, &mut path, &mut eat, cb, vcx).is_some() {
                 for (p, deep) in &eat {
-                    zero_at(&mut e.children, p, true, *deep);
+                    zero_at(&mut e.children, p, true, *deep, vcx);
                 }
             }
         }
         if e.style.margin_trim & 2 != 0 {
             let mut path: Vec<usize> = vec![];
             let mut eat: Vec<(Vec<usize>, bool)> = vec![];
-            if trailing_chain(&e.children, &mut path, &mut eat).is_some() {
+            if trailing_chain(&e.children, &mut path, &mut eat, vcx).is_some() {
                 for (p, deep) in &eat {
-                    zero_at(&mut e.children, p, false, *deep);
+                    zero_at(&mut e.children, p, false, *deep, vcx);
                 }
             }
         }
@@ -78,7 +81,7 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
         if e.tag == "html" {
             continue;
         }
-        margin_edges::collapse_top(e, cb);
+        margin_edges::collapse_top(e, cb, vcx);
         // То же СНИЗУ: отступ последнего ребёнка протекает наружу, если
         // родителя от него не отделяют ни рамка, ни внутренний отступ, ни
         // заданная высота. Иначе следующий за родителем блок отодвигался на
@@ -108,7 +111,7 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
         // детей в потоке; неизвестная высота хотя бы у одного оставляет
         // прежний запрет. Замерено: CSS2 5074 -> 5077, oldfront 2353 -> 2352
         // (`css-flexbox-height-animation-stretch` 0.47 -> 1.00).
-        let raises = margin_height::raises(e);
+        let raises = margin_height::raises(e, vcx);
         // Край закрыт СВОИМИ свойствами: поле ребёнка остаётся внутри и
         // трогать его нечем.
         // Высота, которая «behaves as auto» (css-sizing-3: прозу CSS2
@@ -121,13 +124,13 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
         let behaves_auto = match e.style.height {
             None | Some(Len::Auto) => true,
             Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent) => true,
-            Some(Len::Pct(_)) => !COLLAPSE_CB_HEIGHT_DEF.with(std::cell::Cell::get),
+            Some(Len::Pct(_)) => !vcx.collapse.height_def,
             _ => false,
         };
         if !zero(e.style.padding.bottom)
             || !zero(e.style.borders().bottom)
             || !behaves_auto
-            || margin_height::separate(e)
+            || margin_height::separate(e, vcx)
             || own_context
         {
             continue;
@@ -148,7 +151,10 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
                     ))
             }))
             .and_then(|(i, ch)| {
-                with_inner_cb(&e.style, || margin_px(ch.style.margin.bottom, &ch.style)).map(|_| i)
+                with_inner_cb(&e.style, vcx, |vcx| {
+                    margin_px(ch.style.margin.bottom, &ch.style, vcx)
+                })
+                .map(|_| i)
             });
         // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): запрет поглощения, когда в хвосте
         // есть коробка с клиренсом (CSS 2.1 §8.3.1, «does not collapse with a top
@@ -165,12 +171,12 @@ pub(super) fn collapse_kid_margins(out: &mut [Node], cb: Option<f32>) {
             // занимало.
             if raises {
                 if let Node::Element(ch) = &mut e.children[i] {
-                    pin_inherited_margins(ch, false, true);
+                    pin_inherited_margins(ch, false, true, vcx);
                     ch.style.margin.bottom = Some(Len::Px(0.0));
                 }
                 continue;
             }
-            margin_edges::collapse_bottom(e);
+            margin_edges::collapse_bottom(e, vcx);
         }
     }
 }
