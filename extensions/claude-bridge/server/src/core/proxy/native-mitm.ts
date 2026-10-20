@@ -102,7 +102,16 @@ export interface NativeMitmOptions {
 // One dispatcher per (proxyUrl, caBundle) so connection-pool reuse works
 // between consecutive requests. ECONNRESET on a request → recycle the
 // dispatcher so the next call opens a fresh TCP socket.
-let cachedDispatcher: { key: string; dispatcher: Dispatcher } | null = null
+interface DispatcherGeneration {
+  key: string
+  dispatcher: Dispatcher
+  generation: number
+}
+let cachedDispatcher: DispatcherGeneration | null = null
+let dispatcherGeneration = 0
+let dispatcherResets = 0
+let staleDispatcherResets = 0
+let dispatcherAcquisition: Promise<unknown> = Promise.resolve()
 
 // Cache the TLS SecureContext per host so we don't rebuild an OpenSSL SSL_CTX on
 // EVERY handshake. Every session's CLI hits the same host (api.anthropic.com)
@@ -111,59 +120,62 @@ let cachedDispatcher: { key: string; dispatcher: Dispatcher } | null = null
 // the leaf rotates in the mint LRU.
 const secureContextByHost = new Map<string, { certPem: string; ctx: tls.SecureContext }>()
 
-async function getDispatcher(proxyUrl: string | undefined): Promise<Dispatcher> {
+function getDispatcher(proxyUrl: string | undefined): Promise<DispatcherGeneration> {
+  const acquisition = dispatcherAcquisition.then(() => acquireDispatcher(proxyUrl))
+  // A failed configuration must not poison subsequent acquisitions.
+  dispatcherAcquisition = acquisition.catch(() => undefined)
+  return acquisition
+}
+
+async function acquireDispatcher(proxyUrl: string | undefined): Promise<DispatcherGeneration> {
   const { getSetting } = await import('../config/settings')
   const caPath = getSetting('caCert')
   const key = (proxyUrl || 'direct') + '|' + (caPath || '')
-  if (cachedDispatcher && cachedDispatcher.key === key) return cachedDispatcher.dispatcher
+  if (cachedDispatcher && cachedDispatcher.key === key) return cachedDispatcher
 
-  if (cachedDispatcher) {
-    try {
-      await cachedDispatcher.dispatcher.close()
-    } catch {
-      /* ignore */
-    }
-  }
-
+  // No await between comparison, creation and publication: this is one serialized
+  // transaction on the event loop. Draining an old pool must not block or race
+  // concurrent acquisitions (close can wait for long-running neighbor requests).
   const dispatcher = createOutboundDispatcher(caPath, proxyUrl)
-  cachedDispatcher = { key, dispatcher }
-  return dispatcher
+  if (cachedDispatcher) dropCachedDispatcher(cachedDispatcher, 'configuration-change')
+  cachedDispatcher = { key, dispatcher, generation: ++dispatcherGeneration }
+  warnLog('[mitm][pool] created', { generation: dispatcherGeneration, dispatcherResets, staleDispatcherResets })
+  return cachedDispatcher
 }
 
 /** Clear the cached dispatcher after a trust change. Called from settings.ts
  *  when the user uploads a new CA cert through the Settings UI. */
 export function resetExtraTrustRoots(): void {
-  if (cachedDispatcher) {
-    void cachedDispatcher.dispatcher.close().catch(() => {
-      /* ignore */
-    })
-    cachedDispatcher = null
-  }
+  if (cachedDispatcher) dropCachedDispatcher(cachedDispatcher, 'trust-change')
 }
 
-function recycleDispatcherOnReset(err: unknown): void {
+function recycleDispatcherOnReset(err: unknown, used: DispatcherGeneration): void {
   const code = (err as { code?: string })?.code ?? (err as { cause?: { code?: string } })?.cause?.code
   if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'EPIPE') {
-    dropCachedDispatcher()
+    dropCachedDispatcher(used, code)
   }
 }
 
-/** Drop the shared pooled dispatcher so the NEXT request opens a fresh socket.
- *  recycleDispatcherOnReset only fires on reset CODES; a user Ctrl+C aborts the
- *  in-flight SSE fetch as an AbortError (not a reset code), leaving the pooled
- *  keep-alive socket torn. That wedged socket starves the tee→synth observation
- *  on the next turn — the CLI's own request still lands a response (console +
- *  JSONL keep working), but live word-by-word streaming stays dead until a
- *  manual reconnect. Forcing a fresh socket here makes streaming self-heal too.
- *  Only called on a genuine mid-stream interrupt (see the res-close guard), so
- *  clean turn-ends never pay the re-handshake. */
-function dropCachedDispatcher(): void {
-  if (cachedDispatcher) {
-    void cachedDispatcher.dispatcher.close().catch(() => {
-      /* ignore */
+/** Compare-and-swap eviction: late errors from a draining pool cannot retire
+ *  the replacement serving other sessions. Clear before starting graceful drain. */
+function dropCachedDispatcher(used: DispatcherGeneration, reason: string): void {
+  if (cachedDispatcher !== used) {
+    staleDispatcherResets++
+    warnLog('[mitm][pool] stale reset ignored', {
+      generation: used.generation,
+      currentGeneration: cachedDispatcher?.generation,
+      reason,
+      dispatcherResets,
+      staleDispatcherResets,
     })
-    cachedDispatcher = null
+    return
   }
+  cachedDispatcher = null
+  dispatcherResets++
+  warnLog('[mitm][pool] reset', { generation: used.generation, reason, dispatcherResets, staleDispatcherResets })
+  void used.dispatcher.close().catch(() => {
+    /* already closed */
+  })
 }
 
 // ── public entry point ───────────────────────────────────────────────────────
@@ -433,7 +445,8 @@ async function handleRequest(
 
   const body = hasBody ? (bufferedBody ?? Readable.toWeb(req)) : undefined
 
-  const dispatcher = await getDispatcher(opts.upstreamProxyUrl)
+  const usedDispatcher = await getDispatcher(opts.upstreamProxyUrl)
+  const { dispatcher, generation } = usedDispatcher
 
   // Abort the upstream request when the CLI hangs up. Destroying the Node
   // Readable wrapper alone does NOT reliably cancel undici's underlying socket
@@ -470,7 +483,8 @@ async function handleRequest(
     }
     upstream = await undiciFetch(targetUrl, init)
   } catch (err) {
-    recycleDispatcherOnReset(err)
+    warnLog('[mitm] upstream fetch error', { session: opts.ptySessionId, generation, error: describeFetchError(err) })
+    recycleDispatcherOnReset(err, usedDispatcher)
     throw err
   }
 
@@ -540,7 +554,7 @@ async function handleRequest(
     // pipe() auto-destroys res on source error, but an unhandled 'error' on
     // `src` would still throw; handle it + recycle the pool on a reset.
     src.on('error', (err: Error) => {
-      recycleDispatcherOnReset(err)
+      recycleDispatcherOnReset(err, usedDispatcher)
       if (!res.writableEnded && !res.destroyed)
         try {
           res.destroy(err)
@@ -573,14 +587,9 @@ async function handleRequest(
   // SSE — observe the bytes for entry synthesis while forwarding to CLI.
   // Two things to get right (verified against claude-code-src behaviour):
   //
-  //  1. **Decouple upstream pace from CLI's write rate.** Chained
-  //     `pipe(upstream → tee → res)` propagates backpressure: if CLI's
-  //     local TLS write is slow (client webview busy, PTY buffer full),
-  //     `res` slows tee, tee slows upstream, undici reads slower, and the
-  //     corp proxy sees a "stalled" connection and RSTs it. We instead
-  //     pull from upstream at full speed and fan-out to tee + res with
-  //     `res.write()` whose return value we deliberately ignore. SSE
-  //     responses are tens-to-hundreds of KB; node's write queue is fine.
+  //  1. Respect CLI backpressure. Pause upstream until drain so a blocked
+  //     consumer cannot accumulate a whole response in the shared process.
+  //     A per-response queue budget also rejects an oversized single chunk.
   //
   //  2. **`:keepalive` SSE comments pass through verbatim.** Tee only
   //     OBSERVES bytes for synthesis (reading via `tee.on('data')`); the
@@ -673,26 +682,49 @@ async function handleRequest(
     /* consumed */
   })
 
-  // Distinguishes a clean SSE finish from a mid-stream interrupt: only the
-  // latter (user Ctrl+C → res 'close' while this is still false) must recycle
-  // the shared pooled socket, so normal turn-ends never pay a re-handshake.
+  // A clean finish must not hard-abort synthesis when res emits close: that can
+  // race the asynchronous tee tail. Interrupts still finalize partial entries.
   let sseCompleted = false
+  const responseBufferLimit = 256 * 1024
   const upstreamNode = Readable.fromWeb(upstream.body)
+  const resumeUpstream = () => {
+    if (!upstreamNode.destroyed && !ac.signal.aborted) upstreamNode.resume()
+  }
+  const abortUpstream = () => upstreamNode.destroy(ac.signal.reason as Error)
+  res.on('drain', resumeUpstream)
+  ac.signal.addEventListener('abort', abortUpstream, { once: true })
+  upstreamNode.once('close', () => {
+    res.removeListener('drain', resumeUpstream)
+    ac.signal.removeEventListener('abort', abortUpstream)
+  })
   upstreamNode.on('data', (chunk: Buffer) => {
+    if (res.writableEnded || res.destroyed || ac.signal.aborted) return
+    if (res.writableLength + chunk.length > responseBufferLimit) {
+      const err = Object.assign(new Error('MITM response buffer limit exceeded'), {
+        code: 'MITM_RESPONSE_BUFFER_LIMIT',
+      })
+      warnLog('[mitm] response buffer limit exceeded', {
+        session: opts.ptySessionId,
+        generation,
+        queuedBytes: res.writableLength,
+        chunkBytes: chunk.length,
+        limitBytes: responseBufferLimit,
+        reason: err.code,
+      })
+      upstreamNode.destroy(err)
+      return
+    }
     // Feed our entry synthesizer (observation-only — never blocks).
     try {
       tee.write(chunk)
     } catch {
       /* tee already destroyed */
     }
-    // Forward to CLI without awaiting drain. Backpressure on `res` would
-    // otherwise pull on `upstreamNode` (Readable.fromWeb attaches its own
-    // backpressure to the underlying ReadableStream) and slow upstream.
     if (!res.writableEnded && !res.destroyed) {
       try {
-        res.write(chunk)
-      } catch {
-        /* res already gone */
+        if (!res.write(chunk)) upstreamNode.pause()
+      } catch (err) {
+        upstreamNode.destroy(err as Error)
       }
     }
   })
@@ -711,14 +743,15 @@ async function handleRequest(
       }
     // DIAG (#73): summarise what this SSE turn tee'd. `events:0` on a completed
     // SSE turn = parser/synth problem; healthy turns show hundreds of events.
-    warnLog('[mitm][diag#73] SSE turn done', { session: opts.ptySessionId, teeBytes, teeEvents })
+    warnLog('[mitm][diag#73] SSE turn done', { session: opts.ptySessionId, generation, teeBytes, teeEvents })
   })
   upstreamNode.on('error', (err: Error) => {
-    warnLog('[mitm] upstream stream error', { error: err.message })
+    warnLog('[mitm] upstream stream error', { session: opts.ptySessionId, generation, error: err.message })
     // Recycle the pool so the next request opens a fresh socket instead of
     // reusing the reset one; finalize the synth entry explicitly rather than
     // relying on the res.destroy → res-close chain.
-    recycleDispatcherOnReset(err)
+    recycleDispatcherOnReset(err, usedDispatcher)
+    ac.abort(err)
     try {
       synth.abort('upstream-error', true)
     } catch {
@@ -742,6 +775,7 @@ async function handleRequest(
     warnLog('[mitm] res stream error', { error: err.message })
   })
   res.on('close', () => {
+    res.removeListener('drain', resumeUpstream)
     // `hard` only when the SSE had NOT completed — a genuine mid-stream interrupt.
     // A normal turn-end also fires 'close' and must not latch the synth off (that
     // races the async tee tail and truncates the response).
@@ -770,12 +804,12 @@ async function handleRequest(
         /* ignore */
       }
     }
-    // A mid-stream close (user Ctrl+C) aborts the fetch as an AbortError, which
-    // recycleDispatcherOnReset does NOT match — leaving a torn keep-alive socket
-    // in the shared pool that starves the NEXT turn's tee→synth (streaming dies
-    // until reconnect, while console+JSONL keep working). Drop the pool so the
-    // next request opens a fresh socket. Guarded on !sseCompleted so a clean
-    // turn-end (the normal case) never forces a re-handshake on other sessions.
-    if (!sseCompleted) dropCachedDispatcher()
+    // Preserve fresh-pool recovery after a genuine client interrupt, but only
+    // retire the generation this request used. Explicit upstream/budget errors
+    // have their own handling above and must not trigger another retirement.
+    if (!sseCompleted && (ac.signal.reason as Error)?.name === 'AbortError') {
+      dropCachedDispatcher(usedDispatcher, 'client-interrupt')
+    }
   })
+  if (ac.signal.aborted) abortUpstream()
 }
