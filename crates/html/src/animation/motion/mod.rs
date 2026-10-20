@@ -1,9 +1,3 @@
-//! ★ ДОЛГ (08.09, v158, замер второго прохода `settle`): полный свод +45 в
-//! `css/motion`, но три пары ушли в минус и по бисекту (v163: в дереве только
-//! этот патч) принадлежат ему: `anchor-position-inline-005` 0.05 → 0.67,
-//! `-006` 0.08 → 1.00, `disclosure-styles` 0.19 → 0.62. Ни у одной нет
-//! `offset-*` — задет либо снятый вызов из разбора стиля (`dom.rs: walk`),
-//! либо порядок `settle` после `anchor::settle_static`. Разобрать отдельно.
 //! `offset-path`/`offset-distance`/`offset-rotate`/`offset-anchor`/
 //! `offset-position` (motion-1).
 //!
@@ -150,16 +144,7 @@ pub fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     // проход (вложенный документ `<iframe>` зовёт `settle` со своим деревом).
     let mut shapes = std::collections::HashMap::new();
     collect_shapes(nodes, &mut shapes);
-    SVG_SHAPES.with(|m| *m.borrow_mut() = shapes);
-    apply_offset_transforms(nodes, None, true, vcx);
-    SVG_SHAPES.with(|m| m.borrow_mut().clear());
-}
-
-thread_local! {
-    /// `id` → эквивалентный путь (SVG 2 §shapes, «equivalent path») фигур
-    /// документа — для `offset-path: url(#id)`.
-    static SVG_SHAPES: std::cell::RefCell<std::collections::HashMap<String, String>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
+    apply_offset_transforms(nodes, None, true, &shapes, vcx);
 }
 
 /// Приставить offset-трансформ к авторскому.
@@ -167,9 +152,10 @@ pub fn apply_offset_transform(
     c: &mut Computed,
     cb: Option<&Cb>,
     svg_origin: (f32, f32),
+    shapes: Option<&std::collections::HashMap<String, String>>,
     vcx: ValueCx<'_>,
 ) {
-    let Some(css) = offset_transform_css(c, cb, svg_origin, vcx) else {
+    let Some(css) = offset_transform_css(c, cb, svg_origin, shapes, vcx) else {
         return;
     };
     let author = c.transform.take();
@@ -196,7 +182,7 @@ pub fn apply_icb(c: &mut Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
         },
         c,
     );
-    apply_offset_transform(c, Some(&g), (0.0, 0.0), vcx);
+    apply_offset_transform(c, Some(&g), (0.0, 0.0), None, vcx);
 }
 
 /// Исходные параметры offset-трансформа для расчётов в дочерних модулях.

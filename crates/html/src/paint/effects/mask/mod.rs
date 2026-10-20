@@ -3,7 +3,15 @@
 mod context;
 pub mod element;
 pub(super) mod mask_geometry;
-pub(crate) use context::{MaskDefinitions, PaintContext};
+pub(crate) use context::{MaskDefinitions, MaskResources};
+
+/// Prepare document definitions while deferred groups retain their previous set.
+pub(crate) fn collect_mask_defs(
+    nodes: &[crate::dom::Node],
+    vcx: crate::document::state::ValueCx<'_>,
+) {
+    vcx.doc.masks.prepare(nodes, vcx);
+}
 
 /// SVG `<filter>` для `backdrop-filter: url(#id)` → матрица 4×5 над
 /// НЕумноженным RGBA (строки R, G, B, A: четыре множителя и сдвиг — как
@@ -93,3 +101,6 @@ pub(crate) fn svg_filter_matrix(def: &str) -> Option<[f32; 20]> {
     }
     Some(m)
 }
+
+#[cfg(test)]
+mod tests;

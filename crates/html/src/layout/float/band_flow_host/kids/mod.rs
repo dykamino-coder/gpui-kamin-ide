@@ -2,13 +2,15 @@
 
 use super::build_band_kid;
 use crate::dom::{Element, Node};
-use crate::layout::float::band_host::band_margins;
+use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
-use crate::paint::effects::paint_scope::DepthScope;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
+use crate::layout::float::shape_exclusion::measured_shape;
 use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
+use crate::style::computed::writing_mode::WritingMode;
+mod deferred;
 mod parts;
+use deferred::deferred;
 pub(super) use parts::band_kid_kind;
 
 /// Дети одного содержащего блока измеряемого хоста. `count` первых
@@ -21,9 +23,9 @@ pub(crate) fn band_kids(
     opts: &RenderOpts,
     em: f32,
     start_open: bool,
+    wm: WritingMode,
 ) -> Vec<crate::layout::float::band_flow::Kid> {
     use crate::layout::float::band_flow::{Kid, Nest};
-    let depth = defer_depth();
     let mut kids: Vec<Kid> = vec![];
     // Письмо содержащего блока: план хоста — в логических осях, поля
     // переводятся в (block-start, inline-end, block-end, inline-start)
@@ -50,10 +52,8 @@ pub(crate) fn band_kids(
     let mk_build = |p: &Element| -> crate::layout::float::band_flow::Build {
         let p = p.clone();
         let inherited = inherited.clone();
-        let opts = opts.clone();
-        std::rc::Rc::new(move |_cb: f32, _avail: f32, _shapes, _h: Option<f32>| {
-            let _depth = DepthScope::enter(depth);
-            element(&p, &inherited, &opts)
+        deferred(opts, false, move |opts, _cb, _avail, _shapes, _h| {
+            element(&p, &inherited, opts)
         })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.
@@ -118,11 +118,12 @@ pub(crate) fn band_kids(
         let margin = match vert {
             None => margin,
             Some(true) => [r, b, l, t],
+            Some(false) if wm.sideways_lr() => [l, t, r, b],
             Some(false) => [l, b, r, t],
         };
         // Распорка держит физическую высоту — в вертикальном письме это не
         // блочный размер.
-        if vert.is_some() && band_piece_m(n, em) == Some(false) {
+        if vert.is_some() && band_piece_m(n, em, wm) == Some(false) {
             continue;
         }
         let float = idx < count || c.style.float.is_some_and(|f| f != 0);
@@ -133,7 +134,7 @@ pub(crate) fn band_kids(
         // (`below-float3`: `::first-line { font-size: 50px }` у `x` под
         // флоатом). Первый прогон получает слой хоста.
         let first_line = !float && !seen_inflow && c.marks.anon && !c.marks.cont;
-        if !float && band_piece_m(n, em) != Some(false) {
+        if !float && band_piece_m(n, em, wm) != Some(false) {
             seen_inflow = true;
         }
         let first_layer: Option<Computed> = if first_line {
@@ -142,7 +143,7 @@ pub(crate) fn band_kids(
             None
         };
         let mut nest: Option<Nest> = None;
-        let kind = match band_kid_kind(inherited, opts, em, vert, n, c, float, &mut nest) {
+        let kind = match band_kid_kind(inherited, opts, em, wm, vert, n, c, float, &mut nest) {
             Some(value) => value,
             None => continue,
         };
@@ -151,21 +152,34 @@ pub(crate) fn band_kids(
             node.first_line = first_layer.map(Into::into);
         }
         let inherited = inherited.clone();
-        let opts = opts.clone();
+        let pagination_offset = opts.frag.float_struts.get(&c.node_id).map_or(0.0, |s| s.by);
+        let shape_values = opts.cx.vcx().keep();
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
         let cb_height = inherited.height;
         let cb_block_w = inherited.width;
-        let build: crate::layout::float::band_flow::Build =
-            std::rc::Rc::new(move |cb: f32, avail: f32, shapes, height: Option<f32>| {
-                build_band_kid(
-                    depth, float, &node, &inherited, &opts, is_nest, vertical, cb_height,
-                    cb_block_w, cb, avail, shapes, height,
-                )
-            });
+        let build = deferred(opts, !is_nest, move |opts, cb, avail, shapes, height| {
+            build_band_kid(
+                float, &node, &inherited, opts, is_nest, vertical, cb_height, cb_block_w, cb,
+                avail, shapes, height,
+            )
+        });
         let clear = if float { None } else { c.style.clear };
+        // css-shapes-1 §2: the float's shape shortens the lines next to it.
+        let shape: Option<crate::layout::float::band_flow::ShapeOf> =
+            (float && c.style.shape_outside.is_some()).then(|| {
+                let f = c.clone();
+                let side = c.style.float.unwrap_or(-1);
+                let em = band_em(&c.style, em).unwrap_or(em);
+                std::rc::Rc::new(move |bw: f32, bh: f32, m: [f32; 4], cbw: f32| {
+                    measured_shape(&f, side, (bw, bh), m, cbw, em, wm, shape_values.vcx())
+                }) as crate::layout::float::band_flow::ShapeOf
+            });
         kids.push(Kid {
             kind,
+            node_id: c.node_id,
+            pagination_offset,
+            monolithic: crate::layout::fragment::clone::monolith_box(c),
             clear,
             margin,
             build,
@@ -175,6 +189,7 @@ pub(crate) fn band_kids(
             lead_base: if float { base_for(idx) } else { None },
             margin_offset: c.style.float_margin_offset.unwrap_or(0.0),
             start_open,
+            shape,
         });
     }
     kids

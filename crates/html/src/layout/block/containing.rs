@@ -1,7 +1,7 @@
 //! Ширина содержимого коробки как содержащий блок её детей на спуске схлопывания полей.
 // owner: A
 
-use crate::layout::block::margins::{COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX};
+use crate::document::state::ValueCx;
 use crate::render::in_flow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -37,22 +37,86 @@ fn inner_width_px(c: &Computed, cb: Option<f32>) -> Option<f32> {
 /// `width: auto` его нет, и `15%` у `#parent` внутри `#grand-parent {width:
 /// 400px}` роняло цепочку целиком — поля абзаца и `#parent` складывались
 /// (16 + 60 вместо 60, `margin-percentage-inherit-001`).
-pub(super) fn with_inner_cb<T>(c: &Computed, f: impl FnOnce() -> T) -> T {
-    let level = COLLAPSE_CB_WIDTH_PX.with(std::cell::Cell::get);
-    let prev = COLLAPSE_CB_WIDTH_PX.with(|w| w.replace(inner_width_px(c, level)));
+pub(super) fn with_inner_cb<'a, T>(
+    c: &Computed,
+    vcx: ValueCx<'a>,
+    f: impl FnOnce(ValueCx<'a>) -> T,
+) -> T {
+    let level = vcx.collapse.width;
     // Кегль уровня — тоже от спуска: поля детей в `em` без своего кегля (и
     // с кеглем в `em`) меряются от кегля ЭТОЙ коробки, а не уровня выше.
     // Прежде `html{font-size:2em} p{font-size:.5em}` схлопывал поле абзаца
     // сквозь `body` по 8 точкам вместо 16 (`numbers-units-021`).
-    let font = COLLAPSE_FONT_PX.with(std::cell::Cell::get);
+    let font = vcx.collapse.font;
     let own = match c.font_size {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => k * font,
         _ => font,
     };
-    let prev_font = COLLAPSE_FONT_PX.with(|w| w.replace(own));
-    let out = f();
-    COLLAPSE_CB_WIDTH_PX.with(|w| w.set(prev));
-    COLLAPSE_FONT_PX.with(|w| w.set(prev_font));
-    out
+    f(
+        vcx.with_collapse(crate::layout::block::margins::CollapseInputs {
+            font: own,
+            width: inner_width_px(c, level),
+            ..vcx.collapse
+        }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::state::DocState;
+    use crate::layout::block::margins::CollapseInputs;
+
+    #[test]
+    fn descent_changes_only_child_length_inputs() {
+        let doc = DocState::new(Default::default());
+        let parent = doc.values().with_collapse(CollapseInputs {
+            font: 20.0,
+            width: Some(200.0),
+            height_def: true,
+        });
+        let style = Computed {
+            width: Some(Len::Pct(0.5)),
+            font_size: Some(Len::Em(2.0)),
+            ..Default::default()
+        };
+        let snapshot = with_inner_cb(&style, parent, |child| {
+            assert_eq!(
+                child.collapse,
+                CollapseInputs {
+                    font: 40.0,
+                    width: Some(100.0),
+                    height_def: true
+                }
+            );
+            let grandchild = Computed {
+                font_size: Some(Len::Em(0.5)),
+                ..Default::default()
+            };
+            with_inner_cb(&grandchild, child, |grandchild| {
+                assert_eq!(grandchild.collapse.font, 20.0);
+                assert_eq!(grandchild.collapse.width, Some(100.0));
+            });
+            child.keep()
+        });
+        assert_eq!(snapshot.vcx().collapse.font, 40.0);
+        assert_eq!(parent.collapse.font, 20.0);
+        assert_eq!(parent.collapse.width, Some(200.0));
+        assert_eq!(doc.values().collapse, CollapseInputs::default());
+        let other = DocState::new(Default::default());
+        assert_eq!(other.values().collapse, CollapseInputs::default());
+    }
+
+    #[test]
+    fn percent_padding_uses_only_the_supplied_level_width() {
+        let doc = DocState::new(Default::default());
+        let mut e = crate::layout::table::anon::anon_element("div", vec![]);
+        e.style.padding.top = Some(Len::Pct(0.5));
+        use crate::layout::block::struts::{top_edge_open, top_edge_open_at};
+        assert!(top_edge_open_at(&e, Some(0.0)));
+        assert!(!top_edge_open_at(&e, Some(100.0)));
+        assert!(!top_edge_open(&e));
+        assert_eq!(doc.values().collapse.width, None);
+    }
 }

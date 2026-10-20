@@ -19,7 +19,7 @@ impl ColumnStack {
         plan_all: Vec<Frag>,
         plan: Vec<Frag>,
     ) {
-        let nested_frag = crate::layout::fragment::effect_fragment::active();
+        let nested_frag = crate::layout::fragment::effect_fragment::active(&self.paint);
         for f in plan {
             let (c, ry) = self.place(f.col);
             // Срез едет вместе со сдвинутым фрагментом (css-break-3 §5.5):
@@ -195,6 +195,7 @@ impl ColumnStack {
                         end,
                     });
                     crate::layout::fragment::effect_fragment::with(
+                        &self.paint,
                         Some(crate::layout::fragment::effect_fragment::Scope {
                             parent,
                             fragment: Bounds {
@@ -203,7 +204,7 @@ impl ColumnStack {
                             },
                             clip,
                         }),
-                        || gap_fragment::with(scope, || el.paint(window, cx)),
+                        || gap_fragment::with(&self.paint, scope, || el.paint(window, cx)),
                     );
                 });
             } else {

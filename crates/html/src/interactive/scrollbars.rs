@@ -3,7 +3,8 @@
 mod buttons;
 pub(crate) mod interaction;
 mod modern;
-pub(crate) mod theme;
+#[cfg(test)]
+mod theme;
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Color;
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};

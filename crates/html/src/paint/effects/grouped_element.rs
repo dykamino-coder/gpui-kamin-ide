@@ -171,7 +171,7 @@ impl Grouped {
             polygon_evenodd: false,
             poly_expand: [0.0; 4],
             mask: None,
-            mask_defs: vcx.doc.paint.definitions(),
+            mask_defs: vcx.doc.masks.definitions(),
             corner_clip: None,
             mask_size: None,
             mask_fit: 0,

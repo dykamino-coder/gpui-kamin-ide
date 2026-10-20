@@ -1590,4 +1590,7 @@ pub struct Computed {
     pub(crate) text_orientation: Option<super::writing_mode::TextOrientation>,
     /// Computed image alpha source for shape-outside; basic shapes use shape_outside.
     pub(crate) shape_image: Option<super::ImageSource>,
+    /// The style of the initial containing block (`RenderOpts::root_style`),
+    /// whose box is the embedder's; not inherited.
+    pub(crate) icb: bool,
 }

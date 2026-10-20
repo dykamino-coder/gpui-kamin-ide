@@ -62,7 +62,7 @@ impl Computed {
                 let inner = v[11..].trim_end();
                 let args = crate::style::css::split_args(inner.strip_suffix(')').unwrap_or(inner));
                 if let [light, dark] = args.as_slice() {
-                    let dark_now = crate::style::values::value::dark_scheme();
+                    let dark_now = crate::style::values::value::dark_scheme(vcx);
                     let pick = if dark_now { dark.trim() } else { light.trim() };
                     self.apply_background(key, pick, hit, vcx);
                 }

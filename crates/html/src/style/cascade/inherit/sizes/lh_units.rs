@@ -2,7 +2,11 @@
 
 use super::*;
 
-pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
+pub(super) fn inherit_lh_units(
+    parent: &Computed,
+    c: &mut Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) {
     // css-values-4 §6.1.4, оговорка про font-affecting properties:
     // «when ''lh'' or ''rlh'' units are used in the value of the
     // 'line-height' property or font-affecting properties on the element
@@ -27,9 +31,9 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * parent_font,
         _ => {
-            let f = crate::text::metrics::normal_line(&parent_family);
+            let f = crate::text::metrics::normal_line(&parent_family, vcx);
             if f > 0.0 {
-                crate::text::metrics::normal_px(f, parent_font)
+                crate::text::metrics::normal_px(f, parent_font, vcx)
             } else {
                 1.2 * parent_font
             }
@@ -78,9 +82,9 @@ pub(super) fn inherit_lh_units(parent: &Computed, c: &mut Computed) {
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,
         _ => {
-            let f = crate::text::metrics::normal_line(&family);
+            let f = crate::text::metrics::normal_line(&family, vcx);
             if f > 0.0 {
-                crate::text::metrics::normal_px(f, font)
+                crate::text::metrics::normal_px(f, font, vcx)
             } else {
                 1.2 * font
             }

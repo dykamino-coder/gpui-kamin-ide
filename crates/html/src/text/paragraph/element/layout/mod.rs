@@ -1,4 +1,4 @@
-//! Layout for element; split out to keep the owning module within 250 lines.
+//! Paragraph layout probes retain text, geometry, and document measurement ownership.
 
 mod measured_layout;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
@@ -92,9 +92,13 @@ impl Paragraph {
         let spacer_edges = self.spacer_edges.clone();
         let box_extents = self.box_extents.clone();
         let flow = self.flow.clone();
+        let fragment = self.fragment.clone();
         let atom_fit = self.atom_fit.clone();
         let ruby_base_sink = self.ruby_base_sink.clone();
         let ruby_layers = self.ruby_layers.clone();
+        let measures = self.measures.clone();
+        let paint_context = self.paint_context.clone();
+        let inline_measure = self.inline_measure.clone();
         let id = window.request_measured_layout_with_physical_baselines(
             gpui::Style::default(),
             move |known, available, window, _cx| {
@@ -108,6 +112,9 @@ impl Paragraph {
                     align,
                     wrap,
                 );
+                probe.measures = measures.clone();
+                probe.paint_context = paint_context.clone();
+                probe.inline_measure = inline_measure.clone();
                 probe.vertical = vertical;
                 probe.lines_reversed = lines_reversed;
                 probe.vertical_central_baseline = vertical_central_baseline;
@@ -125,6 +132,7 @@ impl Paragraph {
                 probe.indent = indent;
                 probe.hanging = hanging;
                 probe.flow = flow.clone();
+                probe.fragment = fragment.clone();
                 probe.atom_boxes = atom_boxes.clone();
                 probe.edge_spans = edge_spans.clone();
                 probe.ruby_trim = ruby_trim;
@@ -158,6 +166,9 @@ impl Paragraph {
                 )
             },
         );
+        if let Some(f) = &self.fragment {
+            f.record(id);
+        }
         (id, id)
     }
 }

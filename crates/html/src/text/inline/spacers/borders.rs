@@ -20,7 +20,12 @@ use crate::style::values::value::{Color, Len};
 /// она садится в строку атомом и растит строку на спуск шрифта. По
 /// css-backgrounds-3 §4.1 `<line-width>` — это `<length [0,∞]>` любых единиц,
 /// сужения до точек спека не даёт.
-pub(super) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f32> {
+pub(super) fn border_px(
+    l: Option<Len>,
+    c: &Computed,
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<f32> {
     match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(v),
@@ -33,7 +38,12 @@ pub(super) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f3
                 _ => font_px,
             };
             let family = c.font_family.clone().unwrap_or_default();
-            Some(crate::text::metrics::spacing_px(Some(u), &family, size))
+            Some(crate::text::metrics::spacing_px(
+                Some(u),
+                &family,
+                size,
+                vcx,
+            ))
         }
         _ => None,
     }
@@ -41,9 +51,13 @@ pub(super) fn border_px(l: Option<Len>, c: &Computed, font_px: f32) -> Option<f3
 
 // A CSS edge index selects the corresponding width, color and style entries.
 #[allow(clippy::needless_range_loop)]
-pub fn sided_border(c: &Computed, font_px: f32) -> Option<(Color, [f32; 4])> {
+pub fn sided_border(
+    c: &Computed,
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(Color, [f32; 4])> {
     let w = c.borders();
-    let px_of = |l: Option<Len>| border_px(l, c, font_px);
+    let px_of = |l: Option<Len>| border_px(l, c, font_px, vcx);
     let sides = [
         px_of(w.top)?,
         px_of(w.right)?,
@@ -93,12 +107,16 @@ pub fn sided_border(c: &Computed, font_px: f32) -> Option<(Color, [f32; 4])> {
     Some((color?, sides))
 }
 
-pub fn uniform_border(c: &Computed, font_px: f32) -> Option<(Color, f32)> {
+pub fn uniform_border(
+    c: &Computed,
+    font_px: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(Color, f32)> {
     let w = c.borders();
     // Здесь незаданная грань — НЕ ноль: ровной рамке нужны все четыре, и
     // `None` обязан рушить сведение (иначе `border-left` в одиночку сошёл бы
     // за ровную рамку по всем сторонам).
-    let px_of = |l: Option<Len>| l.and_then(|v| border_px(Some(v), c, font_px));
+    let px_of = |l: Option<Len>| l.and_then(|v| border_px(Some(v), c, font_px, vcx));
     let (t, r, b, l) = (
         px_of(w.top)?,
         px_of(w.right)?,

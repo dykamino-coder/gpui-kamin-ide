@@ -54,18 +54,18 @@ pub(crate) fn paragraph_spans(
                 }),
         )
         .spans(inline::wrap_spans(pieces, inherited))
-        .word_spans(inline::word_spans(pieces, biggest))
+        .word_spans(inline::word_spans(pieces, biggest, opts.cx.vcx()))
         // Автозазоры идут ПЕРВЫМИ: поиск диапазона берёт первое
         // попадание, и зазор обязан перебить трекинг всего куска.
         .letter_spans({
-            let auto = inline::autospace_spans(pieces, biggest);
-            let letters = inline::letter_spans(pieces, biggest);
+            let auto = inline::autospace_spans(pieces, biggest, opts.cx.vcx());
+            let letters = inline::letter_spans(pieces, biggest, opts.cx.vcx());
             // Gaps re-paired by bidi reordering go first (first match wins).
             // They replace tracking only: an autospace gap stays in charge.
             let mut bidi = inline::bidi_letter_spans(
                 pieces,
                 inherited.wm().rtl(),
-                inline::block_letter_spacing(inherited, biggest),
+                inline::block_letter_spacing(inherited, biggest, opts.cx.vcx()),
                 &letters,
             );
             bidi.retain(|(r, _)| !auto.iter().any(|(a, _)| a.contains(&r.start)));
@@ -82,7 +82,7 @@ pub(crate) fn paragraph_spans(
                 rotated_central(inherited).then(|| {
                     let family = inherited.font_family.clone().unwrap_or_default();
                     let size = crate::render::paragraph::own_size(inherited, opts);
-                    let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size);
+                    let (a, d, _) = crate::text::metrics::vmetrics_px(&family, size, opts.cx.vcx());
                     (a - d) / 2.0
                 }),
                 inherited.vertical_align,
@@ -97,7 +97,9 @@ pub(crate) fn paragraph_spans(
                 biggest,
                 crate::text::metrics::normal_line(
                     &inherited.font_family.clone().unwrap_or_default(),
+                    opts.cx.vcx(),
                 ),
+                opts.cx.vcx(),
             );
             v.retain(|(r, _)| !in_edge(edges, r));
             v
@@ -108,14 +110,18 @@ pub(crate) fn paragraph_spans(
         .emph_spans(inline::emphasis_spans(
             pieces,
             biggest,
-            crate::text::metrics::normal_line(&inherited.font_family.clone().unwrap_or_default()),
+            crate::text::metrics::normal_line(
+                &inherited.font_family.clone().unwrap_or_default(),
+                opts.cx.vcx(),
+            ),
             (inherited.wm().turned() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
             opts.cx.ruby_layers.as_ref(),
+            opts.cx.vcx(),
         ))
         // Линии украшений рисует сам абзац (css-text-decor-3 §2); у
         // повёрнутого — прежний путь набора.
-        .decor_spans(inline::decor_spans(pieces, &opts.text))
+        .decor_spans(inline::decor_spans(pieces, &opts.text, opts.cx.vcx()))
 }
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).

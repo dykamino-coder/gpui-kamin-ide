@@ -96,9 +96,9 @@ impl Len {
             }
             Len::Em(k) => k * font.font_px,
             Len::EmPx(k, add) => k * font.font_px + add,
-            Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px).0,
-            Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px).1,
-            Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px),
+            Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).0,
+            Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).1,
+            Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px, vcx),
             Len::Lh(k) => k * lh(),
             Len::LhPx(k, add) => k * lh() + add,
             Len::Vw(_)

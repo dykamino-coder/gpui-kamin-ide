@@ -1,11 +1,10 @@
-//! Prepaint for element; split out to keep the owning module within 250 lines.
+//! Paragraph geometry publication, inline anchors and positioned overlays before paint.
 
 use crate::text::paragraph::*;
 use gpui::{
     App, Bounds, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
     LayoutId, Pixels, Window, point, px,
 };
-
 impl Paragraph {
     pub(crate) fn prepaint_impl(
         &mut self,
@@ -16,7 +15,6 @@ impl Paragraph {
         window: &mut Window,
         _cx: &mut App,
     ) -> Option<Hitbox> {
-        // Предел переноса — длина строки по её физической оси.
         self.vertical_layout_origin =
             window.layout_origin_unrounded(*state) - window.element_offset();
         self.width_nudge = {
@@ -28,8 +26,7 @@ impl Paragraph {
                 dw
             }
         };
-        // Snapping moves an edge by at most half a device pixel; anything
-        // larger means the node was placed outside its tree (`prepaint_at`).
+        // Larger shifts than half a device pixel come from `prepaint_at`.
         self.glyph_nudge = {
             let d = window.layout_origin_unrounded(*state) - bounds.origin;
             let half = 0.5 / window.scale_factor().max(0.01) + 1e-4;
@@ -45,10 +42,8 @@ impl Paragraph {
         } else {
             bounds.size.width
         };
-        // Коробка приходит округлённой ВНИЗ до точки устройства, а мерили её
-        // по дробной ширине: строка, влезавшая ровно, на отрисовке уже не
-        // влезала и рвалась заново (`hyphens-manual-011`). Возвращаем себе эту
-        // одну точку устройства — иначе раскладка кадра расходится с замером.
+        // Restore the device pixel lost by downward snapping so a line that
+        // fitted the fractional measured width does not wrap during prepaint.
         let scale = window.scale_factor().max(1.0);
         let limit = limit + px(1.0 / scale);
         self.indent_basis = {
@@ -95,7 +90,7 @@ impl Paragraph {
         // not put every paragraph before it, but prepaint of the whole tree
         // precedes any paint (css-overflow-4 §5.3; one frame per relayout
         // step, like Blink's measure-then-relayout pass).
-        if !self.vertical && !crate::text::vertical::in_rotated_frame() {
+        if !self.vertical && !self.paint_context.is_rotated() {
             let pads = self.line_padding();
             let lh = self.line_height;
             let step = |i: usize| -> Pixels {
@@ -129,13 +124,15 @@ impl Paragraph {
                     })
                 })
                 .collect();
-            let rotated = crate::text::vertical::in_rotated_frame();
+            let rotated = self.paint_context.is_rotated();
             let scale = window.scale_factor().max(0.01);
             // Строчные якоря и содержащие блоки — до куска внутри них:
             // носитель краёв стоит в конце коробки, а абсолют — раньше.
             for (at, _, how) in placed.iter() {
-                if let Some(b) = how.inline_box.filter(|_| !rotated) {
-                    self.register_inline_box(&segs, *at, b, bounds, window);
+                if let Some(b) = how.inline_box.filter(|_| !rotated)
+                    && let Some(info) = &how.inline_box_info
+                {
+                    self.register_inline_box(&segs, *at, b, info, bounds, window);
                 }
             }
             for (at, el, how) in placed.iter_mut() {
@@ -227,7 +224,11 @@ impl Paragraph {
                     let (lh, start) = match self.lines.get(row) {
                         Some(l) => {
                             let (a, b) = self.line_extents(&l.range.clone());
-                            let start = self.point_of(&segs, l.range.start, bounds).x;
+                            let start = if *next {
+                                bounds.origin.x
+                            } else {
+                                self.point_of(&segs, l.range.start, bounds).x
+                            };
                             (px(a + b).max(self.line_height), start)
                         }
                         None => (self.line_height, bounds.origin.x),

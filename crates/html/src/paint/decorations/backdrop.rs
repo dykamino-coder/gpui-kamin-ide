@@ -27,7 +27,7 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
         .or_else(|| {
             c.backdrop_ref
                 .as_deref()
-                .and_then(|id| vcx.doc.paint.markup(&format!("filter:{id}")))
+                .and_then(|id| vcx.doc.masks.markup(&format!("filter:{id}")))
                 .and_then(|def| svg_filter_matrix(&def))
         })
         .filter(|_| !c.backdrop_root_above);

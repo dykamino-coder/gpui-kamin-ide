@@ -59,7 +59,7 @@ impl Paragraph {
                 - self.x_at(&segs, line.range.start, Edge::Start)
                 - px(b.shift);
             let top = match b.align {
-                AtomAlign::Top => tops[row],
+                AtomAlign::Top => tops[row] + f32::from(line.clearance),
                 AtomAlign::Bottom => tops[row] + lh + p + q - b.h,
                 _ => tops[row] + p + self.line_base(&line.range) + self.atom_top(&b),
             };

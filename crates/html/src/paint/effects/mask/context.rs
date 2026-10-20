@@ -7,9 +7,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Default)]
-pub(crate) struct PaintContext {
+pub(crate) struct MaskResources {
     definitions: RefCell<Arc<MaskDefinitions>>,
-    viewport: Cell<(f32, f32)>,
     prepared: Cell<bool>,
 }
 
@@ -27,7 +26,7 @@ impl MaskDefinitions {
     }
 }
 
-impl PaintContext {
+impl MaskResources {
     pub(crate) fn definitions(&self) -> Arc<MaskDefinitions> {
         self.definitions.borrow().clone()
     }
@@ -36,15 +35,10 @@ impl PaintContext {
         self.definitions.borrow().get(id).map(|d| d.markup.clone())
     }
 
-    pub(crate) fn viewport(&self) -> (f32, f32) {
-        self.viewport.get()
-    }
-
-    pub(crate) fn begin(&self, nodes: &[Node], viewport: (f32, f32), vcx: ValueCx<'_>) {
+    pub(crate) fn prepare(&self, nodes: &[Node], vcx: ValueCx<'_>) {
         if !self.prepared.get() {
             self.collect(nodes, vcx);
         }
-        self.viewport.set(viewport);
     }
 
     /// Rebuild before tree construction, including updates at the same node address.
@@ -117,14 +111,14 @@ mod tests {
     fn delayed_masks_keep_markup_and_alpha_after_other_documents_and_rebuilds() {
         let doc = DocState::new(Media::default());
         let vcx = doc.values();
-        let a = PaintContext::default();
+        let a = MaskResources::default();
         a.collect(&nodes(true, "red", &doc), vcx);
         let retained = a.definitions();
         let markup = retained.get("m").unwrap().markup.clone();
         assert!(retained.get("m").unwrap().alpha);
         assert!(!retained.get("c").unwrap().alpha);
         assert!(retained.get("filter:f").is_some());
-        let b = PaintContext::default();
+        let b = MaskResources::default();
         b.collect(&nodes(false, "blue", &doc), vcx);
         assert!(!b.definitions().get("m").unwrap().alpha);
         assert_ne!(b.definitions().get("m").unwrap().markup, markup);
@@ -152,7 +146,7 @@ mod tests {
         }
         let doc = DocState::new(Media::default());
         let vcx = doc.values();
-        let context = PaintContext::default();
+        let context = MaskResources::default();
         let mut nodes = nodes(false, "red", &doc);
         let address = nodes.as_ptr();
         context.collect(&nodes, vcx);
@@ -164,15 +158,5 @@ mod tests {
             before.get("m").unwrap().markup,
             context.definitions().get("m").unwrap().markup
         );
-    }
-
-    #[test]
-    fn explicit_documents_keep_independent_viewports_and_resource_owners() {
-        let a = DocState::new(Media::default());
-        let b = DocState::new(Media::default());
-        a.paint.begin(&[], (300.0, 200.0), a.values());
-        b.paint.begin(&[], (10.0, 20.0), b.values());
-        assert_eq!(b.paint.viewport(), (10.0, 20.0));
-        assert_eq!(a.paint.viewport(), (300.0, 200.0));
     }
 }

@@ -108,17 +108,17 @@ impl Render for Page {
             };
             (boxes(0, &first), boxes, margins)
         });
-        let opts = RenderOpts {
+        let mut opts = RenderOpts {
             viewport: page.as_ref().map(|p| (p.0.area.0, p.0.area.1)).unwrap_or((
                 f32::from(window.viewport_size().width),
                 f32::from(window.viewport_size().height),
             )),
             text,
             normal_line_height: 1.31,
-            doc_salt: self.doc.salt(),
             cx: Default::default(),
             frag: Default::default(),
         };
+        opts.cx.freeze_scrollbars = true;
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
         // неопределённой, и абсолютный элемент, растянутый краями

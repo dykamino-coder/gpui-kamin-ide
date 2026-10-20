@@ -1,4 +1,4 @@
-//! Measured layout for layout; split out to keep the owning module within 250 lines.
+//! Paragraph measurement under inline constraints, including line growth and break geometry.
 
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};
@@ -117,11 +117,9 @@ pub(crate) fn measured_layout(
     // band host's intrinsic probe, like `VerticalText` does: the
     // box itself stretches to the window along the line axis.
     if vertical {
-        crate::text::vertical::VT_INLINE_MAX.with(|c| {
-            if let Some(v) = c.get() {
-                c.set(Some(v.max(f32::from(content))));
-            }
-        });
+        if let Some(measure) = &probe.inline_measure {
+            measure.report(f32::from(content));
+        }
     }
     let width = known_along.unwrap_or(content);
     // Шире отведённого коробка не бывает: у абзаца блочного уровня
@@ -168,6 +166,14 @@ pub(crate) fn measured_layout(
     let across = {
         probe.lines = lines.clone();
         let pads = probe.line_padding();
+        probe.publish_fragment_lines(
+            &pads,
+            f32::from(if vertical {
+                probe.line_height
+            } else {
+                line_height
+            }),
+        );
         if let Some(layers) = &probe.ruby_layers {
             layers.account_leading(&pads);
         }

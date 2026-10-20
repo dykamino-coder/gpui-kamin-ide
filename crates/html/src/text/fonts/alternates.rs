@@ -1,12 +1,13 @@
 //! Family-specific alternate names, CSS Fonts 4 §6.8–6.9.
 //! Resolution follows inheritance and precedes font-feature-settings (§7.2).
 
-use std::cell::RefCell;
+use crate::document::state::ValueCx;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 type Key = (String, String, String);
 type Definition = (Vec<u32>, Vec<u32>);
+pub(crate) type Definitions = HashMap<Key, Definition>;
 /// Inherited requests retain their document's definitions, so parsing an iframe
 /// cannot change the feature names of an already parsed outer document.
 #[derive(Clone, Debug)]
@@ -15,23 +16,19 @@ pub struct Alternates {
     values: Arc<HashMap<Key, Definition>>,
 }
 
-fn snapshot(requests: Vec<(String, Vec<String>)>) -> Alternates {
+fn snapshot(requests: Vec<(String, Vec<String>)>, vcx: ValueCx<'_>) -> Alternates {
     Alternates {
         requests,
-        values: VALUES.with(|v| Arc::new(v.borrow().clone())),
+        values: Arc::new(vcx.doc.font_alternates.borrow().clone()),
     }
 }
 
-pub(crate) fn normal() -> Alternates {
-    snapshot(Vec::new())
+pub(crate) fn normal(vcx: ValueCx<'_>) -> Alternates {
+    snapshot(Vec::new(), vcx)
 }
 
-thread_local! {
-    static VALUES: RefCell<HashMap<Key, Definition>> = RefCell::new(HashMap::new());
-}
-
-pub(crate) fn reset() {
-    VALUES.with(|v| v.borrow_mut().clear());
+pub(crate) fn reset(vcx: ValueCx<'_>) {
+    vcx.doc.font_alternates.borrow_mut().clear();
 }
 
 fn ident(s: &str) -> bool {
@@ -51,7 +48,7 @@ fn kind(s: &str) -> bool {
     )
 }
 
-pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
+pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>, vcx: ValueCx<'_>) {
     let families: Vec<_> = families.split(',').map(str::trim).collect();
     if families.iter().any(|f| {
         !crate::style::computed::family_name_ok(f)
@@ -101,22 +98,22 @@ pub(crate) fn register(families: &str, body: &str, layer: Vec<u32>) {
             if !ident(&name) || !valid {
                 continue;
             }
-            VALUES.with(|v| {
-                let mut v = v.borrow_mut();
+            {
+                let mut v = vcx.doc.font_alternates.borrow_mut();
                 for family in &families {
                     let key = (family.clone(), group.into(), name.clone());
                     if v.get(&key).is_none_or(|old| old.0 <= layer) {
                         v.insert(key, (layer.clone(), numbers.clone()));
                     }
                 }
-            });
+            }
         }
     }
 }
 
-pub(crate) fn parse(value: &str, shorthand: bool) -> Option<Alternates> {
+pub(crate) fn parse(value: &str, shorthand: bool, vcx: ValueCx<'_>) -> Option<Alternates> {
     if value.eq_ignore_ascii_case("normal") || (shorthand && value == "none") {
-        return Some(normal());
+        return Some(normal(vcx));
     }
     let mut out: Vec<(String, Vec<String>)> = Vec::new();
     let mut rest = value.trim();
@@ -150,7 +147,7 @@ pub(crate) fn parse(value: &str, shorthand: bool) -> Option<Alternates> {
         }
         rest = rest.trim_start();
     }
-    Some(snapshot(out))
+    Some(snapshot(out, vcx))
 }
 
 pub(crate) fn resolve(family: &str, alternates: Option<&Alternates>) -> Vec<(String, u32)> {
@@ -195,4 +192,24 @@ pub(crate) fn resolve(family: &str, alternates: Option<&Alternates>) -> Vec<(Str
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn definitions_are_document_owned_and_style_snapshots_are_stable() {
+        let a = crate::document::state::DocState::new(Default::default());
+        let b = crate::document::state::DocState::new(Default::default());
+        register("Example", "@styleset { named: 1; }", vec![], a.values());
+        register("Example", "@styleset { named: 2; }", vec![], b.values());
+        let first = parse("styleset(named)", false, a.values()).unwrap();
+        let other = parse("styleset(named)", false, b.values()).unwrap();
+        reset(a.values());
+        register("Example", "@styleset { named: 3; }", vec![], a.values());
+        let later = parse("styleset(named)", false, a.values()).unwrap();
+        assert_eq!(resolve("Example", Some(&first)), vec![("ss01".into(), 1)]);
+        assert_eq!(resolve("Example", Some(&other)), vec![("ss02".into(), 1)]);
+        assert_eq!(resolve("Example", Some(&later)), vec![("ss03".into(), 1)]);
+    }
 }

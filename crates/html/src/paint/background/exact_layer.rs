@@ -10,23 +10,25 @@
 
 use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled as _, Window, px};
-use std::cell::Cell;
 
-thread_local! {
-    /// The layer being painted: its snapped bounds and the unrounded ones.
-    static EXACT: Cell<Option<(Bounds<Pixels>, Bounds<Pixels>)>> = const { Cell::new(None) };
+/// Snapped clip and unrounded positioning area of one paint callback.
+#[derive(Clone, Copy)]
+pub(crate) struct PaintGeometry {
+    pub(crate) snapped: Bounds<Pixels>,
+    exact: Option<Bounds<Pixels>>,
 }
 
-/// The positioning box for `bounds`: the unrounded box when `bounds` is the
-/// snapped box of the layer being painted, otherwise `bounds` unchanged.
-pub(crate) fn positioning(bounds: Bounds<Pixels>) -> Bounds<Pixels> {
-    match EXACT.with(Cell::get) {
-        Some((snapped, exact)) if snapped == bounds => exact,
-        _ => bounds,
+impl PaintGeometry {
+    /// Resolve only this layer's box; a different area keeps its own geometry.
+    pub(crate) fn positioning(self, bounds: Bounds<Pixels>) -> Bounds<Pixels> {
+        match self.exact {
+            Some(exact) if self.snapped == bounds => exact,
+            _ => bounds,
+        }
     }
 }
 
-type PaintFn = Box<dyn FnMut(Bounds<Pixels>, &mut Window)>;
+type PaintFn = Box<dyn FnMut(PaintGeometry, &mut Window)>;
 
 pub(crate) struct ExactLayer {
     child: AnyElement,
@@ -37,10 +39,10 @@ pub(crate) struct ExactLayer {
 impl ExactLayer {
     /// A layer laid out with the given `[top, right, bottom, left]` insets
     /// from the parent's padding box (negative = outward), painting with the
-    /// unrounded box available through [`positioning`].
+    /// unrounded box available through [`PaintGeometry::positioning`].
     pub(crate) fn inset(
         [t, r, b, l]: [f32; 4],
-        paint: impl FnMut(Bounds<Pixels>, &mut Window) + 'static,
+        paint: impl FnMut(PaintGeometry, &mut Window) + 'static,
     ) -> Self {
         Self {
             child: gpui::div()
@@ -95,8 +97,12 @@ impl Hooks for ExactLayer {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        let outer = EXACT.with(|cell| cell.replace(self.exact.map(|exact| (bounds, exact))));
-        (self.paint)(bounds, window);
-        EXACT.with(|cell| cell.set(outer));
+        (self.paint)(
+            PaintGeometry {
+                snapped: bounds,
+                exact: self.exact,
+            },
+            window,
+        );
     }
 }

@@ -86,6 +86,7 @@ pub(super) fn table_finish(
         cols_collapsed,
         cols_pct,
         opts.cx.cb_width,
+        opts.cx.vcx(),
     );
     // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
     // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:

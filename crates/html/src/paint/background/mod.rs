@@ -14,7 +14,7 @@ use crate::document::state::ValueCx;
 mod root_area;
 mod root_box;
 pub use root_area::RootArea;
-pub(crate) use root_box::{capture as measure_root_box, record as record_root_box};
+pub(crate) use root_box::{Measurement as RootMeasurement, record as record_root_box};
 
 mod fills;
 use crate::hooks::IntoHooked;
@@ -108,7 +108,7 @@ pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<An
                 let bounds = if style.bg_fixed == Some(true) {
                     clip
                 } else {
-                    area.rect(clip)
+                    area.rect(clip, vcx)
                 };
                 paint_tiles(&style, bounds, Some(clip), window, vcx);
             },
@@ -133,7 +133,8 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     Some(
         exact_layer::ExactLayer::inset(
             c.bg_border_insets.unwrap_or([0.0; 4]),
-            move |bounds: Bounds<Pixels>, window: &mut gpui::Window| {
+            move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
+                let bounds = geometry.snapped;
                 let vcx = values.vcx();
                 clip::paint(&style, bounds, window, |style, window| {
                     if style.bg_fixed == Some(true) {
@@ -144,9 +145,16 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
                             origin: gpui::point(px(0.0), px(0.0)),
                             size: window.viewport_size(),
                         };
-                        paint_tiles(style, view, Some(bounds), window, vcx);
+                        tiles::paint_tiles_in(
+                            style,
+                            view,
+                            Some(bounds),
+                            window,
+                            Some(geometry),
+                            vcx,
+                        );
                     } else {
-                        paint_area(style, bounds, window, vcx);
+                        tiles::paint_tiles_in(style, bounds, None, window, Some(geometry), vcx);
                     }
                 });
             },

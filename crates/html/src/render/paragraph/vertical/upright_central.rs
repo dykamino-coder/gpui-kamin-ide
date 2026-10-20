@@ -96,7 +96,7 @@ fn collect(
                 let shift = if e.style.vertical_align == Some(Align::Center) {
                     let family = style.font_family.clone().unwrap_or_default();
                     let parent = own_size(style, opts);
-                    shift + crate::text::metrics::ch_ex_px(&family, parent).1 / 2.0
+                    shift + crate::text::metrics::ch_ex_px(&family, parent, vcx).1 / 2.0
                 } else {
                     shift
                 };

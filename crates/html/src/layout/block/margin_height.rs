@@ -9,8 +9,8 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 
-pub(super) fn separate(e: &mut Element) -> bool {
-    if !lowers(e) {
+pub(super) fn separate(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+    if !lowers(e, vcx) {
         return false;
     }
     // The child's end margin cannot change this constrained parent's used
@@ -20,7 +20,7 @@ pub(super) fn separate(e: &mut Element) -> bool {
         if let Node::Element(child) = node
             && in_flow(&child.style)
         {
-            pin_inherited_margins(child, false, true);
+            pin_inherited_margins(child, false, true, vcx);
             child.style.margin.bottom = Some(Len::Px(0.0));
         }
     }
@@ -32,8 +32,8 @@ pub(super) fn separate(e: &mut Element) -> bool {
 /// the end margin when the used block size differs from the intrinsic size.
 /// Unknown content remains on the existing path; this proof uses only
 /// one definite block child whose border edge can be calculated here.
-pub(super) fn lowers(e: &Element) -> bool {
-    let Some(mut cap) = margin_px(e.style.max_height, &e.style) else {
+pub(super) fn lowers(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
+    let Some(mut cap) = margin_px(e.style.max_height, &e.style, vcx) else {
         return false;
     };
     let edges = |style: &Computed| -> Option<f32> {
@@ -52,7 +52,7 @@ pub(super) fn lowers(e: &Element) -> bool {
         };
         cap = (cap - inset).max(0.0);
     }
-    if let Some(min) = margin_px(e.style.min_height, &e.style) {
+    if let Some(min) = margin_px(e.style.min_height, &e.style, vcx) {
         cap = cap.max(min);
     } else if !zero_len(e.style.min_height) {
         return false;
@@ -73,13 +73,13 @@ pub(super) fn lowers(e: &Element) -> bool {
         {
             return false;
         }
-        let Some(height) = margin_px(child.style.height, &child.style) else {
+        let Some(height) = margin_px(child.style.height, &child.style, vcx) else {
             return false;
         };
         let Some(inset) = edges(&child.style) else {
             return false;
         };
-        let Some(top) = margin_or_bail(child.style.margin.top, &child.style) else {
+        let Some(top) = margin_or_bail(child.style.margin.top, &child.style, vcx) else {
             return false;
         };
         let height = if child.style.border_box == Some(true) {
@@ -92,9 +92,9 @@ pub(super) fn lowers(e: &Element) -> bool {
     bottom.is_some_and(|bottom| bottom > cap)
 }
 
-pub(super) fn raises(e: &Element) -> bool {
+pub(super) fn raises(e: &Element, vcx: crate::document::state::ValueCx<'_>) -> bool {
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    match margin_px(e.style.min_height, &e.style) {
+    match margin_px(e.style.min_height, &e.style, vcx) {
         None => !zero(e.style.min_height),
         Some(mh) if mh <= 0.0 => false,
         Some(mh) => {
@@ -114,7 +114,7 @@ pub(super) fn raises(e: &Element) -> bool {
                             _ => None,
                         };
                         let own = match (
-                            margin_px(ch.style.height, &ch.style),
+                            margin_px(ch.style.height, &ch.style, vcx),
                             side(ch.style.padding.top),
                             side(ch.style.padding.bottom),
                             side(b.top),

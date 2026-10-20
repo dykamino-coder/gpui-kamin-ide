@@ -32,7 +32,8 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     if depth == 0 {
         return None;
     }
-    let _frame = crate::layout::fragment::LineScope::enter(c, vcx);
+    let lines = crate::layout::fragment::LineCx::child(c, vcx);
+    let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
     if let Some(found) = row::pushed_row_at(c, a, depth, forced, vcx) {
         return found;
     }

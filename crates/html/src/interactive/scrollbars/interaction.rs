@@ -51,7 +51,9 @@ pub struct HitBar {
     bar: Bar,
     hitbox: Hitbox,
 }
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prepaint(
+    freeze: bool,
     c: &crate::style::computed::Computed,
     handle: &ScrollHandle,
     selected: [bool; 2],
@@ -60,7 +62,7 @@ pub(crate) fn prepaint(
     bounds: gpui::Bounds<gpui::Pixels>,
     window: &mut Window,
 ) -> Vec<HitBar> {
-    if !super::theme::interactive() {
+    if freeze {
         return Vec::new();
     }
     super::modern::bars(c, handle, selected, range, insets, bounds)
@@ -72,8 +74,14 @@ pub(crate) fn prepaint(
         .collect()
 }
 impl Interaction {
-    pub(crate) fn paint(&self, bars: &[HitBar], handle: &ScrollHandle, window: &mut Window) -> f32 {
-        if !super::theme::interactive() {
+    pub(crate) fn paint(
+        &self,
+        freeze: bool,
+        bars: &[HitBar],
+        handle: &ScrollHandle,
+        window: &mut Window,
+    ) -> f32 {
+        if freeze {
             return 0.45;
         }
         let hovered = bars.iter().any(|bar| bar.hitbox.is_hovered(window));

@@ -12,11 +12,16 @@ use crate::style::values::value::Len;
 // 16 у последнего `<p>` + 8 у body складывались вместо max).
 // Поглощение: поле крайнего ребёнка ОБНУЛЯЕТСЯ и уезжает на контейнер
 // (иначе оно распирало бы его коробку изнутри и зазор снаружи удваивался).
-pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> f32 {
+pub(crate) fn absorb_margin(
+    e: &mut Element,
+    tail_side: bool,
+    reverse: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> f32 {
     let own = if tail_side == reverse {
-        margin_px(e.style.margin.left, &e.style)
+        margin_px(e.style.margin.left, &e.style, vcx)
     } else {
-        margin_px(e.style.margin.right, &e.style)
+        margin_px(e.style.margin.right, &e.style, vcx)
     }
     .unwrap_or(0.0);
     // Контейнер с ГОРИЗОНТАЛЬНЫМ письмом в вертикальном потоке —
@@ -31,8 +36,8 @@ pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> 
     } else {
         (b.right, e.style.padding.right)
     };
-    let sealed = margin_px(border, &e.style).unwrap_or(0.0) > 0.0
-        || margin_px(pad, &e.style).unwrap_or(0.0) > 0.0;
+    let sealed = margin_px(border, &e.style, vcx).unwrap_or(0.0) > 0.0
+        || margin_px(pad, &e.style, vcx).unwrap_or(0.0) > 0.0;
     if sealed {
         return own;
     }
@@ -59,7 +64,7 @@ pub(crate) fn absorb_margin(e: &mut Element, tail_side: bool, reverse: bool) -> 
     .filter(|c| c.style.writing_mode.is_none() && c.style.flow_mode().is_none());
     match edge_child {
         Some(c) => {
-            let inner = absorb_margin(c, tail_side, reverse);
+            let inner = absorb_margin(c, tail_side, reverse, vcx);
             // Поглощать есть что только при ненулевом внутреннем поле;
             // иначе стили НЕ переписываются: заморозка `Em` в точки
             // до разрешения кегля портила поле (`font-size: 5em` у

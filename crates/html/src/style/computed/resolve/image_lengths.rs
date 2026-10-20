@@ -21,7 +21,7 @@ impl Computed {
         if !position_units {
             return;
         }
-        let (font, ex, ch, line) = self.image_font_metrics();
+        let (font, ex, ch, line) = self.image_font_metrics(vcx);
         // Relative units become computed lengths before position inheritance;
         // only the percentage basis must remain for concrete image geometry.
         for expression in self
@@ -34,18 +34,21 @@ impl Computed {
         }
     }
 
-    pub(in crate::style::computed) fn image_font_metrics(&self) -> (f32, f32, f32, f32) {
+    pub(in crate::style::computed) fn image_font_metrics(
+        &self,
+        vcx: ValueCx<'_>,
+    ) -> (f32, f32, f32, f32) {
         let font = match self.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
         let family = self.font_family.as_deref().unwrap_or("");
-        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font);
+        let (ch, ex) = crate::text::metrics::ch_ex_px(family, font, vcx);
         let line = match self.line_height {
             Some(Len::Px(v)) => v,
             Some(Len::Pct(k)) | Some(Len::Em(k)) => k * font,
             _ => {
-                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font);
+                let (ascent, descent, _) = crate::text::metrics::vmetrics_px(family, font, vcx);
                 ascent + descent
             }
         };

@@ -53,6 +53,13 @@ pub fn render_paged_select(
     margin_decls: Option<PageMarginDeclsFn>,
     select: Option<Vec<usize>>,
 ) -> AnyElement {
+    let opts = &*opts.inner(|cx| {
+        cx.paint_viewport = opts.viewport;
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
+        }
+    });
     let vcx = opts.cx.vcx();
     // Снятые обёртки и корень без коробки правят КАЖДЫЙ лист одинаково:
     // `none` — пустой лист без свойств `@page`, `canvas` — фон `html`/`body`.
@@ -61,8 +68,8 @@ pub fn render_paged_select(
     let mut canvas_img: Option<crate::style::computed::Computed> = None;
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
-    crate::interactive::frame::frame_sanitize();
-    vcx.doc.paint.begin(nodes, opts.viewport, vcx);
+    crate::interactive::frame::frame_sanitize(vcx);
+    crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();

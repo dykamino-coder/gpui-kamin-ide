@@ -4,8 +4,8 @@ use super::{paragraph_spans, rotate_rel_spans};
 use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use crate::text::inline;
 use crate::text::text_box::normal_fraction;
+use crate::text::{inline, metrics};
 use gpui::{AnyElement, IntoElement, SharedString};
 
 #[allow(clippy::too_many_arguments)]
@@ -39,15 +39,9 @@ pub(crate) fn native_paragraph(
     } else {
         inherited
     };
-    // Кегль абзаца — самый крупный кусок в нём: строка растёт под него,
-    // и от него же считается высота строки в долях.
-    //
-    // Per-run boxes below retain the block strut without changing this
-    // legacy fallback (`*-applies-to-008`).
-    // Куски у края строки в её струт не входят (§10.8.1): у
-    // `vertical-align-121` строка из 30px текста и прижатого вверх
-    // 60px куска — это 30px струта плюс вылет куска вниз, а не 60px
-    // с текстом посередине.
+    // Edge-aligned pieces protrude from the block strut (CSS 2.1 §10.8.1).
+    // Their size must not enlarge the central inline content's strut.
+    // Per-run boxes below retain that strut alongside the legacy fallback.
     let (flow_biggest, flow_lh) = if edges.is_empty() {
         (biggest, 0.0)
     } else {
@@ -67,6 +61,7 @@ pub(crate) fn native_paragraph(
             own_size(inherited, opts),
             opts.base_size(),
             normal_fraction(inherited, opts),
+            opts.cx.vcx(),
         )),
     };
     // Построчные коробки (`line_box_spans`): высота строки абзаца — СТРУТ
@@ -85,6 +80,7 @@ pub(crate) fn native_paragraph(
         crate::text::paragraph::align_for(inherited),
         wrap,
     )
+    .measure_context(&opts.cx)
     .ruby_context(&opts.cx);
     let para = paragraph_spans(para, inherited, opts, &pieces, &edges, biggest, line)
         .edge_spans(edges)
@@ -92,7 +88,7 @@ pub(crate) fn native_paragraph(
             boxes.as_ref().map(|b| b.0.clone()).unwrap_or_default(),
             boxes.as_ref().map(|_| {
                 (
-                    inline::strut_font(inherited, &opts.text),
+                    inline::strut_font(inherited, &opts.text, opts.cx.vcx()),
                     gpui::px(own_size(inherited, opts)),
                 )
             }),
@@ -126,15 +122,17 @@ pub(crate) fn native_paragraph(
                     other => other,
                 }),
         )
-        .letter_spacing(gpui::px(crate::text::metrics::spacing_px(
+        .letter_spacing(gpui::px(metrics::spacing_px(
             inherited.letter_spacing,
             &family,
             biggest,
+            opts.cx.vcx(),
         )))
-        .word_spacing(gpui::px(crate::text::metrics::spacing_px(
+        .word_spacing(gpui::px(metrics::spacing_px(
             inherited.word_spacing,
             &family,
             biggest,
+            opts.cx.vcx(),
         )))
         .hanging(inherited.hanging)
         .indent(indent)
@@ -150,8 +148,8 @@ pub(crate) fn native_paragraph(
         // Счётный режим (`line-clamp: <N>`) берёт предел из стиля;
         // авто-режим — из бюджета, посчитанного по точке среза.
         .line_clamp(clamp_budget.or_else(|| {
-            (!crate::text::clamp::clamp_context().is_some_and(|(_, skip)| skip)
-                && crate::text::clamp::para_depth() == 0)
+            (!crate::text::clamp::clamp_context(&opts.cx).is_some_and(|(_, skip)| skip)
+                && opts.cx.clamp_atom_depth == 0)
                 .then(|| inherited.clamp_lines().map(|n| n as usize))
                 .flatten()
         }))
@@ -200,7 +198,12 @@ pub(crate) fn native_paragraph(
                 .hyphen_char
                 .clone(),
         )
-        .tab_stops(inline::tab_stops(&pieces, inherited, &opts.text))
+        .tab_stops(inline::tab_stops(
+            &pieces,
+            inherited,
+            &opts.text,
+            opts.cx.vcx(),
+        ))
         .overlays(inline::overlays(pieces))
         .atoms(line_atoms)
         // Срез строки — только у абзаца, держащего первую/последнюю строку
@@ -214,6 +217,10 @@ pub(crate) fn native_paragraph(
                 },
             ),
         );
+    let para = para.fragment_flow(
+        opts.frag.watch.as_ref().map(|w| w.flow.clone()),
+        crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+    );
     let para = super::super::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
@@ -224,6 +231,7 @@ pub(crate) fn native_paragraph(
         native_request.unwrap().built.set(true);
     }
     let projection = crate::interactive::scroll_extent::projection(
+        opts.cx.scroll_frame.as_ref(),
         inherited.self_node,
         None,
         opts.cx.sticky.as_ref(),
@@ -233,7 +241,7 @@ pub(crate) fn native_paragraph(
         .map(|p| p.link().clone())
         .or_else(|| opts.cx.sticky.clone());
     crate::interactive::scroll_extent::project(
-        para.scroll_owner(inherited.self_node, sticky)
+        para.scroll_owner(inherited.self_node, sticky, opts.cx.scroll_frame.clone())
             .into_any_element(),
         projection,
     )

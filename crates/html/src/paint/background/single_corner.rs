@@ -87,8 +87,8 @@ pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
         });
     let clip = c.bg_clip.unwrap_or(BgClip::BorderBox);
     Some(
-        super::exact_layer::ExactLayer::inset([-b; 4], move |bounds, window| {
-            let bounds = super::exact_layer::positioning(bounds);
+        super::exact_layer::ExactLayer::inset([-b; 4], move |geometry, window| {
+            let bounds = geometry.positioning(geometry.snapped);
             let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let r = match radius {
                 Len::Px(v) => v,

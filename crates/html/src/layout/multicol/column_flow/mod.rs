@@ -3,7 +3,6 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::paint::effects::paint_scope::snapshot as defer_depth;
 use crate::render::{RenderOpts, measure_font};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -13,6 +12,9 @@ mod text;
 use text::{build_text_columns, css_ws, gather_cols, normalized_text};
 mod blocks;
 use blocks::non_inline_columns;
+mod element;
+pub(crate) use element::ColumnFlow;
+mod measure;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-mctextflow-2026-09.md`, пакет A,
 // 3 хунка): рекурсия `column_flow` переносит `column-gap`/`column-fill`,
@@ -126,7 +128,7 @@ fn column_flow_in(
     let line = match inherited.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => size * k,
-        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size),
+        _ => crate::text::metrics::normal_px(normal_fraction(inherited, opts), size, opts.cx.vcx()),
     };
     // Промежуток — ВЫЧИСЛЕННОЕ значение (css-values-4 §5): `em` в точки переводит
     // `Computed::resolve_em`, а он живёт в наследовании, то есть в `inherited`
@@ -168,7 +170,6 @@ fn column_flow_in(
     let nodes = e.children.clone();
     let inherited_owned = inherited.clone();
     let opts_owned = opts.clone();
-    let depth = defer_depth();
     let build: std::rc::Rc<dyn Fn(&[usize], usize, gpui::Pixels) -> AnyElement> =
         std::rc::Rc::new(move |cuts: &[usize], used: usize, width: gpui::Pixels| {
             build_text_columns(
@@ -181,14 +182,13 @@ fn column_flow_in(
                 &nodes,
                 &inherited_owned,
                 &opts_owned,
-                depth,
                 cuts,
                 used,
                 width,
             )
         });
     Some(
-        crate::layout::float::split_flow::ColumnFlow::new(
+        ColumnFlow::new(
             build,
             SharedString::from(plain),
             count,

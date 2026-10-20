@@ -13,7 +13,7 @@ pub(super) fn element_style(
     vcx: ValueCx<'_>,
 ) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style, vcx);
-    let viewport = vcx.doc.paint.viewport();
+    let viewport = vcx.viewport;
     merged.resolve_decor_inset_viewport(viewport, vcx);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.
@@ -67,7 +67,7 @@ pub(super) fn element_style(
                 | crate::style::values::value::Len::Ch(_)
                 | crate::style::values::value::Len::Ex(_)
                 | crate::style::values::value::Len::Ic(_),
-            ) => crate::text::metrics::spacing_px(l, &family, size),
+            ) => crate::text::metrics::spacing_px(l, &family, size, vcx),
             _ => 0.0,
         };
         merged.inline_pad = Some(physical_sides::project(
@@ -93,9 +93,9 @@ pub(super) fn element_style(
         .filter(|_| merged.bg_clip != Some(crate::style::computed::BgClip::Text))
         .is_some();
     let mut own_border = true;
-    if let Some((color, width)) = uniform_border(&e.style, font_px) {
+    if let Some((color, width)) = uniform_border(&e.style, font_px, vcx) {
         merged.inline_border = Some((color, [width; 4]));
-    } else if let Some(sided) = sided_border(&e.style, font_px) {
+    } else if let Some(sided) = sided_border(&e.style, font_px, vcx) {
         merged.inline_border = Some((sided.0, physical_sides::project(inherited, sided.1)));
     } else {
         own_border = false;
@@ -128,7 +128,7 @@ pub(super) fn element_style(
                 | crate::style::values::value::Len::Ch(_)
                 | crate::style::values::value::Len::Ex(_)
                 | crate::style::values::value::Len::Ic(_),
-            ) => crate::text::metrics::spacing_px(l, &family, font_px),
+            ) => crate::text::metrics::spacing_px(l, &family, font_px, vcx),
             _ => 0.0,
         };
         merged.inline_pad = Some(physical_sides::project(

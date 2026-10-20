@@ -90,7 +90,7 @@ impl Computed {
                 .flatten()
                 .any(|g| g.needs_line_height(vcx));
         let line = if uses_line {
-            self.image_font_metrics().3
+            self.image_font_metrics(vcx).3
         } else {
             0.0
         };

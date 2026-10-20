@@ -30,8 +30,13 @@ fn flattens_3d(c: &Computed) -> bool {
         || c.contain_layout == Some(true)
 }
 
-pub(crate) fn transformed(el: AnyElement, c: &Computed, parent: &Computed) -> AnyElement {
-    transformed_with(el, c, parent, None)
+pub(crate) fn transformed(
+    el: AnyElement,
+    c: &Computed,
+    parent: &Computed,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    transformed_with(el, c, parent, None, vcx)
 }
 
 /// `transformed` with a shared reference box (`interact::Transformed::ref_box`):
@@ -41,6 +46,7 @@ pub(crate) fn transformed_with(
     c: &Computed,
     parent: &Computed,
     ref_box: Option<crate::paint::effects::transformed_element::RefBox>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
@@ -100,7 +106,7 @@ pub(crate) fn transformed_with(
     if c.transform.is_none() && c.perspective.is_none() && !keeps_3d && under_3d.is_none() {
         return el;
     }
-    let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el);
+    let mut wrapper = crate::paint::effects::transformed_element::Transformed::new(el, vcx);
     wrapper.ref_box = ref_box;
     wrapper.under_3d = under_3d;
     wrapper.frame_3d = if keeps_3d { c.frame_3d.clone() } else { None };

@@ -1,12 +1,11 @@
 //! Сериализация SVG с заданным размером области просмотра.
 
-use super::{escape_attr, escape_text, write_in};
+use super::{SerializeCx, escape_attr, escape_text, write_with};
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::svg::serialize::filters::subtree_has;
 use crate::svg::serialize::filters::untaint_filters;
 use crate::svg::size::{size_of, view_box_ratio};
-use crate::svg::{IN_CLIP, VIEW_BOX};
 
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
@@ -100,12 +99,14 @@ pub(crate) fn serialize_sized(
     out.push('>');
     // Опорная коробка `view-box` для CSS-обрезки детей (`synth_clip`): корень
     // пишется здесь, а не в `write_element`.
-    VIEW_BOX.with(|v| v.set(view_box_ratio(e).unwrap_or_else(|| size_of(e))));
-    IN_CLIP.with(|c| c.set(false));
+    let cx = SerializeCx {
+        view_box: view_box_ratio(e).unwrap_or_else(|| size_of(e)),
+        in_clip: false,
+    };
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, &mut out),
-            Node::Element(el) => write_in(el, &mut out, &ids, vcx),
+            Node::Element(el) => write_with(el, &mut out, &ids, cx, vcx),
         }
     }
     out.push_str("</svg>");

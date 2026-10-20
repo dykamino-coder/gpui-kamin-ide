@@ -1,38 +1,39 @@
 //! Стек трансформаций якорей: границы содержащего блока и отображение точек.
 
-use super::CB;
-use crate::layout::positioned::anchor::TF;
-use crate::layout::positioned::anchor::TF_NEXT;
+use crate::document::state::ValueCx;
 use gpui::{Bounds, Pixels, px};
 
 /// Read the actual padding box of an absolute containing block in this frame.
-pub(crate) fn containing_bounds(node: u64) -> Option<Bounds<Pixels>> {
-    CB.with(|map| map.borrow().get(&node).copied())
+pub(crate) fn containing_bounds(node: u64, vcx: ValueCx<'_>) -> Option<Bounds<Pixels>> {
+    vcx.doc.anchor_frame.cb.borrow().get(&node).copied()
 }
 
 /// Положить плоский трансформ на стек подготовки (`Transformed::prepaint`).
-pub fn tf_push(m: [[f32; 3]; 2]) {
-    let id = TF_NEXT.with(|n| {
+pub fn tf_push(m: [[f32; 3]; 2], vcx: ValueCx<'_>) {
+    let id = {
+        let n = &vcx.doc.anchor_frame.tf_next;
         let v = n.get() + 1;
         n.set(v);
         v
-    });
-    TF.with(|s| s.borrow_mut().push((id, m)));
+    };
+    vcx.doc.anchor_frame.tf.borrow_mut().push((id, m));
 }
 
 /// Снять трансформ со стека подготовки.
-pub fn tf_pop() {
-    TF.with(|s| {
+pub fn tf_pop(vcx: ValueCx<'_>) {
+    {
+        let s = &vcx.doc.anchor_frame.tf;
         s.borrow_mut().pop();
-    });
+    };
 }
 
 /// Рамка через весь стек: углы идут от ВНУТРЕННЕГО трансформа к внешнему
 /// (экран = внешний(…внутренний(p))), результат — объемлющий прямоугольник
 /// (§2: «axis-aligned bounding rectangle»). Второе — номер внутреннего
 /// трансформа (0 — стек пуст).
-pub(super) fn tf_map(r: Bounds<Pixels>) -> (Bounds<Pixels>, u32) {
-    TF.with(|s| {
+pub(super) fn tf_map(r: Bounds<Pixels>, vcx: ValueCx<'_>) -> (Bounds<Pixels>, u32) {
+    {
+        let s = &vcx.doc.anchor_frame.tf;
         let s = s.borrow();
         let Some(&(top, _)) = s.last() else {
             return (r, 0);
@@ -59,11 +60,16 @@ pub(super) fn tf_map(r: Bounds<Pixels>) -> (Bounds<Pixels>, u32) {
             size: gpui::size(px(hx - lx), px(hy - ly)),
         };
         (b, top)
-    })
+    }
 }
 
 /// Лежит ли трансформ `id` на текущем стеке — то есть предок ли он коробки,
 /// которая сейчас готовится.
-pub(super) fn tf_under(id: u32) -> bool {
-    TF.with(|s| s.borrow().iter().any(|(i, _)| *i == id))
+pub(super) fn tf_under(id: u32, vcx: ValueCx<'_>) -> bool {
+    vcx.doc
+        .anchor_frame
+        .tf
+        .borrow()
+        .iter()
+        .any(|(i, _)| *i == id)
 }

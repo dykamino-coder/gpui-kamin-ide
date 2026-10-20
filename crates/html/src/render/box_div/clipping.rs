@@ -41,7 +41,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
     }
     let size = own_size(c, opts);
     let family = c.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size);
+    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, size, vcx);
     let border = c.borders();
     // Абсолютный слой в раскладке отсчитывается уже от padding-box
     // (`vendor/taffy/src/compute/block.rs`, как в CSS 2.1 §10.1): рамку

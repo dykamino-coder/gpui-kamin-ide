@@ -145,7 +145,7 @@ impl Computed {
     /// делённая на ту же метрику шрифта `m′`. `none` и `from-font` (метрика
     /// своего же первого доступного шрифта, отношение ровно 1) кегль не
     /// трогают. Метрику, которую не удалось снять, спека велит не подгонять.
-    pub fn used_font_factor(&self, family: &str) -> f32 {
+    pub fn used_font_factor(&self, family: &str, vcx: crate::document::state::ValueCx<'_>) -> f32 {
         // Дескриптор `size-adjust` масштабирует ВСЕ метрики лица; поверх него
         // `font-size-adjust` сводит метрику к заданной доле, и множитель
         // дескриптора сокращается: `m / (m′·k) · k = m / m′`
@@ -159,13 +159,13 @@ impl Computed {
         } else {
             0
         };
-        let size_adjust = crate::text::fonts::matching::select(family, self).map_or_else(
-            || crate::text::fonts::size_adjust(family, slope),
+        let size_adjust = crate::text::fonts::matching::select(family, self, vcx).map_or_else(
+            || crate::text::fonts::size_adjust(family, slope, vcx),
             |f| f.adjust,
         );
         match self.font_size_adjust {
             Some((metric, want)) if want.is_finite() => {
-                match crate::text::metrics::adjust_aspect(family, metric) {
+                match crate::text::metrics::adjust_aspect(family, metric, vcx) {
                     Some(have) if have > 0.0 => want / have,
                     _ => size_adjust,
                 }
@@ -185,10 +185,10 @@ impl Computed {
     /// последний: прежде в gpui уходило `liga 0, …, liga 1`, а
     /// `apply_font_features` дописывал после них ещё `liga 0`
     /// (`font-features-across-space-3`).
-    pub fn used_features(&self) -> Vec<(String, u32)> {
+    pub fn used_features(&self, vcx: crate::document::state::ValueCx<'_>) -> Vec<(String, u32)> {
         // Шаг 2 §7.2 — дескриптор правила `@font-face`, МЛАДШЕ свойств.
         let mut all: Vec<(String, u32)> =
-            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self);
+            crate::text::fonts::face_features(self.font_family.as_deref().unwrap_or(""), self, vcx);
         // Подбор веса грани по CSS (css-fonts-4 §5.2 шаг 4), а не по
         // расстоянию DirectWrite: свой тег, его читает подбор грани в gpui.
         let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
@@ -231,6 +231,7 @@ impl Computed {
         out.extend(crate::text::fonts::metric_overrides::features(
             self.font_family.as_deref().unwrap_or(""),
             slope,
+            vcx,
         ));
         out
     }

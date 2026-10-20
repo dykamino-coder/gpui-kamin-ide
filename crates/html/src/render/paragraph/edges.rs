@@ -91,7 +91,11 @@ pub(crate) fn edge_pieces(
             let h = match style.line_height {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
-                _ => crate::text::metrics::normal_px(normal_fraction(style, opts), size),
+                _ => crate::text::metrics::normal_px(
+                    normal_fraction(style, opts),
+                    size,
+                    opts.cx.vcx(),
+                ),
             };
             match out.last_mut() {
                 // Соседние куски одного края — одна коробка (`<span>` с

@@ -31,6 +31,9 @@ impl PageKid {
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
     pub el: AnyElement,
+    pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasurements>>,
+    /// A root float contributes its measured border box even outside normal flow.
+    pub(crate) float_id: Option<u64>,
     /// Repeated table sections reserved by the common fragmentation planner.
     pub repeat: Option<crate::layout::fragment::types::Repeat>,
     /// Копии на случай разреза между страницами (см. `StackChild::frags`).

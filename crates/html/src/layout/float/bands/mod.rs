@@ -12,6 +12,7 @@
 //! Сторона — `i8`, как в стиле: -1 слева, 1 справа (`computed.rs` `float`);
 //! `clear` — `Option<i8>`, где `Some(0)` значит `both`.
 
+use crate::layout::float::shapes::FloatShape;
 pub(super) use crate::tolerance::COORD_EPS;
 
 mod place;
@@ -34,6 +35,26 @@ pub struct Band {
     /// Левый край правых флоатов полосы — тоже от инлайн-начала, а не от
     /// правого края.
     pub right: Option<f32>,
+}
+
+/// One placed float or initial letter as a line exclusion: its side, block
+/// range and inline edges, in context coordinates. Line layout reads the
+/// exclusions per float rather than off the bands: a float of zero block
+/// size occupies no band, yet it still shortens the line box it falls in
+/// (CSS 2.1 §9.5, `floats-zero-height-wrap-*`); and a float with
+/// `shape-outside` shortens lines by its shape, not by its margin box
+/// (css-shapes-1 §1), like Blink's `ExclusionArea::shape_data`.
+#[derive(Clone, Debug, PartialEq)]
+struct Exclusion {
+    side: i8,
+    top: f32,
+    h: f32,
+    /// The margin edge facing the content (right edge of a left float).
+    edge: f32,
+    /// The margin edge on the float's own side.
+    near: f32,
+    /// `shape-outside`, measured from `near` and from `top`.
+    shape: Option<FloatShape>,
 }
 
 /// Полосы занятости одного блочного форматирующего контекста.
@@ -66,6 +87,8 @@ pub struct FloatBands {
     /// context's auto height include it (css-inline-3 §clearing initial
     /// letters; Blink `ClearanceOffsetIncludingInitialLetter`).
     letter: (f32, f32),
+    /// Every placed float and initial letter, in placement order.
+    exclusions: Vec<Exclusion>,
 }
 
 impl FloatBands {
@@ -90,6 +113,7 @@ impl FloatBands {
             clear_l: 0.0,
             clear_r: 0.0,
             letter: (0.0, 0.0),
+            exclusions: Vec::new(),
         }
     }
 

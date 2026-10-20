@@ -23,7 +23,7 @@ mod first_line_text;
 pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
 mod first_letter_descendants;
 mod first_letter_scope;
-mod first_line_descendants;
+pub(super) mod first_line_descendants;
 mod inline_splits;
 pub(super) mod pseudo_line_layers;
 pub(crate) use inline_splits::split_block_in_inline;
@@ -62,19 +62,6 @@ pub struct RenderOpts {
     /// КАЖДЫЙ блок текста выходил на четверть выше браузерного, а разница
     /// копилась вниз по документу.
     pub normal_line_height: f32,
-    /// Соль документа для ключей буферов, живущих между кадрами
-    /// (`Document::key`).
-    ///
-    /// Номера узлов считаются с нуля в каждом документе: когда в одном
-    /// потоке живут два документа сразу (стенд гонит пары параллельно),
-    /// буфер одного документа находил записи другого с тем же номером узла.
-    /// Нужна, пока такие буферы есть: пробы линеек промежутков
-    /// (`gap_items_for`, `fresh_gap_items`), коробка корня
-    /// (`measure_root_box` / `record_root_box`), левый край вертикального
-    /// корня (`record_root_left`), меры вертикального текста и кэш слоя
-    /// `foreignObject`. Пробы таблиц её не используют: их буферы принадлежат
-    /// построенному дереву. Ноль допустим, пока документ один.
-    pub doc_salt: u64,
     /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
     /// коробок внутри. Хост передаёт `LayoutCx::default()`, а документ свой
     /// ставит `Document::render` (`Document::frame_opts`).
@@ -109,24 +96,33 @@ impl RenderOpts {
     /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
     /// с `line-height: 1em` при одном и том же шрифте.
     pub(crate) fn root_style(&self) -> Computed {
-        Computed::default()
+        Computed {
+            icb: true,
+            ..Computed::default()
+        }
     }
 }
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
-    crate::text::metrics::set_doc_family(&opts.text.font_family);
+    crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
-    crate::interactive::frame::frame_sanitize();
-    vcx.doc.paint.begin(nodes, opts.viewport, vcx);
+    crate::interactive::frame::frame_sanitize(vcx);
+    crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка
     // `LayoutCx::avail_w` вычитает поля/рамки/отступы `html` и `body`.
     // Слои содержащих блоков — свои у каждой сборки документа.
     let opts = &*opts.inner(|cx| {
         cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.positioning = Default::default();
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
+        }
     });
     // Слой начального содержащего блока: внепоточные элементы без
     // позиционированного предка дописываются последними детьми документа —
@@ -163,16 +159,22 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
-    crate::interactive::frame::frame_sanitize();
-    vcx.doc.paint.begin(nodes, opts.viewport, vcx);
+    crate::interactive::frame::frame_sanitize(vcx);
+    crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     let opts = &*opts.inner(|cx| {
         cx.avail_w = Some(opts.viewport.0).filter(|w| *w > 0.0);
         cx.positioning = Default::default();
+        if !cx.in_render {
+            cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
+        }
     });
     let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
     let out = blocks(std::slice::from_ref(node), &root, opts);

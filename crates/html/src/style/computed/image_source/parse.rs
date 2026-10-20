@@ -37,7 +37,7 @@ impl ImageSource {
             if parts.len() != 2 {
                 return None;
             }
-            return nested(parts[usize::from(crate::style::values::value::dark_scheme())]);
+            return nested(parts[usize::from(crate::style::values::value::dark_scheme(vcx))]);
         }
         if let Some(image) = crate::style::computed::image_function::arguments(raw, vcx) {
             let color = image.color.and_then(|c| ImageColor::parse(c, vcx));

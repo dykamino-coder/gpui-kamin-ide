@@ -2,6 +2,8 @@
 
 mod inline_box_rect;
 mod inline_rect;
+#[cfg(test)]
+mod phantom_tests;
 mod rtl_extent;
 
 use crate::text::paragraph::*;

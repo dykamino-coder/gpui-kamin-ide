@@ -1,4 +1,4 @@
-//! Выделение абзаца: снимок раскладки и поиск символа под мышью.
+//! Selection runs and mouse tracking over a paragraph layout snapshot.
 
 use crate::interactive::selection::{selected_runs, track_selection};
 use crate::text::paragraph::*;
@@ -28,6 +28,12 @@ impl Paragraph {
         }
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
+            anchor_values: self.anchor_values.clone(),
+            paint_context: self.paint_context.clone(),
+            inline_measure: self.inline_measure.clone(),
+            clamp_rows: self.clamp_rows.clone(),
+            measures: self.measures.clone(),
+            fragment: None,
             scroll_owner: None,
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,

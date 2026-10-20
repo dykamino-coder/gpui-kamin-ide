@@ -14,7 +14,7 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::blank_text;
 
-pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     let Some(first) = parent.first_line_own.as_deref() else {
         return nodes;
     };
@@ -40,4 +40,61 @@ pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         break;
     }
     nodes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dom::Element;
+    use crate::style::cascade::inherit::inherit;
+    use crate::style::computed::Position;
+    use crate::style::values::value::Len;
+
+    #[test]
+    fn nested_first_line_skips_positioned_children_at_each_level() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let first = Computed {
+            font_size: Some(Len::Px(32.)),
+            ..Default::default()
+        };
+        let parent = Computed {
+            first_line_own: Some(Box::new(first)),
+            ..Default::default()
+        };
+        let positioned = Element::synthetic(
+            "div",
+            Computed {
+                position: Some(Position::Absolute),
+                ..Default::default()
+            },
+            Default::default(),
+            vec![],
+        );
+        let block = Element::synthetic("div", Computed::default(), Default::default(), vec![]);
+        let mut inherited = parent;
+        for _ in 0..3 {
+            let nodes = route(
+                vec![
+                    Node::Element(positioned.clone()),
+                    Node::Element(block.clone()),
+                ],
+                &inherited,
+            );
+            let Node::Element(oof) = &nodes[0] else {
+                panic!("positioned box")
+            };
+            assert!(oof.first_line.is_none());
+            let Node::Element(child) = &nodes[1] else {
+                panic!("in-flow block")
+            };
+            let mut merged = inherit(&inherited, &child.style, doc.values());
+            crate::render::pseudo_line_layers::install(child, &mut merged, doc.values());
+            assert_eq!(
+                merged.first_line.as_ref().unwrap().font_size,
+                Some(Len::Px(32.))
+            );
+            assert_ne!(merged.font_size, Some(Len::Px(32.)));
+            inherited = merged;
+        }
+    }
 }

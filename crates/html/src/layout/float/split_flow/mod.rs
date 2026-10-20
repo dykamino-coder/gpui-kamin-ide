@@ -20,9 +20,6 @@ mod float_flow;
 pub use float_flow::FloatFlow;
 mod first_line;
 pub use first_line::FirstLine;
-mod column_flow;
-mod columns;
-pub use column_flow::ColumnFlow;
 
 /// Строит поддерево по месту разреза текста (в байтах).
 pub type Split = Rc<dyn Fn(usize, Pixels) -> AnyElement>;

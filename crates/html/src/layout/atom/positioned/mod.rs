@@ -94,6 +94,7 @@ pub(super) fn static_position_atom(
         spot.clone(),
         false,
         opts.cx.line_box.clone(),
+        &opts.cx,
     );
     let inner = match replaced {
         Some(el) if merged.corner_shaped() => {
@@ -215,6 +216,7 @@ pub(super) fn absolute_atom(
             spot.clone(),
             false,
             opts.cx.line_box.clone(),
+            &opts.cx,
         );
         return match opts
             .cx

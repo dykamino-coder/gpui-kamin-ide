@@ -13,6 +13,7 @@ pub(super) fn inline_sides(
     merged: &Computed,
     flow: &Computed,
     cb: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> ((f32, f32), (f32, f32)) {
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
@@ -26,7 +27,7 @@ pub(super) fn inline_sides(
     // `<span>` стоял у края). Блок абзаца — `cb` (`LayoutCx::avail_w`).
     let px_of = |l: Option<Len>| match l {
         Some(Len::Px(_) | Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_)) => {
-            crate::text::metrics::spacing_px(l, &family, size)
+            crate::text::metrics::spacing_px(l, &family, size, vcx)
         }
         Some(Len::Pct(k)) => cb.map_or(0.0, |w| k * w),
         _ => 0.0,

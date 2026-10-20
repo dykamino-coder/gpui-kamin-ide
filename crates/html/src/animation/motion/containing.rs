@@ -18,6 +18,7 @@ pub(super) fn apply_offset_transforms(
     nodes: &mut [Node],
     parent: Option<(Cb, bool)>,
     icb_open: bool,
+    shapes: &std::collections::HashMap<String, String>,
     vcx: ValueCx<'_>,
 ) {
     for n in nodes.iter_mut() {
@@ -38,9 +39,9 @@ pub(super) fn apply_offset_transforms(
                 .filter(|(_, est)| cb_is_parent(&e.style, *est))
                 .map(|(g, _)| with_self(g, &e.style));
             let origin = svg_origin(e);
-            apply_offset_transform(&mut e.style, cb.as_ref(), origin, vcx);
+            apply_offset_transform(&mut e.style, cb.as_ref(), origin, Some(shapes), vcx);
         }
-        apply_offset_transforms(&mut e.children, mine, icb_open && !est, vcx);
+        apply_offset_transforms(&mut e.children, mine, icb_open && !est, shapes, vcx);
     }
 }
 

@@ -7,6 +7,7 @@ use crate::text::inline::*;
 pub fn letter_spans(
     pieces: &[Piece],
     base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut zero = Vec::new();
@@ -28,6 +29,7 @@ pub fn letter_spans(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             )
         });
         if let Some(v) = extra {
@@ -57,6 +59,7 @@ pub fn letter_spans(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             );
             zero.push((at + last.0..end, gpui::px(v)));
         }
@@ -88,7 +91,11 @@ pub(super) fn zero_width_format(ch: char) -> bool {
 ///
 /// `word-spacing` на вложенном `<span>` действует только на его пробелы. Пока
 /// интервал брался один на абзац, заданный внутри пропадал целиком.
-pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+pub fn word_spans(
+    pieces: &[Piece],
+    base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut at = 0usize;
     for p in pieces {
@@ -108,6 +115,7 @@ pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usiz
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             )
         });
         if let Some(v) = extra {

@@ -83,14 +83,16 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
             // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
+            let paint = vcx.paint.cloned();
             out.push(
                 crate::paint::background::exact_layer::ExactLayer::inset(
                     [-bt, -br, -bb, -bl],
-                    move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
+                    move |r: crate::paint::background::exact_layer::PaintGeometry,
+                          window: &mut gpui::Window| {
                         // Blink offsets the UNSNAPPED border box and snaps
                         // the result (a 72.5-device-pixel top with a -62.5
                         // offset lands on row 10, not 11).
-                        let r = crate::paint::background::exact_layer::positioning(r);
+                        let r = r.positioning(r.snapped);
                         // `r` is the box's unrounded border box; the shadow
                         // rect is it moved by the offset and grown by the
                         // spread (§7.1). Edges snap to the device grid.
@@ -99,6 +101,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
                         let (rl, rt) = (bl + dx - spread, bt + dy - spread);
                         let (rr, rb) = (br + dx + spread, bb + dy + spread);
                         crate::layout::fragment::effect_fragment::paint_shadow(
+                            paint.as_deref(),
                             r,
                             (px(rt), px(rb)),
                             window,
@@ -182,8 +185,9 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
             out.push(
                 crate::paint::background::exact_layer::ExactLayer::inset(
                     [0.0; 4],
-                    move |r: gpui::Bounds<gpui::Pixels>, window: &mut gpui::Window| {
-                        let r = crate::paint::background::exact_layer::positioning(r);
+                    move |r: crate::paint::background::exact_layer::PaintGeometry,
+                          window: &mut gpui::Window| {
+                        let r = r.positioning(r.snapped);
                         let (pl, pt) = (f32::from(r.left()), f32::from(r.top()));
                         let (pr, pb) = (f32::from(r.right()), f32::from(r.bottom()));
                         let hole = (

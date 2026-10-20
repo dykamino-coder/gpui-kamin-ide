@@ -1,9 +1,8 @@
 //! Блок потока в полосах (place_flow) и внутренняя ширина последовательности.
 
 use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Slot, clearance, intrinsic, probe};
+use super::{COORD_EPS, Probe, Slot, clearance, intrinsic, probe};
 use crate::layout::float::bands::FloatBands;
-use gpui::{App, Window};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn place_flow(
@@ -12,8 +11,7 @@ pub(super) fn place_flow(
     y0: f32,
     adjoining0: bool,
     bands: &mut FloatBands,
-    window: &mut Window,
-    cx: &mut App,
+    p: &mut Probe,
     cbw: f32,
     slots: &mut [Slot],
     y: &mut f32,
@@ -44,13 +42,15 @@ pub(super) fn place_flow(
     let walls = bands.set_walls(x0 + ml, x1 - mr);
     let shapes = bands.shapes(top);
     bands.set_walls(walls.0, walls.1);
-    let (_, bh) = probe(kid, cbw, avail, Some(shapes.clone()), window, cx);
+    let (bw, bh) = probe(kid, cbw, avail, Some(shapes.clone()), p);
     slots[k] = Slot {
         x: x0 + ml,
         y: top,
         avail,
         shapes: Some(shapes),
+        geometry: p.last_geometry.clone(),
         b: bh,
+        i: bw,
         ..Slot::default()
     };
     *y = top + bh + mb;
@@ -66,7 +66,7 @@ pub(super) fn place_flow(
 /// заменяет флоат, если больше); min-content — максимум по детям, каждый на
 /// своей строке. Без обрыва на `clear` плавающий контейнер из дюжины
 /// абзацев с `clear: left` мерился суммой всех (`letter-spacing-206-ref`).
-pub(super) fn intrinsic_width(kids: &[Kid], max: bool, window: &mut Window, cx: &mut App) -> f32 {
+pub(super) fn intrinsic_width(kids: &[Kid], max: bool, p: &mut Probe) -> f32 {
     let (mut fl, mut fr) = (0.0f32, 0.0f32);
     let (mut max_size, mut min_size) = (0.0f32, 0.0f32);
     for kid in kids {
@@ -80,11 +80,11 @@ pub(super) fn intrinsic_width(kids: &[Kid], max: bool, window: &mut Window, cx: 
             Some(nest) => {
                 let [_, ir, _, il] = nest.inset.map(|e| e.at(0.0));
                 (
-                    intrinsic_width(&nest.kids, false, window, cx) + il + ir,
-                    intrinsic_width(&nest.kids, true, window, cx) + il + ir,
+                    intrinsic_width(&nest.kids, false, p) + il + ir,
+                    intrinsic_width(&nest.kids, true, p) + il + ir,
                 )
             }
-            None => intrinsic(kid, window, cx),
+            None => intrinsic(kid, p),
         };
         let is_float = matches!(kid.kind, Kind::Float { .. });
         let is_fc = matches!(kid.kind, Kind::Piece { .. });

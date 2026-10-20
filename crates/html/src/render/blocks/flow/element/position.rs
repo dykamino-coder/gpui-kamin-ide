@@ -31,6 +31,8 @@ pub(crate) fn position_element(
     hoist_margins: bool,
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     record_root: bool,
+    // The canvas layer's measurement of this root box (`canvas_layer`).
+    root_box: Option<crate::paint::background::RootMeasurement>,
 ) {
     let vcx = opts.cx.vcx();
     let kw_len = |l: Option<Len>| {
@@ -115,10 +117,17 @@ pub(crate) fn position_element(
     } else {
         grouped(animated(e, inherited, opts), group_style, vcx)
     };
-    let built = if e.style.root_box && e.style.canvas_bg {
-        crate::paint::background::record_root_box(built, opts.doc_salt, &e.style, opts.base_size())
-    } else {
-        built
+    let built = match root_box {
+        Some(area) if e.style.root_box && e.style.canvas_bg => {
+            crate::paint::background::record_root_box(
+                built,
+                area,
+                &e.style,
+                opts.base_size(),
+                opts.cx.vcx(),
+            )
+        }
+        _ => built,
     };
     let built = vertical_hug(built, e, inherited);
     let built = sticky_wrap(built, &e.style, frame, layer_ok, sticky_link);

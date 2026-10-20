@@ -21,10 +21,11 @@ pub(super) fn configure(para: Paragraph, block: &Computed, opts: &RenderOpts) ->
         _ => crate::text::metrics::normal_px(
             crate::text::text_box::normal_fraction(first, opts),
             size,
+            opts.cx.vcx(),
         ),
     };
     para.first_line_box(
-        crate::text::inline::strut_font(first, &opts.text),
+        crate::text::inline::strut_font(first, &opts.text, opts.cx.vcx()),
         gpui::px(size),
         height,
     )

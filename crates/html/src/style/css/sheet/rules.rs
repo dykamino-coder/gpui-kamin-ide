@@ -126,7 +126,7 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         .strip_prefix("@font-feature-values")
         .is_some_and(|s| s.starts_with(char::is_whitespace))
     {
-        crate::text::fonts::alternates::register(&head[20..], body, layer_of_rules());
+        crate::text::fonts::alternates::register(&head[20..], body, layer_of_rules(), vcx);
         false
     } else if name.starts_with("@page") {
         // Правило с головой (имя, `:first/:left/:right/:blank`,
