@@ -63,7 +63,7 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         | "inset-block-start" | "inset-block-end" | "inset-inline-start" | "inset-inline-end" => {
             "auto"
         }
-        "scroll-snap-type" | "scroll-snap-align" => "none",
+        "scroll-snap-type" | "scroll-snap-align" | "path-length" => "none",
         "scroll-padding"
         | "scroll-padding-top"
         | "scroll-padding-right"

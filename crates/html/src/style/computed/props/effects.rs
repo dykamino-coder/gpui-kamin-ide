@@ -44,7 +44,7 @@ impl Computed {
             "y" => {
                 self.svg_y = record_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
-            "cx" | "cy" | "r" | "rx" | "ry" | "d" => {
+            "cx" | "cy" | "r" | "rx" | "ry" | "d" | "path-length" => {
                 crate::svg::geometry_property(self, key, v, vcx);
             }
             "caption-side" => {
