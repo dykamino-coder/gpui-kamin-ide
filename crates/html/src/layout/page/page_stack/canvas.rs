@@ -11,7 +11,6 @@
 use super::{PageGeom, PageStack};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::render::blocks;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Window, point, px, size};
 
@@ -66,7 +65,7 @@ pub(crate) fn builder(layers: Computed, root: Computed, opts: RenderOpts) -> Can
             anim: Default::default(),
             list_item: None,
         };
-        let mut els = blocks(&[Node::Element(el)], &root, &opts);
+        let mut els = opts.cx.build.blocks(&[Node::Element(el)], &root, &opts);
         match els.pop() {
             Some(el) if els.is_empty() => el,
             Some(el) => {
