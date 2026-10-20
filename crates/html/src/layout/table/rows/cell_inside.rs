@@ -1,8 +1,9 @@
 //! Место ячейки в сетке (охваты, явные координаты) и её содержимое (BFC ячейки, обрезка, выравнивание).
 
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
 use crate::layout::table::table_clipped_content;
-use crate::render::{RenderOpts, blocks};
+use crate::render::blocks;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};

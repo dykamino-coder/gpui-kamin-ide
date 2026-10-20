@@ -2,9 +2,9 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::layout::table::columns::{col_elements, colgroup_elements, push_col_bands};
 use crate::layout::table::rows::*;
-use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;

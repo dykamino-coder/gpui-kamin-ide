@@ -1,8 +1,9 @@
 //! Подписи таблицы (caption): сбор сверху/снизу и обёртка вокруг сетки.
 
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::render::{blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
