@@ -42,6 +42,7 @@ import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
+import { replaceRegisteredTools } from './mcp-tool-notify'
 
 /**
  * Map: sessionId → WS client.
@@ -185,6 +186,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
 
       switch (msg.type) {
         case 'session:create': {
+          // INC-2026-0070: a create carries no conversation id by definition —
+          // the journal shows whether a tab asked for a fresh session.
+          lifecycleLog('session_request', { requestKind: 'create', resumeRequested: false })
           const operation = beginStartup('replace_start')
           try {
             // Authenticate token
@@ -344,6 +348,11 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:resume': {
+          lifecycleLog('session_request', {
+            requestKind: 'resume',
+            resumeRequested: Boolean(msg.conversationId),
+            resumeConversationId: msg.conversationId,
+          })
           const operation = beginStartup('replace_resume')
           let releaseResumeLock: () => void = () => {}
           try {
@@ -400,7 +409,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (!ownsStartup(operation)) return
             const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
             if (live) {
-              lifecycleLog('resume_reuse', { sessionId: live.id })
+              lifecycleLog('resume_reuse', { sessionId: live.id, resumeConversationId: msg.conversationId })
               const oldWs = sessionWsMap.get(live.id)
               sessionWsMap.set(live.id, ws)
               if (oldWs && oldWs !== ws) {
@@ -429,7 +438,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               live.streamProtocol = msg.protocolVersion ?? 0
 
               if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                live.registeredTools = msg.externalTools
+                // The reused CLI keeps its MCP connection: announce a changed
+                // catalog instead of silently swapping the snapshot.
+                replaceRegisteredTools(live, msg.externalTools, 'reattach')
               }
 
               ws.send(
@@ -443,6 +454,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }),
               )
               if (live.cliConversationId) {
+                lifecycleLog('conversation_id', {
+                  sessionId: live.id,
+                  conversationId: live.cliConversationId,
+                  previousConversationId: msg.conversationId,
+                  idSource: 'reattach',
+                })
                 ws.send(
                   JSON.stringify({
                     type: 'session:conversation-id',
@@ -824,9 +841,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // This message is a complete external-tool snapshot. Replacing the
           // array removes tools from disabled/uninstalled/disconnected servers;
           // the previous name-based merge kept every disappeared old tool.
-          session.registeredTools = externalTools
+          const catalogChanged = replaceRegisteredTools(session, externalTools, 'register-external-tools')
 
           debugLog('External MCP tools registered', {
+            catalogChanged,
             sessionId: authenticatedSessionId,
             externalCount: externalTools.length,
             totalCount: session.registeredTools.length,

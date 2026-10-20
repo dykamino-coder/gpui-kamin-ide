@@ -218,7 +218,9 @@ export function wireConnectionCallbacks(tabManager: TabManager, configStore: Con
   ConnectionManager.onSessionTitle = (tabId, title) => {
     tabManager.updateTabSessionTitle(tabId, title)
     const tab = tabManager.getTab(tabId)
-    if (tab?.conversationId) {
+    // A held tab shows a temporary session: its title must not relabel the
+    // stored conversation's history entry (INC-2026-0070).
+    if (tab?.conversationId && !tab.connection.isIdentityHeld()) {
       configStore.addSavedSession({
         conversationId: tab.conversationId, cwd: tab.config.cwd || "", label: title || tab.label,
         folderName: tab.folderName, model: tab.model || "", lastActivity: new Date().toISOString(), messageCount: 0,
@@ -235,6 +237,18 @@ export function wireConnectionCallbacks(tabManager: TabManager, configStore: Con
       folderName: tab.folderName, model: tab.model || "", lastActivity: new Date().toISOString(), messageCount: 0,
     })
     tabManager.notifyTabListChangedPublic()
+  }
+
+  // INC-2026-0070: a fresh conversation the server started while the tab kept
+  // its stored identity. Listed in history so it is not lost, but the tab is
+  // NOT rebound to it — that needs the user's explicit choice.
+  ConnectionManager.onDetachedConversation = (tabId, conversationId) => {
+    const tab = tabManager.getTab(tabId)
+    if (!tab) return
+    configStore.addSavedSession({
+      conversationId, cwd: tab.config.cwd || "", label: tab.sessionTitle || tab.label,
+      folderName: tab.folderName, model: tab.model || "", lastActivity: new Date().toISOString(), messageCount: 0,
+    })
   }
 
   ConnectionManager.onElicitationRequest = (tabId, { requestId, toolName, message }) => {
