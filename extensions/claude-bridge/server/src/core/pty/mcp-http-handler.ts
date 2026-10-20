@@ -22,6 +22,8 @@ import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
 import { matchesResourceTemplate } from './resource-template'
 import { openToolNotificationStream } from './mcp-tool-notify'
+import { PROJECT_SESSION_TOOLS, isProjectSessionTool, projectSessionToolsEnabled } from '../project-sessions/tools'
+import { runForSession } from '../project-sessions/session-glue'
 
 export { MCP_TOOLS } from './mcp-tools-defs'
 
@@ -463,8 +465,10 @@ Key tool capabilities:
     }
 
     case 'tools/list': {
-      // Merge built-in MCP_TOOLS with any external tools registered via WS
-      const builtinNames = new Set(MCP_TOOLS.map((t) => t.name))
+      // Merge built-in MCP_TOOLS, the server-side project session tools
+      // (INC-2026-0072) and any external tools registered via WS.
+      const serverTools = projectSessionToolsEnabled() ? PROJECT_SESSION_TOOLS : []
+      const builtinNames = new Set<string>([...MCP_TOOLS, ...serverTools].map((t) => t.name))
       const externalTools = session.registeredTools
         .filter((t) => !builtinNames.has(t.name))
         .map((t) => ({
@@ -472,7 +476,7 @@ Key tool capabilities:
           description: t.description,
           inputSchema: t.inputSchema,
         }))
-      const toolList = [...MCP_TOOLS, ...externalTools]
+      const toolList = [...MCP_TOOLS, ...serverTools, ...externalTools]
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
       debugLog('tools/list response', {
@@ -495,6 +499,24 @@ Key tool capabilities:
       if (!toolName) {
         logMcpRequest(session, 'tools/call', 'error', 'Missing tool name')
         return jsonResponse(jsonRpcError(body.id, -32602, 'Missing tool name'), 400)
+      }
+
+      // Project session tools read Bridge-side transcripts, so they run here and
+      // never reach the client host. Same SSE envelope and size cap as forwarded
+      // tools; scope comes from the authenticated session, not the arguments.
+      if (isProjectSessionTool(toolName) && projectSessionToolsEnabled()) {
+        return sseStreamResponse(body.id ?? null, async () => {
+          const result = await runForSession(session, toolName, toolInput)
+          logMcpRequest(
+            session,
+            `tools/call:${toolName}`,
+            result.isError ? 'error' : 'ok',
+            result.isError ? result.content[0]?.text : undefined,
+            Date.now() - reqStart,
+            false,
+          )
+          return jsonRpcResponse(body.id, truncateMcpResult(result as unknown as Record<string, unknown>, toolName))
+        })
       }
 
       // Check tool exists in built-in tools OR registered external tools

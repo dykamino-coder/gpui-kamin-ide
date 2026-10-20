@@ -1,10 +1,11 @@
 //! Клонирование коробок по фрагментам (`box-decoration-break`).
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::multicol::spanner::multicol_container;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod dec;

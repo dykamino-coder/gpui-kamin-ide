@@ -3,8 +3,8 @@
 mod flush;
 pub(super) use flush::flush_inline;
 
-use super::{breaks_inline, contains_block, out_of_flow, real_inline};
 use crate::dom::Node;
+use crate::layout::box_kind::{breaks_inline, contains_block, out_of_flow, real_inline};
 use crate::layout::table::anon::anon_element;
 use crate::style::values::value::Len;
 

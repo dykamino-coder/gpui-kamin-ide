@@ -2,8 +2,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::layout::options::RenderOpts;
 use crate::render::paragraph::paragraph;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -19,7 +19,7 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
                 !style.wm().upright()
             }
             Node::Element(element)
-                if crate::render::real_inline(element)
+                if crate::layout::box_kind::real_inline(element)
                     || element.style.display == Some(crate::style::computed::Display::Contents) =>
             {
                 let child =

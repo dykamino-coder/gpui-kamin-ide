@@ -2,8 +2,8 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled};

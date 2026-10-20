@@ -1,10 +1,10 @@
 //! Используемые размеры отдельного ребёнка flex/grid.
 
+use crate::layout::options::RenderOpts;
 mod sizing;
 pub(super) use sizing::item_sizing;
 
 use crate::dom::Node;
-use crate::render::*;
 use crate::style::computed::{Computed, Display, FlexDir};
 use crate::style::values::value::Len;
 

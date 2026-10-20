@@ -22,7 +22,7 @@ impl Options {
                 self.collect(&e.children);
             } else if e.tag == "option" {
                 let mut text = String::new();
-                crate::render::gather_text_public(&e.children, &mut text);
+                crate::dom::text_content::gather_text(&e.children, &mut text);
                 let label = e
                     .attr("label")
                     .filter(|s| !s.is_empty())

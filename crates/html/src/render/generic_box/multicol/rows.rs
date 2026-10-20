@@ -1,7 +1,7 @@
 //! Размеры рядов и ограничения вложенного многоколоночного потока.
 
 use crate::dom::Element;
-use crate::render::*;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

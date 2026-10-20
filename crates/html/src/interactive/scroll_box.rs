@@ -5,7 +5,8 @@ use hoisting::hoist_from_scroll;
 // owner: A
 
 use crate::dom::Element;
-use crate::render::{RenderOpts, element, in_flow};
+use crate::layout::box_kind::in_flow;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -16,7 +17,7 @@ pub(crate) fn scrollable(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    if e.style.scroller || e.tag == "frameset" || crate::render::real_inline(e) {
+    if e.style.scroller || e.tag == "frameset" || crate::layout::box_kind::real_inline(e) {
         return None;
     }
     use crate::style::computed::Overflow;
@@ -114,7 +115,7 @@ pub(crate) fn scrollable(
                 cx.scroll_target = Some(target.clone());
                 cx.scroll_frame = frame;
             });
-            let built = element(&inner, &inherited, &inner_opts);
+            let built = inner_opts.cx.build.element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;
             }
@@ -233,7 +234,7 @@ pub(crate) fn resizable(
         if let Some(h) = h {
             mixed.style.height = Some(Len::Px(h));
         }
-        element(&mixed, &inherited, &opts)
+        opts.cx.build.element(&mixed, &inherited, &opts)
     });
     Some(
         crate::interactive::resizable::Resizable::new(

@@ -24,7 +24,7 @@ pub(super) fn blank_box(
     // держат распорки) и высоту строки не меняет (§10.8: поля,
     // отступы и рамки строчного в неё не входят).
     let mut inner_text = String::new();
-    crate::render::gather_text_public(&e.children, &mut inner_text);
+    crate::dom::text_content::gather_text(&e.children, &mut inner_text);
     // Из одних СХЛОПЫВАЕМЫХ пробелов — тоже пустая: пробелы
     // схлопнутся в соседний или срежутся у края строки (§4.1.1,
     // §4.1.3), а рамка без фона прогоном не рисуется
@@ -101,7 +101,7 @@ pub(super) fn blank_box(
         sized.position = None;
         physical_sides::project_box(inherited, &mut copy.style);
         physical_sides::project_box(inherited, &mut sized);
-        let boxel = crate::render::styled_div_with(&copy, &sized, cx)
+        let boxel = crate::paint::box_tree::styled::styled_div_with(&copy, &sized, cx)
             .absolute()
             .top(gpui::px(dy));
         out.push(Piece::Overlay(

@@ -1,11 +1,12 @@
 //! Разрывы и запреты на кромках детей: break-before/after и avoid между соседями.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::flex_lines::class_a_box;
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::table::is_cell;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 
 /// Запрет разрыва на краю коробки: свой `break-before: avoid*` /

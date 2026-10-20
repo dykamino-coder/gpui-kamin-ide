@@ -1,10 +1,11 @@
 //! Подготовка детей flex/grid: collapsed struts и используемые размеры.
 
+use crate::dom::whitespace::is_blank;
+use crate::layout::options::RenderOpts;
 mod element;
 pub(super) use element::ordered_element;
 
 use crate::dom::Node;
-use crate::render::*;
 use crate::style::computed::{Computed, FlexDir};
 use crate::style::values::value::Len;
 

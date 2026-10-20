@@ -1,12 +1,11 @@
 //! Build undecorated inline continuations before collapsing ancestor block margins.
 
 use crate::dom::Node;
+use crate::layout::block::inline_splits::split_block_in_inline;
+use crate::layout::box_kind::{contains_block, out_of_flow, real_inline, replaced_tag};
 use crate::layout::float::inline_floats;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::table::anon::wrap_anon_tables;
-use crate::render::{
-    contains_block, out_of_flow, real_inline, replaced_tag, split_block_in_inline,
-};
 use crate::style::computed::Display;
 
 /// CSS 2.1 sections 9.2.1.1 and 8.3.1: adjoining margins belong to the

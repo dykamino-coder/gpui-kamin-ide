@@ -4,7 +4,7 @@ use super::{contained_image, fit_local_image, local_image_source, view_boxed};
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
 use crate::layout::replaced::replaced_used_style;
-use crate::render::styled_div;
+use crate::paint::box_tree::styled::styled_div;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 

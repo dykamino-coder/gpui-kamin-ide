@@ -1,8 +1,9 @@
 //! Группы строчных прогонов, транспонирование дерева и боковые поля обёртки.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::table::anon::anon_element;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 

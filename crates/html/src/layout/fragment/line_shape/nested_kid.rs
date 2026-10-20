@@ -1,7 +1,8 @@
 //! Блочные дети вложенного многоколоночника, которые режутся по рядам как строки.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::render::{is_blank, out_of_flow};
+use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
 

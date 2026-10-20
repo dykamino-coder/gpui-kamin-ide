@@ -1,5 +1,10 @@
 //! Блочный поток: дети блока в элементы (blocks).
 
+use crate::layout::options::RenderOpts;
+use crate::render::first_letter_descendants;
+use crate::render::first_letter_scope;
+use crate::render::first_line_descendants;
+use crate::style::computed::formatting_context::own_context_style;
 mod prepare_children;
 pub(super) use prepare_children::prepare_children;
 
@@ -16,16 +21,14 @@ use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
-use crate::render::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
 pub(super) mod positioned;
-pub(crate) use crate::render::blocks::canvas::*;
-use crate::render::blocks::flow::*;
-pub(crate) use crate::render::blocks::positioned::*;
+use flow::blocks_flow;
+pub(crate) use positioned::inset_holder_box;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
 // руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и

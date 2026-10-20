@@ -320,3 +320,21 @@ docker exec open-claude-bridge node -e 'const fs=require("fs"); const base="/app
 credentials. Только deployment owner подключает новый volume при обычной
 выкладке после merge и отдельно подтверждает запись/retention; implementation
 agent не пересоздаёт действующий service ради этой задачи.
+
+## Чтение соседних бесед проекта (INC-2026-0072)
+
+CLI-сессия получает read-only MCP-инструменты `project_sessions_list`,
+`project_session_read`, `project_session_raw`, `project_session_search`,
+`project_session_outline`, `project_session_subagents` и
+`project_session_brief`. Они выполняются в самом Bridge, а не на клиенте, и
+видят только беседы того же token **и** того же проекта (папки клиента), включая
+их subagents и копии из durable transcript archive. Чужие token, другие проекты,
+symlink-каталоги/файлы и id с путями отклоняются одинаковым ответом «не найдено».
+Инструменты ничего не изменяют; вывод ограничен на вызов и продолжается курсором,
+credential-подобные строки заменяются на `[REDACTED:<kind>]`.
+
+Каждый вызов записывается в lifecycle journal событием `project_session_access`
+(`tool`, `outcome`, `conversationRef`, `tokenRef`, `bytes`, `entries`, `self`) и
+в Bridge log; содержимое, запросы поиска и raw id в journal не попадают.
+Отключить инструменты для всего сервера: `KAMIN_PROJECT_SESSION_TOOLS=off`
+(в env-file, затем пересоздать контейнер).

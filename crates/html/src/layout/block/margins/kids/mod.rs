@@ -2,12 +2,13 @@
 
 use crate::dom::Node;
 use crate::layout::block::containing::with_inner_cb;
+use crate::layout::block::inline_splits::split_block_in_inline;
 use crate::layout::block::struts::{
     first_in_flow, leading_chain, margin_px, pin_inherited_margins, trailing_chain, zero_at,
 };
 use crate::layout::block::{margin_edges, margin_height};
+use crate::layout::box_kind::{inline_level_box, own_context};
 use crate::layout::table::anon::wrap_anon_tables;
-use crate::render::{inline_level_box, own_context, split_block_in_inline};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod struts;

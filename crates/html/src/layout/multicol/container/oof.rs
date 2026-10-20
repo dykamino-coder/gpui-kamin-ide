@@ -3,8 +3,8 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
@@ -212,7 +212,7 @@ pub(super) fn finish_column_stack(
         }
         d = d.child(crate::layout::positioned::containing_block::spot_place(
             oof_spots[i].clone(),
-            element(&oof, &merged, opts),
+            opts.cx.build.element(&oof, &merged, opts),
         ));
     }
     d.into_any_element()

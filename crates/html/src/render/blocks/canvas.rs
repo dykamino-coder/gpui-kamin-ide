@@ -1,9 +1,10 @@
 //! Слой фона холста у корня (группа корня, css-compositing-1 §pagebackdrop).
+use crate::layout::options::RenderOpts;
+use gpui::IntoElement;
 // owner: A
 
 use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};

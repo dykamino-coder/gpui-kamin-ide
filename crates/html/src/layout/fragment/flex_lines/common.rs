@@ -1,8 +1,8 @@
 //! Общие ограничения и пиксельные промежутки при раскрытии flex в потоки.
 
 use crate::dom::Element;
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::out_of_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

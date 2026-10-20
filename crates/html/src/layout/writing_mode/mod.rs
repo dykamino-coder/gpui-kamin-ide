@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
-use crate::render::in_flow;
+use crate::layout::box_kind::in_flow;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 

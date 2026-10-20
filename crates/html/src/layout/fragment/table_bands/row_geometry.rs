@@ -5,11 +5,11 @@
 //! rows keep their independently sized row tracks.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::is_cell;
-use crate::render::is_blank;
 use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;
 

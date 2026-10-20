@@ -1,7 +1,7 @@
 //! List item boxes paint their markers independently of the parent element tag.
 
 use crate::dom::Element;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, Styled};
@@ -55,7 +55,7 @@ pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     ) || (li.style.display == Some(Display::InlineBlock)
         && li.style.inline_display != Some(true))
     {
-        crate::render::pseudo_line_layers::install(li, &mut merged, vcx);
+        crate::dom::pseudo_line_layers::install(li, &mut merged, vcx);
     }
     render_with_style(li, inherited, &merged, opts)
 }

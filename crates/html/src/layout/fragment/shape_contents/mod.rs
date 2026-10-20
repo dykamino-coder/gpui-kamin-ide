@@ -3,13 +3,13 @@
 use crate::document::state::ValueCx;
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::float::{float_only_box, has_float};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::table_bands::{table_box, table_shape};
-use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod kids;

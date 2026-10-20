@@ -4,9 +4,9 @@ use super::fixed::{drop_uncontained_oof, drop_viewport_fixed, fixed_cb_box};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
+use crate::layout::options::RenderOpts;
 use crate::layout::table::table;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, element};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -87,11 +87,11 @@ pub(super) fn copy_whole_box(
             mc.style.height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.border_box = None;
         }
-        return Some(element(
-            &mc,
-            merged,
-            &opts.with_outer_row((hh, nest_phase_k)),
-        ));
+        return Some(
+            opts.cx
+                .build
+                .element(&mc, merged, &opts.with_outer_row((hh, nest_phase_k))),
+        );
     }
     if whole {
         let mut mc = copy.clone();
@@ -101,7 +101,7 @@ pub(super) fn copy_whole_box(
         {
             mc.style.width = Some(Len::Px(w));
         }
-        return Some(element(&mc, merged, opts));
+        return Some(opts.cx.build.element(&mc, merged, opts));
     }
     if table_box(copy) {
         let mut tc = copy.clone();

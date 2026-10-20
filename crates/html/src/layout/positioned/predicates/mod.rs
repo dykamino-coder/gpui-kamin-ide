@@ -2,9 +2,9 @@
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::block_level_in_flow;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::block_level_in_flow;
 use crate::style::values::value::Len;
 mod own_box;
 pub(crate) use own_box::has_own_box;
