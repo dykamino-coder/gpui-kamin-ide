@@ -39,7 +39,6 @@ pub(super) mod element;
 pub(super) mod generic_box;
 pub use crate::layout::options::RenderOpts;
 pub(crate) use crate::render::element::*;
-use crate::render::generic_box::*;
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
