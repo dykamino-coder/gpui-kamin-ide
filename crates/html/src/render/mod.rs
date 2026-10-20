@@ -7,7 +7,7 @@
 mod paragraph_route;
 use paragraph_route::paragraph_probed;
 
-use crate::layout::order::{paint_last_ok, unkeyed_positions};
+use crate::layout::order::unkeyed_positions;
 
 use crate::dom::Node;
 pub(crate) use crate::dom::text_content::{gather_text, split_nodes};

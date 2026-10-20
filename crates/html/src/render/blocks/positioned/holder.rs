@@ -1,7 +1,8 @@
 //! Коробка места для inset позиционированного элемента.
 
 use crate::dom::Element;
-use crate::render::*;
+use crate::layout::options::RenderOpts;
+use crate::render::element::element;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, div};
