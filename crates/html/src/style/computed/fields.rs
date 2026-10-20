@@ -1593,4 +1593,6 @@ pub struct Computed {
     /// The style of the initial containing block (`RenderOpts::root_style`),
     /// whose box is the embedder's; not inherited.
     pub(crate) icb: bool,
+    /// Experimental CSS path-length; Auto represents none. Not inherited.
+    pub(crate) svg_path_length: Option<Len>,
 }

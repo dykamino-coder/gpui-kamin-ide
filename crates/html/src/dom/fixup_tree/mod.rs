@@ -28,6 +28,21 @@ use crate::style::values::value::Len;
 /// `intrinsic-percent-replaced-003`). `base` — высота содержимого опоры для
 /// детей; гибкий/сеточный/табличный предок с `auto` и абсолют цепочку рвут.
 pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
+    if let [Node::Element(html)] = nodes
+        && html.tag == "html"
+    {
+        html.marks.quirks_fill = html.style.float.is_none_or(|f| f == 0);
+        if let Some(Node::Element(body)) = html
+            .children
+            .iter_mut()
+            .find(|n| matches!(n, Node::Element(e) if e.tag == "body" || e.tag == "frameset"))
+            && body.tag == "body"
+        {
+            // Float layout clears `float` on the box it puts into a row.
+            // Preserve the fill exclusion before that tree rewrite.
+            body.marks.quirks_fill = body.style.float.is_none_or(|f| f == 0);
+        }
+    }
     for n in nodes.iter_mut() {
         let Node::Element(e) = n else { continue };
         let st = &mut e.style;

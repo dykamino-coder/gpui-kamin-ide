@@ -147,7 +147,10 @@ impl Element for ScrollArea {
         cx: &mut App,
     ) {
         child.2.set_decoration_clip(window.content_mask());
-        child.0.paint(window, cx);
+        // CSS2 Appendix E.2: scrolling does not establish a stacking context.
+        // Preserve its block-background / inline-foreground phases through
+        // this native adapter (Blink box_fragment_painter.cc:877-959).
+        gpui::paint_reopen(|| child.0.paint(window, cx));
         let alpha = child
             .4
             .paint(self.freeze_scrollbars, &paint_bounds.1, &child.1, window);

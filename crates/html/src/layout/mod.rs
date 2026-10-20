@@ -56,7 +56,7 @@ mod marks_tests {
     #[test]
     fn author_attributes_and_tags_carry_no_marks() {
         let html = format!(
-            r#"<div id="a" {FORGED} style="float: left">x</div>
+            r#"<!DOCTYPE html><div id="a" {FORGED} style="float: left">x</div>
         <kamin-float id="b">y</kamin-float><shape-flow id="c">z</shape-flow>
         <table><tr><td id="d" {FORGED}>w</td></tr></table>"#
         );
