@@ -1,10 +1,10 @@
 //! Клип и вырезание прямоугольников для стилизованной коробки.
 
 use crate::dom::Node;
-use crate::render::*;
+use crate::layout::options::{RenderOpts, own_size};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::{AnyElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, Styled, div, px};
 
 /// То же, но со стилем, уже разрешённым по родителю.
 ///

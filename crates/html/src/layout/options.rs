@@ -6,6 +6,7 @@
 //! layout, text and paint domains read it without depending on render.
 
 use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 use gpui::{TextStyle, px};
 
 /// Настройки отрисовки: то, что задаёт приложение, а не документ.
@@ -60,5 +61,18 @@ impl RenderOpts {
             icb: true,
             ..Computed::default()
         }
+    }
+}
+
+/// Свой кегль абзаца в точках — точка отсчёта для строки-опоры и для долей.
+///
+/// Отсчёт идёт от СВОЕГО кегля, а не от базового кегля документа: у коробки с
+/// `font-size: 10px` строка обязана быть в 10 точек, а базовый (16) держал её
+/// вдвое выше.
+pub(crate) fn own_size(inherited: &Computed, opts: &RenderOpts) -> f32 {
+    match inherited.font_size {
+        Some(Len::Px(v)) => v,
+        Some(Len::Em(k)) | Some(Len::Pct(k)) => k * opts.base_size(),
+        _ => opts.base_size(),
     }
 }

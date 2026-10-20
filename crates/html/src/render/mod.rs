@@ -23,9 +23,8 @@ pub(super) mod first_line_descendants;
 pub(crate) use crate::dom::pseudo_line_layers;
 pub(super) mod native_paragraph_route;
 
-pub(super) mod box_div;
 pub(crate) use crate::layout::box_kind::*;
-pub(crate) use crate::render::box_div::*;
+pub(crate) use crate::paint::box_tree::styled::*;
 pub(super) mod util;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
