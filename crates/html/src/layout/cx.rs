@@ -17,6 +17,8 @@ use std::rc::Rc;
 pub struct LayoutCx {
     /// Active clamp count root and paragraph sequence of this build.
     pub(crate) clamp_build: crate::text::clamp::ClampBuild,
+    /// Child-build requests of the render orchestrator (`ChildBuild`).
+    pub(crate) build: crate::layout::build_contracts::ChildBuild,
     /// Paint-order and deferred-geometry boundaries of the box being built.
     pub(crate) paint_depth: crate::paint::effects::paint_scope::Depth,
     /// Scrollable overflow owner captured by probes and deferred text elements.

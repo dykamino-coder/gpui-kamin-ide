@@ -4,6 +4,7 @@
 pub mod atom;
 pub mod block;
 pub(crate) mod box_kind;
+pub(crate) mod build_contracts;
 pub mod cx;
 pub mod float;
 pub mod fragment;

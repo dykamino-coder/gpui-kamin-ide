@@ -38,6 +38,7 @@ pub(crate) use crate::render::paragraph::pieces::*;
 pub(crate) use crate::render::paragraph::*;
 pub(crate) mod blocks;
 pub(crate) use crate::render::blocks::*;
+mod child_builder;
 pub(super) mod element;
 pub(super) mod generic_box;
 pub use crate::layout::options::RenderOpts;
