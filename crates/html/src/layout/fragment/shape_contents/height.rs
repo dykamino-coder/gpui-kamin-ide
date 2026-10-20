@@ -184,7 +184,7 @@ pub(super) fn bfc_root(c: &Element) -> bool {
         c.style.display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) && !c.inline
-        && (crate::render::own_context(c) || c.tag == "fieldset")
+        && (crate::layout::box_kind::own_context(c) || c.tag == "fieldset")
 }
 
 /// `max-height` ниже содержимого отделяет нижнее поле последнего ребёнка от

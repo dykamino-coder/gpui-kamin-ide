@@ -1,8 +1,8 @@
 //! Порядок секций таблицы и параметры ячеек для меры и поиска переносов.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 

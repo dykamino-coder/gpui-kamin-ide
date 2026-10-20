@@ -2,7 +2,7 @@
 
 use gpui::{Bounds, Pixels, point, px, size};
 
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 
 /// Контекст фрагментации сборки — часть `RenderOpts`, которую ставит не
 /// приложение, а код, строящий фрагменты (Blink несёт то же в

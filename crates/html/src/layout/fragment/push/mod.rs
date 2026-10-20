@@ -3,13 +3,14 @@
 use crate::document::state::ValueCx;
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::grid_bands::{grid_auto_row_bands, grid_items_spotted, grid_stack};
 use crate::layout::fragment::line_shape::basis_sized;
 use crate::layout::fragment::table_bands::table_box;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod cell;

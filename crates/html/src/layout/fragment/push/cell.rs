@@ -2,12 +2,12 @@
 
 use super::pushed_box_at;
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::table_bands::parts::{cell_settings, is_row, ordered_parts};
 use crate::layout::fragment::table_bands::row_geometry;
 use crate::layout::table::anon::fixup_table_children;
-use crate::render::is_blank;
 use crate::style::values::value::Len;
 
 /// Распорка в таблице по тегу: та же арифметика рядов, что у `table_shape`

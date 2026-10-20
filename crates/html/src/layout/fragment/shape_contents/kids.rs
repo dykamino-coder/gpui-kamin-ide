@@ -3,13 +3,13 @@
 use super::{finish_shape_cuts, kid_shapes, shaped_height};
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
 use crate::layout::fragment::oof_reach::{Measure, Reach};
 use crate::layout::fragment::shape_kids::stack_kids;
 use crate::layout::page::names::page_names;
-use crate::render::out_of_flow;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
