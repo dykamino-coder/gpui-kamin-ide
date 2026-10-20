@@ -563,8 +563,9 @@ export function JsonlViewer(): JSX.Element {
           // user scrolls near the top (useChatScrollPin → onNearTop). Kept as a
           // muted spinner so the user knows scrolling up will reveal more.
           // Nothing in the projection draws (or it is empty) while the store holds
-          // rows: say so instead of leaving a blank panel. Counted by
-          // noteChatWindow above as an empty-window-with-rows episode.
+          // rows: say so instead of leaving a blank panel. noteChatWindow above
+          // counts it as an episode only when the projection had rows to draw;
+          // a housekeeping-only store is a placeholder render.
           if (prepared.length === 0) {
             return (
               <div class={styles.empty}>

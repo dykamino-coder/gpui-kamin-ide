@@ -178,4 +178,24 @@ describe('chat window instrumentation', () => {
     noteChatWindow({ ...base, storeRows: 0, projectedRows: 0, drawnRows: 0, nullRows: 0 })
     expect(getChatWindowDiag().emptyWindowWithRows).toBe(0)
   })
+
+  it('a housekeeping-only store showing the placeholder is not an episode', () => {
+    // Fresh or not-found-on-resume session: 8 housekeeping rows, nothing projects.
+    const housekeeping = { ...base, storeRows: 8, projectedRows: 0, hiddenRows: 0, drawnRows: 0, nullRows: 0 }
+    noteChatWindow(housekeeping)
+    noteChatWindow(housekeeping)
+    const d = getChatWindowDiag()
+    expect(d.emptyWindowWithRows).toBe(0)
+    expect(d.emptyWindowRenders).toBe(0)
+    expect(d.placeholderRenders).toBe(2)
+    expect(d.inEmptyState).toBe(false)
+    expect(d.episodes).toHaveLength(0)
+  })
+
+  it('rows behind the pill with nothing drawn are an episode', () => {
+    noteChatWindow({ ...base, projectedRows: 0, hiddenRows: 650, drawnRows: 0, nullRows: 0 })
+    const d = getChatWindowDiag()
+    expect(d.emptyWindowWithRows).toBe(1)
+    expect(d.placeholderRenders).toBe(0)
+  })
 })

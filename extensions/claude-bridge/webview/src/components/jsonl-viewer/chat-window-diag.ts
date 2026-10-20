@@ -1,12 +1,17 @@
 // Instrumentation for the empty-chat-window state (INC-2026-0071 / BR-22).
 //
-// "Empty window with rows": the active tab's store holds entries, the viewer is
-// not showing its loading cover, and the mounted window drew no row at all. On
-// main before this change the reported form was the "N earlier messages" pill
-// with nothing under it. The drawable window (render-window.ts) removes the
-// known mechanism, so a non-zero counter now means either a projection with no
-// drawable row at all or a boundary not yet classified — exactly what BR-22's
-// paired capture needs to see.
+// "Empty window with rows": the projection of the active tab holds rows that
+// should be drawable — rows behind the "N earlier messages" pill or projected
+// rows at all — yet the mounted window drew none. On main before this change
+// the reported form was that pill with nothing under it. The drawable window
+// (render-window.ts) removes the known mechanism, so a non-zero counter now
+// means a boundary not yet classified — exactly what BR-22's paired capture
+// needs to see.
+//
+// A store holding only housekeeping rows (a fresh session, a resumed session
+// whose transcript was not found) projects to nothing and correctly shows the
+// empty "Session Log" placeholder. That is not an episode; it is counted
+// separately as `placeholderRenders`.
 //
 // Counts and sizes only: no ids, text or entry content. Read through the
 // stethoscope DiagnosticButton dump, `window.__chatWindowDiag` (shell probe), and
@@ -40,6 +45,9 @@ export interface ChatWindowDiag {
   emptyWindowWithRows: number
   /** Renders spent in that state. */
   emptyWindowRenders: number
+  /** Renders of a store whose projection is empty (housekeeping rows only):
+   *  the legitimate "Session Log" placeholder, not an episode. */
+  placeholderRenders: number
   /** Largest number of counted-but-null rows skipped inside one window. */
   maxNullRows: number
   /** Renders whose window skipped at least one counted-but-null row. */
@@ -56,6 +64,7 @@ function fresh(): ChatWindowDiag {
     renders: 0,
     emptyWindowWithRows: 0,
     emptyWindowRenders: 0,
+    placeholderRenders: 0,
     maxNullRows: 0,
     rendersWithNullRows: 0,
     inEmptyState: false,
@@ -81,7 +90,12 @@ export function noteChatWindow(sample: ChatWindowSample, now: () => Date = () =>
     diag.rendersWithNullRows += 1
     if (sample.nullRows > diag.maxNullRows) diag.maxNullRows = sample.nullRows
   }
-  const empty = sample.drawnRows === 0
+  // Only rows that should be drawable make an empty window an episode: rows
+  // behind the pill, or projected rows at all. An empty projection is the
+  // housekeeping-only placeholder.
+  const shouldDraw = sample.hiddenRows > 0 || sample.projectedRows > 0
+  if (sample.drawnRows === 0 && !shouldDraw) diag.placeholderRenders += 1
+  const empty = sample.drawnRows === 0 && shouldDraw
   if (empty) {
     diag.emptyWindowRenders += 1
     if (!diag.inEmptyState) {
