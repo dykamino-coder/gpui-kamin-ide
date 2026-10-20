@@ -70,7 +70,7 @@ pub(crate) fn reap_sets() -> (HashSet<String>, HashSet<String>) {
 }
 
 /// Копия множества видимых — для выгрузки и ватчдога (`web::reap_hidden`,
-/// `web::respawn_stalled`).
+/// `web::respawn::tick`).
 pub(crate) fn visible_set() -> HashSet<String> {
     VIEWS.lock().map(|v| v.visible.clone()).unwrap_or_default()
 }

@@ -95,6 +95,11 @@ cef::wrap_render_handler! {
         ) {
             let Some(info) = info else { return };
             super::diag_why::frame(&self.id, "accelerated/received");
+            // Браузер вью уже пересоздан в software (или закрыт): поздний
+            // accelerated-кадр старого перебил бы его кадры (INC-2026-0073).
+            if !super::profile::accelerated(&self.id) {
+                return;
+            }
             if type_.as_ref() == &cef::sys::cef_paint_element_type_t::PET_POPUP {
                 // Дропдаун `<select>`: отдельная текстура поверх кадра.
                 super::popup::put(

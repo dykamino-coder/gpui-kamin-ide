@@ -6,6 +6,7 @@
 
 #[cfg(debug_assertions)]
 mod acceptance;
+mod blank_probe;
 mod browsers;
 #[cfg(debug_assertions)]
 pub(crate) use acceptance::{acceptance_log, reset_fixture};
@@ -39,8 +40,10 @@ mod open_shared;
 mod outbox;
 mod popup;
 mod process;
+mod profile;
 mod pump;
 mod render_handler;
+mod respawn;
 mod scheme;
 mod shared_texture;
 mod typed;
@@ -130,7 +133,8 @@ pub(crate) fn probe_focus(id: &str) {
 /// текстур — с `shared_texture_enabled=1` без GPU-композитинга CEF не шлёт
 /// кадры ВООБЩЕ (ни accelerated, ни on_paint; поймано стендом). Включается:
 /// детектом RDP-сессии на старте, форсом `KAMIN_CEF_FORCE_SW`, либо
-/// ватчдогом после первого пересоздания «вью без кадров».
+/// ватчдогом (`respawn.rs`), который тогда же пересоздаёт все живые браузеры
+/// на общих текстурах.
 static SW_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn sw_mode() -> bool {
@@ -186,55 +190,15 @@ static HIDDEN_AT: LazyLock<Mutex<std::collections::HashMap<String, std::time::In
 /// туда-обратно не убивало renderer, и мало, чтобы память возвращалась.
 const HIDDEN_TTL: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// Выгрузить браузеры вью, скрытых дольше [`HIDDEN_TTL`]: их renderer-процессы
-/// держат десятки МБ на состояние, которое всё равно пересобирается при
-/// возврате (страница поднимается из HTML-стора и сама дозапрашивает данные —
-/// тот же путь, что при первом открытии). Зовётся раз в секунду из насоса.
-/// Ватчдог «вью без кадров»: браузер заказан, вью ВИДИМ, а ни одного кадра
-/// так и нет — закрыть; следующая отрисовка поднимет его заново
-/// (`ensure_html_view`/`open`). Лечит редкие простои CEF на старте
-/// («иногда вовсе не прогружается», жалоба юзера). Две попытки на вью —
-/// дальше причина точно не в браузере, не циклим.
-pub(crate) fn respawn_stalled() {
-    use std::collections::HashMap;
-    static RESPAWNS: LazyLock<Mutex<HashMap<String, u32>>> =
-        LazyLock::new(|| Mutex::new(HashMap::new()));
-    let visible = visibility::visible_set();
-    for id in browsers::ids() {
-        if !visible.contains(&id) {
-            continue;
-        }
-        let stalled = shared_texture::get(&id).is_none()
-            && frames::get(&id).is_none() // software-кадры (RDP) = вью живой
-            && browsers::opened_ago(&id).is_some_and(|d| d.as_secs() >= 12);
-        if !stalled {
-            continue;
-        }
-        let attempts = RESPAWNS
-            .lock()
-            .map(|mut m| {
-                let e = m.entry(id.clone()).or_insert(0);
-                *e += 1;
-                *e
-            })
-            .unwrap_or(99);
-        if attempts > 2 {
-            continue;
-        }
-        println!("[cef] вью {id} без кадров 12с — пересоздаю (попытка {attempts})");
-        // Кадры не пришли ни разу — вероятно, GPU-композитинга нет (RDP):
-        // пересоздаём уже в software-профиле.
-        set_sw_mode(true);
-        browsers::close(&id);
-        repaint_requested();
-    }
-}
-
 /// Чат никогда не выгружаем: его холодный подъём — самый дорогой (реплей
 /// всей переписки) и самый заметный («чат перезагрузился»). Память чата
 /// оправдана всегда — это главная поверхность приложения.
 const NEVER_REAP: &[&str] = &["claudeBridgeChat"];
 
+/// Выгрузить браузеры вью, скрытых дольше [`HIDDEN_TTL`]: их renderer-процессы
+/// держат десятки МБ на состояние, которое всё равно пересобирается при
+/// возврате (страница поднимается из HTML-стора и сама дозапрашивает данные —
+/// тот же путь, что при первом открытии). Зовётся раз в секунду из насоса.
 pub(crate) fn reap_hidden() {
     let (visible, retained) = visibility::reap_sets();
     let now = std::time::Instant::now();
@@ -276,6 +240,7 @@ pub(crate) fn reap_hidden() {
             frames::forget_view(&id);
             popup::forget_view(&id);
             cursors::forget_view(&id);
+            blank_probe::forget_view(&id);
         }
     }
 }
