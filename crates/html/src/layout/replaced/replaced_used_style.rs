@@ -124,7 +124,7 @@ pub(crate) fn inline_nodes(
     for node in &mut nodes {
         if let crate::dom::Node::Element(element) = node
             && element.tag == "img"
-            && crate::render::inline_level(element)
+            && crate::layout::box_kind::inline_level(element)
         {
             inline_percentage_width(&mut element.style, basis);
         }

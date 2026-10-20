@@ -86,7 +86,7 @@ pub(crate) fn empty_iframe_size(
 pub(crate) fn empty_iframe(
     e: &Element,
     inherited: &Computed,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
@@ -126,7 +126,7 @@ pub(crate) fn svg_replaced(
     e: &Element,
     sized: &Element,
     merged: &Computed,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let boxed = svg_has_box(merged);
     let inner;

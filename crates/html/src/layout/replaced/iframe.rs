@@ -3,8 +3,9 @@
 
 use crate::dom::Element;
 use crate::layout::block::reorder::orthogonal_vertical_children;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::responsive_embedded_sizing;
-use crate::render::{RenderOpts, blocks, styled_div};
+use crate::render::{blocks, styled_div};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};

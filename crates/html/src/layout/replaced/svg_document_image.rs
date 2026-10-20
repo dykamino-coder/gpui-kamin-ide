@@ -9,7 +9,8 @@
 //! rasterized. Images without `<foreignObject>` keep the raster path.
 
 use crate::dom::Element;
-use crate::render::{RenderOpts, styled_div};
+use crate::layout::options::RenderOpts;
+use crate::render::styled_div;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
