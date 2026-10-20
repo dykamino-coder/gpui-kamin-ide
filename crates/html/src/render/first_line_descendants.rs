@@ -88,7 +88,7 @@ mod tests {
                 panic!("in-flow block")
             };
             let mut merged = inherit(&inherited, &child.style, doc.values());
-            crate::render::pseudo_line_layers::install(child, &mut merged, doc.values());
+            crate::dom::pseudo_line_layers::install(child, &mut merged, doc.values());
             assert_eq!(
                 merged.first_line.as_ref().unwrap().font_size,
                 Some(Len::Px(32.))

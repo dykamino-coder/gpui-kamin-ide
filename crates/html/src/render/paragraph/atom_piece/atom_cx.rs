@@ -3,8 +3,9 @@
 //! and the offer of a positioned inline ancestor as its containing block.
 
 use crate::dom::Element;
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::containing_block::LineBoxSlot;
-use crate::render::{RenderOpts, replaced_tag};
 use crate::style::computed::Display;
 use crate::text::inline::InlineCbOffer;
 use crate::text::paragraph::RubyExtents;

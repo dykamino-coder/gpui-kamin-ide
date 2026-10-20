@@ -27,8 +27,8 @@ use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
 pub(super) mod positioned;
-use crate::render::blocks::flow::*;
-pub(crate) use crate::render::blocks::positioned::*;
+use flow::blocks_flow;
+pub(crate) use positioned::inset_holder_box;
 
 // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): разворачивать `text-emphasis` в поштучные
 // руби (по знаку-аннотации над каждой буквой базы, кроме пробелов и

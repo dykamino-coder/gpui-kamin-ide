@@ -33,7 +33,7 @@ pub(super) fn generic_box(
     if merged.wm().vertical()
         && !inherited.wm().vertical()
         && !e.inline
-        && crate::render::in_flow(&e.style)
+        && crate::layout::box_kind::in_flow(&e.style)
         && matches!(
             inherited.display,
             None | Some(Display::Block | Display::InlineBlock)

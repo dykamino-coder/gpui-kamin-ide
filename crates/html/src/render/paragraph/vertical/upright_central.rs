@@ -85,7 +85,7 @@ fn collect(
                 }
             }
             Node::Element(e) => {
-                if !crate::render::real_inline(e) || !plain_span(&e.style) {
+                if !crate::layout::box_kind::real_inline(e) || !plain_span(&e.style) {
                     return None;
                 }
                 let child = crate::style::cascade::inherit::inherit(style, &e.style, vcx);
