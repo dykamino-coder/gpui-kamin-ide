@@ -7,8 +7,11 @@ use groups::{ShadowStyle, collect_groups};
 use masks::masked_layer;
 
 use crate::dom::Node;
-use crate::render::{RenderOpts, gather_text, normalize_for_shadow, paragraph};
+use crate::dom::text_content::gather_text;
+use crate::layout::options::RenderOpts;
+use crate::render::paragraph;
 use crate::style::computed::{Computed, Shadow};
+use crate::text::shadow_text::normalize_for_shadow;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 fn shadow_layer(

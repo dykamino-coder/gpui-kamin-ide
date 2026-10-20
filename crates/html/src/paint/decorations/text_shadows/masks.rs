@@ -3,7 +3,8 @@
 use super::{ShadowStyle, atomic};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::render::{RenderOpts, paragraph};
+use crate::layout::options::RenderOpts;
+use crate::render::paragraph;
 use crate::style::computed::{Computed, Shadow};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
