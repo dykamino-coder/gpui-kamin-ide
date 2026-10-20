@@ -74,7 +74,7 @@ pub struct LayoutCx {
     pub(crate) paint_keys: Rc<std::cell::Cell<u64>>,
     /// Positions of the document's nodes in a forward walk and of the LAST
     /// positioned node that keeps no paint key (`unkeyed_positions`).
-    pub(crate) unkeyed: Rc<crate::render::Unkeyed>,
+    pub(crate) unkeyed: Rc<crate::layout::order::Unkeyed>,
     /// How many documents (iframes, SVG document images) the box is nested
     /// in: a guard against cyclic embedding.
     pub(crate) frame_depth: u32,

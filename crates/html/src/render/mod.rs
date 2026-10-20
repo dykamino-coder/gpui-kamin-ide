@@ -9,9 +9,8 @@ use paragraph_route::paint_inline_step7;
 use paragraph_route::paragraph_probed;
 
 mod paint_order;
+use crate::layout::order::{paint_last_ok, unkeyed_positions};
 pub(super) use paint_order::inline_abs_paint_last;
-use paint_order::paint_last_ok;
-use paint_order::unkeyed_positions;
 
 use crate::dom::Node;
 pub(crate) use crate::dom::text_content::{gather_text, split_nodes};
@@ -93,11 +92,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     out.push(close.into_any_element());
     out
 }
-
-/// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
-/// позиционированного, который ключа краски не получает (см.
-/// `unkeyed_positions`).
-pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>);
 
 /// Один блок верхнего уровня — единица виртуализации.
 ///

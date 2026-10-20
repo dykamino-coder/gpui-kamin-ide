@@ -12,6 +12,7 @@ pub mod list;
 pub(crate) mod mathml;
 pub mod multicol;
 pub mod options;
+pub(crate) mod order;
 pub mod page;
 pub mod positioned;
 pub mod replaced;
