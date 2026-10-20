@@ -42,6 +42,7 @@ import { settleMcpResult } from './session-mcp-call'
 import { sendToClient } from './session-io'
 import { eventBus } from '../events/bus'
 import { sendSessionError as sendError } from './session-error'
+import { replaceRegisteredTools } from './mcp-tool-notify'
 
 /**
  * Map: sessionId → WS client.
@@ -437,7 +438,9 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               live.streamProtocol = msg.protocolVersion ?? 0
 
               if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                live.registeredTools = msg.externalTools
+                // The reused CLI keeps its MCP connection: announce a changed
+                // catalog instead of silently swapping the snapshot.
+                replaceRegisteredTools(live, msg.externalTools, 'reattach')
               }
 
               ws.send(
@@ -842,9 +845,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           // This message is a complete external-tool snapshot. Replacing the
           // array removes tools from disabled/uninstalled/disconnected servers;
           // the previous name-based merge kept every disappeared old tool.
-          session.registeredTools = externalTools
+          const catalogChanged = replaceRegisteredTools(session, externalTools, 'register-external-tools')
 
           debugLog('External MCP tools registered', {
+            catalogChanged,
             sessionId: authenticatedSessionId,
             externalCount: externalTools.length,
             totalCount: session.registeredTools.length,

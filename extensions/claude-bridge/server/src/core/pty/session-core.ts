@@ -59,6 +59,7 @@ import { buildCliCaBundle } from '../proxy/outbound-tls'
 import { getStreamingSettings } from '../proxy/streaming-settings'
 import { SessionAdmission } from './session-admission'
 import { withSyncSnapshotLock } from '../sync/lock'
+import { closeToolNotificationStream } from './mcp-tool-notify'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -877,6 +878,9 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   session.outputDebounce?.dispose()
   session.teardown = { startedAt: Date.now(), timer: null, finalized: false }
   session.jsonlWatcher?.stop()
+  // The exiting CLI must not keep a server→client MCP stream (or a pending
+  // tools/list_changed) alive past its session.
+  closeToolNotificationStream(sessionId)
   session.statusLineWatcher?.stop()
 
   // Polite kill first; escalate to SIGKILL if the CLI hasn't exited in time
@@ -1026,6 +1030,9 @@ export async function restartWithEffort(
   // an interactive tool call pending at model/effort-change time would leak in the
   // shared pendingMcpCalls map forever.
   rejectPendingForSession(sessionId, 'Session restarting')
+  // The respawned CLI gets a new session id and its own MCP stream; the old
+  // id's stream and pending tools/list_changed flag go with it.
+  closeToolNotificationStream(sessionId)
   // Remove from sessions map (without broadcasting exit events)
   sessions.delete(sessionId)
 
@@ -1087,6 +1094,8 @@ export async function restartWithModel(
   // an interactive tool call pending at model/effort-change time would leak in the
   // shared pendingMcpCalls map forever.
   rejectPendingForSession(sessionId, 'Session restarting')
+  // Same as restartWithEffort: the old id's MCP stream and pending flag end here.
+  closeToolNotificationStream(sessionId)
   // Remove from sessions map (without broadcasting exit events)
   sessions.delete(sessionId)
 
@@ -1143,6 +1152,7 @@ export function shutdownAll(): void {
       session.ws.close()
     } catch {}
     clearSessionInputState(session)
+    closeToolNotificationStream(id)
     cleanupSessionDir(session.settingsDir)
   }
   sessions.clear()
@@ -1211,6 +1221,9 @@ function cleanupSession(sessionId: string): void {
   // long-lived SSE stream/heartbeat (interactive tools never time out) don't
   // leak after the session is gone.
   rejectPendingForSession(sessionId, 'Session destroyed')
+  // Normal exit/finalize: no MCP stream or undelivered tools/list_changed flag
+  // may outlive the session (destroySession covers only explicit teardown).
+  closeToolNotificationStream(sessionId)
   // Tear down the per-session MITM proxy (idempotent).
   if (session.streamingProxy) {
     void session.streamingProxy.stop().catch(() => {
