@@ -8,9 +8,7 @@ mod paragraph_route;
 use paragraph_route::paint_inline_step7;
 use paragraph_route::paragraph_probed;
 
-mod paint_order;
 use crate::layout::order::{paint_last_ok, unkeyed_positions};
-pub(super) use paint_order::inline_abs_paint_last;
 
 use crate::dom::Node;
 pub(crate) use crate::dom::text_content::{gather_text, split_nodes};

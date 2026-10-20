@@ -1,7 +1,9 @@
-//! GPUI wrapper that hoists an inline absolute box into the step-8 collector.
+//! Step-8 wrapper of an inline absolute box: the layout order decision picks
+//! the box, this adapter wraps it in `PaintLast` with the next paint key.
 
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
+use crate::layout::order::hoists_inline_abs;
 use gpui::{AnyElement, IntoElement};
 
 /// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
@@ -13,11 +15,7 @@ use gpui::{AnyElement, IntoElement};
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
 pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
-    let u = &*cx.unkeyed;
-    let known =
-        u.0.get(&e.node_id)
-            .map(|&end| u.1.is_none_or(|last| last < end));
-    if e.style.z_index.unwrap_or(0) == 0 && known == Some(true) {
+    if hoists_inline_abs(e, cx) {
         gpui::PaintLast::new(el)
             .key(cx.next_paint_key())
             .into_any_element()

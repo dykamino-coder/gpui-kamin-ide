@@ -78,6 +78,17 @@ pub(crate) fn unkeyed_positions(
 /// порядок разметки перевернётся — `position-relative-table-*`: ячейка
 /// `relative` после абсолютного красного индикатора). Узел вне обхода
 /// (порождённый сборщиком) — по братьям, как прежде.
+/// Whether an inline absolute box with `z-index: auto | 0` goes to the
+/// step-8 collector: it is a known node of this document walk and no later
+/// positioned box stays in the first paint pass (`unkeyed_positions`).
+pub(crate) fn hoists_inline_abs(e: &Element, cx: &LayoutCx) -> bool {
+    let u = &*cx.unkeyed;
+    let known =
+        u.0.get(&e.node_id)
+            .map(|&end| u.1.is_none_or(|last| last < end));
+    e.style.z_index.unwrap_or(0) == 0 && known == Some(true)
+}
+
 pub(crate) fn paint_last_ok(e: &Element, rest: &[Node], cx: &LayoutCx) -> bool {
     let u = &*cx.unkeyed;
     let known =
