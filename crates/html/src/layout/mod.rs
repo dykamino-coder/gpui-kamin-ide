@@ -8,6 +8,7 @@ pub mod cx;
 pub mod float;
 pub mod fragment;
 pub mod grid;
+pub(crate) mod intrinsic_wrap;
 pub mod list;
 pub(crate) mod mathml;
 pub mod multicol;
