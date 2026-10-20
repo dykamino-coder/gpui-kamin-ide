@@ -7,7 +7,7 @@ use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::rotated_atom;
-use crate::render::content_sized;
+use crate::paint::box_tree::content_wrapper::content_sized;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

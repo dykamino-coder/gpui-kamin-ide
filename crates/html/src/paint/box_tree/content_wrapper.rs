@@ -31,7 +31,7 @@ pub(crate) fn for_element(
     placement: (Option<gpui::GridLocation>, Option<gpui::GridLineNames>),
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    if super::replaced_tag(element) || native_intrinsic::eligible(element) {
+    if crate::layout::box_kind::replaced_tag(element) || native_intrinsic::eligible(element) {
         el
     } else {
         content_sized(
