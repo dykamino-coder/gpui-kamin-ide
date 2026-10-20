@@ -152,4 +152,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../render/classify/contexts.rs"),
     include_str!("../../render/classify/line_boxes.rs"),
     include_str!("../../render/util.rs"),
+    include_str!("../../text/fonts/style_font.rs"),
+    include_str!("../../text/shadow_text.rs"),
 ];
