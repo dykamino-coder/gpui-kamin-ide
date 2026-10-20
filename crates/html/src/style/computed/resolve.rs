@@ -111,6 +111,7 @@ impl Computed {
             &mut self.max_height,
             &mut self.flex_basis,
             &mut self.font_size,
+            &mut self.svg_path_length,
         ] {
             fix(l);
         }

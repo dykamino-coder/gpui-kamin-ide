@@ -167,6 +167,7 @@ impl Computed {
             &mut self.column_width,
             &mut self.column_height,
             &mut self.column_gap,
+            &mut self.svg_path_length,
         ] {
             fix(l);
         }
