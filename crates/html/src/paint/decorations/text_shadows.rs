@@ -9,7 +9,6 @@ use masks::masked_layer;
 use crate::dom::Node;
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph;
 use crate::style::computed::{Computed, Shadow};
 use crate::text::shadow_text::normalize_for_shadow;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
@@ -32,7 +31,7 @@ fn shadow_layer(
         // CSS Text Decoration 3 §4: a shadow masks both glyphs and their
         // decorations. Reusing the paragraph keeps baseline, spacing and
         // decoration geometry identical; its color is the shadow's color.
-        paragraph(nodes, &mask, opts)
+        opts.cx.build.paragraph(nodes, &mask, opts)
     } else {
         div()
             .text_color(shadow.color.to_hsla())
