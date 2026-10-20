@@ -13,7 +13,7 @@ pub(super) fn element_style(
     vcx: ValueCx<'_>,
 ) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style, vcx);
-    let viewport = crate::paint::effects::mask::PAINT_VIEWPORT.with(|v| v.get());
+    let viewport = vcx.viewport;
     merged.resolve_decor_inset_viewport(viewport, vcx);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
     // куски двигаются на сумму сдвигов предков.

@@ -43,13 +43,13 @@ pub(crate) fn mask_layer(
         // умолчанию); явный `mask-mode` главнее.
         let alpha = !group.mask_luminance && (group.mask_alpha_mode || id.ends_with('A'));
         (
-            rasterize_mask_def(id, bw, bh, false)?,
+            rasterize_mask_def(id, bw, bh, false, vcx)?,
             [0.0, 0.0, bw * sf, bh * sf],
             !alpha,
         )
     } else if let Some(id) = l.strip_prefix("clipsnap:") {
         (
-            rasterize_mask_def(id, bw, bh, true)?,
+            rasterize_mask_def(id, bw, bh, true, vcx)?,
             [0.0, 0.0, bw * sf, bh * sf],
             true,
         )

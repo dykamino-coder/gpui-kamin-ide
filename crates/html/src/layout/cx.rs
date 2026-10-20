@@ -106,6 +106,8 @@ pub struct LayoutCx {
     pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
     /// Intrinsic inline-size measurement offered to this build only.
     pub(crate) inline_measure: Option<crate::text::vertical::InlineMeasure>,
+    /// CSS viewport retained by deferred effects and nested document trees.
+    pub(crate) paint_viewport: (f32, f32),
     /// Immutable parent frames of this fragmentation measurement.
     pub(crate) lines: Option<Rc<crate::layout::fragment::LineCx>>,
 }
@@ -136,6 +138,7 @@ impl LayoutCx {
             .0
             .frame_values()
             .with_lines(self.lines.as_ref())
+            .with_viewport(self.paint_viewport)
             .with_paint(Some(&self.paint))
     }
 

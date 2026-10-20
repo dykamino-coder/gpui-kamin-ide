@@ -78,8 +78,9 @@ pub(super) fn rasterize_mask_def(
     w: f32,
     h: f32,
     force_white: bool,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let markup = crate::paint::effects::mask::mask_snapshot(key)?;
+    let markup = crate::paint::effects::mask::mask_snapshot(key, vcx)?;
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
     // (clip-path-shape-002: у эталона пропадала дырка evenodd).

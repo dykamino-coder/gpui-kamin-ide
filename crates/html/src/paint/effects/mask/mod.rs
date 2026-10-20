@@ -5,37 +5,14 @@ use crate::document::state::ValueCx;
 
 use crate::dom::Node;
 
+mod definitions;
 pub mod element;
 pub(super) mod mask_geometry;
-
-thread_local! {
-    /// Определения `<mask id>` / `<clipPath id>` документа: id — разметка
-    /// содержимого. Ссылки `url(#id)` из `mask-image`/`clip-path` резолвятся
-    /// при отрисовке (см. `interact::Grouped`).
-    static MASK_DEFS: std::cell::RefCell<std::collections::HashMap<String, String>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    /// Чей документ собран: адрес среза узлов. Виртуализация рисует ПО
-    /// БЛОКАМ (`render_block`) — сбор на каждый блок каждого кадра был бы
-    /// расточительным, а документ между кадрами один и тот же.
-    static MASK_DEFS_FOR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    /// Определения `<mask>` с `mask-type: alpha`: их снимок помечается, и
-    /// `match-source` маскирует альфой, а не светимостью.
-    static MASK_ALPHA_IDS: std::cell::RefCell<std::collections::HashSet<String>> =
-        std::cell::RefCell::new(std::collections::HashSet::new());
-}
-
-thread_local! {
-    /// Размер окна документа в css-точках — для единиц `vw`/`vh` там, куда
-    /// `RenderOpts` не доходит (`grouped`: вершины `polygon()`). Ставится в
-    /// `element()` рядом с `resolve_viewport` — тем же значением, каким
-    /// разрешаются `width: 50vw` эталонов.
-    pub(crate) static PAINT_VIEWPORT: std::cell::Cell<(f32, f32)> =
-        const { std::cell::Cell::new((0.0, 0.0)) };
-}
+pub(crate) use definitions::MaskDefinitions;
 
 /// Содержимое определения маски по имени (`#id` без решётки).
-pub(crate) fn mask_def(id: &str) -> Option<String> {
-    MASK_DEFS.with(|m| m.borrow().get(id).cloned())
+pub(crate) fn mask_def(id: &str, vcx: ValueCx<'_>) -> Option<String> {
+    vcx.doc.masks.defs.borrow().get(id).cloned()
 }
 
 /// SVG `<filter>` для `backdrop-filter: url(#id)` → матрица 4×5 над
@@ -127,21 +104,12 @@ pub(crate) fn svg_filter_matrix(def: &str) -> Option<[f32; 20]> {
     Some(m)
 }
 
-thread_local! {
-    /// Снимки определений на момент СБОРКИ дерева: отрисовка идёт позже, а
-    /// документов в кадре может быть два (тест и эталон стенда) — реестр
-    /// определений к моменту отрисовки уже перезаписан другим документом.
-    /// Снимки копятся под уникальными ключами и не чистятся.
-    static MASK_SNAPS: std::cell::RefCell<std::collections::HashMap<String, String>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-    static MASK_SNAP_N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
 /// Снять снимок определения; ключ живёт до конца кадра и дольше.
-fn snapshot_mask_def(id: &str) -> Option<String> {
-    let markup = mask_def(id)?;
-    let alpha = MASK_ALPHA_IDS.with(|s| s.borrow().contains(id));
-    let key = MASK_SNAP_N.with(|c| {
+fn snapshot_mask_def(id: &str, vcx: ValueCx<'_>) -> Option<String> {
+    let markup = mask_def(id, vcx)?;
+    let alpha = vcx.doc.masks.alpha.borrow().contains(id);
+    let key = {
+        let c = &vcx.doc.masks.next;
         let n = c.get() + 1;
         c.set(n);
         // Хвост `A` — `mask-type: alpha` определения (см. `interact`).
@@ -150,28 +118,28 @@ fn snapshot_mask_def(id: &str) -> Option<String> {
         } else {
             format!("k{n}")
         }
-    });
-    MASK_SNAPS.with(|m| {
-        let mut map = m.borrow_mut();
+    };
+    {
+        let mut map = vcx.doc.masks.snaps.borrow_mut();
         // Кадры идут бесконечно — тысяча снимков означает утечку, чистим.
         if map.len() > 1000 {
             map.clear();
         }
         map.insert(key.clone(), markup);
-    });
+    }
     Some(key)
 }
 
 /// Разметка по ключу снимка (для отрисовки).
-pub(super) fn mask_snapshot(key: &str) -> Option<String> {
-    MASK_SNAPS.with(|m| m.borrow().get(key).cloned())
+pub(super) fn mask_snapshot(key: &str, vcx: ValueCx<'_>) -> Option<String> {
+    vcx.doc.masks.snaps.borrow().get(key).cloned()
 }
 
 /// Заменить ссылки `url(#id)` / `clipref:id` в строке маски снимками
-/// определений: к отрисовке реестр может смениться другим документом.
-pub(super) fn resolve_mask_refs(raw: &str) -> String {
+/// определений: отложенная отрисовка удерживает разметку на момент сборки.
+pub(super) fn resolve_mask_refs(raw: &str, vcx: ValueCx<'_>) -> String {
     if let Some(id) = raw.strip_prefix("clipref:") {
-        return match snapshot_mask_def(id) {
+        return match snapshot_mask_def(id, vcx) {
             Some(key) => format!("clipsnap:{key}"),
             None => raw.to_string(),
         };
@@ -189,7 +157,10 @@ pub(super) fn resolve_mask_refs(raw: &str) -> String {
         };
         let inner = tail[..end].trim().trim_matches(|c| c == '"' || c == '\'');
         out.push_str(&rest[..at]);
-        match inner.strip_prefix('#').and_then(snapshot_mask_def) {
+        match inner
+            .strip_prefix('#')
+            .and_then(|id| snapshot_mask_def(id, vcx))
+        {
             Some(key) => out.push_str(&format!("url(svgsnap:{key})")),
             None => out.push_str(&rest[at..at + 4 + end + 1]),
         }
@@ -203,10 +174,10 @@ pub(super) fn resolve_mask_refs(raw: &str) -> String {
 /// определения по тексту.
 pub(crate) fn collect_mask_defs(nodes: &[Node], vcx: ValueCx<'_>) {
     let key = nodes.as_ptr() as usize;
-    if MASK_DEFS_FOR.with(|c| c.get()) == key {
+    if vcx.doc.masks.nodes.get() == key {
         return;
     }
-    MASK_DEFS_FOR.with(|c| c.set(key));
+    vcx.doc.masks.nodes.set(key);
     fn walk(nodes: &[Node], out: &mut std::collections::HashMap<String, String>, vcx: ValueCx<'_>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
@@ -215,7 +186,7 @@ pub(crate) fn collect_mask_defs(nodes: &[Node], vcx: ValueCx<'_>) {
                 && e.style.mask_type_alpha == Some(true)
                 && let Some(id) = e.attr("id")
             {
-                MASK_ALPHA_IDS.with(|s| s.borrow_mut().insert(id.to_string()));
+                vcx.doc.masks.alpha.borrow_mut().insert(id.to_string());
             }
             if (tag == "mask" || tag == "clippath")
                 && let Some(id) = e.attr("id")
@@ -241,10 +212,11 @@ pub(crate) fn collect_mask_defs(nodes: &[Node], vcx: ValueCx<'_>) {
             walk(&e.children, out, vcx);
         }
     }
-    MASK_ALPHA_IDS.with(|s| s.borrow_mut().clear());
-    MASK_DEFS.with(|m| {
-        let mut map = m.borrow_mut();
-        map.clear();
-        walk(nodes, &mut map, vcx);
-    });
+    vcx.doc.masks.alpha.borrow_mut().clear();
+    let mut map = vcx.doc.masks.defs.borrow_mut();
+    map.clear();
+    walk(nodes, &mut map, vcx);
 }
+
+#[cfg(test)]
+mod tests;

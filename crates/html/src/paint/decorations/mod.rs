@@ -56,7 +56,7 @@ pub(crate) fn decorations(
     // детей (filter-region-transformed-composited-child-001).
     if empty
         && let Some(id) = c.filter_ref.as_deref()
-        && let Some(def) = mask_def(&format!("filter:{id}"))
+        && let Some(def) = mask_def(&format!("filter:{id}"), vcx)
     {
         let fill = match c.background {
             Some(col) if col.a > 0.0 => format!(
@@ -81,7 +81,7 @@ pub(crate) fn decorations(
     // backdrop is drawn first and the element's background, borders and
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
-    backdrop_matrix(c, &mut out);
+    backdrop_matrix(c, &mut out, vcx);
 
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
     // остальным — тот же порядок, что в браузере.

@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
+    pub(crate) viewport: (f32, f32),
     pub(crate) lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
     pub(crate) paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
     pub(crate) collapse: crate::layout::block::margins::CollapseInputs,
@@ -27,6 +28,7 @@ impl DocState {
     pub fn values(&self) -> ValueCx<'_> {
         ValueCx {
             doc: self,
+            viewport: (0.0, 0.0),
             lines: None,
             paint: None,
             frame: false,
@@ -39,6 +41,7 @@ impl DocState {
     pub fn frame_values(&self) -> ValueCx<'_> {
         ValueCx {
             doc: self,
+            viewport: (0.0, 0.0),
             lines: None,
             paint: None,
             frame: true,
@@ -62,6 +65,7 @@ impl std::fmt::Debug for ValueCx<'_> {
 pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
+    viewport: (f32, f32),
     lines: Option<Rc<crate::layout::fragment::LineCx>>,
     paint: Option<Rc<crate::paint::context::PaintCx>>,
     collapse: crate::layout::block::margins::CollapseInputs,
@@ -75,6 +79,7 @@ impl ValueDoc {
             lines: self.lines.as_ref(),
             paint: self.paint.as_ref(),
             frame: self.frame,
+            viewport: self.viewport,
             collapse: self.collapse,
             scheme: self.scheme,
         }
@@ -82,6 +87,11 @@ impl ValueDoc {
 }
 
 impl<'a> ValueCx<'a> {
+    pub(crate) fn with_viewport(mut self, viewport: (f32, f32)) -> Self {
+        self.viewport = viewport;
+        self
+    }
+
     pub(crate) fn with_paint(
         mut self,
         paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
@@ -122,6 +132,7 @@ impl<'a> ValueCx<'a> {
                 .upgrade()
                 .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
             frame: self.frame,
+            viewport: self.viewport,
             collapse: self.collapse,
             scheme: self.scheme,
             lines: self.lines.cloned(),

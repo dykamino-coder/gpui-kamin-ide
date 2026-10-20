@@ -63,7 +63,7 @@ pub(crate) fn styled_div_with(
         && c.transform.is_none()
         && c.filter_ref
             .as_deref()
-            .is_some_and(|id| mask_def(&format!("filter:{id}")).is_some())
+            .is_some_and(|id| mask_def(&format!("filter:{id}"), vcx).is_some())
         && !e.children.iter().any(|n| !is_blank(n))
     {
         unfilled = Computed {

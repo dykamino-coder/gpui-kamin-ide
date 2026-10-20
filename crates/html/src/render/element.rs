@@ -11,7 +11,6 @@ use crate::layout::list::list_item;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
-use crate::paint::effects::mask::PAINT_VIEWPORT;
 use crate::paint::effects::transform::transformed;
 use crate::render::*;
 use crate::style::cascade::inherit::inherit;
@@ -28,6 +27,8 @@ pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> A
 }
 
 fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     if e.marks.outside_block {
         return crate::layout::float::outside_block::render(e, inherited, opts);
@@ -108,7 +109,6 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         merged.icb_scroll_insets = Some(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
-    PAINT_VIEWPORT.with(|v| v.set(opts.viewport));
     let scroll_projection = crate::interactive::scroll_extent::projection(
         opts.cx.scroll_frame.as_ref(),
         inherited.self_node,

@@ -104,6 +104,8 @@ impl RenderOpts {
 }
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
@@ -157,6 +159,8 @@ pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>)
 /// не стоит ничего: ни раскладки, ни отрисовки. Это то же ухищрение, которым
 /// держится дерево файлов и чат.
 pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<AnyElement> {
+    let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
+    let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
     crate::interactive::frame::frame_sanitize(vcx);

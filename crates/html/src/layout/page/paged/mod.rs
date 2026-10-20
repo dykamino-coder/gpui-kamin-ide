@@ -55,6 +55,7 @@ pub fn render_paged_select(
     select: Option<Vec<usize>>,
 ) -> AnyElement {
     let opts = &*opts.inner(|cx| {
+        cx.paint_viewport = opts.viewport;
         if !cx.in_render {
             cx.vertical_paint = Default::default();
             cx.paint = Default::default();
