@@ -5,7 +5,6 @@
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod paragraph_route;
-use paragraph_route::paint_inline_step7;
 use paragraph_route::paragraph_probed;
 
 use crate::layout::order::{paint_last_ok, unkeyed_positions};
@@ -15,11 +14,10 @@ pub(crate) use crate::dom::text_content::{gather_text, split_nodes};
 use crate::layout::float::clear::without_inert_clear;
 pub(crate) use crate::paint::box_tree::content_wrapper;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
-mod first_line_text;
-pub(crate) use crate::layout::intrinsic_wrap::content_sized_wraps;
 mod first_letter_descendants;
 mod first_letter_scope;
 pub(super) mod first_line_descendants;
+mod first_line_text;
 pub(crate) use crate::dom::pseudo_line_layers;
 pub(super) mod native_paragraph_route;
 

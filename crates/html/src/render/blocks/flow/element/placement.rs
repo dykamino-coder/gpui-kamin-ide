@@ -1,5 +1,7 @@
 //! Этап обработки позиционирования и слоя блочного ребёнка.
 
+use crate::layout::options::RenderOpts;
+use crate::layout::order::paint_last_ok;
 mod route;
 pub(super) use route::layer_route;
 
@@ -8,7 +10,6 @@ use crate::hooks::IntoHooked;
 use crate::layout::block::struts::margin_px;
 use crate::paint::stacking::layered;
 use crate::render::blocks::flow::BelowRun;
-use crate::render::*;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement};
 

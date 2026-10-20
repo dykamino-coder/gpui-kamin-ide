@@ -1,9 +1,12 @@
 //! Этап обработки позиционирования и слоя блочного ребёнка.
 
+use crate::layout::options::RenderOpts;
+use crate::layout::order::paint_last_ok;
 use crate::layout::positioned::static_position::at_static_position;
+use crate::paint::box_tree::content_wrapper;
 use crate::paint::stacking::{layered, stacking_context, z_index_applies};
 use crate::render::blocks::flow::BelowRun;
-use crate::render::*;
+use crate::render::blocks::positioned::static_position_layer;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};

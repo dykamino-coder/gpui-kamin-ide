@@ -23,7 +23,6 @@ use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
 pub(super) mod positioned;
-pub(crate) use crate::render::blocks::canvas::*;
 use crate::render::blocks::flow::*;
 pub(crate) use crate::render::blocks::positioned::*;
 
