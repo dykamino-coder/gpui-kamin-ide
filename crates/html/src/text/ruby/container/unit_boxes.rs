@@ -1,7 +1,9 @@
 //! Unit boxes for container; split out to keep the owning module within 250 lines.
 
 use crate::dom::Node;
-use crate::render::{RenderOpts, blocks, replaced_tag};
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::options::RenderOpts;
+use crate::render::blocks;
 use crate::style::computed::{Computed, Display, Position};
 use crate::style::values::value::Len;
 use crate::text::ruby::{ruby_role, ruby_transform};

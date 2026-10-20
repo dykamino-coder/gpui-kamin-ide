@@ -1,9 +1,11 @@
 //! Horizontal compositions apply only in vertical writing modes, with no letter spacing.
 //! CSS Writing Modes 4 §9.1 and §9.1.2 preserve font settings inside the composition.
 
+use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::render::{RenderOpts, gather_text, paragraph};
+use crate::layout::options::RenderOpts;
+use crate::render::paragraph;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, TextTransform};
 use crate::style::values::value::Len;
