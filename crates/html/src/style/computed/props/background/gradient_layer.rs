@@ -62,8 +62,11 @@ impl Computed {
             tiled |= self.bg_repeat.is_some();
         }
         self.gradient = record_parsed!(self, parse_gradient(top, vcx));
-        self.gradient_current = top.contains("currentcolor").then(|| top.to_string());
-        self.gradient_em = has_font_units(top).then(|| top.to_string());
+        self.gradient_current = self
+            .gradient
+            .as_ref()
+            .filter(|g| !g.colors.is_empty())
+            .cloned();
         // Corner keywords need the concrete image size (CSS Images 3 §3.1).
         // Preserve the existing native route for other untiled shorthand
         // gradients: canvas and table backgrounds select it by raw presence.
@@ -72,13 +75,16 @@ impl Computed {
             .as_ref()
             .filter(|g| {
                 tiled
-                    || self.gradient_em.is_some()
+                    || has_font_units(top)
                     || g.radial
                     || g.stops_raw.iter().any(|(_, _, px)| px.is_some())
                     || !matches!(g.space, GradSpace::Srgb | GradSpace::Oklab)
-                    || corner_angle(top, (1.0, 1.0)).is_some()
+                    || g.shape.corner_angle((1.0, 1.0)).is_some()
             })
-            .map(|_| top.to_string());
+            .map(|g| ImageSource::Gradient {
+                value: Box::new(g.clone()),
+                repeating: false,
+            });
         // Цвет ищется в НИЖНЕМ слое (он один его допускает);
         // при единственном слое нижний == верхний, и цвет стоит
         // там же, рядом с градиентом: `background: linear-… green`.

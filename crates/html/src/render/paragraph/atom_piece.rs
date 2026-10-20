@@ -1,15 +1,13 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
 mod static_overlay;
+#[cfg(test)]
+mod tests;
 pub(super) use static_overlay::static_overlay;
-
 mod decoration;
 pub(super) use decoration::decorate_atom;
-
 mod atom_cx;
 pub(crate) use atom_cx::AtomRuby;
-
 // owner: A
-
 use crate::animation::frames::bake_frozen;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -41,14 +39,22 @@ pub(crate) fn atom_piece(
     // краснел) — внепоточным прежний путь.
     let parent_style = atom_cx.parent.as_ref().filter(|_| !out_of_flow(&e.style));
     let inherited = parent_style.unwrap_or(inherited);
-    {
-        let _nest = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true) {
-            crate::text::clamp::ParaNest::reset()
+    let child_opts = opts.inner(|cx| {
+        cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true)
+        {
+            0
         } else {
-            crate::text::clamp::ParaNest::enter()
+            cx.clamp_atom_depth + 1
         };
-        atom_piece_in(e, inherited, opts, flow_text, atom_cx.in_inline_cb, ruby)
-    }
+    });
+    atom_piece_in(
+        e,
+        inherited,
+        &child_opts,
+        flow_text,
+        atom_cx.in_inline_cb,
+        ruby,
+    )
 }
 
 fn atom_piece_in(
@@ -80,38 +86,24 @@ fn atom_piece_in(
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
     // текстовым и не теряет пробелы (`line-breaking-018`).
-    // Вертикальное письмо сюда по-прежнему не пускается: там строчная ось
-    // вертикальна, `point_of` отдаёт ДО-поворотные координаты, и класс
-    // берётся отдельно (подкорень A3, три отката на `render.rs` «отдать
-    // ось строки самому абзацу»).
-    // ★ ЗАМЕРЕНО: без оговорки про вертикаль текстовый путь открывался
-    // и ГОРИЗОНТАЛЬНОМУ rtl, и две зелёные пары уходили в «красное
-    // видно» (`htb-rtl-ltr.tentative`, `htb-rtl-rtl` 0.16 -> 99.00) при
-    // 24 приобретениях. Все приобретения — вертикальные
-    // (`abs-pos-non-replaced-v{lr,rl}-*`), поэтому послабление
-    // ограничено абзацем, чей содержащий блок пишет вертикально —
-    // признак этого у нас `ortho_limit`, он ставится только внутри
-    // вертикального содержащего блока (`element()`, `inline.rs:1012`).
+    // Static overlays use the vertical paragraph path only when its
+    // containing block supplies the turned coordinate frame. A shared-band
+    // block retains its hypothetical static point even without flow text.
+    // Inline-CB offers handle horizontal frames; turned paragraphs must
+    // position overlays before the containing block rotates their coordinates.
     let plain_flow = !inherited.wm().vertical()
-        && (!inherited.wm().rtl() || (flow_text && inherited.ortho_limit.is_some()));
-    // Статическая позиция считается для ГИПОТЕТИЧЕСКОГО статического
-    // элемента (§10.3.7: «if position had been static») — блокификация
-    // `display: inline` под absolute на неё не влияет, метка
-    // inline_display возвращает такой элемент в строчный путь.
-    // БЛОЧНЫЙ абсолют в ПОВЁРНУТОМ абзаце вертикального письма — тоже
-    // кусок вне потока, но с местом в начале СЛЕДУЮЩЕЙ строки
-    // (`lines.rs: next_line_point`). Прежде он шёл атомом со щупом
-    // `Spot`: атом выводил абзац из текстового пути в ряд слов, щуп
-    // мерил до-поворотные координаты, а заместитель верхнего слоя
-    // ложился горизонтальной полосой поперёк вертикального контейнера —
-    // красное проступало у всех `css-position/static-position/v{lr,rl}-*`.
-    // В повёрнутом абзаце коробка поворачивается вместе со строками, и её
-    // до-поворотное место — ровно гипотетическая коробка §10.6.4.
+        && (!inherited.wm().rtl()
+            || (flow_text && inherited.ortho_limit.is_some())
+            || (inherited.band_kid && !flow_text));
     let rot_block =
         inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
+        && (!in_inline_cb || inherited.wm().turned())
         && at_static_position(&e.style)
-        && (inline_level(e) || e.style.inline_display == Some(true) || rot_block)
+        && (inline_level(e)
+            || e.style.inline_display == Some(true)
+            || rot_block
+            || inherited.band_kid)
     {
         return static_overlay(e, inherited, opts, rot_block);
     }

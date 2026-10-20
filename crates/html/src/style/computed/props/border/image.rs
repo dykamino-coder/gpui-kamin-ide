@@ -18,7 +18,7 @@ impl Computed {
             self.border_image = None;
         }
         let mut image = self.border_image.clone().unwrap_or(BorderImage {
-            src: String::new(),
+            src: None,
             slice: [BorderImageSlice::Pct(1.0); 4],
             fill: false,
             width: [BorderImageWidth::Times(1.0); 4],
@@ -31,24 +31,11 @@ impl Computed {
                 let value = value.trim();
                 if value == "none" {
                     accepted = true;
-                    image.src.clear();
-                } else if value.starts_with("linear-gradient(")
-                    || value.starts_with("radial-gradient(")
-                    || value.starts_with("conic-gradient(")
+                    image.src = None;
+                } else if let Some(source) = crate::style::computed::ImageSource::parse(value, vcx)
                 {
-                    // Источником может быть любой `<image>`, включая градиент
-                    // (css-backgrounds-3 §6.1). Запись хранится как есть:
-                    // растрирует её загрузчик картинок.
-                    image.src = value.to_string();
+                    image.src = Some(source);
                     accepted = true;
-                } else if crate::style::computed::filter_image::parse_filter_image(value, vcx)
-                    .is_some()
-                {
-                    accepted = true;
-                    image.src = value.to_string();
-                } else if let Some(url) = parse_url(value) {
-                    accepted = true;
-                    image.src = url;
                 }
             }
             "border-image-slice" => {
@@ -160,6 +147,12 @@ impl Computed {
                     || w.starts_with("linear-gradient(")
                     || w.starts_with("radial-gradient(")
                     || w.starts_with("conic-gradient(")
+                    || w.starts_with("repeating-")
+                    || w.starts_with("image(")
+                    || w.starts_with("image-set(")
+                    || w.starts_with("-webkit-image-set(")
+                    || w.starts_with("light-dark(")
+                    || w.starts_with("cross-fade(")
                     || w.as_str() == "none"
             });
             if let Some(src) = urls.first() {

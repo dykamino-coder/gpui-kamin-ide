@@ -204,7 +204,6 @@ pub(crate) fn build_embedded(
     let nodes = prepare(embedded.nodes);
     let mut sub = opts.clone();
     sub.viewport = viewport;
-    sub.doc_salt = embedded.salt;
     sub.cx.positioning = Default::default();
     sub.cx.frame_depth += 1;
     sub.cx.doc = crate::layout::cx::BuildDoc(embedded.state.clone());

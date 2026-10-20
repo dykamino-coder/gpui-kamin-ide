@@ -16,7 +16,10 @@ fn font_loading_resolves_the_first_html_base_before_parsing() {
         <style>@font-face {font-family: BaseTest; src: url(base.ttf)}</style>\
         <p style='font-family: BaseTest'>text</p>";
     let doc = Document::new_with_base(html, "", source.as_str());
-    assert_eq!(fonts::alias("BaseTest").as_deref(), Some("BaseFont49"));
+    assert_eq!(
+        fonts::alias("BaseTest", doc.state.values()).as_deref(),
+        Some("BaseFont49")
+    );
     assert!(doc.node_count() > 0);
     std::fs::remove_file(font).unwrap();
     std::fs::remove_dir(assets).unwrap();
@@ -45,14 +48,39 @@ fn resources_come_from_stylesheets_instead_of_markup_substrings() {
         <template><style>{fake}</style></template><style>{face}</style>"
     );
     let theme = face.replace("RealResource", "ThemeResource");
-    let _doc = Document::new(&html, &theme);
+    let doc = Document::new(&html, &theme);
     assert_eq!(
-        fonts::alias("RealResource").as_deref(),
+        fonts::alias("RealResource", doc.state.values()).as_deref(),
         Some("ParsedResourceFont")
     );
     assert_eq!(
-        fonts::alias("ThemeResource").as_deref(),
+        fonts::alias("ThemeResource", doc.state.values()).as_deref(),
         Some("ParsedResourceFont")
     );
-    assert_eq!(fonts::alias("FakeResource"), None);
+    assert_eq!(fonts::alias("FakeResource", doc.state.values()), None);
+}
+
+#[test]
+fn interleaved_documents_keep_their_font_face_descriptors() {
+    fonts::install_loader(|bytes| Some(format!("Face{}", bytes.last().unwrap())));
+    let page = |data: &str, adjust: u32, range: &str| {
+        format!(
+            "<style>@font-face {{font-family: Shared; src: url(data:font/ttf;base64,{data}); \
+         size-adjust: {adjust}%; unicode-range: {range}}}</style><p>text</p>"
+        )
+    };
+    let first = Document::new(&page("AAEAADE=", 150, "U+41"), "");
+    let second = Document::new(&page("AAEAADI=", 75, "U+20-7F"), "");
+    let a = first.state.values();
+    let b = second.state.values();
+    assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));
+    assert_eq!(fonts::alias("Shared", b).as_deref(), Some("Face50"));
+    assert_eq!(fonts::size_adjust("Shared", 0, a), 1.5);
+    assert_eq!(fonts::size_adjust("Shared", 0, b), 0.75);
+    assert!(!fonts::covers_space("Shared", a));
+    assert!(fonts::covers_space("Shared", b));
+    fonts::load_faces("", b);
+    assert_eq!(fonts::alias("Shared", b), None);
+    assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));
+    assert_eq!(fonts::size_adjust("Shared", 0, a), 1.5);
 }

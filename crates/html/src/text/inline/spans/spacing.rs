@@ -1,33 +1,28 @@
-//! Spacing for spans; split out to keep the owning module within 250 lines.
+//! Letter and word spacing resolved per inline text range.
 
-use crate::style::values::value::Len;
+use super::{text_ranges, text_size};
 use crate::text::inline::*;
 
 /// Трекинг ПО КУСКАМ: отрезок байт → своё значение `letter-spacing`.
 pub fn letter_spans(
     pieces: &[Piece],
     base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut zero = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            _ => base_size,
-        };
+        let size = text_size(style, base_size);
         let extra = style.letter_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             )
         });
         if let Some(v) = extra {
@@ -57,10 +52,10 @@ pub fn letter_spans(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             );
             zero.push((at + last.0..end, gpui::px(v)));
         }
-        at = end;
     }
     // Нули идут ПЕРВЫМИ: поиск диапазона берёт первое попадание.
     zero.extend(out);
@@ -88,32 +83,29 @@ pub(super) fn zero_width_format(ch: char) -> bool {
 ///
 /// `word-spacing` на вложенном `<span>` действует только на его пробелы. Пока
 /// интервал брался один на абзац, заданный внутри пропадал целиком.
-pub fn word_spans(pieces: &[Piece], base_size: f32) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
+pub fn word_spans(
+    pieces: &[Piece],
+    base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            _ => base_size,
-        };
+        let size = text_size(style, base_size);
         let extra = style.word_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
                 &style.font_family.clone().unwrap_or_default(),
                 size,
+                vcx,
             )
         });
         if let Some(v) = extra {
             out.push((at..end, gpui::px(v)));
         }
-        at = end;
     }
     out
 }

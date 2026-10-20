@@ -2,9 +2,7 @@
 
 use crate::dom::Node;
 use crate::layout::block::margin_height;
-use crate::layout::block::margins::{
-    COLLAPSE_CB_HEIGHT_DEF, COLLAPSE_CB_WIDTH_PX, COLLAPSE_FONT_PX, collapse_margins,
-};
+use crate::layout::block::margins::{CollapseInputs, collapse_margins};
 use crate::layout::block::reorder::reorder;
 use crate::layout::positioned::relative::hoist_inset_abs;
 use crate::layout::table::anon::wrap_anon_tables;
@@ -183,17 +181,19 @@ pub(crate) fn prepare_children(
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let prev = COLLAPSE_FONT_PX.with(|c| c.replace(base));
         // Ширина содержащего блока для ПРОЦЕНТНЫХ полей (§8.3: проценты полей
         // считаются от ширины содержащего блока, схлопывание — по уже
         // разрешённым значениям). Известна только заданная в точках.
         let cb_w = px_strict(inherited.width);
-        let prev_w = COLLAPSE_CB_WIDTH_PX.with(|c| c.replace(cb_w));
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
         // предикатом, что у слитого стиля (`inline::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
         let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
-        let prev_h = COLLAPSE_CB_HEIGHT_DEF.with(|c| c.replace(cb_h_def));
+        let vcx = vcx.with_collapse(CollapseInputs {
+            font: base,
+            width: cb_w,
+            height_def: cb_h_def,
+        });
         let mut out = collapse_margins(
             nodes,
             matches!(
@@ -202,11 +202,9 @@ pub(crate) fn prepare_children(
                     | Some(crate::style::computed::Position::Fixed)
             ),
             opts.cx.cb_width,
+            vcx,
         );
         margin_height::zero_float_blocks(&mut out, inherited, vcx);
-        COLLAPSE_FONT_PX.with(|c| c.set(prev));
-        COLLAPSE_CB_WIDTH_PX.with(|c| c.set(prev_w));
-        COLLAPSE_CB_HEIGHT_DEF.with(|c| c.set(prev_h));
         out
     };
     (collapsed, ordered_context, under_tf)

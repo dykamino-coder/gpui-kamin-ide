@@ -16,40 +16,36 @@ pub(crate) struct Place {
 
 pub(crate) type Places = Rc<RefCell<Vec<Place>>>;
 
-pub(crate) struct StaticCoordinates;
-
-struct Mapping {
+pub(crate) struct Mapping {
     kid: usize,
     origin: Point<Pixels>,
     places: Places,
 }
 
-thread_local! {
-    static STACK: RefCell<Vec<Mapping>> = const { RefCell::new(Vec::new()) };
+pub(crate) fn with<R>(
+    owner: &crate::paint::context::PaintCx,
+    mapping: Option<(usize, Point<Pixels>, Places)>,
+    f: impl FnOnce() -> R,
+) -> R {
+    let Some((kid, origin, places)) = mapping else {
+        return f();
+    };
+    owner.coordinates.borrow_mut().push(Mapping {
+        kid,
+        origin,
+        places,
+    });
+    let result = f();
+    owner.coordinates.borrow_mut().pop();
+    result
 }
 
-impl StaticCoordinates {
-    pub(crate) fn enter(kid: usize, origin: Point<Pixels>, places: Places) -> Self {
-        STACK.with(|stack| {
-            stack.borrow_mut().push(Mapping {
-                kid,
-                origin,
-                places,
-            })
-        });
-        Self
-    }
-}
-
-impl Drop for StaticCoordinates {
-    fn drop(&mut self) {
-        STACK.with(|stack| stack.borrow_mut().pop());
-    }
-}
-
-pub(crate) fn map(mut hole: Bounds<Pixels>) -> Bounds<Pixels> {
-    STACK.with(|stack| {
-        for mapping in stack.borrow().iter().rev() {
+pub(crate) fn map(
+    owner: &crate::paint::context::PaintCx,
+    mut hole: Bounds<Pixels>,
+) -> Bounds<Pixels> {
+    {
+        for mapping in owner.coordinates.borrow().iter().rev() {
             let offset = f32::from(hole.origin.y - mapping.origin.y);
             let place = mapping
                 .places
@@ -63,7 +59,7 @@ pub(crate) fn map(mut hole: Bounds<Pixels>) -> Bounds<Pixels> {
                 hole.origin.y += place.origin.y - mapping.origin.y;
             }
         }
-    });
+    }
     hole
 }
 
@@ -108,13 +104,15 @@ mod tests {
                 origin: point(px(60.0), px(-180.0)),
             },
         ]));
-        let _scope = StaticCoordinates::enter(0, point(px(10.0), px(20.0)), places);
-        let probe = |y: f32| Bounds {
-            origin: point(px(10.0), px(20.0 + y)),
-            size: size(px(25.0), px(0.0)),
-        };
-        assert_eq!(map(probe(150.0)).origin, point(px(35.0), px(70.0)));
-        assert_eq!(map(probe(300.0)).origin, point(px(60.0), px(120.0)));
+        let owner = crate::paint::context::PaintCx::default();
+        with(&owner, Some((0, point(px(10.0), px(20.0)), places)), || {
+            let probe = |y: f32| Bounds {
+                origin: point(px(10.0), px(20.0 + y)),
+                size: size(px(25.0), px(0.0)),
+            };
+            assert_eq!(map(&owner, probe(150.0)).origin, point(px(35.0), px(70.0)));
+            assert_eq!(map(&owner, probe(300.0)).origin, point(px(60.0), px(120.0)));
+        });
     }
     #[test]
     fn nested_fragmentation_maps_static_points_from_inner_to_outer() {
@@ -131,20 +129,31 @@ mod tests {
                     .collect(),
             ))
         };
-        let _outer = StaticCoordinates::enter(
-            0,
-            point(px(0.0), px(0.0)),
-            entries([(0.0, 0.0), (100.0, -100.0)]),
+        let owner = crate::paint::context::PaintCx::default();
+        with(
+            &owner,
+            Some((
+                0,
+                point(px(0.0), px(0.0)),
+                entries([(0.0, 0.0), (100.0, -100.0)]),
+            )),
+            || {
+                with(
+                    &owner,
+                    Some((
+                        0,
+                        point(px(0.0), px(100.0)),
+                        entries([(0.0, 100.0), (25.0, 0.0)]),
+                    )),
+                    || {
+                        let probe = Bounds {
+                            origin: point(px(0.0), px(250.0)),
+                            size: size(px(25.0), px(0.0)),
+                        };
+                        assert_eq!(map(&owner, probe).origin, point(px(125.0), px(50.0)));
+                    },
+                );
+            },
         );
-        let _inner = StaticCoordinates::enter(
-            0,
-            point(px(0.0), px(100.0)),
-            entries([(0.0, 100.0), (25.0, 0.0)]),
-        );
-        let probe = Bounds {
-            origin: point(px(0.0), px(250.0)),
-            size: size(px(25.0), px(0.0)),
-        };
-        assert_eq!(map(probe).origin, point(px(125.0), px(50.0)));
     }
 }

@@ -19,7 +19,21 @@ pub(crate) use geometry::geometry_property;
 
 use super::clip::synth_clip;
 use super::size::{size_of, view_box_ratio};
-use super::{IN_CLIP, VIEW_BOX};
+/// Viewport and clip content model of this serialization traversal.
+#[derive(Clone, Copy)]
+pub(super) struct SerializeCx {
+    pub(super) view_box: (f32, f32),
+    pub(super) in_clip: bool,
+}
+
+impl Default for SerializeCx {
+    fn default() -> Self {
+        Self {
+            view_box: (300.0, 150.0),
+            in_clip: false,
+        }
+    }
+}
 use crate::dom::{Element, Node};
 
 /// Обратная сериализация поддерева в разметку SVG.
@@ -46,15 +60,25 @@ pub(crate) fn write_element(e: &Element, out: &mut String, vcx: ValueCx<'_>) {
 
 /// Writes `e` inside a document whose synthesized ids come from `ids`.
 pub(crate) fn write_in(e: &Element, out: &mut String, ids: &super::ClipIds, vcx: ValueCx<'_>) {
+    write_with(e, out, ids, SerializeCx::default(), vcx);
+}
+
+pub(super) fn write_with(
+    e: &Element,
+    out: &mut String,
+    ids: &super::ClipIds,
+    cx: SerializeCx,
+    vcx: ValueCx<'_>,
+) {
     // Синтезированный `<clipPath>` пишется ПЕРЕД элементом (см. `synth_clip`).
-    let clip_id = synth_clip(e, out, ids, vcx);
+    let clip_id = synth_clip(e, out, ids, cx, vcx);
     out.push('<');
     out.push_str(&e.tag);
     // `transform-origin` растеризатор не знает — точка отсчёта
     // вкатывается в сам transform парой translate. Одно значение — x,
     // второй осью служит середина fill-box (css-transforms §4);
     // доли — от fill-box (атрибуты width/height фигуры).
-    let (combined, attr_bad) = element_transform(e);
+    let (combined, attr_bad) = element_transform(e, cx.view_box);
     write_attributes(e, out, &combined, &clip_id, attr_bad);
     geometry::write_geometry(e, out);
     if let Some(t) = &combined {
@@ -75,24 +99,21 @@ pub(crate) fn write_in(e: &Element, out: &mut String, ids: &super::ClipIds, vcx:
     }
     out.push('>');
     // Вложенный `<svg>` — свой вьюпорт для `view-box` детей; дети
-    // `<clipPath>` — без синтеза своей обрезки (см. `IN_CLIP`).
-    let prev_vb = VIEW_BOX.with(|v| v.get());
+    // `<clipPath>` — без синтеза своей обрезки.
+    let mut child_cx = cx;
     if e.tag.eq_ignore_ascii_case("svg") {
         let vb = view_box_ratio(e).unwrap_or_else(|| size_of(e));
-        VIEW_BOX.with(|v| v.set(vb));
+        child_cx.view_box = vb;
     }
-    let prev_clip = IN_CLIP.with(|c| c.get());
     if e.tag.eq_ignore_ascii_case("clippath") {
-        IN_CLIP.with(|c| c.set(true));
+        child_cx.in_clip = true;
     }
     for child in &e.children {
         match child {
             Node::Text(t) => escape_text(t, out),
-            Node::Element(el) => write_in(el, out, ids, vcx),
+            Node::Element(el) => write_with(el, out, ids, child_cx, vcx),
         }
     }
-    IN_CLIP.with(|c| c.set(prev_clip));
-    VIEW_BOX.with(|v| v.set(prev_vb));
     out.push_str("</");
     out.push_str(&e.tag);
     out.push('>');
@@ -197,3 +218,6 @@ pub(super) fn write_paint(e: &Element, out: &mut String) {
 pub(super) fn svg_box_style(c: &crate::style::computed::Computed) -> (Option<u8>, Option<bool>) {
     (c.transform_box, c.transform_box_fill)
 }
+
+#[cfg(test)]
+mod context_tests;

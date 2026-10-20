@@ -18,6 +18,8 @@ pub struct RootMetrics {
     pub(crate) line_px: f32,
     /// Семейство корня: база `rcap`/`rch`/`rex`/`ric` (css-values-4 §6.1.2).
     pub(crate) family: String,
+    /// Computed cap/ch/ex/ic lengths; numeric resolution never queries fonts.
+    units: [f32; 4],
     /// Кегль корня в единицах окна (`html { font-size: 100vw }`): точек на
     /// разборе ещё нет, окно знает только сборщик дерева. Тогда `rem` доживает
     /// той же единицей окна, умноженной на долю (`vh-em-inherit`: `1rem` =
@@ -32,8 +34,21 @@ impl Default for RootMetrics {
             font_px: 16.0,
             line_px: 19.2,
             family: String::new(),
+            units: [11.2, 8.0, 8.0, 16.0],
             font_view: None,
         }
+    }
+}
+
+impl RootMetrics {
+    pub(crate) fn resolve_units(&mut self, vcx: ValueCx<'_>) {
+        let (ch, ex) = crate::text::metrics::ch_ex_px(&self.family, self.font_px, vcx);
+        self.units = [
+            crate::text::metrics::vmetrics_px(&self.family, self.font_px, vcx).2,
+            ch,
+            ex,
+            crate::text::metrics::ic_px(&self.family, self.font_px, vcx),
+        ];
     }
 }
 
@@ -53,9 +68,12 @@ pub(super) fn root_font_view(vcx: ValueCx<'_>) -> Option<(bool, f32)> {
 /// Записать корневые метрики. Зовётся разбором дерева на элементе `html`
 /// (`dom::walk`).
 pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, line_px: f32) {
-    let mut r = doc.root.borrow_mut();
-    r.font_px = if font_px > 0.0 { font_px } else { 16.0 };
-    r.line_px = if line_px > 0.0 { line_px } else { 19.2 };
+    {
+        let mut r = doc.root.borrow_mut();
+        r.font_px = if font_px > 0.0 { font_px } else { 16.0 };
+        r.line_px = if line_px > 0.0 { line_px } else { 19.2 };
+        r.resolve_units(doc.values());
+    }
 }
 
 pub fn root_font_px(vcx: ValueCx<'_>) -> f32 {
@@ -68,18 +86,59 @@ pub fn root_line_px(vcx: ValueCx<'_>) -> f32 {
 
 /// Записать семейство корня (пустое — шрифт документа).
 pub fn set_root_family(doc: &crate::document::state::DocState, family: &str) {
-    doc.root.borrow_mut().family = family.to_string();
+    {
+        let mut r = doc.root.borrow_mut();
+        r.family.clear();
+        r.family.push_str(family);
+        r.resolve_units(doc.values());
+    }
 }
 
 /// Одна корневая шрифтовая единица в точках: `cap`, `ch`, `ex` или `ic`
 /// шрифта корня его кеглем — те же замеры, что у `cap`/`ch`/`ex`/`ic`
 /// элемента (`resolve_em`).
 pub(super) fn root_font_unit(unit: &str, vcx: ValueCx<'_>) -> f32 {
-    let (family, size) = with_root(vcx, |r| (r.family.clone(), r.font_px));
-    match unit {
-        "cap" => crate::text::metrics::vmetrics_px(&family, size).2,
-        "ch" => crate::text::metrics::ch_ex_px(&family, size).0,
-        "ex" => crate::text::metrics::ch_ex_px(&family, size).1,
-        _ => crate::text::metrics::ic_px(&family, size),
+    with_root(vcx, |r| {
+        r.units[match unit {
+            "cap" => 0,
+            "ch" => 1,
+            "ex" => 2,
+            _ => 3,
+        }]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_units_refresh_on_size_and_family_changes() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        crate::text::metrics::install_probe(
+            |family, size| {
+                let k = if family == "root-test-wide" { 1.0 } else { 0.5 };
+                (size * k, size * k * 0.8, size, size * k)
+            },
+            vcx,
+        );
+        crate::text::metrics::install_vprobe(|_, size| (size, 0.0, size * 0.75), vcx);
+        set_root_family(&doc, "root-test-wide");
+        set_root_metrics(&doc, 20.0, 25.0);
+        assert_eq!(root_font_unit("cap", vcx), 15.0);
+        assert_eq!(root_font_unit("ch", vcx), 20.0);
+        assert_eq!(root_font_unit("ex", vcx), 16.0);
+        assert_eq!(root_font_unit("ic", vcx), 20.0);
+        set_root_metrics(&doc, 40.0, 50.0);
+        assert_eq!(root_font_unit("ch", vcx), 40.0);
+        set_root_family(&doc, "root-test-narrow");
+        assert_eq!(root_font_unit("ch", vcx), 20.0);
+        assert_eq!(root_font_unit("ex", vcx), 16.0);
+        assert_eq!(root_font_unit("ic", vcx), 20.0);
+        assert_eq!(
+            super::super::calc_pct_px("calc(1rcap + 2rch + 1rex + 1ric)", vcx),
+            Some((0.0, 106.0))
+        );
     }
 }

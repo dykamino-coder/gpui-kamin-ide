@@ -199,7 +199,16 @@ pub(super) fn paint_body(
     };
     let draw =
         |window: &mut Window, gap_on_x: bool, run: &GapRun, rule: &GapAxisRule, main_like: bool| {
-            draw_rule(window, gap_on_x, run, rule, main_like, spec, bounds);
+            draw_rule(
+                window,
+                gap_on_x,
+                run,
+                rule,
+                main_like,
+                spec,
+                bounds,
+                &group.paint,
+            );
         };
     for pass in [true, false] {
         for (on_x, run, rule, main_like) in &layers {

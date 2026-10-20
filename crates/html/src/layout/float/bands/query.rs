@@ -1,6 +1,6 @@
-//! Запросы к полосам: доступная ширина, края, зазор, низ, формы, место среди флоатов.
+//! Запросы к полосам: доступная ширина, края, зазор, низ, формы.
 
-use super::{COORD_EPS, FloatBands};
+use super::FloatBands;
 use crate::layout::float::shapes::FloatShape;
 use std::sync::Arc;
 
@@ -87,84 +87,41 @@ impl FloatBands {
     pub fn shapes(&self, from_y: f32) -> Arc<(Vec<FloatShape>, Vec<FloatShape>)> {
         let mut left = vec![];
         let mut right = vec![];
-        for w in self.bands.windows(2) {
-            let (b, next) = (w[0], w[1]);
-            // Сторож `-∞` занятости не несёт, а полоса, упирающаяся в сторож
-            // `+∞`, — это остаток контекста ниже последнего флоата: там уже
-            // свободно.
-            if !b.top.is_finite() || !next.top.is_finite() {
+        for e in &self.exclusions {
+            // An exclusion that ended above the consumer cuts none of its
+            // lines; a zero-height one still cuts the line it falls in.
+            let bottom = e.top + e.h;
+            if bottom < from_y || (e.h > 0.0 && bottom <= from_y) {
                 continue;
             }
-            // Полоса, кончившаяся ВЫШЕ потребителя, его строк не режет:
-            // `cut` на ней и так дал бы ноль, но и держать её незачем.
-            if next.top <= from_y {
-                continue;
-            }
-            let (top, h) = (b.top - from_y, next.top - b.top);
-            if h <= 0.0 {
-                continue;
-            }
-            if let Some(edge) = b.left {
-                left.push(FloatShape::Band {
+            let top = e.top - from_y;
+            let shape = match &e.shape {
+                Some(s) => {
+                    let off = if e.side < 0 {
+                        e.near - self.cb.0
+                    } else {
+                        self.cb.1 - e.near
+                    };
+                    let mut s = s.offset(off);
+                    s.shift_top(e.top - from_y);
+                    s
+                }
+                None => FloatShape::Band {
                     top,
-                    h,
-                    w: (edge - self.cb.0).max(0.0),
-                });
-            }
-            if let Some(edge) = b.right {
-                right.push(FloatShape::Band {
-                    top,
-                    h,
-                    w: (self.cb.1 - edge).max(0.0),
-                });
+                    h: e.h,
+                    w: if e.side < 0 {
+                        (e.edge - self.cb.0).max(0.0)
+                    } else {
+                        (self.cb.1 - e.edge).max(0.0)
+                    },
+                },
+            };
+            if e.side < 0 {
+                left.push(shape);
+            } else {
+                right.push(shape);
             }
         }
         Arc::new((left, right))
-    }
-
-    /// Место для коробки `w` × `h`, которая флоаты НЕ перекрывает: замещаемый
-    /// элемент, таблица, блок со СВОИМ контекстом форматирования (§9.5,
-    /// последний абзац). Возвращает (левая стенка, верх, доступная ширина).
-    ///
-    /// Одной полосы мало — нужно ОКНО на всю высоту коробки, и окно скользит
-    /// вниз, пока не найдётся место (servo `PlacementAmongFloats::place`).
-    /// Правило 5 здесь не работает: коробка не флоат, ниже потолка сужения
-    /// появляются, и проверять надо каждую задетую полосу, а не только
-    /// верхнюю. Не нашлось нигде — ведём себя как `clear: both`.
-    pub fn place_among(&self, w: f32, h: f32, ceiling: f32) -> (f32, f32, f32) {
-        let mut top = ceiling;
-        loop {
-            let first = self.idx_at(top);
-            let (mut l, mut r) = self.cb;
-            let mut i = first;
-            let mut bot;
-            loop {
-                if let Some(v) = self.bands[i].left {
-                    l = l.max(v);
-                }
-                if let Some(v) = self.bands[i].right {
-                    r = r.min(v);
-                }
-                bot = self.bands[i + 1].top;
-                if bot - top >= h || !bot.is_finite() {
-                    break;
-                }
-                i += 1;
-            }
-            if r - l >= w - COORD_EPS {
-                return (l, top, r - l);
-            }
-            if !bot.is_finite() {
-                break;
-            }
-            // Верхняя полоса окна выброшена — искать со следующей. Верх строго
-            // растёт, поэтому цикл конечен.
-            top = self.bands[first + 1].top;
-        }
-        (
-            self.cb.0,
-            ceiling.max(self.clear_l).max(self.clear_r),
-            self.cb.1 - self.cb.0,
-        )
     }
 }

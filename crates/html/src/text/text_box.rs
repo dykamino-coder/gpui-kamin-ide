@@ -129,15 +129,17 @@ pub(crate) fn text_box_trim_px(line_style: &Computed, start: bool, opts: &Render
         Some(Len::Px(v)) => v,
         _ => opts.base_size(),
     };
+    let vcx = opts.cx.vcx();
     let family = line_style.font_family.clone().unwrap_or_default();
-    let (ascent, descent, cap) = crate::text::metrics::vmetrics_px(&family, size);
+    let extents = crate::text::metrics::vmetrics_px(&family, size, vcx);
+    let (ascent, descent, _) = extents;
     let line = match line_style.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,
         _ => ascent + descent,
     };
     let half = (line - (ascent + descent)) / 2.0;
-    half + edge_inset(line_style, &family, size, (ascent, descent, cap), start)
+    half + edge_inset(line_style, &family, size, extents, start, vcx)
 }
 
 /// Расстояние от подъёма (`start`) или спуска до метрики края
@@ -154,6 +156,7 @@ pub(crate) fn edge_inset(
     size: f32,
     (ascent, descent, cap): (f32, f32, f32),
     start: bool,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> f32 {
     use crate::style::computed::TextEdge;
     let em_box = |part: f32| {
@@ -167,13 +170,13 @@ pub(crate) fn edge_inset(
     if start {
         match s.text_box_over {
             TextEdge::Cap => ascent - cap,
-            TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(family, size).1,
+            TextEdge::Ex => ascent - crate::text::metrics::ch_ex_px(family, size, vcx).1,
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(ascent),
             TextEdge::Text | TextEdge::Alphabetic => 0.0,
         }
     } else {
         match s.text_box_under {
-            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family) * size,
+            TextEdge::Alphabetic => descent + crate::text::fonts::alphabetic_em(family, vcx) * size,
             TextEdge::Ideographic | TextEdge::IdeographicInk => em_box(descent),
             TextEdge::Text | TextEdge::Cap | TextEdge::Ex => 0.0,
         }
@@ -226,7 +229,7 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
                 opts.text.font_family.to_string()
             }
         });
-    let measured = crate::text::metrics::normal_line(&family);
+    let measured = crate::text::metrics::normal_line(&family, opts.cx.vcx());
     if measured > 0.0 {
         measured
     } else {

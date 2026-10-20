@@ -24,7 +24,12 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 }
 
 fn painted(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    transformed(element(e, inherited, opts), &e.style, inherited)
+    transformed(
+        element(e, inherited, opts),
+        &e.style,
+        inherited,
+        opts.cx.vcx(),
+    )
 }
 
 fn sample_live(

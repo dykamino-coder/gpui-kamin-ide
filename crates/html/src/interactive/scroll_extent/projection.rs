@@ -2,7 +2,7 @@
 //! Reverse axes move content toward the physical end; preserve normal overflow geometry.
 
 use super::{
-    CURRENT,
+    Frame,
     exact_probe::{ShiftLink, StickyShift},
 };
 use crate::hooks::{IntoHooked, Wrap};
@@ -22,11 +22,12 @@ impl Projection {
 }
 /// `outer` — the shift chain of the place where the projected box is built.
 pub(crate) fn projection(
+    frame: Option<&Frame>,
     parent: u64,
     c: Option<&Computed>,
     outer: Option<&StickyShift>,
 ) -> Option<Projection> {
-    let frame = CURRENT.with(|slot| slot.borrow().clone())?;
+    let frame = frame?;
     if frame.root.get() != Some(parent) || frame.reverse.get() == [false; 2] {
         return None;
     }
@@ -97,14 +98,15 @@ mod tests {
         root.node_id = 7;
         let frame = Frame::default();
         frame.set_handle(ScrollHandle::default());
-        frame.within(Some(&root), || {
+        {
+            frame.begin(Some(&root));
             let parent = Computed {
                 self_node: 7,
                 rtl: Some(true),
                 position: Some(Position::Relative),
                 ..Computed::default()
             };
-            classic::model(7, &parent);
+            classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
@@ -113,7 +115,7 @@ mod tests {
                 },
                 vcx,
             );
-            assert!(projection(7, Some(&absolute), None).is_some());
+            assert!(projection(Some(&frame), 7, Some(&absolute), None).is_some());
             let fixed = crate::style::cascade::inherit::inherit(
                 &parent,
                 &Computed {
@@ -122,9 +124,9 @@ mod tests {
                 },
                 vcx,
             );
-            assert!(projection(7, Some(&fixed), None).is_none());
-            assert!(projection(8, None, None).is_none());
-        });
+            assert!(projection(Some(&frame), 7, Some(&fixed), None).is_none());
+            assert!(projection(Some(&frame), 8, None, None).is_none());
+        }
     }
     #[test]
     fn ancestor_projection_does_not_create_overflow_in_a_nested_scrollport() {
@@ -143,8 +145,9 @@ mod tests {
             overflow_y: Some(Overflow::Scroll),
             ..Computed::default()
         };
-        frame.within(Some(&root), || {
-            classic::model(7, &c);
+        {
+            frame.begin(Some(&root));
+            classic::model(Some(&frame), 7, &c);
             frame.marker.set(true);
             // Original root x=80, child x=110; the ancestor adds 40px.
             let link = ShiftLink::inside(None);
@@ -166,6 +169,6 @@ mod tests {
             });
             assert_eq!(frame.range(), [0.0; 2]);
             assert_eq!(frame.bars(), [false; 2]);
-        });
+        }
     }
 }

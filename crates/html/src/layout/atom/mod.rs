@@ -83,6 +83,7 @@ pub(crate) fn atom_element(
             &e.style,
             &inherit(inherited, &e.style, vcx),
             (None, None),
+            vcx,
         )
     } else {
         el

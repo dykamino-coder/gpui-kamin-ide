@@ -59,9 +59,10 @@ pub(super) fn initial_letter_style(
     para_indent: f32,
     indent: f32,
     lead: &str,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Computed {
     let lead_w = if !vert && inherited.keep_spaces == Some(true) && !lead.contains(['\n', '\r']) {
-        let space = crate::text::metrics::ch_ex_px(&family, font_px).0;
+        let space = crate::text::metrics::ch_ex_px(&family, font_px, vcx).0;
         let stop = match inherited.tab_size_len {
             Some(Len::Px(v)) if v > 0.0 => v,
             _ => inherited.tab_size.unwrap_or(8.0).max(0.0) * space,
@@ -82,7 +83,7 @@ pub(super) fn initial_letter_style(
         // несёт и внутренний отступ строки буквицы, и ведущие пробелы:
         // `float_flow` меряет обтекание по ней (`float.rs` `narrow`).
         width: Some(Len::Px(
-            crate::text::metrics::ch_ex_px(&letter_family, letter_px).0 + indent + lead_w,
+            crate::text::metrics::ch_ex_px(&letter_family, letter_px, vcx).0 + indent + lead_w,
         )),
         height: Some(Len::Px(box_h)),
         font_size: Some(Len::Px(letter_px)),

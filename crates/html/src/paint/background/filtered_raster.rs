@@ -3,18 +3,15 @@
 use super::Source;
 use crate::document::state::ValueCx;
 use gpui::RenderImage;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::sync::{Arc, Mutex, OnceLock};
 
-type Key = (usize, String, u32, u32, bool);
-type Cache = Mutex<HashMap<Key, Option<Arc<RenderImage>>>>;
+type Key = (usize, crate::style::computed::ImageFilter, u32, u32, bool);
+type Cache = Mutex<Vec<(Key, Option<Arc<RenderImage>>)>>;
 static CACHE: OnceLock<Cache> = OnceLock::new();
 
 pub(super) fn raster(
     input: &Source,
-    list: &str,
+    list: &crate::style::computed::ImageFilter,
     tile: (f32, f32),
     pixelated: bool,
     vcx: ValueCx<'_>,
@@ -27,12 +24,17 @@ pub(super) fn raster(
         tile.1.round().clamp(1.0, 2048.0) as u32,
     );
     let image = match input {
-        Source::Gradient { raw } => super::gradient_raster::tile(raw, w, h, tile, vcx),
+        Source::Gradient { image } => super::gradient_raster::tile(image, w, h, tile, vcx),
         _ => input.sampled_raster(tile, pixelated, vcx),
     }?;
-    let key = (image.id.0, list.to_string(), w, h, pixelated);
+    let key = (image.id.0, list.clone(), w, h, pixelated);
     let cache = CACHE.get_or_init(Default::default);
-    if let Some(hit) = cache.lock().ok().and_then(|c| c.get(&key).cloned()) {
+    if list.cacheable()
+        && let Some(hit) = cache
+            .lock()
+            .ok()
+            .and_then(|c| c.iter().find(|(k, _)| k == &key).map(|(_, v)| v.clone()))
+    {
         return hit;
     }
     let size = image.size(0);
@@ -42,13 +44,14 @@ pub(super) fn raster(
     let integral =
         iw > 0 && ih > 0 && w >= iw && h >= ih && w.is_multiple_of(iw) && h.is_multiple_of(ih);
     let resized = resize(&image, w, h, pixelated || integral)?;
-    let result =
-        super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1), vcx);
-    if let Ok(mut cache) = cache.lock() {
+    let result = super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1));
+    if list.cacheable()
+        && let Ok(mut cache) = cache.lock()
+    {
         if cache.len() >= 32 {
             cache.clear();
         }
-        cache.insert(key, result.clone());
+        cache.push((key, result.clone()));
     }
     result
 }
@@ -121,7 +124,7 @@ mod tests {
         let input = Source::Raster(original);
         let filtered = Source::Filtered {
             image: Box::new(input),
-            list: "drop-shadow(5px 0 0 green)".into(),
+            list: crate::style::computed::ImageFilter::parse("drop-shadow(5px 0 0 green)", vcx),
         };
         assert_eq!(filtered.intrinsic().w, Some(2.0));
         let result = filtered.sampled_raster((10.0, 10.0), true, vcx).unwrap();
@@ -150,7 +153,7 @@ mod tests {
         let input = Source::Raster(original);
         let result = raster(
             &input,
-            "drop-shadow(1500px 0 0 green)",
+            &crate::style::computed::ImageFilter::parse("drop-shadow(1500px 0 0 green)", vcx),
             (3000.0, 10.0),
             false,
             vcx,
@@ -170,12 +173,20 @@ mod tests {
     fn radial_input_filters_rendered_samples_without_natural_dimensions() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let source =
-            super::super::source("filter(radial-gradient(red, orange), invert(1))", vcx).unwrap();
+        let source = super::super::computed_source(
+            &crate::style::computed::ImageSource::parse(
+                "filter(radial-gradient(red, orange), invert(1))",
+                vcx,
+            )
+            .unwrap(),
+            true,
+        )
+        .unwrap();
         assert!(source.intrinsic().w.is_none());
         let filtered = source.raster((7.0, 5.0), vcx).unwrap();
         let original = super::super::gradient_raster::tile(
-            "radial-gradient(red, orange)",
+            &crate::style::computed::ImageSource::parse("radial-gradient(red, orange)", vcx)
+                .unwrap(),
             7,
             5,
             (7.0, 5.0),

@@ -78,7 +78,10 @@ mod tests {
         let mut image = c.border_image.unwrap();
         image.slice = [BorderImageSlice::Px(80.0); 4];
         let source = Source::Gradient {
-            raw: "linear-gradient(green, green)".into(),
+            image: std::sync::Arc::new(
+                crate::style::computed::ImageSource::parse("linear-gradient(green, green)", vcx)
+                    .unwrap(),
+            ),
         };
         let area = Bounds::new(point(px(0.0), px(0.0)), size(px(100.0), px(100.0)));
         let grid = Grid::new(&image, &source, area, [10.0; 4]);

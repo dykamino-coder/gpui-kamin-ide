@@ -21,6 +21,7 @@ pub(super) fn table_tracks(
     cols_collapsed: Vec<bool>,
     cols_pct: Vec<Option<f32>>,
     cb_px: Option<f32>,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
     let vertical = e.style.wm().vertical();
     let inline_size = if vertical {
@@ -32,10 +33,10 @@ pub(super) fn table_tracks(
         e,
         row_elements,
         win_edges,
-        table_font,
-        table_family,
+        (table_font, table_family),
         spacing,
         cols,
+        vcx,
     );
     // `<col>`-ширины старше ячеек первого ряда (§17.5.2.1) и действуют и в
     // авто-раскладке: колонка с шириной держит её (как ширина ячейки).
@@ -120,10 +121,10 @@ pub(super) fn first_row_widths_of(
     e: &Element,
     row_elements: &Vec<&Element>,
     win_edges: std::collections::HashMap<u64, [f32; 4]>,
-    table_font: f32,
-    table_family: &str,
+    (table_font, table_family): (f32, &str),
     spacing: (f32, f32),
     cols: u16,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Option<f32>> {
     let vertical = e.style.wm().vertical();
     let axes = super::super::axes::Axes::new(&e.style);
@@ -211,7 +212,7 @@ pub(super) fn first_row_widths_of(
                                 .font_family
                                 .clone()
                                 .unwrap_or_else(|| table_family.to_string());
-                            let v = crate::text::metrics::spacing_px(Some(l), &family, size);
+                            let v = crate::text::metrics::spacing_px(Some(l), &family, size, vcx);
                             out.push((v > 0.0).then_some(v + extra));
                         }
                         // Доля считается от места, отдаваемого дорожкам:

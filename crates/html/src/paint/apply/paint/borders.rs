@@ -35,7 +35,7 @@ pub(crate) fn border_layer(
     }
     // Особые рамки несут свои слои, разные цвета сторон — полосы поверх:
     // всё это уже лежит над плитками (`apply_paint` о них знает).
-    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+    if c.border_image.as_ref().is_some_and(|bi| bi.src.is_some())
         || c.corner_shaped()
         || c.border_shape.is_some()
     {
@@ -97,7 +97,7 @@ pub(crate) fn double_border(
     c: &Computed,
     vcx: ValueCx<'_>,
 ) -> Option<(crate::style::values::value::Color, [f32; 4])> {
-    if c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty())
+    if c.border_image.as_ref().is_some_and(|bi| bi.src.is_some())
         || c.corner_shaped()
         || c.border_shape.is_some()
     {
@@ -157,7 +157,7 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) ->
     // рамка видна).
     let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    let border_image_on = c.border_image.as_ref().is_some_and(|bi| !bi.src.is_empty());
+    let border_image_on = c.border_image.as_ref().is_some_and(|bi| bi.src.is_some());
     // При РАЗНЫХ цветах сторон квад не красится вовсе: его рамка рисуется
     // поверх детей, и красная полоса накрывала цветную
     // (clip-path-polygon-007: `border: red` + `border-left: lime`).

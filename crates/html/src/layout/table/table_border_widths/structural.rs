@@ -13,6 +13,7 @@ pub(super) struct Edges<'a> {
     cols: usize,
     font: f32,
     family: &'a str,
+    vcx: crate::document::state::ValueCx<'a>,
 }
 
 impl<'a> Edges<'a> {
@@ -23,6 +24,7 @@ impl<'a> Edges<'a> {
         cols: usize,
         font: f32,
         family: &'a str,
+        vcx: crate::document::state::ValueCx<'a>,
     ) -> Self {
         Self {
             axes: super::super::axes::Axes::new(&table.style),
@@ -33,6 +35,7 @@ impl<'a> Edges<'a> {
             cols,
             font,
             family,
+            vcx,
         }
     }
 
@@ -45,7 +48,7 @@ impl<'a> Edges<'a> {
         let family = element.style.font_family.as_deref().unwrap_or(self.family);
         self.axes.logical(
             [border.top, border.right, border.bottom, border.left]
-                .map(|length| crate::text::metrics::spacing_px(length, family, font)),
+                .map(|length| crate::text::metrics::spacing_px(length, family, font, self.vcx)),
         )
     }
 

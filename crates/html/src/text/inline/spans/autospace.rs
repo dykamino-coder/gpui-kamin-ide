@@ -27,6 +27,7 @@ use crate::text::inline::*;
 pub fn autospace_spans(
     pieces: &[Piece],
     base_size: f32,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     // Знак перед курсором: его смещение, длина, стиль и кегль куска.
@@ -61,7 +62,8 @@ pub fn autospace_spans(
                 && autospace_between(p_ch, ch, style)
             {
                 let family = p_style.font_family.clone().unwrap_or_default();
-                let had = crate::text::metrics::spacing_px(p_style.letter_spacing, &family, p_size);
+                let had =
+                    crate::text::metrics::spacing_px(p_style.letter_spacing, &family, p_size, vcx);
                 // ЗАМЕРЕНО И ОТКАЧЕНО: считать зазор от `ic`, а не от кегля
                 // (css-text-4 §7.1 «1/8 of the ideographic advance»). Полный
                 // свод CSS3: приобретено 0, потеряно 1 —

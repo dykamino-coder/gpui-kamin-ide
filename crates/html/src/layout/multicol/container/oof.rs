@@ -11,6 +11,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
 pub(super) fn place_oof_statics(
     merged: &Computed,
+    opts: &RenderOpts,
     oof_static: &[(usize, Element)],
     kid_starts: Vec<usize>,
     children: Vec<crate::layout::fragment::types::StackChild>,
@@ -38,11 +39,13 @@ pub(super) fn place_oof_statics(
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {
+            flow: None,
             measure: None,
             el: crate::layout::positioned::containing_block::spot_probe(
                 oof_spots[i].clone(),
                 true,
                 None,
+                &opts.cx,
             ),
             frags: Vec::new(),
             monolith: false,
@@ -100,6 +103,7 @@ pub(super) fn column_stack_div(
     gap_items: &Option<crate::paint::gap_rules::GapItems>,
     rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
+    opts: &RenderOpts,
 ) -> gpui::Div {
     let d = if col_vert {
         let d = d.flex();
@@ -127,6 +131,7 @@ pub(super) fn column_stack_div(
                     _ => None,
                 })
             }),
+            opts.cx.paint.clone(),
         )
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)

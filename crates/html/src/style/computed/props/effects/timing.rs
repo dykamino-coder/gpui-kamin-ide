@@ -61,73 +61,8 @@ impl Computed {
                 }
             }
             "filter" => {
-                // `drop-shadow(<color>? && <length>{2,3})` (filter-effects-1
-                // §funcdef-filter-drop-shadow) несёт скобки цвета внутри —
-                // режется по балансу скобок, а не по первой `)`. Значения —
-                // как у box-shadow, но 3-я длина — СИГМА: радиус box-shadow
-                // вдвое больше.
-                self.drop_shadow = v.find("drop-shadow(").and_then(|at| {
-                    let rest = &v[at + "drop-shadow(".len()..];
-                    let mut depth = 1usize;
-                    let end = rest.char_indices().find_map(|(i, ch)| {
-                        match ch {
-                            '(' => depth += 1,
-                            ')' => {
-                                depth -= 1;
-                                if depth == 0 {
-                                    return Some(i);
-                                }
-                            }
-                            _ => {}
-                        }
-                        None
-                    })?;
-                    parse_shadows(&rest[..end], vcx).first().map(|sh| Shadow {
-                        blur: sh.blur * 2.0,
-                        ..*sh
-                    })
-                });
-                self.scrollbar_filter_ops.clear();
-                let mut f = self.filter.unwrap_or_else(Filter::neutral);
-                for call in v.split(')') {
-                    let Some((name, arg)) = call.split_once('(') else {
-                        continue;
-                    };
-                    let name = name.trim();
-                    let arg = arg.trim();
-                    // Доля пишется и процентом, и числом.
-                    let amount = || -> f32 {
-                        match arg.strip_suffix('%') {
-                            Some(n) => n.trim().parse::<f32>().unwrap_or(100.0) / 100.0,
-                            None => arg.parse::<f32>().unwrap_or(1.0),
-                        }
-                    };
-                    match name {
-                        "url" => {
-                            let id = arg.trim_matches(|c| c == '"' || c == '\'').trim();
-                            if let Some(id) = id.strip_prefix('#') {
-                                self.filter_ref = Some(id.to_string());
-                            }
-                        }
-                        "grayscale" => f.grayscale = amount(),
-                        "brightness" => f.brightness = amount(),
-                        "saturate" => f.saturate = amount(),
-                        "invert" => f.invert = amount(),
-                        "sepia" => f.sepia = amount(),
-                        "opacity" => f.opacity = amount(),
-                        "hue-rotate" => {
-                            f.hue_rotate = arg.trim_end_matches("deg").parse().unwrap_or(0.0)
-                        }
-                        "blur" => f.blur = arg.trim_end_matches("px").trim().parse().unwrap_or(0.0),
-                        "contrast" => f.contrast = amount(),
-                        // `drop-shadow` и цветовые матрицы — не наш случай.
-                        _ => {}
-                    }
-                    if let Some(one) = f.color_operation(name) {
-                        self.scrollbar_filter_ops.push(one);
-                    }
-                }
-                self.filter = accept_parsed!(self, Some(f));
+                self.parse_filter(v, vcx);
+                self.accept_declaration();
             }
             "contain" => {
                 // Разбор по словам: подстрочный поиск ловил «size» в

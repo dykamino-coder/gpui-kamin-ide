@@ -16,6 +16,11 @@ use std::rc::Rc;
 pub struct ValueCx<'a> {
     pub(crate) doc: &'a DocState,
     pub(crate) frame: bool,
+    pub(crate) viewport: (f32, f32),
+    pub(crate) lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
+    pub(crate) paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
+    pub(crate) collapse: crate::layout::block::margins::CollapseInputs,
+    pub(crate) scheme: crate::style::values::value::Scheme,
 }
 
 impl DocState {
@@ -23,7 +28,12 @@ impl DocState {
     pub fn values(&self) -> ValueCx<'_> {
         ValueCx {
             doc: self,
+            viewport: (0.0, 0.0),
+            lines: None,
+            paint: None,
             frame: false,
+            collapse: Default::default(),
+            scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
 
@@ -31,7 +41,12 @@ impl DocState {
     pub fn frame_values(&self) -> ValueCx<'_> {
         ValueCx {
             doc: self,
+            viewport: (0.0, 0.0),
+            lines: None,
+            paint: None,
             frame: true,
+            collapse: Default::default(),
+            scheme: crate::style::values::value::Scheme::new(self.media.get().dark),
         }
     }
 }
@@ -50,18 +65,61 @@ impl std::fmt::Debug for ValueCx<'_> {
 pub struct ValueDoc {
     doc: Rc<DocState>,
     frame: bool,
+    viewport: (f32, f32),
+    lines: Option<Rc<crate::layout::fragment::LineCx>>,
+    paint: Option<Rc<crate::paint::context::PaintCx>>,
+    collapse: crate::layout::block::margins::CollapseInputs,
+    scheme: crate::style::values::value::Scheme,
 }
 
 impl ValueDoc {
     pub fn vcx(&self) -> ValueCx<'_> {
         ValueCx {
             doc: &self.doc,
+            lines: self.lines.as_ref(),
+            paint: self.paint.as_ref(),
             frame: self.frame,
+            viewport: self.viewport,
+            collapse: self.collapse,
+            scheme: self.scheme,
         }
     }
 }
 
-impl ValueCx<'_> {
+impl<'a> ValueCx<'a> {
+    pub(crate) fn with_viewport(mut self, viewport: (f32, f32)) -> Self {
+        self.viewport = viewport;
+        self
+    }
+
+    pub(crate) fn with_paint(
+        mut self,
+        paint: Option<&'a Rc<crate::paint::context::PaintCx>>,
+    ) -> Self {
+        self.paint = paint;
+        self
+    }
+
+    pub(crate) fn with_lines(
+        mut self,
+        lines: Option<&'a Rc<crate::layout::fragment::LineCx>>,
+    ) -> Self {
+        self.lines = lines;
+        self
+    }
+
+    pub(crate) fn with_collapse(
+        mut self,
+        inputs: crate::layout::block::margins::CollapseInputs,
+    ) -> Self {
+        self.collapse = inputs;
+        self
+    }
+
+    pub(crate) fn with_scheme(mut self, scheme: crate::style::values::value::Scheme) -> Self {
+        self.scheme = scheme;
+        self
+    }
     /// Удержать документ контекста. Документ всегда живёт в `Rc`
     /// (`DocState::new`), так что ручка есть, пока жив заимствованный
     /// документ; иначе — пустой документ, и чтение его ручек даёт запасное
@@ -74,6 +132,11 @@ impl ValueCx<'_> {
                 .upgrade()
                 .unwrap_or_else(|| DocState::new(crate::style::css::Media::default())),
             frame: self.frame,
+            viewport: self.viewport,
+            collapse: self.collapse,
+            scheme: self.scheme,
+            lines: self.lines.cloned(),
+            paint: self.paint.cloned(),
         }
     }
 }

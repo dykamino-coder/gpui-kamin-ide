@@ -1,7 +1,7 @@
 //! Share fragment boundaries with gap painters before resolving decoration insets.
 
+use crate::paint::context::PaintCx;
 use gpui::{ContentMask, Pixels};
-use std::cell::RefCell;
 
 #[derive(Clone)]
 pub(crate) struct Scope {
@@ -12,17 +12,13 @@ pub(crate) struct Scope {
     pub end: f32,
 }
 
-thread_local! {
-    static ACTIVE: RefCell<Option<Scope>> = const { RefCell::new(None) };
+pub(crate) fn current(owner: &PaintCx) -> Option<Scope> {
+    owner.gap.borrow().clone()
 }
 
-pub(crate) fn current() -> Option<Scope> {
-    ACTIVE.with(|active| active.borrow().clone())
-}
-
-pub(crate) fn with<R>(scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
-    let previous = ACTIVE.with(|active| active.replace(scope));
+pub(crate) fn with<R>(owner: &PaintCx, scope: Option<Scope>, f: impl FnOnce() -> R) -> R {
+    let previous = owner.gap.replace(scope);
     let result = f();
-    ACTIVE.with(|active| active.replace(previous));
+    owner.gap.replace(previous);
     result
 }

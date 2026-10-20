@@ -68,7 +68,7 @@ pub(super) fn collect_element(
         // Без распорки следующее слово вставало вплотную
         // (`letter-spacing-nesting-003`). Хвостовая распорка у
         // конца узла снимается ниже — за ней границы нет.
-        if let Some(gap) = boundary_gap_after_box(e, inherited) {
+        if let Some(gap) = boundary_gap_after_box(e, inherited, vcx) {
             *gap_at = Some(out.len());
             out.push(Piece::Text {
                 text: SPACER.into(),
@@ -108,7 +108,7 @@ pub(super) fn collect_element(
     // (`CSS2/box/ltr-span-only`). Spacers sit outside the inline's bidi
     // controls; the line painter moves them to the visual side by flag.
     let ((mut mlead, mut mtrail), (mut lead, mut trail)) =
-        inline_spacing::inline_sides(e, &merged, inherited, cx.layout.avail_w);
+        inline_spacing::inline_sides(e, &merged, inherited, cx.layout.avail_w, vcx);
     let own_rtl = merged.wm().rtl();
     if own_rtl {
         std::mem::swap(&mut lead, &mut trail);
@@ -204,7 +204,7 @@ pub(super) fn collect_element(
     } else {
         kids
     };
-    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged);
+    let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, vcx);
     out.extend(shift_overlays(kids, &e.style, merged.wm().turned()));
     if let Some(mark) = close {
         out.push(Piece::Text {

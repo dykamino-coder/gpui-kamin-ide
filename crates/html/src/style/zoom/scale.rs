@@ -3,6 +3,7 @@
 use super::*;
 
 mod rule_widths;
+mod shape_lengths;
 mod structured;
 
 pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
@@ -115,6 +116,9 @@ pub(super) fn scale_own(c: &mut Computed, k: f32) {
     // `vertical-align: 20px` хранится точками со знаком — тоже длина.
     c.vertical_shift_px = c.vertical_shift_px.map(|v| v * k);
     structured::scale(c, k);
+    if let Some(s) = c.shape_outside.as_mut() {
+        *s = shape_lengths::scale_px(s, k);
+    }
     // Длины украшений текста (css-text-decor-4): толщина, смещение
     // подчёркивания, отступы концов.
     let dl = |l: &mut crate::style::computed::DecorLen| match l {

@@ -78,10 +78,13 @@ pub(super) fn prepare_embedded(
     let canvas = canvas_backing(&nodes, owner_dark);
     let viewport = policy(&nodes, vcx).or_else(|| canvas.map(|_| Computed::default()));
     let (nodes, _) = super::unwrap_document(
-        super::mark_canvas_background(super::resolve_logical(
-            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+        super::mark_canvas_background(
+            super::resolve_logical(
+                super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+                vcx,
+            ),
             vcx,
-        )),
+        ),
         vcx,
     );
     let mut nodes = wrap(nodes, viewport, canvas);
@@ -106,10 +109,13 @@ pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Compute
                 || c.scroll.gutter.is_some_and(|v| v != 0)
         });
     let (nodes, root) = super::unwrap_document(
-        super::mark_canvas_background(super::resolve_logical(
-            super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+        super::mark_canvas_background(
+            super::resolve_logical(
+                super::propagate_writing_mode(super::viewport_overflow(nodes), vcx),
+                vcx,
+            ),
             vcx,
-        )),
+        ),
         vcx,
     );
     (wrap(nodes, viewport, canvas), root)

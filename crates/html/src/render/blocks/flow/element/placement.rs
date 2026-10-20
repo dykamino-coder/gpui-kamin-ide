@@ -52,12 +52,12 @@ pub(crate) fn place_element(
                 if x_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.left, &e.style).unwrap_or(0.0)
+                    margin_px(e.style.margin.left, &e.style, opts.cx.vcx()).unwrap_or(0.0)
                 },
                 if y_set {
                     0.0
                 } else {
-                    margin_px(e.style.margin.top, &e.style).unwrap_or(0.0)
+                    margin_px(e.style.margin.top, &e.style, opts.cx.vcx()).unwrap_or(0.0)
                 },
             ),
             rtl: inherited.wm().rtl(),
@@ -156,7 +156,7 @@ pub(crate) fn place_element(
                 // не остаётся ничего.
                 if !(x_set && y_set) {
                     out.push(crate::layout::positioned::containing_block::spot_probe(
-                        spot, true, None,
+                        spot, true, None, &opts.cx,
                     ));
                 }
                 if let Some(paint) = source_paint {
@@ -171,6 +171,7 @@ pub(crate) fn place_element(
                     spot.clone(),
                     true,
                     None,
+                    &opts.cx,
                 ));
                 crate::layout::positioned::containing_block::LatePlace { child: kept, spot }
                     .hooked()

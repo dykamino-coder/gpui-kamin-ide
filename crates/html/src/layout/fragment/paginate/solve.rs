@@ -67,9 +67,9 @@ pub(crate) fn first_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<(u64, f
                     return Some((prev, g.top - p.top, p.bottom - p.top));
                 }
             }
-            Cand::Mono { soft } => {
+            Cand::Mono { soft } | Cand::Float { soft } => {
                 let tall = g.bottom - g.top;
-                if soft && tall > h + FRAGMENT_FIT_EPS {
+                if soft && tall > h + FRAGMENT_FIT_EPS && !matches!(g.cand, Cand::Float { .. }) {
                     continue;
                 }
                 if at_start(g.top, h, y0) {
@@ -152,88 +152,4 @@ pub(crate) fn gap_violation(geoms: &[Geom], h: f32, y0: f32) -> Option<GapMove> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn mono(id: u64, top: f32, bottom: f32) -> Geom {
-        Geom {
-            id,
-            cand: Cand::Mono { soft: false },
-            top,
-            bottom,
-        }
-    }
-
-    #[test]
-    fn pushes_straddling_monolith_to_next_boundary() {
-        let g = [mono(1, 50.0, 150.0)];
-        assert_eq!(first_violation(&g, 100.0, 0.0).map(|v| v.1), Some(50.0));
-        // Starting 20px down its first column, the boundary is at 80.
-        assert_eq!(first_violation(&g, 100.0, 20.0).map(|v| v.1), Some(30.0));
-    }
-
-    #[test]
-    fn keeps_monolith_at_fragmentainer_start() {
-        let g = [mono(1, 100.0, 250.0)];
-        assert!(first_violation(&g, 100.0, 0.0).is_none());
-    }
-
-    #[test]
-    fn forced_break_moves_border_edge_and_keeps_margin() {
-        let g = [Geom {
-            id: 2,
-            cand: Cand::Forced { mt: 10.0 },
-            top: 70.0,
-            bottom: 90.0,
-        }];
-        assert_eq!(first_violation(&g, 100.0, 0.0).map(|v| v.1), Some(40.0));
-        let done = [Geom {
-            top: 110.0,
-            bottom: 130.0,
-            ..g[0]
-        }];
-        assert!(first_violation(&done, 100.0, 0.0).is_none());
-    }
-
-    fn gapped(id: u64, top: f32) -> Geom {
-        Geom {
-            id,
-            cand: Cand::Gap {
-                gap: 100.0,
-                parent: 9,
-            },
-            top,
-            bottom: top + 50.0,
-        }
-    }
-
-    #[test]
-    fn truncates_row_gap_across_boundary() {
-        // Rows 0..50 and 150..200, gap 100 across the boundary at 100.
-        let g = [gapped(1, 0.0), gapped(2, 150.0)];
-        let (ids, delta, later, gap) = gap_violation(&g, 100.0, 0.0).unwrap();
-        assert_eq!((ids, delta, later, gap), (vec![2], -50.0, vec![2], 100.0));
-        // Already truncated: the row starts at the boundary.
-        assert!(gap_violation(&[gapped(1, 0.0), gapped(2, 100.0)], 100.0, 0.0).is_none());
-    }
-
-    #[test]
-    fn avoided_edge_breaks_before_previous_box() {
-        let prev = Geom {
-            id: 1,
-            cand: Cand::Item,
-            top: 50.0,
-            bottom: 100.0,
-        };
-        let next = Geom {
-            id: 2,
-            cand: Cand::Avoid { prev: 1 },
-            top: 100.0,
-            bottom: 400.0,
-        };
-        assert_eq!(
-            first_violation(&[prev, next], 100.0, 0.0).map(|v| (v.0, v.1)),
-            Some((1, 50.0))
-        );
-    }
-}
+mod tests;

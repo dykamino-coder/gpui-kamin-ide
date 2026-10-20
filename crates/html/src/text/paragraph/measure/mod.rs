@@ -1,4 +1,4 @@
-//! Замеры абзаца: поля строк, вырезы обтекания, отступы, висячие знаки, ширины, min-content.
+//! Document-owned paragraph measurements and measure-to-paint text-fit results.
 
 mod cache_keys;
 mod flow_cut;
@@ -6,30 +6,23 @@ mod min_content;
 mod padding;
 mod width;
 
-use crate::text::paragraph::*;
+use crate::text::paragraph::{Line, Seg};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-/// Забыть замеры. Зовётся при разборе новой страницы: одно и то же имя
-/// семейства на разных страницах означает РАЗНЫЕ шрифты (`@font-face`), и
-/// старые положения знаков стали бы чужими.
-pub fn forget_measures() {
-    MEASURED.with(|c| c.borrow_mut().clear());
-    SPLITS.with(|c| c.borrow_mut().clear());
+/// Paragraphs and their layout probes share only their document's measurements.
+#[derive(Default)]
+pub(crate) struct MeasureCache {
+    pub(crate) splits: RefCell<HashMap<u64, Rc<Vec<Line>>>>,
+    pub(crate) fitted: RefCell<Vec<(u64, f32)>>,
+    pub(crate) measured: RefCell<Vec<(u64, Vec<Seg>)>>,
 }
 
-thread_local! {
-    /// Память разрезов: ключ разреза → готовые строки.
-    pub(super) static SPLITS: std::cell::RefCell<
-        std::collections::HashMap<u64, std::rc::Rc<Vec<Line>>>,
-    > = std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-/// Сколько замеров абзацев помнить между кадрами.
+/// Number of measurements and fitted multipliers retained between frames.
 const MEASURE_CACHE: usize = 64;
 
-/// Память подбора кегля: ключ абзаца → найденный множитель.
-pub(super) fn remember_fit(key: u64, k: f32) {
-    FITTED.with(|c| {
-        let mut cache = c.borrow_mut();
+impl MeasureCache {
+    pub(super) fn remember_fit(&self, key: u64, k: f32) {
+        let mut cache = self.fitted.borrow_mut();
         if let Some(hit) = cache.iter_mut().find(|(hit, _)| *hit == key) {
             hit.1 = k;
             return;
@@ -38,14 +31,5 @@ pub(super) fn remember_fit(key: u64, k: f32) {
             cache.remove(0);
         }
         cache.push((key, k));
-    });
-}
-
-thread_local! {
-    /// Найденные множители `text-fit`: ключ абзаца → во сколько раз крупнее.
-    pub(super) static FITTED: std::cell::RefCell<Vec<(u64, f32)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
-    /// Память замеров: ключ стиля и текста → положения знаков по кускам.
-    static MEASURED: std::cell::RefCell<Vec<(u64, Vec<Seg>)>> =
-        const { std::cell::RefCell::new(Vec::new()) };
+    }
 }

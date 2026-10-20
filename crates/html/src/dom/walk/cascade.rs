@@ -11,14 +11,6 @@ use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
-pub(crate) struct SchemeGuard((bool, bool));
-
-impl Drop for SchemeGuard {
-    fn drop(&mut self) {
-        crate::style::values::value::restore_scheme(self.0);
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::needless_borrow)]
 pub(super) fn cascade_element(
@@ -32,13 +24,13 @@ pub(super) fn cascade_element(
     path: &[Ancestor],
     spot: Spot,
     sibs: Sibs,
+    vcx: crate::document::state::ValueCx<'_>,
 ) -> (
     Computed,
     Decls,
-    SchemeGuard,
+    crate::style::values::value::Scheme,
     Option<Rc<crate::dom::shadow::Shadow>>,
 ) {
-    let vcx = tree.doc.values();
     // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
     // `scroll-target-group: auto` element are its scroll markers. At the
     // initial scroll position the first target in tree order is current
@@ -124,10 +116,9 @@ pub(super) fn cascade_element(
         }
         last
     };
-    let _scheme = SchemeGuard(crate::style::values::value::scheme_state());
-    if let Some(v) = scheme {
-        crate::style::values::value::resolve_scheme(&v);
-    }
+    let vcx = scheme
+        .as_deref()
+        .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
     // Типизированный `attr()` читает атрибуты ЭТОГО элемента
     // (css-values-5 §7.7), `sibling-index()` — его место среди братьев.
     let element = CascadeCx {
@@ -151,8 +142,8 @@ pub(super) fn cascade_element(
     } else {
         style.math_layout = None;
     }
-    style.dark_color_scheme = crate::style::values::value::dark_scheme();
-    style.embedding_dark_scheme = crate::style::values::value::embedding_dark_scheme();
+    style.dark_color_scheme = crate::style::values::value::dark_scheme(vcx);
+    style.embedding_dark_scheme = crate::style::values::value::embedding_dark_scheme(vcx);
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;
@@ -163,5 +154,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    (style, own_vars, _scheme, shadow)
+    (style, own_vars, vcx.scheme, shadow)
 }

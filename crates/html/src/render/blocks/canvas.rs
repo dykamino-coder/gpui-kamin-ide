@@ -8,11 +8,16 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{ParentElement, Styled, div, px};
 
-pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::AnyElement>) {
+/// Push the canvas background layer of root `e`; return the root box
+/// measurement it reads, for the root's own box to fill at prepaint.
+pub(crate) fn canvas_layer(
+    e: &Element,
+    opts: &RenderOpts,
+    out: &mut Vec<gpui::AnyElement>,
+) -> Option<crate::paint::background::RootMeasurement> {
+    let measured = (e.tag == "html").then(crate::paint::background::RootMeasurement::default);
+    let measurement = measured.clone();
     let vcx = opts.cx.vcx();
-    // Pair each root instance with its canvas, including identical iframe documents.
-    let measured =
-        (e.tag == "html").then(|| crate::paint::background::measure_root_box(opts.doc_salt));
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
@@ -74,7 +79,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             let side = |l: Option<Len>| match l {
                 Some(Len::Px(v)) => v,
                 Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) => {
-                    crate::text::metrics::spacing_px(Some(l), &fam, em)
+                    crate::text::metrics::spacing_px(Some(l), &fam, em, vcx)
                 }
                 _ => 0.0,
             };
@@ -102,7 +107,7 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
                 // содержимому у правого края (css-writing-modes-4
                 // §7, auto block-size): левый край его коробки
                 // пишет обёртка тела ниже при подготовке.
-                left_key: (e.style.wm().block_rl()).then_some(opts.doc_salt),
+                measured_left: e.style.wm().block_rl(),
             };
             match &canvas_layers {
                 // Снизу вверх, каждый слой — своей плиткой от
@@ -222,5 +227,10 @@ pub(crate) fn canvas_layer(e: &Element, opts: &RenderOpts, out: &mut Vec<gpui::A
             vcx,
         );
     }
-    out.push(crate::interactive::scroll_target::canvas(layer));
+    out.push(crate::interactive::scroll_target::canvas(
+        opts.cx.scroll_frame.as_ref(),
+        opts.cx.scroll_target.as_deref(),
+        layer,
+    ));
+    measurement
 }

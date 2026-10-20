@@ -17,7 +17,9 @@ export interface HandlerCtx {
   setState: (s: ExtendedConnectionState) => void
   setLastModel: (m: string) => void
   setSettingsDir: (d: string) => void
-  setConversationId: (id: string) => void
+  /** Returns false when the tab keeps its stored identity (INC-2026-0070
+   *  hold): the id must then not be persisted as the tab's conversation. */
+  setConversationId: (id: string) => boolean
   scheduleReconnect: () => void
   resetReconnectAttempt: () => void
   /** Ghost-resume loop breaker: mark session:created, and on session:exit decide
@@ -25,8 +27,10 @@ export interface HandlerCtx {
   noteSessionCreated: () => void
   noteSessionExit: () => void
   /** Server answered a resume with «conversation not found» and started a
-   *  fresh one: drop the ghost conversationId + old mirror, tell the user. */
+   *  fresh one: keep the stored id, stop mirroring into it, offer a choice. */
   noteResumeNotFound: () => void
+  /** session:created resumed/created as requested — ends any identity hold. */
+  noteIdentityConfirmed: () => void
   clearJsonlCache: () => void
   resolveDownload: (r: { content: string | null; fileName: string | null; error?: string }) => void
   /** Identity of the transcript file, so the mirror can be trusted later. */
@@ -108,11 +112,13 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       // caused a visible flash before replay re-populated. Real CLI
       // compaction is handled server-side via jsonl:status compacted:true.
       ctx.window.webContents.send('jsonl-status', ctx.tabId, { status: 'searching' })
-      // Resume target is gone on this server — the session is FRESH. Forget
-      // the ghost conversationId (a reconnect must not re-resume it) and the
-      // old transcript mirror; the server follows up with an instant
-      // replayComplete so the chat shows empty instead of "Loading…".
+      // Resume target is gone on this server — the session is FRESH. The tab
+      // KEEPS its stored conversation id (INC-2026-0070: adopting the fresh id
+      // silently made the loss permanent) until the user chooses; the server
+      // follows up with an instant replayComplete so the chat shows empty
+      // instead of "Loading…".
       if ((msg as any).resumeNotFound) ctx.noteResumeNotFound()
+      else ctx.noteIdentityConfirmed()
       ctx.setState({ status: 'authenticated', sessionId: msg.sessionId })
       const settingsDir = (msg as any).settingsDir
       if (settingsDir) ctx.setSettingsDir(settingsDir)
@@ -215,12 +221,17 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
     }
 
     case 'jsonl:status': {
+      // Older servers announce replay start with bare `watching`. Index and
+      // progress updates use the same status but must not restart that replay.
+      const startsLegacyReplay = msg.status === 'watching'
+        && (msg.compacted || (!msg.segmentIndex && !msg.replayProgress))
+      const replayComplete = msg.replayComplete ?? (startsLegacyReplay ? false : undefined)
       const statusData = {
         status: (msg as any).status,
         filePath: (msg as any).filePath,
         error: (msg as any).error,
         compacted: (msg as any).compacted,
-        replayComplete: (msg as any).replayComplete,
+        replayComplete,
         // Live byte-progress of the historical replay → the renderer's "loading
         // history … N%". Transient like `compacted`: NOT cached below, or a
         // renderer reload would replay a frozen bar at whatever % it last saw.
@@ -273,7 +284,12 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       // own, since a replay that aborts (reap / reattach / next switchToFile)
       // returns without ever sending the `replayComplete` that would replace it.
       const { compacted: _oneShot, replayProgress: _transient, ...cacheableStatus } = statusData
-      ctx.setCachedJsonlStatus(cacheableStatus)
+      // A reveal replays this cached lifecycle state after the cached rows.
+      // Replacing it with index/progress metadata would strand the new renderer
+      // without the completion (or reset a replay still being assembled).
+      if (statusData.status !== 'watching' || replayComplete !== undefined) {
+        ctx.setCachedJsonlStatus(cacheableStatus)
+      }
       ctx.window.webContents.send('jsonl-status', ctx.tabId, statusData)
       break
     }
@@ -370,8 +386,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
 
     case 'session:conversation-id': {
       const conversationId = (msg as any).conversationId as string
-      if (conversationId) {
-        ctx.setConversationId(conversationId)
+      if (conversationId && ctx.setConversationId(conversationId)) {
         ctx.notifyConversationId(conversationId)
       }
       break

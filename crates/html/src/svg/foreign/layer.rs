@@ -7,13 +7,7 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display, Overflow, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px};
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-
-thread_local! {
-    static CACHE: RefCell<HashMap<u64, String>> = RefCell::new(HashMap::new());
-}
 
 pub(super) struct Layer {
     pub node_id: u64,
@@ -49,12 +43,16 @@ pub(super) fn prepare(
         let density = (super::super::DENSITY * scale).clamp(1.0, 8.0);
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         format!("{e:?}{merged:?}").hash(&mut hasher);
-        opts.doc_salt.hash(&mut hasher);
+        // Raster identity includes document content and the application text
+        // defaults; it does not depend on which document owns identical HTML.
+        format!("{:?}", opts.text).hash(&mut hasher);
+        opts.normal_line_height.to_bits().hash(&mut hasher);
+        (opts.viewport.0.to_bits(), opts.viewport.1.to_bits()).hash(&mut hasher);
         density.to_bits().hash(&mut hasher);
         (f32::from(origin.x).to_bits(), f32::from(origin.y).to_bits()).hash(&mut hasher);
         (w.to_bits(), h.to_bits(), window.scale_factor().to_bits()).hash(&mut hasher);
         let key = hasher.finish();
-        let cached = CACHE.with_borrow(|cache| cache.get(&key).cloned());
+        let cached = vcx.doc.foreign_rasters.borrow().get(&key).cloned();
         let element = if cached.is_none() {
             let mut html = e.clone();
             html.tag = "div".into();
@@ -157,18 +155,19 @@ fn length(style: Option<Len>, attr: Option<&str>, base: f32, vcx: ValueCx<'_>) -
     }
 }
 
-pub(super) fn cache(key: u64, png: &[u8]) -> String {
+pub(super) fn cache(key: u64, png: &[u8], vcx: ValueCx<'_>) -> String {
     use std::fmt::Write as _;
     let mut uri = String::from("data:image/png,");
     for byte in png {
         let _ = write!(uri, "%{byte:02X}");
     }
-    CACHE.with_borrow_mut(|cache| {
+    {
+        let mut cache = vcx.doc.foreign_rasters.borrow_mut();
         if cache.len() >= 64 {
             cache.clear();
         }
         cache.insert(key, uri.clone());
-    });
+    }
     uri
 }
 

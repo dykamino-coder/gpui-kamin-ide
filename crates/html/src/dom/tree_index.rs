@@ -53,12 +53,15 @@ pub(crate) struct TreeIndex {
     /// The document being parsed: its quirks mode, `@property` registry and
     /// root metrics, which the walk reads and writes.
     pub(crate) doc: Rc<crate::document::state::DocState>,
+    /// XHTML host-language rules for attribute matching in this parse.
+    pub(crate) xhtml: bool,
 }
 
 impl TreeIndex {
-    pub(crate) fn new(doc: Rc<crate::document::state::DocState>) -> Self {
+    pub(crate) fn new(doc: Rc<crate::document::state::DocState>, xhtml: bool) -> Self {
         TreeIndex {
             doc,
+            xhtml,
             ..Default::default()
         }
     }

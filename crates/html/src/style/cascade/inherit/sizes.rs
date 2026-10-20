@@ -55,7 +55,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed,
     // `background-color: inherit` переносит вычисленное значение родителя —
     // вместе с нерешённой относительной функцией (css-color-5 §4.1).
     // Единица `lh` разрешается ЗДЕСЬ: высота строки известна после каскада.
-    inherit_lh_units(parent, c);
+    inherit_lh_units(parent, c, vcx);
     // `box-shadow: inherit` копирует ВЫЧИСЛЕННУЮ тень родителя — вместе с
     // нерешённым `currentColor` (метка отрицательной альфы): решает её
     // отрисовка цветом СВОЕГО элемента.

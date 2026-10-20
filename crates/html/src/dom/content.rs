@@ -2,7 +2,6 @@
 //! CSS 2.1 section 12.2 and CSS Values 5 #attr-notation use host-language matching.
 
 use crate::document::state::ValueCx;
-use std::cell::Cell;
 
 /// CSS2 sections 6.2.1 and 12.2: explicit inheritance follows the DOM,
 /// including ordinary elements on which `content` does not generate a box.
@@ -34,10 +33,6 @@ pub(crate) fn snapshot_generated(
         .then(|| std::rc::Rc::new(std::cell::Cell::new(false)));
 }
 
-thread_local! {
-    static XHTML: Cell<bool> = const { Cell::new(false) };
-}
-
 /// The parser's existing XHTML adapter recognizes declarations and root xmlns.
 pub(super) fn is_xhtml(html: &str) -> bool {
     let mut cut = html.len().min(2048);
@@ -48,21 +43,8 @@ pub(super) fn is_xhtml(html: &str) -> bool {
     head.trim_start().starts_with("<?xml") || head.contains("http://www.w3.org/1999/xhtml")
 }
 
-pub(super) struct Document(bool);
-
-/// Keep nested parsing from changing the originating document's case rules.
-pub(super) fn document(html: &str) -> Document {
-    Document(XHTML.with(|xml| xml.replace(is_xhtml(html))))
-}
-
-impl Drop for Document {
-    fn drop(&mut self) {
-        XHTML.with(|xml| xml.set(self.0));
-    }
-}
-
-pub(crate) fn html_attributes(namespace: &str) -> bool {
-    namespace == "http://www.w3.org/1999/xhtml" && !XHTML.with(Cell::get)
+pub(crate) fn html_attributes(namespace: &str, xhtml: bool) -> bool {
+    namespace == "http://www.w3.org/1999/xhtml" && !xhtml
 }
 
 pub(crate) fn host_content(

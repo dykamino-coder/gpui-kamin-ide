@@ -1,9 +1,7 @@
 //! Расчёт offset transform и выбор геометрии пути.
 
 use super::ellipse_path;
-use super::{
-    Cb, SVG_SHAPES, flatten, origin_shift, polyline_length, ray_css, rotation, sample, start_of,
-};
+use super::{Cb, flatten, origin_shift, polyline_length, ray_css, rotation, sample, start_of};
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -16,6 +14,7 @@ pub(super) fn offset_transform_css(
     c: &Computed,
     cb: Option<&Cb>,
     svg_origin: (f32, f32),
+    shapes: Option<&std::collections::HashMap<String, String>>,
     vcx: ValueCx<'_>,
 ) -> Option<String> {
     let raw = super::motion_style(c).offset_path.as_deref()?.trim();
@@ -56,12 +55,12 @@ pub(super) fn offset_transform_css(
             .trim()
             .trim_matches(|q: char| q == '"' || q == '\'');
         let id = raw.rsplit_once('#').map_or(raw, |(_, t)| t);
-        let Some(d) = SVG_SHAPES.with(|m| m.borrow().get(id).cloned()) else {
+        let Some(d) = shapes.and_then(|m| m.get(id)) else {
             return path_css(c, "m 0 0", (-svg_origin.0, -svg_origin.1), vcx);
         };
         let g = cb?;
         let rb = g.boxes[kind];
-        return path_css(c, &d, (rb.0 - g.self_off.0, rb.1 - g.self_off.1), vcx);
+        return path_css(c, d, (rb.0 - g.self_off.0, rb.1 - g.self_off.1), vcx);
     }
     // Всё прочее — `<basic-shape>` или голый `<coord-box>`: и то и другое
     // живёт в опорной коробке содержащего блока, без неё строить нечего.

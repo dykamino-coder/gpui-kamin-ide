@@ -83,7 +83,7 @@ fn root_top(s: &Computed, opts: &RenderOpts) -> f32 {
         _ => opts.base_size(),
     };
     let family = s.font_family.clone().unwrap_or_default();
-    let (ascent, descent, _) = crate::text::metrics::vmetrics_px(&family, size);
+    let (ascent, descent, _) = crate::text::metrics::vmetrics_px(&family, size, opts.cx.vcx());
     let line = match s.line_height {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) | Some(Len::Em(k)) => k * size,

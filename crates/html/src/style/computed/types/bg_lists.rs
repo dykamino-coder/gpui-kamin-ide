@@ -1,10 +1,6 @@
-//! Списки слоёв фона (css-backgrounds-3 §2.1) по свойствам: типизированный
-//! ключ вместо строкового имени свойства. Запись каждого списка остаётся
-//! сырой до `Computed::bg_layers` — слой разбирается тем же путём, что и
-//! одиночное объявление, иначе два разбора разошлись бы.
+//! Типизированные списки фоновых компонентов и циклическое повторение слоёв.
 
-#[cfg(test)]
-use super::background_layers;
+use crate::document::state::ValueCx;
 
 /// Фоновое свойство, значение которого — список слоёв через запятую.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,59 +61,82 @@ impl BgListProp {
     }
 }
 
-/// Сырые списки слоёв по свойствам. Поля `bg_*` стиля несут верхний слой;
-/// список хранится, только когда в записи больше одного слоя.
+/// Списки вычисленных фоновых компонентов в порядке объявлений.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BgLists {
-    lists: Vec<(BgListProp, String)>,
+    lists: Vec<(BgListProp, Vec<super::bg_layer::BgLayer>)>,
 }
 
 impl BgLists {
     pub fn is_empty(&self) -> bool {
         self.lists.is_empty()
     }
-
     pub fn clear(&mut self) {
         self.lists.clear();
     }
-
-    pub fn get(&self, prop: BgListProp) -> Option<&str> {
+    pub(crate) fn get(&self, prop: BgListProp) -> Option<&[super::bg_layer::BgLayer]> {
         self.lists
             .iter()
             .find(|(k, _)| *k == prop)
-            .map(|(_, v)| v.as_str())
+            .map(|(_, v)| v.as_slice())
     }
-
-    /// Положить список свойства, заменив прежний.
-    pub fn set(&mut self, prop: BgListProp, raw: String) {
+    /// Разбор списка выполняется в каскаде тем же диспетчером, что и одного слоя.
+    pub fn set(&mut self, prop: BgListProp, raw: String, vcx: ValueCx<'_>) {
+        let layers = super::background_layers(&raw)
+            .into_iter()
+            .map(|v| super::bg_layer::BgLayer::parse(prop, v, vcx))
+            .collect();
+        self.set_layers(prop, layers);
+    }
+    pub(crate) fn set_layers(&mut self, prop: BgListProp, layers: Vec<super::bg_layer::BgLayer>) {
         self.remove(prop);
-        self.lists.push((prop, raw));
+        self.lists.push((prop, layers));
     }
-
     pub fn remove(&mut self, prop: BgListProp) {
         self.lists.retain(|(k, _)| *k != prop);
     }
-
-    /// Оставить только списки, для которых `keep` истинно.
     pub fn retain(&mut self, mut keep: impl FnMut(BgListProp) -> bool) {
         self.lists.retain(|(k, _)| keep(*k));
     }
-
-    pub fn iter(&self) -> impl Iterator<Item = (BgListProp, &str)> {
-        self.lists.iter().map(|(k, v)| (*k, v.as_str()))
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (BgListProp, &[super::bg_layer::BgLayer])> {
+        self.lists.iter().map(|(k, v)| (*k, v.as_slice()))
     }
-
-    /// Слои списка свойства (`background_layers`), если список задан.
-    #[cfg(test)]
-    pub fn layers(&self, prop: BgListProp) -> Option<Vec<&str>> {
-        self.get(prop).map(background_layers)
+    pub(crate) fn position_expressions(
+        &mut self,
+    ) -> impl Iterator<Item = &mut super::super::background_position::PositionExpression> {
+        self.lists.iter_mut().flat_map(|(_, layers)| {
+            layers
+                .iter_mut()
+                .flat_map(|layer| layer.position_math.iter_mut().flatten())
+        })
+    }
+    pub(crate) fn images(&mut self) -> impl Iterator<Item = &mut super::super::ImageSource> {
+        self.lists
+            .iter_mut()
+            .flat_map(|(_, layers)| layers.iter_mut().filter_map(|l| l.image.as_mut()))
+    }
+    pub(crate) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
+        self.lists
+            .iter()
+            .flat_map(|(_, layers)| layers)
+            .any(|layer| layer.needs_line_height(vcx))
+    }
+    pub(crate) fn resolve_lengths(
+        &mut self,
+        fix: &impl Fn(&mut Option<super::super::Len>),
+        vcx: ValueCx<'_>,
+    ) {
+        for (_, layers) in &mut self.lists {
+            for layer in layers {
+                layer.resolve_lengths(fix, vcx);
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn keys_round_trip() {
         for p in BgListProp::ALL {
@@ -125,13 +144,18 @@ mod tests {
         }
         assert_eq!(BgListProp::from_key("background-color"), None);
     }
-
     #[test]
-    fn set_replaces_and_layers_split() {
+    fn replacement_keeps_only_new_typed_layers() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
         let mut l = BgLists::default();
-        l.set(BgListProp::Image, "url(a), url(b)".into());
-        l.set(BgListProp::Image, "none, url(c)".into());
-        assert_eq!(l.layers(BgListProp::Image), Some(vec!["none", "url(c)"]));
+        l.set(BgListProp::Clip, "border-box, padding-box".into(), vcx);
+        l.set(BgListProp::Clip, "text, content-box".into(), vcx);
+        let mut c = super::super::Computed::default();
+        let layers = l.get(BgListProp::Clip).unwrap();
+        assert_eq!(layers.len(), 2);
+        layers[1].apply(BgListProp::Clip, &mut c);
+        assert_eq!(c.bg_clip, Some(super::super::BgClip::ContentBox));
         l.retain(|p| p == BgListProp::BlendMode);
         assert!(l.is_empty());
     }

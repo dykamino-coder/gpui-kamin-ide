@@ -18,6 +18,8 @@ pub(crate) use gradient_stop::{
 mod convert;
 mod direct_gradient;
 pub(crate) use direct_gradient::DirectGradient;
+mod color_expression;
+pub use color_expression::ColorExpression;
 mod functions;
 mod gradient_stop;
 mod hsl_ramp;
@@ -30,7 +32,6 @@ use convert::{
     srgb_to_oklab,
 };
 use functions::color_fn;
-pub(crate) use functions::resolve_relative;
 pub(crate) use icc::apply_icc;
 pub(crate) use icc::load_profiles_sheets;
 use icc::{icc_to_srgb, profile};

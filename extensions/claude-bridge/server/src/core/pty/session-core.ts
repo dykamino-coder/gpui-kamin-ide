@@ -133,6 +133,9 @@ async function createAdmittedSession(
   if (developmentCli?.startupDelay) await waitForDevCliStartup(developmentCli, signal)
   const sessionId = randomUUID()
   const mcpToken = randomUUID() // per-session secret for MCP endpoint auth
+  // INC-2026-0070: the identity the client asked for, before chain-following
+  // or a not-found fallback rewrites config.resumeConversationId.
+  const requestedResumeId = config.resumeConversationId
 
   // Клиент мог принести УСТАРЕВШИЙ conversationId (авто-compact сменил файл,
   // пока клиент был отключён — уведомление ушло в закрытый сокет). Резюм
@@ -150,8 +153,10 @@ async function createAdmittedSession(
   // This preserves the same project slug so Claude CLI can find the JSONL file.
   let settingsDir: string
   let resumeNotFound = false
+  let settingsDirSource: 'found' | 'fresh' | 'fresh_not_found' | 'reuse' = 'fresh'
   if (config.reuseSettingsDir) {
     settingsDir = config.reuseSettingsDir
+    settingsDirSource = 'reuse'
     // Same repair as the find-path below — the restart path used to skip it,
     // so a transcript corrupted mid-turn kept 400-ing after model/effort change.
     if (config.resumeConversationId) {
@@ -163,6 +168,7 @@ async function createAdmittedSession(
     const found = findOrRecreateSettingsDir(config.resumeConversationId, tokenId)
     if (found) {
       settingsDir = found
+      settingsDirSource = 'found'
       debugLog('Resume: using settingsDir for conversationId', {
         settingsDir,
         conversationId: config.resumeConversationId,
@@ -183,6 +189,7 @@ async function createAdmittedSession(
       })
       config.resumeConversationId = undefined
       resumeNotFound = true
+      settingsDirSource = 'fresh_not_found'
     }
   } else {
     // Each session gets its own unique directory to avoid JSONL cross-talk.
@@ -531,6 +538,15 @@ async function createAdmittedSession(
         recordCompactLink(prev, conversationId)
       }
       session.cliConversationId = conversationId
+      // INC-2026-0070: every identity the client is told to adopt, old→new.
+      // `discovered` with previousRef equal to conversationRef confirms the
+      // resumed id; a fresh session's first discovery has no previousRef.
+      lifecycleLog('conversation_id', {
+        sessionId,
+        conversationId,
+        previousConversationId: prev ?? undefined,
+        idSource: prev && prev !== conversationId ? 'changed' : 'discovered',
+      })
       debugLog('JSONL conversationId discovered', { sessionId, conversationId })
       sendToClient(session.ws, { type: 'session:conversation-id', sessionId, conversationId })
       // Map JSONL session → PTY token so the JSONL sweeper can attribute
@@ -609,7 +625,20 @@ async function createAdmittedSession(
     mcpCallCount: 0,
     inputCount: 0,
   })
-  lifecycleLog('session_create', { sessionId, isSubAgent: Boolean(session.isSubAgent) })
+  lifecycleLog('session_create', {
+    sessionId,
+    isSubAgent: Boolean(session.isSubAgent),
+    resumeRequested: Boolean(requestedResumeId),
+    resumeConversationId: requestedResumeId,
+    // Chain tip actually passed to --resume when it differs from the request.
+    resolvedConversationId:
+      config.resumeConversationId && config.resumeConversationId !== requestedResumeId
+        ? config.resumeConversationId
+        : undefined,
+    resumeNotFound,
+    settingsDirFound: settingsDirSource === 'found' || settingsDirSource === 'reuse',
+    settingsDirSource,
+  })
   debugLog('PTY session created', { sessionId, pid: pty.pid })
 
   return session

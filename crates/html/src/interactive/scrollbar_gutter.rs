@@ -80,7 +80,17 @@ fn subtract(value: &mut Option<Length>, extra: f32, vcx: ValueCx<'_>) {
     }
 }
 pub(crate) fn apply(mut div: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
-    let model = super::scroll_extent::classic::model(c.self_node, c);
+    // Rendered boxes carry the model resolved with their explicit scroll owner.
+    // Standalone adapters still reserve CSS stable gutters without native bars.
+    let model = if c.scroll.used == [0.0; 4] && c.scroll.native == [0.0; 4] {
+        Model::new(c, [false; 2])
+    } else {
+        Model {
+            bars: [false; 2],
+            used: c.scroll.used,
+            native: c.scroll.native,
+        }
+    };
     let style = div.style();
     let difference: [f32; 4] = std::array::from_fn(|side| model.used[side] - model.native[side]);
     for (side, extra) in [

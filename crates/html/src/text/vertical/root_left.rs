@@ -1,25 +1,29 @@
-//! Root left for vertical; split out to keep the owning module within 250 lines.
+//! Records the left edge of the root's content-sized box under `vertical-rl`
+//! for the canvas background (`DocState::root_left`).
 
-use super::ROOT_LEFT;
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AnyElement, App, Bounds, Pixels, Window};
 
-/// Левый край коробки корня (см. `ROOT_LEFT`).
-pub fn root_left_prev(key: u64) -> Option<f32> {
-    ROOT_LEFT.with(|c| c.borrow().get(&key).copied())
-}
-
-/// Обёртка, которая на подготовке записывает левый край своей коробки минус
-/// `offset` (поля тела и рамка/отбивка корня) в `ROOT_LEFT` — раскладку не
-/// меняет: узел раскладки — сам ребёнок.
+/// Обёртка тела, которая на подготовке записывает левый край своей коробки
+/// минус `offset` (поля тела и рамка/отбивка корня) в состояние документа —
+/// раскладку не меняет: узел раскладки — сам ребёнок.
 pub struct RecordRootLeft {
     pub(crate) child: AnyElement,
-    pub(crate) key: u64,
     pub(crate) offset: f32,
+    pub(crate) values: crate::document::state::ValueDoc,
 }
 
-pub fn record_root_left(child: AnyElement, key: u64, offset: f32) -> AnyElement {
-    RecordRootLeft { child, key, offset }.hooked()
+pub fn record_root_left(
+    child: AnyElement,
+    offset: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> AnyElement {
+    RecordRootLeft {
+        child,
+        offset,
+        values: vcx.keep(),
+    }
+    .hooked()
 }
 
 impl Wrap for RecordRootLeft {
@@ -29,7 +33,7 @@ impl Wrap for RecordRootLeft {
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let left = f32::from(bounds.origin.x) - self.offset;
-        ROOT_LEFT.with(|c| c.borrow_mut().insert(self.key, left));
+        self.values.vcx().doc.root_left.set(Some(left));
         self.child.prepaint(window, cx);
     }
 }

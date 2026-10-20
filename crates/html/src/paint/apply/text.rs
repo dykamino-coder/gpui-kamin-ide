@@ -36,13 +36,13 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         // текст, идущий гpui-раскладкой (не резчиком), набирался подменным
         // системным шрифтом.
         d = d.font_family(
-            crate::text::fonts::alias_for(family, c).unwrap_or_else(|| family.clone()),
+            crate::text::fonts::alias_for(family, c, vcx).unwrap_or_else(|| family.clone()),
         );
     }
     if let Some(pct) = c.font_stretch {
         d.style().text.font_stretch = Some(gpui::FontStretch::from_percent(pct));
     }
-    let features = c.used_features();
+    let features = c.used_features(vcx);
     if !features.is_empty() {
         d.style().text.font_features = Some(gpui::FontFeatures(std::sync::Arc::new(features)));
     }

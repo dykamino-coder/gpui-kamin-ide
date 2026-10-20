@@ -143,16 +143,12 @@ fn view_boxed(
     vb: (u8, [Len; 4]),
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {
-    let vcx = cx.vcx();
     let src = e.attr("src")?;
     let local = src
         .strip_prefix("file:///")
         .or_else(|| src.strip_prefix("file://"))
         .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::source(
-        &crate::paint::background::key(local.unwrap_or(src), &e.style, vcx),
-        vcx,
-    )?;
+    let source = crate::paint::background::element_source(local.unwrap_or(src), &e.style)?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {

@@ -100,15 +100,7 @@ mod tests {
             Wrap::default(),
         );
         paragraph.lines = (0..3)
-            .map(|index| Line {
-                range: index..index + 1,
-                width: px(10.0),
-                ellipsis: false,
-                clamped: false,
-                vis_cut: None,
-                hyphen: false,
-                indent: px(0.0),
-            })
+            .map(|index| Line::test(index..index + 1, px(10.0)))
             .collect();
         paragraph.selection_vertical = Some((physical, false));
         paragraph.lines_reversed = true;
@@ -123,15 +115,7 @@ mod tests {
     fn pointer_inverse_uses_rounded_content_extent_in_a_stretched_left_flow() {
         let mut paragraph = Paragraph::empty().reversed_lines(true);
         paragraph.line_height = px(17.71875);
-        paragraph.lines = vec![Line {
-            range: 0..0,
-            width: px(20.0),
-            ellipsis: false,
-            clamped: false,
-            vis_cut: None,
-            hyphen: false,
-            indent: px(0.0),
-        }];
+        paragraph.lines = vec![Line::test(0..0, px(20.0))];
         let bounds = Bounds {
             origin: point(px(0.0), px(29.0)),
             size: size(px(100.0), px(80.0)),

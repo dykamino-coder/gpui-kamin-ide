@@ -14,6 +14,7 @@ mod gap_geometry;
 mod paginate;
 
 pub struct ColumnStack {
+    pub(crate) paint: std::rc::Rc<crate::paint::context::PaintCx>,
     pub(crate) children: Vec<StackChild>,
     pub(crate) count: usize,
     pub(crate) gap: f32,
@@ -75,6 +76,7 @@ impl ColumnStack {
         rows: Option<Rows>,
         gap_items: Option<crate::paint::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
+        paint: std::rc::Rc<crate::paint::context::PaintCx>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
         // рядами — сколько построил `render.rs`: ребёнок может занять
@@ -100,6 +102,7 @@ impl ColumnStack {
             None => count.max(1),
         };
         ColumnStack {
+            paint,
             children,
             count: count.max(1),
             gap,
@@ -138,8 +141,17 @@ impl ColumnStack {
         fixed: Option<f32>,
         rows: Rows,
     ) -> f32 {
-        let mut probe =
-            ColumnStack::new(Vec::new(), count, gap, fixed, None, Some(rows), None, None);
+        let mut probe = ColumnStack::new(
+            Vec::new(),
+            count,
+            gap,
+            fixed,
+            None,
+            Some(rows),
+            None,
+            None,
+            Default::default(),
+        );
         probe.row_phase = 0.0;
         // Копий — как у `render.rs` для стопки с рядами: сколько колонок
         // ребёнок может занять, с запасом на поля и срезы.
