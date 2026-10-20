@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { systemEntryDraws } from './entry-draws'
 import type { JsonlEntryData } from '../../types/jsonl'
 import { hasCliXmlTags } from './utils'
 import { CliXmlContent } from './CliXmlContent'
@@ -125,6 +126,9 @@ function ModelFallbackBlock({ entry }: { entry: JsonlEntryData }): JSX.Element {
 }
 
 export function SystemEntry({ entry }: { entry: JsonlEntryData }): JSX.Element | null {
+  // Shared with JsonlEntry (entry-draws.ts): the branches below never draw a
+  // row this rejects, and JsonlEntry does not mount it at all.
+  if (!systemEntryDraws(entry)) return null
   if (entry.subtype === 'compact_boundary') return <CompactBoundary entry={entry} />
   if (entry.subtype === 'api_error') return <ApiErrorBlock entry={entry} />
   if (entry.subtype === 'away_summary') return <AwaySummaryBlock entry={entry} />

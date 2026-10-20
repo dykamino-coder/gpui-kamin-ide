@@ -120,9 +120,14 @@ function computeModel(
       if (!NON_RENDERING_ENTRY_TYPES.has(e.type)) recentTip.add(e)
     }
   }
+  // The tip bypasses ONLY the chain-membership walk (the reason it exists). It
+  // used to bypass the whole predicate, so invisible attachments, turn_duration
+  // rows, merged tool results etc. after the last assistant all took render
+  // slots; ≥150 of them blanked the chat behind the pill (INC-2026-0071).
+  const tipCtx = { ...visCtx, chainUuids: null }
   const visibleMerged: JsonlEntryData[] = merged
     .filter(e => !isInterruptUserEntry(e) && !isSkippedUserEntry(e))
-    .filter(e => recentTip.has(e) || entryIsVisible(e, visCtx))
+    .filter(e => entryIsVisible(e, recentTip.has(e) ? tipCtx : visCtx))
     .map(e => {
       const wantInt = interruptFlags.has(e)
       const wantSkip = skippedFlags.has(e)
