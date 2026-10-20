@@ -75,6 +75,11 @@ pub(super) fn build_band_kid(
         copy.children.clear();
         copy.style.height = height.map(Len::Px);
         copy.style.border_box = None;
+        // A paint group's opacity and transform belong to the group around
+        // the box and its descendants (`Nest::group`), not to the box alone.
+        if crate::layout::float::band_nest::paint_group(&copy.style) {
+            crate::layout::float::band_nest::group_shell(&mut copy.style);
+        }
         return element(&copy, inherited, opts);
     }
     // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы

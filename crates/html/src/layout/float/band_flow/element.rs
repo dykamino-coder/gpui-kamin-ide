@@ -1,15 +1,15 @@
 //! Элемент BandFlow: раскладка детей по полосам при request_layout/prepaint.
 
 use super::flow_kid::intrinsic_width;
-use super::kid::{Kid, Kind};
-use super::{COORD_EPS, Layer, Plan, Probe, Slot, flatten, frame, plan};
+use super::kid::Kid;
+use super::{COORD_EPS, Plan, Probe, plan};
 use crate::hooks::Hooks;
 use crate::paint::context::PaintCx;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
     prelude::*, px, size,
 };
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct BandFlow {
@@ -186,38 +186,27 @@ impl Hooks for BandFlow {
         } else {
             (cb, p.height)
         };
-        let mut host = div().relative().w(px(pw)).h(px(ph));
         // CSS 2.1 прил. E: фоны блоков потока (шаг 4) — РАНЬШЕ флоатов
         // (шаг 5): флоат лежит поверх блока, под которым стоит
         // (`clear-004`); анонимные строчные прогоны (шаг 7) — поверх флоатов
         // (`shape-outside-content-box-001`: атомы шире выреза).
-        let mut flat: Vec<(&Kid, &Slot)> = Vec::new();
-        for which in [Layer::Block, Layer::Float, Layer::Inline] {
-            flatten(&self.kids, &p.slots, which, &mut flat);
-        }
-        for (kid, s) in flat {
-            if matches!(kid.kind, Kind::Strut(_)) {
-                continue;
-            }
-            let tap = Rc::new(Cell::new(None));
-            let el = frame(
-                kid.kind,
-                s.avail,
-                (kid.build)(cb, s.avail, s.shapes.clone(), s.h, None),
-                tap,
-                vert.is_some(),
-                &self.paint,
-            );
-            // Логическое место → физическое (Blink
-            // `writing_mode_converter.cc:80-110`): line-left is the bottom
-            // edge in sideways-lr, so subtract the measured inline extent.
-            let (left, top) = match vert {
-                None => (s.x, s.y),
-                Some(true) => (p.height - s.y - s.b, s.x),
-                Some(false) => (s.y, if self.inline_up { cb - s.x - s.i } else { s.x }),
-            };
-            host = host.child(div().absolute().left(px(left)).top(px(top)).child(el));
-        }
+        let at = super::holders::Placing {
+            paint: &self.paint,
+            cb,
+            height: p.height,
+            vert,
+            inline_up: self.inline_up,
+        };
+        let host = div()
+            .relative()
+            .w(px(pw))
+            .h(px(ph))
+            .children(super::holders::holders(
+                &self.kids,
+                &p.slots,
+                &at,
+                (0.0, 0.0),
+            ));
         let mut el = host.into_any_element();
         el.layout_as_root_at(
             origin,

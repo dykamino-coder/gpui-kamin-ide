@@ -47,9 +47,10 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         && matches!(c.style.display, None | Some(Display::Block))
         && (c.style.clear.is_none() || band_clear_supported(c))
         && c.style.position.is_none()
-        && c.style.transform.is_none()
-        && c.style.opacity.is_none()
-        && c.style.filter.is_none()
+        // A paint group is painted with all its descendants; an absolute
+        // descendant may need it as its containing block (transform,
+        // filter) and would otherwise leave the group with its lift.
+        && !(paint_group(&c.style) && positioned_inside(&c.children))
         && (matches!(c.style.width, None | Some(Len::Auto))
             || (band_em(&c.style, em).and_then(|em| band_edge(&c.style.width, em)).is_some()
                 && c.style.border_box != Some(true)))
@@ -129,7 +130,9 @@ pub(super) fn band_nest(
     )?;
     trim::route_end(&mut seq, &merged);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
+    let group = paint_group(&c.style).then(|| group_wrap(c, inherited, vcx));
     Some(crate::layout::float::band_flow::Nest {
+        group,
         kids,
         inset: band_inset(c, em)?,
         height,
@@ -202,6 +205,9 @@ pub(super) fn band_seq(
     Some(out)
 }
 
+mod group;
 #[cfg(test)]
 mod tests;
 mod trim;
+pub(crate) use group::{group_shell, paint_group};
+use group::{group_wrap, positioned_inside};

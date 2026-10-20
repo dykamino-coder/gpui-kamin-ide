@@ -60,7 +60,16 @@ pub struct Nest {
     /// для флоатов (`letter-spacing-206`: `.squash {width: 0}` с дюжиной
     /// плавающих абзацев внутри).
     pub width: Option<Edge>,
+    /// The box is a paint group (a stacking context, a mask or a clip):
+    /// its effects wrap the box together with every descendant, floats
+    /// included, while the descendants still take part in the host's
+    /// exclusions (CSS 2.2 §9.4.1; CSS Color 4 §opacity).
+    pub group: Option<GroupWrap>,
 }
+
+/// Applies a paint group's effects (opacity, transform, filter, mask, clip)
+/// to the container holding its border box and all its descendants.
+pub type GroupWrap = std::rc::Rc<dyn Fn(gpui::Div) -> gpui::AnyElement>;
 
 pub struct Kid {
     pub kind: Kind,

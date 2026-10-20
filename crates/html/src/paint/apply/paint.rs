@@ -12,6 +12,15 @@ use borders::paint_border_colors;
 pub(crate) use borders::{border_layer, double_border};
 use shadows::paint_shadows;
 
+/// Group opacity of the box and its content (CSS Color 4 §opacity). With a
+/// corner clip the group buffer applies it instead (`grouped_wrapper`).
+pub(crate) fn apply_opacity(d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
+    match c.opacity {
+        Some(o) if crate::paint::effects::corner_clip::insets(c, vcx).is_none() => d.opacity(o),
+        _ => d,
+    }
+}
+
 pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     d.style().css_border_snap = Some(true);
     // Atomic paint (CSS 2.1 Appendix E step 7.2.1.4 for inline-blocks, step 5
@@ -75,11 +84,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if c.border_dotted == Some(true) {
         d.style().border_style = Some(gpui::BorderStyle::Dotted);
     }
-    if let Some(o) = c.opacity
-        && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
-    {
-        d = d.opacity(o);
-    }
+    d = apply_opacity(d, c, vcx);
     // `visibility: hidden` — элемент занимает своё место, но не рисуется.
     if c.hidden == Some(true) {
         d.style().visibility = Some(gpui::Visibility::Hidden);

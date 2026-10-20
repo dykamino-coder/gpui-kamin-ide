@@ -30,7 +30,7 @@ mod kid;
 mod piece;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
-pub use kid::{Kid, Kind, Nest, ShapeOf};
+pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -42,6 +42,7 @@ use float_kid::{place_float, place_nest};
 use flow_kid::place_flow;
 mod element;
 mod fragment;
+mod holders;
 pub use element::BandFlow;
 mod tap;
 use tap::Tap;
@@ -189,24 +190,31 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
 /// Painting layer of a host child (CSS 2.1 Appendix E): in-flow block-level
 /// boxes paint their backgrounds (step 4) below floats (step 5), and inline
 /// content (step 7) above them. An anonymous inline run has no box of its
-/// own, so it is painted entirely in the inline layer.
+/// own, so it is painted entirely in the inline layer. A paint group
+/// (`Nest::group`) is painted atomically with all its descendants on the
+/// level of positioned boxes (step 8; CSS Color 4 §opacity).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Layer {
     Block,
     Float,
     Inline,
+    Group,
 }
 
 fn layer(kid: &Kid) -> Layer {
     match kid.kind {
         Kind::Float { .. } => Layer::Float,
         _ if kid.anon => Layer::Inline,
+        _ if kid.nest.as_ref().is_some_and(|n| n.group.is_some()) => Layer::Group,
         _ => Layer::Block,
     }
 }
 
 /// Дети слоя `layer` и их места плоским списком в порядке краски, на любой
-/// глубине (коробка `Kind::Nest` раньше своих детей).
+/// глубине (коробка `Kind::Nest` раньше своих детей). The descendants of a
+/// paint group belong to the group's own holder, not to the host's layers
+/// (Blink `BoxFragmentPainter::PaintFloatingChildren` skips self-painting
+/// layers).
 fn flatten<'a>(
     kids: &'a [Kid],
     slots: &'a [Slot],
@@ -214,8 +222,12 @@ fn flatten<'a>(
     out: &mut Vec<(&'a Kid, &'a Slot)>,
 ) {
     for (kid, s) in kids.iter().zip(slots.iter()) {
-        if layer(kid) == which {
+        let own = layer(kid);
+        if own == which {
             out.push((kid, s));
+        }
+        if own == Layer::Group {
+            continue;
         }
         if let Some(nest) = kid.nest.as_ref() {
             flatten(&nest.kids, &s.kids, which, out);
