@@ -5,7 +5,6 @@
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod paragraph_route;
-use paragraph_route::paragraph_probed;
 
 use crate::layout::order::unkeyed_positions;
 
@@ -26,9 +25,8 @@ pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_p
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
 pub(crate) use crate::paint::box_tree::styled::*;
 pub(crate) use crate::text::fonts::style_font::measure_font;
-pub(crate) mod paragraph;
-pub(crate) use crate::render::paragraph::*;
 pub(crate) mod blocks;
+pub(crate) mod paragraph;
 pub(crate) use crate::render::blocks::*;
 mod child_builder;
 pub(super) mod element;
