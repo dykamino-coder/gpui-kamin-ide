@@ -28,11 +28,10 @@ pub(super) fn collect_captions(
             // CSS 2.1 §9.4.1: a table caption is a block container that
             // establishes a block formatting context, so its auto height
             // contains its floats (§10.6.7), like a cell (`LayoutCx::cell_bfc`).
-            let inside = (opts.inner(|cx| cx.cell_bfc = true)).cx.build.blocks(
-                &cap.children,
-                &cm,
-                &opts.inner(|cx| cx.cell_bfc = true),
-            );
+            let inside =
+                opts.cx
+                    .build
+                    .blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
             let built = styled_div_with(cap, &cm, &opts.cx)
                 .flex()
                 .flex_col()

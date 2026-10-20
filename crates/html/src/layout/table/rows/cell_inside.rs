@@ -92,7 +92,7 @@ pub(super) fn cell_contents(
     // Многоколоночная ячейка режет содержимое на колонки
     // (`cell_columns::column_flow_children`, css-multicol-1 §2).
     let flow = super::cell_columns::column_flow_children(cell);
-    let inside = (opts.inner(|cx| cx.cell_bfc = true)).cx.build.blocks(
+    let inside = opts.cx.build.blocks(
         flow.as_deref().unwrap_or(&cell.children),
         &cm,
         &opts.inner(|cx| cx.cell_bfc = true),
