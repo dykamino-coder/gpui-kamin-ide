@@ -20,6 +20,7 @@ export function toRendererConnectionState(
     revision,
     sessionId: state.sessionId,
     error: state.error,
+    resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
     // Diagnostics classify a disconnect by this number when the server closed

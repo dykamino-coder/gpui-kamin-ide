@@ -12,12 +12,13 @@ import path from 'node:path'
  */
 
 const h = vi.hoisted(() => ({
+  spawn: vi.fn(() => ({ pid: 1, onExit: () => ({ dispose() {} }), kill() {} })),
   root: '',
   found: null as string | null,
   onConversationId: null as null | ((id: string) => void),
 }))
 vi.mock('node-pty', () => ({
-  spawn: () => ({ pid: 1, onExit: () => ({ dispose() {} }), kill() {} }),
+  spawn: h.spawn,
 }))
 vi.mock('./session-settings', () => ({
   get SESSIONS_BASE() {
@@ -85,6 +86,7 @@ beforeEach(async () => {
   // import: keep the changed-id case from touching the real ~/.claude.
   vi.stubEnv('HOME', h.root)
   vi.stubEnv('USERPROFILE', h.root)
+  h.spawn.mockClear()
   h.found = null
   h.onConversationId = null
   core = await import('./session-core')
@@ -98,6 +100,20 @@ afterEach(() => {
 })
 
 describe('INC-2026-0070 identity lifecycle', () => {
+  it('INC-0074 opted-in not-found creates no PTY or session; explicit create then spawns', async () => {
+    const { ResumeNotFoundError } = await import('./session-resume-not-found')
+    await expect(core.createSession(socket, 'tester', 'tok', {
+      resumeConversationId: A, noSpawnOnNotFound: true,
+    })).rejects.toBeInstanceOf(ResumeNotFoundError)
+    expect(h.spawn).not.toHaveBeenCalled()
+    expect(h.onConversationId).toBeNull()
+    expect(core.sessions.size).toBe(0)
+    expect(rows().some(r => r.event === 'session_create')).toBe(false)
+    await core.createSession(socket, 'tester', 'tok', {})
+    expect(h.spawn).toHaveBeenCalledTimes(1)
+    expect(core.sessions.size).toBe(1)
+  })
+
   it('a resume that finds the transcript records the request, the lookup and the confirmed id', async () => {
     h.found = path.join(h.root, 'tok-cwd', 'old-session')
     await core.createSession(socket, 'tester', 'tok', { resumeConversationId: A })

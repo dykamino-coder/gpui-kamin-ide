@@ -41295,6 +41295,7 @@ function toRendererConnectionState(state, authority, authorityGeneration, author
     revision,
     sessionId: state.sessionId,
     error: state.error,
+    resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
     // Diagnostics classify a disconnect by this number when the server closed
@@ -41760,8 +41761,7 @@ function handleServerMessage(msg, ctx) {
       ctx.noteSessionCreated();
       ctx.clearJsonlCache();
       ctx.window.webContents.send("jsonl-status", ctx.tabId, { status: "searching" });
-      if (msg.resumeNotFound) ctx.noteResumeNotFound();
-      else ctx.noteIdentityConfirmed();
+      ctx.noteIdentityConfirmed();
       ctx.setState({ status: "authenticated", sessionId: msg.sessionId });
       const settingsDir = msg.settingsDir;
       if (settingsDir) ctx.setSettingsDir(settingsDir);
@@ -42199,6 +42199,7 @@ var ConnectionManager = class _ConnectionManager {
   // its id, and the server's new id is only adopted on an explicit user choice.
   // `resumeParked` pauses auto-reconnect after repeated fast resumed exits.
   // `identityNoticeShown` keeps one notice per episode.
+  pendingNewConversation = false;
   identityHold = null;
   resumeParked = false;
   identityNoticeShown = false;
@@ -42421,10 +42422,11 @@ var ConnectionManager = class _ConnectionManager {
     const basePrompt = _ConnectionManager.getBasePrompt?.() ?? "";
     const cacheDir = process.env.KAMIN_CACHE_DIR;
     const transcriptMirrorDir = cacheDir ? import_path6.default.join(cacheDir, "transcripts") : void 0;
-    this.logIdentity(this.conversationId ? "send-resume" : "send-create");
-    if (this.conversationId) {
+    this.logIdentity(this.conversationId && !this.pendingNewConversation ? "send-resume" : "send-create");
+    if (this.conversationId && !this.pendingNewConversation) {
       this.sendRaw({
         type: "session:resume",
+        noSpawnOnNotFound: true,
         token: this.config.token,
         conversationId: this.conversationId,
         cwd: this.config.cwd,
@@ -42503,8 +42505,7 @@ var ConnectionManager = class _ConnectionManager {
       this.rapidResumeExits = 0;
     }
   }
-  /** The server could not find the stored conversation anywhere and started a
-   *  fresh one in this tab. Keep the stored id (a recreated container may simply
+  /** The server could not find the stored conversation. Keep the stored id (a recreated container may simply
    *  be missing its volume, and the next resume can succeed), stop mirroring
    *  into the stored conversation's local copy, and let the user decide. */
   noteResumeNotFound() {
@@ -42514,10 +42515,23 @@ var ConnectionManager = class _ConnectionManager {
     if (this.mirror) void this.mirror.close();
     this.mirror = null;
     this.mirrorHead = null;
-    this.offerIdentityChoice("not-found");
+    this.clearEstablishTimer();
+    this.cancelReconnect();
+    this.resumeParked = true;
+    this.setState({ status: "error", resumeNotFound: true, error: "This conversation was not found on the Bridge server. Choose Retry or Start new conversation to continue." });
   }
   /** A session:created that resumed (or freshly created) as requested. */
   noteIdentityConfirmed() {
+    if (this.pendingNewConversation) {
+      this.conversationId = null;
+      if (this.mirror) void this.mirror.close();
+      this.mirror = null;
+      this.mirrorHead = null;
+      _ConnectionManager.onConversationId?.(this.tabId, null);
+      this.window.webContents.send("jsonl-status", this.tabId, { status: "searching", compacted: true });
+      this.window.webContents.send("bridge:console-reset", this.tabId);
+      this.pendingNewConversation = false;
+    }
     if (this.identityHold?.pendingId) {
       this.logIdentity("hold", { next: null, reason: "confirmed" });
     }
@@ -42556,7 +42570,7 @@ var ConnectionManager = class _ConnectionManager {
     this.logIdentity("notice", { reason });
     const NEW = "Start new conversation";
     const RETRY = "Retry";
-    const message = reason === "not-found" ? "This conversation was not found on the Bridge server. The tab stays linked to it; the session shown now is temporary until you choose." : reason === "rapid-exit" ? "Resuming this conversation keeps failing. The tab stays linked to it; reconnect is paused until you choose." : "Still trying to resume this conversation after a server restart. The tab stays linked to it.";
+    const message = reason === "rapid-exit" ? "Resuming this conversation keeps failing. The tab stays linked to it; reconnect is paused until you choose." : "Still trying to resume this conversation after a server restart. The tab stays linked to it.";
     const items = reason === "establish" ? [NEW] : [NEW, RETRY];
     let shown;
     try {
@@ -42572,26 +42586,22 @@ var ConnectionManager = class _ConnectionManager {
   }
   /** Explicit user choice: bind this tab to a new conversation. */
   chooseNewConversation() {
-    const pending = this.identityHold?.pendingId ?? null;
-    const heldLive = this.identityHold !== null && this.state.status === "authenticated";
-    this.logIdentity("user-new", { next: pending });
-    this.identityHold = null;
+    if (this.pendingNewConversation) return;
+    this.logIdentity("user-new");
+    this.pendingNewConversation = true;
     this.resumeParked = false;
     this.identityNoticeShown = false;
     this.establishFailures = 0;
     this.rapidResumeExits = 0;
     this.reconnectAttempt = 0;
-    if (pending) {
-      this.conversationId = null;
-      if (this.adoptConversationId(pending)) _ConnectionManager.onConversationId?.(this.tabId, pending);
-      return;
-    }
-    this.conversationId = null;
-    if (!heldLive) this.reconnectNow();
+    this.cancelReconnect();
+    if (this.ws?.readyState === wrapper_default.OPEN) void this.startSession(this.ws);
+    else this.reconnectNow();
   }
   /** Explicit user choice: resume the stored conversation again. */
   retryStoredConversation() {
     this.logIdentity("user-retry");
+    this.pendingNewConversation = false;
     this.resumeParked = false;
     this.identityNoticeShown = false;
     this.establishFailures = 0;
@@ -42886,6 +42896,7 @@ var ConnectionManager = class _ConnectionManager {
   resume(conversationId) {
     this.send({
       type: "session:resume",
+      noSpawnOnNotFound: true,
       token: this.config.token,
       conversationId,
       cwd: this.config.cwd,
@@ -42969,6 +42980,14 @@ var ConnectionManager = class _ConnectionManager {
   }
   // ─── Private ────────────────────────────────────────────
   dispatchMessage(msg) {
+    if (msg.type === "session:resume-not-found" || msg.type === "session:created" && msg.resumeNotFound) {
+      if (msg.type === "session:created") this.sendRaw({ type: "session:end" });
+      this.pendingNewConversation = false;
+      this.noteResumeNotFound();
+      return;
+    }
+    if (msg.type === "session:output" && this.state.status !== "authenticated") return;
+    if (this.identityHold && msg.type !== "session:created" && msg.type !== "session:error") return;
     if (msg.type === "mcp:call") {
       for (const [id, expires] of this.recentMcpCalls) {
         if (Date.now() >= expires) this.recentMcpCalls.delete(id);
@@ -43006,9 +43025,6 @@ var ConnectionManager = class _ConnectionManager {
       },
       noteSessionExit: () => {
         this.noteSessionExit();
-      },
-      noteResumeNotFound: () => {
-        this.noteResumeNotFound();
       },
       noteIdentityConfirmed: () => {
         this.noteIdentityConfirmed();
@@ -43128,18 +43144,21 @@ var ConnectionManager = class _ConnectionManager {
   /** Send a message to the server via WebSocket. Only sends if the
    *  connection is open. */
   send(msg) {
+    if (this.identityHold && msg.type !== "session:resume") return;
     if (this.ws?.readyState === wrapper_default.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
   }
   /** Send a raw JSON message (for server commands like session:delete-data) */
   sendRaw(msg) {
+    if (this.identityHold && !["session:create", "session:resume", "session:end"].includes(String(msg.type))) return;
     if (this.ws?.readyState === wrapper_default.OPEN) {
       this.ws.send(JSON.stringify(msg));
     }
   }
   /** Update internal state and notify renderer via IPC. */
   setState(state) {
+    if (this.identityHold && state.status !== "authenticated") state = { ...state, resumeNotFound: true };
     this.state = state;
     this.stateRevision++;
     if (state.status === "authenticated") {
@@ -43174,7 +43193,7 @@ var ConnectionManager = class _ConnectionManager {
     if (this.intentionalDisconnect) return;
     if (this.reconnectTimer) return;
     if (this.resumeParked) {
-      this.setState({ status: "error", error: "Resume keeps failing \u2014 choose Retry or Start new conversation" });
+      this.setState({ status: "error", resumeNotFound: this.identityHold !== null, error: "Resume keeps failing \u2014 choose Retry or Start new conversation" });
       return;
     }
     const delay = Math.min(
@@ -44144,6 +44163,7 @@ var TabManager = class {
       connectionAuthoritySequence: connection.authoritySequence,
       connectionRevision: connection.revision,
       error: connection.error,
+      resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
       effort: tab.effort,
@@ -44411,6 +44431,12 @@ function registerSessionsIPC(ctx) {
   });
   ipcMain.on("tab:disconnect", (_event, tabId) => {
     tm()?.disconnectTab(tabId);
+  });
+  ipcMain.on("session:choose-new", (_event, tabId) => {
+    tm()?.getConnection(tabId)?.chooseNewConversation();
+  });
+  ipcMain.on("session:retry-stored", (_event, tabId) => {
+    tm()?.getConnection(tabId)?.retryStoredConversation();
   });
   ipcMain.on("tab:reconnect", (_event, tabId) => {
     tm()?.reconnectTab(tabId);
@@ -51114,7 +51140,13 @@ function wireConnectionCallbacks(tabManager, configStore) {
   ConnectionManager.onConversationId = (tabId, conversationId) => {
     const tab = tabManager.getTab(tabId);
     if (!tab) return;
-    tab.conversationId = conversationId;
+    tab.conversationId = conversationId ?? void 0;
+    if (conversationId === null) {
+      tab.sessionTitle = void 0;
+      tab.label = "New conversation";
+      tabManager.notifyTabListChangedPublic();
+      return;
+    }
     configStore.addSavedSession({
       conversationId,
       cwd: tab.config.cwd || "",
@@ -51825,7 +51857,7 @@ var SessionsBridge = class {
       if (!kid) return;
       const cwd = this.host.getTabManager().getTab(tabId)?.config.cwd ?? null;
       const meta = { conversationId, cwd };
-      void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta } });
+      void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...conversationId === null ? { name: "New conversation" } : {} });
     };
     const prevTitle = ConnectionManager.onSessionTitle;
     ConnectionManager.onSessionTitle = (tabId, title) => {

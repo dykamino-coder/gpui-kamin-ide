@@ -39,6 +39,20 @@ function tab(
 describe('tab connection reconciliation', () => {
   beforeEach(resetConnectionReconciliation)
 
+  it('keeps the no-session recovery flag through stale snapshots and clears it on confirmation', () => {
+    const missing = applyConnectionEvent([tab('A', 'connecting', 1)], 'A', {
+      status: 'error', authority: 'authority-a', authorityGeneration: 1, authoritySequence: 100,
+      revision: 2, resumeNotFound: true,
+    }).tabs
+    expect(missing[0]).toMatchObject({ resumeNotFound: true, sessionId: undefined })
+    expect(mergeReconnectTabSnapshot(missing, [tab('A', 'connecting', 1)], new Set(['A']))[0]?.resumeNotFound).toBe(true)
+    const confirmed = applyConnectionEvent(missing, 'A', {
+      status: 'connected', authority: 'authority-a', authorityGeneration: 1, authoritySequence: 100,
+      revision: 3, sessionId: 'chosen',
+    }).tabs
+    expect(confirmed[0]?.resumeNotFound).toBeUndefined()
+  })
+
   it('retains an event that arrives before its tab snapshot', () => {
     const connected: ConnectionState = {
       status: 'connected', authority: 'authority-a', authorityGeneration: 1, authoritySequence: 100, revision: 2, sessionId: 'pty-1',

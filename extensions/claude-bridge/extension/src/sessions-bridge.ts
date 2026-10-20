@@ -11,7 +11,7 @@ import { ConnectionManager } from "./main/ws/connection-manager"
 import { setSessionActivateHandler } from "./session-activation"
 import { getDisplayedTab, onDisplayedTabChange } from "./displayed-tab"
 
-interface BridgeMeta { conversationId?: string; cwd?: string | null }
+interface BridgeMeta { conversationId?: string | null; cwd?: string | null }
 
 // Warm pool: how long after install/config the OTHER open sessions are resumed
 // in the background, and how many at most. The delay keeps the boot bandwidth
@@ -49,7 +49,7 @@ export class SessionsBridge {
       if (!kid) return
       const cwd = this.host.getTabManager().getTab(tabId)?.config.cwd ?? null
       const meta: BridgeMeta = { conversationId, cwd }
-      void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta } })
+      void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...(conversationId === null ? { name: 'New conversation' } : {}) })
     }
     const prevTitle = ConnectionManager.onSessionTitle
     ConnectionManager.onSessionTitle = (tabId, title) => {

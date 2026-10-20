@@ -26,9 +26,6 @@ export interface HandlerCtx {
    *  whether to drop the (dead) conversationId before the next resume. */
   noteSessionCreated: () => void
   noteSessionExit: () => void
-  /** Server answered a resume with «conversation not found» and started a
-   *  fresh one: keep the stored id, stop mirroring into it, offer a choice. */
-  noteResumeNotFound: () => void
   /** session:created resumed/created as requested — ends any identity hold. */
   noteIdentityConfirmed: () => void
   clearJsonlCache: () => void
@@ -112,13 +109,9 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       // caused a visible flash before replay re-populated. Real CLI
       // compaction is handled server-side via jsonl:status compacted:true.
       ctx.window.webContents.send('jsonl-status', ctx.tabId, { status: 'searching' })
-      // Resume target is gone on this server — the session is FRESH. The tab
-      // KEEPS its stored conversation id (INC-2026-0070: adopting the fresh id
-      // silently made the loss permanent) until the user chooses; the server
-      // follows up with an instant replayComplete so the chat shows empty
-      // instead of "Loading…".
-      if ((msg as any).resumeNotFound) ctx.noteResumeNotFound()
-      else ctx.noteIdentityConfirmed()
+      // ConnectionManager intercepts both no-session and legacy not-found
+      // replies before this successful-session path.
+      ctx.noteIdentityConfirmed()
       ctx.setState({ status: 'authenticated', sessionId: msg.sessionId })
       const settingsDir = (msg as any).settingsDir
       if (settingsDir) ctx.setSettingsDir(settingsDir)

@@ -200,6 +200,8 @@ export interface SessionConfig {
   basePrompt?: string
   /** Resume a previous conversation */
   resumeConversationId?: string
+  /** Return without creating a session when the transcript is absent. */
+  noSpawnOnNotFound?: boolean
   /** Mark as sub-agent session */
   isSubAgent?: boolean
   /** Parent session ID for agent tree */

@@ -85,6 +85,13 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     tm()?.disconnectTab(tabId)
   })
 
+  ipcMain.on('session:choose-new', (_event: IpcMainEvent, tabId: string) => {
+    tm()?.getConnection(tabId)?.chooseNewConversation()
+  })
+  ipcMain.on('session:retry-stored', (_event: IpcMainEvent, tabId: string) => {
+    tm()?.getConnection(tabId)?.retryStoredConversation()
+  })
+
   ipcMain.on('tab:reconnect', (_event: IpcMainEvent, tabId: string) => {
     tm()?.reconnectTab(tabId)
   })
