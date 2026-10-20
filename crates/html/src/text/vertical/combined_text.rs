@@ -5,7 +5,6 @@ use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, TextTransform};
 use crate::style::values::value::Len;
@@ -70,7 +69,7 @@ pub(crate) fn piece(
     } else {
         element.children.as_slice()
     };
-    let inner = paragraph(nodes, &merged, opts);
+    let inner = opts.cx.build.paragraph(nodes, &merged, opts);
     Some(inline::Piece::Atom(
         crate::text::vertical::CombinedUpright::new(inner, em).hooked(),
     ))
