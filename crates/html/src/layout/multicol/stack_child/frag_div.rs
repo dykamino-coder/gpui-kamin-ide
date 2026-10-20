@@ -3,7 +3,7 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::fragment::grid_bands::grid_rows_px;
-use crate::render::styled_div_with;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{Styled, px};

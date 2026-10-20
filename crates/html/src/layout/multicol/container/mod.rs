@@ -8,7 +8,6 @@ use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
 use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::paint::stacking::fixed_cb_layer_box;
-use crate::render::element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
@@ -205,7 +204,7 @@ pub(crate) fn multicol_column_stack(
     }
     // Флоаты — прежним ходом, соседями стопки.
     for oof in &direct_oof {
-        d = d.child(element(oof, &merged, opts));
+        d = d.child(opts.cx.build.element(oof, &merged, opts));
     }
     // Заместитель на месте щупа: рисуется ПОСЛЕ стопки и
     // после флоатов (позиционированная коробка выше и
