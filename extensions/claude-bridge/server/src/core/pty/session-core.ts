@@ -1336,10 +1336,15 @@ export async function deleteSessionByConversationId(
     warnLog('Session data deletion refused: conversation not owned by caller', { conversationId, user })
     throw new Error('Conversation not found in caller token namespace')
   }
-  // Both identifiers become path components. Refuse traversal rather than sanitize.
-  if (!tokenId || !/^[A-Za-z0-9_-]+$/.test(tokenId) || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(conversationId))
+  // Token IDs come from randomUUID(). A fixed-length ID makes the project
+  // separator unambiguous; accepting a shortened ID could match another token.
+  if (
+    !tokenId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(tokenId) ||
+    !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(conversationId)
+  )
     refuse()
-  const tokenPath = path.join(path.resolve(SESSIONS_BASE), tokenId)
+  const basePath = path.resolve(SESSIONS_BASE)
   const isPlainDirectory = (dir: string): boolean => {
     try {
       const stat = fs.lstatSync(dir)
@@ -1348,25 +1353,41 @@ export async function deleteSessionByConversationId(
       return false
     }
   }
-  if (!isPlainDirectory(tokenPath)) refuse()
+  if (!isPlainDirectory(basePath)) refuse()
+  const tokenPaths = fs.readdirSync(basePath, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isDirectory()) return []
+    if (entry.name !== tokenId) {
+      if (!entry.name.startsWith(`${tokenId}-`)) return []
+      const suffix = entry.name.slice(tokenId.length + 1)
+      // Match only outputs of sanitizeDirName, including an underscore cut at
+      // the 80-character limit. The sentinel prevents trimming that underscore.
+      const canonical = sanitizeDirName(suffix.length === 80 ? `${suffix}x` : suffix)
+      if (suffix.length > 80 || canonical !== suffix) return []
+    }
+    const tokenPath = path.join(basePath, entry.name)
+    return isPlainDirectory(tokenPath) ? [tokenPath] : []
+  })
   const meta = readArchiveMeta(conversationId)
   const projectsDir = path.join(os.homedir(), '.claude', 'projects')
   let target: { settingsDir: string; jsonlPath: string } | undefined
-  // Never enumerate SESSIONS_BASE or another token's settings directories.
-  for (const entry of fs.readdirSync(tokenPath, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue
-    const settingsDir = path.join(tokenPath, entry.name)
-    if (!isPlainDirectory(settingsDir)) continue
-    const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
-    const projectDir = path.join(projectsDir, slug)
-    const jsonlPath = path.join(projectDir, `${conversationId}.jsonl`)
-    // The server-written archive slug preserves legitimate deletion after CLI
-    // expiry. An absent namespace or conflicting archive ownership fails closed.
-    if (meta && meta.slug !== slug) continue
-    if (meta?.slug === slug || (isPlainDirectory(projectDir) && fs.existsSync(jsonlPath))) {
-      target = { settingsDir, jsonlPath }
-      break
+  // Root names may be inspected, but only caller-owned directories are entered.
+  for (const tokenPath of tokenPaths) {
+    for (const entry of fs.readdirSync(tokenPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+      const settingsDir = path.join(tokenPath, entry.name)
+      if (!isPlainDirectory(settingsDir)) continue
+      const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+      const projectDir = path.join(projectsDir, slug)
+      const jsonlPath = path.join(projectDir, `${conversationId}.jsonl`)
+      // The server-written archive slug preserves legitimate deletion after CLI
+      // expiry. An absent namespace or conflicting archive ownership fails closed.
+      if (meta && meta.slug !== slug) continue
+      if (meta?.slug === slug || (isPlainDirectory(projectDir) && fs.existsSync(jsonlPath))) {
+        target = { settingsDir, jsonlPath }
+        break
+      }
     }
+    if (target) break
   }
   if (!target) refuse()
   for (const session of sessions.values()) {
