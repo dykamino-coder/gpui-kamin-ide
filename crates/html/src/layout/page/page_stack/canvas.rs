@@ -10,7 +10,8 @@
 
 use super::{PageGeom, PageStack};
 use crate::dom::{Element, Node};
-use crate::render::{RenderOpts, blocks};
+use crate::layout::options::RenderOpts;
+use crate::render::blocks;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Window, point, px, size};
 

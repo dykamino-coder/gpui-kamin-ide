@@ -1,10 +1,10 @@
 //! Форма группы корневых узлов на листе: поля и вырезы.
 
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::render::is_blank;
 use crate::style::computed::Computed;
 
 // Group shapes retain their offsets and fragmentation metadata together.

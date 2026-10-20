@@ -1,9 +1,10 @@
 //! Page margin boxes use generated content inside their resolved border boxes.
 
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
 use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn};
 use crate::layout::page::page_counters;
-use crate::render::{RenderOpts, blocks};
+use crate::render::blocks;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
