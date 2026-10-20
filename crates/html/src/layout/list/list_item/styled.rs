@@ -3,7 +3,7 @@
 use super::{shrink0, tabular_marker};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::render::{blocks, styled_div_with};
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -39,7 +39,7 @@ pub(crate) fn render_with_style(
         return shrink0(styled_div_with(li, merged, &opts.cx), li, inherited)
             .flex()
             .flex_col()
-            .children(blocks(&kids, merged, opts))
+            .children(opts.cx.build.blocks(&kids, merged, opts))
             .into_any_element();
     }
     // Знаки маркера без своего семейства — шрифтом ДОКУМЕНТА: голый
@@ -153,7 +153,7 @@ pub(crate) fn render_with_style(
                 .w_full()
                 .flex()
                 .flex_col()
-                .children(blocks(&li.children, merged, opts))
+                .children(opts.cx.build.blocks(&li.children, merged, opts))
                 .children(strut),
         )
         .into_any_element()
