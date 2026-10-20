@@ -2,10 +2,11 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::render::{RenderOpts, inline_abs_paint_last, styled_div_with};
+use crate::render::{inline_abs_paint_last, styled_div_with};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;

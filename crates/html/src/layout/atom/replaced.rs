@@ -2,12 +2,13 @@
 
 use crate::dom::Element;
 use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::image::{image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
-use crate::render::{RenderOpts, element, styled_div_with};
+use crate::render::{element, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;

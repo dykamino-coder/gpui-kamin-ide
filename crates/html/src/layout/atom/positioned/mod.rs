@@ -2,11 +2,12 @@
 // owner: A
 
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::render::{RenderOpts, blocks, inline_abs_paint_last, styled_div_with};
+use crate::render::{blocks, inline_abs_paint_last, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

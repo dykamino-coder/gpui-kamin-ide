@@ -4,6 +4,7 @@ use super::replaced::{canvas_atom, container_atom, img_atom, svg_atom};
 use crate::dom::Element;
 use crate::layout::atom::own_box::own_box_atom;
 use crate::layout::atom::positioned::{absolute_atom, static_position_atom};
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::has_own_box;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
@@ -12,7 +13,6 @@ use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::paint::effects::grouped::grouped_replaced;
 use crate::paint::effects::transform::transformed;
-use crate::render::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -236,7 +236,7 @@ pub(super) fn atom_element_raw(
     };
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
-        if crate::render::replaced_tag(e) && e.style.corner_shaped() {
+        if crate::layout::box_kind::replaced_tag(e) && e.style.corner_shaped() {
             grouped_replaced(el, &e.style, vcx)
         } else {
             el
