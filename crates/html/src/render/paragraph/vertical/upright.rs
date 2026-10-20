@@ -2,8 +2,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::layout::options::RenderOpts;
 use crate::render::paragraph::paragraph;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};

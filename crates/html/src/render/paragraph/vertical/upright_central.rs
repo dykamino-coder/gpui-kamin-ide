@@ -7,8 +7,8 @@
 //! advances by its own em (§7.4), not by the container's.
 
 use crate::dom::Node;
+use crate::layout::options::RenderOpts;
 use crate::render::paragraph::{own_size, paragraph};
-use crate::render::*;
 use crate::style::computed::{Align, Computed, TextAlign};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};

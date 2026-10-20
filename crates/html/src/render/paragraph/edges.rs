@@ -1,7 +1,7 @@
 //! Краевые inline pieces и определение текстового потока.
 
 use crate::dom::Node;
-use crate::render::*;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
