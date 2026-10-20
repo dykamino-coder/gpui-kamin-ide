@@ -36,7 +36,7 @@ pub(crate) fn claim_float_inline_size(
 pub(crate) fn has_in_flow_block_children(children: &[crate::dom::Node]) -> bool {
     children.iter().any(|node| {
         matches!(node, crate::dom::Node::Element(child)
-        if !crate::render::inline_level(child) && crate::render::in_flow(&child.style))
+        if !crate::layout::box_kind::inline_level(child) && crate::layout::box_kind::in_flow(&child.style))
     })
 }
 

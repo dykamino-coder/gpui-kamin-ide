@@ -17,7 +17,7 @@ mod scripts;
 mod stretch;
 
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::px_strict;

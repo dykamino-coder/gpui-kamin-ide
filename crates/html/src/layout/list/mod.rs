@@ -4,7 +4,8 @@
 pub(crate) mod list_item;
 
 use crate::dom::{Element, Node};
-use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::layout::options::RenderOpts;
+use crate::render::{blocks, styled_div_with};
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
@@ -13,7 +14,7 @@ pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> An
     let mut pending = Vec::new();
     for child in &e.children {
         match child {
-            Node::Element(li) if li.tag == "li" && !crate::render::real_inline(li) => {
+            Node::Element(li) if li.tag == "li" && !crate::layout::box_kind::real_inline(li) => {
                 rows.extend(blocks(&std::mem::take(&mut pending), inherited, opts));
                 rows.push(list_item::render(li, inherited, opts));
             }

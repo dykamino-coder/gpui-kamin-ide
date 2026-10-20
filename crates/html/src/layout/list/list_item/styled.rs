@@ -2,7 +2,8 @@
 
 use super::{shrink0, tabular_marker};
 use crate::dom::{Element, Node};
-use crate::render::{RenderOpts, blocks, styled_div_with};
+use crate::layout::options::RenderOpts;
+use crate::render::{blocks, styled_div_with};
 use crate::style::computed::Computed;
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -57,7 +58,7 @@ pub(crate) fn render_with_style(
     // the item's content height is at least the marker's (csswg-drafts#2417,
     // #2418; Blink `UnpositionedListMarker::AddToBoxWithoutLineBoxes`). An
     // item with no content gets a hidden zero-width copy of the marker line.
-    let empty = li.children.iter().all(crate::render::is_blank);
+    let empty = li.children.iter().all(crate::dom::whitespace::is_blank);
     let strut = (!no_marker && empty).then(|| {
         let mut d = crate::paint::apply::apply_text(div(), &mark_style, vcx)
             .w_0()

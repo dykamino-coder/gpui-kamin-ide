@@ -13,7 +13,7 @@ pub(crate) fn text_turn(cx: &crate::layout::cx::LayoutCx) -> bool {
 pub(crate) fn physical(
     e: &Element,
     flow: &Computed,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> Option<gpui::AnyElement> {
     let vcx = opts.cx.vcx();
     // Atomic formatting contexts keep physical dimensions and their own
