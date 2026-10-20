@@ -1,7 +1,8 @@
 //! Предел ортогонального потока для раскладки потомков.
 
 use crate::dom::Element;
-use crate::render::*;
+use crate::layout::box_kind::in_flow;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

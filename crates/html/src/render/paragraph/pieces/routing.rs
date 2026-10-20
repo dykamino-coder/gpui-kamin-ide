@@ -1,9 +1,13 @@
 //! Выбор текстовой раскладки или ряда слов и атомов.
 
 use super::native_paragraph;
+use crate::layout::options::RenderOpts;
+use crate::layout::options::own_size;
 use crate::layout::writing_mode::upright_in_mixed;
 use crate::paint::apply::apply;
-use crate::render::*;
+use crate::render::native_paragraph_route;
+use crate::render::paragraph::edges::edge_pieces;
+use crate::render::paragraph::metrics::line_box_spans;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;

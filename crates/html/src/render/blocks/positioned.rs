@@ -1,4 +1,5 @@
 //! Позиционированные дети потока блоков: держатель краёв и слой статической позиции.
+use crate::layout::order::paint_last_ok;
 mod holder;
 pub(crate) use holder::inset_holder_box;
 
@@ -8,7 +9,6 @@ use crate::dom::Element;
 use crate::layout::block::struts::margin_px;
 use crate::layout::positioned::static_position::{static_line_align, static_self_align};
 use crate::paint::stacking::layered;
-use crate::render::*;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 

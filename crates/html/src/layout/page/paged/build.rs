@@ -2,7 +2,7 @@
 //! fixed` текущего кида — часть `RenderOpts` (`FragCx::paged`), а не
 //! состояние потока.
 
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -72,7 +72,7 @@ impl RenderOpts {
 #[cfg(test)]
 mod tests {
     use super::PagedBuild;
-    use crate::render::RenderOpts;
+    use crate::layout::options::RenderOpts;
 
     #[test]
     fn options_see_the_paged_build_only_while_it_runs() {

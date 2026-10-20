@@ -2,7 +2,7 @@
 mod geometry;
 mod layer;
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 pub(super) fn contains(e: &Element) -> bool {

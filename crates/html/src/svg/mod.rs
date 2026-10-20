@@ -39,7 +39,7 @@ const DENSITY: f32 = 2.0;
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
 pub(crate) fn element_with_html(
     e: &Element,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     if foreign::contains(e) {

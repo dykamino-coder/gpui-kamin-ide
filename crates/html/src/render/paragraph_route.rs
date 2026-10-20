@@ -1,8 +1,8 @@
 //! Сборка абзаца с пробами и слоями inline-окраски.
 
-use super::RenderOpts;
 use super::paragraph::paragraph;
 use crate::dom::Node;
+use crate::layout::options::RenderOpts;
 use crate::paint::decorations::text_shadows::with_text_shadow;
 use crate::style::computed::Computed;
 use crate::text::text_box::line_height_px;

@@ -9,7 +9,6 @@ pub(crate) use line_boxes::replaced_tag;
 
 mod contexts;
 pub(crate) use contexts::own_context;
-pub(crate) use contexts::own_context_style;
 
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};

@@ -1,7 +1,9 @@
 //! Метрики абзаца и границы line box для атомарных элементов.
 
+use crate::layout::options::RenderOpts;
+use crate::layout::options::own_size;
 use crate::layout::writing_mode::rotated_atom;
-use crate::render::*;
+use crate::render::paragraph::edges::in_edge;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;

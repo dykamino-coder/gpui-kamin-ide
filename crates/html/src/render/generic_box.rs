@@ -1,4 +1,6 @@
 //! Общий рукав `element()`: блочная коробка без особого тега.
+use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::styled_div_with;
 mod columns;
 pub(super) use columns::ColumnPlan;
 pub(super) use columns::column_plan;
@@ -15,7 +17,6 @@ use multicol::multicol_box;
 
 use crate::dom::Element;
 use crate::layout::positioned::absolute_overflow;
-use crate::render::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};
@@ -32,7 +33,7 @@ pub(super) fn generic_box(
     if merged.wm().vertical()
         && !inherited.wm().vertical()
         && !e.inline
-        && crate::render::in_flow(&e.style)
+        && crate::layout::box_kind::in_flow(&e.style)
         && matches!(
             inherited.display,
             None | Some(Display::Block | Display::InlineBlock)

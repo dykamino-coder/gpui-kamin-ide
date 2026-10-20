@@ -1,4 +1,5 @@
 //! Контексты наложения и слои покраски.
+pub(crate) mod inline_abs;
 mod ordering;
 pub(crate) use ordering::by_layer;
 

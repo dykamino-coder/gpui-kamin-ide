@@ -4,10 +4,10 @@ use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::{block_level_in_flow, out_of_flow, real_inline};
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::push::avoid_only_monolith;
 use crate::layout::fragment::table_bands::table_box;
-use crate::render::{block_level_in_flow, out_of_flow, real_inline};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod fragment;

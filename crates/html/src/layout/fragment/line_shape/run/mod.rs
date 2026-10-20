@@ -2,9 +2,10 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::Shape;
-use crate::render::{is_blank, measure_font};
 use crate::style::values::value::Len;
+use crate::text::fonts::style_font::measure_font;
 use crate::text::text_box::normal_fraction;
 mod text;
 pub(super) use text::brk_trim;

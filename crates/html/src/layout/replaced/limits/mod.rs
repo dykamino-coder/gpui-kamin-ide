@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
-use crate::render::replaced_tag;
+use crate::layout::box_kind::replaced_tag;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 mod font_clamp;

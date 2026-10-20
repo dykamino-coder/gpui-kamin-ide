@@ -2,8 +2,8 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::layout::options::RenderOpts;
 use crate::paint::gap_rules::{GapItems, painter::GapRulePainter};
-use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 

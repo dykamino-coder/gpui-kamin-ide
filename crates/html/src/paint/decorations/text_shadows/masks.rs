@@ -3,7 +3,7 @@
 use super::{ShadowStyle, atomic};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::render::{RenderOpts, paragraph};
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Shadow};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -36,7 +36,7 @@ pub(super) fn masked_layer(
     mask.text_shadow_rest.clear();
     mask.text_shadow_raw = None;
     let masked = mask_nodes(nodes, block, group, shadow, opts.cx.vcx());
-    let copy = paragraph(&masked, &mask, opts);
+    let copy = opts.cx.build.paragraph(&masked, &mask, opts);
     let copy = if shadow.blur > 0.5 {
         let mut g = crate::paint::effects::grouped_element::Grouped::new(copy, vcx);
         g.blur = shadow.blur * 0.5;

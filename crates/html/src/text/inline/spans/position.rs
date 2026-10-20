@@ -1,7 +1,7 @@
 //! Relative and baseline displacements of inline text ranges.
 
 use super::{text_ranges, text_size};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::values::value::Len;
 use crate::text::inline::*;
 

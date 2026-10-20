@@ -1,7 +1,9 @@
 //! Измерение блочных детей и вложенных многоколоночников.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::{
@@ -9,7 +11,7 @@ use crate::layout::fragment::line_shape::{
 };
 use crate::layout::fragment::probe::forced_inside;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::render::*;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

@@ -44,7 +44,7 @@ pub(super) fn collect_element(
         // opportunity through our U+FFFC atom placeholder either (UAX14 LB11).
         let join = inherited.ruby_suppress_breaks
             && e.children.is_empty()
-            && !crate::render::replaced_tag(e)
+            && !crate::layout::box_kind::replaced_tag(e)
             && matches!(e.style.width, None | Some(Len::Px(0.0)))
             && matches!(e.style.height, None | Some(Len::Px(0.0)));
         let joiner = || Piece::Text {

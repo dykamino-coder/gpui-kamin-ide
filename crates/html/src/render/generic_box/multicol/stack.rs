@@ -1,5 +1,8 @@
 //! Подготовка и выбор стопки колонок для блочных детей.
 
+use crate::dom::whitespace::is_blank;
+use crate::layout::box_kind::out_of_flow;
+use crate::layout::options::RenderOpts;
 mod floats;
 pub(super) use floats::block_floats;
 
@@ -17,7 +20,6 @@ use crate::layout::fragment::clone::clone_wrapper_item;
 use crate::layout::fragment::line_shape::group_inline_runs;
 use crate::layout::fragment::{Shape, with_lines};
 use crate::layout::multicol::container::multicol_column_stack;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled, px};

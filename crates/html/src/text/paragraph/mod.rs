@@ -206,6 +206,7 @@ pub use crate::text::paragraph::line_types::Wrap;
 pub use crate::text::paragraph::model::Paragraph;
 
 pub mod tabs;
+pub(crate) mod text_id;
 
 mod atom_fit;
 mod atom_placement;

@@ -9,8 +9,8 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::multicol::spanner::parallel_items_inside;
+use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

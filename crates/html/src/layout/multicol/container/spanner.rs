@@ -1,10 +1,13 @@
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
-use crate::render::{RenderOpts, blocks, is_blank, out_of_flow, styled_div_with};
+use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -40,7 +43,7 @@ pub(crate) fn multicol_spanner_segments(
         )
     {
         let legend = kids.remove(i);
-        d = d.children(blocks(&[legend], &merged, opts));
+        d = d.children(opts.cx.build.blocks(&[legend], &merged, opts));
     }
     for chunk in kids.split_inclusive(&is_span) {
         let (body, span) = match chunk.split_last() {
@@ -135,7 +138,11 @@ pub(crate) fn multicol_spanner_segments(
                 {
                     sub.style.height = Some(Len::Px(rest));
                 }
-                d = d.child(div().children(blocks(&[Node::Element(sub)], &merged, opts)));
+                d = d.child(div().children(opts.cx.build.blocks(
+                    &[Node::Element(sub)],
+                    &merged,
+                    opts,
+                )));
             }
         }
         if let Some(Node::Element(sp)) = span {
@@ -178,7 +185,7 @@ pub(crate) fn multicol_spanner_segments(
                 } else {
                     shell
                 };
-            d = d.child(shell.children(blocks(&sp.children, &inner, opts)));
+            d = d.child(shell.children(opts.cx.build.blocks(&sp.children, &inner, opts)));
         }
     }
     // Нижняя сторожка: нижнее поле последнего спаннера остаётся

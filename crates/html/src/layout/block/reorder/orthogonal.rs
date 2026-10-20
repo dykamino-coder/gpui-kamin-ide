@@ -1,8 +1,8 @@
 //! Дети с ортогональным (вертикальным) режимом письма в блочном потоке.
 
 use crate::dom::Node;
+use crate::layout::box_kind::in_flow;
 use crate::layout::writing_mode::orthogonal_fixed_child;
-use crate::render::in_flow;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 

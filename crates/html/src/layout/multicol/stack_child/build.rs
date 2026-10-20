@@ -5,9 +5,9 @@ use crate::dom::Element;
 use crate::layout::fragment::clone::clone_fragment;
 use crate::layout::grid::place_named_areas;
 use crate::layout::multicol::gap_rules::gap_rule_spec;
+use crate::layout::options::RenderOpts;
 use crate::paint::effects::transform::transformed;
 use crate::paint::stacking::fixed_cb_layer_box;
-use crate::render::{RenderOpts, blocks};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use gpui::{IntoElement, ParentElement};
@@ -205,7 +205,7 @@ pub(super) fn build_copy(
             fixed_cb_layer_box(inner),
         )
     });
-    let mut body = blocks(&kids, src_inner, &child_opts);
+    let mut body = child_opts.cx.build.blocks(&kids, src_inner, &child_opts);
     if let Some(layer) = frag_cb_layer {
         body.extend(layer.finish());
     }

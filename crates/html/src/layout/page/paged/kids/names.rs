@@ -2,10 +2,10 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::breaks::{edge_break, page_monolith};
 use crate::layout::fragment::flex_lines::{class_a_box, inline_display};
 use crate::layout::page::names::page_names;
-use crate::render::is_blank;
 
 pub(super) fn group_break_names(
     root_page: &str,

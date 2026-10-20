@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::document::state::ValueCx;
-use crate::render::in_flow;
+use crate::layout::box_kind::in_flow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

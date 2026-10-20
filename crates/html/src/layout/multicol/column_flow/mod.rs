@@ -3,9 +3,10 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
-use crate::render::{RenderOpts, measure_font};
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use crate::text::fonts::style_font::measure_font;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, SharedString};
 mod text;

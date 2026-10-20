@@ -1,6 +1,6 @@
 //! Root inline metrics of the first formatted line (CSS Pseudo 4 §2.1.2).
 
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::paragraph::Paragraph;
