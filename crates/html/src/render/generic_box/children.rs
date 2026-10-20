@@ -1,5 +1,8 @@
 //! Сборка детей общей коробки: ортогональные оси, clamp и контексты окраски.
 
+use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::clip_layer;
+use crate::render::blocks::blocks;
 mod formatting_context;
 mod probes;
 pub(crate) use probes::child_probes;
@@ -17,7 +20,6 @@ use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use crate::text::text_box::text_box_trim_px;
