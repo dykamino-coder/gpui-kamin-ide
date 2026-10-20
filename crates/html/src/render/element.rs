@@ -1,6 +1,7 @@
 //! Узел-элемент в элемент GPUI: element().
 
 mod orthogonal;
+mod quirks;
 pub(super) use orthogonal::orthogonal_limit;
 
 mod dispatch;
@@ -42,6 +43,9 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let (outer_row, inner_opts) = opts.take_outer_row();
     let opts = inner_opts.as_ref().unwrap_or(opts);
     let mut merged = inherit(inherited, &e.style, vcx);
+    if let Some(used) = crate::layout::table::used_overflow::resolve(e, &merged) {
+        merged = used;
+    }
     list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
@@ -90,6 +94,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
+    quirks::fill(e, &mut merged, inherited, opts);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(
         opts.cx.scroll_frame.as_ref(),

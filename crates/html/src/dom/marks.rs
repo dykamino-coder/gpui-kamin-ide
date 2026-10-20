@@ -14,6 +14,8 @@
 /// the default (no marks).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Marks {
+    /// Document root/body eligible for the quirks-mode block-size fill rules.
+    pub(crate) quirks_fill: bool,
     /// A lone float in a vertical parent: its size does not contribute to the
     /// auto block size of the parent (CSS 2.1 §10.6.3); set by
     /// `layout::float::wrap::lone`, rendered by `layout::float::outside_block`.
