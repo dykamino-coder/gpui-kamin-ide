@@ -3,10 +3,11 @@
 use super::place_element;
 use crate::animation::animation_live::animated;
 use crate::interactive::sticky::sticky_wrap;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
 use crate::render::blocks::flow::BelowRun;
-use crate::render::*;
+use crate::render::blocks::inset_holder_box;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};

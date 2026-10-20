@@ -4,6 +4,7 @@ import { useBridge } from '../../hooks/useBridge'
 import { compactSegments, activeSegmentIdx } from '../../signals/compact-segments'
 import { collectSessionDiag, jsonlEntriesByTab, getJsonlStructureVersion } from '../../signals/jsonl'
 import { getRenderModel } from '../jsonl-viewer/derived-cache'
+import { getChatWindowDiag } from '../jsonl-viewer/chat-window-diag'
 
 interface DiagnosticButtonProps {
   tabId: string
@@ -72,6 +73,9 @@ export function DiagnosticButton({ tabId }: DiagnosticButtonProps): JSX.Element 
     const json = JSON.stringify({
       ...(collectSessionDiag(tabId) as Record<string, unknown>),
       render: collectRenderDiag(tabId),
+      // INC-2026-0071: counts of empty-window-with-rows episodes and skipped
+      // counted-but-empty rows since this webview loaded (numbers only).
+      chatWindow: getChatWindowDiag(),
     }, null, 2)
     const name = `session-diag-${tabId}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
     const res = await bridge.saveSessionDiag(name, json)

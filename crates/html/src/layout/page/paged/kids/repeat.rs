@@ -2,8 +2,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::{ShapeCx, table_bands::repeat_bands_in, types::Repeat};
-use crate::render::is_blank;
 use gpui::AnyElement;
 
 pub(super) fn sections(

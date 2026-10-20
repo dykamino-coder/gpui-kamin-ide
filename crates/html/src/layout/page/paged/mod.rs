@@ -2,15 +2,17 @@
 // owner: A
 
 use crate::dom::Node;
+use crate::dom::whitespace::is_blank;
 use crate::hooks::IntoHooked;
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flex_lines::inline_display;
 use crate::layout::fragment::types::StackAxis;
+use crate::layout::options::RenderOpts;
 use crate::layout::page::names::{
     PageMarginDeclsFn, fill_used_page, first_kid_page_name, hoist_named_wrappers,
 };
 use crate::layout::page::{page_boxes, page_counters};
-use crate::render::{RenderOpts, is_blank, out_of_flow};
 use crate::style::computed::Display;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod kids;

@@ -1,8 +1,9 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
+use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
 use crate::layout::table::{is_cell, table_finish};
-use crate::render::{RenderOpts, gather_text};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

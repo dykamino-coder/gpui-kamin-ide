@@ -2,7 +2,8 @@
 //! среза абзацу-владельцу строки и отрицательные поля первого/последнего ребёнка.
 
 use crate::dom::Node;
-use crate::render::{RenderOpts, out_of_flow};
+use crate::layout::box_kind::out_of_flow;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 use crate::text::line_trim::{Trim, TrimRequest};

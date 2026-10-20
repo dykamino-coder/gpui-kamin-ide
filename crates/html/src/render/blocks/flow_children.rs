@@ -1,10 +1,10 @@
 //! Используемые размеры и поля детей обычного блочного потока.
 
+use crate::layout::options::RenderOpts;
 mod flex;
 pub(super) use flex::flex_child;
 
 use crate::dom::Node;
-use crate::render::*;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
 

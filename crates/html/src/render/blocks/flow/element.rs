@@ -1,5 +1,10 @@
 //! Окраска одного блочного ребёнка; ранний возврат завершает текущую итерацию потока.
 
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::intrinsic_wrap::content_sized_wraps;
+use crate::layout::options::RenderOpts;
+use crate::render::blocks::blocks;
+use crate::render::blocks::canvas::canvas_layer;
 mod layers;
 pub(crate) use layers::finish_element;
 
@@ -16,7 +21,6 @@ use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::replaced::limits::content_limit_swapped;
 use crate::paint::stacking::{defers, layered, stacking_context};
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

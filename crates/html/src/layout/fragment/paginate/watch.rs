@@ -7,7 +7,7 @@
 //! layout node as its own (taffy sees the same tree) after recording it.
 
 use crate::hooks::{Hooks, IntoHooked};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

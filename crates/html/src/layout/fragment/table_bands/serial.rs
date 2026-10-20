@@ -5,9 +5,9 @@
 
 use super::table_box;
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::fixup_table_children;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 
 pub(crate) fn serial_table_parallel(

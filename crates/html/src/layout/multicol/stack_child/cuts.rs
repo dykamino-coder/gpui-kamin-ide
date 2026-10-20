@@ -11,7 +11,7 @@ use crate::layout::fragment::probe::{plain_block_tree, stacked_flex_tree};
 use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 
 #[allow(clippy::too_many_arguments)]

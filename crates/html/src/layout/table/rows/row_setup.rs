@@ -2,12 +2,12 @@
 //! слитый стиль ячейки и её охваты (colspan/rowspan, схлопнутые колонки).
 
 use crate::document::state::ValueCx;
+use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
-use crate::render::pseudo_line_layers;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

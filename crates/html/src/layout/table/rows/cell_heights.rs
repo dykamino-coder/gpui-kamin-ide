@@ -1,7 +1,7 @@
 //! Высота ячейки: ch/em/px-высоты с письмом ряда, вертикальные ячейки, снятие max-height.
 
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

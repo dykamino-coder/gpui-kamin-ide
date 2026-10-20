@@ -1,7 +1,8 @@
 //! Доли размеров атома: разрешение относительно обёртки и блока.
 
 use crate::dom::Element;
-use crate::render::{content_sized_wraps, replaced_tag};
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 

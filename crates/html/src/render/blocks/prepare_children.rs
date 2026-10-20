@@ -4,9 +4,12 @@ use crate::dom::Node;
 use crate::layout::block::margin_height;
 use crate::layout::block::margins::{CollapseInputs, collapse_margins};
 use crate::layout::block::reorder::reorder;
+use crate::layout::box_kind::in_flow;
+use crate::layout::box_kind::inline_level_box;
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_inset_abs;
 use crate::layout::table::anon::wrap_anon_tables;
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::{Len, px_strict};
@@ -81,7 +84,7 @@ pub(crate) fn prepare_children(
         // Анонимная таблица вокруг ПРОГОНА табличных братьев (§17.2.1 шаг 3)
         // — до разбиения блока в строчном и до схлопывания полей, как это
         // делает и сборщик дерева в браузере.
-        crate::render::inline_splits::split_block_in_inline_dir(
+        crate::layout::block::inline_splits::split_block_in_inline_dir(
             &hoist_inset_abs(&wrap_anon_tables(nodes), inherited, vcx),
             inherited.wm().rtl(),
         )

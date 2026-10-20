@@ -1,10 +1,11 @@
 //! Многоколоночный поток из блочных детей (не только строчных).
 
 use super::column_flow_in;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
-use crate::render::{RenderOpts, is_blank};
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use gpui::AnyElement;

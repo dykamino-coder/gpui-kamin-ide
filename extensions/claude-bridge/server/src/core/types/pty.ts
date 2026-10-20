@@ -70,6 +70,8 @@ export interface PtySession {
   /** Running byte total of outputBuffer, maintained incrementally so the hot
    *  output path never re-sums the whole (≤5000-line) buffer on every chunk. */
   outputBufferBytes: number
+  /** Private output batching lifecycle; reset on attachment changes, dispose on teardown. */
+  outputDebounce?: { reset(): void; dispose(): void }
   /** ms timestamp of the last client `session:resize`. A visible KaminIDE
    *  console heartbeats a resize every ~5s; silence ⇒ nobody's watching this
    *  console. Used by the opt-in idle-console PTY shrink. */

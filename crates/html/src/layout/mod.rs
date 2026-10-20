@@ -3,13 +3,18 @@
 
 pub mod atom;
 pub mod block;
+pub(crate) mod box_kind;
+pub(crate) mod build_contracts;
 pub mod cx;
 pub mod float;
 pub mod fragment;
 pub mod grid;
+pub(crate) mod intrinsic_wrap;
 pub mod list;
 pub(crate) mod mathml;
 pub mod multicol;
+pub mod options;
+pub(crate) mod order;
 pub mod page;
 pub mod positioned;
 pub mod replaced;

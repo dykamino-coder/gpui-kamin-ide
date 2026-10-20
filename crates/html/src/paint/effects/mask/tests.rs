@@ -46,7 +46,7 @@ fn alpha_and_clip_definitions_share_the_document_owner() {
 
 #[test]
 fn retained_viewport_survives_nested_layout_and_later_builds() {
-    let opts = crate::render::RenderOpts {
+    let opts = crate::layout::options::RenderOpts {
         text: gpui::TextStyle::default(),
         viewport: (800.0, 600.0),
         normal_line_height: 1.2,

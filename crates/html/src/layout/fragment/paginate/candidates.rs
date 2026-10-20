@@ -2,9 +2,10 @@
 
 use super::{Cand, avoid_row, column_flex, row_flex, row_gap};
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::{monolith_box, solid_box};
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::px_auto_zero;
 

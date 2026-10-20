@@ -47,12 +47,12 @@ pub(crate) type RubyBaseOffer =
 /// reports its content width into it. Also registers the overhang info for
 /// the atom being collected (`LayoutCx::ruby_extents`).
 pub fn ruby_base_with_overhang<T>(
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
     mode: crate::style::computed::RubyOverhang,
     half_annotation_font: f32,
     align_start: bool,
     base_font: f32,
-    build: impl FnOnce(&crate::render::RenderOpts) -> T,
+    build: impl FnOnce(&crate::layout::options::RenderOpts) -> T,
 ) -> T {
     let sink = std::rc::Rc::new(std::cell::Cell::new(None));
     let offer: RubyBaseOffer = std::rc::Rc::new(std::cell::Cell::new(Some(sink.clone())));

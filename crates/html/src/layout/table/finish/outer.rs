@@ -3,7 +3,7 @@
 use super::wrap_with_captions;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::render::styled_div_with;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};

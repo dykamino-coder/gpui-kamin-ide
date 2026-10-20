@@ -15,7 +15,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::render::out_of_flow;
+use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 mod candidates;

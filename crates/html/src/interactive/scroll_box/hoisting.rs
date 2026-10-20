@@ -1,8 +1,8 @@
 //! Подъём потомков из scroll-коробки перед сборкой её содержимого.
 
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
-use crate::render::{RenderOpts, blocks};
 use crate::style::computed::{Computed, Display};
 
 /// Обернуть элемент лентой прокрутки, если `overflow` её просит.
@@ -71,7 +71,10 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &Re
         // `blocks` на одном узле повторяет ВЕСЬ путь `to_icb`: строит элемент
         // и отдаёт открытому слою ICB. При обеих заданных осях щуп не нужен,
         // поэтому список возвращается пустым.
-        let left = blocks(std::slice::from_ref(&child), &merged, opts);
+        let left = opts
+            .cx
+            .build
+            .blocks(std::slice::from_ref(&child), &merged, opts);
         if left.is_empty() {
             continue;
         }

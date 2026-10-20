@@ -72,7 +72,7 @@ describe('legacy MCP discovery fallback', () => {
     await request('server/discover', 'server-discover-probe-1')
     const initialized = await request('initialize', 2)
     expect(initialized.status).toBe(200)
-    expect((await initialized.json()).result.capabilities.tools).toEqual({})
+    expect((await initialized.json()).result.capabilities.tools).toEqual({ listChanged: true })
     expect(session.mcpInitialized).toBe(true)
     expect(mocks.emit).toHaveBeenCalledWith('session:updated', expect.objectContaining({ mcpLastError: null }))
     const listed = await request('tools/list', 3)

@@ -5,8 +5,8 @@ use crate::layout::block::struts::{
     adjoin, margin_px, pin_inherited_margins, solve, strut_of, through_strut,
     through_strut_no_clear,
 };
+use crate::layout::box_kind::{in_flow, inline_level_box};
 use crate::layout::float::band_clearance;
-use crate::render::{in_flow, inline_level_box};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
 

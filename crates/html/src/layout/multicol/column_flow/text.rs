@@ -1,7 +1,9 @@
 //! Текст колонок: сбор, нормализация пробелов и построение колонок по разрезам.
 
 use crate::dom::Node;
-use crate::render::{RenderOpts, blocks, is_blank, split_nodes};
+use crate::dom::text_content::split_nodes;
+use crate::dom::whitespace::is_blank;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -161,7 +163,12 @@ pub(super) fn build_text_columns(
                 .flex_shrink_0()
                 .flex()
                 .flex_col()
-                .children(blocks(&part, inherited_owned, opts_owned)),
+                .children(
+                    opts_owned
+                        .cx
+                        .build
+                        .blocks(&part, inherited_owned, opts_owned),
+                ),
         );
     }
     row.into_any_element()

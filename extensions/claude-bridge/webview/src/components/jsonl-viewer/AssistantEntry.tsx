@@ -1,4 +1,5 @@
 import type { JSX } from 'preact'
+import { assistantHasVisibleContent } from './entry-draws'
 import type { JsonlEntryData, ContentBlock } from '../../types/jsonl'
 import { formatTokens, hasCliXmlTags } from './utils'
 import { getAgentColor } from '../../utils/agent-color'
@@ -55,18 +56,9 @@ export function AssistantEntry({ entry, toolResults }: AssistantEntryProps): JSX
   // "block with no body". Better to delay the bubble appearance until the
   // first byte of real content arrives; the activity spinner under the
   // input bar already covers that gap.
-  if (Array.isArray(content)) {
-    const hasVisible = (content as ContentBlock[]).some(b => {
-      if (!b || !(b as { type?: string }).type) return false
-      if (b.type === 'thinking') return !!(b.thinking && b.thinking.trim())
-      if (b.type === 'text') return !!(b.text && b.text.trim())
-      // tool_use, tool_result, and any NEW/unknown Anthropic block type render
-      // something (ContentBlocks routes unknowns to a labelled fallback) — so a
-      // message that only carries such a block must not be skipped entirely.
-      return true
-    })
-    if (!hasVisible) return null
-  }
+  // Shared with JsonlEntry (entry-draws.ts) so the render window never counts
+  // a row that mounts as nothing.
+  if (!assistantHasVisibleContent(entry)) return null
 
   // Origin classifier — inspect all visible text to tag the entry header.
   let textForClassify = ''

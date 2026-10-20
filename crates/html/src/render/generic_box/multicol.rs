@@ -1,5 +1,7 @@
 //! Выбор многоколоночного маршрута с сохранением ранних возвратов и состояния коробки.
 
+use crate::dom::whitespace::is_blank;
+use crate::layout::options::RenderOpts;
 mod rows;
 pub(super) use rows::RowPlan;
 pub(super) use rows::row_plan;
@@ -13,7 +15,6 @@ use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::multicol::container::multicol_spanner_segments;
 use crate::layout::multicol::spanner::{hoist_spanners, spanner_box};
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

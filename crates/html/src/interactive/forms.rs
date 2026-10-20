@@ -43,7 +43,7 @@ fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
 pub fn element(
     e: &Element,
     style: &Computed,
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     match e.tag.as_str() {
@@ -60,7 +60,7 @@ fn kind(e: &Element) -> String {
     e.attr("type").unwrap_or("text").to_ascii_lowercase()
 }
 
-fn input(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> AnyElement {
+fn input(e: &Element, style: &Computed, opts: &crate::layout::options::RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
     let kind = kind(e);
     // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
@@ -70,7 +70,7 @@ fn input(e: &Element, style: &Computed, opts: &crate::render::RenderOpts) -> Any
     if style.appearance_none() && matches!(kind.as_str(), "checkbox" | "radio" | "range" | "color")
     {
         return apply(div(), style, vcx)
-            .children(crate::render::blocks(&e.children, style, opts))
+            .children(opts.cx.build.blocks(&e.children, style, opts))
             .into_any_element();
     }
     match kind.as_str() {

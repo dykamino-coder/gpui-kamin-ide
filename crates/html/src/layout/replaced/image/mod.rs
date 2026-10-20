@@ -2,7 +2,7 @@
 // owner: A
 
 use crate::dom::Element;
-use crate::render::styled_div;
+use crate::paint::box_tree::styled::styled_div;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, div, px};

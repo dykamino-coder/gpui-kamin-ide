@@ -2,11 +2,13 @@
 // owner: A
 
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::render::{RenderOpts, blocks, inline_abs_paint_last, styled_div_with};
+use crate::paint::box_tree::styled::styled_div_with;
+use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -59,7 +61,8 @@ pub(super) fn static_position_atom(
         }
         _ => None,
     };
-    let inner = styled_div_with(e, &merged, &opts.cx).children(blocks(&e.children, &merged, opts));
+    let inner = styled_div_with(e, &merged, &opts.cx);
+    let inner = inner.children(opts.cx.build.blocks(&e.children, &merged, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
     // ниже своей строки, а не на её месте (видно на `static-position`:
@@ -173,7 +176,7 @@ pub(super) fn absolute_atom(
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place(
         styled_div_with(e, &merged, &opts.cx)
-            .children(blocks(&e.children, &merged, opts))
+            .children(opts.cx.build.blocks(&e.children, &merged, opts))
             .into_any_element(),
         &merged,
         inherited,

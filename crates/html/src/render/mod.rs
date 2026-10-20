@@ -5,103 +5,40 @@
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod paragraph_route;
-use paragraph_route::paint_inline_step7;
-use paragraph_route::paragraph_probed;
 
-mod paint_order;
-pub(super) use paint_order::inline_abs_paint_last;
-use paint_order::paint_last_ok;
-use paint_order::unkeyed_positions;
+use crate::layout::order::unkeyed_positions;
 
 use crate::dom::Node;
-pub(crate) use crate::dom::text_content::{gather_text, split_nodes};
 use crate::layout::float::clear::without_inert_clear;
-use crate::style::computed::Computed;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, TextStyle, div, px};
-pub(super) mod content_wrapper;
-mod first_line_text;
-pub(crate) use content_wrapper::{content_sized, content_sized_wraps};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 mod first_letter_descendants;
 mod first_letter_scope;
 pub(super) mod first_line_descendants;
-mod inline_splits;
-pub(super) mod pseudo_line_layers;
-pub(crate) use inline_splits::split_block_in_inline;
+mod first_line_text;
 pub(super) mod native_paragraph_route;
 
-pub(super) mod box_div;
-pub(crate) use crate::render::box_div::*;
-pub(super) mod classify;
-pub(crate) use crate::render::classify::*;
-pub(super) mod util;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
-pub(crate) use crate::render::util::*;
-pub(crate) mod paragraph;
-pub(crate) use crate::render::paragraph::atom_piece::*;
-pub(crate) use crate::render::paragraph::pieces::*;
-pub(crate) use crate::render::paragraph::*;
 pub(crate) mod blocks;
-pub(crate) use crate::render::blocks::*;
+mod child_builder;
 pub(super) mod element;
 pub(super) mod generic_box;
-pub(crate) use crate::render::element::*;
-use crate::render::generic_box::*;
+pub(crate) mod paragraph;
+pub use crate::layout::options::RenderOpts;
 
-/// Настройки отрисовки: то, что задаёт приложение, а не документ.
-#[derive(Clone)]
-pub struct RenderOpts {
-    /// Базовый стиль текста — от него считаются прогоны и наследование.
-    pub text: TextStyle,
-    /// Размер окна в точках — от него считаются `vh` и `vw`.
-    pub viewport: (f32, f32),
-    /// Множитель строки при `line-height: normal`.
-    ///
-    /// Браузер берёт его из метрик шрифта — у интерфейсных это около 1.31
-    /// кегля. Умолчание GPUI — золотое сечение (1.618), и без своего значения
-    /// КАЖДЫЙ блок текста выходил на четверть выше браузерного, а разница
-    /// копилась вниз по документу.
-    pub normal_line_height: f32,
-    /// Контекст раскладки поддерева (`LayoutCx`): его задаёт коробка для
-    /// коробок внутри. Хост передаёт `LayoutCx::default()`, а документ свой
-    /// ставит `Document::render` (`Document::frame_opts`).
-    pub cx: crate::layout::cx::LayoutCx,
-    /// Контекст фрагментации сборки: его ставит код, строящий фрагменты
-    /// (копии детей стопки колонок, вложенный многоколоночник рядами), а
-    /// приложение передаёт `Default::default()`.
-    pub frag: crate::layout::fragment::types::FragCx,
-}
-
-impl RenderOpts {
-    /// Цвет подложки выделения.
-    ///
-    /// Отдельного поля в настройках нет, чтобы не ломать вызывающих: берём
-    /// цвет текста и делаем из него полупрозрачную подложку — она читается
-    /// и на светлой, и на тёмной теме.
-    pub(crate) fn selection_color(&self) -> gpui::Hsla {
-        let mut c = self.text.color;
-        c.a = 0.25;
-        c
-    }
-
-    pub(crate) fn base_size(&self) -> f32 {
-        f32::from(self.text.font_size.to_pixels(px(16.)))
-    }
-
-    /// Корневой стиль документа.
-    ///
-    /// Высота строки тут НЕ задаётся: `normal` по CSS — метрика шрифта, и
-    /// считает её `normal_fraction` по семейству элемента. Пока корень
-    /// навязывал постоянную долю, она наследовалась ВСЕМ, и замер шрифта не
-    /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
-    /// с `line-height: 1em` при одном и том же шрифте.
-    pub(crate) fn root_style(&self) -> Computed {
-        Computed {
-            icb: true,
-            ..Computed::default()
-        }
-    }
-}
+// Compatibility names for layout/float, which still reaches these through the
+// render path until its own migration; every other domain imports the
+// defining modules (`layout::box_kind`, `layout::build_contracts`,
+// `paint::box_tree`, `dom::text_content`, ...) directly.
+pub(crate) use crate::dom::pseudo_line_layers;
+pub(crate) use crate::layout::box_kind::{
+    atomic_inline, block_level_in_flow, holds_line_box, in_flow, inline_level, inline_level_box,
+    inline_marked_block, is_blank, out_of_flow, own_context, phantom_inline, replaced_tag,
+};
+pub(crate) use crate::paint::box_tree::content_wrapper;
+pub(crate) use crate::paint::box_tree::styled::styled_div_with;
+pub(crate) use blocks::blocks;
+pub(crate) use element::element;
 
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
@@ -147,11 +84,6 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     out.push(close.into_any_element());
     out
 }
-
-/// Позиции узлов в прямом обходе документа и позиция ПОСЛЕДНЕГО
-/// позиционированного, который ключа краски не получает (см.
-/// `unkeyed_positions`).
-pub(crate) type Unkeyed = (std::collections::HashMap<u64, usize>, Option<usize>);
 
 /// Один блок верхнего уровня — единица виртуализации.
 ///

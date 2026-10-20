@@ -26,7 +26,7 @@ pub(crate) fn eligible(element: &Element) -> bool {
         && (keyword(style.width) || keyword(style.height))
         && ![style.min_width, style.max_width, style.min_height, style.max_height]
             .into_iter().any(keyword)
-        && !crate::render::replaced_tag(element)
+        && !crate::layout::box_kind::replaced_tag(element)
         // These tags use independent form/table/list formatting builders.
         && !matches!(element.tag.as_str(),
             "table" | "caption" | "colgroup" | "col" | "thead" | "tbody" | "tfoot" |
@@ -54,10 +54,12 @@ mod tests {
                 element.style.wm().sideways(),
             ));
         assert!(eligible(&element));
-        assert!(!crate::render::content_sized_wraps(&element));
+        assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
+            &element
+        ));
         element.style.intrinsic_wrapper_required = true;
         assert!(!eligible(&element));
-        assert!(crate::render::content_sized_wraps(&element));
+        assert!(crate::layout::intrinsic_wrap::content_sized_wraps(&element));
     }
 
     #[test]
@@ -73,7 +75,9 @@ mod tests {
         for display in [Display::Grid, Display::InlineGrid, Display::GridLanes] {
             element.style.display = Some(display);
             assert!(eligible(&element));
-            assert!(!crate::render::content_sized_wraps(&element));
+            assert!(!crate::layout::intrinsic_wrap::content_sized_wraps(
+                &element
+            ));
         }
         element.style.max_height = Some(Len::MinContent);
         assert!(!eligible(&element));

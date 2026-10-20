@@ -2,8 +2,8 @@
 // owner: A
 
 use crate::dom::Node;
+use crate::layout::box_kind::in_flow;
 use crate::layout::table::anon::anon_element;
-use crate::render::in_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 use crate::text::text_box::blank_text;

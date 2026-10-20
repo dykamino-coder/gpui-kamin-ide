@@ -7,12 +7,16 @@ import { AssistantEntry, ToolResultUserEntry } from './AssistantEntry'
 import { TeammateEntry } from './TeammateEntry'
 import { CompactSummaryEntry } from './CompactSummaryEntry'
 import { ToolGroupEntry } from './ToolGroupEntry'
+import { assistantHasVisibleContent, compactSummaryText, systemEntryDraws, toolGroupDraws } from './entry-draws'
 
 interface JsonlEntryProps {
   entry: JsonlEntryData
   toolResults?: Map<string, { content: string; isError: boolean }>
 }
 
+/** Returns null exactly when the row would draw nothing — including the cases
+ *  where the entry component itself bails out after mounting (entry-draws.ts).
+ *  The viewer's render window counts only non-null rows (INC-2026-0071). */
 export function JsonlEntry({ entry, toolResults }: JsonlEntryProps): JSX.Element | null {
   // Session-level bookkeeping the CLI writes but which isn't a message
   // (last-prompt, permission-mode, queue-operation, file-history-snapshot,
@@ -20,7 +24,7 @@ export function JsonlEntry({ entry, toolResults }: JsonlEntryProps): JSX.Element
   // filters on — they must never reach here, but returning null keeps the two
   // honest if one ever slips through.
   if (NON_RENDERING_ENTRY_TYPES.has(entry.type)) return null
-  if (entry.type === 'tool_group') return <ToolGroupEntry entry={entry} toolResults={toolResults} />
+  if (entry.type === 'tool_group') return toolGroupDraws(entry) ? <ToolGroupEntry entry={entry} toolResults={toolResults} /> : null
 
   // CLI 2.1.116+ writes several message kinds as `type:"attachment"` with a
   // nested `attachment.type`. Most are housekeeping that only the model sees
@@ -59,7 +63,7 @@ export function JsonlEntry({ entry, toolResults }: JsonlEntryProps): JSX.Element
   if (entry.type === 'user') {
     // Compact summary entries carry the long summary produced by `/compact`.
     // Render them as a collapsible block rather than hiding or showing as user.
-    if (entry.isCompactSummary) return <CompactSummaryEntry entry={entry} />
+    if (entry.isCompactSummary) return compactSummaryText(entry) ? <CompactSummaryEntry entry={entry} /> : null
     // `isMeta: true` marks CLI-generated notices like
     // "Compacted (ctrl+o to see full summary)" or scheduled-task stubs —
     // not from the human user, so hide from the chat log.
@@ -121,8 +125,8 @@ export function JsonlEntry({ entry, toolResults }: JsonlEntryProps): JSX.Element
     return <UserEntry entry={entry} />
   }
 
-  if (entry.type === 'assistant') return <AssistantEntry entry={entry} toolResults={toolResults} />
-  if (entry.type === 'system') return <SystemEntry entry={entry} />
+  if (entry.type === 'assistant') return assistantHasVisibleContent(entry) ? <AssistantEntry entry={entry} toolResults={toolResults} /> : null
+  if (entry.type === 'system') return systemEntryDraws(entry) ? <SystemEntry entry={entry} /> : null
 
   return null
 }

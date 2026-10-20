@@ -2,9 +2,9 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::grid_bands::grid_stack;
-use crate::render::out_of_flow;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
