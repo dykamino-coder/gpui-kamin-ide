@@ -25,6 +25,8 @@ const EVENTS = new Set([
   // INC-2026-0070: what the client asked for and which identity it received.
   'session_request',
   'conversation_id',
+  // INC-2026-0072: a session read another conversation of its project.
+  'project_session_access',
 ])
 const REQUEST_KINDS = new Set(['create', 'resume'])
 // How createSession chose the settings directory: `found` = lookup located the
@@ -35,6 +37,16 @@ const SETTINGS_DIR_SOURCES = new Set(['found', 'fresh', 'fresh_not_found', 'reus
 // a changed id on a running session (compact chain / newer file) or the
 // re-send that accompanies a live reattach.
 const ID_SOURCES = new Set(['discovered', 'changed', 'reattach'])
+const ACCESS_TOOLS = new Set([
+  'project_sessions_list',
+  'project_session_read',
+  'project_session_raw',
+  'project_session_search',
+  'project_session_outline',
+  'project_session_subagents',
+  'project_session_brief',
+])
+const ACCESS_OUTCOMES = new Set(['ok', 'not_found', 'invalid', 'error'])
 const REASONS = new Set([
   'unspecified',
   'explicit_end',
@@ -93,11 +105,15 @@ export function lifecycleLog(event: string, fields: Record<string, unknown> = {}
     record.session = createHmac('sha256', secret).update(fields.sessionId).digest('hex').slice(0, 24)
   }
   if (typeof fields.reason === 'string' && REASONS.has(fields.reason)) record.reason = fields.reason
-  for (const name of ['ageMs', 'idleMs', 'graceMs', 'waitedMs', 'exitCode']) {
+  if (typeof fields.tokenId === 'string' && fields.tokenId.length > 0) {
+    // Stable across boots so access by one token can be correlated; not reversible.
+    record.tokenRef = createHash('sha256').update(`kamin-token-ref-v1:${fields.tokenId}`).digest('hex').slice(0, 12)
+  }
+  for (const name of ['ageMs', 'idleMs', 'graceMs', 'waitedMs', 'exitCode', 'bytes', 'entries']) {
     const value = fields[name]
     if (typeof value === 'number' && Number.isSafeInteger(value)) record[name] = value
   }
-  for (const name of ['isSubAgent', 'suppressed', 'resumeRequested', 'resumeNotFound', 'settingsDirFound']) {
+  for (const name of ['isSubAgent', 'suppressed', 'resumeRequested', 'resumeNotFound', 'settingsDirFound', 'self']) {
     if (typeof fields[name] === 'boolean') record[name] = fields[name]
   }
   // Raw conversation ids never enter the file — only their stable refs.
@@ -117,6 +133,8 @@ export function lifecycleLog(event: string, fields: Record<string, unknown> = {}
     record.settingsDirSource = fields.settingsDirSource
   }
   if (typeof fields.idSource === 'string' && ID_SOURCES.has(fields.idSource)) record.idSource = fields.idSource
+  if (typeof fields.tool === 'string' && ACCESS_TOOLS.has(fields.tool)) record.tool = fields.tool
+  if (typeof fields.outcome === 'string' && ACCESS_OUTCOMES.has(fields.outcome)) record.outcome = fields.outcome
   // No queue, handles or timer survive a write. Low-frequency lifecycle writes
   // are synchronous so a normal process exit cannot lose a queued termination.
   try {
