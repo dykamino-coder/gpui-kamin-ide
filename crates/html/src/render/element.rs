@@ -45,9 +45,6 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let (outer_row, inner_opts) = opts.take_outer_row();
     let opts = inner_opts.as_ref().unwrap_or(opts);
     let mut merged = inherit(inherited, &e.style, vcx);
-    if let Some(used) = crate::layout::table::used_overflow::resolve(e, &merged) {
-        merged = used;
-    }
     list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
     // блока детей, порядок сборки, ключ клетки) и размеры от якоря —

@@ -30,8 +30,6 @@ pub(crate) fn scrollable(
         return None;
     }
     let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
-    let used_overflow = crate::layout::table::used_overflow::resolve(e, &scroll_style);
-    let scroll_style = used_overflow.unwrap_or(scroll_style);
     let snap = scroll_style.snap.axis != 0;
     let horizontal = scroll_style.overflow_x == Some(Overflow::Scroll)
         || snap && scroll_style.overflow_x == Some(Overflow::Hidden);

@@ -1,4 +1,5 @@
 //! Таблицы: драйвер раскладки.
+// owner: A
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
@@ -11,13 +12,13 @@ use gpui::AnyElement;
 pub mod anon;
 mod axes;
 pub mod columns;
-mod finish;
 pub mod paint;
+
+mod finish;
 mod table_border_widths;
 mod table_clipped_content;
 mod table_roles;
 mod table_spanning_size;
-pub(crate) mod used_overflow;
 use crate::layout::table::finish::*;
 mod cell_borders;
 pub(super) mod rows;
@@ -38,12 +39,11 @@ use setup::{
 /// Колонки — по содержимому: каждая дорожка это `minmax(min-content, auto)`,
 /// последняя забирает остаток (`1fr`). Так ведёт себя и настоящая табличная
 /// раскладка: узкие колонки сжимаются до содержимого, широкая тянется.
+///
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
 pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    let used_overflow = used_overflow::resolve(e, inherited);
-    let inherited = used_overflow.as_ref().unwrap_or(inherited);
     let vcx = opts.cx.vcx();
     let inherited_axes = axes::inherited(e, inherited, vcx);
     let e = inherited_axes.as_ref().unwrap_or(e);
