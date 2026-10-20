@@ -1,10 +1,10 @@
-//! Inline containing-block offers survive static-position routing.
+//! Static-position routing respects the paragraph's coordinate frame.
 
 use super::*;
 use crate::style::computed::Position;
 
 #[test]
-fn a_static_absolute_atom_uses_the_inline_containing_block_route() {
+fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     let mut nodes = crate::dom::parse("<span></span>", "");
     let crate::dom::Node::Element(mut element) = nodes.remove(0) else {
         panic!("element")
@@ -18,10 +18,13 @@ fn a_static_absolute_atom_uses_the_inline_containing_block_route() {
         cx: Default::default(),
         frag: Default::default(),
     };
-    for offered in [false, true] {
+    for (offered, turned) in [(false, false), (true, false), (false, true), (true, true)] {
         let piece = atom_piece_in(
             &element,
-            &Computed::default(),
+            &Computed {
+                turned_line: turned,
+                ..Default::default()
+            },
             &opts,
             false,
             offered,
@@ -30,8 +33,8 @@ fn a_static_absolute_atom_uses_the_inline_containing_block_route() {
         .expect("absolute inline");
         assert_eq!(
             matches!(piece, inline::Piece::Overlay(..)),
-            !offered,
-            "offered={offered}"
+            !offered || turned,
+            "offered={offered}, turned={turned}"
         );
     }
 }

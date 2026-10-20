@@ -162,10 +162,16 @@ impl Paragraph {
         if target < 2 {
             return self.lay_in(part, Some(limit), segs);
         }
+        // Balance the space left by floats (CSS Text 4 §5.4), rather than
+        // buying narrower lines by clearing the float. Clearance is geometry,
+        // not an extra line, but must not grow during the width search.
+        let clearance = |lines: &[Line]| lines.iter().map(|l| f32::from(l.clearance)).sum::<f32>();
+        let max_clearance = clearance(&self.lay_in(part.clone(), Some(limit), segs));
         let (mut narrow, mut wide) = (px(0.), limit);
         for _ in 0..12 {
             let middle = (narrow + wide) / 2.;
-            if self.lay_in(part.clone(), Some(middle), segs).len() <= target {
+            let probe = self.lay_in(part.clone(), Some(middle), segs);
+            if probe.len() <= target && clearance(&probe) <= max_clearance {
                 wide = middle;
             } else {
                 narrow = middle;
@@ -185,5 +191,60 @@ impl Paragraph {
             return Vec::new();
         }
         self.lay_in(0..self.text.len(), limit, segs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layout::float::shapes::FloatShape;
+    use std::sync::Arc;
+    #[test]
+    fn balancing_preserves_the_float_opportunity_instead_of_clearing_it() {
+        let mut p = Paragraph::new(
+            "aaaa aaaa aaaa".into(),
+            vec![],
+            px(10.),
+            px(20.),
+            Align::Left,
+            Wrap {
+                balance: true,
+                ..Default::default()
+            },
+        );
+        p.flow = Arc::new((
+            vec![FloatShape::Band {
+                top: 0.,
+                h: 100.,
+                w: 40.,
+            }],
+            vec![],
+        ));
+        // Fixed advances keep this geometry test independent of system fonts.
+        let segs: Vec<_> = (0..p.text.len())
+            .map(|i| Seg {
+                start: i,
+                end: i + 1,
+                offset: px(i as f32 * 10.),
+                layout: Arc::new(gpui::LineLayout {
+                    width: px(10.),
+                    ..Default::default()
+                }),
+            })
+            .collect();
+        for (limit, clearance) in [(100., 0.), (60., 100.)] {
+            let lines = p.lay(Some(px(limit)), &segs);
+            assert_eq!(lines.len(), 3);
+            let balanced = p.balanced(lines, Some(px(limit)), &segs);
+            assert_eq!(balanced.len(), 3);
+            assert_eq!(
+                balanced.iter().map(|l| f32::from(l.clearance)).sum::<f32>(),
+                clearance
+            );
+            assert_eq!(
+                balanced[0].indent,
+                px(if clearance == 0. { 40. } else { 0. })
+            );
+        }
     }
 }

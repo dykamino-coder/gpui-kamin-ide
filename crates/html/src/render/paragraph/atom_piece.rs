@@ -89,6 +89,8 @@ fn atom_piece_in(
     // Static overlays use the vertical paragraph path only when its
     // containing block supplies the turned coordinate frame. A shared-band
     // block retains its hypothetical static point even without flow text.
+    // Inline-CB offers handle horizontal frames; turned paragraphs must
+    // position overlays before the containing block rotates their coordinates.
     let plain_flow = !inherited.wm().vertical()
         && (!inherited.wm().rtl()
             || (flow_text && inherited.ortho_limit.is_some())
@@ -96,7 +98,7 @@ fn atom_piece_in(
     let rot_block =
         inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
-        && !in_inline_cb
+        && (!in_inline_cb || inherited.wm().turned())
         && at_static_position(&e.style)
         && (inline_level(e)
             || e.style.inline_display == Some(true)
