@@ -100,6 +100,8 @@ pub(super) fn band_nest(
         return None;
     }
     let vcx = opts.cx.vcx();
+    // The step-8 key of a paint group comes before its descendants' keys.
+    let group_key = paint_group(&c.style).then(|| opts.cx.next_paint_key());
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
     let mut merged = inherit(inherited, &c.style, vcx);
@@ -130,7 +132,7 @@ pub(super) fn band_nest(
     )?;
     trim::route_end(&mut seq, &merged);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
-    let group = paint_group(&c.style).then(|| group_wrap(c, inherited, vcx));
+    let group = group_key.map(|key| (group_wrap(c, inherited, vcx), key));
     Some(crate::layout::float::band_flow::Nest {
         group,
         kids,

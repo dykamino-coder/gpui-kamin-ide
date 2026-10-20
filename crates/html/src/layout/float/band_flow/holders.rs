@@ -55,15 +55,15 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
         Some(true) => (at.height - s.y - s.b, s.x),
         Some(false) => (s.y, if at.inline_up { at.cb - s.x - s.i } else { s.x }),
     };
-    let el = match kid
+    let group = kid
         .nest
         .as_ref()
-        .and_then(|n| n.group.as_ref().map(|g| (n, g)))
-    {
+        .and_then(|n| n.group.as_ref().map(|g| (n, g)));
+    let el = match group {
         // A nested block is horizontal (`band_nest_block`): the group's
         // container is its border box, and its descendants are placed from
         // that box's corner.
-        Some((nest, group)) => {
+        Some((nest, (group, _))) => {
             let container = div()
                 .relative()
                 .w(px(s.i))
@@ -74,10 +74,17 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
         }
         None => el,
     };
-    div()
+    let held = div()
         .absolute()
         .left(px(left - origin.0))
         .top(px(top - origin.1))
         .child(el)
-        .into_any_element()
+        .into_any_element();
+    // A paint group is painted on the level of positioned boxes, after the
+    // inline foreground of its stacking context (CSS Color 4 §opacity,
+    // CSS Transforms 1 §transform-rendering).
+    match group {
+        Some((_, (_, key))) => gpui::PaintLast::new(held).key(*key).into_any_element(),
+        None => held,
+    }
 }

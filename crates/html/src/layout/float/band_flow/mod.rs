@@ -154,11 +154,18 @@ fn frame(
     } else {
         div().flex().flex_col().w(px(avail.max(0.0)))
     };
-    let col = if matches!(kind, Kind::Float { .. }) {
+    let mut col = if matches!(kind, Kind::Float { .. }) {
         col.items_start()
     } else {
         col
     };
+    // CSS 2.1 Appendix E.2 step 5: a float is painted atomically, as if it
+    // created a stacking context, whatever box it is (scroller, table,
+    // replaced); its positioned descendants still belong to the enclosing
+    // context, which the atomic paint passes them to.
+    if matches!(kind, Kind::Float { .. }) {
+        col.style().paint_atomic = Some(true);
+    }
     let el = if matches!(kind, Kind::Float { .. }) {
         crate::paint::decorations::outline_phase::scope(el, Some(paint))
     } else {

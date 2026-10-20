@@ -230,10 +230,16 @@ impl Hooks for BandFlow {
         cx: &mut App,
     ) {
         let owner = Some(&self.paint);
+        // The host is not a stacking context (CSS 2.1 Appendix E.2): later
+        // block backgrounds of the enclosing context paint before the
+        // inline foreground of its runs. Paint groups keep their own
+        // boundary (`holders`).
         crate::paint::decorations::outline_phase::flow(owner, window, cx, |window, cx| {
-            for el in self.built.iter_mut() {
-                el.paint(window, cx);
-            }
+            gpui::paint_reopen(|| {
+                for el in self.built.iter_mut() {
+                    el.paint(window, cx);
+                }
+            });
         });
     }
 }

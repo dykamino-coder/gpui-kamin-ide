@@ -63,8 +63,9 @@ pub struct Nest {
     /// The box is a paint group (a stacking context, a mask or a clip):
     /// its effects wrap the box together with every descendant, floats
     /// included, while the descendants still take part in the host's
-    /// exclusions (CSS 2.2 §9.4.1; CSS Color 4 §opacity).
-    pub group: Option<GroupWrap>,
+    /// exclusions (CSS 2.2 §9.4.1; CSS Color 4 §opacity). The key orders it
+    /// among the positioned layer of its stacking context (Appendix E step 8).
+    pub group: Option<(GroupWrap, u64)>,
 }
 
 /// Applies a paint group's effects (opacity, transform, filter, mask, clip)
