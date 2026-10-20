@@ -22,7 +22,7 @@ pub(crate) fn eligible(element: &Element) -> bool {
         && !style.float.is_some_and(|value| value != 0)
         && !style.intrinsic_wrapper_required
         && !style.contains_width() && !style.contains_height()
-        && style.calc_size.iter().all(Option::is_none)
+        && style.calc_size.iter().chain(style.calc_size_max.iter()).all(Option::is_none)
         && (keyword(style.width) || keyword(style.height))
         && ![style.min_width, style.max_width, style.min_height, style.max_height]
             .into_iter().any(keyword)

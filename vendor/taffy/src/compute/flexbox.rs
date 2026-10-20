@@ -323,14 +323,18 @@ impl AlgoConstants {
 fn calc_size_derived(
     size: Size<Option<f32>>,
     cs: [Option<(f32, f32, f32, f32)>; 4],
+    basis: [Dimension; 6],
+    edges: Size<f32>,
 ) -> Size<Option<f32>> {
     Size {
         width: match cs[0] {
-            Some(f) => size.width.map(|w| crate::style::apply_calc_size(f, w)),
+            Some(f) if basis[0].is_auto() => size.width.map(|w| crate::style::apply_calc_size_box(f, w, edges.width)),
+            Some(_) => None,
             None => size.width,
         },
         height: match cs[1] {
-            Some(f) => size.height.map(|h| crate::style::apply_calc_size(f, h)),
+            Some(f) if basis[1].is_auto() => size.height.map(|h| crate::style::apply_calc_size_box(f, h, edges.height)),
+            Some(_) => None,
             None => size.height,
         },
     }
@@ -1278,6 +1282,8 @@ fn generate_anonymous_flex_items(
                         .maybe_apply_aspect_ratio(aspect_ratio)
                         .maybe_add(box_sizing_adjustment),
                     child_style.calc_size(),
+                    child_style.calc_size_basis(),
+                    if child_style.calc_size_content_box() { pb_sum } else { Size::ZERO },
                 ),
                 size_style: child_style.size(),
                 min_size: min_transferred.maybe_add(box_sizing_adjustment),
@@ -1550,6 +1556,9 @@ fn determine_flex_base_size(
         let mut child_cross_size_is_definite = child.size.cross(dir).is_some();
         let child_known_dimensions = {
             let mut ckd = child.size.with_main(dir, None);
+            if ckd.cross(dir).is_none() {
+                ckd.set_cross(dir, cross_keyword::fit_content_size(child, constants, cross_axis_available_space));
+            }
             // Clamp the definite cross size by the cross min/max sizes so that sizes
             // transferred through an intrinsic aspect ratio (e.g. for replaced elements)
             // are based on the used cross size.
@@ -1855,11 +1864,12 @@ fn determine_flex_base_size(
         // `width: 60px; min-width: calc-size(auto, size + 40px)` с содержимым
         // 80 — min(60, 80) + 40 = 100 (`calc-size-flex-002/003/005/006/009`).
         {
-            let cs = tree.get_flexbox_child_style(child.node).calc_size();
+            let calc_style = tree.get_flexbox_child_style(child.node);
+            let cs = calc_style.calc_size();
             let min_f = if dir.is_row() { cs[2] } else { cs[3] };
-            if let (Some(f), None) = (min_f, style_min_main_size) {
+            if let (Some(f), None, true) = (min_f, style_min_main_size, calc_style.calc_size_basis()[if dir.is_row() { 2 } else { 3 }].is_auto()) {
                 child.resolved_minimum_main_size =
-                    crate::style::apply_calc_size(f, child.resolved_minimum_main_size);
+                    crate::style::apply_calc_size_box(f, child.resolved_minimum_main_size, if calc_style.calc_size_content_box() { padding_border_axes_sums.main(dir).unwrap_or(0.0) } else { 0.0 });
             }
         }
 
@@ -2979,9 +2989,7 @@ fn determine_hypothetical_cross_size(
             None
         } else {
             child.size.cross(constants.dir)
-        })
-        .maybe_clamp(transferred_min_cross, transferred_max_cross)
-        .maybe_max(padding_border_sum);
+        });
 
         let child_available_cross = available_space
             .cross(constants.dir)
@@ -2999,6 +3007,11 @@ fn determine_hypothetical_cross_size(
             Some(child.target_size.main(constants.dir)),
             child_available_cross,
         );
+
+        let child_cross = child_cross
+            .or_else(|| cross_keyword::fit_content_size(child, constants, child_available_cross))
+            .maybe_clamp(transferred_min_cross, transferred_max_cross)
+            .maybe_max(padding_border_sum);
 
         let child_inner_cross = child_cross.unwrap_or_else(|| {
             let measured = tree
@@ -3041,12 +3054,6 @@ fn determine_hypothetical_cross_size(
                 )
                 .size
                 .get_abs(constants.dir.cross_axis());
-            let cs = tree.get_flexbox_child_style(child.node).calc_size();
-            let min_f = if constants.is_row { cs[3] } else { cs[2] };
-            let measured = match (min_f, ratio_cross) {
-                (Some(f), Some(_)) => crate::style::apply_calc_size(f, measured),
-                _ => measured,
-            };
             // Definite-width fit-content in a non-stretched column must not
             // fall below min-content, capped at max-content. Every probe keeps
             // native post-flex known-axis definiteness, including main height.

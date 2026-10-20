@@ -96,6 +96,13 @@ pub fn apply_calc_size(f: (f32, f32, f32, f32), size: f32) -> f32 {
     (size * mul + add).min(max).max(min).max(0.0)
 }
 
+/// Resolve a calculation in the content or border box selected by box-sizing.
+#[inline]
+pub fn apply_calc_size_box(f: (f32, f32, f32, f32), size: f32, edges: f32) -> f32 {
+    apply_calc_size(f, (size - edges).max(0.0)) + edges
+}
+
+
 /// The core set of styles that are shared between all CSS layout nodes
 ///
 /// Note that all methods come with a default implementation which simply returns the default value for that style property
@@ -153,6 +160,10 @@ pub trait CoreStyle {
     fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
         [None; 4]
     }
+    /// Sizing keywords retained as the basis of each calc-size expression.
+    fn calc_size_basis(&self) -> [Dimension; 6] { [Dimension::auto(); 6] }
+    /// Whether calc-size expressions operate on the content box.
+    fn calc_size_content_box(&self) -> bool { false }
 
     /// The direction of text, table and grid columns, and horizontal overflow.
     #[inline(always)]
@@ -1072,6 +1083,12 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// и снизу — `(mul, add, max, min)` в точках раскладки (см.
     /// [`apply_calc_size`]).
     pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
+    /// KaminIDE patch: calculations use the CSS content box before adding edges.
+    pub calc_size_content_box: bool,
+    /// calc-size basis for preferred, minimum, maximum sizes, X/Y.
+    pub calc_size_basis: [Dimension; 6],
+    /// Maximum-size calculations, X/Y.
+    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
     /// How large should the gaps between items in a grid or flex container be?
     #[cfg(any(feature = "flexbox", feature = "grid"))]
     #[cfg_attr(feature = "serde", serde(default = "style_helpers::zero"))]
@@ -1269,6 +1286,9 @@ impl<S: CheapCloneStr> Style<S> {
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         safe_alignment: (false, false, false, false),
         calc_size: [None; 4],
+        calc_size_content_box: false,
+        calc_size_basis: [Dimension::auto(); 6],
+        calc_size_max: [None; 2],
         #[cfg(any(feature = "flexbox", feature = "grid"))]
         align_items: AlignItems::NORMAL,
         align_self: None,
@@ -1362,6 +1382,8 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
         self.calc_size
     }
+    fn calc_size_basis(&self) -> [Dimension; 6] { self.calc_size_basis }
+    fn calc_size_content_box(&self) -> bool { self.calc_size_content_box }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -1528,6 +1550,8 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
         (*self).calc_size()
     }
+    fn calc_size_basis(&self) -> [Dimension; 6] { (*self).calc_size_basis() }
+    fn calc_size_content_box(&self) -> bool { (*self).calc_size_content_box() }
 
     #[inline(always)]
     fn box_generation_mode(&self) -> BoxGenerationMode {
@@ -2262,6 +2286,9 @@ mod tests {
             #[cfg(any(feature = "flexbox", feature = "grid"))]
             safe_alignment: (false, false, false, false),
             calc_size: [None; 4],
+            calc_size_content_box: false,
+            calc_size_basis: [crate::Dimension::auto(); 6],
+            calc_size_max: [None; 2],
             #[cfg(feature = "flexbox")]
             flex_balance_lines: 0,
             #[cfg(feature = "flexbox")]

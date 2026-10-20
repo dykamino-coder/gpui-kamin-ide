@@ -6,6 +6,8 @@ use slotmap::SparseSecondaryMap as SecondaryMap;
 use slotmap::{DefaultKey, SlotMap};
 
 use super::kamin_calc::calc_value;
+#[path = "calc_size.rs"]
+mod calc_size;
 #[path = "computed_output.rs"]
 mod computed_output;
 #[path = "node_lifetime.rs"]
@@ -321,53 +323,7 @@ where
         if inputs.run_mode == RunMode::PerformHiddenLayout {
             return compute_hidden_layout(self, node_id);
         }
-        let expressions = self.taffy.nodes[node_id.into()].style.calc_size;
-        let width = expressions[0].filter(|_| inputs.known_dimensions.width.is_none());
-        let height = expressions[1].filter(|_| inputs.known_dimensions.height.is_none());
-        let mut resolved = inputs;
-        if let Some(expression) = width {
-            let auto = self.compute_child_layout_inner(
-                node_id,
-                LayoutInput {
-                    run_mode: RunMode::ComputeSize,
-                    ..resolved
-                },
-                #[cfg(feature = "block_layout")]
-                None,
-            );
-            let ratio = self.taffy.nodes[node_id.into()].style.aspect_ratio;
-            let base = match (ratio, resolved.known_dimensions.height) {
-                (Some(ratio), Some(height)) => auto.size.width.max(height * ratio),
-                _ => auto.size.width,
-            };
-            resolved.known_dimensions.width = Some(crate::style::apply_calc_size(expression, base));
-            // The parser folds fixed-length bases into ordinary lengths. These
-            // remaining expressions have intrinsic keyword bases, so their
-            // used width does not make the axis definite for child percentages.
-            resolved.known_dimensions_are_definite.width = false;
-        }
-        if let Some(expression) = height {
-            let auto = self.compute_child_layout_inner(
-                node_id,
-                LayoutInput {
-                    run_mode: RunMode::ComputeSize,
-                    ..resolved
-                },
-                #[cfg(feature = "block_layout")]
-                None,
-            );
-            let ratio = self.taffy.nodes[node_id.into()]
-                .style
-                .aspect_ratio
-                .filter(|ratio| *ratio > 0.0);
-            let base = match (ratio, resolved.known_dimensions.width) {
-                (Some(ratio), Some(width)) => auto.size.height.max(width / ratio),
-                _ => auto.size.height,
-            };
-            resolved.known_dimensions.height =
-                Some(crate::style::apply_calc_size(expression, base));
-            resolved.known_dimensions_are_definite.height = false;
-        }
+        let resolved = self.resolve_calc_size(node_id, inputs);
         self.compute_child_layout_inner(
             node_id,
             resolved,

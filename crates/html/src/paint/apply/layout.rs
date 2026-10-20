@@ -9,6 +9,7 @@ use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
 
 mod alignment;
+mod calc_size;
 mod display_axes;
 mod grid_gap;
 mod ratio_constraints;
@@ -147,7 +148,7 @@ fn ratio_as_auto_min(c: &Computed) -> bool {
         // соотношением (`vendor/taffy` — `calc_size_derived`, автоминимум):
         // эмуляция явным минимумом спрятала бы соотношение от неё
         // (`calc-size-aspect-ratio-001…004`).
-        && c.calc_size.iter().all(Option::is_none)
+        && c.calc_size.iter().chain(c.calc_size_max.iter()).all(Option::is_none)
         && visible(c.overflow_x)
         && visible(c.overflow_y)
         && !c.scroller

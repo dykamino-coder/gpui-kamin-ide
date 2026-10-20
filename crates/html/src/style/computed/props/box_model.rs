@@ -26,6 +26,9 @@ impl Computed {
                 self.accept_declaration();
             }
         }
+        if super::calc_size::apply(self, key, v, vcx) {
+            return;
+        }
         match key {
             "box-sizing" => self.border_box = accept_parsed!(self, Some(v == "border-box")),
 
@@ -33,31 +36,6 @@ impl Computed {
             // (CSS 2.1 §10): `max-height: -1px` доезжал до раскладки и
             // схлопывал коробку в ноль. У `min-*` отрицательное поднимает
             // сама раскладка, но объявление всё равно отбрасывается.
-            "width" | "height" | "min-width" | "min-height" if calc_size_arg(v).is_some() => {
-                let i = match key {
-                    "width" => 0,
-                    "height" => 1,
-                    "min-width" => 2,
-                    _ => 3,
-                };
-                let slot = match i {
-                    0 => &mut self.width,
-                    1 => &mut self.height,
-                    2 => &mut self.min_width,
-                    _ => &mut self.min_height,
-                };
-                match calc_size_arg(v) {
-                    Some(CalcSize::Fixed(px)) => {
-                        *slot = Some(Len::Px(px));
-                        self.calc_size[i] = None;
-                    }
-                    Some(CalcSize::Over(f)) => {
-                        *slot = if i < 2 { Some(Len::Auto) } else { None };
-                        self.calc_size[i] = Some(f);
-                    }
-                    None => {}
-                }
-            }
             "width" => {
                 self.width_inherit = v == "inherit";
                 self.stretch_size[0] = stretch_keyword(v);
