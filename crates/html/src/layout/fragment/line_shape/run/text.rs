@@ -1,8 +1,8 @@
 //! Текст строки и обрезка пробелов на разрывах для формы прогона.
 
 use crate::dom::Node;
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::LineFrame;
-use crate::render::out_of_flow;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

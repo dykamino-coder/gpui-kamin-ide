@@ -1,12 +1,12 @@
 //! Формы строк и рамки строк.
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::grid_bands::grid_stack;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::is_blank;
 use crate::style::computed::{Align, Display};
 use crate::style::values::value::Len;
 mod run;
