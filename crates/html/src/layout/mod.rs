@@ -3,6 +3,7 @@
 
 pub mod atom;
 pub mod block;
+pub(crate) mod box_kind;
 pub mod cx;
 pub mod float;
 pub mod fragment;

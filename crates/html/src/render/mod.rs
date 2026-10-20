@@ -29,9 +29,8 @@ pub(crate) use inline_splits::split_block_in_inline;
 pub(super) mod native_paragraph_route;
 
 pub(super) mod box_div;
+pub(crate) use crate::layout::box_kind::*;
 pub(crate) use crate::render::box_div::*;
-pub(super) mod classify;
-pub(crate) use crate::render::classify::*;
 pub(super) mod util;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
