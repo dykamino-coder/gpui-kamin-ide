@@ -11,6 +11,8 @@ import { useChatScrollPin } from './useChatScrollPin'
 import { getRenderModel } from './derived-cache'
 import { isApiErrorEntry } from './prepare-jsonl-entries'
 import { shouldShrinkWindow } from './shrink-window'
+import { selectDrawableWindow } from './render-window'
+import { noteChatWindow } from './chat-window-diag'
 import { chatAtBottom } from '../../signals/ui'
 import { replayProgressByTab, setReplayProgress } from '../../signals/replay-progress'
 import { mcpLoading } from '../../signals/connection'
@@ -70,7 +72,9 @@ export function JsonlViewer(): JSX.Element {
   // vnode mounted then unmounted by a switch can't be safely re-used across the
   // remount); per-entry on a tool-result/interrupt/skip version bump (the only
   // things that change a committed row's output).
-  const vnodeCacheRef = useRef(new Map<string, { vnode: JSX.Element; ver: string }>())
+  // A cached `null` remembers that a committed row draws nothing, so the
+  // drawable window (render-window.ts) can skip it without re-rendering.
+  const vnodeCacheRef = useRef(new Map<string, { vnode: JSX.Element | null; ver: string }>())
   // Tab whose JSONL is still replaying (no entries yet). Lets us show a
   // "Loading conversation…" cue instead of the "empty session" placeholder —
   // a large session's replay otherwise looks identical to a brand-new session.
@@ -420,17 +424,15 @@ export function JsonlViewer(): JSX.Element {
       ) : (
         (() => {
           type Prepared = { entry: JsonlEntryData; rendered: any; isAssistant: boolean }
-          const prepared: Prepared[] = []
 
           // `visibleMerged` (segment-scoped, visibility-filtered, interrupt/skip
           // flagged) and `ver` come from the cached render model above. Mount only
-          // the most-recent `renderCap` entries (the rest stay behind a "show
-          // earlier" affordance) so a huge session doesn't build thousands of DOM
-          // nodes in one synchronous pass and freeze the thread. The tail (recent
-          // turns + any live stream) is always inside the window.
-          const hiddenCount = Math.max(0, visibleMerged.length - renderCap)
-          hiddenCountRef.current = hiddenCount // for the scroll-up auto-loader
-          const shown = hiddenCount > 0 ? visibleMerged.slice(hiddenCount) : visibleMerged
+          // the most-recent `renderCap` rows that DRAW (the rest stay behind the
+          // "earlier messages" affordance) so a huge session doesn't build
+          // thousands of DOM nodes in one synchronous pass. A row that renders
+          // nothing never takes a slot (render-window.ts, INC-2026-0071): a tail
+          // of counted-but-empty rows used to mount nothing under the pill.
+          const total = visibleMerged.length
 
           // Per-entry vnode cache (see vnodeCacheRef). A committed row's rendered
           // output only changes when `ver` (tool-result text sum + interrupt/skip
@@ -441,37 +443,45 @@ export function JsonlViewer(): JSX.Element {
           // hand-off and must never be cached. Keep a generous uncached tail that
           // comfortably exceeds the trailing-metadata a single turn appends.
           const LIVE_TAIL_UNCACHED = 12
-          const liveCutoff = shown.length - LIVE_TAIL_UNCACHED
+          const liveCutoff = total - LIVE_TAIL_UNCACHED
           const usedCacheKeys = new Set<string>()
 
-          // Collapse consecutive system/api_error retries — only the last is
-          // interesting (latest attempt + most recent timestamp). Earlier
-          // ones are pure noise during rate-limit back-off storms.
-          for (let i = 0; i < shown.length; i++) {
-            const e = shown[i]
-            if (isApiErrorEntry(e) && i + 1 < shown.length && isApiErrorEntry(shown[i + 1])) {
-              continue
-            }
+          const renderRow = (e: JsonlEntryData, i: number): JSX.Element | null => {
+            // Collapse consecutive system/api_error retries — only the last is
+            // interesting (latest attempt + most recent timestamp). Earlier
+            // ones are pure noise during rate-limit back-off storms.
+            if (isApiErrorEntry(e) && i + 1 < total && isApiErrorEntry(visibleMerged[i + 1]!)) return null
             const cacheKey = e.uuid ?? e.message?.id
             const cacheable = cacheKey != null && i < liveCutoff && !e.__streaming
-            let rendered: JSX.Element | null
             if (cacheable && cacheKey != null) {
               usedCacheKeys.add(cacheKey)
               const hit = cache.get(cacheKey)
-              if (hit && hit.ver === ver) {
-                rendered = hit.vnode
-              } else {
-                rendered = JsonlEntry({ entry: e, toolResults })
-                if (rendered != null) cache.set(cacheKey, { vnode: rendered, ver })
-              }
-            } else {
-              rendered = JsonlEntry({ entry: e, toolResults })
+              if (hit && hit.ver === ver) return hit.vnode
+              const rendered = JsonlEntry({ entry: e, toolResults })
+              cache.set(cacheKey, { vnode: rendered, ver })
+              return rendered
             }
-            if (rendered == null) continue
+            return JsonlEntry({ entry: e, toolResults })
+          }
+          const win = selectDrawableWindow(visibleMerged, renderCap, renderRow)
+          const hiddenCount = win.start
+          hiddenCountRef.current = hiddenCount // for the scroll-up auto-loader
+          const prepared: Prepared[] = win.drawn.map(({ index, value }) => {
+            const e = visibleMerged[index]!
             // tool_group renders as an assistant-styled card, so treat it the
             // same for the merge-chain logic below.
-            prepared.push({ entry: e, rendered, isAssistant: e.type === 'assistant' || e.type === 'tool_group' })
-          }
+            return { entry: e, rendered: value, isAssistant: e.type === 'assistant' || e.type === 'tool_group' }
+          })
+          noteChatWindow({
+            storeRows: currentEntries.length,
+            projectedRows: total,
+            drawnRows: prepared.length,
+            nullRows: win.nullRows,
+            hiddenRows: hiddenCount,
+            renderCap,
+            segments: segs.length,
+            latestSegment: segs.length === 0 || segIdx === segs.length - 1,
+          })
 
           // Evict cache keys not rendered this pass. Bounds the cache to the
           // render window (fixes unbounded growth on long sessions) AND drops
@@ -552,6 +562,20 @@ export function JsonlViewer(): JSX.Element {
           // button to click — the scroll host auto-loads the next chunk as the
           // user scrolls near the top (useChatScrollPin → onNearTop). Kept as a
           // muted spinner so the user knows scrolling up will reveal more.
+          // Nothing in the projection draws (or it is empty) while the store holds
+          // rows: say so instead of leaving a blank panel. Counted by
+          // noteChatWindow above as an empty-window-with-rows episode.
+          if (prepared.length === 0) {
+            return (
+              <div class={styles.empty}>
+                <i class="fas fa-comments" style="font-size:32px;color:var(--text-disabled)" />
+                <span style="color:var(--text-muted);font-size: var(--fs-md);font-weight:500">Session Log</span>
+                <span style="color:var(--text-disabled);font-size:12px;text-align:center;max-width:240px;line-height:1.5">
+                  Messages and tool calls will appear here as the conversation flows
+                </span>
+              </div>
+            )
+          }
           if (hiddenCount > 0) {
             out.unshift(
               <div key="__more-above" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 0 6px;color:var(--text-disabled);font-size:11px">

@@ -1286,6 +1286,8 @@ join without mutating data.
 
 ### BR-22 — Keep live chat render window populated by drawable rows
 
+**Classification and fix candidate (2026-10-20, [INC-2026-0071](runtime-issues/INC-2026-0071.md)):** source/synthetic research located the first divergence at projection → prepared rows: the recent-tip set bypassed `entryIsVisible`, and `JsonlEntry` returned vnodes for rows whose component draws nothing, so a tail of ≥150 such rows mounted no message under the pill (deterministic tests with the real render model and renderer). The INC-0071 Fix PR makes the window count only drawn rows and adds an empty-window-with-rows counter to the stethoscope dump. This does not attribute the historical screenshots. BR-22 stays open: the Windows runtime merge gate below is still required on the Fix PR's exact candidate. BR-16 remains dependent and unchanged.
+
 **Historical owner scenario supplement (2026-09-15):** Before the structured
 `Claude is asking` interaction appears, the last visible message block can
 disappear and later return with the question. Sometimes neither the last
