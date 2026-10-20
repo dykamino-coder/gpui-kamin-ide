@@ -44,7 +44,7 @@ pub(super) fn grouped_with(
     ring_over: Option<(String, crate::style::values::value::Color, [f32; 4])>,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::decorations::outline_phase::context(el, c);
+    let el = crate::paint::decorations::outline_phase::context(el, c, vcx.paint);
     let blur = c.filter.map_or(0.0, |f| f.blur);
     let blend = c.blend.unwrap_or(0);
     // Вершины полигона в `em`/`ex`/`ch`/`vw`/`vh` (css-shapes-1 `polygon()`:

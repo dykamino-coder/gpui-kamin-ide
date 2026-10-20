@@ -165,7 +165,7 @@ pub(crate) fn stack_box(
         .rev()
         .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
         .map(|n| n as *const Node);
-    let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, || {
+    let stackable: Option<Vec<(Element, Shape)>> = with_lines(&merged, line_col_w, opts, |opts| {
         measure_children(
             ge,
             &merged,

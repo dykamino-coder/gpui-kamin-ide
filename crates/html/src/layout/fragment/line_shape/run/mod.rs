@@ -1,7 +1,8 @@
 //! Форма строчного прогона: текст строки, обрезка по разрывам, сдвиги.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::layout::fragment::{LINE_CX, Shape};
+use crate::layout::fragment::Shape;
 use crate::render::{is_blank, measure_font};
 use crate::style::values::value::Len;
 use crate::text::text_box::normal_fraction;
@@ -18,7 +19,14 @@ pub(super) use text::trim_amount;
 /// `HandleInflow` → `IsBreakInside` по строкам). Только при включённом
 /// контексте (`with_lines`) и известной ширине колонки; иначе `None`, и мера
 /// идёт прежним путём (сплошной строчный набор — монолит).
-pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) -> Option<Shape> {
+pub(crate) fn line_run_shape(
+    c: &Element,
+    top: f32,
+    bot: f32,
+    mt: f32,
+    mb: f32,
+    vcx: ValueCx<'_>,
+) -> Option<Shape> {
     // Высота в точках — коробка своей высоты, строки внутри неё режутся так
     // же (css-break-3 §4.3); строки ниже её низа — переполнение, точек там нет.
     let fixed_h = match c.style.height {
@@ -46,20 +54,19 @@ pub(crate) fn line_run_shape(c: &Element, top: f32, bot: f32, mt: f32, mb: f32) 
     // первой и последней строки (`-002-ref`: вторая колонка с полулидингом).
     // Сторона решается БЛИЖАЙШЕЙ коробкой со срезом этой стороны
     // (`brk_trim`).
-    let (inh, w, opts, brk_start, brk_end, item) = LINE_CX.with(|l| {
-        let g = l.borrow();
-        let cx = g.as_ref()?;
+    let (inh, w, opts, brk_start, brk_end, item) = {
+        let cx = vcx.lines?;
         let f = cx.frames.last()?;
         let n = cx.frames.len();
-        Some((
+        (
             f.inh.clone(),
             f.w?,
             cx.opts.clone(),
             brk_trim(&cx.frames, |s| s.text_box_trim_start),
             brk_trim(&cx.frames, |s| s.text_box_trim_end),
             n >= 2 && cx.frames[n - 2].items != 0,
-        ))
-    })?;
+        )
+    };
     if inh.nowrap == Some(true)
         || inh.keep_spaces == Some(true)
         || inh.preserve_newlines == Some(true)

@@ -78,8 +78,8 @@ pub(super) fn line_cuts(
     Vec<(f32, f32)>,
     Option<(f32, f32)>,
 ) {
-    let vcx = opts.cx.vcx();
-    let measured = with_lines(merged, line_col_w, opts, || {
+    let measured = with_lines(merged, line_col_w, opts, |opts| {
+        let vcx = opts.cx.vcx();
         measure(
             copy_m.as_ref().unwrap_or(copy),
             4,

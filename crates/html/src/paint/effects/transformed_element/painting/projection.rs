@@ -20,6 +20,7 @@ pub(crate) fn paint_3d(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let paint = group.values.vcx().paint.cloned();
     use crate::style::computed::{Transform, det4, mul4};
     let sf = scale_factor;
     // Из css-точек в точки устройства — подобие S·M·S⁻¹, S = diag(sf, sf,
@@ -138,9 +139,12 @@ pub(crate) fn paint_3d(
         let spec = plane_spec::plane_spec(&full, flat, outer, (x0, y0, x0 + w * sf, y0 + h * sf));
         let body = |window: &mut Window| {
             window.paint_plane(spec, |window| {
-                crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
-                    child.paint(window, cx)
-                })
+                crate::paint::decorations::outline_phase::scoped(
+                    paint.as_ref(),
+                    window,
+                    cx,
+                    |window, cx| child.paint(window, cx),
+                )
             })
         };
         if root_3d {
@@ -156,8 +160,11 @@ pub(crate) fn paint_3d(
     // Маски детей едут за сплющенной матрицей (как на плоском пути,
     // `Window::with_transformation_masked`).
     window.with_transformation_masked(flat, |window| {
-        crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
-            child.paint(window, cx)
-        })
+        crate::paint::decorations::outline_phase::scoped(
+            paint.as_ref(),
+            window,
+            cx,
+            |window, cx| child.paint(window, cx),
+        )
     });
 }

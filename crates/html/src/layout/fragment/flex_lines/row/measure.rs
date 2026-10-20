@@ -3,20 +3,16 @@
 use super::geometry::{collect_rows, row_container, row_forced};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::edge_avoid;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::finish_row_shape;
 use crate::layout::fragment::shape_kids::stack_kids;
-use crate::layout::fragment::{LINE_CX, ShapeCx};
 use crate::style::values::value::{Len, px_auto_zero};
-pub(crate) fn main_size(c: &Element) -> Option<f32> {
-    LINE_CX
-        .with(|cx| {
-            cx.borrow()
-                .as_ref()
-                .and_then(|c| c.frames.last())
-                .and_then(|f| f.w)
-        })
+pub(crate) fn main_size(c: &Element, vcx: ValueCx<'_>) -> Option<f32> {
+    vcx.lines
+        .and_then(|cx| cx.frames.last())
+        .and_then(|f| f.w)
         .or_else(|| {
             let Some(Len::Px(w)) = c.style.width else {
                 return None;
@@ -49,7 +45,7 @@ pub(crate) fn measure_rows(
     if !row_container(c) {
         return None;
     }
-    let main = main_size(c)?;
+    let main = main_size(c, vcx)?;
     let rows = collect_rows(c, main, depth, cx, vcx)?;
     let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut cuts = Vec::new();

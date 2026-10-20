@@ -12,9 +12,11 @@ pub(super) fn probe(
     line: Option<crate::layout::positioned::containing_block::LineBoxSlot>,
     child: AnyElement,
     paint_context: Rc<VerticalPaint>,
+    fragments: Rc<crate::paint::context::PaintCx>,
 ) -> AnyElement {
     Probe {
         paint_context,
+        fragments,
         spot,
         full,
         line,
@@ -25,6 +27,7 @@ pub(super) fn probe(
 
 struct Probe {
     paint_context: Rc<VerticalPaint>,
+    fragments: Rc<crate::paint::context::PaintCx>,
     spot: SpotCell,
     full: bool,
     /// The line box of the text line this probe sits in, when a paragraph
@@ -61,7 +64,7 @@ impl Hooks for Probe {
         }
         let hole = self.paint_context.map(bounds, px(now.line_thickness));
         now.hole = Some(if now.viewport_static {
-            crate::layout::fragment::static_coordinates::map(hole)
+            crate::layout::fragment::static_coordinates::map(&self.fragments, hole)
         } else {
             hole
         });

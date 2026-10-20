@@ -119,6 +119,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
         cx.positioning = Default::default();
         if !cx.in_render {
             cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
         }
     });
     // Слой начального содержащего блока: внепоточные элементы без
@@ -168,6 +169,7 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
         cx.positioning = Default::default();
         if !cx.in_render {
             cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
         }
     });
     let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);

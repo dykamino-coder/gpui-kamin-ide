@@ -83,6 +83,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
             // preserve translucent blending and offsets larger than spread.
             let (dx, dy) = (sh.x, sh.y);
             let fill = colour.to_hsla();
+            let paint = vcx.paint.cloned();
             out.push(
                 crate::paint::background::exact_layer::ExactLayer::inset(
                     [-bt, -br, -bb, -bl],
@@ -100,6 +101,7 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
                         let (rl, rt) = (bl + dx - spread, bt + dy - spread);
                         let (rr, rb) = (br + dx + spread, bb + dy + spread);
                         crate::layout::fragment::effect_fragment::paint_shadow(
+                            paint.as_deref(),
                             r,
                             (px(rt), px(rb)),
                             window,

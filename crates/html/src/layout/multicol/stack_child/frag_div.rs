@@ -130,7 +130,8 @@ pub(super) fn frag_box_div(
         // (css-gaps-1: «just above the border»).
         body.insert(
             0,
-            crate::paint::gap_rules::painter::GapRulePainter::new(items, spec).hooked(),
+            crate::paint::gap_rules::painter::GapRulePainter::new(items, spec, cx.paint.clone())
+                .hooked(),
         );
     }
     d

@@ -32,8 +32,7 @@ pub struct Paragraph {
     pub(super) ruby_unit: bool,
     /// Ruby text painted in the unrotated plane of a vertical line.
     pub(super) ruby_rotated: bool,
-    /// Ruby base paragraph: where to report its content width for the ruby
-    /// overhang computation (`ruby_base_with_overhang`).
+    /// Ruby base width shared with the ruby overhang computation.
     pub(super) ruby_base_sink: Option<std::rc::Rc<std::cell::Cell<Option<f32>>>>,
     /// `unicode-bidi: plaintext` — сторона письма выбирается для КАЖДОГО
     /// абзаца между жёсткими разрывами по его первому сильному знаку. В

@@ -37,6 +37,7 @@ pub(super) fn probe_of(
         build(cb, avail, shapes, None, None),
         tap.clone(),
         vert,
+        &p.paint,
     );
     let room = AvailableSpace::Definite(px(avail.max(0.0)));
     let space = if vert {

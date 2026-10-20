@@ -4,6 +4,7 @@ use super::flow_kid::intrinsic_width;
 use super::kid::{Kid, Kind};
 use super::{COORD_EPS, Layer, Plan, Probe, Slot, flatten, frame, plan};
 use crate::hooks::Hooks;
+use crate::paint::context::PaintCx;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
     prelude::*, px, size,
@@ -12,6 +13,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 pub struct BandFlow {
+    pub(super) paint: Rc<PaintCx>,
     pub(super) kids: Rc<Vec<Kid>>,
     pub(super) plan: Rc<RefCell<Option<Plan>>>,
     pub(super) built: Vec<AnyElement>,
@@ -23,8 +25,9 @@ pub struct BandFlow {
 }
 
 impl BandFlow {
-    pub fn new(kids: Vec<Kid>, contain_floats: bool) -> Self {
+    pub fn new(kids: Vec<Kid>, contain_floats: bool, paint: Rc<PaintCx>) -> Self {
         BandFlow {
+            paint,
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
@@ -51,6 +54,7 @@ impl Hooks for BandFlow {
         let kids = self.kids.clone();
         let cache = self.plan.clone();
         let fragment = self.fragment.clone();
+        let paint = self.paint.clone();
         let style = gpui::Style {
             flex_shrink: 0.0,
             ..Default::default()
@@ -64,64 +68,62 @@ impl Hooks for BandFlow {
         // of this inline-size calculation (§§10.6.3, 10.6.7).
         let (vert, contain_floats) = (self.vert, self.contain_floats);
         let id = window.request_measured_layout(style, move |known, available, window, cx| {
-            {
-                let v = vert.is_some();
-                // Строчная ось — ширина в горизонтальном письме, высота в
-                // вертикальном; блочный размер плана уходит в другую ось.
-                let (known_inline, avail_inline) = if vert.is_some() {
-                    (known.height, available.height)
+            let v = vert.is_some();
+            // Строчная ось — ширина в горизонтальном письме, высота в
+            // вертикальном; блочный размер плана уходит в другую ось.
+            let (known_inline, avail_inline) = if vert.is_some() {
+                (known.height, available.height)
+            } else {
+                (known.width, available.width)
+            };
+            let phys = |inline: f32, block: f32| {
+                if vert.is_some() {
+                    size(px(block), px(inline))
                 } else {
-                    (known.width, available.width)
-                };
-                let phys = |inline: f32, block: f32| {
-                    if vert.is_some() {
-                        size(px(block), px(inline))
-                    } else {
-                        size(px(inline), px(block))
-                    }
-                };
-                let cb = match (known_inline, avail_inline) {
-                    (Some(w), _) => f32::from(w),
-                    (None, AvailableSpace::Definite(w)) => {
-                        let w = f32::from(w);
-                        let (mn, mx) = window.with_nested_layout(|window| {
-                            let p = &mut Probe::new(window, cx, v, fragment.as_ref());
-                            (
-                                intrinsic_width(&kids, false, p),
-                                intrinsic_width(&kids, true, p),
-                            )
-                        });
-                        // §10.3.5: `min(max(min-content, available), max-content)`.
-                        mx.max(mn).min(mn.max(w))
-                    }
-                    (None, a) => window.with_nested_layout(|window| {
-                        let p = &mut Probe::new(window, cx, v, fragment.as_ref());
-                        intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
-                    }),
-                };
-                if let Some(p) = cache.borrow().as_ref()
-                    && (p.width - cb).abs() < COORD_EPS
-                {
-                    if let Some(f) = &fragment {
-                        f.publish(p, &kids);
-                    }
-                    return phys(cb, p.height);
+                    size(px(inline), px(block))
                 }
-                let p = window.with_nested_layout(|window| {
-                    plan(
-                        &kids,
-                        cb,
-                        contain_floats,
-                        &mut Probe::new(window, cx, v, fragment.as_ref()),
-                    )
-                });
+            };
+            let cb = match (known_inline, avail_inline) {
+                (Some(w), _) => f32::from(w),
+                (None, AvailableSpace::Definite(w)) => {
+                    let w = f32::from(w);
+                    let (mn, mx) = window.with_nested_layout(|window| {
+                        let p = &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone());
+                        (
+                            intrinsic_width(&kids, false, p),
+                            intrinsic_width(&kids, true, p),
+                        )
+                    });
+                    // §10.3.5: `min(max(min-content, available), max-content)`.
+                    mx.max(mn).min(mn.max(w))
+                }
+                (None, a) => window.with_nested_layout(|window| {
+                    let p = &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone());
+                    intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
+                }),
+            };
+            if let Some(p) = cache.borrow().as_ref()
+                && (p.width - cb).abs() < COORD_EPS
+            {
                 if let Some(f) = &fragment {
-                    f.publish(&p, &kids);
+                    f.publish(p, &kids);
                 }
-                let h = p.height;
-                *cache.borrow_mut() = Some(p);
-                phys(cb, h)
+                return phys(cb, p.height);
             }
+            let p = window.with_nested_layout(|window| {
+                plan(
+                    &kids,
+                    cb,
+                    contain_floats,
+                    &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone()),
+                )
+            });
+            if let Some(f) = &fragment {
+                f.publish(&p, &kids);
+            }
+            let h = p.height;
+            *cache.borrow_mut() = Some(p);
+            phys(cb, h)
         });
         if let Some(f) = &self.fragment {
             f.node.record(id);
@@ -159,7 +161,13 @@ impl Hooks for BandFlow {
             None => {
                 let kids = self.kids.clone();
                 window.with_nested_layout(|window| {
-                    let p = &mut Probe::new(window, cx, vert.is_some(), self.fragment.as_ref());
+                    let p = &mut Probe::new(
+                        window,
+                        cx,
+                        vert.is_some(),
+                        self.fragment.as_ref(),
+                        self.paint.clone(),
+                    );
                     plan(&kids, cb, contain_floats, p)
                 })
             }
@@ -198,6 +206,7 @@ impl Hooks for BandFlow {
                 (kid.build)(cb, s.avail, s.shapes.clone(), s.h, None),
                 tap,
                 vert.is_some(),
+                &self.paint,
             );
             // Логическое место → физическое (Blink
             // `writing_mode_converter.cc:80-110`): line-left is the bottom
@@ -231,7 +240,8 @@ impl Hooks for BandFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        crate::paint::decorations::outline_phase::flow(window, cx, |window, cx| {
+        let owner = Some(&self.paint);
+        crate::paint::decorations::outline_phase::flow(owner, window, cx, |window, cx| {
             for el in self.built.iter_mut() {
                 el.paint(window, cx);
             }

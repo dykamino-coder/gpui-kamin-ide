@@ -81,7 +81,8 @@ pub(crate) fn multicol_column_stack(
     // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
     // в вертикальном письме их нет (следующий шаг).
     let (kid_parent, kid_starts, kid_par, kids) =
-        crate::layout::fragment::with_lines(&merged, line_col_w, opts, || {
+        crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
+            let vcx = opts.cx.vcx();
             column_kids(
                 &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, vcx,
             )
@@ -176,7 +177,8 @@ pub(crate) fn multicol_column_stack(
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
-    let d = d.children(painter.map(|(b, s)| GapRulePainter::new(b, s).hooked()));
+    let d =
+        d.children(painter.map(|(b, s)| GapRulePainter::new(b, s, opts.cx.paint.clone()).hooked()));
     let mut d = column_stack_div(
         d,
         e,
@@ -195,6 +197,7 @@ pub(crate) fn multicol_column_stack(
         &gap_items,
         rule,
         children,
+        opts,
     );
     if let Some(layer) = fixed_layer {
         d = d.children(layer.finish());

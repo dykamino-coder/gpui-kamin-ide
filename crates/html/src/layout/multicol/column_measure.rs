@@ -116,10 +116,12 @@ impl ColumnStack {
                 cx,
             )
         });
+        let paint = self.paint.clone();
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
                 let probe = ColumnStack {
+                    paint: paint.clone(),
                     children: Vec::new(),
                     count,
                     gap,

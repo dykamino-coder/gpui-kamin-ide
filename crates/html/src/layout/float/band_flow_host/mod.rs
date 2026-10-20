@@ -152,7 +152,11 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         e.marks.adjoining_start,
         host.wm,
     );
-    let flow = crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height);
+    let flow = crate::layout::float::band_flow::BandFlow::new(
+        kids,
+        !e.marks.inflow_height,
+        opts.cx.paint.clone(),
+    );
     let flow = match parent {
         Some(parent) => flow.fragment_flow(
             parent,

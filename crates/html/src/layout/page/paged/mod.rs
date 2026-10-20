@@ -57,6 +57,7 @@ pub fn render_paged_select(
     let opts = &*opts.inner(|cx| {
         if !cx.in_render {
             cx.vertical_paint = Default::default();
+            cx.paint = Default::default();
         }
     });
     let vcx = opts.cx.vcx();

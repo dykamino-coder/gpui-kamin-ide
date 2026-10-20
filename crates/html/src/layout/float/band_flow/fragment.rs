@@ -23,8 +23,10 @@ impl<'a> super::Probe<'a> {
         cx: &'a mut gpui::App,
         vert: bool,
         fragment: Option<&FragmentFlow>,
+        paint: Rc<crate::paint::context::PaintCx>,
     ) -> Self {
         Self {
+            paint,
             window,
             cx,
             vert,

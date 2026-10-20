@@ -4,7 +4,6 @@ use super::line_layout::collect_lines;
 use super::measure::main_size;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::layout::fragment::LineScope;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 
 pub(crate) fn row_break_edge(
@@ -13,8 +12,9 @@ pub(crate) fn row_break_edge(
     avoid: bool,
     vcx: ValueCx<'_>,
 ) -> Option<bool> {
-    let _scope = LineScope::enter(c, vcx);
-    let lines = collect_lines(c, main_size(c)?, 4)?;
+    let lines = crate::layout::fragment::LineCx::child(c, vcx);
+    let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
+    let lines = collect_lines(c, main_size(c, vcx)?, 4)?;
     let edge = if last { lines.last() } else { lines.first() }?;
     Some(edge.iter().any(|(_, k)| {
         if avoid {

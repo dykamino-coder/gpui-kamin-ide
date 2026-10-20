@@ -103,6 +103,7 @@ pub(super) fn column_stack_div(
     gap_items: &Option<crate::paint::gap_rules::GapItems>,
     rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
+    opts: &RenderOpts,
 ) -> gpui::Div {
     let d = if col_vert {
         let d = d.flex();
@@ -130,6 +131,7 @@ pub(super) fn column_stack_div(
                     _ => None,
                 })
             }),
+            opts.cx.paint.clone(),
         )
         .with_static_coordinates(crate::layout::fragment::static_coordinates::needed(e))
         .with_axis(col_axis)

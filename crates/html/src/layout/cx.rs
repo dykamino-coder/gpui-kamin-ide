@@ -24,6 +24,8 @@ pub struct LayoutCx {
     /// Native scroll handle offered to this CSS box by its scroll-area builder.
     pub(crate) scroll_target: Option<Rc<crate::interactive::scroll_target::Target>>,
     /// Prepaint frame shared only by elements of this render tree.
+    /// Traversal state captured by this render tree's deferred painters.
+    pub(crate) paint: Rc<crate::paint::context::PaintCx>,
     pub(crate) vertical_paint: Rc<crate::text::vertical::VerticalPaint>,
     /// Enclosing atomic inlines relative to this clamp count root.
     pub(crate) clamp_atom_depth: u32,
@@ -104,6 +106,8 @@ pub struct LayoutCx {
     pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
     /// Intrinsic inline-size measurement offered to this build only.
     pub(crate) inline_measure: Option<crate::text::vertical::InlineMeasure>,
+    /// Immutable parent frames of this fragmentation measurement.
+    pub(crate) lines: Option<Rc<crate::layout::fragment::LineCx>>,
 }
 
 /// The document of a build. `Default` is an empty document: a host builds a
@@ -128,7 +132,11 @@ impl LayoutCx {
     /// Values of the build: `calc()`/`anchor()` bodies parsed while building
     /// the frame go to the document's frame arena.
     pub(crate) fn vcx(&self) -> ValueCx<'_> {
-        self.doc.0.frame_values()
+        self.doc
+            .0
+            .frame_values()
+            .with_lines(self.lines.as_ref())
+            .with_paint(Some(&self.paint))
     }
 
     /// The next step-8 paint key: taken on entering an element, before its

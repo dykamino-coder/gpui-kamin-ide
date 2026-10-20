@@ -45,6 +45,7 @@ pub fn spot_probe(
         line,
         probe.into_any_element(),
         cx.vertical_paint.clone(),
+        cx.paint.clone(),
     )
 }
 

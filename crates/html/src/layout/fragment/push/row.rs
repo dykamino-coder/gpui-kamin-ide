@@ -19,7 +19,7 @@ pub(super) fn pushed_row_at(
     if !row_container(c) {
         return None;
     }
-    let rows = collect_rows(c, row_main_size(c)?, depth, ShapeCx::COLUMNS, vcx)?;
+    let rows = collect_rows(c, row_main_size(c, vcx)?, depth, ShapeCx::COLUMNS, vcx)?;
     let top = px_auto_zero(c.style.padding.top)? + px_auto_zero(c.style.borders().top)?;
     let gap = px_auto_zero(c.style.gap.and_then(|g| g.0))?.max(0.0);
     let mut y = top;
@@ -48,9 +48,10 @@ pub(super) fn pushed_row_at(
 }
 
 pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32, vcx: ValueCx<'_>) -> bool {
-    let _frame = crate::layout::fragment::LineScope::enter(c, vcx);
+    let lines = crate::layout::fragment::LineCx::child(c, vcx);
+    let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
     let Some(rows) =
-        row_main_size(c).and_then(|main| collect_rows(c, main, 4, ShapeCx::COLUMNS, vcx))
+        row_main_size(c, vcx).and_then(|main| collect_rows(c, main, 4, ShapeCx::COLUMNS, vcx))
     else {
         return false;
     };

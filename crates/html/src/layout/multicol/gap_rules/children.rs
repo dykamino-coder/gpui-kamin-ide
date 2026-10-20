@@ -22,7 +22,7 @@ pub(crate) fn decorated_children(
     });
     let mut layers = Vec::new();
     if let (Some(buffer), Some(spec)) = (context, spec) {
-        layers.push(GapRulePainter::new(buffer, spec).hooked());
+        layers.push(GapRulePainter::new(buffer, spec, opts.cx.paint.clone()).hooked());
     }
     layers.extend(children(&child_opts));
     layers

@@ -80,7 +80,7 @@ impl ColumnStack {
         plan: &[Frag],
         step: f32,
     ) {
-        use crate::layout::fragment::static_coordinates::{Place, StaticCoordinates};
+        use crate::layout::fragment::static_coordinates::{self, Place};
         let places = self.static_places.clone();
         if let Some(places) = &places {
             let mut entries = places.borrow_mut();
@@ -151,10 +151,13 @@ impl ColumnStack {
                 let back = px(col_w - f32::from(laid.width));
                 laid = el.layout_as_root_at(point(at.x - back, at.y), avail, window, cx);
             }
-            let _static_coordinates = places.as_ref().filter(|_| !clone).map(|places| {
-                StaticCoordinates::enter(f.kid, point(x, y - px(f.from)), places.clone())
+            let mapping = places
+                .as_ref()
+                .filter(|_| !clone)
+                .map(|places| (f.kid, point(x, y - px(f.from)), places.clone()));
+            static_coordinates::with(&self.paint, mapping, || {
+                el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
             });
-            el.prepaint_at(point(px(0.0), px(0.0)), window, cx);
             // Retain the actual root width for fragment decoration bounds.
             kid.laid_w.set(kid.laid_w.get().max(f32::from(laid.width)));
         }

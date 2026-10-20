@@ -17,10 +17,16 @@ pub(super) fn paint_body(
     window: &mut Window,
     cx: &mut App,
 ) {
+    let paint = group.values.vcx().paint.cloned();
     if group.placed {
-        crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
-            group.child.paint(window, cx);
-        });
+        crate::paint::decorations::outline_phase::scoped(
+            paint.as_ref(),
+            window,
+            cx,
+            |window, cx| {
+                group.child.paint(window, cx);
+            },
+        );
         return;
     }
     let scale_factor = window.scale_factor();
@@ -49,10 +55,13 @@ pub(super) fn paint_body(
             f32::from(r.origin.x - raw_origin.x),
             f32::from(r.origin.y - raw_origin.y),
         ),
-        None => crate::layout::fragment::effect_fragment::reference_box(Bounds {
-            origin: raw_origin,
-            size: exact,
-        })
+        None => crate::layout::fragment::effect_fragment::reference_box(
+            paint.as_deref(),
+            Bounds {
+                origin: raw_origin,
+                size: exact,
+            },
+        )
         .map_or((w, h, 0.0, 0.0), |r| {
             (
                 f32::from(r.size.width),
@@ -183,6 +192,7 @@ pub(super) fn paint_body(
         }
         let child = &mut group.child;
         crate::layout::fragment::effect_fragment::paint(
+            paint.as_deref(),
             matrix,
             fill_matrix.unwrap_or(matrix),
             group.fragment_clip_ancestor,
@@ -191,15 +201,19 @@ pub(super) fn paint_body(
                 if let Some(exact) = fill_matrix {
                     window.with_css_fill_transform(exact, |window| {
                         crate::paint::decorations::outline_phase::scoped(
+                            paint.as_ref(),
                             window,
                             cx,
                             |window, cx| child.paint(window, cx),
                         )
                     });
                 } else {
-                    crate::paint::decorations::outline_phase::scoped(window, cx, |window, cx| {
-                        child.paint(window, cx)
-                    });
+                    crate::paint::decorations::outline_phase::scoped(
+                        paint.as_ref(),
+                        window,
+                        cx,
+                        |window, cx| child.paint(window, cx),
+                    );
                 }
             },
         );
