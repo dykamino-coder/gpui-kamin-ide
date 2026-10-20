@@ -65,7 +65,7 @@ pub(crate) fn physical(
     let central = !flow.wm().alphabetic_baseline();
     let ccw = flow.wm().line().line_turn()
         == crate::style::computed::writing_mode::Turn::CounterClockwise;
-    let physical = crate::render::element(&child, &context, opts);
+    let physical = opts.cx.build.element(&child, &context, opts);
     let mut wrapper =
         crate::paint::apply::margins(gpui::div().flex().flex_col().flex_shrink_0(), &margins, vcx);
     if (sx, sy) != (0.0, 0.0) {
