@@ -14,13 +14,6 @@
 /// the default (no marks).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Marks {
-    /// A lone float in a vertical parent: its size does not contribute to the
-    /// auto block size of the parent (CSS 2.1 §10.6.3); set by
-    /// `layout::float::wrap::lone`, rendered by `layout::float::outside_block`.
-    pub(crate) outside_block: bool,
-    /// Synthetic float-wrap row (a float beside its flowing text); set by
-    /// `layout::float::wrap::row`, rendered by `float_flow`.
-    pub(crate) float_row: bool,
     /// A column-wide float lifted into the multicol stack as a block; set by
     /// the multicol float pass, read by the stack construction.
     pub(crate) float_block: bool,
@@ -39,7 +32,7 @@ pub struct Marks {
     pub(crate) auto_zero_height: bool,
     /// Anonymous table cell (CSS 2.1 §17.2.1), not an HTML `td`.
     pub(crate) anonymous_cell: bool,
-    /// Synthetic float band host (`shape_flow` render path).
+    /// Synthetic measured float band host (`band_flow_host`).
     pub(crate) shape_flow: Option<ShapeFlow>,
     /// The band host's in-flow content alone sizes it (CSS 2.1 §10.6.3).
     pub(crate) inflow_height: bool,
@@ -60,8 +53,6 @@ pub struct Marks {
 /// Synthetic band host: floats of one run and the content they wrap.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ShapeFlow {
-    /// Side of the first float (fallback of the live `shape-outside` path).
-    pub(crate) right: bool,
     /// Number of leading float children.
     pub(crate) count: usize,
     /// Font size for `em` margins of the measured host.
@@ -74,15 +65,6 @@ pub(crate) struct ShapeFlow {
     pub(crate) wm: crate::style::computed::writing_mode::WritingMode,
     /// The containing block is the initial containing block.
     pub(crate) icb: bool,
-    /// Band layout path; `None` — the live `shape-outside` path.
-    pub(crate) bands: Option<BandPath>,
-}
-
-/// Band layout path of a synthetic band host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum BandPath {
-    /// Measured band host (`band_flow`).
-    Measured,
 }
 
 /// Lead probe: floats `from..to` measure the inline content before them.

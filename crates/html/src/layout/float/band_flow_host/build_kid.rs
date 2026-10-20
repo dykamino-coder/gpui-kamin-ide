@@ -208,8 +208,7 @@ pub(super) fn build_band_kid(
     // through element(), then contributes its measured outer box to bands.
     let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style);
     if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
-        // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
-        // же путём, что у статического хоста (`shape_flow`).
+        // Флоат — блочная коробка (§9.7) каким бы ни был тег.
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
         super::float_box::float_box(&copy, node, cb, inherited, opts)

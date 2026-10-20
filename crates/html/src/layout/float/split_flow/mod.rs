@@ -1,23 +1,11 @@
-//! Обтекание плавающего блока текстом.
-//!
-//! Ряд из двух колонок передаёт главное — «картинка слева, текст справа», — но
-//! в браузере текст, кончив обтекать, возвращается под плавающий блок на всю
-//! ширину. Ряд этого не умеет: колонка так и остаётся узкой до конца абзаца.
-//!
-//! Здесь текст режется надвое по месту, где кончается плавающий блок. Место
-//! ищется тем же переносчиком, что и обычная строка: сколько строк узкой
-//! ширины помещается в высоту блока, столько и уходит вбок, остальное встаёт
-//! под ним на всю ширину.
-//!
-//! Ширина контейнера известна только замеру, а собирать дерево на замере
-//! нельзя — раскладка в этот момент занята. Поэтому замер считает ТОЛЬКО место
-//! разреза и высоту, а дерево собирается в подготовке к отрисовке, где ширина
-//! уже известна из коробки элемента.
+//! A paragraph split at a text offset measured during layout: the first
+//! formatted line in its own `::first-line` style, the rest below it
+//! (`FirstLine`). The container width is known only at measurement, and the
+//! tree cannot be built while layout runs, so the measurement computes only
+//! the cut and the height; the subtree is built at prepaint.
 
 use gpui::{AnyElement, Pixels};
 use std::rc::Rc;
-mod float_flow;
-pub use float_flow::FloatFlow;
 mod first_line;
 pub use first_line::FirstLine;
 

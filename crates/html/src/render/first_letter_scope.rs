@@ -33,15 +33,7 @@ impl Scope {
         style: &Computed,
         opts: &RenderOpts,
     ) -> AnyElement {
-        self.flow(nodes, style, |style| paragraph_probed(nodes, style, opts))
-    }
-
-    pub(super) fn flow(
-        &mut self,
-        nodes: &[Node],
-        style: &Computed,
-        build: impl FnOnce(&Computed) -> AnyElement,
-    ) -> AnyElement {
+        let build = |style: &Computed| paragraph_probed(nodes, style, opts);
         let first = self.first;
         if nodes.iter().any(|n| {
             in_flow(

@@ -76,7 +76,6 @@ mod marks_tests {
         );
         let (plain, forged) = (find(&plain, "a"), find(&forged, "a"));
         assert_eq!(plain.marks, forged.marks);
-        assert!(!forged.marks.outside_block);
         assert_eq!(format!("{:?}", plain.style), format!("{:?}", forged.style));
     }
 

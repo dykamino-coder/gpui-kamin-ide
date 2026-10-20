@@ -131,7 +131,6 @@ pub(super) fn blocks_flow(
                 ordered_context,
                 under_tf,
                 &frame,
-                &mut letter_scope,
                 &mut out,
                 &mut below,
             );

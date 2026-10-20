@@ -10,8 +10,7 @@ use crate::style::computed::Computed;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
-/// точках. Поля кладёт слот (обёртка), а не сама коробка — как у
-/// статического хоста (`shape_flow`, ветка атомов).
+/// точках. Поля кладёт слот (обёртка), а не сама коробка.
 pub(super) fn band_atom(
     c: &Element,
     inherited: &Computed,

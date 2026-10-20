@@ -1,9 +1,9 @@
 //! Хост полос обтекания с ИЗМЕРЕННЫМИ размерами (шаги F2, F3, F5 плана
 //! `target/scout-float-bands-design.md`).
 //!
-//! Статический бандовый хост (`render.rs`, `shape_flow` с `bands=1`) знает
-//! только литералы стиля: ширину содержащего блока точками и размеры каждого
-//! флоата и куска хвоста точками. Здесь всё это берётся из раскладки:
+//! The one float placement of the engine: every float run of a block
+//! container is planned here (`wrap_floats`). Sizes the style does not give
+//! come from layout:
 //!
 //! * ширина контекста — из замера (`known`/`available`) и из `bounds` в
 //!   `prepaint`, а не из `style.width` (F2: `<td>` без ширины в стиле, тело
