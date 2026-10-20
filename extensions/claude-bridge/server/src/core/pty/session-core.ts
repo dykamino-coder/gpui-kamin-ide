@@ -36,7 +36,7 @@ import {
   writeSessionClaudeMd,
   applySyncData,
 } from './session-settings'
-import { archiveTranscriptForSession, dropArchivedTranscript } from './transcript-archive'
+import { archiveTranscriptForSession, dropArchivedTranscript, readArchiveMeta } from './transcript-archive'
 import { forgetModelSelection, modelForResumeWithSelection } from './model-selection'
 import {
   findOrRecreateSettingsDir,
@@ -712,6 +712,7 @@ export function detachSession(sessionId: string): void {
   if (session.detachGraceTimer) return // already detached
 
   lifecycleLog('session_detach', { sessionId, graceMs: DETACH_GRACE_MS })
+  session.outputDebounce?.reset()
   session.detachedAt = new Date()
   notifySessionAttachmentChanged(session)
   session.detachGraceTimer = setTimeout(() => {
@@ -736,6 +737,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
     clearTimeout(session.detachGraceTimer)
     session.detachGraceTimer = null
   }
+  session.outputDebounce?.reset()
   session.detachedAt = null
   session.ws = ws
   session.lastActivityAt = new Date()
@@ -873,6 +875,7 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   // isSessionTearingDown), only the exiting session's own SessionEnd still
   // resolves, and every path funnels into the single idempotent finalizer.
   session.state = 'exiting'
+  session.outputDebounce?.dispose()
   session.teardown = { startedAt: Date.now(), timer: null, finalized: false }
   session.jsonlWatcher?.stop()
   // The exiting CLI must not keep a server→client MCP stream (or a pending
@@ -1005,6 +1008,7 @@ export async function restartWithEffort(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
   session.jsonlWatcher?.stop()
@@ -1069,6 +1073,7 @@ export async function restartWithModel(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
   session.jsonlWatcher?.stop()
@@ -1139,6 +1144,7 @@ export function shutdownAll(): void {
   debugLog('Shutting down all PTY sessions', { count: sessions.size })
   for (const [id, session] of sessions) {
     lifecycleLog('session_destroy', { sessionId: id, reason: 'shutdown' })
+    session.outputDebounce?.dispose()
     try {
       session.pty.kill()
     } catch {}
@@ -1208,6 +1214,7 @@ function cleanupSession(sessionId: string): void {
   const session = sessions.get(sessionId)
   if (!session) return
 
+  session.outputDebounce?.dispose()
   session.jsonlWatcher?.stop()
   session.statusLineWatcher?.stop()
   // Reject this session's in-flight MCP calls so their promises + any
@@ -1319,52 +1326,63 @@ export function registerChildSession(parentSessionId: string, childSessionId: st
   }
 }
 
-/**
- * Delete session data (settingsDir) for a given conversationId.
- * Finds the settingsDir in SESSIONS_BASE that contains or maps to this conversation,
- * and removes it completely.
- */
-export async function deleteSessionByConversationId(conversationId: string, user: string): Promise<void> {
-  // 1. Check active sessions first — refuse to delete if PTY is running
+/** Delete only data resolved inside the authenticated caller's token namespace. */
+export async function deleteSessionByConversationId(
+  conversationId: string,
+  user: string,
+  tokenId: string,
+): Promise<void> {
+  function refuse(): never {
+    warnLog('Session data deletion refused: conversation not owned by caller', { conversationId, user })
+    throw new Error('Conversation not found in caller token namespace')
+  }
+  // Both identifiers become path components. Refuse traversal rather than sanitize.
+  if (!tokenId || !/^[A-Za-z0-9_-]+$/.test(tokenId) || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(conversationId))
+    refuse()
+  const tokenPath = path.join(path.resolve(SESSIONS_BASE), tokenId)
+  const isPlainDirectory = (dir: string): boolean => {
+    try {
+      const stat = fs.lstatSync(dir)
+      return stat.isDirectory() && !stat.isSymbolicLink()
+    } catch {
+      return false
+    }
+  }
+  if (!isPlainDirectory(tokenPath)) refuse()
+  const meta = readArchiveMeta(conversationId)
+  const projectsDir = path.join(os.homedir(), '.claude', 'projects')
+  let target: { settingsDir: string; jsonlPath: string } | undefined
+  // Never enumerate SESSIONS_BASE or another token's settings directories.
+  for (const entry of fs.readdirSync(tokenPath, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const settingsDir = path.join(tokenPath, entry.name)
+    if (!isPlainDirectory(settingsDir)) continue
+    const slug = path.resolve(settingsDir).replace(/[^a-zA-Z0-9]/g, '-')
+    const projectDir = path.join(projectsDir, slug)
+    const jsonlPath = path.join(projectDir, `${conversationId}.jsonl`)
+    // The server-written archive slug preserves legitimate deletion after CLI
+    // expiry. An absent namespace or conflicting archive ownership fails closed.
+    if (meta && meta.slug !== slug) continue
+    if (meta?.slug === slug || (isPlainDirectory(projectDir) && fs.existsSync(jsonlPath))) {
+      target = { settingsDir, jsonlPath }
+      break
+    }
+  }
+  if (!target) refuse()
   for (const session of sessions.values()) {
-    if (session.cliConversationId === conversationId) {
+    if (
+      session.tokenId === tokenId &&
+      (session.cliConversationId === conversationId || session.conversationAliases?.includes(conversationId))
+    ) {
       throw new Error('Cannot delete an active session — close it first')
     }
   }
-
-  // Explicit deletion must also remove the durable Bridge copy, and it must
-  // happen even when the live JSONL is already gone — the scan below returns
-  // early on the first match and would otherwise leave a resumable transcript
-  // behind after the CLI expired the original (INC-2026-0054).
+  debugLog('Deleting session data', { conversationId, settingsDir: target.settingsDir, user })
   dropArchivedTranscript(conversationId)
   forgetModelSelection(conversationId)
-
-  // 2. Scan SESSIONS_BASE for settingsDir containing this conversationId in its JSONL watcher config
-  //    or find via findOrRecreateSettingsDir
-  const normalizedBase = path.resolve(SESSIONS_BASE)
-  if (!fs.existsSync(normalizedBase)) return
-
-  for (const tokenDir of fs.readdirSync(normalizedBase, { withFileTypes: true })) {
-    if (!tokenDir.isDirectory()) continue
-    const tokenPath = path.join(normalizedBase, tokenDir.name)
-    for (const sessionDir of fs.readdirSync(tokenPath, { withFileTypes: true })) {
-      if (!sessionDir.isDirectory()) continue
-      const candidate = path.join(tokenPath, sessionDir.name)
-      // Check if this settingsDir's slug maps to a JSONL containing this conversationId
-      const slug = path.resolve(candidate).replace(/[^a-zA-Z0-9]/g, '-')
-      const projectsDir = path.join(os.homedir(), '.claude', 'projects')
-      const jsonlPath = path.join(projectsDir, slug, `${conversationId}.jsonl`)
-      if (fs.existsSync(jsonlPath)) {
-        // Found it — delete settingsDir
-        debugLog('Deleting session data', { conversationId, settingsDir: candidate, user })
-        fs.rmSync(candidate, { recursive: true, force: true })
-        // Also delete the JSONL file
-        fs.rmSync(jsonlPath, { force: true })
-        return
-      }
-    }
-  }
-  debugLog('Session data not found for deletion', { conversationId })
+  fs.rmSync(target.settingsDir, { recursive: true, force: true })
+  // Do not follow a project-directory link even when an archive identified ownership.
+  if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
 }
 
 /**
