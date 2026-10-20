@@ -29,12 +29,6 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 pub(crate) mod atom_piece;
 pub(super) mod pieces;
 
-/// Абзац: одна строка текста с прогонами либо гибкая строка из кусков.
-/// Абзац для тех, кто собирает текст сам — содержимое поля ввода.
-pub fn paragraph_public(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    paragraph(nodes, inherited, opts)
-}
-
 pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)
 }

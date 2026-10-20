@@ -151,7 +151,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/box_kind/mod.rs"),
     include_str!("../../layout/box_kind/contexts.rs"),
     include_str!("../../layout/box_kind/line_boxes.rs"),
-    include_str!("../../render/util.rs"),
     include_str!("../../layout/intrinsic_wrap.rs"),
     include_str!("../../text/fonts/style_font.rs"),
     include_str!("../../text/shadow_text.rs"),

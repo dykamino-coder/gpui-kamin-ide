@@ -24,11 +24,9 @@ pub(crate) use crate::dom::pseudo_line_layers;
 pub(super) mod native_paragraph_route;
 
 pub(crate) use crate::layout::box_kind::*;
-pub(crate) use crate::paint::box_tree::styled::*;
-pub(super) mod util;
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};
-pub(crate) use crate::render::util::*;
+pub(crate) use crate::paint::box_tree::styled::*;
 pub(crate) use crate::text::fonts::style_font::measure_font;
 pub(crate) use crate::text::paragraph::text_id::text_id;
 pub(crate) use crate::text::shadow_text::normalize_for_shadow;
