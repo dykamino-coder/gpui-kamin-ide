@@ -232,6 +232,7 @@ export async function briefSession(ctx: CallerContext, args: Record<string, unkn
     `Conversation \`${target.ref.conversationId}\`${target.agentId ? ` (subagent \`${target.agentId}\`)` : ''}, ${first ?? '?'} to ${last ?? '?'}, source ${target.ref.source}.`,
     'Produced read-only by project_session_brief; nothing was modified. Use project_session_read for full detail.',
     '',
+    '',
   ].join('\n')
   const recentFiles = [...files].slice(-30).reverse()
   const filesPart = recentFiles.length

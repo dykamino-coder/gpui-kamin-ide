@@ -395,6 +395,7 @@ describe('project_session_outline and project_session_brief', () => {
     seedProject()
     const { body } = await call(ctxFor(l, TOKEN, CWD), 'project_session_brief', { conversation_id: A, turns: 1 })
     expect(body).toContain('# Continuation brief: Fix the parser')
+    expect(body).toContain('full detail.\n\n## ')
     expect(body).toContain('## Latest compact summary (entry #7)\nSummary: parser fixed, tests pending')
     expect(body).toContain('**User:** Now run the tests')
     expect(body).toContain('**Assistant:** All 12 tests pass.')
