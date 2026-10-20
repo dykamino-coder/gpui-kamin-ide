@@ -1,10 +1,13 @@
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
-use crate::render::{RenderOpts, blocks, is_blank, out_of_flow, styled_div_with};
+use crate::layout::options::RenderOpts;
+use crate::render::{blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

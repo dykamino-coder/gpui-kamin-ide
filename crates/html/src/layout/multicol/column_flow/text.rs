@@ -1,7 +1,10 @@
 //! Текст колонок: сбор, нормализация пробелов и построение колонок по разрезам.
 
 use crate::dom::Node;
-use crate::render::{RenderOpts, blocks, is_blank, split_nodes};
+use crate::dom::text_content::split_nodes;
+use crate::dom::whitespace::is_blank;
+use crate::layout::options::RenderOpts;
+use crate::render::blocks;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 

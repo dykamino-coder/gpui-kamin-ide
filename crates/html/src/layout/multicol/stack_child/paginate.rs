@@ -4,7 +4,7 @@ use super::build::build_copy;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::side_margin_wrap;
 use crate::layout::fragment::paginate::{Paginate, apply, avoid_row, candidates, watch};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 
 /// The rebuild of `copy` (already prepared for the stack: margins and the

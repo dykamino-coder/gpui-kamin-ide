@@ -4,9 +4,10 @@ use super::fixed::{drop_uncontained_oof, drop_viewport_fixed, fixed_cb_box};
 use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
+use crate::layout::options::RenderOpts;
 use crate::layout::table::table;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, element};
+use crate::render::element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

@@ -3,8 +3,9 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::multicol::spanner::{intrinsic_inline_size, spanner_box};
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::render::{RenderOpts, element};
+use crate::render::element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};

@@ -5,11 +5,11 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::push::grow_pushed;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::render::out_of_flow;
 use crate::style::computed::Position;
 use crate::style::values::value::Len;
 use crate::text::inline::establishes_cb;

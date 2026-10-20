@@ -2,10 +2,10 @@
 
 use super::spanner_edge;
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
-use crate::render::is_blank;
 use crate::style::values::value::Len;
 mod parts;
 pub(super) use parts::spanner_parts;

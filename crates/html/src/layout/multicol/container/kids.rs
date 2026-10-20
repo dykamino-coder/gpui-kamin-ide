@@ -7,7 +7,7 @@ use crate::layout::fragment::flex_lines::split_flex_lines;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed};
 use crate::layout::multicol::stack_child::multicol_stack_child;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
