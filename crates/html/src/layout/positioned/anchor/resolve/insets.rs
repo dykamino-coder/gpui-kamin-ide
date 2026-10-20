@@ -30,14 +30,7 @@ pub(super) fn fill_anchor_pairs(c: &mut Computed, grid_parent: Option<bool>, vcx
         return;
     }
     vcx.doc.anchor_frame.used_last.set(true);
-    let Some((w, h)) = vcx
-        .doc
-        .anchor_frame
-        .area_last
-        .borrow()
-        .get(&c.anchor_key)
-        .copied()
-    else {
+    let Some((w, h)) = vcx.doc.anchor_frame.last_area(c.anchor_key) else {
         return;
     };
     let pxv = px_lossy_zero;

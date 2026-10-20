@@ -17,6 +17,28 @@ use crate::style::values::value::Len;
 use crate::text::inline::*;
 use gpui::TextStyle;
 
+/// Text coordinates shared by all span collectors; atoms occupy no text bytes.
+fn text_ranges(
+    pieces: &[Piece],
+) -> impl Iterator<Item = (std::ops::Range<usize>, &str, &Computed)> {
+    let mut at = 0;
+    pieces.iter().filter_map(move |piece| {
+        let Piece::Text { text, style } = piece else {
+            return None;
+        };
+        let range = at..at + text.len();
+        at = range.end;
+        Some((range, text.as_str(), style))
+    })
+}
+
+fn text_size(style: &Computed, base: f32) -> f32 {
+    match style.font_size {
+        Some(Len::Px(v)) => v,
+        _ => base,
+    }
+}
+
 /// `word-space-transform: ideographic-space`.
 ///
 /// Пробел нулевой ширины между двумя иероглифами становится идеографическим:
@@ -37,20 +59,15 @@ pub fn wrap_spans(
     // запрещён вместе со всем абзацем.
     let whole = crate::text::paragraph::wrap_of(base);
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
         let w = crate::text::paragraph::wrap_of(style);
         if w != whole {
             out.push((at..end, w));
         }
-        at = end;
     }
     out
 }
@@ -68,22 +85,15 @@ pub fn line_height_spans(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
         if style.line_height != inherited.line_height
             && let Some(lh) = style.line_height
         {
-            let size = match style.font_size {
-                Some(Len::Px(v)) => v,
-                _ => base_size,
-            };
+            let size = text_size(style, base_size);
             let px_of = match lh {
                 Len::Px(v) => Some(v),
                 Len::Pct(k) => Some(k * size),
@@ -98,7 +108,6 @@ pub fn line_height_spans(
                 )),
             }
         }
-        at = end;
     }
     out
 }

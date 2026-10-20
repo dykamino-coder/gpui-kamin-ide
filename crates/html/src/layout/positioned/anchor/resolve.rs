@@ -193,14 +193,7 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     if c.align_self == Some(Align::Stretch) || c.justify_self == Some(Align::Stretch) {
         vcx.doc.anchor_frame.used_last.set(true);
     }
-    let Some((w, h)) = vcx
-        .doc
-        .anchor_frame
-        .area_last
-        .borrow()
-        .get(&c.anchor_key)
-        .copied()
-    else {
+    let Some((w, h)) = vcx.doc.anchor_frame.last_area(c.anchor_key) else {
         return;
     };
     let pxv = px_lossy_zero;

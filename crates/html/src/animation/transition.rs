@@ -53,13 +53,7 @@ impl Element for Transition {
     /// Область попадания курсора — по ней узнаётся наведение.
     type PrepaintState = Hitbox;
 
-    fn id(&self) -> Option<ElementId> {
-        Some(self.id.clone())
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
+    crate::hooks::keyed_element_identity!();
 
     fn request_layout(
         &mut self,

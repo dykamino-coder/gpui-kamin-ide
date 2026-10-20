@@ -1,5 +1,6 @@
-//! Position for spans; split out to keep the owning module within 250 lines.
+//! Relative and baseline displacements of inline text ranges.
 
+use super::{text_ranges, text_size};
 use crate::render::RenderOpts;
 use crate::style::values::value::Len;
 use crate::text::inline::*;
@@ -12,18 +13,13 @@ use crate::text::inline::*;
 #[allow(clippy::type_complexity)]
 pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
-        let end = at + text.len();
+    for (range, _, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if let Some(d) = style.rel_shift
             && d != (0.0, 0.0)
         {
             out.push((at..end, d, style.box_shift.unwrap_or((0.0, 0.0))));
         }
-        at = end;
     }
     out
 }
@@ -53,19 +49,12 @@ pub fn shift_spans(
     block_align: Option<crate::style::computed::Align>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            _ => base_size,
-        };
+        let size = text_size(style, base_size);
         // К вне-поточной коробке выравнивание в строке не применяется
         // (CSS 2.1 §9.5, §10.8): она из строки вынута.
         let out_of_flow = style.float.is_some_and(|f| f != 0)
@@ -168,7 +157,6 @@ pub fn shift_spans(
         if let Some(v) = dy {
             out.push((at..end, gpui::px(v)));
         }
-        at = end;
     }
     out
 }

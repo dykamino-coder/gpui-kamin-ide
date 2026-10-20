@@ -17,13 +17,7 @@ impl Element for ScrollArea {
         Vec<crate::interactive::scrollbars::interaction::HitBar>,
     );
 
-    fn id(&self) -> Option<ElementId> {
-        Some(self.id.clone())
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
+    crate::hooks::keyed_element_identity!();
 
     fn request_layout(
         &mut self,

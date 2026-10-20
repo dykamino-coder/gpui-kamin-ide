@@ -62,3 +62,10 @@ pub(crate) struct AnchorState {
     /// values changed (bounded, so an oscillating page cannot loop forever).
     pub(super) reframes: Cell<u32>,
 }
+
+impl AnchorState {
+    /// The previous frame's inset-modified containing block for one anchor box.
+    pub(super) fn last_area(&self, key: u64) -> Option<(f32, f32)> {
+        self.area_last.borrow().get(&key).copied()
+    }
+}

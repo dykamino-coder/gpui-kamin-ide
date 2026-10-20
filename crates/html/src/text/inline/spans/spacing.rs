@@ -1,6 +1,6 @@
-//! Spacing for spans; split out to keep the owning module within 250 lines.
+//! Letter and word spacing resolved per inline text range.
 
-use crate::style::values::value::Len;
+use super::{text_ranges, text_size};
 use crate::text::inline::*;
 
 /// Трекинг ПО КУСКАМ: отрезок байт → своё значение `letter-spacing`.
@@ -11,19 +11,12 @@ pub fn letter_spans(
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
     let mut zero = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            _ => base_size,
-        };
+        let size = text_size(style, base_size);
         let extra = style.letter_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
@@ -63,7 +56,6 @@ pub fn letter_spans(
             );
             zero.push((at + last.0..end, gpui::px(v)));
         }
-        at = end;
     }
     // Нули идут ПЕРВЫМИ: поиск диапазона берёт первое попадание.
     zero.extend(out);
@@ -97,19 +89,12 @@ pub fn word_spans(
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<(std::ops::Range<usize>, gpui::Pixels)> {
     let mut out = Vec::new();
-    let mut at = 0usize;
-    for p in pieces {
-        let Piece::Text { text, style } = p else {
-            continue;
-        };
+    for (range, text, style) in text_ranges(pieces) {
+        let (at, end) = (range.start, range.end);
         if text.is_empty() {
             continue;
         }
-        let end = at + text.len();
-        let size = match style.font_size {
-            Some(Len::Px(v)) => v,
-            _ => base_size,
-        };
+        let size = text_size(style, base_size);
         let extra = style.word_spacing.map(|len| {
             crate::text::metrics::spacing_px(
                 Some(len),
@@ -121,7 +106,6 @@ pub fn word_spans(
         if let Some(v) = extra {
             out.push((at..end, gpui::px(v)));
         }
-        at = end;
     }
     out
 }
