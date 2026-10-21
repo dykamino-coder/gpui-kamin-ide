@@ -177,3 +177,26 @@ fn revert_without_agent_rule_keeps_the_implicit_agent_default() {
     c.apply_decls(&parse_decls("display: inline; display: revert-layer"), vcx);
     assert_eq!(c.display, Computed::default().display);
 }
+
+#[test]
+fn legacy_name_alias_shares_the_cascade_slot_of_its_property() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    // `range-percent-intrinsic-size-2`: `-webkit-appearance` is `appearance`
+    // at parse time (css-cascade-5 §2.1), so the more specific rule's
+    // `appearance: auto` beats the weaker `-webkit-appearance: none`.
+    let a = Rule {
+        decls: parse_decls_in("-webkit-appearance: none", vcx),
+        ..rule("", Origin::Author, vec![u32::MAX], 0)
+    };
+    let b = Rule {
+        decls: parse_decls_in(
+            "-webkit-appearance: slider-vertical; -webkit-appearance: range; appearance: auto",
+            vcx,
+        ),
+        ..rule("", Origin::Author, vec![u32::MAX], 1)
+    };
+    let c = Computed::resolve(&[&a, &b], &DeclBlock::new(), vcx);
+    assert_eq!(c.appearance, Some(crate::style::computed::Appearance::Auto));
+    assert!(parse_decls("-webkit-user-select: none").contains("user-select"));
+}
