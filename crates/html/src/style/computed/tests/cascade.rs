@@ -1,4 +1,5 @@
-//! Тесты каскада: var() с запасным значением, !important, приоритет авторской таблицы, сокращение font.
+//! Тесты каскада: var() с запасным значением, !important, приоритет авторской таблицы, сокращение
+//! font.
 
 #[test]
 fn var_fallback_with_nested_parens_survives_a_defined_variable() {

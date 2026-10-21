@@ -1,4 +1,6 @@
-//! Computed::apply_multicol, хвост цепочки: лонгхенды линеек промежутков (*-rule-width/style/color/inset/visibility/overlap/break), margin-trim, сокращения линеек и columns. Ветви в исходном порядке после свойств колонок и разрывов.
+//! Computed::apply_multicol, хвост цепочки: лонгхенды линеек промежутков
+//! (*-rule-width/style/color/inset/visibility/overlap/break), margin-trim, сокращения линеек и
+//! columns. Ветви в исходном порядке после свойств колонок и разрывов.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -1,4 +1,9 @@
-//! Compute custom-property substitutions on their owner before descendants inherit them.
+//! Вычисление пользовательских свойств на их владельце до наследования
+//! потомками: `compute` подставляет `var()` внутри `--*` с обнаружением циклов
+//! (CSS Values 5 §substitution-context — негодны все участники), общими
+//! CSS-словами и проверкой синтаксиса `@property`; `substitute` — общая
+//! подстановка `var()` с запасным аргументом (CSS Variables §3), пробелы вокруг
+//! подстановки берегут границы токенов.
 
 use super::{Decls, Registered};
 use std::collections::{HashMap, HashSet};

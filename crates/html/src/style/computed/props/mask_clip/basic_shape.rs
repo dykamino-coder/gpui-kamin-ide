@@ -1,4 +1,5 @@
-//! Базовые фигуры clip-path/маски (css-shapes-1 §3): polygon(), rect(), xywh(), inset() с правилом заливки и скруглением. Хвост ветви clip-path/mask из Computed::apply_clip_mask.
+//! Базовые фигуры clip-path/маски (css-shapes-1 §3): polygon(), rect(), xywh(), inset() с правилом
+//! заливки и скруглением. Хвост ветви clip-path/mask из Computed::apply_clip_mask.
 
 use super::*;
 use crate::document::state::ValueCx;

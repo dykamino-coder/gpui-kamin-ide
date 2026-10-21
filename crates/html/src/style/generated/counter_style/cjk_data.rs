@@ -1,4 +1,6 @@
-//! Character tables for CSS Counter Styles 3 section 7.1.5.
+//! Стили счётчиков: таблицы знаков девяти позиционных восточноазиатских
+//! стилей (CSS Counter Styles 3 §6.4, §7.1.5) — цифры, маркеры разрядов,
+//! группы, знак минуса и признаки записи (`drop_one`, `drop_teen`, `inner_zero`).
 
 pub(super) struct Cjk {
     pub(super) digits: [char; 10],

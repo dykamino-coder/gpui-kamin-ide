@@ -1,4 +1,4 @@
-//! Authored color syntax selects one interpolation space and hue arc.
+//! Авторский синтаксис цвета выбирает одно пространство интерполяции и одну дугу оттенка.
 
 use super::GradSpace;
 

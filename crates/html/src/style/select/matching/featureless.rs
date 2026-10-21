@@ -1,4 +1,8 @@
-//! Featureless host matching: eligibility is distinct from a failed match (Selectors §3.2.1).
+//! Сопоставление с безликим хостом (изнутри его тени, Selectors §3.2.1): с ним
+//! совпадает только компаунд из `:host`/`:host()`, `:is()`/`:not()` вокруг них
+//! и `:has()` по теневому дереву. `None` означает, что компаунд к безликому
+//! хосту неприменим, — это не то же, что несовпадение: отрицание не должно
+//! превращать запрещённый селектор в совпадение.
 
 use super::{Ancestor, Selector, has_id, host_holds};
 use crate::style::css::{default_ns, split_selector_list};

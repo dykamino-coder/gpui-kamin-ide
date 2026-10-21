@@ -1,4 +1,8 @@
-//! Resolve calculated counter integers before applying counter scopes and scans.
+//! Вычисленный стиль: `counter-reset`/`counter-increment`/`counter-set`.
+//! Целые в `calc()`/`min()`/`max()`/`clamp()` вычисляются здесь, до областей
+//! счётчиков и сканов (CSS Values 4 §5.1, §10.9: половина округляется к +∞,
+//! NaN — в ноль), имена проверяются как идентификаторы без CSS-слов,
+//! `reversed()` допускается только у `counter-reset`.
 
 use super::{Computed, split_outside_parens};
 use crate::document::state::ValueCx;

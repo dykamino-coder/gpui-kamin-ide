@@ -1,4 +1,9 @@
-//! Resolve background position comparisons against concrete image free space.
+//! Вычисленный стиль: `background-position` с функциями сравнения
+//! (`min()`/`max()`/`clamp()` с долями). Такое выражение не сводится к линейной
+//! `Len`, поэтому хранится сырым (`bg_position_math`) с заглушкой для разбора
+//! оси/края, а используемое значение считается при краске от конкретного
+//! свободного места образа (CSS Values 4 §10.2/10.10; Blink `ResolveXPosition`
+//! передаёт доступную ширину, в том числе отрицательную, в вычислитель длин).
 
 use crate::document::state::ValueCx;
 mod expressions;

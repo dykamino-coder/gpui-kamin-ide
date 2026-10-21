@@ -1,4 +1,4 @@
-//! Relative color channels and alpha, parsed independently of the current color.
+//! Каналы и альфа относительного цвета, разобранные независимо от текущего цвета.
 
 use super::Color;
 use crate::document::state::ValueCx;

@@ -1,4 +1,5 @@
-//! Computed::apply_border, продолжение цепочки: border-shape, corner-shape*, corner-*-shape, радиусы углов. Ветви в исходном порядке; не совпавший ключ уходит в apply_border_sides_outline.
+//! Computed::apply_border, продолжение цепочки: border-shape, corner-shape*, corner-*-shape,
+//! радиусы углов. Ветви в исходном порядке; не совпавший ключ уходит в apply_border_sides_outline.
 
 use super::*;
 use crate::document::state::ValueCx;

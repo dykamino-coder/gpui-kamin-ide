@@ -1,4 +1,5 @@
-//! Computed::apply_multicol_rules, хвост цепочки: visibility/overlap/break линеек, margin-trim, сокращения линеек, columns. Ветви в исходном порядке.
+//! Computed::apply_multicol_rules, хвост цепочки: visibility/overlap/break линеек, margin-trim,
+//! сокращения линеек, columns. Ветви в исходном порядке.
 
 use super::*;
 use crate::document::state::ValueCx;

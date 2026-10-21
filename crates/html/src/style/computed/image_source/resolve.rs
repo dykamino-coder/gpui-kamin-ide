@@ -1,4 +1,4 @@
-//! Computed image length traversal and self-contained raster-cache operands.
+//! Обход вычисленных длин изображений и самодостаточные операнды растрового кэша.
 
 use super::{ImageSource, Len};
 use crate::document::state::ValueCx;

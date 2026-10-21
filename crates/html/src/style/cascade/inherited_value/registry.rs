@@ -1,4 +1,8 @@
-//! Longhand-to-computed-field registry shared by keyword tracking and copying.
+//! Каскад: реестр «longhand → поля `Computed`» для явного наследования.
+//! Один список служит и учёту CSS-слов (`properties(key)`, включая раскрытие
+//! сокращений `gap`, `columns`, `grid`, `border-image`…), и копированию полей
+//! родителя (`Property::copy`) вместе с зависимыми полями (радиусы-эллипсы,
+//! кадр перспективы, признак subgrid).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

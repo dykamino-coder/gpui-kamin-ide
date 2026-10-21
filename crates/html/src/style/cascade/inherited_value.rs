@@ -1,4 +1,8 @@
-//! Explicit inheritance uses computed longhands, before effective zoom is applied.
+//! Каскад: явное наследование (`inherit`) ненаследуемых свойств вычисленным
+//! значением родителя (CSS Cascade 4 §7.3.1), а не его заданными относительными
+//! единицами. Выигравшее CSS-слово записывается в тот же слот, что и обычный
+//! longhand (`explicit_inherit`); `apply_explicit_inheritance` копирует поля родителя по
+//! реестру, `settle` делает это по всему дереву до прохода масштаба `zoom`.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;

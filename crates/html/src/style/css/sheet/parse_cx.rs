@@ -1,15 +1,14 @@
-//! State of a stylesheet parse, passed explicitly down the parser.
+//! Состояние разбора таблицы стилей, явно передаваемое вниз по парсеру.
 //!
-//! Who owns what (Blink: `CSSParserContext` + `StyleSheetContents`
-//! namespaces, the document `StyleEngine`'s `CascadeLayerMap`):
-//! - [`LayerRegistry`] belongs to the DOCUMENT parse: every sheet of the
-//!   document (agent, application, `<style>`, shadow trees) shares one layer
-//!   order (css-cascade-5 §6.4.3, «in the order they are first declared»).
-//! - [`SheetCx`] belongs to ONE sheet: its `@namespace` prologue, its
-//!   `@custom-media` aliases and the layer the parser is currently inside.
-//! - [`SelectorCx`] is what a selector parse needs from the sheet; a selector
-//!   parsed outside any sheet uses the default (no prefix check, no default
-//!   namespace).
+//! Кто чем владеет (Blink: `CSSParserContext` + пространства имён `StyleSheetContents`,
+//! `CascadeLayerMap` движка стилей документа):
+//! - [`LayerRegistry`] принадлежит разбору ДОКУМЕНТА: все таблицы документа (агента, приложения,
+//!   `<style>`, теневые деревья) делят один порядок слоёв (css-cascade-5 §6.4.3,
+//!   «in the order they are first declared»).
+//! - [`SheetCx`] принадлежит ОДНОЙ таблице: её пролог `@namespace`, алиасы `@custom-media` и слой,
+//!   внутри которого сейчас парсер.
+//! - [`SelectorCx`] — то, что разбору селектора нужно от таблицы; селектор вне таблицы берёт
+//!   значение по умолчанию (без проверки префикса и без пространства имён по умолчанию).
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

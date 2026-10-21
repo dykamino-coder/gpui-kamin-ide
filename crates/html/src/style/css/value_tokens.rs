@@ -1,4 +1,4 @@
-//! Whitespace-separated CSS value tokens with nested parentheses intact.
+//! Токены CSS-значения, разделённые пробелами, с неразрезанными вложенными скобками.
 
 /// Разбить запись по пробелам ВЕРХНЕГО уровня: `calc(10px + 15%)` — один
 /// токен. Без скобок — ровно `split_whitespace`.

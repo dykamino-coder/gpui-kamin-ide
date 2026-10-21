@@ -1,4 +1,5 @@
-//! Списки линеек промежутков (css-gaps-1): разбор значений по осям (gap_list/gap_rule/gap_*) и запись их в Computed (set_gap_*, gap_rule_shorthand).
+//! Списки линеек промежутков (css-gaps-1): разбор значений по осям (gap_list/gap_rule/gap_*) и
+//! запись их в Computed (set_gap_*, gap_rule_shorthand).
 
 use super::*;
 use crate::document::state::ValueCx;

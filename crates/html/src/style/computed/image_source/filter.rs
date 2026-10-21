@@ -1,4 +1,4 @@
-//! Resolve typed filter lengths through the shared computed length closure.
+//! Разрешает типизированные длины фильтров через общее замыкание вычисленных длин.
 
 use super::{ImageFilter, Len};
 use crate::document::state::ValueCx;

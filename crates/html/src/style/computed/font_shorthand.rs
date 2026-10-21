@@ -1,4 +1,8 @@
-//! Apply the font shorthand while retaining its variant and reset behavior.
+//! Вычисленный стиль: сокращение `font`. Сначала проверяется годность всей
+//! записи (§4.2: неизвестное слово головы или отрицательная высота строки валят
+//! сокращение целиком), затем все части сбрасываются к начальным значениям
+//! (CSS 2.1 §15.8) и пишутся названные: начертание, вариант, вес, кегль/высота
+//! строки, семейство. `inherit` очищает слоты, а не подставляет родителя.
 
 use super::{Computed, font_size_token, font_slash, join_slash, split_font, split_outside_parens};
 use crate::document::state::ValueCx;

@@ -1,4 +1,6 @@
-//! Computed::apply_transform, хвост цепочки: rotate/scale, transform-origin, backface-visibility, perspective*, transform-style, transform-box, vector-effect. Ветви в исходном порядке после ветвей offset-* и transform.
+//! Computed::apply_transform, хвост цепочки: rotate/scale, transform-origin, backface-visibility,
+//! perspective*, transform-style, transform-box, vector-effect. Ветви в исходном порядке после
+//! ветвей offset-* и transform.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -14,19 +16,13 @@ impl Computed {
         vcx: ValueCx<'_>,
     ) {
         match key {
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): доводить `rotate:`/`scale:` до
-            // матрицы отрисовки отдельными полями (`rotate_prop`/`scale_prop`)
-            // и прятать вырожденную матрицу. Срез 2327 пар
-            // (transforms/contain/overflow/masking/position): вместе с
-            // `backface-visibility` вышло 1563 -> 1571 (+14/-6), без него —
-            // 1563 -> 1575 (+13/-1). То есть сам этот рукав дал ОДНУ пару
-            // (`individual-transform-3`) против ШЕСТИ потерь, все —
-            // анимационные: `rotate-explicit-and-implicit-keyframes`,
+            // `rotate:`/`scale:` доводятся до матрицы отрисовки отдельными
+            // полями (`rotate_prop`/`scale_prop`) только вместе с запеканием
+            // остановленных кадров (`animation::frames::frozen`, `bake_frozen`): эталоны
+            // `rotate-explicit-and-implicit-keyframes`,
             // `scale-explicit-and-implicit-keyframes`,
-            // `scale-and-rotate-both-specified-on-animation-keyframes`,
-            // `change-rotate-property`, `change-scale-property`. Эталоны этих
-            // тестов ждут КОНЕЧНОЕ состояние анимации, а мы рисуем начальное:
-            // рукав вернётся вместе с проигрыванием ключевых кадров.
+            // `change-rotate-property`, `change-scale-property` ждут КОНЕЧНОЕ
+            // состояние анимации, и без запекания рукав рисует начальное.
             "rotate" => {
                 let mut t = self.transform.unwrap_or_default();
                 let raw = v.trim();
@@ -44,10 +40,9 @@ impl Computed {
                 self.transform = Some(t);
                 // Угол вокруг оси z — ещё и отдельным полем: в матрицу
                 // отрисовки его приставляет `transformed()` СЛЕВА от списка
-                // `transform` (css-transforms-2 §ctm п.4). Рукав из ★ выше
-                // возвращён вместе с запеканием остановленных кадров
-                // (`render.rs`, `bake_frozen`); его шесть потерь 05.09 —
-                // скриптовые пары («вне цели: скрипт» в `rep-all-v219.txt`).
+                // `transform` (css-transforms-2 §ctm п.4). Рукав держится на
+                // запекании остановленных кадров (заметка выше); оставшиеся
+                // красные пары семьи — скриптовые, вне цели.
                 // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима.
                 let angle_only = raw.split_whitespace().count() == 1
                     && raw

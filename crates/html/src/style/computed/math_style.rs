@@ -1,4 +1,4 @@
-//! Computed MathML style/depth and the CSS Fonts mathematical size scale.
+//! Вычисленные MathML style/depth и математическая шкала размеров из CSS Fonts.
 use super::Computed;
 use crate::{style::values::value::Len, text::fonts};
 #[derive(Clone, Copy, Debug)]

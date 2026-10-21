@@ -1,4 +1,4 @@
-//! Computed color operands retained until an element's currentColor is known.
+//! Вычисленные операнды цвета, хранимые до момента, когда известен currentColor элемента.
 
 use super::{interpolation_color, mix};
 use crate::document::state::ValueCx;

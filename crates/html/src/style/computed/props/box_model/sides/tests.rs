@@ -1,4 +1,4 @@
-//! Physical padding longhands share inheritance, validation and source ordering.
+//! Тесты: физические longhand'ы padding делят наследование, проверку и порядок источников.
 
 use super::*;
 

@@ -1,4 +1,4 @@
-//! Capability tests for property recognition before variable substitution.
+//! Тесты возможностей: распознавание свойства до подстановки переменных.
 
 #[test]
 fn variables_defer_values_only_for_recognized_properties() {

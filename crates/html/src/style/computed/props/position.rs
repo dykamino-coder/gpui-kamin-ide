@@ -1,4 +1,8 @@
-//! Computed::apply_one: position, anchor*, inset/top..., z-index, overflow*, float, clear, opacity, visibility.
+//! Группа свойств `Computed::apply_one`: позиционирование и видимость —
+//! `position`, якорные `anchor-name`/`position-anchor`/`position-area`/
+//! `position-try*`/`position-visibility` (css-anchor-position-1), вставки
+//! `top`…`inset`, `z-index`, `overflow*` и `overflow-clip-margin`, `float`,
+//! `clear`, `opacity`, `visibility`. Разбор якорных значений — в модуле `anchor`.
 
 use crate::document::state::ValueCx;
 mod z_index;

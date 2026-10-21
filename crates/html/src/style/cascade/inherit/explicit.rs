@@ -1,4 +1,5 @@
-//! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы, размеры, inset, фон и background_rcs.
+//! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы,
+//! размеры, inset, фон и background_rcs.
 
 use super::*;
 use crate::document::state::ValueCx;

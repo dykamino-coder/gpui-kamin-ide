@@ -1,4 +1,4 @@
-//! CSS background blend modes and the matching compositing shader indices.
+//! Режимы смешивания CSS-фона и соответствующие индексы композитных шейдеров.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]

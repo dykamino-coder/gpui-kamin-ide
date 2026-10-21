@@ -59,7 +59,7 @@ pub struct AnimSpec {
 impl AnimSpec {
     /// Анимация, которая за жизнь страницы не сдвинется ни на точку, по сути
     /// остановлена: пауза или `animation: a 2000000s; animation-delay:
-    /// -1000000s`. Один предикат на разрешение кадров (`dom.rs`) и отрисовку.
+    /// -1000000s`. Один предикат на разрешение кадров (`dom::walk::animation_frames`) и отрисовку.
     pub fn frozen(&self) -> bool {
         self.paused
             || (self.seconds == 0.0 && self.delay <= 0.0)

@@ -1,4 +1,5 @@
-//! Computed::apply_text, продолжение цепочки: text-overflow, white-space(-collapse), word-spacing, text-transform. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_breaking.
+//! Computed::apply_text, продолжение цепочки: text-overflow, white-space(-collapse), word-spacing,
+//! text-transform. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_breaking.
 
 use super::*;
 use crate::document::state::ValueCx;

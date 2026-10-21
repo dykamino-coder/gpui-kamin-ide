@@ -1,4 +1,4 @@
-//! Stacking-context membership determined by computed CSS values.
+//! Принадлежность к контексту наложения, определяемая вычисленными CSS-значениями.
 
 use crate::style::computed::Computed;
 

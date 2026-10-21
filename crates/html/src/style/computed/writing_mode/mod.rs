@@ -1,18 +1,19 @@
-//! The writing mode of a box as ONE value, and the one logical↔physical side mapping
-//! (css-writing-modes-4 §3.1 `writing-mode`, §2.1 `direction`, §5.1 `text-orientation`, §6.4 Abstract-Physical Mapping).
+//! Режим письма бокса как ОДНО значение и единственное отображение логических сторон в физические
+//! (css-writing-modes-4 §3.1 `writing-mode`, §2.1 `direction`, §5.1 `text-orientation`,
+//! §6.4 Abstract-Physical Mapping).
 //!
-//! Every reader asks `Computed::wm()`; nothing else decodes the stored properties. The combined
-//! value follows Blink's `ComputedStyle::GetWritingDirection()` (`core/style/computed_style.h`)
-//! and Servo's `WritingMode` (`style/logical_geometry.rs`): writing-mode + direction in one copy
-//! type with queries.
+//! Каждый читатель спрашивает `Computed::wm()`; хранимые свойства больше никто не расшифровывает.
+//! Составное значение следует Blink `ComputedStyle::GetWritingDirection()`
+//! (`core/style/computed_style.h`) и Servo `WritingMode` (`style/logical_geometry.rs`):
+//! writing-mode и direction в одном копируемом типе с запросами.
 //!
-//! Layout here is physical (GPUI/taffy boxes) and vertical text uses a rotation model: a vertical
-//! paragraph is typeset by a horizontal clone of its style that is then turned
-//! (`render/paragraph/vertical.rs`), and an upright stack is laid out the same way. Inside such a
-//! clone the box is laid out horizontally ("laid flat") while its writing mode — block flow
-//! direction and `sideways` — is still that of the paragraph. So the value distinguishes
-//! `vertical()` (laid out vertically in the current coordinate space) from the mode's block flow
-//! (`block_rl()`, `sideways()`), and records whether the box sits in a turned line (`turned()`).
+//! Раскладка здесь физическая (боксы GPUI/taffy), а вертикальный текст идёт по модели поворота:
+//! вертикальный абзац набирается горизонтальным клоном своего стиля, который затем поворачивается
+//! (`render/paragraph/vertical.rs`); стоячий стек раскладывается так же. Внутри такого клона
+//! бокс раскладывается горизонтально («уложен плашмя»), а режим письма (направление блоков и
+//! `sideways`) остаётся абзацевым. Поэтому значение различает `vertical()` (раскладка вертикальна
+//! в текущей системе координат) и блочный поток режима (`block_rl()`, `sideways()`) и помнит,
+//! что бокс стоит в повёрнутой строке (`turned()`).
 use super::Computed;
 
 mod keyword;

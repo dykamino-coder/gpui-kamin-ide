@@ -1,18 +1,15 @@
-//! Flow-relative alignment keywords `flow-start` / `flow-end` (css-align-3
-//! as extended for grid lanes, css-grid-3 §alignment).
+//! Наследование: flow-относительные слова выравнивания `flow-start` /
+//! `flow-end` (css-align-3 в расширении для grid lanes, css-grid-3 §alignment).
 //!
-//! In a grid lanes container the grid axis runs in track order and the
-//! stacking axis in fill order: `track-reverse` and `fill-reverse` reverse
-//! those flows, and `flow-start` / `flow-end` follow them, while `start` /
-//! `end` stay writing-mode relative. Outside grid lanes the flow is the
-//! writing mode's, so they behave as `start` / `end`. `flex-start` /
-//! `flex-end` follow the same flows in grid lanes.
-//!
-//! The parser stores the keywords as `start` / `end` and remembers which
-//! property carried a flow keyword (`Computed::align_flow`); this pass flips
-//! the value once the container's lanes direction is known. Content and
-//! items alignment use the element's own direction, self alignment the
-//! parent's (the container the item is aligned in).
+//! В контейнере grid lanes ось сетки идёт в порядке дорожек, ось стопки — в
+//! порядке заполнения: `track-reverse` и `fill-reverse` обращают эти потоки,
+//! `flow-start`/`flow-end` следуют за ними, а `start`/`end` остаются
+//! относительными к письму. Вне grid lanes поток — поток письма, и слова
+//! ведут себя как `start`/`end`. `flex-start`/`flex-end` в grid lanes следуют
+//! тем же потокам. Разборщик хранит слова как `start`/`end` и помнит, какое
+//! свойство несло flow-слово (`Computed::align_flow`); этот проход обращает
+//! значение, когда направление lanes контейнера известно: content/items — по
+//! своему направлению, self — по родительскому (контейнеру выравнивания).
 
 use crate::style::computed::{Align, Computed, Display, Justify};
 

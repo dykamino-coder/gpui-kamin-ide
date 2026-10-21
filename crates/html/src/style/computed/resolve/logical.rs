@@ -1,12 +1,12 @@
-//! Logical properties onto physical fields (css-logical-1 §4, css-writing-modes-4 §6.4):
-//! `resolve_logical` maps the stored `Logical` values with the box's inherited `WritingMode`.
+//! Логические свойства на физические поля (css-logical-1 §4, css-writing-modes-4 §6.4):
+//! `resolve_logical` раскладывает сохранённые `Logical` по унаследованному `WritingMode` коробки.
 //!
-//! Sides (margins, paddings, insets, borders) follow the abstract-physical mapping exactly,
-//! through `WritingMode::{block_start, inline_start}` — the one mapping of the crate.
-//! Sizes: `inline-size`/`block-size` map by the box's OWN mode (Blink
-//! `ComputedStyle::LogicalWidth`), except for a table cell whose table is horizontal: the
-//! table code transposes a cell's logical inline size itself (`width_from_inline`), and
-//! mapping it here too would turn it twice. `contain-intrinsic-*` always maps by the own mode.
+//! Стороны (поля, отступы, вставки, рамки) переводятся точно по abstract-physical mapping через
+//! `WritingMode::{block_start, inline_start}` — единственное такое отображение в крейте.
+//! Размеры: `inline-size`/`block-size` идут по СОБСТВЕННОМУ письму коробки (Blink
+//! `ComputedStyle::LogicalWidth`), кроме ячейки таблицы с горизонтальной таблицей: строчный
+//! размер ячейки табличный код переставляет сам (`width_from_inline`), и второй перевод здесь
+//! повернул бы его дважды. `contain-intrinsic-*` всегда идёт по собственному письму.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -19,8 +19,10 @@ impl Computed {
         self.logical.get_or_insert_with(Default::default)
     }
 
-    /// Map the stored logical values with `wm`, the box's inherited writing mode;
-    /// `parent_vertical` is the parent's (for the table-cell exception above).
+    /// Разложить сохранённые логические значения по `wm` — унаследованному письму
+    /// коробки; `parent_vertical` — письмо родителя (для исключения ячейки таблицы выше).
+    ///
+    /// Зовётся ПОСЛЕ того, как письмо унаследовано: до этого неизвестно, какая ось строчная.
     pub fn resolve_logical(
         &mut self,
         wm: WritingMode,
@@ -31,8 +33,8 @@ impl Computed {
         let Some(logical) = self.logical.take() else {
             return;
         };
-        // A logical value OVERRIDES the physical one only when declared later
-        // (cascade order; `line-box-direction-vrl-019`): `set` writes declared values.
+        // Логическое значение ПЕРЕКРЫВАЕТ физическое, только если объявлено позже
+        // (порядок каскада, `line-box-direction-vrl-019`): `set` пишет лишь заданные значения.
         let set = |slot: &mut Option<Len>, val: Option<Len>| {
             if val.is_some() {
                 *slot = val;

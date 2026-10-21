@@ -1,4 +1,5 @@
-//! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, ширина outline, скругление.
+//! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, ширина outline,
+//! скругление.
 
 use super::*;
 use crate::document::state::ValueCx;

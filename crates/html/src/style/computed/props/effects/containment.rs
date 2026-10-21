@@ -1,4 +1,5 @@
-//! Computed::apply_effects, хвост цепочки: container-type, content-visibility, contain-intrinsic-*, mix-blend-mode, isolation, user-select. Ветви в исходном порядке после apply_effects_timing.
+//! Computed::apply_effects, хвост цепочки: container-type, content-visibility, contain-intrinsic-*,
+//! mix-blend-mode, isolation, user-select. Ветви в исходном порядке после apply_effects_timing.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -20,7 +21,7 @@ impl Computed {
                 // одной строчной оси. Обособления РАСКЛАДКИ в этом списке НЕТ,
                 // и ставить его нельзя: у нас `contain_layout` делает элемент
                 // содержащим блоком для `absolute` и `fixed`
-                // (`inline::establishes_cb`, `inline::inherit`), а корпус
+                // (`inline::establishes_cb`, `style::cascade::inherit`), а корпус
                 // требует обратного — `no-layout-containment-abspos`,
                 // `-fixedpos`, `-baseline` (все 0.00) проверяют, что абсолют,
                 // `fixed` и базовая линия проходят СКВОЗЬ контейнер.

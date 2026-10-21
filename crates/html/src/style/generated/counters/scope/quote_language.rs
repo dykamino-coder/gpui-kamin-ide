@@ -1,5 +1,7 @@
-//! Language quotation marks from CLDR 46 delimiters, grouped by identical pairs.
-//! CSS Content 3 §quotes-property; see Servo components/layout/quotes.rs data.
+//! Кавычки языка для `quotes: auto` (CSS Content 3 §quotes-property): пары
+//! разделителей CLDR 46, сгруппированные по одинаковым наборам; сначала
+//! региональный/письменный вариант, затем основной язык, по умолчанию —
+//! английские. Те же данные, что в Servo `components/layout/quotes.rs`.
 
 pub(super) fn marks(language: &str, depth: usize, open: bool) -> char {
     let language = language.to_ascii_lowercase();

@@ -38,7 +38,7 @@ pub(in crate::style::computed) fn align_keyword(v: &str) -> Result<Option<Align>
         // `flexbox-align-self-vert-002` ждёт `self-start` СПРАВА у элемента
         // с `direction: rtl`. Само значение остаётся физическим, а «мерить
         // по себе» помнится отдельным флагом `align_self_own_axis` — его
-        // зеркалит `inline::inherit`, где известны письмо элемента И письмо
+        // зеркалит `style::cascade::inherit`, где известны письмо элемента И письмо
         // родителя.
         "start" | "flex-start" | "left" => Some(Align::Start),
         "end" | "flex-end" | "right" => Some(Align::End),
@@ -76,10 +76,9 @@ pub(in crate::style::computed) fn parse_justify(v: &str) -> Option<Justify> {
         // `left`/`right` физические; при письме слева направо они совпадают
         // с началом и концом строки.
         //
-        // ЗАМЕРЕНО И ОТКАЧЕНО: развести их в отдельные значения, чтобы при
-        // rtl они НЕ переставлялись вместе с `start`/`end` (css-align-3 §4).
-        // Правка верна по спеке, но полный свод обоих: 0 и 0 —
-        // `flexbox_justifycontent-right-002` (8.53) держит не это.
+        // Проверено: само разведение их в отдельные значения, чтобы при rtl
+        // они НЕ переставлялись вместе с `start`/`end` (css-align-3 §4),
+        // `flexbox_justifycontent-right-002` не чинит — её держит не это.
         "start" => Some(Justify::WmStart),
         "end" => Some(Justify::WmEnd),
         "flow-start" => Some(Justify::WmStart),

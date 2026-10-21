@@ -1,9 +1,8 @@
-//! Absolute lengths inside a basic-shape value (`shape-outside`) under zoom.
+//! Абсолютные длины внутри значения basic-shape (`shape-outside`) при zoom.
 //!
-//! The value is kept as its source text and parsed at layout, so the zoom
-//! pass multiplies the `px` lengths in the text (css-viewport-1 §zoom:
-//! the used value of every length is multiplied by the effective zoom).
-//! Percentages, keywords and `url()` images are left alone.
+//! Значение хранится как исходный текст и разбирается при раскладке, поэтому проход zoom
+//! умножает `px`-длины в тексте (css-viewport-1 §zoom: используемое значение каждой длины
+//! умножается на действующий zoom). Проценты, ключевые слова и изображения `url()` не трогаются.
 
 /// `s` with every `<number>px` multiplied by `k`.
 pub(super) fn scale_px(s: &str, k: f32) -> String {

@@ -1,4 +1,8 @@
-//! Select the raster corner mask when circular quad radii cannot express the CSS shape.
+//! Вычисленный стиль: когда скругление углов нельзя выразить круглыми
+//! радиусами квада GPUI и нужна растровая маска группы (`radius_masked`) —
+//! эллиптические углы (процент по своей оси, CSS Backgrounds 3 §5.1; смешанный
+//! `calc`), `corner-shape`, неравномерные радиусы больше половины коробки и
+//! `contain: paint` со скруглением без рамки (css-contain-2 §3.3).
 
 use super::{Computed, Overflow};
 use crate::document::state::ValueCx;
@@ -62,12 +66,12 @@ impl Computed {
         // край маски — ровно край обрезки. Тень и контур лежат ВНЕ коробки —
         // маска их съела бы, такие коробки идут прежним путём.
         // Решение обязано СОВПАСТЬ на двух стилях одной коробки: `apply_radius`
-        // читает слитый (`inline::inherit` → `resolve_em`, радиус уже в
+        // читает слитый (`style::cascade::inherit` → `resolve_em`, радиус уже в
         // точках), а `render::grouped` — собственный `e.style`, где `4em`
         // доживает как `Len::Em`. Гейт по одним точкам и долям снимал
         // скругление квада, а маски на `e.style` не заводил — зелёный квадрат
         // без обрезки углов (`contain-paint-clip-002`: `border-radius: 4em`,
-        // 0.00 → 0.65 = площадь углов 120² − π·60²). Blink решает по одному
+        // расхождение = площадь углов 120² − π·60²). Blink решает по одному
         // стилю (`paint_property_tree_builder.cc:3010-3012`,
         // `NeedsInnerBorderRadiusClip`). Для гейта важен лишь знак длины —
         // меряем единой точкой, как `apply::radius_px`. Тень в единицах шрифта

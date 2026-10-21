@@ -1,4 +1,7 @@
-//! Animation shorthand and longhands share parsing; function arguments remain intact.
+//! Вычисленный стиль: сокращение `animation` и его longhand (`-name`,
+//! `-duration`, `-delay`, `-timing-function`, `-fill-mode`, …) одним разбором
+//! в `AnimSpec`. Токены режутся вне скобок, чтобы аргументы функций
+//! (`steps()`, `cubic-bezier()`) не распадались и не принимались за имена.
 
 use crate::animation::easing::Easing;
 use crate::style::computed::split_outside_parens;

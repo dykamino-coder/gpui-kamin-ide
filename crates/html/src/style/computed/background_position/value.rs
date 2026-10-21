@@ -1,4 +1,4 @@
-//! Computed background-position expression and its cascade-only font resolution.
+//! Вычисленное выражение background-position и его разрешение шрифта только в каскаде.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::resolve::image_lengths::lengths;

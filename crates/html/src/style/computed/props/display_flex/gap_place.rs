@@ -1,4 +1,5 @@
-//! Computed::apply_display_flex, хвост цепочки: gap, row-gap/column-gap, order, flex-flow, align-content, justify-items/self, place-*. Ветви в исходном порядке после apply_flex_items.
+//! Computed::apply_display_flex, хвост цепочки: gap, row-gap/column-gap, order, flex-flow,
+//! align-content, justify-items/self, place-*. Ветви в исходном порядке после apply_flex_items.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -11,7 +12,7 @@ impl Computed {
                 // 5%)` рвался на шесть кусков, и объявление молча отбрасывалось
                 // (`grid-gutters-011/012`). Смесь долей с точками доживает
                 // индексом (`parse_mixed`): зазор разрешает её от своей стороны
-                // контент-бокса в `apply.rs` (css-gaps-1 §gap-percent).
+                // контент-бокса в `paint/apply/` (css-gaps-1 §gap-percent).
                 let tokens = split_outside_parens(v);
                 let parts: Vec<Option<Len>> =
                     tokens.iter().map(|t| Len::parse_mixed(t, vcx)).collect();
@@ -25,7 +26,7 @@ impl Computed {
                 };
                 // Короткая форма задаёт и `column-gap` многоколоночника
                 // (css-align-3 §8.3: `gap` = `row-gap` + `column-gap`).
-                // Колонки читают только `column_gap` (`render.rs` `used_gap`,
+                // Колонки читают только `column_gap` (`render::generic_box::columns` `used_gap`,
                 // `column_flow`), и `gap: 20px 0` прежде оставлял кегль —
                 // `column-wrap-no-constraints-001`, красная полоса между
                 // колонками.

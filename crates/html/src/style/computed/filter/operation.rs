@@ -1,4 +1,6 @@
-//! Extract one parsed color operation, retaining CSS Filter Effects 1 §5 order.
+//! `Filter`: выделение одной разобранной цветовой функции по имени в нейтральный
+//! фильтр — так растровый путь применяет операции в порядке записи
+//! (Filter Effects 1 §5), а не в фиксированном порядке полей.
 use super::Filter;
 impl Filter {
     pub(crate) fn color_operation(&self, name: &str) -> Option<Self> {

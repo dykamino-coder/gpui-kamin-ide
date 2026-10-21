@@ -1,4 +1,8 @@
-//! Filter: функции filter/backdrop-filter.
+//! Вычисленный стиль: `Filter` — набор функций `filter`/`backdrop-filter`.
+//! Цветовые функции — арифметика над цветом: применяются к цвету примитива
+//! (`apply`) или сводятся в одну матрицу 4×5 (`color_matrix`, filter-effects-1
+//! «Supported filter functions»); размытие хранится отдельно, ему нужна готовая
+//! картинка поддерева.
 
 use crate::style::values::value::Color;
 

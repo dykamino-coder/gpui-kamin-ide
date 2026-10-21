@@ -82,7 +82,7 @@ fn unsupported_selectors_are_dropped_whole() {
     let lang = Selector::parse("[lang|=en]").expect("дефисное");
     assert!(lang.attrs[0].matches(Some("en-US")));
     assert!(!lang.attrs[0].matches(Some("ent")));
-    // Псевдоэлемент разбирается: коробку из него строит `dom.rs`.
+    // Псевдоэлемент разбирается: коробку из него строит `dom`.
     assert_eq!(
         Selector::parse("li::before").and_then(|s| s.pseudo),
         Some("before".to_string())

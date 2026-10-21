@@ -1,4 +1,7 @@
-//! Read counter directive values with the property-specific default integer.
+//! Скан счётчиков: чтение значения имени из директивы `counter-reset`/
+//! `counter-increment`/`counter-set` с неявным целым своего свойства
+//! (0 у сброса, 1 у приращения) и проверка, названо ли имя, включая
+//! обратную запись `reversed(name)`.
 
 /// Value for this name, using the property-specific implicit integer.
 pub(super) fn decl_value(decl: &Option<String>, name: &str, default: i64) -> Option<i64> {

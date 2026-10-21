@@ -1,4 +1,8 @@
-//! Preserve both border-radius axes until their length and percentage bases are known.
+//! Вычисленный стиль: разбор `border-radius` и угловых `border-*-radius`.
+//! Косая черта верхнего уровня даёт независимые вертикальные радиусы
+//! (CSS Backgrounds 3 §5.1); обе оси хранятся с единицами (`radius_ell`) до
+//! краски, где известны базы долей, а отрицательные длины зажимаются в ноль
+//! при разрешении.
 
 use super::{Computed, Corners};
 use crate::document::state::ValueCx;

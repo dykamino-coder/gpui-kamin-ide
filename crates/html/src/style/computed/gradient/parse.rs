@@ -3,11 +3,6 @@
 use super::*;
 use crate::document::state::ValueCx;
 
-/// `linear-gradient(90deg, #000, #fff)`. Направления словами приводим к углу.
-/// `linear-gradient(...)` и `radial-gradient(...)`.
-///
-/// Позиции стопов сохраняются: без них полосы не расставить, а именно они
-/// задают, где цвет меняется.
 /// Угол направления градиента по единице (css-values-4 §7.1): `Some(Some(deg))`
 /// — законный угол, `Some(None)` — число с НЕЗНАКОМОЙ единицей (`90degree`,
 /// `0.25turns`): вся запись негодна; `None` — не размерность вовсе (цвет,
@@ -26,6 +21,8 @@ pub(super) fn gradient_angle(a: &str) -> Option<Option<f32>> {
     })
 }
 
+/// `linear-gradient(90deg, #000, #fff)`, `radial-gradient(...)` и их повторяющиеся
+/// формы. Направления словами приводятся к углу; позиции стопов сохраняются.
 pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Option<Gradient> {
     let authored = v;
     // Повторяющаяся запись отличается от обычной ТОЛЬКО тем, что узор стопов

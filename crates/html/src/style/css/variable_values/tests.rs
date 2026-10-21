@@ -1,4 +1,5 @@
-//! Verify custom-property computation independently of painting.
+//! Тесты вычисления пользовательских свойств (`compute`/`substitute`) без
+//! отрисовки: экраны в именах, общие CSS-слова через `var()`, `@property`.
 
 use super::super::parse_decls;
 use super::{compute, has_var, substitute};

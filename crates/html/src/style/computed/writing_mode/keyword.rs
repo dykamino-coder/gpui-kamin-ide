@@ -1,5 +1,5 @@
-//! The `writing-mode` (css-writing-modes-4 §3.1) and `text-orientation` (§5.1) keywords ( Blink `WritingMode` enum,
-//! `platform/text/writing_mode.h`): the stored value of the property.
+//! Ключевые слова `writing-mode` (css-writing-modes-4 §3.1) и `text-orientation` (§5.1)
+//! (Blink: enum `WritingMode`, `platform/text/writing_mode.h`): хранимое значение свойства.
 
 /// A `writing-mode` value.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]

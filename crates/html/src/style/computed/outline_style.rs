@@ -1,5 +1,6 @@
-//! Outline styles retain double so paint can leave the gap transparent.
-//! CSS UI 4 §outline-style uses the corresponding border line patterns.
+//! Вычисленный стиль: разбор `outline-style` в код рисунка (CSS UI 4
+//! §outline-style использует узоры линий рамки). `double` хранится отдельным
+//! кодом, чтобы краска оставила зазор между линиями прозрачным.
 
 pub(crate) const DOUBLE: u8 = 5;
 

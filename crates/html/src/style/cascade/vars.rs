@@ -1,7 +1,10 @@
-//! `var()`, `attr()`, `sibling-index()`.
+//! Каскад: подстановки в значении до разбора — `var()` (с запасным значением и
+//! раскрытием цепочек переменных), типизированный `attr()` (css-values-5 §7.7)
+//! и `sibling-index()`/`sibling-count()` (css-values-5 §tree-counting).
+//! Атрибуты и место среди братьев хозяина ставит `dom::walk` на время каскада
+//! элемента; негодная подстановка делает объявление `unset`.
 
 use crate::document::state::ValueCx;
-// owner: B
 
 use crate::style::computed::top_level_comma;
 use crate::style::css::Decls;

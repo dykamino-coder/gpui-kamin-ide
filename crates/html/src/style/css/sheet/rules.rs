@@ -1,4 +1,5 @@
-//! Обход правил таблицы стилей (sheet_rules): @-правила, вложенность, слои, @import/@media/@supports/@scope, сбор Rule.
+//! Обход правил таблицы стилей (sheet_rules): @-правила, вложенность, слои,
+//! @import/@media/@supports/@scope, сбор Rule.
 
 use super::*;
 
@@ -104,7 +105,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
                 sel,
                 decls: decls.clone(),
                 order,
-                // Происхождение ставит тот, кто подключает таблицу (см. `dom.rs`).
+                // Происхождение ставит тот, кто подключает таблицу (см. `dom`).
                 origin: 0,
                 layer: cx.layer_of_rules(),
             });

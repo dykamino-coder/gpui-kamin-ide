@@ -1,4 +1,5 @@
-//! Единицы lh/rlh в длинах элемента (css-values-4 §6.1.4): разрешаются после каскада по высоте строки родителя или своей.
+//! Единицы lh/rlh в длинах элемента (css-values-4 §6.1.4): разрешаются после каскада по высоте
+//! строки родителя или своей.
 
 use super::*;
 
@@ -119,8 +120,7 @@ pub(super) fn inherit_lh_units(
     // (`lh-unit-same-element-*`). Чинится ЗДЕСЬ, а не в `background.rs`:
     // там доступен только запасной кегль 16 (`FontCx::FALLBACK` даёт
     // 1.2 × 16 = 19.2 — ровно то, что видно на снимке), а сплошной
-    // перевод единиц в самом `background.rs` уже ЗАМЕРЕН в минус
-    // (★ `background.rs:2577`, CSS2 4614 → 4610).
+    // перевод шрифтовых единиц в самом `background.rs` ломает другие пары.
     // `em` in `background-size`/`background-position` is the element's own
     // computed font size (css-values-4 §6.1.1); the painter only knows a
     // 16px fallback (`table-cell-align-002`: `.5em .5em` at 20px).

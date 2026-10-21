@@ -1,4 +1,5 @@
-//! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip: text, белые пробелы, курсор, таблицы, caret-color.
+//! inherit_stage, этап краски: filter и drop-shadow с цветом, заливка текста под background-clip:
+//! text, белые пробелы, курсор, таблицы, caret-color.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -200,7 +200,7 @@ pub(crate) mod wc {
     pub(crate) const STACK: u8 = 1 << 2;
     /// `z-index`: контекст только там, где `z-index` действует
     /// (позиционированная коробка, элемент flex/grid) — решает
-    /// `inline::inherit`, где известен вид родителя.
+    /// `style::cascade::inherit`, где известен вид родителя.
     pub(crate) const STACK_Z: u8 = 1 << 3;
     /// Обещано свойство семьи `transform` или `contain`: к строчной
     /// НЕатомарной коробке они не применяются (css-transforms-1

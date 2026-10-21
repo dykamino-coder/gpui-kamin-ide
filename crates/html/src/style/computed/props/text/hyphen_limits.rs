@@ -1,4 +1,6 @@
-//! CSS Text character limits for dictionary hyphenation.
+//! Вычисленный стиль: разбор `hyphenate-limit-chars` (css-text-4) — до трёх
+//! значений «слово, до переноса, после переноса», `auto` — без предела; при
+//! двух значениях третье повторяет второе. Используется словарным переносом.
 
 pub(super) fn parse_hyphenate_limit_chars(value: &str) -> Option<[Option<usize>; 3]> {
     let mut limits = [None; 3];

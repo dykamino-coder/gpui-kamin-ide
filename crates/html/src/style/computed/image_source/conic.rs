@@ -1,4 +1,4 @@
-//! Parsed conic rays, angular stop positions and interpolation operands.
+//! Разобранные лучи conic-градиента, угловые позиции остановок и операнды интерполяции.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{BgPos, GradSpace, Len};

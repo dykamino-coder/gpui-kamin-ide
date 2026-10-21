@@ -1,4 +1,8 @@
-//! Apply color filters after sampling a single gradient, preserving its geometry.
+//! Наследование, окраска: цветовой `filter` элемента на его единственный
+//! градиентный фон. Filter Effects 1 §5: цветовые операции потребляют уже
+//! отрисованное изображение, поэтому градиент заворачивается в `filter(...)`
+//! как источник `bg_image` с сохранением геометрии, а размытие остаётся на
+//! группе поддерева.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Filter, ImageFilter, ImageSource};

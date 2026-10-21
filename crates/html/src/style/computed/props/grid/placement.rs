@@ -1,4 +1,6 @@
-//! Computed::apply_grid, хвост цепочки: grid-template-rows, grid-auto-*, размещение grid-row/column, grid-template-areas, grid-area. Ветви в исходном порядке после первых ветвей apply_grid.
+//! Computed::apply_grid, хвост цепочки: grid-template-rows, grid-auto-*, размещение
+//! grid-row/column, grid-template-areas, grid-area. Ветви в исходном порядке после первых ветвей
+//! apply_grid.
 
 use super::*;
 use crate::document::state::ValueCx;

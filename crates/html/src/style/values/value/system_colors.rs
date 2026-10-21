@@ -1,4 +1,7 @@
-//! CSS system colours, shared by CSS values and native form appearance.
+//! Значения: системные цвета CSS (css-color-4 §6.2) для светлой и тёмной
+//! схемы, общие для значений CSS и родного вида элементов форм; устаревшие
+//! имена сводятся к современным ролям. Палитра — родной запас Blink
+//! `LayoutTheme::DefaultSystemColor`.
 
 use super::Color;
 

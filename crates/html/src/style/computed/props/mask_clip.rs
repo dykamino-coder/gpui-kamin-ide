@@ -1,4 +1,8 @@
-//! Computed::apply_one: mask*, clip, clip-path, shape-*.
+//! Группа свойств `Computed::apply_one`: `mask*`, `clip`, `clip-path`,
+//! `shape-*`. Здесь — `shape-outside`/`shape-margin`/`shape-image-threshold`,
+//! устаревший `clip: rect(...)` (CSS 2.1), `mask-size`, `mask-mode`,
+//! `mask-type`, `mask-composite`; слои маски, `clip-path` и базовые фигуры —
+//! в подмодулях `mask_layers`, `clip_mask`, `basic_shape`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

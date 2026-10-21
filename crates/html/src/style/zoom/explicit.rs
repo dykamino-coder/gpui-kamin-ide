@@ -1,4 +1,5 @@
-//! Явно заданные (не унаследованные) длины под zoom: что масштабировать у элемента и что запомнить для потомков.
+//! Явно заданные (не унаследованные) длины под zoom: что масштабировать у элемента и что запомнить
+//! для потомков.
 
 use super::*;
 use crate::style::values::value::px_strict;
@@ -24,7 +25,7 @@ pub(super) fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
         c.height = Some(v);
         c.height_inherit = false;
     }
-    // Порядок разрядов — как в `inline::inherit`: min-w, min-h, max-w, max-h.
+    // Порядок разрядов — как в `style::cascade::inherit`: min-w, min-h, max-w, max-h.
     let minmax = [p.min_width, p.min_height, p.max_width, p.max_height];
     for (i, from) in minmax.into_iter().enumerate() {
         if c.minmax_inherit[i]
@@ -69,7 +70,7 @@ pub(super) fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
         own,
     );
     // `outline-width`/`outline-offset: inherit` и `background-size: inherit`
-    // живут разрядами `inherit_bits`, и слияние (`inline::inherit`) копирует
+    // живут разрядами `inherit_bits`, и слияние (`style::cascade::inherit`) копирует
     // точки родителя БЕЗ своего множителя (`zoom/outline-width`,
     // `outline-offset`, `background-size`: вторая коробка группы с зумом 2).
     // Значение родителя — его собственный стиль, уже с его зумом, × `own`;

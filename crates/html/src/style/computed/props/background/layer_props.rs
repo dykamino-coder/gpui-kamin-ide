@@ -1,4 +1,6 @@
-//! Computed::apply_background, хвост цепочки: background-repeat, origin/clip, size, position(-x/-y), object-position, background-attachment. Ветви в исходном порядке после box-shadow и background-image.
+//! Computed::apply_background, хвост цепочки: background-repeat, origin/clip, size,
+//! position(-x/-y), object-position, background-attachment. Ветви в исходном порядке после
+//! box-shadow и background-image.
 
 use super::*;
 use crate::document::state::ValueCx;

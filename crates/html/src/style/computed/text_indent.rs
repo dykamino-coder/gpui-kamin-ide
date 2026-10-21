@@ -1,4 +1,6 @@
-//! Resolve text indentation while preserving an explicit inheritance request.
+//! Вычисленный стиль: разбор `text-indent` — длина (в том числе `calc()` с
+//! долей, разрешаемой по ширине содержащего блока абзаца) и слова `each-line`,
+//! `hanging`; `inherit` очищает все три слота под наследование (CSS Cascade §7.3.2).
 
 use super::{Computed, split_outside_parens};
 use crate::document::state::ValueCx;
@@ -6,7 +8,7 @@ use crate::style::values::value::Len;
 
 pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
     // CSS Cascade §7.3.2: inherit overrides an earlier specified value.
-    // Unset fields are resolved from the parent by inline::inherit.
+    // Unset fields are resolved from the parent by style::cascade::inherit.
     if value.eq_ignore_ascii_case("inherit") {
         style.text_indent = None;
         style.text_indent_each_line = None;

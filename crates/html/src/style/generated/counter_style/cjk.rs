@@ -1,4 +1,7 @@
-//! Four-digit grouping algorithm, CSS Counter Styles 3 section 7.1.5.
+//! Стили счётчиков: позиционные восточноазиатские по алгоритму группировки
+//! четырьмя разрядами (CSS Counter Styles 3 §7.1.5) — пропуск единицы перед
+//! маркером, внутренние нули, корейские пробелы между группами; за пределом
+//! диапазона — `cjk-decimal`.
 
 pub(super) use super::cjk_data::CJK_STYLES;
 use super::cjk_data::Cjk;

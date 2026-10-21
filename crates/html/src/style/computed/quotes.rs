@@ -1,5 +1,7 @@
-//! Keep automatic quotation systems distinct from inherited and suppressed ones.
-//! CSS Content 3 §quotes-property: explicit auto overrides any inherited system.
+//! Вычисленный стиль: разбор `quotes` (CSS Content 3 §quotes-property) в поле с
+//! тремя состояниями — `none` (подавлено), явное `auto` (пустой список пар,
+//! перекрывает унаследованную систему кавычек) и список строковых пар чётной
+//! длины; `inherit`/`match-parent` очищают слот под наследование.
 
 use super::{Computed, unescape_content};
 

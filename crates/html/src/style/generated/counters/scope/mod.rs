@@ -1,4 +1,9 @@
-//! Style containment isolates counter mutations and quote depth in descendants.
+//! Счётчики: области действия и кавычки. `contain: style` изолирует изменения
+//! счётчиков и глубину кавычек в поддереве (CSS Containment 2 §3.4: граница
+//! после собственных директив корня; Blink `counters_attachment_context.cc`),
+//! внешние счётчики остаются читаемыми. Страничные контексты скрывают всю
+//! цепочку имени (CSS Paged Media 3 §page-based-counters). Здесь же `quotes`
+//! по узлам, язык для `auto` и выбор кавычки по глубине.
 
 mod quote_language;
 

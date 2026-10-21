@@ -1,4 +1,8 @@
-//! Consume stylesheet preludes and nested blocks without leaking their tokens.
+//! Разбор CSS: нарезка таблицы на куски (`Piece`) — at-предложения до `;` и
+//! правила «преамбула + блок». CDO/CDC между предложениями верхнего уровня
+//! отбрасываются (CSS Syntax §consume-stylesheet-contents), вложенные блоки
+//! потребляются целиком как единицы (§5.4.2–5.4.3, §5.4.8), точка с запятой
+//! завершает только at-правило, незакрытый блок в конце закрывается неявно.
 
 use super::{Piece, at_url, skip_string, skip_url};
 

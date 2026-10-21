@@ -1,4 +1,9 @@
-//! Computed::apply_one: filter, blend, isolation, animation, transition, will-change, contain*, content, counters, quotes, lists, svg, cursor and the rest.
+//! Группа свойств `Computed::apply_one`: эффекты и всё остальное — `filter`,
+//! `backdrop-filter`, смешение, `isolation`, `animation`, `transition`,
+//! `will-change`, `contain*`, `zoom`, `content`, счётчики, `quotes`, списки,
+//! свойства презентации SVG (`fill`, `stroke`, `x`/`y`), `cursor`,
+//! `appearance`, `view-transition-name`. Замыкает цепочку групп; таймлайны
+//! и ограничение — в подмодулях `timing`, `containment`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
@@ -95,8 +100,8 @@ impl Computed {
             // Здесь же признак корня подложки (filter-effects-2
             // Overview.bs:122: «will-change specifying any property that
             // would create a Backdrop Root on non-initial value»). Арма ОДНА:
-            // вторая с тем же ключом в этом `match` недостижима — так с
-            // b47ecf2 разряды `wc::*` не ставились вовсе.
+            // вторая с тем же ключом в этом `match` недостижима — так
+            // разряды `wc::*` однажды не ставились вовсе.
             "will-change" => {
                 let mut bits = 0u8;
                 let mut root = false;

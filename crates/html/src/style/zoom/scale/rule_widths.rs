@@ -1,4 +1,8 @@
-//! Zoom applies to computed initial rule widths and every entry in rule lists.
+//! Масштаб `zoom`: толщины линеек `column-rule-width`/`row-rule-width` и всех
+//! элементов их списков. Начальное `medium` вычисляется в абсолютную длину
+//! даже при `none`/`hidden` (CSS Multicol 1), поэтому материализуется до
+//! умножения, как Blink `SetZoomedInitialLineWidths`, а не поздним запасом
+//! 3px в раскладке; шрифтовые единицы не трогаются.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

@@ -1,4 +1,5 @@
-//! Разбор длины: Len::parse — числа с единицами, проценты, calc()/min()/max()/clamp(), anchor(), ключевые слова размеров.
+//! Разбор длины: Len::parse — числа с единицами, проценты, calc()/min()/max()/clamp(), anchor(),
+//! ключевые слова размеров.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -34,16 +35,14 @@ impl Len {
         // нет, но `fit-content` куда ближе к истине, чем выброшенная запись:
         // без неё коробка растягивалась во всю ширину как при `auto`.
         //
-        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): выражать довод парой «`max-width` = N,
-        // `min-width` = min-content». Формула §4.1 —
-        // `min(max-content, max(min-content, N))`, то есть довод НЕ потолок:
-        // при `min-content > N` он вообще не действует. Срез из 74 пар с
-        // `fit-content(` в разметке: 32 -> 32, зато `fit-content-length-
-        // percentage-002/005` 2.08 -> «красное видно» (коробка ужалась до
-        // довода 50 и 20 вместо минимального содержимого 100), а `min-width:
-        // min-content` этой ветке не доходит вовсе. Чинить надо сам зажим
-        // `fit-content` (он берёт max-content без учёта переноса), а не
-        // добавлять довод сбоку.
+        // Не выражать довод парой «`max-width` = N, `min-width` =
+        // min-content». Формула §4.1 — `min(max-content, max(min-content,
+        // N))`, то есть довод НЕ потолок: при `min-content > N` он вообще не
+        // действует (`fit-content-length-percentage-002/005`: коробка
+        // ужимается до довода 50 и 20 вместо минимального содержимого 100),
+        // а `min-width: min-content` этой ветке не доходит вовсе. Чинить надо
+        // сам зажим `fit-content` (он берёт max-content без учёта переноса),
+        // а не добавлять довод сбоку.
         let lower = s.to_ascii_lowercase();
         if let Some(arg) = lower
             .strip_prefix("fit-content(")

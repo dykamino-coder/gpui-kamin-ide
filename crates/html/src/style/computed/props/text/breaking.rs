@@ -1,4 +1,6 @@
-//! Computed::apply_text, продолжение цепочки: text-indent, text-box*, hanging-punctuation, разрывы слов и строк, text-fit, text-wrap. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_vertical_clamp.
+//! Computed::apply_text, продолжение цепочки: text-indent, text-box*, hanging-punctuation, разрывы
+//! слов и строк, text-fit, text-wrap. Ветви в исходном порядке; не совпавший ключ уходит в
+//! apply_text_vertical_clamp.
 
 use super::*;
 use crate::document::state::ValueCx;
