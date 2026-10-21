@@ -62,11 +62,11 @@ impl Computed {
                 // content = layout paint style).
                 css_wide_reset!(
                     self,
-                    self.contain_size,
-                    self.contain_inline_size,
-                    self.contain_layout,
-                    self.contain_paint,
-                    self.contain_style,
+                    contain_size,
+                    contain_inline_size,
+                    contain_layout,
+                    contain_paint,
+                    contain_style
                 );
                 let words: Vec<_> = v.split_whitespace().collect();
                 if words.is_empty()

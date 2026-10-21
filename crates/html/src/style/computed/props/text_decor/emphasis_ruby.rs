@@ -203,10 +203,10 @@ impl Computed {
             "text-shadow" => {
                 css_wide_reset!(
                     self,
-                    self.text_shadow,
-                    self.text_shadow_raw,
-                    self.text_shadow_none,
-                    self.text_shadow_rest,
+                    text_shadow,
+                    text_shadow_raw,
+                    text_shadow_none,
+                    text_shadow_rest
                 );
                 if !box_shadow_valid(v, vcx) || v.split_whitespace().any(|w| w == "inset") {
                     return;

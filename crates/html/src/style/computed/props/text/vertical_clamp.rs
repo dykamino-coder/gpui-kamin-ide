@@ -169,7 +169,7 @@ impl Computed {
                     Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
             }
             "writing-mode" => {
-                css_wide_reset!(self, self.writing_mode);
+                css_wide_reset!(self, writing_mode);
                 if !matches!(
                     v,
                     "horizontal-tb"
@@ -211,7 +211,7 @@ impl Computed {
 
             // --- Переносы и обрезка -------------------------------------------
             "hyphens" => {
-                css_wide_reset!(self, self.hyphenate, self.hyphens_auto);
+                css_wide_reset!(self, hyphenate, hyphens_auto);
                 if !matches!(v, "none" | "manual" | "auto") {
                     return;
                 }

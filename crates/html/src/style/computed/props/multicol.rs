@@ -162,7 +162,7 @@ impl Computed {
             // Префиксное написание — то же свойство (`border-image-000`,
             // `-webkit-box-decoration-break: clone`).
             "box-decoration-break" | "-webkit-box-decoration-break" => {
-                css_wide_reset!(self, self.bdb_clone);
+                css_wide_reset!(self, bdb_clone);
                 if !matches!(v, "slice" | "clone") {
                     return;
                 }

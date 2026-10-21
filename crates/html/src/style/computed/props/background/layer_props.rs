@@ -145,7 +145,7 @@ impl Computed {
                     self.inherit_bits |= inh::BG_POS;
                     return;
                 }
-                css_wide_reset!(self, self.bg_pos, self.bg_position_math);
+                css_wide_reset!(self, bg_pos, bg_position_math);
                 if !position_valid(v, vcx) {
                     return;
                 }

@@ -5,6 +5,7 @@
 use super::*;
 mod grammar;
 mod indent;
+mod text_box;
 use crate::document::state::ValueCx;
 
 impl Computed {
@@ -25,43 +26,7 @@ impl Computed {
             // отступ получают все строки, КРОМЕ той, что получила бы его.
             // Порядок слов свободный, поэтому значение разбирается по словам.
             "text-indent" => indent::apply(self, v, vcx),
-            // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
-            // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
-            // содержимого сел на метрику текста. Свойство НЕ наследуется.
-            "text-box-trim" => {
-                if let Some((s, e)) = text_box_values::parse_trim(v) {
-                    self.accept_declaration();
-                    self.text_box_trim_start = s;
-                    self.text_box_trim_end = e;
-                }
-            }
-            // `text-box-edge` (css-inline-3 §4.3): по какой метрике срезать.
-            // Первое слово — верхний край, второе — нижний; при одном слове
-            // второй край берёт то же значение, а если оно ему не подходит —
-            // `text` (спека: «else 'text' is assumed as the missing value»).
-            // `auto` = `text` (начальное `line-fit-edge: leading` читается
-            // как `text`).
-            "text-box-edge" => {
-                if let Some((over, under)) = text_box_values::parse_edge(v) {
-                    self.accept_declaration();
-                    self.text_box_edge_set = true;
-                    self.text_box_over = over;
-                    self.text_box_under = under;
-                }
-            }
-            // Сокращение `text-box` (css-inline-3 §4.1): без `text-box-trim`
-            // подразумевается `trim-both` (НЕ начальное значение), без
-            // `text-box-edge` — `auto`. `normal` гасит оба.
-            "text-box" => {
-                if let Some(((s, e), (over, under))) = text_box_values::parse_shorthand(v) {
-                    self.accept_declaration();
-                    self.text_box_trim_start = s;
-                    self.text_box_trim_end = e;
-                    self.text_box_over = over;
-                    self.text_box_under = under;
-                    self.text_box_edge_set = true;
-                }
-            }
+            "text-box-trim" | "text-box-edge" | "text-box" => text_box::apply(self, key, v),
             "hanging-punctuation" => {
                 let mut h = Hanging::default();
                 for word in v.split_ascii_whitespace() {
@@ -132,7 +97,7 @@ impl Computed {
                 self.wrap_anywhere = Some(v == "anywhere");
             }
             "word-break" => {
-                css_wide_reset!(self, self.auto_phrase, self.break_anywhere, self.keep_all);
+                css_wide_reset!(self, auto_phrase, break_anywhere, keep_all);
                 if !matches!(
                     v,
                     "normal" | "break-all" | "keep-all" | "break-word" | "auto-phrase"
@@ -159,9 +124,9 @@ impl Computed {
             "line-break" => {
                 css_wide_reset!(
                     self,
-                    self.break_anywhere,
-                    self.break_anywhere_strict,
-                    self.line_break_loose,
+                    break_anywhere,
+                    break_anywhere_strict,
+                    line_break_loose
                 );
                 if !matches!(v, "auto" | "loose" | "normal" | "strict" | "anywhere") {
                     return;

@@ -23,10 +23,10 @@ macro_rules! parsed_value {
 // A handler that checks its whole grammar before writing resets its slots for
 // a CSS-wide keyword instead (the multi-slot form of `parsed_value!`).
 macro_rules! css_wide_reset {
-    ($parser:expr, $($slot:expr),+ $(,)?) => {
+    ($parser:ident, $($field:ident),+ $(,)?) => {
         if $parser.css_wide_value {
             $parser.accept_declaration();
-            $($slot = Default::default();)+
+            $($parser.$field = Default::default();)+
             return;
         }
     };

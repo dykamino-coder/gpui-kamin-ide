@@ -192,12 +192,8 @@ impl Computed {
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" | "counter-increment" | "counter-set" => {
-                if v != "inherit" {
-                    match key {
-                        "counter-reset" => css_wide_reset!(self, self.counter_reset),
-                        "counter-increment" => css_wide_reset!(self, self.counter_increment),
-                        _ => css_wide_reset!(self, self.counter_set),
-                    }
+                if self.css_wide_value && v != "inherit" {
+                    return counters::reset(self, key);
                 }
                 if !values::counter_value(v, key == "counter-reset") {
                     return;

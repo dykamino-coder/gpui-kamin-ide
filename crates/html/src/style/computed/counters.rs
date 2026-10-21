@@ -12,12 +12,21 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str, vcx: ValueCx<'
         return;
     };
     style.accept_declaration();
-    let slot = match key {
+    *slot(style, key) = Some(value);
+}
+
+/// A resetting CSS-wide keyword leaves no counters (initial `none`).
+pub(super) fn reset(style: &mut Computed, key: &str) {
+    style.accept_declaration();
+    *slot(style, key) = None;
+}
+
+fn slot<'a>(style: &'a mut Computed, key: &str) -> &'a mut Option<String> {
+    match key {
         "counter-reset" => &mut style.counter_reset,
         "counter-increment" => &mut style.counter_increment,
         _ => &mut style.counter_set,
-    };
-    *slot = Some(value);
+    }
 }
 
 fn math(raw: &str) -> bool {
