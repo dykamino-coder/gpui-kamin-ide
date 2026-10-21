@@ -1,4 +1,6 @@
-//! Known intrinsic contributions of nested flex rows, CSS Flexbox section 9.9.
+//! Известные вклады вложенного flex-ряда в главный размер (css-flexbox-1 §9.9): max-content —
+//! сумма внешних ширин элементов с зазорами, min-content — наибольшая из них; доли, `flex-basis`
+//! и ограничения ширины требуют циклического разрешения и дают `None`.
 
 use super::super::items::row_item_width;
 use super::geometry::row_container;

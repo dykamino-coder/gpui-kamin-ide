@@ -1,4 +1,7 @@
-//! Vertical grids with indefinite inline tracks measure child text before stretch.
+//! Пометка `hug_inline` детям вертикального контейнера, чья строчная ось по содержимому:
+//! сетка с неопределёнными строчными дорожками или невытягивающим `justify-*` меряет текст
+//! ребёнка до растяжки (css-grid-1 §6.6, css-align-3 §6.1), а цепочка потоковых блоков с
+//! авто-высотой наследует shrink-to-fit заявки контейнера.
 use crate::dom::Node;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -9,12 +12,12 @@ use crate::style::values::value::Len;
 /// Высоту повёрнутый абзац не заявляет (`VerticalText::request_layout`):
 /// длину строки решает родитель. Когда родитель сам размером в содержимое по
 /// строчной оси, решать некому — коробка схлопывалась в свои рамки, а глиф
-/// висел ниже (`target/mt/gr.html`, случай 2). Такой родитель — вертикальная
+/// висел ниже (проба руками, случай 2). Такой родитель — вертикальная
 /// СЕТКА с невытягивающим `justify-self`/`justify-items`: строчная ось
 /// элемента — по содержимому (css-grid-1 §6.6, css-align-3 §6.1 —
 /// растягивает только `stretch`/`normal`). Пометка идёт и вниз по цепочке
 /// потоковых блоков с `auto` высотой (`merged.hug_inline` — собственный флаг
-/// контейнера, `inline::inherit` начинает с `own.clone()`): их строчный
+/// контейнера, `style::cascade::inherit` начинает с `own.clone()`): их строчный
 /// размер — тот же shrink-to-fit. Вертикальный флоат (случай 4) сюда не
 /// доходит: его строит хост полос, и `float` до сборщика детей не доезжает.
 pub(crate) fn children(children: Vec<Node>, own: &Computed, merged: &Computed) -> Vec<Node> {

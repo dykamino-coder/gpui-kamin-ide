@@ -122,18 +122,13 @@ pub(super) fn kid_shapes(
                             forced,
                             solid,
                             // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
-                            // передаётся коробке (css-break-4
-                            // §break-propagation) — у страниц; колонки
-                            // не трогаются (отдельный замер).
-                            // Разрыв ПЕРВОГО/ПОСЛЕДНЕГО поточного ребёнка
                             // передаётся коробке (css-break-3 §5.1
                             // break-propagation; Blink `InitialBreakBefore`)
                             // одинаково у страниц и у колонок: правило не
-                            // про вид фрагментаинера. Гейт `cx.paged` был
-                            // «пока не замерено» — `single-line-row-flex-
-                            // fragmentation-016` с разрывом на внуке стоит
-                            // красной ровно из-за него (проба
-                            // `target/probe-9g/p-…-016.html` = 0.00).
+                            // про вид фрагментаинера. Гейт `cx.paged` здесь
+                            // не ставить: `single-line-row-flex-
+                            // fragmentation-016` с разрывом на внуке
+                            // краснеет ровно из-за него.
                             edge_break(k, false, vcx),
                             edge_break(k, true, vcx),
                             // Own flow size and positioned reach travel separately.

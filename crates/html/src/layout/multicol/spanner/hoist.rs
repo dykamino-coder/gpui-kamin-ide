@@ -20,7 +20,7 @@ use crate::style::values::value::Len;
 /// достаёт сам спаннер (`GetSpannerFromPath`,
 /// `column_layout_algorithm.cc:224`) и кладёт его между линиями колонок. У
 /// нас раскладка колонок принимает спаннера ТОЛЬКО прямым ребёнком
-/// (`render.rs` `is_span`, `StackChild::span`), поэтому тот же разрез
+/// (`render::generic_box::multicol` `is_span`, `StackChild::span`), поэтому тот же разрез
 /// делается в дереве до неё.
 pub(crate) fn hoist_spanners(kids: &[Node], vcx: ValueCx<'_>) -> Option<Vec<Node>> {
     if !kids.iter().any(|n| {
@@ -48,7 +48,7 @@ pub(crate) fn hoist_spanners(kids: &[Node], vcx: ValueCx<'_>) -> Option<Vec<Node
 /// Ключевые слова `min-content`/`max-content`/`fit-content` требуют
 /// внутреннего размера прямо (css-sizing-3 §4.1); у плавающей, абсолютной и
 /// строчной коробки то же самое зовётся shrink-to-fit (CSS 2.1 §10.3.5) — тот
-/// же перечень, что у предиката `shrink_to_fit` в `apply.rs:940`. Элемент
+/// же перечень, что у предиката `shrink_to_fit` в `style::apply::box_model`. Элемент
 /// гибкого контейнера и сетки тоже меряется содержимым: его основа —
 /// `max-content` (css-flexbox-1 §9.2 п.3.A).
 pub(crate) fn intrinsic_inline_size(c: &Computed, parent: &Computed) -> bool {

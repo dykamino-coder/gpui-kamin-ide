@@ -1,28 +1,24 @@
-//! Хост полос обтекания с ИЗМЕРЕННЫМИ размерами (шаги F2, F3, F5 плана
-//! `target/scout-float-bands-design.md`).
+//! Элемент GPUI `BandFlow` — хост полос обтекания с ИЗМЕРЕННЫМИ размерами: план размещения
+//! детей (`Kid`, `Kind`, `Nest`) по полосам `FloatBands` строится пробной раскладкой, а не
+//! литералами стиля. Вход: построители детей и их поля; выход: позиции и высота хоста.
 //!
-//! The one float placement of the engine: every float run of a block
-//! container is planned here (`wrap_floats`). Sizes the style does not give
-//! come from layout:
+//! Единственное размещение флоатов движка: здесь планируется каждый пробег флоатов блочного
+//! контейнера (`wrap_floats`). Размеры, которых нет в стиле, берутся из раскладки:
 //!
-//! * ширина контекста — из замера (`known`/`available`) и из `bounds` в
-//!   `prepaint`, а не из `style.width` (F2: `<td>` без ширины в стиле, тело
-//!   без ширины);
-//! * размер флоата — shrink-to-fit CSS 2.1 §10.3.5 пробной раскладкой ДО
-//!   посадки (F3), как у Blink (`floats_utils.cc:173-189`,
-//!   `LayoutFloatWithoutFragmentation`) и Servo (`flow/float.rs:899-919`
-//!   `FloatBox::layout` → `place_float_fragment` `:1075-1137`);
-//! * кусок хвоста со своим контекстом без размеров — ширина окна полос и
-//!   высота из содержимого (F5, §9.5 последний абзац): перебор возможностей
-//!   сверху вниз, как `BlockLayoutAlgorithm::LayoutNewFormattingContext`
-//!   (Blink `block_layout_algorithm.cc:2092-2313`) и
-//!   `layout_in_flow_block_level_sequentially` (Servo `flow/mod.rs:1335-1426`).
+//! * ширина контекста — из замера (`known`/`available`) и из размера узла в `prepaint`, а не
+//!   из `style.width` (`<td>` без ширины в стиле, тело без ширины);
+//! * размер флоата — shrink-to-fit CSS 2.1 §10.3.5 пробной раскладкой ДО посадки, как у
+//!   Blink (`floats_utils.cc`, `LayoutFloatWithoutFragmentation`) и Servo
+//!   (`flow/float.rs`, `FloatBox::layout` → `place_float_fragment`);
+//! * кусок хвоста со своим контекстом без размеров — ширина окна полос и высота из
+//!   содержимого (§9.5 последний абзац): перебор возможностей сверху вниз, как
+//!   `BlockLayoutAlgorithm::LayoutNewFormattingContext` (Blink `block_layout_algorithm.cc`)
+//!   и `layout_in_flow_block_level_sequentially` (Servo `flow/mod.rs`).
 //!
-//! Ограничение gpui: в замерном замыкании основной движок раскладки вынут из
-//! окна. Пробная раскладка идёт на ОТДЕЛЬНОМ движке
-//! (`Window::with_nested_layout`, KaminIDE patch), а элемент, разложенный
-//! там, в основное дерево не годится — поэтому дети приходят не элементами, а
-//! построителями, и строятся заново на каждую пробу и на `prepaint`.
+//! Ограничение gpui: в замерном замыкании основной движок раскладки вынут из окна. Пробная
+//! раскладка идёт на ОТДЕЛЬНОМ движке (`Window::with_nested_layout`, наше расширение gpui),
+//! а элемент, разложенный там, в основное дерево не годится — поэтому дети приходят не
+//! элементами, а построителями, и строятся заново на каждую пробу и на `prepaint`.
 
 use crate::layout::float::bands::FloatBands;
 mod clearance;

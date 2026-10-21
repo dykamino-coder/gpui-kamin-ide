@@ -1,4 +1,4 @@
-//! Pinned absolute descendants keep their containing block outside nested bands.
+//! Закреплённые абсолютные потомки сохраняют свой containing block вне вложенных band.
 
 use super::lift::abs_pinned;
 use crate::dom::{Element, Node};

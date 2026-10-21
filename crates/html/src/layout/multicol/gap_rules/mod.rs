@@ -1,5 +1,4 @@
 //! Правила промежутков колонок (`column-rule`, `*-rule`).
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;

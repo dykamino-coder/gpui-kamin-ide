@@ -1,4 +1,4 @@
-//! MathML Core §3.4.1: side scripts, preserving the base baseline.
+//! MathML Core §3.4.1: боковые скрипты с сохранением baseline основания.
 
 use super::geometry::Metrics;
 

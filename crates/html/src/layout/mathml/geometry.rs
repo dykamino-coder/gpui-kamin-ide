@@ -1,4 +1,4 @@
-//! Pure logical-pixel metrics for MathML Core horizontal rows.
+//! Чистые метрики в логических пикселях для горизонтальных строк MathML Core.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct Metrics {

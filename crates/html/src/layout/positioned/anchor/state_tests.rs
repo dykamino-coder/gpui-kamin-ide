@@ -1,4 +1,4 @@
-//! Document isolation across interleaved anchor frame and prepaint operations.
+//! Тесты: изоляция документов при чередовании операций кадра и prepaint якорей.
 
 use super::{next_seq, reset, tf_map, tf_pop, tf_push, tf_under};
 use crate::document::state::DocState;

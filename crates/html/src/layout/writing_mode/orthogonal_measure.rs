@@ -1,5 +1,6 @@
-//! Measure rotated CSS contributions before device-pixel rounding.
-//! Rounded min/max contributions must not change intrinsic size or wrapping.
+//! Мера повёрнутого содержимого до округления к пикселям устройства: вклады min-content
+//! и max-content, используемый строчный размер по ограничению и раскладка на него.
+//! Округлённые вклады не должны менять внутренний размер и перенос.
 use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px, size};
 

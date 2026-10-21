@@ -1,4 +1,4 @@
-//! Anchor registries and prepaint transform stack owned by one document.
+//! Реестры якорей и стек трансформаций prepaint, принадлежащие одному документу.
 
 use super::AnchorRec;
 use gpui::{Bounds, Pixels};
@@ -42,7 +42,7 @@ pub(crate) struct AnchorState {
     pub(super) seq: Cell<u32>,
     /// Стек плоских трансформов предков на подготовке кадра: номер и
     /// аффинная `[[a, b, tx], [c, d, ty]]` в css-точках окна. Кладёт
-    /// `interact::Transformed::prepaint` вокруг ребёнка; номера идут заново
+    /// `transformed_element::Transformed::prepaint` вокруг ребёнка; номера идут заново
     /// каждый кадр (`reset`), дерево то же — номера те же.
     pub(super) tf: RefCell<Vec<(u32, [[f32; 3]; 2])>>,
     pub(super) tf_next: Cell<u32>,

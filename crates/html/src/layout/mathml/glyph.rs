@@ -1,4 +1,4 @@
-//! OpenType MATH glyph selection; no geometric scaling of glyph outlines.
+//! Выбор глифов OpenType MATH; геометрического масштабирования контуров глифов нет.
 use super::{assembly, geometry::Metrics};
 use crate::text::fonts::math;
 use gpui::{Font, FontId, GlyphId, Hsla, Pixels, Point, Window, point, px};

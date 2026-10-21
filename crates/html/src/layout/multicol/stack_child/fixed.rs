@@ -2,23 +2,6 @@
 
 use crate::dom::Node;
 
-/// css-position-3 §abspos-breaking: «User
-/// agents must not paginate the content of
-/// fixed-positioned boxes». Копия фрагмента —
-/// ПОЛНЫЙ клон поддерева, и `position: fixed`
-/// внутри неё уезжает в слой ICB из КАЖДОЙ
-/// копии (`render.rs:1790` -> `:1823` ->
-/// `icb_push`). Слой лежит вне коробки
-/// многоколоночника, маска колонки
-/// (`flow.rs:998`) его не режет — на экране
-/// вышло бы столько зелёных коробок, сколько
-/// колонок. Оставляем фиксированного потомка
-/// только в ПЕРВОЙ копии: там же, где стоит
-/// его щуп статической позиции.
-/// Blink делает это тем же разделением —
-/// `out_of_flow_layout_part.cc:1607`: «This
-/// does not include repeated fixed-positioned
-/// elements».
 /// Устанавливает ли коробка содержащий блок для
 /// `position: fixed` (css-position-3 §fixed-cb:
 /// «the nearest ancestor box that establishes a
@@ -26,7 +9,7 @@ use crate::dom::Node;
 /// css-transforms-1 §3: трансформ даёт
 /// «containing block for all descendants … and
 /// fixed-position descendants»). Список ДОСЛОВНО
-/// тот же, что в `inline::inherit`
+/// тот же, что в `style::cascade::inherit`
 /// (`transform_ancestor`): `transform`,
 /// `contain: layout`, `contain: paint`. Шире
 /// брать нельзя — `blocks` решает по `under_tf`
@@ -39,10 +22,9 @@ pub(super) use crate::layout::positioned::repeat::{drop_uncontained_oof, fixed_c
 /// fixed-positioned boxes». Копия фрагмента —
 /// ПОЛНЫЙ клон поддерева, и `position: fixed`
 /// внутри неё уезжает в слой ICB из КАЖДОЙ
-/// копии (`render.rs:1790` -> `:1823` ->
-/// `icb_push`). Слой лежит вне коробки
-/// многоколоночника, маска колонки
-/// (`flow.rs:998`) его не режет — на экране
+/// копии (`icb_push`). Слой лежит вне
+/// коробки многоколоночника, маска
+/// колонки его не режет — на экране
 /// вышло бы столько зелёных коробок, сколько
 /// колонок. Оставляем фиксированного потомка
 /// только в ПЕРВОЙ копии: там же, где стоит
@@ -64,7 +46,7 @@ pub(super) use crate::layout::positioned::repeat::{drop_uncontained_oof, fixed_c
 /// breaks … may subsequently be broken over
 /// several fragmentation containers». В слой ICB
 /// такая коробка у нас и не уходит: `blocks`
-/// (`render.rs:3966`) считает её `abs_like` при
+/// (`placement/route.rs`) считает её `abs_like` при
 /// `under_tf` и оставляет НА МЕСТЕ, значит копия
 /// ≥ 1 без неё теряет единственную отрисовку.
 /// Blink делит так же:

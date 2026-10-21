@@ -16,7 +16,7 @@ impl Hooks for PageStack {
         // листов подгоняется масштабом, не размером стопки. Измеряемая
         // раскладка здесь не годится: блочный родитель не отдаёт ей
         // определённой высоты, и стопка получала 800x0 — масштаб схлопывался
-        // в точку, кадр выходил пустым (первый заход, 06.09).
+        // в точку, кадр выходил пустым.
         let mut style = gpui::Style::default();
         style.size.width = gpui::relative(1.0).into();
         style.size.height = gpui::relative(1.0).into();
@@ -182,7 +182,7 @@ impl Hooks for PageStack {
         let s = self.grid.get().1;
         let pages = self.pages.get();
         // Масштаб вокруг левого верха стопки; матрица — в точках устройства,
-        // как у `interact::Transformed` (interact.rs:1152-1188).
+        // как у `paint::effects::Transformed`.
         let k = window.scale_factor();
         let dev = |v: f32| px(v).scale(k);
         let origin = point(

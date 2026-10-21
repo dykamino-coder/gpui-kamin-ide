@@ -1,4 +1,4 @@
-//! MathML Core stacked scripts; horizontal centering is independent of CSS width.
+//! Стековые скрипты MathML Core; горизонтальное центрирование не зависит от CSS-ширины.
 use super::geometry::Metrics;
 #[derive(Clone, Copy)]
 pub(super) struct Parameters {

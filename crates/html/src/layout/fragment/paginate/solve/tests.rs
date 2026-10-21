@@ -1,4 +1,4 @@
-//! Measured pagination solver regression tests.
+//! Тесты-регрессии решателя измеренной пагинации.
 
 use super::*;
 

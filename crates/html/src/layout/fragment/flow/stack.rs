@@ -1,4 +1,4 @@
-//! Add measured float-flow opportunities to the common column input.
+//! Добавляет измеренные возможности разрыва float-потока в общий вход колонок.
 
 use crate::layout::fragment::types::{StackAxis, StackChild};
 use gpui::{Pixels, Size, Window, point, px};

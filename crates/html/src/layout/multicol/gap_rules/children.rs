@@ -1,4 +1,7 @@
-//! Build the shared decoration layer before children, including atomic boxes.
+//! Слой линеек промежутков (css-gaps-1) перед детьми контейнера: при заданном стиле линеек
+//! создаётся свежий буфер проб (`GapItems`) и художник `GapRulePainter`, а дети строятся с
+//! настройками, где `LayoutCx::gap_items` указывает на этот буфер, чтобы их пробы, включая
+//! атомарные коробки, попадали в него. Художник идёт первым слоем, под детьми.
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;

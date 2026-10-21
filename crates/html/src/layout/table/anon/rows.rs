@@ -1,4 +1,6 @@
-//! Logical table rows, including tracks removed by visibility collapse.
+//! Логические ряды таблицы: обход групп и рядов по тегу или `display` с переносом
+//! относительного сдвига, фона группы и самой группы (`RowCarry`) в каждый ряд; ряды,
+//! схлопнутые `visibility: collapse`, сохраняются для внутренних размеров и `rowspan`.
 use crate::dom::{Element, Node};
 use crate::layout::positioned::relative::relative_shift;
 use crate::style::computed::Display;
@@ -48,10 +50,9 @@ pub(in crate::layout::table) fn collect_rows<'a>(
                 // (`background-repeat-applies-to-001/002/003`). У ряда та же
                 // отсечка стоит давно.
                 //
-                // Первый заход сюда дал ровно ноль (+3 / −3): тройка
-                // `background-attachment-applies-to-*` уходила 0.48 -> 1.44,
-                // потому что полоса не знала `attachment: fixed`. Теперь
-                // знает, и отсечка стала чистым приобретением.
+                // Отсечка держится на том, что полоса знает
+                // `attachment: fixed`: без этого ломается тройка
+                // `background-attachment-applies-to-*`.
                 let picture = e.style.bg_image.is_some() || e.style.gradient_raw.is_some();
                 let deeper = (
                     shift.0,

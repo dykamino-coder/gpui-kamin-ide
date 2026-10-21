@@ -1,5 +1,5 @@
-//! Margins of the measured float host's children: px, a percentage of the
-//! containing block width, or `em` of the box's font size.
+//! Поля потомков измеряемого float-хоста: px, процент от ширины containing block
+//! или `em` от размера шрифта бокса.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

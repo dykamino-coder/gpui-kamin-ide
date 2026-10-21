@@ -1,4 +1,4 @@
-//! OpenType MATH assemblies: repeat extenders and distribute connector overlap.
+//! Сборки OpenType MATH: повтор extender-ов и распределение перекрытия соединителей.
 use ttf_parser::math::{GlyphAssembly, GlyphPart};
 
 pub(super) fn parts(

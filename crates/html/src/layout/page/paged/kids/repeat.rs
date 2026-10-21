@@ -1,4 +1,6 @@
-//! Page table section repetition uses the same reservations as columns.
+//! Повтор шапки и подвала таблицы на страницах: для одиночной таблицы в группе детей
+//! корня резервируются те же полосы `Repeat`, что и в колонках (`table_bands`), со
+//! сдвигом на схлопнутое поле и копиями элементов полос по числу страниц.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;

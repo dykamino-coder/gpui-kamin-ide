@@ -1,3 +1,3 @@
-//! Scoped ownership of the explicit containing-block paint layers.
+//! Областное владение явными слоями paint для containing block.
 
 pub(crate) use super::containing_block::LayerScope;

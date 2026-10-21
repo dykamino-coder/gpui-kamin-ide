@@ -1,4 +1,5 @@
-//! Коробка ячейки из сырого стиля: inherit-отступы и рамки, полкромки сросшейся модели, cellpadding.
+//! Коробка ячейки из сырого стиля: inherit-отступы и рамки, полкромки сросшейся модели,
+//! cellpadding.
 
 use crate::dom::Element;
 use crate::layout::table::{collapsed_cell_edge, table_spanning_size};
@@ -32,7 +33,7 @@ pub(super) fn prepare_cell_box(
     u32,
 )> {
     // `padding: inherit` и `border: inherit` решаются только в СЛИТОМ
-    // стиле (`cm`, `inline.rs` ветки `padding_inherit`/`border_inherit*`),
+    // стиле (`cm`, `style::cascade::inherit`, ветки `padding_inherit`/`border_inherit*`),
     // а коробку ячейки, полкромки сросшейся модели и `cellpadding`
     // ниже строят из СЫРОГО стиля: там лежало умолчание `td {padding:
     // 1px}` вместо 5px ряда (CSS 2.1 §6.2.1 — значение родителя).
@@ -54,22 +55,17 @@ pub(super) fn prepare_cell_box(
         cell.style.border_dashed = cm.border_dashed;
         cell.style.border_dotted = cm.border_dotted;
     }
-    // ПРОБОВАЛИ И ОТКАТИЛИ: держать внутри ячейки ПОЛОВИНУ её кромки
-    // прозрачной рамкой, а внутри таблицы — половину своей (§17.6.2:
-    // «row-width = (0.5 * border-width0) + padding-left1 + …», «the
-    // width of the table includes half the table border»), заодно сняв
-    // поправку `shift` у проб. Проба по 39 парам семей
-    // `table-backgrounds-b[cs]-*`, `collapsing-border-model-*`,
-    // `border-conflict-style-10*`: флипов ноль, все шесть `bc-*`
-    // подтянулись (13.73 -> 12.10, 5.00 -> 4.01, 1.00 -> 0.81), но
-    // потеряны `fixed-table-layout-027` (0.00 -> «красное видно») и
-    // `collapsing-border-model-008` (0.00 -> 1.36). Половина берётся от
-    // ПОБЕДИВШЕЙ кромки соседей (§17.6.2.1), а не от своей: без
-    // разрешения ширин по всей сетке модель не сходится.
+    // Не держать внутри ячейки ПОЛОВИНУ её кромки прозрачной рамкой, а
+    // внутри таблицы — половину своей (§17.6.2: «row-width = (0.5 *
+    // border-width0) + padding-left1 + …», «the width of the table
+    // includes half the table border»): половина берётся от ПОБЕДИВШЕЙ
+    // кромки соседей (§17.6.2.1), а не от своей, и без разрешения ширин
+    // по всей сетке модель не сходится (`fixed-table-layout-027`,
+    // `collapsing-border-model-008`).
     //
     // Сросшиеся рамки (border-collapse): рамки С ЯЧЕЕК СНИМАЮТСЯ
     // целиком — их рисует отдельный слой кромок на линиях сетки
-    // (см. interact::EdgePainter): кромка соседей ОДНА, рисуется
+    // (см. layout::table::paint::edge_painter::EdgePainter): кромка соседей ОДНА, рисуется
     // поверх фонов, и «шире побеждает» решается наложением.
     let cell_edge = if collapse_cells {
         collapsed_cell_edge(cell, cm, win_edges, px_of)

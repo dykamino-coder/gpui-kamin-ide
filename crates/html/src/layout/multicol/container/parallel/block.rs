@@ -1,4 +1,4 @@
-//! Eligibility of block offsets for independent positioned-flow fragmentation.
+//! Пригодность блочных смещений для независимой фрагментации позиционированных потоков.
 
 use crate::dom::Element;
 use crate::layout::multicol::spanner::multicol_container;

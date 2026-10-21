@@ -1,5 +1,7 @@
-//! Orthogonal percentages retain a ratio-derived preferred containing-block size.
-//! Content may expand the used height without changing that percentage basis.
+//! База процентов ортогонального ребёнка у родителя с `aspect-ratio` и высотой `auto`:
+//! блочный размер содержащего блока выводится из ширины через пропорцию (с учётом
+//! `box-sizing` и ограничений `min/max-height`) и остаётся базой долей, даже если
+//! содержимое потом растянет использованную высоту. Служит `orthogonal_inline::resolve`.
 
 use crate::layout::writing_mode::orthogonal_inline::{axis, edges};
 use crate::style::computed::Computed;

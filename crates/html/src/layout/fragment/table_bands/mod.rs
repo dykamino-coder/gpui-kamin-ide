@@ -1,7 +1,12 @@
-//! Полосы таблицы при фрагментации.
+//! Мера таблицы для укладки по фрагментаинерам (`table_shape`): ряды стопкой с
+//! `border-spacing`, точки класса A между рядами (css-break-4 §possible-breaks,
+//! css-tables-3 §fragmentation), монолитные и принудительные разрывы рядов и групп, подписи
+//! вокруг коробки рядов. Здесь же полосы повтора `thead`/`tfoot` во фрагментах
+//! (`repeat_bands`, css-tables-3 §repeated-headers; Blink `table_layout_algorithm.cc`)
+//! и предикат табличной коробки (`table_box`). Подмодули: геометрия рядов, точки разреза,
+//! формы рядов и подписей, полосы секций, последовательная таблица (`serial`).
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};

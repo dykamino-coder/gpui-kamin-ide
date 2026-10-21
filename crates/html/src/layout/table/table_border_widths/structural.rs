@@ -1,5 +1,6 @@
-//! Structural table borders participate in the same grid-edge width as cells.
-//! CSS 2.1 §17.6.2–17.6.2.1 includes rows, row groups, columns and column groups.
+//! Структурные рамки таблицы (ряды, группы рядов, колонки, группы колонок) участвуют в
+//! ширине кромки сетки наравне с ячейками: вклад каждой на стороны охвата ячейки.
+//! CSS 2.1 §17.6.2–17.6.2.1.
 
 use crate::dom::Element;
 use crate::layout::table::columns::{col_elements, col_role, colgroup_elements};

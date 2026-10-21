@@ -1,10 +1,10 @@
-//! Paint-order decisions of positioned boxes with `z-index: auto | 0`.
+//! Решения о порядке paint позиционированных боксов с `z-index: auto | 0`.
 //!
-//! CSS 2.1 Appendix E step 8 paints such boxes after the in-flow content of
-//! their stacking context, in tree order. The build hoists a box into the
-//! step-8 collector only when no later positioned box stays in the first
-//! pass; this module walks the document once (`unkeyed_positions`) and answers
-//! that question (`paint_last_ok`). The GPUI wrappers stay with the builders.
+//! CSS 2.1 Appendix E, шаг 8, рисует такие боксы после in-flow содержимого их
+//! stacking context, в порядке дерева. Построение переносит бокс в коллектор
+//! шага 8, только если ни один более поздний позиционированный бокс не остаётся в
+//! первом проходе; этот модуль один раз обходит документ (`unkeyed_positions`) и
+//! отвечает на этот вопрос (`paint_last_ok`). GPUI-обёртки остаются у построителей.
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::block_level_in_flow;

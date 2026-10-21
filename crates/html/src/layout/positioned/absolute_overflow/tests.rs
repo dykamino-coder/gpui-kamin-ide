@@ -1,4 +1,5 @@
-//! Verify abspos static-axis projection and authored inset boundaries.
+//! Тесты плана безопасного выравнивания абсолюта: выбор статической оси по режиму письма
+//! и направлению flex-родителя и отказ от плана при заданных вставках или локальном CB.
 use super::*;
 #[test]
 fn static_cross_axis_tracks_parent_writing_mode_and_direction() {

@@ -1,4 +1,4 @@
-//! Zero used height must not become a definite orthogonal containing block.
+//! Тесты: нулевая used-высота не становится определённым ортогональным containing block.
 
 use super::*;
 use crate::dom::Element;

@@ -110,7 +110,7 @@ pub(crate) fn nested_rows_shape(
                     // строкам у нас сходятся с Blink, а блочные дети с
                     // переполнением своей коробки и монолиты выше ряда ведут себя
                     // иначе (`multicol-fill-balance-003/030`, `multicol-nested-026/
-                    // 031` при блочных детях уходили 0.00 → «красное видно»).
+                    // 031` с блочными детьми расходятся с эталоном).
                     Node::Element(k)
                         if !k.inline
                             && (inline_content(k) || plain_block_kid(k))

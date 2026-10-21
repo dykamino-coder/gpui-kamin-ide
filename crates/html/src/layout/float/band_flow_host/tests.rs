@@ -1,4 +1,4 @@
-//! Native container shrink-to-fit preserves intrinsic and content-box sizes.
+//! Тесты: нативный shrink-to-fit контейнера сохраняет intrinsic-размеры и размеры content-box.
 
 use super::*;
 

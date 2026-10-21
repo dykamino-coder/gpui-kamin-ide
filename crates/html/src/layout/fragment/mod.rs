@@ -1,7 +1,5 @@
 //! Фрагментация: формы, полосы, переносимые коробки.
 
-// owner: A
-
 pub mod breaks;
 pub mod clone;
 pub mod flex_lines;

@@ -1,4 +1,7 @@
-//! Flex row measurement must preserve parallel flows, row growth and nested sizing.
+//! Тесты меры многострочного flex-ряда (`measure_rows`) против css-flexbox-1 §9.3/§9.7/§12:
+//! высота строки — наибольшая внешняя высота, вложенный ряд сохраняет границу разрыва,
+//! растянутый `avoid`-элемент сплошной на всю строку, строки собираются до сжатия,
+//! разрыв на краю доходит до контейнера, разорванный `row-gap` не растит следующую строку.
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;

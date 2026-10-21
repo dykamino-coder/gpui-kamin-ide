@@ -1,10 +1,9 @@
-//! Transparent wrapper that reports the layout node of a watched box.
-//!
-//! The pagination solver needs the laid-out border boxes of the break
-//! candidates inside a copy. A paginated copy is built with a `Watched`
-//! recorder in its `RenderOpts` (`FragCx::watch`); `render::element` wraps an
-//! element whose id the recorder watches, and the wrapper returns the inner
-//! layout node as its own (taffy sees the same tree) after recording it.
+//! Прозрачная обёртка `Watch`, сообщающая узел раскладки наблюдаемой коробки. Решателю
+//! пагинации нужны разложенные border-box кандидатов разрыва внутри копии. Пагинируемая
+//! копия строится с рекордером `Watched` в `RenderOpts` (`FragCx::watch`); `render::element`
+//! оборачивает элемент, чей id рекордер наблюдает, а обёртка записывает внутренний узел
+//! раскладки и отдаёт его как свой — taffy видит то же дерево. Узлы читает `seen`, `reset`
+//! забывает их перед замером.
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::options::RenderOpts;

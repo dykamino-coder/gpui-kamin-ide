@@ -88,15 +88,12 @@ pub(super) fn table_finish(
         opts.cx.cb_width,
         opts.cx.vcx(),
     );
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v135, `scout-fonts-tables-2026-09.md`
-    // план 2): строить дорожки рядов и без `table_tall`. Срез 8557 общих:
-    // +3 (`table-as-item-cell-percentage-001/003/004`) при −18 —
-    // `margin-applies-to-001…007` (0.00 → 1.00),
-    // `margin-bottom-applies-to-001…007` (0.03 → 3.00),
-    // `table-cell-overflow-explicit-height-001/002` (0.00 → 8.77),
-    // `percentage-sizing-of-table-cell-children-004` («красное видно»),
-    // `subpixel-table-cell-height-001`. Ряд без заданной высоты обязан
-    // остаться авто-дорожкой ТОЛЬКО в контексте, где стол не растянут.
+    // Не строить дорожки рядов без `table_tall`: ряд без заданной высоты
+    // обязан остаться авто-дорожкой там, где стол не растянут
+    // (`margin-applies-to-001…007`, `margin-bottom-applies-to-001…007`,
+    // `table-cell-overflow-explicit-height-001/002`,
+    // `percentage-sizing-of-table-cell-children-004`,
+    // `subpixel-table-cell-height-001`).
     let grid_box = table_grid_box(e, inherited, row_elements, tracks, table_tall, vcx);
     // Сросшиеся рамки: у таблицы нет паддинга, а кромка между её рамкой и
     // краевыми ячейками одна — ячейки накрывают ВНУТРЕННЮЮ ПОЛОВИНУ рамки
@@ -213,8 +210,8 @@ pub(super) fn table_finish(
     let shrink_wrap = root_table
         || (e.style.width.is_none()
             // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
-            // обёртка рвёт эту связь (★ ЗАМЕРЕНО: без отсечки
-            // `min-height-table-2` 0.00 -> 19.24).
+            // обёртка рвёт эту связь (без отсечки ломается
+            // `min-height-table-2`).
             && e.style.height.is_none()
             && e.style.min_height.is_none()
             && !inherited.stretched

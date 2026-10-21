@@ -1,4 +1,7 @@
-//! Native column measurement and intrinsic contributions before painting.
+//! Запрос раскладки стопки колонок до отрисовки: замер высоты каждого ребёнка при ширине
+//! колонки, разбиение детей на страницы, внутренние размеры многоколоночника по
+//! css-sizing-4 §multicol-intrinsic (как Blink `ComputeMinMaxSizes`) для случаев, когда
+//! ширину решает содержимое, и пробная балансировка, дающая размер коробки и базовые линии.
 
 use crate::layout::fragment::intrinsic_measure;
 use crate::layout::fragment::types::Intrinsic;

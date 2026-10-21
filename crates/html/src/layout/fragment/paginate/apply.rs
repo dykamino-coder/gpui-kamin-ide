@@ -1,4 +1,9 @@
-//! Pagination struts applied to a copy of the DOM before it is laid out again.
+//! Распорки пагинации (`Strut`, `Struts` по `node_id`), применяемые к копии DOM перед
+//! повторной раскладкой: блочный родитель получает пустую коробку-прокладку перед сдвинутой
+//! коробкой, элемент flex/сетки — распорку в верхнем поле, чтобы строка или дорожка росла с
+//! ним; элемент колоночного flex сохраняет главный размер до фрагментации и может вместить
+//! разорванное содержимое (Blink `MinBlockSizeShouldEncompassIntrinsicSize`); зазор строки
+//! ряда переносится в поле элемента, чтобы усечь его у разрыва.
 
 use super::{column_flex, layout_parent, row_flex};
 use crate::dom::{Element, Node};

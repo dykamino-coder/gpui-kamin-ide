@@ -1,4 +1,6 @@
-//! Fragmentainer frame of a paginated child and its measuring layout.
+//! Рамка фрагментаинера размечаемого ребёнка стопки (высота колонки, смещение в первой
+//! колонке, число занятых колонок) и его измерительная раскладка: пересборка с распорками,
+//! раскладка основной копии и чтение коробок-кандидатов разрыва.
 
 use crate::layout::fragment::paginate::solve::Geom;
 use crate::layout::fragment::paginate::{Cand, Paginate, Struts};

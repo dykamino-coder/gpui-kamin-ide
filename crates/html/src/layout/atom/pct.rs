@@ -43,7 +43,7 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         Some(Len::Px(h)) => Some(h),
         // Высота из `aspect-ratio` при ширине в точках — определённая
         // (css-sizing-4 §5.1, тот же признак `ratio_height` в
-        // `inline::inherit`): `.outer {width: 200px; aspect-ratio: 2/1}` даёт
+        // `style::cascade::inherit`): `.outer {width: 200px; aspect-ratio: 2/1}` даёт
         // доле детей 100 (`intrinsic-percent-replaced-015/016`). Только
         // `content-box`: соотношение тогда — у содержимого.
         None | Some(Len::Auto) if inherited.border_box != Some(true) => {

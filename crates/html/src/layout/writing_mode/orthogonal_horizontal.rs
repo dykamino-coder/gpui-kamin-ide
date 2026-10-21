@@ -1,4 +1,6 @@
-//! Orthogonal auto inline sizes use intrinsic floors, not artificial CSS max-width.
+//! Авто-ширина ортогонального горизонтального блока через нативный `fit-content(<доступное>)`
+//! с внутренним полом `min-content`, а не через искусственный CSS `max-width`: слово шире
+//! доступного места не обрезается, авторские пределы остаются нетронутыми.
 use crate::dom::Element;
 use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
 use crate::style::computed::orthogonal::available;

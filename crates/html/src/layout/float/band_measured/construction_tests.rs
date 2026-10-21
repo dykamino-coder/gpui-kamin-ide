@@ -1,4 +1,4 @@
-//! Band host construction keeps float order, width and paragraph continuation.
+//! Тесты: построение band-хоста сохраняет порядок float, ширину и продолжение абзаца.
 
 use super::*;
 use crate::dom::parse;

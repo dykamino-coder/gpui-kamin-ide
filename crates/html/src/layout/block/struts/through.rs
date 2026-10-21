@@ -62,13 +62,11 @@ pub(super) fn through_strut_inner(
     // `<div class="clear-left">` между флоатом и соседом иначе пропускал бы
     // поле соседа наружу (`floats-clear/margin-collapse-033…035`).
     //
-    // ПРОБОВАЛИ И ОТКАТИЛИ: делать вето инертным, когда во всём документе нет
-    // ни одного флоата (§9.5.2 вводит клиренс только при флоате выше). Проба
-    // по паре `margin-collapse-135` и `margin-collapse-clear-016`, на которые
-    // правка и рассчитывалась: обе остались «красное видно», флипов ноль.
-    // Держит их не вето, а что-то ниже по цепи. Признак документа пришлось бы
-    // нести отдельным thread-local, а рамка рисует вложенный документ тем же
-    // `render()` и признак бы затёрла.
+    // Проверено: делать вето инертным, когда в документе нет ни одного флоата
+    // (§9.5.2 вводит клиренс только при флоате выше), ничего не меняет —
+    // `margin-collapse-135` и `margin-collapse-clear-016` держит не вето, а
+    // что-то ниже по цепи. Признак документа пришлось бы нести отдельным
+    // thread-local, а рамка рисует вложенный документ тем же `render()`.
     if e.style.clear.is_some() && !ignore_clear {
         return None;
     }
@@ -78,7 +76,7 @@ pub(super) fn through_strut_inner(
     // auto», а `auto` схлопыванию насквозь не мешает (§8.3.1). Прежде любая
     // ненулевая доля закрывала ветку, и три пустых блока с полями 100 давали
     // 200 вместо 100 (`margin-collapse-through-percentage-height-block`).
-    // Признак блока несёт сам стиль — `cb_height_def` ставит `inline::inherit`.
+    // Признак блока несёт сам стиль — `cb_height_def` ставит `style::cascade::inherit`.
     let height_is_auto = matches!(
         e.style.height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
@@ -95,7 +93,7 @@ pub(super) fn through_strut_inner(
         return None;
     }
     // Главная проверка содержимого: без неё `<div>` из четырёх `<img>`
-    // считался пустым (ЗАМЕРЕНО: -30 на эталонах `bidi-box-model-*`).
+    // считался пустым (эталоны `bidi-box-model-*`).
     if holds_line_box(&e.children) {
         return None;
     }

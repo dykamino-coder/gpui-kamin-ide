@@ -1,7 +1,9 @@
-//! Continuous containing-block coordinates for parallel positioned flows.
-//!
-//! Anchored extents belong to the containing block; static extents travel
-//! through intervening flow boxes. Neither advances the in-flow cursor.
+//! Досягаемость позиционированных потомков в мере `shape_full` как параллельных потоков в
+//! непрерывных координатах содержащего блока: протяжённость с заданным `top` принадлежит
+//! содержащему блоку, статическая — идёт сквозь промежуточные коробки потока; ни та, ни
+//! другая не двигают курсор потока. `Reach` копится по детям, закрывается на содержащем
+//! блоке (`establishes_cb`, слой `fixed`) и передаётся родителю в `Measure::up`;
+//! в режиме страниц и у клонированных украшений действует прежняя модель (`legacy`).
 
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};

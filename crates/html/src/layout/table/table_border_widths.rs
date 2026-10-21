@@ -1,5 +1,7 @@
-//! Resolve collapsed border widths before measuring table cells and tracks.
-//! CSS 2.1 §17.6.2 centers each winning edge on a grid line.
+//! Ширины сросшихся кромок до замера ячеек и дорожек: по каждой ячейке — победившие
+//! полуширины четырёх сторон с учётом соседей по охвату, структурных рамок и рамки самой
+//! таблицы, плюс наружные полуширины таблицы. CSS 2.1 §17.6.2 центрирует победившую
+//! кромку на линии сетки.
 
 use crate::dom::{Element, Node};
 use crate::layout::table::{is_cell, row_span_in_group};

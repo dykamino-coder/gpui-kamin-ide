@@ -1,4 +1,8 @@
-//! Carry the nearest scrollport separately from ordinary block inline constraints.
+//! Разрешение строчной оси ортогонального блока при наследовании стиля: размеры оси с
+//! вычетом рамок и желобов (`axis`, `edges`), ближайший scrollport отдельно от обычных
+//! ограничений блока, доступное место вертикального ребёнка в горизонтальном родителе
+//! (css-writing-modes-4 §7.3.1: содержащий блок, иначе меньшее из max-size, scrollport
+//! и ICB за вычетом полей) и предел переноса `ortho_limit`.
 use crate::layout::block::ratio_basis;
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint, available};
 use crate::style::computed::{Computed, Display, Overflow, Position};

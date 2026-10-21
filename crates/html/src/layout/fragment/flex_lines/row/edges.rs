@@ -1,4 +1,6 @@
-//! CSS Flexbox section 12 propagates every item's break value on the edge line.
+//! Разрыв на краю многострочного flex-ряда (css-flexbox-1 §12): `break-before`/`avoid`
+//! любого элемента первой строки и `break-after`/`avoid` любого элемента последней
+//! переходят на край контейнера; строки собираются той же мерой (`collect_lines`).
 
 use super::line_layout::collect_lines;
 use super::measure::main_size;

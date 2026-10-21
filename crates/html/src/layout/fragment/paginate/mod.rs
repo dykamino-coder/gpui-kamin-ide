@@ -1,17 +1,15 @@
-//! Layout-driven pagination of one fragmentation-context child (first slice of
-//! the break-token migration, `agents/cfrag/design.md`).
-//!
-//! The fragmentainer geometry (block size `H`, start offset `y0` of the child in
-//! its first fragmentainer) becomes an input of the child's layout. Break
-//! decisions are taken on the LAID-OUT geometry of the child's copy instead of
-//! the DOM estimate `shape_full`: a monolithic box that would straddle a
-//! fragmentainer boundary, or a box with a forced break before it, gets a
-//! pagination strut and the copy is laid out again. The growth this causes is
-//! propagated by the ordinary layout algorithms (a flex row grows to its pushed
-//! item, stretched siblings follow, later rows move), which is the row
-//! expansion of css-flexbox-1 §12 / Blink `flex_layout_algorithm.cc:2560-2600`.
-//! The resulting copy is a flow thread whose content is aligned to the
-//! fragmentainer grid, so it is sliced at the column edges.
+//! Пагинация одного ребёнка контекста фрагментации по его раскладке (первый шаг перехода к
+//! break tokens). Геометрия фрагментаинера (блочный размер `H`, смещение `y0` ребёнка в его
+//! первом фрагментаинере) становится входом раскладки ребёнка. Решения о разрывах
+//! принимаются по РАЗЛОЖЕННОЙ геометрии копии, а не по оценке `shape_full` на DOM: монолит,
+//! пересекающий границу фрагментаинера, или коробка с принудительным разрывом перед ней
+//! получает распорку пагинации, и копия раскладывается заново. Вызванный этим рост разносят
+//! обычные алгоритмы раскладки (flex-ряд растёт до сдвинутого элемента, растянутые соседи
+//! следуют, следующие строки сдвигаются) — расширение строки css-flexbox-1 §12 / Blink
+//! `flex_layout_algorithm.cc`. Итоговая копия — поток, выровненный по сетке фрагментаинеров,
+//! и режется по краям колонок. Здесь: кандидаты разрыва (`Cand`, `candidates`) и `Paginate`
+//! с перестроением копий (`Rebuild`). Подмодули: гейт (`gate`), распорки (`apply`),
+//! решатель (`solve`), наблюдение (`watch`).
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

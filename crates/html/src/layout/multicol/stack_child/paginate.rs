@@ -1,4 +1,6 @@
-//! Owned rebuild of a paginated stack child's copies (`fragment::paginate`).
+//! Пересборка копий ребёнка стопки, размечаемого по сетке колонок (`fragment::paginate`):
+//! для помеченного `MARK` ребёнка строится `Paginate` с кандидатами разрыва и замыканием,
+//! которое применяет распорки к копии и строит её основную и запасные копии заново.
 
 use super::build::build_copy;
 use crate::dom::Element;

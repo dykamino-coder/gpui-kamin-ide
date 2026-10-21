@@ -1,7 +1,9 @@
-//! Independent break growth for positioned flows in continuous block coordinates.
+//! Независимый рост на разрывах для позиционированных потоков в непрерывных блочных
+//! координатах: абсолютная коробка авто-высоты внутри ребёнка стопки получает распорки
+//! фрагментации по фазе своего содержащего блока в сетке колонок.
 //!
-//! Resolve the original containing-block position before inserting fragmentation
-//! space. Growing an auto-sized abspos must not resolve its bottom inset again.
+//! Исходная позиция в содержащем блоке разрешается ДО вставки места под разрывы: рост
+//! абсолютной коробки авто-высоты не должен заново разрешать её нижнюю вставку.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

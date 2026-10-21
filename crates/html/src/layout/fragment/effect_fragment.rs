@@ -1,7 +1,9 @@
-//! CSS Break 3 §5.5: graphical effects use each fragment's reference box.
-//!
-//! The continuous copy still owns layout and containing-block geometry. Only
-//! the effect reference box and the fragment's source clip change at paint.
+//! Опорная коробка графических эффектов внутри фрагмента (CSS Break 3 §5.5): при краске
+//! фрагмента внешней фрагментации thread-local `Scope` несёт границы фрагмента, его срез и
+//! маску родителя. Непрерывная копия по-прежнему владеет раскладкой и геометрией содержащего
+//! блока; на краске меняются только опорная коробка эффекта (`reference_box`), срез тени по
+//! внутренним краям фрагмента (`paint_shadow`, §5.4) и проекция среза под трансформацией
+//! (`paint`): срез фрагмента идёт до эффектов и до привязки к пикселям.
 
 use crate::paint::context::PaintCx;
 use gpui::{Bounds, ContentMask, Pixels, TransformationMatrix, Window, point, px, size};

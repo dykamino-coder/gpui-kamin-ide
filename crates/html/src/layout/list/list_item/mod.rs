@@ -1,4 +1,7 @@
-//! List item boxes paint their markers independently of the parent element tag.
+//! Пункт списка: коробка `display: list-item` рисует свой маркер независимо от тега
+//! родителя. Здесь слияние стиля пункта с наследуемым, установка слоёв строчных
+//! псевдоэлементов и UA-правило CSS Lists 3 §3.1.1 `::marker { font-variant-numeric:
+//! tabular-nums }`; разрешение текста маркера — в `marker`, вывод — в `styled`.
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;

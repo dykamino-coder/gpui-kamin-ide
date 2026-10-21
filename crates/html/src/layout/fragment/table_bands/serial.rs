@@ -1,7 +1,8 @@
-//! A table with one non-spanning cell per row has no parallel cell flow.
-//!
-//! CSS Break 3 §2.1 distinguishes parallel flows by the actual cells, not by
-//! the table's display role. Anonymous table fixup must precede this decision.
+//! Таблица с одной ячейкой без охвата в каждом ряду не образует параллельных потоков ячеек
+//! (`serial_table_parallel`): CSS Break 3 §2.1 различает параллельные потоки по реальным
+//! ячейкам, а не по табличной роли `display`, поэтому решение принимается после достройки
+//! анонимных частей таблицы (`fixup_table_children`). Ответ — есть ли параллельные потоки
+//! глубже, в подписях и содержимом ячеек (`parallel`); `None` — таблица не последовательна.
 
 use super::table_box;
 use crate::document::state::ValueCx;

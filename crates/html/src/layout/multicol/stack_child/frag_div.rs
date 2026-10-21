@@ -35,7 +35,7 @@ pub(super) fn frag_box_div(
             d.flex_row()
         };
     }
-    // Голый `styled_div_with` — БЛОК taffy (`apply.rs`
+    // Голый `styled_div_with` — БЛОК taffy (`paint/apply/`
     // `apply_layout`: блоку вызова нет, gpui `Display::Block`
     // → taffy Block), а блок общего пути — гибкая колонка
     // (`d.flex().flex_col()` при пустом `display`, та же
@@ -68,14 +68,7 @@ pub(super) fn frag_box_div(
     // Для ЛЮБОЙ flex/grid-копии, не только с линейками:
     // эталоны css-gaps (`…-fragmentation-008-ref`) кладут
     // ту же сетку без правил, и с гейтом «только с
-    // линейками» тест рисовал сетку, а эталон — нет
-    // (v93: 008 3.75, 009 5.18, 010 4.50).
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v94): то же для
-    // flex-копий. css-break 2874: +26/−15, и девять потерь
-    // — 99.00 (`multi-line-row-flex-fragmentation-084…090`,
-    // `multi-line-column-flex-fragmentation-056/057`:
-    // страница разъезжается), ещё 065–071 на 1.5–13.
-    // Сетка даёт +17 в css-break без потерь.
+    // линейками» тест рисовал сетку, а эталон — нет.
     // Flex-копия — во всю ширину колонки, как и
     // сетка: flex-корень с `width: auto` taffy
     // кладёт шириной СОДЕРЖИМОГО (`flexbox.rs`
@@ -83,9 +76,11 @@ pub(super) fn frag_box_div(
     // `Definite` → `longest_line_length`), и
     // элемент `width: 100%` выходил нулевым, а
     // `width: 100px` в колонке 50 не сжимался.
-    // Замер одного этого (v94): +9/−15, все
-    // потери — `row-gap`, их закрывает мера
-    // гибкой стопки (`flex_items` в `shape_full`).
+    // Одна лишь полная ширина flex-копии ломает
+    // `row-gap` и разваливает страницы
+    // `multi-line-*-flex-fragmentation-*`; её
+    // закрывает мера гибкой стопки (`flex_items`
+    // в `shape_full`) — держать их вместе.
     if matches!(copy.style.width, None | Some(Len::Auto))
         && matches!(
             copy.style.display,
@@ -114,7 +109,7 @@ pub(super) fn frag_box_div(
     }
     if let (Some(items), Some(spec)) = (frag_gap_items, frag_gap_rules) {
         // Копия кладётся `layout_as_root(Definite(col_w), …)`
-        // (`flow.rs` `ColumnStack::prepaint`), а taffy у
+        // (`ColumnStack::prepaint`), а taffy у
         // flex/grid-КОРНЯ с `width: auto` берёт размер
         // содержимого, не доступное место
         // (`vendor/taffy/src/compute/flexbox.rs`

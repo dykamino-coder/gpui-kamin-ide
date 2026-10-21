@@ -1,4 +1,7 @@
-//! Resolve outer SVG percentage geometry before its viewport is rasterized.
+//! Процентные `width`/`height` внешнего `<svg>` сводятся к точкам от родителя до
+//! растеризации его viewport: презентационные атрибуты участвуют в CSS-размере (SVG 2
+//! §8.12, CSS 2 §10.5), база — content box родителя, у абсолюта — padding box (CSS 2 §10.1);
+//! авторская CSS-длина сильнее атрибута.
 
 use crate::dom::Element;
 use crate::style::computed::{Computed, Display, Position};

@@ -143,7 +143,7 @@ pub(crate) fn fill_at(
         // У `clone` поток не включается: `from`/`h` его кусков — в других
         // координатах (содержимое / готовый фрагмент), и откат курсора
         // ниже их бы не понял. Неразрезанная `clone`-коробка с потоком
-        // рисуется `slice` (`render.rs`, `frag_geom.len() > 1`).
+        // рисуется `slice` (`layout::multicol::stack_child`, `frag_geom.len() > 1`).
         let flow = if k.over > k.h + 0.01 && !k.monolith && k.clone_dec.is_none() {
             k.over
         } else {

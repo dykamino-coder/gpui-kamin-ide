@@ -1,4 +1,7 @@
-//! Keep positioned painting in tree order while laying out at the containing block.
+//! Разделение позиционированной коробки на две половины: раскладку у содержащего блока и
+//! отрисовку на месте в дереве. CSS 2.1 Appendix E красит позиционированные в порядке
+//! разметки независимо от содержащего блока, поэтому `SourcePaint` без заместителя
+//! запрашивает раскладку у CB, а с заместителем делает `prepaint`/`paint` из исходного места.
 
 use super::{LatePlace, SpotCell};
 use crate::hooks::{Hooks, IntoHooked};

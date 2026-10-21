@@ -1,5 +1,8 @@
-//! Пробы фрагментации.
-// owner: A
+//! Предикаты поддерева для фрагментации: поддерево из одних обычных блоков, чью меру
+//! `shape_full` ведёт точно (`plain_block_tree`), то же с flex-рядом «строка = элемент»
+//! (`stacked_flex_tree`), монолит `contain: size` (`size_monolith`; Blink
+//! `LayoutBox::IsMonolithic`) и коробки, внутри которых принудительные разрывы фрагментации
+//! не видны (`forced_inside`, `forced_opaque`; css-break-4 §possible-breaks).
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
@@ -16,9 +19,9 @@ use crate::style::values::value::Len;
 /// приближения, была бы выдуманной, и зелёные `multicol-nested-026`,
 /// `single-line-row-flex-fragmentation-039`,
 /// `multi-line-row-flex-fragmentation-093`,
-/// `single-line-column-flex-fragmentation-043/058` разъехались бы
-/// (`target/scout-fragparallel-2026-09.md` §5). `display: flow-root` сюда
-/// входит: он сводится к `Block` (`computed.rs:3057`).
+/// `single-line-column-flex-fragmentation-043/058` разъехались бы.
+/// `display: flow-root` сюда входит: он
+/// сводится к `Block` с признаком `Computed::flow_root`.
 pub(crate) fn plain_block_tree(c: &Element, depth: u8) -> bool {
     if c.style.column_count.is_some() || c.style.column_width.is_some() {
         return false;

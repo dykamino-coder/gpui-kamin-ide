@@ -1,4 +1,6 @@
-//! Preserve an auto-layout spanning cell's declared minimum before grid sizing.
+//! Заявленный минимум охватывающей ячейки при авто-раскладке таблицы до расчёта сетки:
+//! авторская `width` поднимает минимум ячейки (CSS 2.1 §17.5.2.2) и её колонок вместе,
+//! без двойного учёта внутренних зазоров при раздаче по колонкам.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

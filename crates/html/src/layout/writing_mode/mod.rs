@@ -1,5 +1,4 @@
 //! Режимы письма: ортогональные потоки, вертикальная раскладка.
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
@@ -86,12 +85,12 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     // `orthogonal_vertical_children` (`hug_inline` при НЕрастягивающем
     // `align-self`); это — недостающая парная развязка блочной оси, и после
     // снятия обёртки её ведёт сама раскладка по `justify-self`/`justify-items`
-    // (`apply.rs`; `align_keyword` отдаёт `None` на `normal`, и решает taffy).
+    // (`paint/apply/`; `align_keyword` отдаёт `None` на `normal`, и решает taffy).
     //
     // Абсолютный ребёнок сетки элементом сетки НЕ является (css-grid-1 §9) —
     // его размер задают вставки, обёртка ему и не мешала; `in_flow` его здесь
     // и отсекает. Лунки (`GridLanes`) не включены сознательно: у них свой
-    // второй проход дорожек и 23 зелёные пары, это отдельный замер.
+    // второй проход дорожек, это отдельный шаг.
     if matches!(
         inherited.display,
         Some(Display::Grid)
@@ -102,14 +101,12 @@ pub(crate) fn vertical_hug(el: AnyElement, e: &Element, inherited: &Computed) ->
     {
         return el;
     }
-    // ЗАМЕРЕНО (не гипотеза): по этим тестам размер по оси строки — не корень
-    // зла. Пробовал и растяжение на высоту родителя, и свой элемент-измеритель
-    // (`fit-content` с зажимом по доступному) — на двенадцати тестах
-    // ортогональных потоков сдвиг в пределах полупроцента. Настоящая поломка
-    // видна замером против Chrome на `sizing-orthogonal-percentage-margin-001`:
-    // элемент рисуется ПОЛОСОЙ 25×417 у левого края страницы, а должен быть
-    // 100×100 внутри контейнера с полями 50. То есть вертикальный блок уходит
-    // из коробки родителя — вот что чинить дальше.
+    // Проверено: размер по оси строки ортогональным потокам не корень — ни
+    // растяжение на высоту родителя, ни свой элемент-измеритель (`fit-content`
+    // с зажимом по доступному) их не двигают. Настоящая поломка
+    // (`sizing-orthogonal-percentage-margin-001`): элемент рисуется ПОЛОСОЙ у
+    // левого края страницы вместо 100×100 внутри контейнера с полями 50 —
+    // вертикальный блок уходит из коробки родителя; это и чинить дальше.
     // The row is an adapter for normal block flow, not a CSS flex item.
     // Its own shrink default must not compress the child's used inline size:
     // sizing-orthog-vlr-in-htb-007 measured 306px instead of 394px content.

@@ -1,5 +1,4 @@
 //! Переупорядочение детей, процентные инлайн-размеры, ортогональные дети.
-// owner: A
 
 use crate::dom::Node;
 use crate::layout::box_kind::in_flow;
@@ -94,15 +93,11 @@ pub(crate) fn reorder(mut nodes: Vec<Node>) -> Vec<Node> {
 /// Между двумя блоками остаётся больший из смежных отступов, а не их сумма.
 /// Раскладка их складывает, поэтому у второго и следующих соседей ведущий
 /// отступ уменьшается на уже занятый предыдущим.
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v145, `scout-wm-2026-09e.md` E1):
-// предел §7.3.2 для ортогонального ребёнка с ЯВНЫМ `width: auto`
-// (гейт `width.is_none()` не видел `Len::Auto`) плюс потолок вместо
-// жёсткой ширины. Срез css-writing-modes+css-masking+css-shapes+
-// filter-effects+css-borders+css-text+CSS2 9052: +1 при −2 —
-// `three-levels-of-orthogonal-flows` 0.00 → 16.96,
-// `two-levels-of-orthogonal-flows-fixed` 0.09 → 2.91. Вложенные
-// ортогональные потоки считают предел от НЕПРАВИЛЬНОГО предка —
-// сначала нужен настоящий поиск ближайшего параллельного контейнера.
+// Не расширять предел §7.3.2 на ортогонального ребёнка с ЯВНЫМ `width: auto`
+// (гейт `width.is_none()` не видит `Len::Auto`): вложенные ортогональные
+// потоки считают предел от НЕПРАВИЛЬНОГО предка (`three-levels-of-orthogonal-
+// flows`, `two-levels-of-orthogonal-flows-fixed`) — сначала нужен настоящий
+// поиск ближайшего параллельного контейнера.
 /// Доли полей и отступов блочных детей — от СТРОЧНОГО размера содержащего
 /// блока (css-writing-modes-4 §7.2, Overview.bs:2018-2021: «percentages on
 /// the margin and padding properties … are calculated with respect to the

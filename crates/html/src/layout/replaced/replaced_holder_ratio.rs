@@ -1,5 +1,8 @@
-//! Expose a replaced image's ratio on its layout holder for deferred automatic sizing.
-//! The inner measured image alone cannot transfer the holder's opposite-axis bounds.
+//! Пропорция замещаемой картинки на её держателе раскладки для отложенного авто-размера:
+//! при одной авто-оси у элемента flex или процентном размере держатель получает
+//! `aspect-ratio`, а природная пропорция переводится в координаты content box даже при
+//! `border-box`. Внутренняя измеряемая картинка одна не передаёт границы держателя
+//! по противоположной оси.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

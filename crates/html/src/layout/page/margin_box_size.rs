@@ -1,4 +1,7 @@
-//! Intrinsic page margin dimensions remain distinct from auto stretch sizing.
+//! Внутренние размеры марджин-бокса листа (`min-content`/`max-content`/`fit-content`)
+//! мерой пробного элемента по оси коробки; они отличаются от авто-размера, который
+//! css-page-3 §fixed-sizing растягивает по полю листа. Поперечная ось меряется после
+//! главной, как Blink `LayoutEdgeMarginNode`.
 
 use crate::layout::page::page_stack::MarginBox;
 use crate::style::values::value::Len;

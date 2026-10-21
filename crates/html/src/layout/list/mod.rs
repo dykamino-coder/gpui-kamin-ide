@@ -1,5 +1,6 @@
-//! Anonymous inline runs inside list containers participate in normal block flow.
-//! CSS 2.1 §9.2.1.1 groups consecutive inline content between block children.
+//! Контейнер списка: дети `li` раскладываются как пункты (`list_item`), а подряд идущее
+//! прочее содержимое между ними собирается в анонимные блоки строк (CSS 2.1 §9.2.1.1) и
+//! идёт обычным блочным потоком. Псевдоэлементы, кроме `display: list-item`, пропускаются.
 
 pub(crate) mod list_item;
 

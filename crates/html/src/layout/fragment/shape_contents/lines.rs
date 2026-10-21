@@ -90,9 +90,8 @@ pub(super) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
     // ряд равен одному ребёнку. Без спуска её мера уходила в `grid_rows_px`
     // и почти всегда возвращала `None`, а `None` означает отказ от укладки:
     // многоколоночник с такой сеткой внутри не фрагментировался ВОВСЕ —
-    // колонка 1 переполнена, остальные пусты (`scout-break-2026-09f.md` §1;
-    // пробы `target/probe-9f/p-grid-item-fragmentation-043.html` и
-    // `p-grid-container-fragmentation-009.html` = 0.00 при подмене на блок).
+    // колонка 1 переполнена, остальные пусты (пробы `grid-item-fragmentation-043` и
+    // `grid-container-fragmentation-009` дают 0.00 при подмене на блок).
     let grid_rows_stack = grid_stack(c);
     // Зазор рядов такой сетки: `grid_stack` ручается, что он в точках.
     let row_gap = if grid_rows_stack {

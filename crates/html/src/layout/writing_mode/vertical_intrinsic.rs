@@ -1,5 +1,6 @@
-//! Physical height is the inline axis of vertical text, including intrinsic sizes.
-//! CSS Sizing 3 §5.1: max-content is not capped by available inline space.
+//! Ключевые слова содержимого в `height` вертикального текста: физическая высота — его
+//! строчная ось, и `min-content`/`max-content`/`fit-content` дают ограничение с пределами
+//! `min/max-height`. CSS Sizing 3 §5.1: `max-content` не ограничивается доступным местом.
 use crate::style::computed::Computed;
 use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use crate::style::values::value::Len;

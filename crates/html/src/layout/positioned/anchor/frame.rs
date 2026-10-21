@@ -28,7 +28,7 @@ pub(super) fn request_rebuild(window: &mut Window) {
     }
 }
 
-/// Расходник кадра — чистится в `interact::frame_sanitize`. Реестры текущего
+/// Расходник кадра — чистится в `interactive::frame::frame_sanitize`. Реестры текущего
 /// кадра не выбрасываются, а переезжают в `LAST_*`.
 pub fn reset(vcx: ValueCx<'_>) {
     vcx.doc.anchor_frame.named.borrow_mut().clear();

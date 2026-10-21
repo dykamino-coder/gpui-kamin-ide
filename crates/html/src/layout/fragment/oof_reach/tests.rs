@@ -1,4 +1,6 @@
-//! Regression coverage for containing-block coordinates and parallel extents.
+//! Тесты досягаемости позиционированных потомков (`oof_reach`): абсолют сквозь статическую
+//! обёртку не двигает братьев, заданный `top` считается от непрерывного начала содержащего
+//! блока в колонках, `fixed` внутри `contain: layout` доходит до своего содержащего блока.
 
 use super::*;
 use crate::dom::{Element, Node};

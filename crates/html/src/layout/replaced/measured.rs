@@ -1,4 +1,7 @@
-//! Measure replaced content without fixing its automatic preferred dimensions.
+//! Измеряемый замещаемый элемент `MeasuredReplaced`: раскладка меряется по природному
+//! размеру и пропорции (или замыканием `ControlMeasure` у элементов форм), не фиксируя
+//! автоматические предпочтительные размеры, а оформление перестраивается в `prepaint`
+//! по неокруглённым размерам CSS. Элементы форм (CSS Images 3 §2) идут без пропорции.
 
 use crate::hooks::{Hooks, IntoHooked};
 use gpui::{

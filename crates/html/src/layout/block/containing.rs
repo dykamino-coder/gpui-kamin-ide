@@ -1,5 +1,4 @@
 //! Ширина содержимого коробки как содержащий блок её детей на спуске схлопывания полей.
-// owner: A
 
 use crate::document::state::ValueCx;
 use crate::layout::box_kind::in_flow;

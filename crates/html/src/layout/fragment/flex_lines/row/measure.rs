@@ -1,4 +1,8 @@
-//! Flex rows expose parallel item cuts and sequential row boundaries.
+//! Мера (`Measure`) многострочного flex-ряда для `shape_full`: элементы строки — параллельные
+//! потоки (их точки разреза, принудительные разрывы и монолиты объединяются со сдвигом на
+//! поле), строки идут последовательно через `stack_kids` с `row-gap`. Главный размер — из
+//! кадра меры строк (`ValueCx::lines`) или ширины в точках; заданная высота сверяется с
+//! естественной.
 
 use super::geometry::{collect_rows, row_container, row_forced};
 use crate::document::state::ValueCx;

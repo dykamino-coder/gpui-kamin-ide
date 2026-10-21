@@ -1,4 +1,4 @@
-//! Font-dependent MathML constants, resolved once when constructing a context.
+//! Зависящие от шрифта константы MathML, разрешаемые один раз при создании контекста.
 use super::{fraction, limits, scripts};
 use crate::style::values::value::px_strict;
 use crate::text::{fonts::math, inline::strut_font, metrics::math_metrics};

@@ -167,7 +167,7 @@ pub(super) fn stack_child_of(
         monolith,
         fit_whole: false,
         cuts,
-        // Тот же подъём, что в мере (Х5): иначе
+        // Тот же подъём, что в мере: иначе
         // укладка колонок не увидит разрыва,
         // который мера уже посчитала.
         force_before: edge_break(copy, false, vcx),
@@ -184,12 +184,12 @@ pub(super) fn stack_child_of(
         rel,
         clone_dec: dec,
         // Монолит с верха колонки переполняет её
-        // (`flow.rs` `fill_at`, `overflow_to`) —
+        // (`layout::fragment::plan` `fill_at`, `overflow_to`) —
         // только при `column-fill: auto` без рядов
         // и без элементов ряда в поддереве.
         overflow_top: fixed.is_some() && rows.is_none() && !parallel_items_inside(copy, 4, vcx),
         // Вложенный многоколоночник — маска режет вбок
-        // (`flow.rs` `StackChild::nested_cols`).
+        // (`StackChild::nested_cols`).
         nested_cols: multicol_inside(copy, 4),
         par: kid_par[ix],
         positioned: !span
@@ -200,7 +200,7 @@ pub(super) fn stack_child_of(
             ) || copy.style.transform.is_some())
             && copy.style.z_index.unwrap_or(0) == 0,
         // Хвост непоследнего фрагмента таблицы — её фоном
-        // (`flow.rs` `StackChild::slack`).
+        // (`StackChild::slack`).
         slack: if col_vert {
             None
         } else if table_box(copy) {

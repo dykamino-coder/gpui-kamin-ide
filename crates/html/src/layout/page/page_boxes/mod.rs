@@ -1,4 +1,8 @@
-//! Page margin boxes use generated content inside their resolved border boxes.
+//! Порождение марджин-боксов листа из объявлений `@page` (css-page-3 §margin-boxes,
+//! §populating-margin-boxes): контекст страницы и счётчики, коробка только при `content`
+//! не `none`/`normal`, стиль коробки с логическими свойствами по её письму, рамки, отбивки
+//! и поля в точках листа, замыкания сборки элемента на готовый размер и меры по содержимому.
+//! Раскладку готовых `MarginBox` делает `page_stack`.
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;

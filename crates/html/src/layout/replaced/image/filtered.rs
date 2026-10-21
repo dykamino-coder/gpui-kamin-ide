@@ -1,4 +1,7 @@
-//! Filtered replaced resources share Img layout, then filter their concrete object.
+//! Замещаемый ресурс с фильтром `FilteredImage`: раскладка та же, что у `Img`, а в `paint`
+//! конкретный объект (`object-fit`/`object-position` по природному размеру) заново
+//! сэмплируется из источника под его размер и красится с радиусами края содержимого
+//! и маской коробки, если переполнение не `visible`.
 
 use crate::document::state::ValueCx;
 use crate::paint::background::Source;

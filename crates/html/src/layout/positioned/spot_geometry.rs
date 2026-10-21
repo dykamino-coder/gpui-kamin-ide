@@ -1,4 +1,7 @@
-//! Static positions retain CSS geometry until the positioned subtree is placed.
+//! Щуп статической позиции `Probe`: в `prepaint` записывает в `SpotCell` неокруглённую
+//! геометрию CSS дырки на месте абсолюта (с поворотом вертикального письма, строчной
+//! коробкой и координатами области просмотра), чтобы позиционированное поддерево встало
+//! по ней позже, когда его разложит содержащий блок.
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::positioned::containing_block::SpotCell;

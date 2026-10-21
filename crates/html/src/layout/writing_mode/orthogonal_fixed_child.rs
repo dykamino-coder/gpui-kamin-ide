@@ -1,4 +1,7 @@
-//! A definite vertical containing block passes its content inline size to children.
+//! Определённый вертикальный содержащий блок передаёт свой строчный размер содержимого
+//! параллельным блочным детям: ограничение наследуется вниз с вычетом рамок, отбивок и
+//! полей каждого ребёнка, проценты краёв и высоты решаются от этой базы, а неопределённый
+//! родитель определённым содержащим блоком не становится.
 use crate::layout::writing_mode::orthogonal_inline::{axis, edges};
 use crate::style::computed::orthogonal::{AxisSizes, InlineConstraint};
 use crate::style::computed::{Computed, Display};

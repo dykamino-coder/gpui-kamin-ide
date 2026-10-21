@@ -1,5 +1,4 @@
 //! Струны полей: сквозное схлопывание, цепочки первого и последнего ребёнка.
-// owner: A
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::{
@@ -36,13 +35,13 @@ pub(super) fn first_in_flow<'a>(
             // `<em style="display:block">` схлопывается через родителя
             // (`selectors-001`: под зелёной строкой оставалась красная полоса
             // в 1em). Обратный случай (`div` с `inline-block`) остаётся на
-            // прежнем пути: ★ ЗАМЕРЕНО — чистое `inline_level_box(ch)` роняло
-            // `image-color-background-size` 0.00 → 4.50.
+            // прежнем пути: чистое `inline_level_box(ch)` ломает
+            // `image-color-background-size`.
             Node::Element(ch) if ch.inline && inline_level_box(ch) => {
                 // Замещаемый атом (img и родня) — строчная КОРОБКА, а не
                 // пустой спан: он рождает line box и рвёт примыкание.
                 // Пропуск ронял отступ параграфа перед голым <img> в
-                // эталонах (130 пар «эталон рисует img»).
+                // эталонах, рисующих голый `img`.
                 if ch.children.is_empty()
                     && !matches!(
                         ch.tag.as_str(),

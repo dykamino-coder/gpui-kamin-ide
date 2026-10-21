@@ -1,4 +1,7 @@
-//! Build atomic inline margin boxes for measured and static float wrapping.
+//! Атом строчного потока для `FlowRow` в статическом и измеряемом хостах обтекания:
+//! инлайн-блок или `<img>` с margin-box в точках строится элементом размером с margin-box,
+//! поля кладёт слот-обёртка, а содержимое рисует border-box один раз (CSS 2.1 §9.4.2,
+//! §10.6.6). Позиционированные потомки получают ключ содержащего блока DOM.
 
 use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};

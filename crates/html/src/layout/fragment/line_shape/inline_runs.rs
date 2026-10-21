@@ -7,7 +7,7 @@ use crate::layout::table::anon::anon_element;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-/// Копия ребёнка стопки встаёт КОРНЕМ (`flow.rs` `layout_as_root` во всю
+/// Копия ребёнка стопки встаёт КОРНЕМ (`layout_as_root` во всю
 /// колонку), а корень taffy своих полей не кладёт: боковое поле `margin: 0 1em`
 /// пропадало, текст ложился от края колонки (`multicol-nested-002`). Обёртка-
 /// колонка делает копию обычным ребёнком: её поля и растяжение решает

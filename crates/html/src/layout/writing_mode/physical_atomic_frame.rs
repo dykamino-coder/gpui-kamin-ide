@@ -1,5 +1,8 @@
-//! Native atomic subtrees prepare in screen coordinates while surrounding text stays flat.
-//! Cancelling the text frame preserves enclosing CSS transforms and native hitboxes.
+//! Перевод плоской коробки атома в экранные координаты повёрнутой рамки текста (`TurnFrame`:
+//! границы, фаза, направление поворота) и обратная матрица, отменяющая поворот текста:
+//! внешние CSS-трансформации и нативные hitbox сохраняются, потому что поворот снимается
+//! матрицей, а не заменой трансформаций. `PhysicalAtomic` на время подготовки поддерева
+//! сам убирает рамку из контекста рисования.
 use crate::text::vertical::TurnFrame;
 use gpui::{Bounds, Pixels, TransformationMatrix, point, size};
 

@@ -1,4 +1,4 @@
-//! MathML Core radical boxes: base, degree, stretched surd and vinculum.
+//! Боксы радикалов MathML Core: основание, степень, растянутый surd и vinculum.
 use super::{
     arrangement::Rule,
     geometry::{Metrics, row},

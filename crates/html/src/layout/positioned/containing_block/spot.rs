@@ -1,4 +1,4 @@
-//! Static-position probe geometry and alignment carried to late box placement.
+//! Геометрия и выравнивание пробы статической позиции, доносимые до позднего размещения бокса.
 
 use gpui::{Bounds, Pixels};
 

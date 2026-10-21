@@ -1,4 +1,7 @@
-//! Keep inherited atomic formatting contexts physical inside a rotated text paragraph.
+//! Атомарные контексты форматирования внутри повёрнутого текстового абзаца остаются
+//! физическими (css-writing-modes-4 §4.3, §7.4): строчные блоки, flex, grid, таблицы и
+//! замещаемые строятся в своём письме и оборачиваются в `PhysicalAtomic` с физическими
+//! полями и относительным сдвигом; флаг `text_turn` отличает абзац с текстом от чистого атома.
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;

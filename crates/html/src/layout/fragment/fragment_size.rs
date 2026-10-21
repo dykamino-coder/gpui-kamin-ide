@@ -1,8 +1,11 @@
-//! Used block size and overflow extent are separate inputs to fragmentation.
-//!
-//! A max-height changes the box's used size even with visible overflow. The
-//! overflowing descendants remain a parallel flow, rather than increasing the
-//! distance to the following sibling. Min-height wins when min exceeds max.
+//! Мера коробки для фрагментации (`shape_full`): к мере содержимого (`shape_contents`)
+//! применяются `min-height`/`max-height`, рамки и отступы, а точки разреза и монолиты режутся
+//! по использованной высоте. Использованный блочный размер и протяжённость переполнения —
+//! РАЗНЫЕ входы фрагментации: `max-height` меняет размер коробки и при видимом переполнении,
+//! переполнившие потомки остаются параллельным потоком, а не отодвигают следующего брата
+//! (только в режиме протяжённости, `ShapeCx::unclamped`, мера растёт до естественной);
+//! `min-height` побеждает, когда больше `max-height`.
+//! Таблица меру высоты ведёт сама (CSS Tables 3).
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

@@ -1,5 +1,7 @@
-//! Preserve canvas natural dimensions while grid resolves cyclic percentages.
-//! CSS Sizing 3 §5.2.1 separates intrinsic contributions from used sizes.
+//! `<canvas>` элементом сетки: естественные размеры и пропорция холста сохраняются, пока
+//! сетка разрешает циклические проценты. CSS Sizing 3 §5.2.1 разделяет внутренние вклады
+//! и используемые размеры; простой холст без рамок, отбивок и эффектов отдаётся как
+//! `MeasuredReplaced` с нативным стилем и выравниванием `start` по умолчанию.
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;

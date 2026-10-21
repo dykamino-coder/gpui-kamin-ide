@@ -1,4 +1,8 @@
-//! Элемент стопки страниц `PageStack`.
+//! Стопка страниц `PageStack` — GPUI-элемент постраничного документа: листы сеткой
+//! с масштабом до вмещения, page area каждого — фрагментаинер (css-break-4 §2). Здесь
+//! геометрия листа `PageGeom`, описание марджин-бокса `MarginBox`, дети `PageKid`, слои
+//! ICB и `position: fixed` по копии на лист, план фрагментов и маски page area;
+//! укладка, листы, марджин-боксы, канвас и ось письма — в подмодулях.
 
 use crate::layout::fragment::types::Frag;
 use gpui::{AnyElement, Bounds, Pixels, point, px, size};

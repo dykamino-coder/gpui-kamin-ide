@@ -1,5 +1,7 @@
-//! `impl Element` для `ColumnStack`.
-// owner: A
+//! `impl Element` для `ColumnStack`: запрос раскладки, `prepaint` (укладка по реальной
+//! ширине, расстановка кусков по колонкам, спаннеры во всю ширину, границы для линеек
+//! промежутков) и `paint` (линейки, маски только у разрезанных детей, позиционированные
+//! фрагменты вторым проходом по CSS 2.1 Appendix E). Вертикальная ось уходит в `axis`.
 
 use crate::hooks::Hooks;
 use crate::layout::fragment::types::Frag;
@@ -79,9 +81,9 @@ impl Hooks for ColumnStack {
         }
         let bounds = *prepaint;
         // Линейки — по центрам промежутков, высотой в колонку, в каждой линии.
-        // Это простая `column-rule` без рядов; при рядах `render.rs` отдаёт
-        // линейки (в том числе `row-rule`, css-multicol-2 §rg) художнику
-        // `GapRulePainter` по буферу `gap_items`, и `rule` здесь `None`.
+        // Это простая `column-rule` без рядов; при рядах линейки (в том числе
+        // `row-rule`, css-multicol-2 §rg) отдаются художнику `GapRulePainter`
+        // по буферу `gap_items`, и `rule` здесь `None`.
         self.paint_column_rules(window, bounds);
         let plan = self.plan.borrow().clone();
         let col_w = self.col_w.get();

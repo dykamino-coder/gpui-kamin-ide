@@ -1,5 +1,9 @@
-//! Формы строк и рамки строк.
-// owner: A
+//! Мера строк для фрагментации: ширина содержимого блока в потоке родителя (`line_content_w`,
+//! CSS 2.1 §10.3.3) и род ширины детей flex/сетки (`items_kind`) для кадров `LineFrame`,
+//! база элемента колонки flex (`basis_sized`), сплошной строчный набор как монолит до меры
+//! строк (`inline_content`) и заливка хвоста разорванного фрагмента (`slack_fill`,
+//! css-break-3 §box-splitting). Подмодули: прогон строк (`run`), вложенные ряды (`nested`,
+//! `nested_kid`), группировка строчных прогонов (`inline_runs`).
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -58,8 +62,8 @@ pub(super) fn line_content_w(c: &Element, pw: f32) -> Option<f32> {
     };
     // Боковые поля копии фрагмента кладёт обёртка (`side_margin_wrap`): корень
     // `layout_as_root` своих полей не читает, а под обёрткой копия — обычный
-    // ребёнок. ★ Прежде (03.10) замер обёртки дал `multicol-nested-002` 0.00 ->
-    // 2.67 из-за концевого поля в балансе — теперь оно в `balance_line`.
+    // ребёнок. Концевое поле копии учитывает баланс (`balance_line`); без
+    // этого обёртка ломала `multicol-nested-002`.
     let b = s.borders();
     let edges = px(&s.padding.left)? + px(&s.padding.right)? + px(&b.left)? + px(&b.right)?;
     match s.width {

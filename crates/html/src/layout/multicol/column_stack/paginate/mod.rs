@@ -1,13 +1,11 @@
-//! Lay out paginated children against the fragmentainer grid
-//! (`fragment::paginate`).
+//! Раскладка детей стопки, размечаемых по сетке фрагментаинеров (`fragment::paginate`).
 //!
-//! The column height `H` and the child's offset `y0` in its first column are
-//! inputs of the child's layout (Blink `ConstraintSpace::FragmentainerBlockSize`
-//! and `FragmentainerOffset`). With `column-fill: auto` `H` is given; when
-//! balancing, `H` starts at the unfragmented balance and grows by the minimal
-//! space shortage until the content with its struts fits the columns (Blink
-//! `column_layout_algorithm.cc` `CalculateBalancedColumnBlockSize` +
-//! `minimal_space_shortage`).
+//! Высота колонки `H` и смещение ребёнка `y0` в его первой колонке — входы раскладки
+//! самого ребёнка (Blink `ConstraintSpace::FragmentainerBlockSize` и
+//! `FragmentainerOffset`). При `column-fill: auto` `H` задана; при балансировке `H`
+//! начинается с баланса без фрагментации и растёт на минимальный недолаз, пока содержимое
+//! с распорками не уместится в колонки (Blink `column_layout_algorithm.cc`
+//! `CalculateBalancedColumnBlockSize` + `minimal_space_shortage`).
 
 use crate::layout::fragment::paginate::solve::{first_violation, gap_violation};
 use crate::layout::fragment::paginate::{Cand, Strut, Struts};

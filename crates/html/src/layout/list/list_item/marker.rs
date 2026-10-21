@@ -1,4 +1,7 @@
-//! Shared marker resolution for block and inline list items.
+//! Общее разрешение маркера для блочных и строчных пунктов списка: текст маркера
+//! (`content` у `::marker`, `list-style-type`, счётчик пункта), признак `list-style: none`
+//! и чужого `display`, стиль слоя `::marker` и сборка анонимного узла `::marker`
+//! с UA-правилами css-lists-3 (`unicode-bidi: isolate`, без `letter-spacing` у символа).
 
 use super::tabular_marker;
 use crate::document::state::ValueCx;

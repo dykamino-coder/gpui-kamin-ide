@@ -1,4 +1,4 @@
-//! Tests of `fragment_size`.
+//! Тесты `fragment_size`.
 
 use super::*;
 use crate::dom::Node;

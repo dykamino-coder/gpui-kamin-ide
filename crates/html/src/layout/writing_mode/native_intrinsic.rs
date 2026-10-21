@@ -1,4 +1,7 @@
-//! Intrinsic block and grid boxes retain their actual node and containing block.
+//! Признак коробки, которая держит ключевое слово содержимого (`min-content`/`max-content`/
+//! `fit-content`) в `width`/`height` на своём собственном узле: обычный блок или сетка без
+//! обёртки-измерителя сохраняет свой узел и содержащий блок; замещаемые, формы, таблицы,
+//! списки, внепоточные и коробки с ключевым словом в пределах остаются на прежних путях.
 use crate::dom::Element;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;

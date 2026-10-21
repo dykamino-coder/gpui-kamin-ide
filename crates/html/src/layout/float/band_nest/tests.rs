@@ -1,4 +1,4 @@
-//! Nested float paragraph construction regressions.
+//! Тесты-регрессии построения абзацев вложенных float.
 
 use super::*;
 

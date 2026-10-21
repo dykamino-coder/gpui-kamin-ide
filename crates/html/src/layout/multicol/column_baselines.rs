@@ -1,4 +1,7 @@
-//! Export content baselines from the same child trees and fragment positions used for paint.
+//! Экспорт базовых линий содержимого многоколоночника из тех же деревьев детей и позиций
+//! фрагментов, что идут в отрисовку. Вход — план фрагментов, колонки и спаннеры стопки;
+//! выход — первая и последняя базовые линии контейнера. Внутри колонки линия выбирается
+//! в порядке потока, а у режущего фрагмента — только из видимой в его маске части.
 
 use crate::layout::fragment::types::{Frag, Kid, StackChild};
 use crate::layout::multicol::column_stack::ColumnStack;

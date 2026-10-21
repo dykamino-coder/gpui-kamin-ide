@@ -1,7 +1,9 @@
-//! Map static-position probes out of continuous fragment copies.
-//!
-//! The positioned box keeps the viewport as its containing block. Only its
-//! hypothetical flow position follows the fragmentainer placement plan.
+//! Перевод щупов статической позиции из непрерывной копии фрагмента в размещение по
+//! фрагментаинерам: `fixed`-коробка сохраняет область просмотра содержащим блоком, и лишь её
+//! гипотетическое место в потоке следует плану стопки колонок (`Place` по детям и
+//! смещениям, стек `Mapping` в `PaintCx::coordinates` для вложенной фрагментации). План
+//! выделяется только деревьям с такими щупами (`needed`,
+//! `ColumnStack::with_static_coordinates`).
 
 use gpui::{Bounds, Pixels, Point};
 use std::cell::RefCell;
