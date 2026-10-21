@@ -6,7 +6,9 @@ use super::*;
 fn decls_keep_commas_inside_functions() {
     let d = parse_decls("color: rgba(1, 2, 3, .5); padding : 4px ");
     assert_eq!(d.last("color"), Some("rgba(1, 2, 3, .5)"));
-    assert_eq!(d.last("padding"), Some("4px"));
+    // The registry shorthand arrives as its longhands.
+    assert_eq!(d.last("padding-top"), Some("4px"));
+    assert_eq!(d.last("padding"), None);
 }
 
 #[test]
@@ -28,7 +30,7 @@ fn layer_block_is_transparent_and_supports_not_is_honoured() {
 fn important_is_a_flag_of_the_declaration() {
     // Важность доезжает до каскада флагом объявления, значение — без
     // пометки; повтор свойства остаётся отдельной записью на своём месте.
-    let d = parse_decls("color: red !important; margin: 0; color: blue");
+    let d = parse_decls("color: red !important; width: 0; color: blue");
     let flags: Vec<(&str, &str, bool)> = d
         .iter()
         .map(|d| (d.name.as_str(), d.value.as_str(), d.important))
@@ -37,7 +39,7 @@ fn important_is_a_flag_of_the_declaration() {
         flags,
         [
             ("color", "red", true),
-            ("margin", "0", false),
+            ("width", "0", false),
             ("color", "blue", false)
         ]
     );
@@ -189,7 +191,7 @@ fn page_rules_cascade_by_layer_before_specificity() {
     };
     let last = |rules: &[PageRule], name: &str| {
         page_decls_in(rules, 0, name, false)
-            .last("margin")
+            .last("margin-top")
             .map(str::to_string)
     };
     // Важные идут после обычных, и у них ранний слой сильнее.

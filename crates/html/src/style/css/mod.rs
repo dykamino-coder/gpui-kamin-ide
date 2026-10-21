@@ -24,8 +24,12 @@ pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod declaration;
 mod origin;
+pub(super) mod property;
 pub use crate::style::css::declaration::{DeclBlock, Declaration, VarMap};
 pub use crate::style::css::origin::Origin;
+pub use crate::style::css::property::{
+    BoxGroup, CssWide, Grammar, LonghandId, ShorthandId, Slot, Specified,
+};
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
 pub(crate) use decls::split_top_level;

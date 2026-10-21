@@ -11,12 +11,12 @@ pub struct Computed {
     pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
-    /// Счётчик объявлений этого узла: порядок каскада между логическими и
-    /// физическими сторонами (UA `padding-inline-start: 40px` против
-    /// авторского `padding-top: 0` в вертикальном письме —
+    /// Место в каскаде применяемого сейчас объявления: им логические и
+    /// физические стороны и размеры решают спор (UA `padding-inline-start:
+    /// 40px` против авторского `padding-top: 0` в вертикальном письме —
     /// `line-box-direction-vrl-019`).
-    pub decl_seq: u32,
-    pub side_seq: SideSeq,
+    pub(crate) decl_order: DeclOrder,
+    pub(crate) side_order: SideOrder,
     pub display: Option<Display>,
     pub flex_dir: Option<FlexDir>,
     pub flex_wrap: Option<bool>,

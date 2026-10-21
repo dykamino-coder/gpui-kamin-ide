@@ -9,6 +9,7 @@ use crate::style::css::parse_decls;
 mod cascade;
 mod cascade_winners;
 mod decor_inset;
+mod logical_cascade;
 
 fn computed(css: &str, vcx: ValueCx<'_>) -> Computed {
     let mut c = Computed::default();

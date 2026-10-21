@@ -2,6 +2,7 @@
 
 use super::Computed;
 use crate::document::state::ValueCx;
+use crate::style::css::{LonghandId, ShorthandId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ParseResult {
@@ -28,6 +29,20 @@ impl Computed {
         // CSS Cascade 5 §7.3: CSS-wide keywords belong to every known property.
         if css_wide_keyword(value) {
             return ParseResult::Accepted;
+        }
+        // Свойства реестра проверяет их грамматика — та же, что у разбора
+        // блока (`style::css::property`).
+        let registry = match (ShorthandId::from_name(key), LonghandId::from_name(key)) {
+            (Some(shorthand), _) => Some(shorthand.expand(value, Some(vcx)).is_some()),
+            (None, Some(id)) => Some(id.accepts(value, vcx)),
+            (None, None) => None,
+        };
+        if let Some(ok) = registry {
+            return if ok {
+                ParseResult::Accepted
+            } else {
+                ParseResult::Invalid
+            };
         }
         let mut parser = Self {
             declaration_parse: ParseResult::Invalid,

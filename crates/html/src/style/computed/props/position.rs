@@ -1,7 +1,7 @@
 //! Группа свойств `Computed::apply_one`: позиционирование и видимость —
 //! `position`, якорные `anchor-name`/`position-anchor`/`position-area`/
-//! `position-try*`/`position-visibility` (css-anchor-position-1), вставки
-//! `top`…`inset`, `z-index`, `overflow*` и `overflow-clip-margin`, `float`,
+//! `position-try*`/`position-visibility` (css-anchor-position-1), `z-index`,
+//! `overflow*` и `overflow-clip-margin`, `float`,
 //! `clear`, `opacity`, `visibility`. Разбор якорных значений — в `style::values::position_area`.
 
 use crate::document::state::ValueCx;
@@ -122,30 +122,6 @@ impl Computed {
                     return;
                 };
                 self.position_visibility = accept_parsed!(self, bits);
-            }
-            "top" | "right" | "bottom" | "left" => {
-                let parsed = parsed_value!(
-                    self,
-                    Len::parse(v, vcx)
-                        .or_else(|| Len::parse_mixed(v, vcx))
-                        .map(Some)
-                        .or_else(|| (v == "inherit").then_some(None))
-                );
-                let (side, slot) = match key {
-                    "top" => (0, &mut self.inset.top),
-                    "right" => (1, &mut self.inset.right),
-                    "bottom" => (2, &mut self.inset.bottom),
-                    _ => (3, &mut self.inset.left),
-                };
-                self.inset_inherit[side] = v == "inherit";
-                // Keep anchor arithmetic; preserve mixed percentages until layout (§10.9).
-                *slot = parsed;
-                self.side_seq.inset[side] = self.decl_seq;
-            }
-            "inset" => {
-                self.inset =
-                    parsed_value!(self, super::box_model::sides::parsed_sides(v, true, vcx));
-                self.side_seq.inset = [self.decl_seq; 4];
             }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности

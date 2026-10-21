@@ -23,6 +23,13 @@ pub struct Logical {
     pub min_block: Option<Len>,
     pub max_inline: Option<Len>,
     pub max_block: Option<Len>,
+    /// Порядок каскада логических размеров (`inline, block, min-inline,
+    /// min-block, max-inline, max-block`): спор с физическими решает
+    /// более сильное объявление.
+    pub size_order: [Option<DeclOrder>; 6],
+    /// `inherit` логического размера: ложится признаком наследования на
+    /// физический размер, выбранный письмом.
+    pub size_inherit: [bool; 6],
     pub padding: LogicalSides,
     pub margin: LogicalSides,
     pub inset: LogicalSides,
@@ -45,11 +52,35 @@ pub struct LogicalSides {
     pub inline_end: Option<Len>,
     pub block_start: Option<Len>,
     pub block_end: Option<Len>,
-    /// Порядковый номер объявления каждой стороны (inline_start, inline_end,
-    /// block_start, block_end) — спор с физической стороной решает более
-    /// позднее объявление, а на какую физическую сторону ляжет логическая,
-    /// известно только после наследования письма.
-    pub seq: [u32; 4],
+    /// Порядок каскада каждой стороны (inline_start, inline_end,
+    /// block_start, block_end): спор с физической стороной решает более
+    /// сильное объявление (css-logical-1 §4), а на какую физическую сторону
+    /// ляжет логическая, известно только после наследования письма.
+    pub order: [Option<DeclOrder>; 4],
+    /// `inherit` стороны: ложится признаком наследования на физическую.
+    pub inherit: [bool; 4],
+}
+
+impl LogicalSides {
+    /// Значение стороны по индексу (inline_start, inline_end, block_start,
+    /// block_end).
+    pub fn get(&self, side: usize) -> Option<Len> {
+        [
+            self.inline_start,
+            self.inline_end,
+            self.block_start,
+            self.block_end,
+        ][side]
+    }
+
+    pub fn slot(&mut self, side: usize) -> &mut Option<Len> {
+        match side {
+            0 => &mut self.inline_start,
+            1 => &mut self.inline_end,
+            2 => &mut self.block_start,
+            _ => &mut self.block_end,
+        }
+    }
 }
 
 /// `outline`: рамка ВНЕ коробки, не влияющая на раскладку.
@@ -101,13 +132,24 @@ pub enum Overflow {
     Clip,
 }
 
-/// Порядковые номера объявлений физических сторон (top, right, bottom, left)
-/// для полей, отступов и краёв — см. `LogicalSides::seq`.
+/// Место применённого объявления в каскаде: номер прохода каскада по стилю
+/// (слой `:hover` или кадр поверх готового стиля — более поздний проход) и
+/// ключ каскада победителя (css-cascade-5 §6.2). Сравнивается целиком.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DeclOrder {
+    pub(crate) pass: u32,
+    pub(crate) key: crate::style::cascade::key::CascadeKey,
+}
+
+/// Порядок каскада физических сторон (top, right, bottom, left) полей,
+/// отступов и вставок и физических размеров (`width, height, min-width,
+/// min-height, max-width, max-height`) — см. `LogicalSides::order`.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct SideSeq {
-    pub padding: [u32; 4],
-    pub margin: [u32; 4],
-    pub inset: [u32; 4],
+pub struct SideOrder {
+    pub(crate) padding: [DeclOrder; 4],
+    pub(crate) margin: [DeclOrder; 4],
+    pub(crate) inset: [DeclOrder; 4],
+    pub(crate) size: [DeclOrder; 6],
 }
 
 /// Метрика края текста (`<text-edge>`, css-inline-3 §4.3).

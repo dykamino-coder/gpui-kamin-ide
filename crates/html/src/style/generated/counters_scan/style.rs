@@ -24,7 +24,7 @@ pub(super) fn scan_style(
         .borrow()
         .iter()
         .find(|a| &*a.name.local == "style")
-        .map(|a| crate::style::css::parse_decls(&a.value))
+        .map(|a| crate::style::css::parse_decls_in(&a.value, vcx))
         .unwrap_or_default();
     let matched: Vec<&Rule> = rules
         .iter()
