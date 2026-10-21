@@ -33,7 +33,7 @@ use super::{content, initial_pseudos, language, presentational_hints};
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Display;
-use crate::style::css::{Decls, Keyframes, Rule};
+use crate::style::css::{Keyframes, Rule, VarMap};
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ fn build_dom_node(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,

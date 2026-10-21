@@ -98,7 +98,7 @@ mod tests {
         };
         let mut rules = vec![&author, &base];
         let style =
-            Computed::resolve_with_vars(&mut rules, &parse_decls(""), &parse_decls(""), vcx);
+            Computed::resolve_with_vars(&mut rules, &parse_decls(""), &Default::default(), vcx);
         assert_eq!(
             style.color,
             crate::style::values::value::Color::parse("red", vcx)

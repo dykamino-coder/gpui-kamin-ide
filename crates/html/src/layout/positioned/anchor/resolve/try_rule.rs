@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, ORDER_KEY};
+use crate::style::css::{DeclBlock, VarMap};
 
 /// «Accepted @position-try properties» (css-anchor-position-1
 /// §fallback-rule): вставки, поля, размеры, самовыравнивание,
@@ -56,13 +56,13 @@ const ACCEPTED: &[&str] = &[
 /// детерминированный). Неподходящие свойства отбрасываются; `!important`
 /// внутри правила делает объявление недействительным (§fallback-rule), и
 /// проход обычных объявлений его не берёт.
-pub(crate) fn apply_try_rule(c: &mut Computed, decls: &Decls, vcx: ValueCx<'_>) {
-    let accepted: Decls = decls
+pub(crate) fn apply_try_rule(c: &mut Computed, decls: &DeclBlock, vcx: ValueCx<'_>) {
+    let accepted: DeclBlock = decls
         .iter()
-        .filter(|(k, _)| k.as_str() == ORDER_KEY || ACCEPTED.contains(&k.as_str()))
-        .map(|(k, v)| (k.clone(), v.clone()))
+        .filter(|d| ACCEPTED.contains(&d.name.as_str()))
+        .cloned()
         .collect();
-    c.apply_pass(&accepted, &Decls::default(), false, CascadeCx::NONE, vcx);
+    c.apply_pass(&accepted, &VarMap::default(), false, CascadeCx::NONE, vcx);
 }
 
 #[cfg(test)]

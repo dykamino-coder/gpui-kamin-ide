@@ -5,17 +5,17 @@
 //! зарегистрированных `@property` — проверка синтаксиса и запасное
 //! начальное/унаследованное значение.
 
-use super::{Decls, Registered, Rule};
+use super::{DeclBlock, Registered, Rule, VarMap};
 use std::collections::HashMap;
 
 pub(crate) fn cascade(
     matched: &[&Rule],
-    inline: &Decls,
-    parent: &Decls,
+    inline: &DeclBlock,
+    parent: &VarMap,
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
-) -> Decls {
-    let mut selected = Decls::new();
+) -> VarMap {
+    let mut selected = VarMap::new();
     for important in [false, true] {
         let mut ordered = matched.to_vec();
         if important {
@@ -116,21 +116,12 @@ pub(crate) fn cascade(
     result
 }
 
-fn select(selected: &mut Decls, decls: &Decls, important: bool) {
-    for (name, raw) in decls {
-        if !name.starts_with("--") {
-            continue;
-        }
-        let bang = super::top_level_bang(raw);
-        let metadata = decls.get(&format!("{}{name}", super::CUSTOM_IMPORTANT));
-        let priority = metadata.map_or(bang.is_some(), |v| v == "1");
-        if priority == important {
-            let value = if metadata.is_some() {
-                raw.as_str()
-            } else {
-                bang.map_or(raw.as_str(), |at| raw[..at].trim_end())
-            };
-            selected.insert(name.clone(), value.to_string());
+/// Объявления `--*` блока нужной важности по порядку записи: последнее
+/// побеждает.
+fn select(selected: &mut VarMap, decls: &DeclBlock, important: bool) {
+    for d in decls {
+        if d.name.starts_with("--") && d.important == important {
+            selected.insert(d.name.clone(), d.value.clone());
         }
     }
 }
@@ -151,28 +142,19 @@ pub(super) fn keyword(
     .map(str::to_string)
 }
 
-pub(super) fn store(decls: &mut Decls, name: String, value: String, important: bool) {
-    let priority = format!("{}{name}", super::CUSTOM_IMPORTANT);
-    if decls.get(&priority).is_some_and(|v| v == "1") && !important {
-        return;
-    }
-    decls.insert(priority, if important { "1" } else { "0" }.to_string());
-    decls.insert(name, value);
-}
-
 #[cfg(test)]
 mod tests {
-    use super::super::{Decls, Rule, Selector, parse_decls};
+    use super::super::{DeclBlock, Rule, Selector, VarMap, parse_decls};
     use super::{cascade, keyword};
     use std::collections::HashMap;
 
     #[test]
     fn repeated_declarations_keep_priority_and_literal_bangs() {
         let decls = parse_decls("--a:green!important;--a:red");
-        let values = cascade(&[], &decls, &Decls::new(), &HashMap::new(), |_, _| true);
+        let values = cascade(&[], &decls, &VarMap::new(), &HashMap::new(), |_, _| true);
         assert_eq!(values["--a"], "green");
         let decls = parse_decls(r"--a:green\!important");
-        let values = cascade(&[], &decls, &Decls::new(), &HashMap::new(), |_, _| true);
+        let values = cascade(&[], &decls, &VarMap::new(), &HashMap::new(), |_, _| true);
         assert_eq!(values["--a"], "green!important");
     }
 
@@ -208,8 +190,8 @@ mod tests {
         let last = rule("--a: red", 1);
         let values = cascade(
             &[&first, &last],
-            &Decls::new(),
-            &Decls::new(),
+            &DeclBlock::new(),
+            &VarMap::new(),
             &HashMap::new(),
             |_, _| true,
         );
@@ -218,7 +200,7 @@ mod tests {
 
     #[test]
     fn inherited_and_initial_variables_are_distinct_from_empty_values() {
-        let parent = parse_decls("--a: green; --b: red");
+        let parent = VarMap::from([("--a".into(), "green".into()), ("--b".into(), "red".into())]);
         let inline = parse_decls("--a: inherit; --b: initial; --empty:");
         let values = cascade(&[], &inline, &parent, &HashMap::new(), |_, _| true);
         assert_eq!(values.get("--a").map(String::as_str), Some("green"));

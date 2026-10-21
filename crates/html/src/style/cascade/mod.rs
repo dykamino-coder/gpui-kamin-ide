@@ -7,7 +7,7 @@ use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, res
 use crate::style::computed::{
     BgListProp, Computed, background_layers, font_members, top_level_comma,
 };
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::values::value::Color;
 
 mod color_initial;
@@ -18,19 +18,19 @@ mod inline_rollback;
 mod pass;
 mod revert;
 pub mod vars;
-use revert::{is_important, revert_layers, strip_important};
+use revert::revert_layers;
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
-    pub fn resolve(matched: &mut Vec<&Rule>, inline: &Decls, vcx: ValueCx<'_>) -> Computed {
-        Computed::resolve_with_vars(matched, inline, &Decls::new(), vcx)
+    pub fn resolve(matched: &mut Vec<&Rule>, inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
+        Computed::resolve_with_vars(matched, inline, &VarMap::new(), vcx)
     }
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(
         matched: &mut Vec<&Rule>,
-        inline: &Decls,
-        vars: &Decls,
+        inline: &DeclBlock,
+        vars: &VarMap,
         vcx: ValueCx<'_>,
     ) -> Computed {
         Computed::resolve_in(matched, inline, vars, CascadeCx::NONE, vcx)
@@ -40,8 +40,8 @@ impl Computed {
     /// `attr()` и `sibling-index()`.
     pub fn resolve_in(
         matched: &mut Vec<&Rule>,
-        inline: &Decls,
-        vars: &Decls,
+        inline: &DeclBlock,
+        vars: &VarMap,
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Computed {

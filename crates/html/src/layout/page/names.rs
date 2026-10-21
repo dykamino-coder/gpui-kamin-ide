@@ -13,6 +13,7 @@ use crate::layout::fragment::flex_lines::{class_a_box, item_container};
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
+use crate::style::css::DeclBlock;
 use crate::style::values::value::Len;
 
 /// Начальное и конечное значения 'page' коробки (css-page-3 §"Using named
@@ -57,7 +58,7 @@ pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
 
 /// Объявления листа для марджин-боксов: контекст страницы (наследуемое
 /// идёт в коробки, css-page-3 §page-properties) и коробки по именам.
-pub type PageMarginDecls = (Vec<(String, String)>, Vec<(String, Vec<(String, String)>)>);
+pub type PageMarginDecls = (DeclBlock, Vec<(String, DeclBlock)>);
 
 pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>;
 

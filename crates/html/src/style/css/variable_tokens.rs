@@ -163,7 +163,7 @@ mod tests {
     fn invalid_fallback_does_not_replace_a_previous_declaration() {
         for fallback in ["!", "!important", ";", "var(,green)"] {
             let decls = parse_decls(&format!("--a: green; --a: var(--b,{fallback})"));
-            assert_eq!(decls.get("--a").map(String::as_str), Some("green"));
+            assert_eq!(decls.last("--a"), Some("green"));
         }
     }
 
@@ -191,10 +191,10 @@ mod tests {
     #[test]
     fn custom_names_preserve_case_and_empty_values() {
         let decls = parse_decls("--a: green; --A: red; --empty:; --: red; COLOR: blue");
-        assert_eq!(decls.get("--a").map(String::as_str), Some("green"));
-        assert_eq!(decls.get("--A").map(String::as_str), Some("red"));
-        assert_eq!(decls.get("--empty").map(String::as_str), Some(""));
-        assert!(!decls.contains_key("--"));
-        assert!(decls.contains_key("color"));
+        assert_eq!(decls.last("--a"), Some("green"));
+        assert_eq!(decls.last("--A"), Some("red"));
+        assert_eq!(decls.last("--empty"), Some(""));
+        assert!(!decls.contains("--"));
+        assert!(decls.contains("color"));
     }
 }

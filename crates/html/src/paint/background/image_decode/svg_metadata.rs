@@ -59,8 +59,8 @@ pub(crate) fn svg_root_background(
     let style = rest[1..].split(quote).next()?;
     let decls = crate::style::css::parse_decls(style);
     let v = decls
-        .get("background")
-        .or_else(|| decls.get("background-color"))?;
+        .last("background")
+        .or_else(|| decls.last("background-color"))?;
     crate::style::values::value::Color::parse(v.split_whitespace().next()?, vcx)
 }
 

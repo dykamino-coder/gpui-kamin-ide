@@ -108,12 +108,12 @@ fn last_valid<T>(values: &[String], parse: impl Fn(&[Tok]) -> Option<T>) -> Opti
     values.iter().rev().find_map(|v| parse(&tokenize(v)))
 }
 
-/// Правило `@counter-style <имя> { … }`. `descs` — пары «дескриптор —
-/// значения в порядке записи».
+/// Правило `@counter-style <имя> { … }`: дескрипторы — объявления блока в
+/// порядке записи; дескриптор с `!important` недействителен.
 pub fn register(
     doc: &crate::document::state::DocState,
     name: &str,
-    descs: &[(String, Vec<String>)],
+    descs: &crate::style::css::DeclBlock,
 ) {
     let toks = tokenize(name.trim());
     let [Tok::Ident(name)] = toks.as_slice() else {
@@ -131,33 +131,33 @@ pub fn register(
     {
         return;
     }
-    let get = |k: &str| {
+    let get = |k: &str| -> Vec<String> {
         descs
             .iter()
-            .find(|(n, _)| n == k)
-            .map(|(_, v)| v.as_slice())
-            .unwrap_or(&[])
+            .filter(|d| d.name == k && !d.important)
+            .map(|d| d.value.clone())
+            .collect()
     };
     let raw = Raw {
-        system: last_valid(get("system"), parse_system),
-        symbols: last_valid(get("symbols"), parse_symbols),
-        additive: last_valid(get("additive-symbols"), parse_additive),
-        negative: last_valid(get("negative"), |t| match t {
+        system: last_valid(&get("system"), parse_system),
+        symbols: last_valid(&get("symbols"), parse_symbols),
+        additive: last_valid(&get("additive-symbols"), parse_additive),
+        negative: last_valid(&get("negative"), |t| match t {
             [a] => Some((symbol(a)?, String::new())),
             [a, b] => Some((symbol(a)?, symbol(b)?)),
             _ => None,
         }),
-        prefix: last_valid(get("prefix"), |t| match t {
+        prefix: last_valid(&get("prefix"), |t| match t {
             [a] => symbol(a),
             _ => None,
         }),
-        suffix: last_valid(get("suffix"), |t| match t {
+        suffix: last_valid(&get("suffix"), |t| match t {
             [a] => symbol(a),
             _ => None,
         }),
-        range: last_valid(get("range"), parse_range),
-        pad: last_valid(get("pad"), parse_pad),
-        fallback: last_valid(get("fallback"), |t| match t {
+        range: last_valid(&get("range"), parse_range),
+        pad: last_valid(&get("pad"), parse_pad),
+        fallback: last_valid(&get("fallback"), |t| match t {
             [Tok::Ident(n)] if !n.eq_ignore_ascii_case("none") && !is_wide_keyword(n) => {
                 Some(normalize_name(n).into_owned())
             }

@@ -11,7 +11,7 @@ use super::{build_dom_node, walk_children};
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::css::{Decls, Keyframes, Rule};
+use crate::style::css::{Keyframes, Rule, VarMap};
 use crate::style::select::{Ancestor, Sibs};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ pub(super) fn collect_children(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,

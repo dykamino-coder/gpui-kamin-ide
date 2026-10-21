@@ -5,8 +5,6 @@
 //! четырнадцать. Полноценная CSS-машина здесь не окупается, а лишняя
 //! зависимость — окупается ещё меньше.
 
-use std::collections::HashMap;
-
 pub(crate) mod resource_rules;
 pub(crate) mod selector_tokens;
 mod stylesheet_tokens;
@@ -24,6 +22,8 @@ mod variable_tokens;
 pub(crate) use variable_tokens::block_end;
 pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
+pub(super) mod declaration;
+pub use crate::style::css::declaration::{DeclBlock, Declaration, VarMap};
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
 pub(crate) use decls::split_top_level;
@@ -40,29 +40,11 @@ pub use crate::style::css::at_rules::*;
 pub(super) mod keyframes;
 pub use crate::style::css::keyframes::*;
 
-/// Пара «свойство: значение». Значение хранится сырым — разбор откладывается
-/// до момента применения, чтобы неизвестные свойства не стоили ничего.
-pub type Decls = HashMap<String, String>;
-
-/// Разделитель повторных объявлений одного свойства внутри значения.
-pub const DECL_SEP: char = char::from_u32(1).unwrap();
-
-/// Служебный ключ со списком свойств В ПОРЯДКЕ ЗАПИСИ.
-///
-/// Каскад решает порядком объявлений (CSS 2.1 §6.4.1), а словарь его не
-/// помнит: `background-color: red; background: green` и обратная запись
-/// давали ОДИН исход. Имя начинается со служебного знака — свойства с
-/// таким именем в разметке не бывает.
-pub const ORDER_KEY: &str = "\u{2}order";
-
-/// Priority is metadata: an escaped `!` inside a custom value is not !important.
-pub(super) const CUSTOM_IMPORTANT: &str = "\u{2}important:";
-
 /// Одно правило: с чем сопоставлять и что применять.
 #[derive(Clone, Debug)]
 pub struct Rule {
     pub sel: Selector,
-    pub decls: Decls,
+    pub decls: DeclBlock,
     /// Порядок в исходнике: при равной специфичности выигрывает последнее.
     pub order: usize,
     /// Откуда правило: 0 — таблица агента, 1 — таблица документа.

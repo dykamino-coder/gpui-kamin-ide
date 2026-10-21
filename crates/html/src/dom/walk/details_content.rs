@@ -10,7 +10,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, Rule, Selector, parse_decls};
+use crate::style::css::{DeclBlock, Rule, Selector, VarMap, parse_decls};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
@@ -31,7 +31,7 @@ pub(super) fn wrap(
     children: Vec<Node>,
     attrs: &[(String, String)],
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,
@@ -53,8 +53,8 @@ pub(super) fn wrap(
     // author value (`details-pseudo-elements-002`: `visible` shows it).
     let authored = matched
         .iter()
-        .any(|r| r.decls.contains_key("content-visibility"));
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
+        .any(|r| r.decls.contains("content-visibility"));
+    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
     if !open && !authored {
         style.apply_one("content-visibility", "hidden", vcx);
     }

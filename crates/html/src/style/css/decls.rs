@@ -14,10 +14,9 @@ use urls::has_bad_url;
 pub(crate) use urls::{Piece, at_url, skip_url, strip_comments};
 
 /// Разбор `style="a: 1; b: 2"`.
-pub fn parse_decls(raw: &str) -> Decls {
+pub fn parse_decls(raw: &str) -> DeclBlock {
     let raw = component_tokens::complete(raw);
-    let mut out = Decls::new();
-    let mut order: Vec<String> = Vec::new();
+    let mut out = DeclBlock::new();
     for item in split_top_level(&raw, ';') {
         // Двоеточие ищется НЕэкранированное: `bac\\kground` — это имя
         // `background`, а `background\\:` — имя с двоеточием внутри, то есть
@@ -44,9 +43,6 @@ pub fn parse_decls(raw: &str) -> Decls {
         };
         let (k, v) = (&item[..colon], &item[colon + 1..]);
         let name = unescape(k.trim());
-        if name.starts_with('\u{2}') {
-            continue;
-        }
         let custom = name.starts_with("--");
         if custom && (name == "--" || !selector_tokens::ident(k.trim())) {
             continue;
@@ -80,62 +76,19 @@ pub fn parse_decls(raw: &str) -> Decls {
         if !variable_tokens::valid(value) {
             continue;
         }
-        // У обычных свойств пометка важности ОСТАЁТСЯ в значении: снимет её тот, кто раскладывает
-        // каскад (`Computed::resolve_with_vars`), а срезав её здесь, мы теряли
-        // важность целиком — объявление конкурировало на общих основаниях.
+        // Пометка важности — флаг объявления, значение хранится без неё.
         let important = top_level_bang(val).is_some();
-        let val = &font_family_values::normalize(&key, if custom { value } else { val });
+        let val = font_family_values::normalize(&key, value);
         if !key.is_empty() && (custom || !val.is_empty()) {
             // Повтор того же свойства НЕ затирает прежнее на разборе:
             // действительность значения известна только применению
             // (CSS 2.1 §4.1.7 — недействительное объявление игнорируется,
-            // а не гасит предыдущее). Части склеиваются служебным
-            // разделителем и применяются по порядку. У пользовательских
-            // свойств синтаксис уже проверен — последнее побеждает.
-            if key.starts_with("--") {
-                custom_properties::store(&mut out, key, val.to_string(), important);
-            } else {
-                // Порядок записи: имя запоминается при ПЕРВОМ появлении —
-                // повтор того же свойства применяется на его месте, внутри
-                // склеенного значения. В словарь список кладётся ПОСЛЕ
-                // разбора и только к непустому: `parse_decls(...).is_empty()`
-                // отличает сломанный синтаксис от целого (`@supports`,
-                // `@page`), и служебный ключ не должен делать пустое
-                // непустым.
-                if !out.contains_key(&key) {
-                    order.push(key.clone());
-                }
-                match out.entry(key) {
-                    std::collections::hash_map::Entry::Occupied(mut e) => {
-                        let s = e.get_mut();
-                        s.push(DECL_SEP);
-                        s.push_str(val);
-                    }
-                    std::collections::hash_map::Entry::Vacant(e) => {
-                        e.insert(val.to_string());
-                    }
-                }
-            }
+            // а не гасит предыдущее). Повтор — отдельная запись блока на
+            // своём месте.
+            out.push(key, val, important);
         }
     }
-    if !out.is_empty() && !order.is_empty() {
-        out.insert(ORDER_KEY.to_string(), order.join(&DECL_SEP.to_string()));
-    }
     out
-}
-
-/// Объявления блока В ПОРЯДКЕ ЗАПИСИ, повтор свойства — отдельной парой
-/// (`Decls` порядок помнит только в служебном `ORDER_KEY`).
-pub(super) fn ordered_decls(decls: &Decls) -> Vec<(String, String)> {
-    let order = decls.get(ORDER_KEY).cloned().unwrap_or_default();
-    order
-        .split(DECL_SEP)
-        .filter_map(|k| decls.get(k).map(|v| (k, v)))
-        .flat_map(|(k, v)| {
-            v.split(DECL_SEP)
-                .map(move |one| (k.to_string(), one.trim().to_string()))
-        })
-        .collect()
 }
 
 /// Вложенные at-блоки тела `@page`: `(имя без @ в нижнем регистре, тело)`.

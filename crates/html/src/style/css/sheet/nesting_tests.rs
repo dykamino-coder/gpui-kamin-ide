@@ -25,10 +25,7 @@ fn conditional_declarations_keep_parent_and_source_order() {
         ".a { color: red; @supports (color: green) { color: green } color: blue; }
          .b { color: green; @supports (unknown: invalid) { color: red } }",
     );
-    let colors: Vec<_> = rules
-        .iter()
-        .map(|r| r.decls.get("color").map(String::as_str))
-        .collect();
+    let colors: Vec<_> = rules.iter().map(|r| r.decls.last("color")).collect();
     assert_eq!(
         colors,
         [Some("red"), Some("green"), Some("blue"), Some("green")]
