@@ -27,7 +27,10 @@ impl Computed {
         // из записи не полностью, и полный сброс терял то, чего он не
         // умеет прочесть обратно (`textarea-pre-wrap-*`).
         // Негодное объявление не сбрасывает ничего (§4.1.7).
-        if key == "background" && !background_shorthand_valid(v, vcx) {
+        let valid = key != "background"
+            || (Self::background_list_valid(BgListProp::Shorthand, v, vcx)
+                && background_shorthand_valid(&v.to_ascii_lowercase(), vcx));
+        if !valid {
             return;
         }
         if key == "background-color"
@@ -37,14 +40,12 @@ impl Computed {
         {
             return;
         }
-        if key == "background" && background_shorthand_valid(v, vcx) {
+        if key == "background" {
             self.accept_declaration();
             self.background = None;
             self.background_rcs = None;
         }
-        if key == "background-color" || background_shorthand_valid(v, vcx) {
-            self.bg_explicit = true;
-        }
+        self.bg_explicit = true;
         // Цвет от `currentColor` решается не здесь: цвет элемента
         // известен только после каскада, а запись наследуется
         // нерешённой — и голое слово, и относительная функция, и
