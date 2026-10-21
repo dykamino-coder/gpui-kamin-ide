@@ -73,6 +73,10 @@ fn block_ruby_keeps_authored_properties_on_outer_box() {
     assert_eq!(inner.style.color, None);
     assert!(outer.style.color.is_some());
     assert!(inner.attrs.is_empty());
-    assert_eq!(inner.marks, Marks::default());
+    // Идентичность коробки не меняет её layout-флаги.
+    let mut marks = inner.marks.clone();
+    assert!(marks.state_id.get().is_some());
+    marks.state_id = Default::default();
+    assert_eq!(marks, Marks::default());
     assert_eq!(inner.children.len(), 2);
 }

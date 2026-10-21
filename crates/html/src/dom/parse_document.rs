@@ -242,5 +242,6 @@ pub(super) fn parse_input(
     if tree.doc.quirks() {
         quirks_percent_heights(&mut out, None);
     }
+    super::state_identity::finalize(&out, vcx);
     out
 }

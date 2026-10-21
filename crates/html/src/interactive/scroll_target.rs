@@ -117,7 +117,7 @@ pub(crate) fn attach(
     );
     div = crate::paint::apply::margins(div, &margin, vcx);
     div.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
-    div.interactivity().element_id = Some(e.state_id("html-scroll-content"));
+    div.interactivity().element_id = Some(e.state_id("html-scroll-content", vcx));
     let mut stateful = NativeScrollBox(div).track_scroll(&handle);
     if horizontal {
         stateful = stateful.overflow_x_scroll();

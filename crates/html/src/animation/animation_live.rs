@@ -63,7 +63,7 @@ pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> 
         return painted(e, inherited, opts);
     }
     let base = painted(e, inherited, opts);
-    let id = e.state_id("html-animation");
+    let id = e.state_id("html-animation", vcx);
     let source = e.clone();
     let inherited = inherited.clone();
     let opts = opts.clone();
