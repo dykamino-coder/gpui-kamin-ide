@@ -13,7 +13,7 @@ pub(super) use fixup::fixup_row_children;
 pub(crate) use fixup::fixup_table_children;
 
 mod rows;
-pub(super) use rows::{RowCarry, collect_rows, row_collapsed};
+pub(super) use rows::{RowCarry, TableRow, collect_rows, row_collapsed};
 
 /// Красится ли коробка (фон или рамка) — такой блок в бюджете строк
 /// прячется целиком, если точка среза попала внутрь него.

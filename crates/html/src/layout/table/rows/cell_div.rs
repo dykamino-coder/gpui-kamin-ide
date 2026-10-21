@@ -8,27 +8,20 @@ use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
-use std::cell::RefCell;
-use std::rc::Rc;
 
-// The cell box consumes the border decoration record produced by preparation.
-#[allow(clippy::type_complexity)]
-#[allow(clippy::too_many_arguments)]
 pub(super) fn cell_box_div(
-    paint_layers: bool,
-    cell_bgs: &Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
-    row: &Element,
-    carry: (
-        f32,
-        f32,
-        Option<crate::style::values::value::Color>,
-        Option<&Element>,
-    ),
-    shift: (f32, f32),
+    layers: &crate::layout::table::context::TableLayers<'_>,
+    out: &mut crate::layout::table::context::RowsOut,
+    row_state: &crate::layout::table::context::RowState<'_>,
     cm: &Computed,
     cell: &Element,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
+    let row = row_state.row;
+    let carry = row_state.carry;
+    let shift = (carry.dx, carry.dy);
+    let paint_layers = layers.paint_layers;
+    let cell_bgs = &out.cell_bgs;
     // Коробке ячейки нужен СЛИТЫЙ стиль: у сырого `cell.style`
     // шрифтовые единицы не разрешены, и `apply` считает их от жёстких
     // 16 точек — `padding: 1em` при кегле 20 давало 16
@@ -78,7 +71,7 @@ pub(super) fn cell_box_div(
     // заливки, цвет пишет проба. Картинка, градиент, `background-clip`,
     // спрятанная или преобразованная ячейка красятся по-прежнему на
     // месте — для них слой не строится.
-    let collapsed = crate::layout::table::anon::row_collapsed(row, carry.3);
+    let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
         && box_style.bg_clip.is_none()
@@ -103,7 +96,7 @@ pub(super) fn cell_box_div(
     // строка, и `<tbody style="background">` пропадал молча
     // (`position-relative-table-tbody-left`).
     let mut layer_bg = bg_layered.then_some(own_bg).flatten();
-    if let Some(bg) = carry.2 {
+    if let Some(bg) = carry.background {
         // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
