@@ -72,10 +72,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     {
         return None;
     }
-    let px = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => *v,
-        _ => 0.0,
-    };
+    let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
     let b = c.style.borders();
     let top = px(&c.style.padding.top) + px(&b.top);
     // Сетка `grid_auto_row_bands`: коробка ищется в элементах ряда,

@@ -35,12 +35,12 @@ pub(crate) fn finish_shape_cuts(
     let own_h = h;
     let (reach_end, up) = oof_reach.finish(c, cx);
     let h = h.max(reach_end + bot);
-    let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp);
+    let h = fragment_size::constrain(h, &c.style, top + bot, cx.viewport, unclamp, vcx);
     // Дотяг меняет меру фрагментации, но не размер коробки: сосед в потоке
     // встаёт под КОНЦОМ коробки, а абсолют продолжается параллельным потоком
     // (css-position-3 §abspos-breaking; Blink ведёт OOF во фрагментаинере
     // отдельно от потока). Стопка берёт собственный размер из `Measure::own`.
-    let own = fragment_size::constrain(own_h, &c.style, top + bot, cx.viewport, unclamp);
+    let own = fragment_size::constrain(own_h, &c.style, top + bot, cx.viewport, unclamp, vcx);
     let own = (own < h - 0.01).then_some((own, h));
     // css-gaps-1 §fragmentation / css-align-3 §column-row-gap: «the gap
     // disappears when it coincides with a fragmentation break»; Blink
@@ -183,10 +183,7 @@ pub(crate) fn strip_through_top(c: &mut Element, depth: u8) {
     {
         return;
     }
-    let px = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => *v,
-        _ => 0.0,
-    };
+    let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
     let b = c.style.borders();
     if px(&c.style.padding.top) + px(&b.top) != 0.0 {
         return;

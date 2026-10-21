@@ -2,8 +2,8 @@
 //! для всех потребителей, один запасной контракт.
 //!
 //! Шрифтовые единицы (`em`/`ex`/`ch`/`ic`/`lh`) меряются по `FontCx`; доли и
-//! смесь `calc(px + %)` — по `basis`; единицы окна сюда не доходят (их
-//! решает `Computed::resolve_viewport`), а `auto`, размеры по содержимому и
+//! смесь `calc(px + %)` — по `basis`; единицы окна без окна не решаются (с
+//! окном — `LenCx`, `len_cx.rs`), а `auto`, размеры по содержимому и
 //! `anchor()` — не длины, у них `None`.
 
 use crate::document::state::ValueCx;
@@ -81,34 +81,16 @@ impl Computed {
 }
 
 impl Len {
-    /// Длина в точках. `basis` — база долей (`None`: доля не решается →
-    /// `None`); шрифтовые единицы — по `font`; `calc` с иной природой, единицы
-    /// окна, `auto`, размеры по содержимому и `anchor()` — `None`.
+    /// Длина в точках без окна: `LenCx` с базой `basis` и шрифтом `font`.
+    /// Единицы окна, `calc` с иной природой, `auto`, размеры по содержимому и
+    /// `anchor()` — `None`.
     pub fn to_px(self, basis: Option<f32>, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
-        let pct = |k: f32| basis.map(|b| b * k);
-        let lh = || font.line_px.unwrap_or(1.2 * font.font_px);
-        Some(match self {
-            Len::Px(v) => v,
-            Len::Pct(k) => pct(k)?,
-            Len::Calc(i) => {
-                let (k, add) = calc_get(i, vcx).pct_px()?;
-                if k == 0.0 { add } else { pct(k)? + add }
-            }
-            Len::Em(k) => k * font.font_px,
-            Len::EmPx(k, add) => k * font.font_px + add,
-            Len::Ch(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).0,
-            Len::Ex(k) => k * crate::text::metrics::ch_ex_px(font.family, font.font_px, vcx).1,
-            Len::Ic(k) => k * crate::text::metrics::ic_px(font.family, font.font_px, vcx),
-            Len::Lh(k) => k * lh(),
-            Len::LhPx(k, add) => k * lh() + add,
-            Len::Vw(_)
-            | Len::Vh(_)
-            | Len::Auto
-            | Len::MinContent
-            | Len::MaxContent
-            | Len::FitContent
-            | Len::Anchor(_) => return None,
-        })
+        super::len_cx::LenCx {
+            basis,
+            font: Some(font),
+            viewport: None,
+        }
+        .px(self, vcx)
     }
 
     pub(crate) fn needs_line_height(self, vcx: ValueCx<'_>) -> bool {

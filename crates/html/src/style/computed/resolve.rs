@@ -9,7 +9,9 @@ mod container_units;
 mod decor_inset;
 mod derived;
 mod em;
+mod len_cx;
 mod len_px;
+pub use len_cx::{LenCx, ViewportCx};
 pub use len_px::FontCx;
 pub(super) mod image_lengths;
 mod logical;
@@ -62,45 +64,15 @@ impl Computed {
     /// до него неразрешёнными — как и `em` до размера шрифта.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
         self.resolve_decor_inset_viewport(viewport, vcx);
-        let insets = self.viewport_unit_insets.unwrap_or_default();
-        let viewport = (
-            (viewport.0 - insets[0]).max(0.0),
-            (viewport.1 - insets[1]).max(0.0),
-        );
-        let vertical = self.wm().vertical();
-        let container = Some((
-            self.cq_box.0.unwrap_or(viewport.0),
-            self.cq_box.1.unwrap_or(viewport.1),
-        ));
-        let fix = |l: &mut Option<Len>| match *l {
-            Some(Len::Vw(k)) => *l = Some(Len::Px(k * viewport.0)),
-            Some(Len::Vh(k)) => *l = Some(Len::Px(k * viewport.1)),
-            Some(Len::Calc(i)) => {
-                let mut s = crate::style::values::value::calc_get(i, vcx);
-                // Без слагаемых окна складывать нечего: индекс остаётся
-                // (арена append-only, `resolve_viewport` идёт на каждом
-                // слитом стиле), а `collapse` стёр бы процентную смесь
-                // `calc(50% - 3px)` в `None` уже после разбора.
-                if s.fold_viewport(viewport, vertical, container) {
-                    *l = s.collapse_mixed(vcx);
-                }
+        let vp = self.viewport_cx(viewport);
+        let fix = |l: &mut Option<Len>| {
+            if let Some(v) = *l {
+                *l = Some(v.fold_viewport(vp, vcx));
             }
-            _ => {}
         };
         let sides = |s: &mut Sides| {
             for one in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                match *one {
-                    Some(Len::Vw(k)) => *one = Some(Len::Px(k * viewport.0)),
-                    Some(Len::Vh(k)) => *one = Some(Len::Px(k * viewport.1)),
-                    Some(Len::Calc(i)) => {
-                        let mut s = crate::style::values::value::calc_get(i, vcx);
-                        // То же, что у размеров: смесь с долей доживает.
-                        if s.fold_viewport(viewport, vertical, container) {
-                            *one = s.collapse_mixed(vcx);
-                        }
-                    }
-                    _ => {}
-                }
+                fix(one);
             }
         };
         for l in [
