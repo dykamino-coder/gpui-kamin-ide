@@ -8,13 +8,19 @@ use gpui::AnyElement;
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
-    pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasurements>>,
+    /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
+    pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
     /// (`Some(ширина колонки)`), а не мера `render::shape_full`: та ребёнка не
     /// выразила (флоаты, внепоточные потомки …). Ставится в
     /// `request_column_layout` до укладки. BandFlow добавляет измеренные границы
     /// строк; без них ребёнок режется краем колонки.
     pub measure: Option<f32>,
+    /// Ширина колонки, при которой главная копия раскладывается до укладки,
+    /// чтобы точки разрыва её блочной стопки (`watched`) дала РАСКЛАДКА, а
+    /// не оценка формы: высота остаётся от меры, а `cuts`, `forced` и
+    /// `solid` заменяются измеренными (`flow::blocks`).
+    pub(crate) breaks_w: Option<f32>,
     /// Запасные копии ТОГО ЖЕ ребёнка. Разрез между колонками рисует по
     /// копии на фрагмент: элемент GPUI рисуется ровно один раз, и показать
     /// одну коробку в двух колонках иначе нечем. Копий столько же, сколько

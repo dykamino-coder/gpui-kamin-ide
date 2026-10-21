@@ -11,6 +11,7 @@ use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+mod breaks;
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
@@ -53,7 +54,30 @@ pub(super) fn page_kids_from_groups(
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        let watched = crate::layout::fragment::paginate::watch::Watched::new(&[]);
+        // Мера поддерева — те же точки разреза, что у колонок. Обёртка
+        // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
+        // смещения меры сдвигаются на неё, а высота растёт.
+        // Внепоточный корня места в стопке не занимает (CSS 2.1 §9.3.1):
+        // его мера — обёртка (0); иначе абсолют `height: 4in` двигал соседей
+        // на 384 (`monolithic-overflow-027`, абсолют `fixedpos-007` — 720).
+        // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
+        // (`float-with-large-margin-bottom-cross-page-002`: эталон —
+        // `break-before: page`), нижнее поле — часть его меры.
+        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
+        // «User agents should also apply these properties to floated boxes
+        // whose containing block is in the normal flow of the root fragmented
+        // element». Гейт `out_of_flow` отнимал у него меру вместе с
+        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
+        // резалась срезом по краю сквозь абзац вместо точки класса A между
+        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
+        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
+        // The subtree measure is physical (heights): a vertical root has no
+        // class-A cut list yet and its kids are sliced at the page edge.
+        let (margins, shape) = match vertical {
+            Some(_) => ((0.0, 0.0, 0.0), None),
+            None => group_shape(root, shape_cx, group, n, pad_top, vcx),
+        };
+        let watched = breaks::recorder(group, n, vertical, shape.is_some(), shape_cx, vcx);
         let build = |main: bool,
                      band: bool,
                      slot: &mut Vec<AnyElement>,
@@ -114,29 +138,6 @@ pub(super) fn page_kids_from_groups(
         // and out-of-flow boxes do not pass a name to subsequent pages.
         let (fb, fa, monolith, renamed, start_name) =
             group_break_names(&root_page, &mut prev_end, &floated, group, n, vcx);
-        // Мера поддерева — те же точки разреза, что у колонок. Обёртка
-        // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
-        // смещения меры сдвигаются на неё, а высота растёт.
-        // Внепоточный корня места в стопке не занимает (CSS 2.1 §9.3.1):
-        // его мера — обёртка (0); иначе абсолют `height: 4in` двигал соседей
-        // на 384 (`monolithic-overflow-027`, абсолют `fixedpos-007` — 720).
-        // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
-        // (`float-with-large-margin-bottom-cross-page-002`: эталон —
-        // `break-before: page`), нижнее поле — часть его меры.
-        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
-        // «User agents should also apply these properties to floated boxes
-        // whose containing block is in the normal flow of the root fragmented
-        // element». Гейт `out_of_flow` отнимал у него меру вместе с
-        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
-        // резалась срезом по краю сквозь абзац вместо точки класса A между
-        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
-        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
-        // The subtree measure is physical (heights): a vertical root has no
-        // class-A cut list yet and its kids are sliced at the page edge.
-        let (margins, shape) = match vertical {
-            Some(_) => ((0.0, 0.0, 0.0), None),
-            None => group_shape(root, shape_cx, group, n, pad_top, vcx),
-        };
         // Монолит выше листа решается в `fill` (правило «сначала перенос,
         // потом разрыв внутри»): здесь мера считается и для него — точки
         // класса A нужны, когда он окажется с верха страницы.
@@ -170,7 +171,7 @@ pub(super) fn page_kids_from_groups(
                     )
                 })
                 .flatten(),
-            flow: Some(watched.flow.clone()),
+            watched: Some(watched),
             float_id: match n {
                 Node::Element(e) if floated(n) => Some(e.node_id),
                 _ => None,

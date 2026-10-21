@@ -73,11 +73,12 @@ impl PageStack {
                 } else {
                     size(fixed, free)
                 };
-                let sz = k.el.layout_as_root(space, window, cx);
+                let laid = k.el.layout_as_root(space, window, cx);
                 let measured_flow = k
-                    .flow
+                    .watched
                     .as_ref()
-                    .map(|f| f.at(point(px(0.0), px(0.0)), sz, self.axis, window));
+                    .map(|w| w.flow.at(point(px(0.0), px(0.0)), laid, self.axis, window));
+                let sz = laid;
                 let sz = if vertical {
                     size(sz.height, sz.width)
                 } else {
@@ -85,7 +86,7 @@ impl PageStack {
                 };
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
-                let (mut h, mut cuts, forced, mut solid) = match &k.shape {
+                let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
                     Some((h, cuts, forced, solid)) => {
                         (*h, cuts.clone(), forced.clone(), solid.clone())
                     }
@@ -105,7 +106,19 @@ impl PageStack {
                             .map(|g| g.bottom)
                             .fold(h, f32::max);
                     }
-                    flow.merge(&mut cuts, &mut solid);
+                    match k.watched.as_ref().filter(|w| w.has_blocks()) {
+                        // Точки разрыва блочной стопки — по раскладке копии, а
+                        // не по оценке формы (`flow::blocks`). Мера формы
+                        // отсчитывает смещения от border box коробки, копия
+                        // поднята на `inner_top`.
+                        Some(w) => {
+                            let lift = k.inner_top;
+                            let origin = point(px(0.0), px(lift));
+                            let m = w.breaks(origin, laid, h + lift, self.axis, window);
+                            (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
+                        }
+                        None => flow.merge(&mut cuts, &mut solid),
+                    }
                 }
                 Kid {
                     h,
