@@ -82,37 +82,30 @@ mod tests {
     }
 
     #[test]
-    fn builder_matches_compatible_constructors() {
-        let html = "<!doctype html><style>@media print {p {width:17px}}</style><p>x</p>";
-        let css = "p {height:11px}";
-        same(
-            &Document::new(html, css),
-            &Document::builder(html, css).build(),
-        );
+    fn builder_selects_source_format_and_medium() {
+        let html = "<p>x</p>";
+        let screen = Document::builder(html, "").build();
+        assert!(screen.base_url.is_none());
+        assert!(!screen.xml && !screen.is_print());
         for print in [false, true] {
-            same(
-                &Document::new_media(html, css, print),
-                &Document::builder(html, css).print(print).build(),
-            );
             for path in [Path::new("source.html"), Path::new("source.SVG")] {
-                same(
-                    &Document::new_with_path_media(html, css, path, print),
-                    &Document::builder(html, css).path(path).print(print).build(),
+                let doc = Document::builder(html, "").path(path).print(print).build();
+                assert_eq!(doc.is_print(), print);
+                assert_eq!(doc.xml, path.extension().unwrap() == "SVG");
+                assert_eq!(
+                    doc.base_url,
+                    Url::from_file_path(std::path::absolute(path).unwrap()).ok()
                 );
             }
         }
-        for path in [Path::new("source.html"), Path::new("source.SVG")] {
-            same(
-                &Document::new_with_path(html, css, path),
-                &Document::builder(html, css).path(path).build(),
-            );
-        }
-        for uri in ["file:///tests/source.html", "invalid url"] {
-            same(
-                &Document::new_with_base(html, css, uri),
-                &Document::builder(html, css).base_uri(uri).build(),
-            );
-        }
+        let base = Document::builder(html, "")
+            .base_uri("file:///tests/source.html")
+            .build();
+        assert_eq!(base.base_url, Url::parse("file:///tests/source.html").ok());
+        assert!(!base.xml && !base.is_print());
+        let invalid = Document::builder(html, "").base_uri("invalid url").build();
+        assert!(invalid.base_url.is_none());
+        assert!(!invalid.xml && !invalid.is_print());
     }
 
     #[test]

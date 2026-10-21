@@ -47,13 +47,11 @@ impl Stage {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
                     page.doc = Rc::new(match source {
-                        Some(path) => Document::new_with_path_media(
-                            &html,
-                            BROWSER_CSS,
-                            std::path::Path::new(path),
-                            print,
-                        ),
-                        None => Document::new_media(&html, BROWSER_CSS, print),
+                        Some(path) => Document::builder(&html, BROWSER_CSS)
+                            .path(std::path::Path::new(path))
+                            .print(print)
+                            .build(),
+                        None => Document::builder(&html, BROWSER_CSS).print(print).build(),
                     });
                     page.select = reftest_pages(&html);
                     cx.notify();

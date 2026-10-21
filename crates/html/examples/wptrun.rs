@@ -175,7 +175,7 @@ fn main() {
                     .find(|name| !before.contains(name))
             })
         });
-        let empty = Rc::new(Document::new("", BROWSER_CSS));
+        let empty = Rc::new(Document::builder("", BROWSER_CSS).build());
         if capture::offscreen() {
             gpui::frame_capture::enable();
         }

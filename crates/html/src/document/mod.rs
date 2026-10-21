@@ -64,41 +64,9 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(html: &str, theme_css: &str) -> Self {
-        Self::builder(html, theme_css).build()
-    }
-
     /// Настроить источник и носитель до единственного разбора документа.
     pub fn builder<'a>(html: &'a str, theme_css: &'a str) -> DocumentBuilder<'a> {
         DocumentBuilder::new(html, theme_css)
-    }
-
-    /// Совместимый вход для выбора экранного или печатного носителя.
-    pub fn new_media(html: &str, theme_css: &str, print: bool) -> Self {
-        Self::builder(html, theme_css).print(print).build()
-    }
-
-    /// Совместимый вход для документа с базовым URL внешних ресурсов.
-    pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
-        Self::builder(html, theme_css).base_uri(base_uri).build()
-    }
-
-    /// Совместимый вход для локального файла; расширение SVG выбирает XML.
-    pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
-        Self::builder(html, theme_css).path(path).build()
-    }
-
-    /// Совместимый вход для локального файла с выбранным носителем.
-    pub fn new_with_path_media(
-        html: &str,
-        theme_css: &str,
-        path: &std::path::Path,
-        print: bool,
-    ) -> Self {
-        Self::builder(html, theme_css)
-            .path(path)
-            .print(print)
-            .build()
     }
 
     fn build(
@@ -146,7 +114,7 @@ impl Document {
         true
     }
 
-    /// Документ разобран для печатного носителя (`new_media`).
+    /// Документ разобран для печатного носителя (`DocumentBuilder::print`).
     pub fn is_print(&self) -> bool {
         self.state.media().print
     }

@@ -13,7 +13,7 @@ use super::stylesheet::{find_url, read_stylesheet, rebase_css_urls};
 /// правила из `<link rel=stylesheet>` пропадают целиком.
 pub(super) fn resolve_links(html: &str, path: &str) -> String {
     // Отдельный `.svg` — XML-документ (`image/svg+xml`): его разбирает
-    // XML-парсер движка (`Document::new_with_path` по расширению), обёртка
+    // XML-парсер движка (`DocumentBuilder::path` по расширению), обёртка
     // в HTML не нужна — HTML-разбор выбивал `<meta>` из `<svg>` (foreign
     // content), и рисунок после `<metadata>` пропадал.
     let dir = std::path::Path::new(path)
