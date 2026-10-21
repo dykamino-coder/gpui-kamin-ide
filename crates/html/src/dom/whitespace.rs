@@ -1,4 +1,4 @@
-//! Whitespace-only text nodes in the styled document tree.
+//! Текстовые узлы только из пробелов в стилизованном дереве документа.
 
 use crate::dom::Node;
 use crate::text::text_box::blank_text;

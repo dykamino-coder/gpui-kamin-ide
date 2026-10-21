@@ -1,4 +1,6 @@
-//! Tests for encoding; split out to keep the owning module within 250 lines.
+//! Тесты определения кодировки (`sniff`): метка порядка байтов сильнее
+//! `<meta charset>`, `charset` читается из `<meta>`, но не из комментария,
+//! чужого атрибута или незакрытого тега; умолчание — `windows-1252`.
 
 use encoding_rs::{UTF_8, WINDOWS_1252};
 

@@ -1,4 +1,10 @@
-//! CSS Ruby box fixup: inlinify in-flow children before constructing ruby levels.
+//! Инлайнизация потоковых детей руби-коробки до построения уровней руби.
+//!
+//! css-ruby-1 §2.2 и css-display-4 §2.7: строчная коробка распространяет
+//! инлайнизацию вглубь, flow root сохраняет свой блочный контекст. Блок →
+//! `inline-block`, flex/grid/table → строчные аналоги, у руби-ролей снимается
+//! блочный `display`; флоаты сбрасываются (Blink `style_adjuster.cc`), абсолютные
+//! не трогаются. Зовётся из `finish_element` для детей руби-родителя.
 
 use crate::dom::{BLOCK_TAGS, Node};
 use crate::style::computed::{Display, Position};

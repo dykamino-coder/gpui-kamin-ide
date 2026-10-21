@@ -1,4 +1,4 @@
-//! Anonymous table boxes and table roles in the styled document tree.
+//! Анонимные табличные боксы и табличные роли в стилизованном дереве документа.
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

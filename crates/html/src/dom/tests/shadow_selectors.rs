@@ -1,4 +1,8 @@
-//! Relational selectors retain the ordinary tree context inside :host arguments.
+//! Тесты селекторов в теневом дереве: `::slotted(:has())` смотрит в поддерево
+//! распределённого элемента, а не в свой fallback; `:host(:has())` и
+//! `:host:has()` разделяют светлых и теневых потомков; отметки `:has()`
+//! ставятся до переписи всех деревьев; безликий хост внутри `:not()`/`:is()`
+//! требует годного предмета.
 
 use super::*;
 use crate::style::values::value::Color;

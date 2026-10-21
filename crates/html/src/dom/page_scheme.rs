@@ -1,4 +1,10 @@
-//! HTML color-scheme metadata, selected in document tree order before media queries.
+//! `<meta name=color-scheme>`: выбор схемы документа до разбора `@media`.
+//!
+//! Вход — дерево html5ever и предпочтение окружения; выход — тёмная ли схема
+//! по первому верному `<meta>` в порядке дерева. `content` разбирается как
+//! список CSS-идентификаторов с экранированием и комментариями: `only`,
+//! `light`/`dark`, `normal` в одиночку; CSS-wide слова и мусор делают запись
+//! негодной. Результат ставится в `Media::dark` перед каскадом.
 
 use markup5ever_rcdom::{Handle, NodeData};
 

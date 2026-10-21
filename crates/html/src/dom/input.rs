@@ -1,4 +1,4 @@
-//! Bound HTML tree depth before selectors, style collection and DOM conversion recurse.
+//! Ограничивает глубину HTML-дерева до рекурсии селекторов, сбора стилей и конвертации в DOM.
 
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{NodeData, RcDom};

@@ -1,4 +1,10 @@
-//! Document wrappers retain box and counter scope metadata required by rendering.
+//! Когда обёртка `<html>`/`<body>` нужна как коробка и снимать её нельзя.
+//!
+//! `has_box_style` решает для `document::unwrap_document`: обёртка остаётся,
+//! если её стиль задаёт коробку (размеры, `position`, `display`, `overflow`,
+//! вертикальное письмо, ненулевые поля и отступы, фон) или область счётчиков
+//! (`counter-reset`/`-increment`/`-set`, которые читают поля страницы). Иначе
+//! она снимается ради виртуализации, а её текстовый стиль наследуют дети.
 
 use super::any_side;
 

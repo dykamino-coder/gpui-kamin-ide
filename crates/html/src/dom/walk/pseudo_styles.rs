@@ -1,4 +1,11 @@
-//! Cascade generated pseudo-elements and derive their inherited styles.
+//! Слои стиля элемента при обходе: `:hover`, `::first-letter`, `::first-line`,
+//! `::marker`.
+//! Слой наведения и слои первой буквы/строки собираются копией базового стиля
+//! с наложенными правилами (а не с нуля — иначе переход на середине пути
+//! показывал бы голый стиль); «свои» варианты без базы — в
+//! `first_letter_own`/`first_line_own`. `::marker` — только собственные
+//! объявления поверх умолчаний маркера (css-lists-3 §3.1.1), без копии стиля
+//! `<li>`; его `content` сворачивает `walk` уже после снятия номера пункта.
 
 use super::initial_pseudos;
 use crate::document::state::ValueCx;

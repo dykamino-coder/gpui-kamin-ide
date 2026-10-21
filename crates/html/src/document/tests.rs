@@ -1,4 +1,6 @@
-//! Document wrapper preservation, update invalidation and root style regression tests.
+//! Тесты `Document`: `html::after` переживает снятие обёрток, та же разметка
+//! не разбирается заново, смена темы вызывает разбор, обёртки `<html>`/`<body>`
+//! снимаются до блоков верхнего уровня, счёт узлов идёт вглубь.
 
 use crate::dom::Node;
 

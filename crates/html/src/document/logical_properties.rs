@@ -1,5 +1,11 @@
-//! Document pass after the cascade: logical properties onto physical sides by the inherited
-//! writing mode, then the passes that need physical sides (zoom, explicit `inherit`, anchors, motion).
+//! Проход документа после каскада: логические стороны → физические и всё, что
+//! обязано идти следом. Письмо наследуется, поэтому перевод `margin-block`,
+//! `inline-size` и вставок возможен только здесь, когда письмо узла окончательно
+//! (после распространения с `<body>`); тем же проходом — слои `:hover`,
+//! `::first-letter` и `::first-line`. Далее в строгом порядке:
+//! `inherited_value::settle`, `zoom::resolve`, явное `inherit` у `z-index`/`clip`,
+//! статические позиции якорей (`anchor::settle_static`) и offset-трансформ
+//! (`motion::settle`) — всем нужны уже физические стороны.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
@@ -18,20 +24,21 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
     fn walk(nodes: &mut [Node], parent: WritingProps, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
-            // `writing-mode` and `direction` are inherited (css-writing-modes-4 §3.1, §2.1):
-            // the box maps its logical sides by the inherited value, which the own style
-            // does not hold (the cascade merge happens when the renderer builds the box).
+            // `writing-mode` и `direction` наследуются (css-writing-modes-4 §3.1, §2.1):
+            // логические стороны коробки раскладываются по унаследованному значению, а в
+            // собственном стиле его нет (слияние с родителем делает сборщик дерева).
             let props = WritingProps::of(&e.style).inherit(parent);
             let wm = props.wm();
             let parent_vertical = parent.wm().vertical();
-            // A table cell is recognised by its tag too: `Display::TableCell` comes
-            // only from author CSS at this stage.
+            // Ячейка таблицы узнаётся и по тегу: `Display::TableCell` на этом шаге
+            // приходит только из авторского CSS.
             let is_cell = matches!(e.tag.as_str(), "td" | "th")
                 || e.style.display == Some(crate::style::computed::Display::TableCell);
             e.style.resolve_logical(wm, parent_vertical, is_cell, vcx);
-            // `:hover`, `::first-letter` and `::first-line` layers are copies of the
-            // element style made before this pass, so they map with the element's mode
-            // (`::first-letter { margin-block-start }` reaches the initial letter).
+            // Слои `:hover`, `::first-letter` и `::first-line` — копии стиля элемента,
+            // снятые до этого прохода, поэтому логические стороны ложатся на их
+            // физические поля тем же письмом, что у элемента
+            // (`::first-letter { margin-block-start }` доезжает до буквицы).
             for layer in [
                 e.hover.as_mut(),
                 e.first_letter.as_mut(),
@@ -55,13 +62,13 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
     walk(&mut nodes, WritingProps::default(), vcx);
     // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
     // проходом по собственным стилям — до слияния и до раскладки, а не в
-    // `inline::inherit` (см. ★ перед ней). Идёт после `walk`: логические
+    // `style::cascade::inherit` (см. заметку перед ней). Идёт после `walk`: логические
     // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
     // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
     crate::style::cascade::inherited_value::settle(&mut nodes, vcx);
     crate::style::zoom::resolve(&mut nodes);
     // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
-    // `inherit_bits`, а значение родителя кладёт слияние (`inline::inherit`) —
+    // `inherit_bits`, а значение родителя кладёт слияние (`style::cascade::inherit`) —
     // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по
     // СОБСТВЕННОМУ (`defers(&e.style, …)`, `below`, `grouped(…, &e.style)`),
     // и там оставалось прежнее объявление: `z-index: -1; z-index: inherit`

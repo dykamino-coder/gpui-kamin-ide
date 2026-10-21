@@ -1,4 +1,5 @@
-//! Updates run the same resource and cache lifecycle as an initial document build.
+//! Тесты: обновление документа проходит тот же жизненный цикл ресурсов и кэша, что и первая
+//! сборка.
 
 use super::Document;
 use crate::text::fonts;

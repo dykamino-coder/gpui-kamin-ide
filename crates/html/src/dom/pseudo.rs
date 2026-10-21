@@ -64,14 +64,12 @@ pub(crate) fn content_image_src(image: &crate::style::computed::ImageSource) -> 
 /// В CSS это настоящий потомок с собственным стилем; так его и собираем —
 /// обычным инлайновым элементом с текстовым содержимым. `attr(имя)`
 /// подставляется значением атрибута хозяина.
-// ★ Прошлый заход (06.09) на слой `::marker` был откачен «848 -> 847,
-// +3/-4»: терялись `disclosure-styles`, `marker-counter`,
-// `marker-content-020`, `marker-text-transform-default`. Три корня потерь
-// названы и закрыты здесь же: таблица агента маркера (`text-transform:
+// Слой `::marker` держится на трёх условиях (без них уходят
+// `disclosure-styles`, `marker-counter`, `marker-content-020`,
+// `marker-text-transform-default`): таблица агента маркера (`text-transform:
 // none`, `unicode-bidi: isolate` — css-lists-3 §marker-properties),
 // исполнение `counter-*` слоя в собственном сегменте маркера и снятие
-// маркера у пункта с чужим `display`. Разбор — `target/scout-markers-
-// 2026-09b.md` §1.
+// маркера у пункта с чужим `display`.
 // Pseudo boxes need the originating cascade, counters and generated-content state.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
@@ -149,8 +147,8 @@ pub(super) fn pseudo_box_named(
     // один текстовый узел, `url()` становится строчным `<img>` между ними.
     // Ненайденная картинка коробки НЕ даёт вовсе — как в Servo
     // (`components/layout/dom_traversal.rs:398`: `from_image` → `None` при
-    // ошибке загрузки, и элемент пропускается). Прошлые заходы давали ей
-    // коробку и теряли `before-after-images-001` и `-table-whitespace-001`.
+    // ошибке загрузки, и элемент пропускается). Коробка у ненайденной
+    // картинки ломает `before-after-images-001` и `-table-whitespace-001`.
     let mut children: Vec<Node> = vec![];
     let mut run: Vec<crate::style::computed::ContentItem> = vec![];
     let flush = |run: &mut Vec<crate::style::computed::ContentItem>,

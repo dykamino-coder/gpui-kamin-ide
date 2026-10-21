@@ -1,4 +1,11 @@
-//! HTML presentational attributes at the DOM/cascade boundary.
+//! Представленческие атрибуты HTML на границе DOM и каскада.
+//! `rules` собирает для элемента правила происхождения «author presentational
+//! hint» (css-cascade-5 §6.4: ниже всех авторских слоёв, выше листа агента):
+//! `nowrap` ячеек с quirks-исключением, `cellpadding` ближайшей таблицы,
+//! `height` таблицы, `width` колонок, `color` у `<font>`, подсказки `<hr>`
+//! (`presentational_hr`), таблиц/списков/вложений (`presentational_legacy`) и
+//! атрибуты `<foreignObject>` (SVG 2 §6.6). `colors` — `bgcolor`/`text`
+//! в стиль; `dimension` — разбор размерного значения (HTML §2.3.4.4).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

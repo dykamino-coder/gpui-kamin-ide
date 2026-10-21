@@ -1,4 +1,11 @@
-//! Normalize element styles using HTML tag defaults and CSS applicability rules.
+//! Нормализация стиля элемента сразу после каскада, до детей и псевдослоёв.
+//! `normalize_style`: корневые метрики `rem`/`rlh` (css-values-4 §6.1.4),
+//! размеры из атрибутов и ключевые слова `<svg>`, авто-пропорция, снятие
+//! `aspect-ratio` у внутренних табличных (css-sizing-4 §5.1), цвета `bgcolor`/
+//! `text`, доводка `display` (`finish_inline_display`), `audio` без
+//! `controls`, признак `plain_block_box`, применимость `will-change` и
+//! `transform-style` к неатомарной строчной, инлайнизация в руби, снятие
+//! полей у `rbc`/`rtc` (css-ruby-1 §3.3), `lang` и `dir`.
 
 use super::presentational_hints;
 use crate::document::state::ValueCx;
@@ -218,7 +225,7 @@ pub(super) fn normalize_style(
         style.border_width = crate::style::computed::Sides::default();
     }
     // motion-1: offset-трансформ считается НЕ здесь, а вторым проходом
-    // по дереву коробок (`motion::settle`, зовётся из `doc.rs`).
+    // по дереву коробок (`motion::settle`, зовётся из `document::logical_properties`).
     // §offset-path: «In CSS contexts, the boxes being referenced are
     // from the element that establishes the containing block for this
     // element» — опорная коробка `<coord-box>`, длина `ray()` и начало

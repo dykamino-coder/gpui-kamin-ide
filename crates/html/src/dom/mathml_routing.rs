@@ -1,7 +1,7 @@
-//! Keep incomplete MathML contexts on their original cascade and layout path.
+//! Оставляет неполные MathML-контексты на прежнем пути каскада и layout.
 //!
-//! Core §3 requires a shared baseline context. Select whole mathematical trees,
-//! including their UA defaults, rather than mixing incompatible box algorithms.
+//! Core §3 требует общего базового контекста baseline. Выбираются целые математические
+//! деревья вместе с их UA-умолчаниями, а не смесь несовместимых алгоритмов боксов.
 use super::mathml::is_mathml;
 use markup5ever_rcdom::{Handle, NodeData};
 

@@ -1,4 +1,8 @@
-//! Style parsing for tests; split out to keep the owning module within 250 lines.
+//! Тесты каскада при разборе: умолчания тегов, `style=""` сильнее таблицы,
+//! селектор потомка требует предка, подстановка `var()` и запасного значения,
+//! слой `:hover` отдельно от базы, `<script>`/`<style>` не дают текста,
+//! декларативная тень ограничивает стили и слоты, `display: none` убирает
+//! поддерево, незакрытые теги восстанавливает html5ever.
 
 use super::*;
 use super::{child_colors, first_element};

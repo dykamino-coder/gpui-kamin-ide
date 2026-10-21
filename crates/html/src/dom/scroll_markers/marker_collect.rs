@@ -1,4 +1,11 @@
-//! Marker collect for scroll_markers; split out to keep the owning module within 250 lines.
+//! Сбор и гашение `::scroll-marker` потомков скроллера (css-overflow-5).
+//!
+//! `collect_scroll_markers` вынимает маркеры в порядке документа (сначала
+//! маркер хозяина, затем маркеры потомков), не заходя во вложенные скроллеры,
+//! готовые группы и псевдокоробки; хозяин с `position: absolute|fixed`
+//! считается, только если его содержащий блок внутри скроллера, иначе его
+//! поддерево гасится. `purge_scroll_markers` убирает маркеры поддерева у
+//! скроллера без `scroll-marker-group`.
 
 use crate::dom::*;
 use crate::style::computed::{Display, Position};

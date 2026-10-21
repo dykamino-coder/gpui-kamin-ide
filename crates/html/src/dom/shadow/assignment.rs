@@ -1,4 +1,11 @@
-//! Discover declarative shadow roots, build their stylesheet scopes and assign slots.
+//! Декларативная тень: шаблон, область стилей и распределение по слотам.
+//!
+//! `declarative_shadow` — первый `<template shadowrootmode=open|closed>` среди
+//! детей хоста (HTML §13.2.6.4.4); `shadow_scope` — копия листа агента плюс
+//! `<style>` тени отдельными таблицами и аргументы её `:has()`;
+//! `collect_slots` — все `<slot>` дерева тени; `assign_slots` — «find a slot»
+//! (DOM §4.2.2.4): каждый светлый ребёнок, элемент или текст, уходит в первый
+//! слот с его именем, остальные не рисуются. Результат — черновики `SlotInfo`.
 
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
 use crate::document::state::ValueCx;

@@ -1,5 +1,12 @@
-//! HTML viewport scroll ownership (CSS Overflow 3 §3.3, Scrollbars 1 §2).
-//! Colors come from the root; body overflow propagates through an uncontained root.
+//! Область просмотра HTML: кому принадлежит прокрутка (css-overflow-3 §3.3,
+//! css-scrollbars-1 §2) и синтетическая коробка `html-viewport`.
+//! `policy` собирает стиль области просмотра: цвета и ширина полос — только от
+//! `<html>`, `overflow` тела доезжает лишь сквозь необособленный корень с
+//! `visible` по обеим осям; вставки `vw`/`vh` — по политике корня (css-values-4
+//! §6.1.2, Blink `ComputeScrollbarWidthsForViewportUnits`), кастомные полосы
+//! их не уменьшают. `wrap` заворачивает документ в коробку окна с фоном канваса,
+//! если есть политика; `prepare`/`prepare_embedded` держат один порядок проходов
+//! для начальной, обновлённой и встроенной разметки.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;

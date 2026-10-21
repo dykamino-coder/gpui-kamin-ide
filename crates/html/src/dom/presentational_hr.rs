@@ -1,9 +1,10 @@
-//! HTML rendering §15.3.11 (the hr element): presentational hints of `<hr>`.
+//! HTML rendering §15.3.11 (the hr element): представленческие подсказки `<hr>`.
 //!
-//! The hints sit in the author presentational-hint origin like the table
-//! hints next door (Servo `presentational-hints.css`: `hr[color],
-//! hr[noshade] { border-style: solid }`, `hr[align=…]` margins; the
-//! `size`/`width`/`color` mappings follow the spec text).
+//! Подсказки лежат в происхождении «author presentational hint», как соседние
+//! табличные (Servo `presentational-hints.css`: `hr[color], hr[noshade]
+//! { border-style: solid }`, поля `hr[align=…]`; `size`/`width`/`color` — по
+//! тексту спеки). Здесь же общие разборы HTML §2.3.4.2 (неотрицательное целое)
+//! и §2.3.6 (устаревший цвет), которыми пользуются другие подсказки.
 
 use crate::document::state::ValueCx;
 use crate::style::css::Rule;

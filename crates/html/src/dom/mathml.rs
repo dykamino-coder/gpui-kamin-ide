@@ -1,4 +1,4 @@
-//! MathML Core: namespace-aware cascade defaults and presentation hints.
+//! MathML Core: умолчания каскада с учётом пространства имён и презентационные подсказки.
 
 pub(crate) use super::mathml_lengths::parse_mathml_length;
 use crate::document::state::ValueCx;

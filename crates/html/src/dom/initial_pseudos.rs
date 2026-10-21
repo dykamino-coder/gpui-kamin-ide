@@ -1,5 +1,10 @@
-//! Keep authored initial-pseudo declarations separate from the originating box.
-//! The existing direct text path also needs its legacy base-style layer.
+//! Слой `::first-letter`/`::first-line`: правила псевдоэлемента поверх базы.
+//!
+//! `resolve` отбирает правила с заданным псевдоэлементом, чьи селекторы
+//! совпадают с хозяином без учёта псевдо, и накладывает их по специфичности
+//! и порядку на `base`. С базой — копией стиля элемента — выходит слой для
+//! прямого пути текста; без базы — только авторские объявления, отдельно от
+//! порождающей коробки (`first_letter_own`/`first_line_own`).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

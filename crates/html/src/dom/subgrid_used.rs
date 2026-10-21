@@ -1,6 +1,10 @@
-//! Resolve subgrid's used track lists before placement and line-name resolution.
-//! CSS Grid 2 #subgrid-listing: no parent grid / independent formatting context
-//! uses none. Grid Lanes only exposes its grid axis to a child subgrid.
+//! Используемые списки дорожек подсетки — до размещения и разрешения имён линий.
+//!
+//! css-grid-2 §subgrid-listing: без родительской сетки или в независимом
+//! контексте форматирования используемое значение — `none`, и ось подсетки
+//! очищается целиком (дорожки, имена линий, `repeat(auto-*)`). Контейнер лунок
+//! открывает подсетке только ось своей решётки, с учётом ортогонального
+//! письма; `display: contents` прозрачен для контекста сетки.
 use super::Node;
 use crate::style::computed::{Computed, Display};
 

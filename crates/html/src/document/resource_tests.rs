@@ -1,4 +1,5 @@
-//! Document resource loading uses the first effective base before style computation.
+//! Тесты: ресурсы документа (шрифты, ICC) загружаются по первой действующей базе до расчёта
+//! стилей.
 
 use super::Document;
 use crate::text::fonts;

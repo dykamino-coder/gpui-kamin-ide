@@ -1,4 +1,5 @@
-//! Nth child tests for dom; split out to keep the owning module within 250 lines.
+//! Тесты `:nth-child(1)` и `:first-child`: первый ребёнок адресуется, на этом
+//! держатся эталоны набора тестов гибкой раскладки.
 
 use crate::style::computed::Computed;
 

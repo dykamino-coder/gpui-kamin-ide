@@ -1,12 +1,12 @@
-//! Side tables of one document parse, keyed by DOM node: declarative shadow
-//! roots, slot assignments, `::slotted` rules and `:has()` marks — plus the
-//! document's state the walk reads and writes.
+//! Боковые таблицы одного разбора документа, ключ — узел DOM: декларативные shadow
+//! root-ы, назначения слотов, правила `::slotted` и метки `:has()` — плюс состояние
+//! документа, которое читает и пишет обход.
 //!
-//! html5ever's `RcDom` has no per-node rare data (where Blink keeps an
-//! element's ShadowRoot), so the parse builds these tables before the style
-//! walk and hands them to it explicitly. A key holds its `Handle`: the node
-//! cannot be freed — and its address reused by another node — while the table
-//! that names it is alive, and the table dies with the parse.
+//! У `RcDom` из html5ever нет данных на узел (Blink хранит ShadowRoot элемента
+//! именно там), поэтому разбор строит эти таблицы до обхода стилей и явно передаёт
+//! их ему. Ключ держит свой `Handle`: пока жива таблица, называющая узел, узел не
+//! может быть освобождён, а его адрес — повторно занят другим узлом; таблица
+//! умирает вместе с разбором.
 
 use crate::dom::shadow::{Shadow, SlotInfo};
 use crate::style::css::Rule;

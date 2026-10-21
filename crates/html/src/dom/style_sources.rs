@@ -1,4 +1,5 @@
-//! Collect resource stylesheets from parsed HTML/XML, excluding inert template contents.
+//! Собирает ресурсные таблицы стилей из разобранного HTML/XML, исключая инертное содержимое
+//! template.
 
 use markup5ever_rcdom::{Handle, NodeData};
 

@@ -1,4 +1,10 @@
-//! Flatten for shadow; split out to keep the owning module within 250 lines.
+//! Плоское дерево слотов: «find flattened slottables» и выкладка на склад.
+//!
+//! `flatten_slot` раскрывает распределённые узлы слота, а без них — его
+//! fallback-детей; слот среди них раскрывается рекурсивно (глубина ограничена
+//! стражем). `finish_slots` досчитывает плоские списки всех черновиков,
+//! кладёт слоты в `TreeIndex::slots` (их читает обход `dom::walk`) и
+//! регистрирует правила `::slotted` (`slotted::register_all`).
 
 use super::{FlatCtx, SlotInfo, is_slot};
 use crate::dom::tree_index::{NodeKey, TreeIndex};

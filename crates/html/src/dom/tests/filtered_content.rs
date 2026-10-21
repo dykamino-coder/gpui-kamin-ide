@@ -1,4 +1,6 @@
-//! Generated filtered images replace elements while retaining their box style.
+//! Тесты `content: filter(url(…), …)` на элементе: загруженная картинка
+//! замещает элемент (`img` с `src`, без детей) и сохраняет его размеры;
+//! ненайденная картинка замены не делает.
 
 use super::{first_element, parse};
 use crate::style::computed::ImageSource;

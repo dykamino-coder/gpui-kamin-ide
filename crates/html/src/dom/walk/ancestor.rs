@@ -1,4 +1,10 @@
-//! Element passports keep DOM selector metadata separate from recursive walking.
+//! Паспорт элемента (`Ancestor`) для сопоставления селекторов — отдельно от
+//! рекурсии обхода.
+//!
+//! Вход — узел html5ever, тег, атрибуты, место среди братьев; выход —
+//! `Ancestor` с `id`, классами, `href`, `dir`, отметками `:has()`, слотом,
+//! братьями, признаками пустоты и чужого пространства имён. Счётчики и
+//! `content` в паспорт пишет позже `content::snapshot_generated`.
 
 use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};

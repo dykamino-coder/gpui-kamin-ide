@@ -1,4 +1,7 @@
-//! Only the child's linked physical axis may inherit parent subgrid tracks.
+//! Связанная ось подсетки: какую физическую ось ребёнка наполняют дорожки
+//! родителя. При параллельном письме ряды родителя — ряды подсетки, при
+//! ортогональном — её колонки; `linked` отвечает, написано ли `subgrid` именно
+//! в этой оси, и только тогда срез `subgrid_takes_parent_tracks` ложится в неё.
 use crate::style::computed::Computed;
 
 pub(super) fn linked(parent: &Computed, child: &Computed, parent_rows: bool) -> bool {

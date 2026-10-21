@@ -1,5 +1,12 @@
-//! Вложенный документ (`<iframe>`, SVG с `<foreignObject>`): свой разбор в
-//! своё состояние документа, снятие обёрток `html`/`body`, хэш содержимого.
+//! Вложенный документ (`<iframe>`, SVG с `<foreignObject>`) и снятие обёрток
+//! `<html>`/`<body>`.
+//!
+//! `parse_embedded_sized` гонит разметку рамки тем же конвейером, что
+//! `Document::new`, но в её собственном `DocState` (правила, метрики, `@page`),
+//! поэтому внешний документ ничего не теряет; `@media` меряется коробкой рамки
+//! (mediaqueries-4 §width, HTML §4.8.5). `unwrap_document` снимает обёртки без
+//! собственной коробки (`box_style`), чтобы единицей виртуализации был блок
+//! верхнего уровня, а их текстовый стиль передаёт детям. `hash_of` — ключ разметки.
 
 use crate::document::box_style::has_box_style;
 use crate::document::state::DocState;
@@ -76,7 +83,7 @@ pub(crate) fn parse_embedded_sized(
         root.style.scroll.width = Some(2);
     }
     // Вложенному документу offset-трансформ нужен ровно так же: проход по
-    // дереву переехал сюда из разбора стиля (`dom.rs`), и без этой строки
+    // дереву живёт здесь, а не в разборе стиля, и без этой строки
     // `<iframe>` потерял бы всё, что раньше работало.
     crate::animation::motion::settle(&mut nodes, vcx);
     state.masks.collect(&nodes, vcx);

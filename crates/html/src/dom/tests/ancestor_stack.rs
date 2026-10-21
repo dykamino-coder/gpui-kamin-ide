@@ -1,4 +1,4 @@
-//! Verify ancestor selectors across sibling subtrees and generated content.
+//! Тесты: селекторы предков работают через соседние поддеревья и сгенерированное содержимое.
 
 use super::tree_parsing::{child_colors, pseudo_texts};
 use crate::style::values::value::Color;

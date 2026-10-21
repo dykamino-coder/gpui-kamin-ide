@@ -1,4 +1,9 @@
-//! Install a block container's own first-line and first-letter layers.
+//! Сборка дерева: установка собственных слоёв `::first-line` и `::first-letter`
+//! блочного контейнера в его слитый стиль. CSS 2 §5.12.1–5.12.2 действуют и на
+//! inline-block, и на ячейки таблицы, поэтому особые пути отрисовки засевают
+//! содержимое теми же слоями, что и обычный блочный путь. Слой `::first-line`
+//! наследует вычисленные значения блока (CSS Pseudo 4 §2.1.3); у `::first-letter`
+//! разрешается только процентный кегль, em остаётся для `inline::max_font_size`.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

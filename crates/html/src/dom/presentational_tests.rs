@@ -1,4 +1,5 @@
-//! Presentational tests for dom; split out to keep the owning module within 250 lines.
+//! Тест размерных атрибутов `<img width height>`: представленческая подсказка
+//! доезжает до `width`/`height` стиля, а не до пикселя картинки.
 
 use super::*;
 use crate::style::values::value::Len;

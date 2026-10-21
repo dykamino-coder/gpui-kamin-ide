@@ -1,4 +1,4 @@
-//! Anonymous ruby containers keep whitespace boundaries and authored block state.
+//! Тесты: анонимные ruby-контейнеры сохраняют границы пробелов и авторское блочное состояние.
 
 use super::*;
 

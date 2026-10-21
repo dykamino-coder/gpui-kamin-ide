@@ -1,4 +1,8 @@
-//! Tree parsing for tests; split out to keep the owning module within 250 lines.
+//! Тесты дерева и селекторов: `content: inherit` сквозь обычные элементы,
+//! неявный счётчик `list-item` с `start`/`value`, `:has()` в предметной и
+//! непредметной позиции, `:nth-child(An+B [of S])`, `:last-child`,
+//! `:nth-of-type`, каскад и наследование пользовательских свойств. Здесь же
+//! помощники `child_colors`, `pseudo_texts`, `first_element`.
 
 use super::*;
 

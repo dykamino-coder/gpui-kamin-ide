@@ -1,4 +1,11 @@
-//! Direction for ruby_display; split out to keep the owning module within 250 lines.
+//! Атрибут `dir` и `<bdo>` → двунаправленность стиля; инлайнизация блоков
+//! внутри руби (css-ruby-1 §2.2 п.1).
+//!
+//! `apply_direction`: `dir=ltr|rtl` задаёт `rtl` и изоляцию (HTML §15.3.4),
+//! `auto` — встраивание, сторону потом решает первый сильный знак; `<bdo>`
+//! ставит `bidi_override`. `inlinify_in_ruby`: блочная коробка в потоке
+//! внутри `ruby`/`rb`/`rt`/`rbc`/`rtc` (сквозь неатомарные строчные звенья)
+//! получает строчный аналог `display`; внепоточные не трогаются (§9.7).
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Display, Position};
@@ -17,7 +24,7 @@ pub(crate) fn apply_direction(style: &mut Computed, tag: &str, attrs: &[(String,
         return;
     };
     // Атрибут `dir` (и `auto`: сторону потом решает первый сильный знак,
-    // `render.rs`) — встраивание (прежний ход: RLE/LRE … PDF), пока стиль
+    // `text::inline::bidi_controls`) — встраивание (прежний ход: RLE/LRE … PDF), пока стиль
     // не задал `unicode-bidi` сам. HTML UA-лист даёт `[dir] { unicode-bidi:
     // isolate }`; здесь сохранено прежнее встраивание — переход на
     // изоляцию отдельный шаг с замером.

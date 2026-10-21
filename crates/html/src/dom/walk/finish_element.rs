@@ -1,4 +1,11 @@
-//! Final element assembly: direction, pseudo boxes, ruby and authored node state.
+//! Завершение элемента при обходе: из стиля, детей и слоёв — `Node::Element`.
+//!
+//! `finish_element`: инлайнизация детей руби-родителя, сторона для
+//! `dir="auto"`/`<bdi>` по первому сильному знаку (HTML §3.2.6.4, §4.5.24),
+//! расстановка псевдокоробок скроллера вокруг элемента (css-overflow-5, порядок
+//! Blink `kBoxTreeOrder`), две коробки `display: block ruby` (css-ruby-1
+//! §2.1.2), анонимный руби-контейнер, признаки `block_tag`/`decor_box`,
+//! замена элемента картинкой из `content` (css-content-3 §content-property).
 
 use crate::document::state::ValueCx;
 use crate::dom::*;
@@ -84,7 +91,7 @@ pub(super) fn finish_element(
     // (Blink `LayoutRubyAsBlock::AddChild`: первый ребёнок — анонимный
     // `LayoutInline` с `display: ruby`, все дети идут в него). Свойства
     // элемента — на главной коробке; наследуемые доходят до контейнера
-    // обычным `inline::inherit` (стиль контейнера пуст). Тег `ruby` у
+    // обычным `style::cascade::inherit` (стиль контейнера пуст). Тег `ruby` у
     // синтетического узла — роль контейнера по тегу (`block-ruby-001`).
     let children = if style.display == Some(Display::Block)
         && style.ruby_role == Some(crate::style::computed::RubyRole::Container)

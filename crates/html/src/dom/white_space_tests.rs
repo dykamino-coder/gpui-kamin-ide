@@ -1,4 +1,6 @@
-//! White space tests for dom; split out to keep the owning module within 250 lines.
+//! Тест `white-space: break-spaces`: значение доезжает от разбора до правил
+//! переноса абзаца (`break_spaces`, `keep_spaces`), от которых зависит учёт
+//! хвостового пробела в ширине строки.
 
 use super::*;
 

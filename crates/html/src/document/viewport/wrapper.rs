@@ -1,4 +1,4 @@
-//! Anonymous viewport box that carries root scroll policy and canvas color.
+//! Анонимный бокс viewport: несёт политику прокрутки корня и цвет холста.
 
 use super::{Computed, Display, Node};
 use crate::style::values::value::Len;

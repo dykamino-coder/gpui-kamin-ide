@@ -1,14 +1,11 @@
-//! Blocks whose floats cannot reach anything after them.
-//!
-//! CSS 2.1 §10.6.3: an ordinary block's auto height counts only in-flow
-//! boxes; its floats still belong to the enclosing block formatting context,
-//! where they push later clearance, shorten later line boxes and grow the
-//! auto height of the formatting-context root (§9.5, §10.6.7). Our float host
-//! is laid out inside the block, so it may drop floats from the block's height
-//! only when nothing later in that formatting context can observe them: the
-//! block and every ancestor up to the root are the last child of their parent,
-//! none of them establishes a formatting context, and the root has no border
-//! that would show its float-containing height.
+//! Пометка `float_tail`: блоки, чьи флоаты уже ничего за собой не достанут.
+//! CSS 2.1 §10.6.3: автовысота обычного блока считает только потоковые
+//! коробки; его флоаты остаются в объемлющем блочном контексте, где двигают
+//! последующую очистку, укорачивают строки и растят автовысоту корня
+//! контекста (§9.5, §10.6.7). Наш хост флоатов раскладывается внутри блока,
+//! поэтому выкинуть флоаты из высоты блока можно лишь когда дальше в контексте
+//! их никто не увидит: блок и все предки до корня — последние дети своих
+//! родителей, никто не заводит контекст, у корня нет рамки, выдающей высоту.
 
 use crate::dom::Node;
 use crate::style::computed::Display;

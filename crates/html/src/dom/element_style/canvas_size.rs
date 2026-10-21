@@ -1,4 +1,11 @@
-//! Coerced natural canvas sizes and intrinsic constraints (CSS Sizing 3/4).
+//! Природный размер `<canvas>` и внутренние ключевые слова размеров
+//! (css-sizing-3 §5.1, css-sizing-4 §4).
+//! Вход — стиль холста после `apply_presentational_size`; выход — тот же
+//! стиль, где `min-content`/`max-content`/`fit-content` стали точками, а при
+//! обоих атрибутах и `aspect-ratio` — заданы `width`/`height`. Природная
+//! высота выводится из природной ширины через соотношение ДО авторских
+//! пределов (Blink `ComputeNormalizedNaturalSize`); `border-box` добавляет
+//! края. Обособление по размеру отменяет всё это.
 
 use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};

@@ -1,12 +1,12 @@
-//! XML documents (`image/svg+xml`): the tree comes from an XML parser, not the HTML one.
+//! XML-документы (`image/svg+xml`): дерево строит XML-парсер, а не HTML.
 //!
-//! DOM §"XML documents" / HTML §16.? "Parsing XHTML documents": an XML document is
-//! built by an XML parser — no implied `html`/`body`, no foreign-content breakout
-//! (`<meta>` inside `<svg>` stays a child of `<svg>`), namespaces and prefixes come
-//! from the markup. The tree is handed to the same `RcDom` the HTML parser fills, so
-//! the cascade and the walk below are shared (Blink `XMLDocumentParser` likewise
-//! builds the ordinary DOM). A not-well-formed document has no tree: Blink/Gecko
-//! show a parse-error page; we render an empty document.
+//! DOM §"XML documents" / HTML §16.? "Parsing XHTML documents": XML-документ строит
+//! XML-парсер — без неявных `html`/`body`, без выхода из foreign content (`<meta>`
+//! внутри `<svg>` остаётся потомком `<svg>`), пространства имён и префиксы берутся
+//! из разметки. Дерево передаётся в тот же `RcDom`, что заполняет HTML-парсер,
+//! поэтому каскад и обход ниже общие (Blink `XMLDocumentParser` так же строит
+//! обычный DOM). У не well-formed документа дерева нет: Blink/Gecko показывают
+//! страницу ошибки разбора, мы отрисовываем пустой документ.
 
 use html5ever::interface::{ElementFlags, NodeOrText, TreeSink};
 use html5ever::tendril::StrTendril;

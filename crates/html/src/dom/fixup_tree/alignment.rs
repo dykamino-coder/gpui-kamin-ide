@@ -1,4 +1,11 @@
-//! Alignment for fixup_tree; split out to keep the owning module within 250 lines.
+//! Правки `align-self` по собранному дереву: наследование от DOM-родителя и
+//! применимость к контейнеру.
+//! `align_self_from_dom_parent`: `align-self: inherit` берёт авторское значение
+//! DOM-родителя (css-cascade-4 §7.3), а у потокового ребёнка блочного
+//! контейнера авторское `align-self` гасится — свойство применимо лишь к
+//! элементам flex/grid и абсолютным (css-align-3 §6.1), наш блок собран
+//! колонкой flex. `grid_table_items_keep_stretch`: стол-элемент сетки сохраняет
+//! растяжку по дорожке (css-align-3 §6.2), а не сжатие по содержимому.
 
 use crate::dom::*;
 use crate::style::computed::{Display, Position};
@@ -17,13 +24,12 @@ use crate::style::computed::{Display, Position};
 ///    авторское `align-self: flex-end` у блока в `body` уводило его к
 ///    правому краю (`flexbox-align-self-vert-001`, `-vert-rtl-001`).
 ///    Blink читает свойство только в раскладке flex/grid
-///    (`C:\Users\MSI\Projects\refs\chromium-blink\third_party\blink\renderer\core\layout\flex\flex_layout_algorithm.cc:266`
-///    `ResolvedAlignSelf`). Гасится только авторское значение и ДО сборки:
-///    приёмы сборки пишут в то же поле позже (`render.rs`: rtl-прижим
-///    блока с шириной, `blocks()`, флоаты, столы) и видят пустое поле, как
-///    без автора. Запись отката 04.09 (`inline.rs`: гашение в
-///    `inline::inherit` без признака авторства, −50 в своде v19) — этот
-///    путь гасит только авторское. Родитель `display: contents` — настоящий
+///    (Blink `flex_layout_algorithm.cc`, `ResolvedAlignSelf`). Гасится только
+///    авторское значение и ДО сборки: приёмы сборки пишут в то же поле позже
+///    (`render::blocks`: rtl-прижим блока с шириной, `blocks()`, флоаты, столы)
+///    и видят пустое поле, как без автора. Гашение в каскаде без признака
+///    авторства их ломало бы — этот путь гасит только авторское. Родитель
+///    `display: contents` — настоящий
 ///    контейнер выше, такие дети не трогаются; корневой уровень тоже.
 pub(crate) fn align_self_from_dom_parent(nodes: &mut [Node], parent: Option<&ParentAlign>) {
     for node in nodes.iter_mut() {
@@ -90,7 +96,7 @@ pub(crate) struct ParentAlign {
 /// css-align-3 §6.2: начальное `align-self: normal` у элемента сетки
 /// «behaves as stretch», и растянутый элемент получает размер ОБЛАСТИ.
 /// Сжатие стола по содержимому (CSS 2.1 §17.5.2.2) у нас выражено
-/// `align_self = FlexStart` (`render.rs: table`), а у элемента сетки эта ось —
+/// `align_self = FlexStart` (`layout::table::finish`), а у элемента сетки эта ось —
 /// БЛОЧНАЯ: стол переставал расти до дорожки (пустой стол выходил нулевой
 /// высоты и ронял базовую линию контейнера — `grid-container-baseline-
 /// synthesized-001…004`), а сжатия по строчной оси приём там и не давал:

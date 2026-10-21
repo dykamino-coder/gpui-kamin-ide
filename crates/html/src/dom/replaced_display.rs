@@ -1,4 +1,10 @@
-//! Replaced content keeps an inline box when given an internal table display.
+//! Замещаемый элемент с внутренним табличным `display` остаётся строчной коробкой.
+//!
+//! css-display-3 §2.4: у замещаемого `table-cell`/`-row`/`-row-group`/колонки/
+//! `caption` используемый `display` — `inline`, и это нужно до удаления
+//! пробелов и анонимной табличной починки, а не только при отрисовке; роли
+//! снимаются вместе с видом. Вне потока (CSS 2 §9.7) такая коробка уже
+//! блокифицирована и получает `block`. Зовётся из `finish_inline_display`.
 
 use crate::style::computed::{Computed, Display, Position};
 

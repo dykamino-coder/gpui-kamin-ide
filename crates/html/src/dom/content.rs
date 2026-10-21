@@ -1,5 +1,11 @@
-//! Generated content resolves attributes using the originating element language.
-//! CSS 2.1 section 12.2 and CSS Values 5 #attr-notation use host-language matching.
+//! Порождённое содержимое: наследование `content`, подстановка `attr()` и текст
+//! псевдоэлемента (CSS 2.1 §12.2, css-values-5 §attr-notation, css-content-3 §2).
+//!
+//! `inherit_generated`/`snapshot_generated` переносят `content` и директивы
+//! счётчиков по DOM-цепочке; `resolve_content_attributes` подставляет
+//! атрибуты хозяина (регистр имени — по языку документа: HTML без учёта,
+//! XHTML точно; `document()` держит этот признак на время разбора);
+//! `content_text` собирает строку из строк, кавычек, `counter()`/`counters()`.
 
 use crate::document::state::ValueCx;
 

@@ -1,5 +1,11 @@
-//! HTML list values are counter-set hints below authored counter directives.
-//! CSS Lists 3 #ua-stylesheet also applies those hints to reversed-counter scans.
+//! Директивы счётчиков узла (`counter-reset`/`-increment`/`-set`) и подсказки
+//! списков HTML (css-lists-3 §5, §ua-stylesheet).
+//! Вход — стиль, тег, атрибуты и текущие `Counters`; выход — обновлённые
+//! счётчики и флаг «пункт списка». Порядок строгий: создание, увеличение
+//! (явное, затем неявное `list-item`), присваивание. `ol start`/`reversed` и
+//! `li value` — подсказки ниже авторских директив; `display: contents` коробки
+//! не даёт и директив не применяет. Те же подсказки видит обратный обход
+//! (`counters_scan`). `inherit`/`initial` у директив — по DOM-родителю.
 
 use super::squeeze_parens;
 use crate::style::computed::{Computed, Display};

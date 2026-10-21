@@ -1,4 +1,9 @@
-//! Quirks Mode §3.12: only HTML tables with initial color use the body color.
+//! Quirks Mode §3.12: таблица с начальным `color` берёт цвет `<body>`.
+//!
+//! Проход по собранному дереву в режиме quirks: вычисляется цвет тела (с
+//! наследованием от корня, умолчание чёрный) и ставится тем `<table>`, у
+//! которых `color_initial` — то есть цвет пришёл из `table { color: initial }`
+//! листа quirks, а не от авторского `inherit`/`currentColor`/значения.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
