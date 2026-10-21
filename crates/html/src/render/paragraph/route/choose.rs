@@ -1,15 +1,15 @@
-//! Выбор текстовой раскладки или ряда слов и атомов.
+//! Выбор пути по готовым кускам: своя раскладка строк (`native`), сплошной
+//! текст без выделения или ряд из слов и атомов.
 
-use super::native_paragraph;
+use super::native::native_paragraph;
+use super::{LineAtoms, NativeRequest};
 use crate::layout::options::RenderOpts;
 use crate::layout::options::own_size;
 use crate::layout::writing_mode::upright_in_mixed;
 use crate::paint::apply::apply;
-use crate::render::native_paragraph_route;
 use crate::render::paragraph::edges::edge_pieces;
 use crate::render::paragraph::metrics::line_box_spans;
 use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -19,16 +19,11 @@ pub(crate) fn route_pieces(
     pieces: Vec<inline::Piece>,
     inherited: &Computed,
     opts: &RenderOpts,
-    native_request: Option<&native_paragraph_route::Request<'_>>,
+    native_request: Option<&NativeRequest<'_>>,
     indent: crate::text::paragraph::Indent,
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
-    line_atoms: Vec<(
-        usize,
-        AnyElement,
-        crate::text::paragraph::AtomAlign,
-        crate::text::paragraph::RubyExtents,
-    )>,
+    line_atoms: LineAtoms,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -156,15 +151,9 @@ pub(crate) fn route_pieces(
         inherited.vertical_align,
         Some(align),
         inherited.wm().rtl(),
-        match inherited.text_indent {
-            Some(Len::Px(v)) => v,
-            // Ряд из слов долю и прежде не применял (`Pct` идёт нулём); у
-            // смеси берутся хотя бы точки — как у чистых точек.
-            Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx)
-                .pct_px()
-                .map_or(0.0, |(_, px)| px),
-            _ => 0.0,
-        },
+        // Ряд из слов долю не применяет (`Pct` идёт нулём); у смеси берутся
+        // точки — абсолютная часть отступа, уже сведённая в `collect`.
+        indent.px,
         inherited.nowrap == Some(true),
         &mut render_text,
         !inherited.wm().vertical() && !inherited.wm().turned(),
