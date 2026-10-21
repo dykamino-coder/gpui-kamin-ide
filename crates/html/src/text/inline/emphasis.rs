@@ -85,7 +85,9 @@ pub(crate) fn emphasis_spans(
                     style.emphasis_color.map(|color| {
                         style
                             .text_clip_fill
-                            .map_or(color, |fill| crate::paint::background::over(color, fill))
+                            .map_or(color, |fill| {
+                                crate::style::values::composite::over(color, fill)
+                            })
                             .to_hsla()
                     })
                 }),

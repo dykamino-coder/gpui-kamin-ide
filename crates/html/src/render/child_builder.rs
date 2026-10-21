@@ -5,6 +5,11 @@ use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
 
 impl Default for ChildBuild {
     fn default() -> Self {
-        ChildBuild::new(blocks, element, paragraph)
+        ChildBuild::new(
+            blocks,
+            element,
+            paragraph,
+            crate::paint::box_tree::styled::styled_div_with,
+        )
     }
 }
