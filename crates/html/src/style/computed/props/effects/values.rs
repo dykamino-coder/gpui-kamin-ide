@@ -116,7 +116,7 @@ impl Computed {
 
 /// Проверка всех имён и числовых операндов списка счётчиков.
 pub(super) fn counter_value(v: &str, reversed: bool) -> bool {
-    if v == "none" {
+    if matches!(v, "none" | "inherit") {
         return true;
     }
     let words = split_outside_parens(v);

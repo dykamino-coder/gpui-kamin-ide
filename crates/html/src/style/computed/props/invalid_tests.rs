@@ -234,3 +234,11 @@ fn invalid_declaration_preserves_background_lists_and_flow_alignment() {
         assert_eq!(format!("{c:?}"), before, "{key}");
     }
 }
+
+#[test]
+fn valid_counter_inherit_remains_a_directive() {
+    let c = one("counter-reset: inherit; counter-increment: inherit; counter-set: inherit");
+    assert_eq!(c.counter_reset.as_deref(), Some("inherit"));
+    assert_eq!(c.counter_increment.as_deref(), Some("inherit"));
+    assert_eq!(c.counter_set.as_deref(), Some("inherit"));
+}
