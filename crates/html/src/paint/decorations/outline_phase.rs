@@ -134,8 +134,14 @@ impl Wrap for Phase {
                     self.child.paint(window, cx);
                 }
             }
-            Mode::Scope => scoped(self.owner.as_ref(), window, cx, |window, cx| {
-                self.child.paint(window, cx)
+            // Outline isolation is not a paint-order boundary: the scoped
+            // float's own atomic paint keeps its inline content and passes
+            // positioned descendants to the enclosing stacking context
+            // (CSS 2.1 Appendix E.2 step 5).
+            Mode::Scope => gpui::paint_reopen(|| {
+                scoped(self.owner.as_ref(), window, cx, |window, cx| {
+                    self.child.paint(window, cx)
+                })
             }),
             Mode::InBand => {
                 if let Some(owner) = &self.owner {

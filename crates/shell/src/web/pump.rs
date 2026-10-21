@@ -87,7 +87,7 @@ pub fn start_pump(cx: &mut gpui::App) {
             // перестаёт рисовать сразу, а renderer теряет только через TTL.
             super::visibility::sleep_hidden();
             super::reap_hidden();
-            super::respawn_stalled();
+            super::respawn::tick();
             crate::probe::registry::paint_watchdog();
         }
     })

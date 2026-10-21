@@ -10,7 +10,6 @@ use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_fl
 use crate::render::{inline_level, is_blank, out_of_flow, phantom_inline};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use std::ops::ControlFlow;
 
 pub(super) fn unfloated_flow(
     cb_top_open: bool,
@@ -168,7 +167,7 @@ pub(super) fn host_for_run(
                 !inline_level(c)
                     || c.tag == "br"
                     || out_of_flow(&c.style)
-                    || c.marks.shape_flow.is_some_and(|h| h.bands.is_some())
+                    || c.marks.shape_flow.is_some()
             }
         })
         .map_or(0, |p| p + 1);
@@ -189,9 +188,9 @@ pub(super) fn wrap_into_host(
     nodes: &[Node],
     out: &mut Vec<Node>,
     i: &mut usize,
-    hosted: Option<(Element, usize, Option<usize>, Vec<Node>)>,
-) -> ControlFlow<()> {
-    if let Some((mut host, next, took_lead, lifted)) = hosted {
+    (mut host, next, took_lead, lifted): (Element, usize, Option<usize>, Vec<Node>),
+) {
+    {
         // CSS 2.1 §10.6.3: ordinary blocks count in-flow boxes, not floats.
         // A complete unfragmented suffix needs no later float bands, and
         // no later box of the enclosing context may see them (`float_tail`;
@@ -212,10 +211,7 @@ pub(super) fn wrap_into_host(
         // (`band_kids` отдаёт его первому строчному прогону).
         // Внепоточные соседи (абсолюты, флоаты) строк не образуют
         // (`below-float3`: абсолют перед флоатом).
-        if host
-            .marks
-            .shape_flow
-            .is_some_and(|h| h.bands == Some(crate::dom::BandPath::Measured))
+        if host.marks.shape_flow.is_some()
             && out
                 .iter()
                 .all(|n| is_blank(n) || matches!(n, Node::Element(c) if out_of_flow(&c.style)))
@@ -226,9 +222,7 @@ pub(super) fn wrap_into_host(
         out.push(Node::Element(host));
         out.extend(lifted);
         *i = next;
-        return ControlFlow::Break(());
     }
-    ControlFlow::Continue(())
 }
 
 #[cfg(test)]

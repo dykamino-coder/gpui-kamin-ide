@@ -19,7 +19,6 @@ use crate::animation::frames::transitioned;
 use crate::dom::Node;
 use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
-use crate::layout::float::float_flow::float_flow;
 use crate::layout::replaced::limits::content_limit_swapped;
 use crate::paint::stacking::{defers, layered, stacking_context};
 use crate::style::cascade::inherit::inherit;
@@ -37,7 +36,6 @@ pub(crate) fn paint_element(
     ordered_context: bool,
     under_tf: bool,
     frame: &crate::interactive::sticky::element::StickyCell,
-    letter_scope: &mut crate::render::first_letter_scope::Scope,
     out: &mut Vec<AnyElement>,
     below: &mut BelowRun,
 ) {
@@ -53,11 +51,6 @@ pub(crate) fn paint_element(
             stacking_context(&e.style),
         );
     });
-    // Ряд обтекания: текст рядом с плавающим блоком и остаток под ним.
-    if e.marks.float_row {
-        out.push(letter_scope.flow(&e.children, inherited, |s| float_flow(e, s, opts)));
-        return;
-    }
     if let Some(el) = scrollable(e, inherited, opts) {
         // CSS Transforms 1: transform the viewport and its bars together;
         // preserve the parent 3D context, backface and plane as for other boxes.

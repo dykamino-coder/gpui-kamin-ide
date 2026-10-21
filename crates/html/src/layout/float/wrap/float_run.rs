@@ -1,18 +1,15 @@
-//! A float run starting at node `i`: the measured host when the run and its
-//! tail are expressible in it; otherwise the lowerings for runs not yet
-//! representable in the shared plan: a lone float as a flow box, a
-//! shape-outside host, or a row of floats beside a growing column.
+//! A float run starting at node `i` goes into the shared measured host
+//! (`band_flow`): together with the content after it when that tail is
+//! representable in the plan, otherwise alone, the tail following the host
+//! in the ordinary flow below the floats.
 
-use super::lone::wrap_lone_float;
 use super::prepare::{host_for_run, wrap_into_host};
-use super::row::push_float_row;
-use super::run::{gather_floaters, run_min_width, split_rest, strut_for_next};
-use super::shaped::{shaped_run_of, wrap_shaped_run};
 use crate::dom::{Element, Node};
 use crate::layout::float::FloatCb;
-use crate::layout::float::clear::{bfc_no_fit, clears_side, leading_clear};
+use crate::layout::float::band_measured::{band_float_m, band_host_m};
+use crate::render::is_blank;
 use crate::style::computed::Computed;
-use std::ops::ControlFlow;
+use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wrap_float_run(
@@ -23,76 +20,67 @@ pub(super) fn wrap_float_run(
     parent_bfc: bool,
     cell_bfc: bool,
     cb: FloatCb,
-    nodes: &mut Vec<Node>,
+    nodes: &[Node],
     out: &mut Vec<Node>,
     i: &mut usize,
-    side: i8,
     vcx: crate::document::state::ValueCx<'_>,
-) -> ControlFlow<()> {
-    let cb_width = parent.width;
-    let cb_px = cb.margin_basis;
-    let hosted = host_for_run(em, measured_ok, cb, &*nodes, &*out, *i, vcx);
-    if let ControlFlow::Break(_) = wrap_into_host(
+) {
+    // `floats_alone` normalizes every margin the plan cannot express, so a
+    // run of floats always has a host; the guard only keeps the loop going.
+    let Some(hosted) = host_for_run(em, measured_ok, cb, nodes, out, *i, vcx)
+        .or_else(|| floats_alone(em, cb, nodes, *i, vcx))
+    else {
+        out.push(nodes[*i].clone());
+        *i += 1;
+        return;
+    };
+    wrap_into_host(
         parent,
         cb_top_open,
         parent_bfc,
         cell_bfc,
-        &*nodes,
+        nodes,
         out,
         i,
         hosted,
-    ) {
-        return ControlFlow::Break(());
-    }
-    let mut floaters: Vec<Element> = vec![];
-    let mut sides: Vec<i8> = vec![];
-    let mut j = *i;
-    gather_floaters(parent, &*nodes, *i, side, &mut floaters, &mut sides, &mut j);
-    let run_min_w = run_min_width(&*nodes, *i, j);
-    let separates = |next: &Element| {
-        clears_side(next.style.clear, side)
-            || clears_side(leading_clear(next), side)
-            || bfc_no_fit(next, run_min_w, cb_px)
-    };
-    let (mut rest, mut out_of_flow) = split_rest(&*nodes, &mut j, separates);
-    strut_for_next(cb_top_open, nodes, &*out, j, separates, &mut rest, vcx);
-    if let ControlFlow::Break(_) = wrap_lone_float(
-        parent,
-        out,
-        i,
-        side,
-        &mut floaters,
-        j,
-        &mut rest,
-        &mut out_of_flow,
-    ) {
-        return ControlFlow::Break(());
-    }
-    let shaped_run = shaped_run_of(&floaters);
-    if shaped_run && sides.iter().any(|s| *s != side) {
-        // A run of floats on BOTH sides: `shape_flow` reads each float's
-        // side from the float itself (css-shapes-1 §1 — every float's
-        // shape narrows its own side of the line boxes).
-        for (f, s) in floaters.iter_mut().zip(sides.iter()) {
-            f.style.float = Some(*s);
-        }
-    }
-    if let ControlFlow::Break(_) = wrap_shaped_run(
-        parent,
-        cb_width,
-        out,
-        i,
-        side,
-        &mut floaters,
-        j,
-        &mut rest,
-        &mut out_of_flow,
-        shaped_run,
-    ) {
-        return ControlFlow::Break(());
-    }
-    push_float_row(out, floaters, sides, rest);
-    out.extend(out_of_flow);
-    *i = j;
-    ControlFlow::Continue(())
+    );
+}
+
+/// The run's floats alone in a measured host, when their tail is not
+/// representable in the shared plan. A margin the plan cannot express
+/// (a `calc()` mixing a percentage of an unknown containing block) is
+/// resolved here; a percentage without a basis is cyclic and counts as zero
+/// (css-sizing-3 §5.2.1).
+fn floats_alone(
+    em: f32,
+    cb: FloatCb,
+    nodes: &[Node],
+    i: usize,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<(Element, usize, Option<usize>, Vec<Node>)> {
+    let run: Vec<Node> = nodes[i..]
+        .iter()
+        .take_while(|n| {
+            is_blank(n) || matches!(n, Node::Element(e) if e.style.float.is_some_and(|f| f != 0))
+        })
+        .map(|n| match n {
+            Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {
+                let mut f = f.clone();
+                let font = f.style.font_cx().family.to_owned();
+                let font = crate::style::computed::FontCx::new(&font, em);
+                let m = &mut f.style.margin;
+                for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {
+                    if let Some(l) =
+                        side.filter(|l| !matches!(l, Len::Px(_) | Len::Pct(_) | Len::Auto))
+                    {
+                        *side = Some(Len::Px(l.to_px(cb.margin_basis, font, vcx).unwrap_or(0.0)));
+                    }
+                }
+                Node::Element(f)
+            }
+            n => n.clone(),
+        })
+        .collect();
+    band_host_m(&run, 0, em, &[], cb, vcx)
+        .map(|(host, next, lifted)| (host, i + next, None, lifted))
 }
