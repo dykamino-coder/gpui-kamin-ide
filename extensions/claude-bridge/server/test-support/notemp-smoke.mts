@@ -22,19 +22,30 @@ const port = (server.address() as { port: number }).port
 const socket = new WebSocket(`ws://127.0.0.1:${port}/ws/session`)
 await once(socket, 'open')
 const frames: unknown[] = []
-socket.on('message', raw => frames.push(JSON.parse(String(raw))))
+socket.on('message', (raw) => frames.push(JSON.parse(String(raw))))
 for (let attempt = 0; attempt < 3; attempt++) {
   const response = once(socket, 'message', { signal: AbortSignal.timeout(15000) })
-  socket.send(JSON.stringify({ type: 'session:resume', token: token.token,
-    conversationId: '00000000-0000-4000-8000-000000000074', noSpawnOnNotFound: true }))
+  socket.send(
+    JSON.stringify({
+      type: 'session:resume',
+      token: token.token,
+      conversationId: '00000000-0000-4000-8000-000000000074',
+      noSpawnOnNotFound: true,
+    }),
+  )
   const [raw] = await response
   assert.deepEqual(JSON.parse(String(raw)), { type: 'session:resume-not-found' })
   assert.equal(sessions.size, 0)
 }
-const cliProcesses = readdirSync('/proc').filter(pid => /^\d+$/.test(pid)).filter(pid => {
-  try { return /(?:^|\x00)(?:[^\x00]*\/)?claude(?:\x00|$)/.test(readFileSync(`/proc/${pid}/cmdline`, 'utf8')) }
-  catch { return false }
-})
+const cliProcesses = readdirSync('/proc')
+  .filter((pid) => /^\d+$/.test(pid))
+  .filter((pid) => {
+    try {
+      return /(?:^|\x00)(?:[^\x00]*\/)?claude(?:\x00|$)/.test(readFileSync(`/proc/${pid}/cmdline`, 'utf8'))
+    } catch {
+      return false
+    }
+  })
 assert.equal(cliProcesses.length, 0)
 assert.equal(frames.length, 3)
 console.log('PASS: 3 authenticated missing resumes, no session IDs, no registered sessions, no Claude processes')

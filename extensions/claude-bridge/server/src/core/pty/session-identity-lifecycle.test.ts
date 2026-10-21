@@ -102,13 +102,16 @@ afterEach(() => {
 describe('INC-2026-0070 identity lifecycle', () => {
   it('INC-0074 opted-in not-found creates no PTY or session; explicit create then spawns', async () => {
     const { ResumeNotFoundError } = await import('./session-resume-not-found')
-    await expect(core.createSession(socket, 'tester', 'tok', {
-      resumeConversationId: A, noSpawnOnNotFound: true,
-    })).rejects.toBeInstanceOf(ResumeNotFoundError)
+    await expect(
+      core.createSession(socket, 'tester', 'tok', {
+        resumeConversationId: A,
+        noSpawnOnNotFound: true,
+      }),
+    ).rejects.toBeInstanceOf(ResumeNotFoundError)
     expect(h.spawn).not.toHaveBeenCalled()
     expect(h.onConversationId).toBeNull()
     expect(core.sessions.size).toBe(0)
-    expect(rows().some(r => r.event === 'session_create')).toBe(false)
+    expect(rows().some((r) => r.event === 'session_create')).toBe(false)
     await core.createSession(socket, 'tester', 'tok', {})
     expect(h.spawn).toHaveBeenCalledTimes(1)
     expect(core.sessions.size).toBe(1)

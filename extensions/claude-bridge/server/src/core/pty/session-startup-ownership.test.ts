@@ -158,7 +158,12 @@ afterEach(() => {
 describe('INC-2026-0013 actual WebSocket startup ownership', () => {
   it('INC-0074 sends a no-session result and accepts an explicit create on the same socket', async () => {
     h.create.mockRejectedValueOnce(new ResumeNotFoundError())
-    await socket.message({ type: 'session:resume', token: 'synthetic', conversationId: 'missing', noSpawnOnNotFound: true })
+    await socket.message({
+      type: 'session:resume',
+      token: 'synthetic',
+      conversationId: 'missing',
+      noSpawnOnNotFound: true,
+    })
     expect(h.create.mock.calls[0]![3]).toMatchObject({ noSpawnOnNotFound: true })
     expect(socket.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([{ type: 'session:resume-not-found' }])
     expect(h.destroy).not.toHaveBeenCalled()
