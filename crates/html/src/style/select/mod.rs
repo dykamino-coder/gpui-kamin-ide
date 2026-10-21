@@ -169,32 +169,32 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Optio
 
 /// Перепись детей уровня: места и паспорта всех элементов.
 pub(crate) fn census_of(children: &[Handle], tree: &TreeIndex) -> (Vec<Spot>, Vec<Ancestor>) {
-    let tags: Vec<Option<String>> = children
-        .iter()
-        .map(|c| match &c.data {
-            NodeData::Element { name, .. } => Some(name.local.to_string()),
-            _ => None,
-        })
-        .collect();
-    let total = tags.iter().filter(|t| t.is_some()).count();
+    // Один подсчёт итогов по прежнему ключу: точное локальное имя, без namespace.
+    let mut counts: HashMap<&str, (usize, usize)> = HashMap::new();
+    let mut total = 0;
+    for child in children {
+        if let NodeData::Element { name, .. } = &child.data {
+            counts.entry(&name.local).or_default().0 += 1;
+            total += 1;
+        }
+    }
     let mut seen = 0usize;
-    let mut seen_of_type: HashMap<String, usize> = HashMap::new();
     let mut spots: Vec<Spot> = Vec::with_capacity(children.len());
     let mut all: Vec<Ancestor> = Vec::with_capacity(total);
-    for (child, tag) in children.iter().zip(&tags) {
-        let spot = match tag {
-            Some(tag) => {
+    for child in children {
+        let spot = match &child.data {
+            NodeData::Element { name, .. } => {
                 seen += 1;
-                let of_type = seen_of_type.entry(tag.clone()).or_insert(0);
+                let (of_type_total, of_type) = counts.entry(&name.local).or_default();
                 *of_type += 1;
                 Spot {
                     index: seen,
                     total,
                     of_type: *of_type,
-                    of_type_total: tags.iter().filter(|t| t.as_deref() == Some(tag)).count(),
+                    of_type_total: *of_type_total,
                 }
             }
-            None => Spot::default(),
+            _ => Spot::default(),
         };
         spots.push(spot);
         if let Some(a) = ancestor_of(child, spot, tree) {
@@ -214,3 +214,6 @@ pub(crate) fn is_empty_node(handle: &Handle) -> bool {
         _ => true,
     })
 }
+
+#[cfg(test)]
+mod tests;

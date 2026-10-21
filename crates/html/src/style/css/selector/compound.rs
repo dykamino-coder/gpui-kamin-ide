@@ -6,9 +6,16 @@ use super::*;
 impl Selector {
     pub(crate) fn parse_compound(raw: &str, cx: &SelectorCx) -> Option<Selector> {
         let s = raw.trim();
+        let namespace = match cx.default_ns {
+            Some(true) => TypeNamespace::Xhtml,
+            Some(false) => TypeNamespace::Foreign,
+            None => TypeNamespace::Any,
+        };
         if s.is_empty() || s == "*" || s == "*|*" {
             return Some(Selector {
                 tag: None,
+                tag_namespace: TypeNamespace::Any,
+                argument_namespace: namespace,
                 id: None,
                 classes: vec![],
                 attrs: vec![],
@@ -21,6 +28,8 @@ impl Selector {
         }
         let mut sel = Selector {
             tag: None,
+            tag_namespace: TypeNamespace::Any,
+            argument_namespace: namespace,
             id: None,
             classes: vec![],
             attrs: vec![],
@@ -82,7 +91,10 @@ impl Selector {
                     t.to_string()
                 }
                 None if name == "*" => name,
-                None => crate::style::css::default_ns::mark_tag(name, cx),
+                None => {
+                    sel.tag_namespace = namespace;
+                    name
+                }
             };
             sel.universal = name == "*";
             if !name.is_empty() && name != "*" {
@@ -170,7 +182,7 @@ impl Selector {
                     if let Some(prev) = sel.pseudo.take() {
                         sel.also.push(prev);
                     }
-                    sel.pseudo = Some(pseudo_name(name, cx))
+                    sel.pseudo = Some(pseudo_name(name))
                 }
                 _ => return None,
             }
@@ -182,16 +194,13 @@ impl Selector {
 
 /// Имя псевдокласса в нижнем регистре. У `:is()`/`:where()` аргумент —
 /// список селекторов, и его регистр (имена классов) сохраняется как есть.
-fn pseudo_name(raw: &str, cx: &SelectorCx) -> String {
+fn pseudo_name(raw: &str) -> String {
     if let Some((head, arg)) = raw.split_once('(') {
         let head = head.to_ascii_lowercase();
-        if matches!(head.as_str(), "is" | "where" | "matches" | "any") {
-            return format!(
-                "{head}({}",
-                crate::style::css::default_ns::mark_arg(arg, cx)
-            );
-        }
-        if matches!(head.as_str(), "host" | "host-context" | "slotted" | "has") {
+        if matches!(
+            head.as_str(),
+            "is" | "where" | "matches" | "any" | "host" | "host-context" | "slotted" | "has"
+        ) {
             return format!("{head}({arg}");
         }
     }

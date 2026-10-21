@@ -132,7 +132,7 @@ pub(crate) fn split_selector_list(raw: &str) -> Vec<&str> {
 /// `:nth-child`/`:nth-last-child` добавляет покомпонентный вес самого
 /// специфичного селектора списка (селекторы-4 §specificity). `:has()` -
 /// max по списку аргументов БЕЗ собственного веса псевдокласса.
-pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
+pub(super) fn pseudo_specificity(pseudo: &str, namespace: TypeNamespace) -> (u32, u32, u32) {
     if let Some(arg) = pseudo
         .strip_prefix("has(")
         .and_then(|r| r.strip_suffix(')'))
@@ -159,7 +159,7 @@ pub(super) fn pseudo_specificity(pseudo: &str) -> (u32, u32, u32) {
             }
             "where" => return (0, 0, 0),
             "is" | "matches" | "any" => {
-                return crate::style::css::default_ns::is_args(arg)
+                return crate::style::css::default_ns::is_args(arg, namespace)
                     .iter()
                     .map(Selector::specificity)
                     .max()

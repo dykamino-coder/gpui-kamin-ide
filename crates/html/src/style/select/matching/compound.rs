@@ -60,7 +60,7 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         if p == "empty" {
             return node.empty;
         }
-        is_holds(p, node, &path[..at], sibs).unwrap_or(true)
+        is_holds(p, sel.argument_namespace, node, &path[..at], sibs).unwrap_or(true)
     })
 }
 
@@ -96,7 +96,12 @@ pub(super) fn matches_compound(sel: &Selector, node: &Ancestor) -> bool {
         return super::featureless::matches_featureless(sel, node).unwrap_or(false);
     }
     if let Some(t) = &sel.tag
-        && !crate::style::css::default_ns::tag_matches(t, &node.tag, node.foreign)
+        && !crate::style::css::default_ns::tag_matches(
+            t,
+            sel.tag_namespace,
+            &node.tag,
+            node.foreign,
+        )
     {
         return false;
     }

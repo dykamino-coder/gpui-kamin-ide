@@ -7,10 +7,22 @@ mod pseudo;
 use pseudo::{is_element_backed, is_pseudo_element, known_pseudo, pseudo_specificity};
 pub(crate) use pseudo::{nth_of_parts, split_selector_list};
 
+/// Ограничение пространства имён типа; имя хранится отдельно от него.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TypeNamespace {
+    #[default]
+    Any,
+    Xhtml,
+    Foreign,
+}
+
 /// Простой селектор — ровно то подмножество, которое встречается на практике.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Selector {
     pub tag: Option<String>,
+    pub tag_namespace: TypeNamespace,
+    /// Контекст пространства для отложенного разбора списков `:is()`/`:where()`.
+    pub argument_namespace: TypeNamespace,
     pub id: Option<String>,
     pub classes: Vec<String>,
     /// Атрибутные условия: `[href]`, `[type="text"]`, `[lang|=en]`.
@@ -85,7 +97,7 @@ impl Selector {
         // самого специфичного селектора списка (селекторы-4 §specificity):
         // `:nth-child(even of .foo, #bar)` весит как псевдо + id.
         for p in self.pseudo.iter().chain(self.also.iter()) {
-            let m = pseudo_specificity(p);
+            let m = pseudo_specificity(p, self.argument_namespace);
             s = (s.0 + m.0, s.1 + m.1, s.2 + m.2);
         }
         if let Some(anc) = &self.ancestor {
