@@ -12,7 +12,7 @@ use std::rc::Rc;
 pub(super) fn table_grid_box(
     e: &Element,
     inherited: &Computed,
-    row_elements: Vec<&Element>,
+    row_elements: &[&Element],
     tracks: Vec<gpui::GridTrack>,
     table_tall: bool,
     vcx: ValueCx<'_>,
@@ -178,14 +178,14 @@ fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
     crate::layout::table::anon::collect_rows(
         &fixed,
         Some(e),
-        (0.0, 0.0, None, None),
+        crate::layout::table::anon::RowCarry::default(),
         &mut logical_rows,
     );
     let collapsed: Vec<u16> = logical_rows
         .iter()
         .enumerate()
-        .filter_map(|(i, (row, carry))| {
-            let collapse = crate::layout::table::anon::row_collapsed(row, carry.3);
+        .filter_map(|(i, row)| {
+            let collapse = crate::layout::table::anon::row_collapsed(row.element, row.carry.group);
             collapse.then_some(if e.style.wm().vertical() && e.style.wm().block_rl() {
                 (logical_rows.len() - i - 1) as u16
             } else {

@@ -7,68 +7,26 @@ use super::row_setup::hides_empty_cell;
 use super::row_setup::{cell_cascaded_style, cell_spans};
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use gpui::AnyElement;
-use std::cell::RefCell;
-use std::rc::Rc;
 
-#[allow(clippy::too_many_arguments)]
-// A table cell returns its element and row/column placement metadata together.
-#[allow(clippy::type_complexity)]
+use crate::layout::table::context::{
+    CellLayout, RowCursor, RowState, RowsOut, TableGeom, TableLayers,
+};
+
 pub(super) fn table_cell(
-    row_ix: i16,
-    occupied: &mut [u16],
+    geom: &TableGeom<'_>,
+    layers: &TableLayers<'_>,
+    cursor: &mut RowCursor,
+    out: &mut RowsOut,
     opts: &RenderOpts,
-    group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
-    e: &Element,
-    cols: u16,
-    cells: &mut Vec<AnyElement>,
-    zero_cols: &[bool],
-    rows_left: &[usize],
-    cols_collapsed: &[bool],
-    collapse_cells: bool,
-    win_edges: &std::collections::HashMap<u64, [f32; 4]>,
-    table_is_vertical: bool,
-    table_font: f32,
-    table_family: &str,
-    paint_layers: bool,
-    cell_bgs: &Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
-    row_elements: &Vec<&Element>,
-    table_edges: &Rc<RefCell<Vec<super::super::paint::EdgeCell>>>,
-    col_rects: &[Option<crate::layout::table::paint::RowRects>],
-    col_els: &Vec<Option<&Element>>,
-    grp_rects: &[Option<crate::layout::table::paint::RowRects>],
-    grp_els: &Vec<Option<&Element>>,
-    rules_groups: bool,
-    group_refs: &mut std::collections::HashMap<
-        u64,
-        crate::paint::effects::transformed_element::RefBox,
-    >,
-    tbl_style: &Computed,
-    cells_over: &mut Vec<AnyElement>,
-    px_of: &impl Fn(Option<Len>) -> f32,
-    row: &Element,
-    carry: (
-        f32,
-        f32,
-        Option<crate::style::values::value::Color>,
-        Option<&Element>,
-    ),
-    row_ref: &crate::paint::effects::transformed_element::RefBox,
-    row_rects: &Option<crate::layout::table::paint::RowRects>,
-    grp_band: &Option<crate::layout::table::paint::RowRects>,
-    shift: (f32, f32),
-    inherited: &Computed,
-    row_style: &Computed,
-    col_ix: &mut usize,
+    row_state: &RowState<'_>,
     cell: &Element,
 ) {
     let vcx = opts.cx.vcx();
     // §17.6.1.1: `empty-cells: hide` прячет фон и рамку ПУСТОЙ
     // ячейки — в раздельной модели рамок. Пустая это та, у которой нет
     // ни текста, ни элементов-детей.
-    let прячем_пустую = hides_empty_cell(e, row_style, cell, vcx);
+    let прячем_пустую = hides_empty_cell(geom.e, &row_state.row_style, cell, vcx);
     // Ячейка в НУЛЕВОЙ дорожке: свои горизонтальные отступ и рамку
     // она держать не может — дорожки под них нет (§17.5.2.1).
     let cell = &if прячем_пустую {
@@ -82,9 +40,9 @@ pub(super) fn table_cell(
     } else {
         cell.clone()
     };
-    let cell = &if zero_cols.get(*col_ix).copied().unwrap_or(false) {
+    let cell = &if geom.zero_cols.get(cursor.col_ix).copied().unwrap_or(false) {
         let mut copy = cell.clone();
-        if table_is_vertical {
+        if geom.table_is_vertical {
             copy.style.padding.top = Some(Len::Px(0.0));
             copy.style.padding.bottom = Some(Len::Px(0.0));
             copy.style.border_width.top = Some(Len::Px(0.0));
@@ -99,67 +57,39 @@ pub(super) fn table_cell(
     } else {
         cell.clone()
     };
-    let mut cm = cell_cascaded_style(e, row_style, cell, vcx);
-    let (span_cols, span_rows, spans_collapsed, clipped) =
-        cell_spans(row_ix, rows_left, cols_collapsed, *col_ix, cell);
-    let mut cell = cell.clone();
-    let cell_edge = prepare_cell_box(
-        e,
-        cols_collapsed,
-        collapse_cells,
-        win_edges,
-        table_is_vertical,
-        table_font,
-        table_family,
-        px_of,
-        row,
-        *col_ix,
-        &cm,
-        span_cols,
-        spans_collapsed,
-        clipped,
-        &mut cell,
-        opts.cx.vcx(),
-    );
-    resolve_cell_heights(opts, e, row, inherited, &mut cm, &mut cell);
-    let cell = &cell;
-    emit_cell(
-        row_ix,
-        occupied,
-        opts,
-        group_of,
-        e,
-        cols,
-        cells,
-        collapse_cells,
-        paint_layers,
-        cell_bgs,
-        row_elements,
-        table_edges,
-        col_rects,
-        col_els,
-        grp_rects,
-        grp_els,
-        rules_groups,
-        group_refs,
-        tbl_style,
-        cells_over,
-        px_of,
-        row,
-        carry,
-        row_ref,
-        row_rects,
-        grp_band,
-        shift,
-        inherited,
-        row_style,
-        col_ix,
-        cm,
-        span_cols,
-        span_rows,
-        spans_collapsed,
-        clipped,
-        cell_edge,
+    let mut cm = cell_cascaded_style(geom.e, &row_state.row_style, cell, vcx);
+    let spans = cell_spans(
+        cursor.row_ix,
+        &geom.rows_left,
+        &geom.cols_collapsed,
+        cursor.col_ix,
         cell,
+    );
+    let mut cell = cell.clone();
+    let cell_edge = prepare_cell_box(geom, row_state, cursor, &cm, &spans, &mut cell, opts);
+    resolve_cell_heights(
+        opts,
+        geom.e,
+        row_state.row,
+        row_state.inherited,
+        &mut cm,
+        &mut cell,
+    );
+    emit_cell(
+        geom,
+        layers,
+        cursor,
+        out,
+        opts,
+        row_state,
+        CellLayout {
+            cell,
+            cm,
+            span_cols: spans.span_cols,
+            span_rows: spans.span_rows,
+            spans_collapsed: spans.spans_collapsed,
+            clipped: spans.clipped,
+            cell_edge,
+        },
     );
 }

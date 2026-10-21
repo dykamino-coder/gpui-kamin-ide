@@ -13,13 +13,20 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
+pub(super) struct CellSpans {
+    pub span_cols: u16,
+    pub span_rows: u16,
+    pub spans_collapsed: bool,
+    pub clipped: bool,
+}
+
 pub(super) fn cell_spans(
     row_ix: i16,
     rows_left: &[usize],
     cols_collapsed: &[bool],
     col_ix: usize,
     cell: &Element,
-) -> (u16, u16, bool, bool) {
+) -> CellSpans {
     // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
     // правее неё съезжало на колонку влево.
     let span_cols: u16 = cell
@@ -55,31 +62,33 @@ pub(super) fn cell_spans(
     let clipped = cell.style.overflow_x == Some(crate::style::computed::Overflow::Hidden)
         || cell.style.overflow_y == Some(crate::style::computed::Overflow::Hidden)
         || spans_collapsed;
-    (span_cols, span_rows, spans_collapsed, clipped)
+    CellSpans {
+        span_cols,
+        span_rows,
+        spans_collapsed,
+        clipped,
+    }
+}
+
+pub(super) struct RowBands {
+    pub row_rects: Option<crate::layout::table::paint::RowRects>,
+    pub grp_band: Option<crate::layout::table::paint::RowRects>,
 }
 
 pub(super) fn row_band_probes(
     group_bands: &mut std::collections::HashMap<u64, crate::layout::table::paint::RowRects>,
     under: &mut Vec<AnyElement>,
-    group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
+    group_of: &std::collections::HashMap<u64, crate::layout::table::context::GroupEdge<'_>>,
     row: &Element,
-    carry: (
-        f32,
-        f32,
-        Option<crate::style::values::value::Color>,
-        Option<&Element>,
-    ),
+    carry: crate::layout::table::anon::RowCarry<'_>,
     vcx: ValueCx<'_>,
-) -> (
-    Option<crate::layout::table::paint::RowRects>,
-    Option<crate::layout::table::paint::RowRects>,
-) {
+) -> RowBands {
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
     // ячеек, снятыми пробами этого кадра (`RowRects`).
     let row_rects: Option<crate::layout::table::paint::RowRects> =
-        (!crate::layout::table::anon::row_collapsed(row, carry.3)
+        (!crate::layout::table::anon::row_collapsed(row, carry.group)
             && (row.style.bg_image.is_some()
                 || row.style.gradient_raw.is_some()
                 || !row.style.shadows.is_empty()))
@@ -104,7 +113,7 @@ pub(super) fn row_band_probes(
     // тоже идёт полосой: своей коробки у группы нет, а охват её ячеек
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
-    let grp_band: Option<crate::layout::table::paint::RowRects> = carry.3.and_then(|g| {
+    let grp_band: Option<crate::layout::table::paint::RowRects> = carry.group.and_then(|g| {
         (g.style.collapsed != Some(true)
             && (g.style.bg_image.is_some()
                 || g.style.gradient_raw.is_some()
@@ -112,10 +121,8 @@ pub(super) fn row_band_probes(
                 || g.style.outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
-    if let (Some(rects), Some(g)) = (&grp_band, carry.3)
-        && group_of
-            .get(&row.node_id)
-            .is_some_and(|(_, first, _)| *first)
+    if let (Some(rects), Some(g)) = (&grp_band, carry.group)
+        && group_of.get(&row.node_id).is_some_and(|edge| edge.first)
     {
         let mut band_style = (*g.style).clone();
         if band_style.bg_image.is_none() {
@@ -131,7 +138,10 @@ pub(super) fn row_band_probes(
             crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
         );
     }
-    (row_rects, grp_band)
+    RowBands {
+        row_rects,
+        grp_band,
+    }
 }
 
 pub(super) fn push_empty_row_track(
@@ -234,3 +244,6 @@ pub(super) fn hides_empty_cell(
             текст.trim().is_empty() && !cell.children.iter().any(|n| matches!(n, Node::Element(_)))
         }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1,50 +1,41 @@
 //! Пробы кромок ячейки: полосы фонов рядов, колонок и групп, сросшиеся рамки (CSS 2.1 §17.6.2).
 
-use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::table::{
     collapsed_col_edges, collapsed_colgroup_edges, collapsed_group_edges, collapsed_row_edges,
 };
-use crate::style::computed::Computed;
-use crate::style::values::value::{Len, px_lossy_zero};
+use crate::style::values::value::px_lossy_zero;
 use gpui::ParentElement;
-use std::cell::RefCell;
-use std::rc::Rc;
 
-#[allow(clippy::too_many_arguments)]
-// Edge probes retain border colors, styles and widths as one record.
-#[allow(clippy::type_complexity)]
+use super::super::context::{CellEdge, RowCursor, RowState, RowsOut, TableGeom, TableLayers};
+use crate::layout::options::RenderOpts;
+
+pub(super) struct CellProbe<'a> {
+    pub span_cols: u16,
+    pub span_rows: u16,
+    pub cell_edge: Option<CellEdge>,
+    pub cell: &'a Element,
+    pub d: gpui::Div,
+}
+
 pub(super) fn cell_edge_probes(
-    row_ix: i16,
-    group_of: &std::collections::HashMap<u64, (&Element, bool, bool)>,
-    cols: u16,
-    collapse_cells: bool,
-    row_elements: &Vec<&Element>,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
-    col_rects: &[Option<crate::layout::table::paint::RowRects>],
-    col_els: &Vec<Option<&Element>>,
-    grp_rects: &[Option<crate::layout::table::paint::RowRects>],
-    grp_els: &Vec<Option<&Element>>,
-    rules_groups: bool,
-    px_of: &impl Fn(Option<Len>) -> f32,
-    row: &Element,
-    row_rects: &Option<crate::layout::table::paint::RowRects>,
-    grp_band: &Option<crate::layout::table::paint::RowRects>,
-    inherited: &Computed,
-    row_style: &Computed,
-    col_ix: usize,
-    span_cols: u16,
-    span_rows: u16,
-    cell_edge: Option<(
-        [f32; 4],
-        [crate::style::values::value::Color; 4],
-        [u8; 4],
-        u32,
-    )>,
-    cell: &Element,
-    d: gpui::Div,
-    vcx: ValueCx<'_>,
+    geom: &TableGeom<'_>,
+    layers: &TableLayers<'_>,
+    cursor: &RowCursor,
+    out: &mut RowsOut,
+    row_state: &RowState<'_>,
+    probe: CellProbe<'_>,
+    opts: &RenderOpts,
 ) -> gpui::Div {
+    let CellProbe {
+        span_cols,
+        span_rows,
+        cell_edge,
+        cell,
+        d,
+    } = probe;
+    let vcx = opts.cx.vcx();
+    let px_of = |l| geom.px_of(l, opts);
     let mut d = d;
     // Полосы фонов рядов и колонок в сросшейся модели начинаются от
     // СЕРЕДИНЫ рамки таблицы (CSS 2.1 §17.6.2): пробы сдвинуты на
@@ -52,9 +43,15 @@ pub(super) fn cell_edge_probes(
     // Полкромки таблицы лежит в её паддинге, полкромки ячейки — в
     // паддинге ячейки: полосы фонов встают по месту без поправки.
     let shift = (0.0, 0.0);
-    if let Some((widths, colors, styles, doc_ix)) = cell_edge {
+    if let Some(CellEdge {
+        widths,
+        colors,
+        styles,
+        doc_ix,
+    }) = cell_edge
+    {
         d = d.child(crate::layout::table::paint::edge_probe(
-            table_edges.clone(),
+            out.table_edges.clone(),
             widths,
             colors,
             styles,
@@ -70,7 +67,7 @@ pub(super) fn cell_edge_probes(
         let px_of = px_lossy_zero;
         [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
     };
-    if let Some(rects) = row_rects {
+    if let Some(rects) = &row_state.row_rects {
         d = d.child(crate::layout::table::paint::cell_rect_probe(
             rects.clone(),
             span_rows == 1,
@@ -78,7 +75,7 @@ pub(super) fn cell_edge_probes(
             cell_border,
         ));
     }
-    if let Some(rects) = grp_band {
+    if let Some(rects) = &row_state.grp_band {
         d = d.child(crate::layout::table::paint::cell_rect_probe(
             rects.clone(),
             span_rows == 1,
@@ -88,12 +85,12 @@ pub(super) fn cell_edge_probes(
     }
     // Проба и для колонок ячейки: объединённая регистрируется в
     // каждой накрытой колонке — полоса колонки красит её целиком.
-    let cell_cols = (col_ix - span_cols as usize)..col_ix;
+    let cell_cols = (cursor.col_ix - span_cols as usize)..cursor.col_ix;
     let mut probed: Vec<u64> = vec![];
     for i in cell_cols.clone() {
         if let (Some(rects), Some(el)) = (
-            col_rects.get(i).and_then(|r| r.clone()),
-            col_els.get(i).copied().flatten(),
+            layers.columns.get(i).and_then(|r| r.rects.clone()),
+            layers.columns.get(i).and_then(|r| r.element),
         ) && !probed.contains(&el.node_id)
         {
             probed.push(el.node_id);
@@ -112,8 +109,8 @@ pub(super) fn cell_edge_probes(
     let mut probed_group: Vec<u64> = vec![];
     for i in cell_cols.clone() {
         if let (Some(rects), Some(el)) = (
-            grp_rects.get(i).and_then(|r| r.clone()),
-            grp_els.get(i).copied().flatten(),
+            layers.groups.get(i).and_then(|r| r.rects.clone()),
+            layers.groups.get(i).and_then(|r| r.element),
         ) && !probed_group.contains(&el.node_id)
         {
             probed_group.push(el.node_id);
@@ -129,42 +126,48 @@ pub(super) fn cell_edge_probes(
     // конфликтов (CSS 2.1 §17.6.2.1: ячейка > ряд > группа >
     // колонка > таблица); в раздельной модели рамки ряда не
     // действуют вовсе (§17.6.1) — сюда попадает только collapse.
-    if collapse_cells {
+    if geom.collapse_cells {
         // Rowspan is already clipped to its row group by cell_spans.
         let last_row = (span_rows > 1).then(|| {
-            row_elements
-                .get(row_ix as usize + span_rows as usize - 2)
+            geom.row_elements
+                .get(cursor.row_ix as usize + span_rows as usize - 2)
                 .copied()
-                .unwrap_or(row)
+                .unwrap_or(row_state.row)
         });
         d = collapsed_row_edges(
-            row,
-            col_ix,
+            row_state.row,
+            cursor.col_ix,
             span_cols,
-            cols,
-            row_style,
-            inherited,
+            geom.cols,
+            &row_state.row_style,
+            row_state.inherited,
             last_row,
-            table_edges,
-            px_of,
+            &out.table_edges,
+            &px_of,
             d,
             vcx,
         );
     }
     // Кромки ГРУППЫ РЯДОВ: верх у первого ряда группы, низ у
     // последнего; `rules=groups` даёт тонкую сплошную по умолчанию.
-    if collapse_cells && let Some((g, first, last)) = group_of.get(&row.node_id).copied() {
-        d = collapsed_group_edges(
-            g,
-            rules_groups,
-            col_ix,
-            span_cols,
-            cols,
+    if geom.collapse_cells
+        && let Some(super::super::context::GroupEdge {
+            element: g,
             first,
             last,
-            inherited,
-            table_edges,
-            px_of,
+        }) = layers.group_of.get(&row_state.row.node_id).copied()
+    {
+        d = collapsed_group_edges(
+            g,
+            layers.rules_groups,
+            cursor.col_ix,
+            span_cols,
+            geom.cols,
+            first,
+            last,
+            row_state.inherited,
+            &out.table_edges,
+            &px_of,
             d,
         );
     }
@@ -172,15 +175,15 @@ pub(super) fn cell_edge_probes(
     // сросшихся конфликтов (источник между ячейкой и таблицей):
     // ячейка колонки несёт её кромку на совпадающем со спаном
     // колонки краю; верх/низ — только крайние ряды.
-    if collapse_cells {
+    if geom.collapse_cells {
         d = collapsed_col_edges(
             &cell_cols,
-            col_els,
-            row_ix,
-            row_elements,
-            inherited,
-            table_edges,
-            px_of,
+            &layers.columns,
+            cursor.row_ix,
+            &geom.row_elements,
+            row_state.inherited,
+            &out.table_edges,
+            &px_of,
             d,
         );
     }
@@ -188,15 +191,15 @@ pub(super) fn cell_edge_probes(
     // таблицы (§17.6.2.1 п.4). Без него `<colgroup style="border">` с
     // колонками внутри терял рамку целиком: `col_elements` отдаёт
     // внутренние колонки, а сама группа в разбор не попадала.
-    if collapse_cells {
+    if geom.collapse_cells {
         d = collapsed_colgroup_edges(
             cell_cols,
-            grp_els,
-            row_ix,
-            row_elements,
-            inherited,
-            table_edges,
-            px_of,
+            &layers.groups,
+            cursor.row_ix,
+            &geom.row_elements,
+            row_state.inherited,
+            &out.table_edges,
+            &px_of,
             d,
         );
     }

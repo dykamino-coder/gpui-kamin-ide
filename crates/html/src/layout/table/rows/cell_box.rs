@@ -6,32 +6,17 @@ use crate::layout::table::{collapsed_cell_edge, table_spanning_size};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-#[allow(clippy::too_many_arguments)]
-// Cell preparation returns its element, geometry and border decoration together.
-#[allow(clippy::type_complexity)]
 pub(super) fn prepare_cell_box(
-    e: &Element,
-    cols_collapsed: &[bool],
-    collapse_cells: bool,
-    win_edges: &std::collections::HashMap<u64, [f32; 4]>,
-    table_is_vertical: bool,
-    table_font: f32,
-    table_family: &str,
-    px_of: &impl Fn(Option<Len>) -> f32,
-    row: &Element,
-    col_ix: usize,
+    geom: &crate::layout::table::context::TableGeom<'_>,
+    row_state: &crate::layout::table::context::RowState<'_>,
+    cursor: &crate::layout::table::context::RowCursor,
     cm: &Computed,
-    span_cols: u16,
-    spans_collapsed: bool,
-    clipped: bool,
+    spans: &super::row_setup::CellSpans,
     cell: &mut Element,
-    vcx: crate::document::state::ValueCx<'_>,
-) -> Option<(
-    [f32; 4],
-    [crate::style::values::value::Color; 4],
-    [u8; 4],
-    u32,
-)> {
+    opts: &crate::layout::options::RenderOpts,
+) -> Option<crate::layout::table::context::CellEdge> {
+    let px_of = |l| geom.px_of(l, opts);
+    let vcx = opts.cx.vcx();
     // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
     // где `style::cascade::inherit` уже разрешил значения родителя.
     if cell.style.padding_inherit || cell.style.padding_inherit_side.contains(&true) {
@@ -62,34 +47,34 @@ pub(super) fn prepare_cell_box(
     // целиком — их рисует отдельный слой кромок на линиях сетки
     // (см. layout::table::paint::edge_painter::EdgePainter): кромка соседей ОДНА, рисуется
     // поверх фонов, и «шире побеждает» решается наложением.
-    let cell_edge = if collapse_cells {
-        collapsed_cell_edge(cell, cm, win_edges, px_of)
+    let cell_edge = if geom.collapse_cells {
+        collapsed_cell_edge(cell, cm, &geom.win_edges, &px_of)
     } else {
         None
     };
-    if clipped {
+    if spans.clipped {
         cell.style.overflow_x = None;
         cell.style.overflow_y = None;
     }
     // Ячейка схлопнутой колонки не рисуется: колонка выброшена
     // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
     // нулевая, а краска ячейки торчала бы поверх соседей.
-    if (col_ix..col_ix + span_cols as usize)
-        .all(|i| cols_collapsed.get(i).copied().unwrap_or(false))
+    if (cursor.col_ix..cursor.col_ix + spans.span_cols as usize)
+        .all(|i| geom.cols_collapsed.get(i).copied().unwrap_or(false))
     {
         cell.style.hidden = Some(true);
     }
     table_spanning_size::preserve(
         &mut cell.style,
         cm,
-        span_cols,
-        e.style.table_fixed == Some(true),
-        table_is_vertical,
-        spans_collapsed,
+        spans.span_cols,
+        geom.e.style.table_fixed == Some(true),
+        geom.table_is_vertical,
+        spans.spans_collapsed,
     );
     let orthogonal_inline =
-        cell.style.wm().vertical() && !e.style.wm().vertical() && cell.style.width_from_inline;
-    if !table_is_vertical
+        cell.style.wm().vertical() && !geom.e.style.wm().vertical() && cell.style.width_from_inline;
+    if !geom.table_is_vertical
         && !orthogonal_inline
         // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
         // Blink `table_layout_utils`: calculated lengths with percentages
@@ -110,11 +95,11 @@ pub(super) fn prepare_cell_box(
     // её width — логический inline-size, он ниже перекладывается в
     // высоту.
     if !(cell.style.wm().vertical()
-        && !e.style.wm().vertical()
+        && !geom.e.style.wm().vertical()
         && cell.style.width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
-        || table_is_vertical)
+        || geom.table_is_vertical)
         && matches!(
             cell.style.width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
@@ -124,17 +109,17 @@ pub(super) fn prepare_cell_box(
     }
     // The row's logical block size is physical width in a vertical table.
     // Preserve authored cell width as a minimum, then stretch to the row.
-    if table_is_vertical {
+    if geom.table_is_vertical {
         let size = crate::layout::table::col_measure::cell_font_px(
             cell.style.font_size,
-            row.style.font_size,
-            table_font,
+            row_state.row.style.font_size,
+            geom.table_font,
         );
         let family = cell
             .style
             .font_family
             .clone()
-            .unwrap_or_else(|| table_family.to_string());
+            .unwrap_or_else(|| geom.table_family.to_string());
         super::cell_size::vertical_block_floor(&mut cell.style, size, &family, vcx);
     }
     // Письмо к рядам и группам рядов не применяется (css-writing-modes
@@ -142,5 +127,12 @@ pub(super) fn prepare_cell_box(
     // таблицы — оно уже посчитано табличным кодом. Собственное письмо
     // ячейки остаётся: оно законно управляет её СОДЕРЖИМЫМ
     // (ортогональные ячейки, table-cell-align-002).
-    cell_edge
+    cell_edge.map(
+        |(widths, colors, styles, doc_ix)| crate::layout::table::context::CellEdge {
+            widths,
+            colors,
+            styles,
+            doc_ix,
+        },
+    )
 }
