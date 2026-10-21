@@ -47,25 +47,26 @@ index bd14dfe32da2f65da0d522045806781aa6391142..f7b7997ceb9b3995cde674bb0e6b6f48
 +            // «… / divisor + bias * ALPHA»), не на сырую сумму.
 +            let x = x / matrix.divisor().get() + matrix.bias() * bounded_new_a;
 diff --git a/vendor/resvg/src/filter/mod.rs b/vendor/resvg/src/filter/mod.rs
-index 28f92f9acdc947bb0b087edc5aef32eefb3e9093..56e2224608fad7ba3f82945fdb7a0de91cad4682
+index 28f92f9acdc947bb0b087edc5aef32eefb3e9093..c24dc329b0102abd6078a13a8670f2a8c7b11a35
 --- a/vendor/resvg/src/filter/mod.rs
 +++ b/vendor/resvg/src/filter/mod.rs
-@@ -630,3 +630,5 @@
+@@ -630,3 +630,6 @@
 -    match cs {
 -        usvg::filter::ColorInterpolation::SRGB => shadow_pixmap.into_srgb(),
 -        usvg::filter::ColorInterpolation::LinearRGB => shadow_pixmap.into_linear_rgb(),
-+    // KaminIDE: the shadow colour is an sRGB value; it only needs converting when
-+    // the primitive works in linearRGB. `into_srgb()` for sRGB treated it as linear
-+    // and lightened it (green 128 -> 188, `svg-shorthand-drop-shadow-001`).
++    // KaminIDE patch: feDropShadow uses the computed flood-color (an sRGB colour).
++    // Convert it only when the primitive operates in linearRGB; interpreting sRGB
++    // components as linear and encoding them again incorrectly brightens the colour.
++    // Filter Effects 1, feDropShadow: https://drafts.csswg.org/filter-effects-1/#feDropShadowElement
 +    if cs == usvg::filter::ColorInterpolation::LinearRGB {
 +        shadow_pixmap.into_linear_rgb();
-@@ -979 +981,4 @@
+@@ -979 +982,4 @@
 -    let pixmap2 = input2.into_color_space(cs)?.take()?;
 +    // KaminIDE patch: карта смещения обязана быть unpremultiplied
 +    // (контракт displacement_map::apply) — как у соседних примитивов.
 +    let mut pixmap2 = input2.into_color_space(cs)?.take()?;
 +    demultiply_alpha(pixmap2.data_mut().as_rgba_mut());
-@@ -983 +988,5 @@
+@@ -983 +989,5 @@
 -    let (sx, sy) = match scale_coordinates(fe.scale(), fe.scale(), ts) {
 +    // KaminIDE patch: scale_coordinates уже умножает на масштаб холста, а
 +    // displacement_map::apply домножает на fe.scale() сам — передача
@@ -73,7 +74,7 @@ index 28f92f9acdc947bb0b087edc5aef32eefb3e9093..56e2224608fad7ba3f82945fdb7a0de9
 +    // регион, и выход примитива был пустым (все tainting-* WPT).
 +    let (sx, sy) = match scale_coordinates(1.0, 1.0, ts) {
 diff --git a/vendor/resvg/src/path.rs b/vendor/resvg/src/path.rs
-index c11349af667438bdfdfd591ecc72e550a08b73df..16b55ea50c97f55fe8521d569a70067767aecdd6
+index c11349af667438bdfdfd591ecc72e550a08b73df..e03878ecec6bc79dd6c9dfb1efaa1fe0bb1036df
 --- a/vendor/resvg/src/path.rs
 +++ b/vendor/resvg/src/path.rs
 @@ -64 +64 @@
@@ -82,25 +83,118 @@ index c11349af667438bdfdfd591ecc72e550a08b73df..16b55ea50c97f55fe8521d569a700677
 @@ -104 +104 @@
 -                tiny_skia::FilterQuality::Bicubic,
 +                pattern_quality(transform, patt_ts),
-@@ -178,0 +179,21 @@
-+/// KaminIDE patch: the tile is rasterized at the device scale of the
-+/// pattern (`render_pattern_pixmap`), so when tile space maps to device
-+/// space 1:1 (axis-aligned, scale ±1 — flips included) every device pixel
-+/// is a tile texel. Bicubic (Mitchell) sampling still blurs such a texel
-+/// with its neighbours and with the wrapped opposite edge, bleeding colours
-+/// across the pattern's own cell boundaries; browsers paint it crisp
-+/// (WPT css-transforms `svg-matrix-*`). Nearest is exact there; any other
-+/// mapping keeps the bicubic filter.
+@@ -178,0 +179,22 @@
++/// KaminIDE patch: nearest sampling is exact only when device pixels coincide
++/// with tile texels. SVG 2 section 14.3.1 preserves the complete pattern transform,
++/// including fractional translation: https://svgwg.org/svg2-draft/pservers.html#Patterns
++/// Unit axis-aligned maps with integer translation preserve that alignment;
++/// other maps require interpolation across neighbouring and wrapped tile texels.
 +fn pattern_quality(
 +    transform: tiny_skia::Transform,
 +    patt_ts: tiny_skia::Transform,
 +) -> tiny_skia::FilterQuality {
 +    let full = transform.pre_concat(patt_ts);
 +    let unit = |v: f32| (v.abs() - 1.0).abs() < 1e-4;
-+    if full.kx.abs() < 1e-6 && full.ky.abs() < 1e-6 && unit(full.sx) && unit(full.sy) {
++    if full.kx.abs() < 1e-6
++        && full.ky.abs() < 1e-6
++        && unit(full.sx) && unit(full.sy)
++        && full.tx.fract() == 0.0 && full.ty.fract() == 0.0
++    {
 +        tiny_skia::FilterQuality::Nearest
 +    } else {
 +        tiny_skia::FilterQuality::Bicubic
 +    }
 +}
 +
+@@ -196,2 +218,2 @@
+-    let transform = tiny_skia::Transform::from_scale(sx, sy);
+-    crate::render::render_nodes(pattern.root(), ctx, transform, &mut pixmap.as_mut());
++    let tile_transform = tiny_skia::Transform::from_scale(sx, sy);
++    crate::render::render_nodes(pattern.root(), ctx, tile_transform, &mut pixmap.as_mut());
+@@ -203,0 +226,12 @@
++    // KaminIDE patch: tiny-skia 0.12 forces nearest for pure translations even
++    // when fractional. Reflect the backing texels and their coordinates together:
++    // T * (width - x, y) maps the mirrored tile to exactly the original pattern.
++    // The equivalent non-translation map retains the requested interpolation.
++    let full = transform.pre_concat(ts);
++    if full.is_translate() && (full.tx.fract() != 0.0 || full.ty.fract() != 0.0) {
++        let width = pixmap.width() as usize;
++        for row in pixmap.pixels_mut().chunks_exact_mut(width) {
++            row.reverse();
++        }
++        ts = ts.pre_translate(width as f32, 0.0).pre_scale(-1.0, 1.0);
++    }
+@@ -205,0 +240,3 @@
++
++#[cfg(test)]
++mod pattern_tests;
+diff --git a/vendor/resvg/src/path/fixtures/fractional-x.svg b/vendor/resvg/src/path/fixtures/fractional-x.svg
+new file mode 100644
+index 0000000000000000000000000000000000000000..38e46813c4e41e6737bfb74e6a59bdafad7db5b5
+--- /dev/null
++++ b/vendor/resvg/src/path/fixtures/fractional-x.svg
+@@ -0,0 +1,4 @@
++<!-- KaminIDE patch: fractional pattern translation regression. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
++<defs><pattern id="p" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="translate(0.5 0)"><rect width="8" height="8" fill="red"/><rect x="4" width="4" height="8" fill="blue"/></pattern></defs>
++<rect width="24" height="24" fill="url(#p)"/></svg>
+diff --git a/vendor/resvg/src/path/fixtures/fractional-y.svg b/vendor/resvg/src/path/fixtures/fractional-y.svg
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f187db8352b6a2d064edd95d93fe5ec57aa7328
+--- /dev/null
++++ b/vendor/resvg/src/path/fixtures/fractional-y.svg
+@@ -0,0 +1,4 @@
++<!-- KaminIDE patch: fractional pattern translation regression. -->
++<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">
++<defs><pattern id="p" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="translate(0 0.5)"><rect width="8" height="8" fill="red"/><rect y="4" width="8" height="4" fill="blue"/></pattern></defs>
++<rect width="24" height="24" fill="url(#p)"/></svg>
+diff --git a/vendor/resvg/src/path/pattern_tests.rs b/vendor/resvg/src/path/pattern_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1917ff75b17418ec4de1cfb4f20c51a26ec218f0
+--- /dev/null
++++ b/vendor/resvg/src/path/pattern_tests.rs
+@@ -0,0 +1,44 @@
++//! Subpixel placement and sampling of repeated SVG tiles.
++// KaminIDE patch: fractional transforms must retain their continuous position.
++#[test]
++fn fractional_pattern_translation_preserves_subpixel_edges() {
++    for svg in [include_str!("fixtures/fractional-x.svg"), include_str!("fixtures/fractional-y.svg")] {
++        let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).unwrap();
++        let mut pixmap = tiny_skia::Pixmap::new(24, 24).unwrap();
++        crate::render(&tree, tiny_skia::Transform::identity(), &mut pixmap.as_mut());
++        let p = pixmap.pixel(4, 4).unwrap();
++        assert!(p.red() > 80 && p.blue() > 80, "fractional edge must mix adjacent colours: {p:?}");
++    }
++}
++
++// KaminIDE patch: alignment is tested after composing both transforms.
++#[test]
++fn nearest_requires_integer_device_translation() {
++    use tiny_skia::{FilterQuality, Transform};
++    let quality = |a, b| super::pattern_quality(a, b);
++    assert_eq!(quality(Transform::identity(), Transform::from_translate(2.0, -3.0)), FilterQuality::Nearest);
++    assert_eq!(quality(Transform::from_scale(-1.0, 1.0), Transform::identity()), FilterQuality::Nearest);
++    assert_eq!(quality(Transform::from_translate(0.5, 0.0), Transform::identity()), FilterQuality::Bicubic);
++    assert_eq!(quality(Transform::identity(), Transform::from_translate(0.0, -0.5)), FilterQuality::Bicubic);
++    assert_eq!(quality(Transform::from_translate(0.5, 0.0), Transform::from_translate(0.5, 0.0)), FilterQuality::Nearest);
++}
++
++#[test]
++fn device_translation_and_integer_alignment_are_preserved() {
++    for (svg, shift) in [
++        (include_str!("fixtures/fractional-x.svg"), (0.5, 0.0)),
++        (include_str!("fixtures/fractional-y.svg"), (0.0, 0.5)),
++    ] {
++        let svg = svg.replace("translate(0.5 0)", "translate(0 0)")
++            .replace("translate(0 0.5)", "translate(0 0)");
++        let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).unwrap();
++        let mut pixmap = tiny_skia::Pixmap::new(24, 24).unwrap();
++        crate::render(&tree, tiny_skia::Transform::identity(), &mut pixmap.as_mut());
++        assert_eq!(pixmap.pixel(4, 4).unwrap().blue(), 255);
++        assert_eq!(pixmap.pixel(3, 3).unwrap().red(), 255);
++        pixmap.fill(tiny_skia::Color::TRANSPARENT);
++        crate::render(&tree, tiny_skia::Transform::from_translate(shift.0, shift.1), &mut pixmap.as_mut());
++        let p = pixmap.pixel(4, 4).unwrap();
++        assert!(p.red() > 80 && p.blue() > 80, "device translation lost: {p:?}");
++    }
++}

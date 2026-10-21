@@ -7,23 +7,30 @@ use std::{
 };
 use url::Url;
 
+mod budget;
+use budget::Budget;
+
 #[derive(Default)]
 struct Session {
     active: HashSet<String>,
-    cache: HashMap<String, Arc<Resource>>,
+    cache: HashMap<String, Option<Arc<Resource>>>,
+    budget: Budget,
 }
 struct Resource {
+    file: String,
     definitions: Snapshot,
-    target: Snapshot,
 }
 
 impl Document<'_> {
-    pub(crate) fn import_external(&mut self, opt: &crate::Options) {
+    pub(crate) fn import_external(&mut self, opt: &crate::Options, source_bytes: usize, source_nodes: usize) {
         let base = opt
             .resources_dir
             .as_ref()
             .and_then(|p| Url::from_directory_path(p).ok());
-        Session::default().expand(self, base.as_ref(), 0);
+        let mut session = Session::default();
+        if session.budget.bytes(source_bytes as u64) && session.budget.nodes(source_nodes + self.nodes.len()) {
+            session.expand(self, base.as_ref(), 0);
+        }
         super::super::cycles::fix_resource_cycles(self);
     }
 }
@@ -33,42 +40,49 @@ impl Session {
         if depth >= 32 {
             return;
         }
-        let uses: Vec<_> = doc
-            .descendants()
+        normalize_hrefs(doc, base);
+        self.expand_from(doc, depth, 0);
+    }
+
+    fn expand_from(&mut self, doc: &mut Document, depth: usize, start: usize) {
+        if depth >= 32 {
+            return;
+        }
+        let uses: Vec<_> = (start..doc.nodes.len())
+            .map(|i| doc.get(NodeId::from(i)))
             .filter(|n| n.tag_name() == Some(EId::Use))
             .filter_map(|n| n.attribute::<&str>(AId::Href).map(|h| (n.id, h.to_owned())))
             .collect();
-        // Images retain the resource base even after their nodes are imported.
-        for attr in &mut doc.attrs {
-            if attr.name == AId::Href && !attr.value.starts_with('#') {
-                if let Some(uri) = resolve(&attr.value, base) {
-                    let text = if uri.fragment().is_none() {
-                        uri.to_file_path()
-                            .ok()
-                            .map(|p| p.to_string_lossy().into_owned())
-                            .unwrap_or(uri.to_string())
-                    } else {
-                        uri.to_string()
-                    };
-                    attr.value = roxmltree::StringStorage::new_owned(&text);
-                }
-            }
-        }
         for (parent, href) in uses {
             if href.starts_with('#') || doc.get(parent).has_children() {
                 continue;
             }
-            let Some(uri) = resolve(&href, base) else {
+            let Some(uri) = resolve(&href, None) else {
                 continue;
             };
+            let fragment = uri.fragment().unwrap_or("").to_owned();
             let Some(resource) = self.load(uri, depth + 1) else {
                 continue;
             };
-            if doc.nodes.len() + resource.definitions.count() + resource.target.count() > 1_000_000
-            {
+            let Some(target) = resource.definitions.target(&fragment) else {
+                continue;
+            };
+            // KaminIDE patch: instance cycles concern a target, not the whole file.
+            // The file cache remains independent of the active fragment/depth.
+            let key = format!("{}#{fragment}", resource.file);
+            if self.active.contains(&key) {
                 continue;
             }
+            // KaminIDE patch: reserve both copies and the defs wrapper before importing.
             let prefix = format!("__kamin_resource_{}_", doc.nodes.len());
+            let count = 1 + resource.definitions.count() + target.count();
+            let bytes = resource.definitions.copy_bytes(prefix.len(), true)
+                + target.copy_bytes(prefix.len(), false);
+            if !self.budget.nodes(count) || !self.budget.bytes(bytes) {
+                continue;
+            }
+            self.active.insert(key.clone());
+            let start = doc.nodes.len();
             let empty = doc.attrs.len() as u32;
             let defs = doc.append(
                 doc.root_element().id,
@@ -78,50 +92,66 @@ impl Session {
                 },
             );
             resource.definitions.append(doc, defs, &prefix, true);
-            resource.target.append(doc, parent, &prefix, false);
+            target.append(doc, parent, &prefix, false);
+            self.expand_from(doc, depth + 1, start);
+            self.active.remove(&key);
         }
     }
 
     fn load(&mut self, uri: Url, depth: usize) -> Option<Arc<Resource>> {
-        let fragment = uri.fragment().unwrap_or("").to_owned();
         let path = std::fs::canonicalize(uri.to_file_path().ok()?).ok()?;
-        let mut canonical = Url::from_file_path(&path).ok()?;
-        canonical.set_fragment(Some(&fragment));
+        let canonical = Url::from_file_path(&path).ok()?;
+        // KaminIDE patch: the parsed document belongs to the file, not a fragment.
         let key = canonical.to_string();
-        if let Some(resource) = self.cache.get(&key) {
-            return Some(resource.clone());
+        if depth >= 32 {
+            return None;
         }
-        if depth >= 32 || !self.active.insert(key.clone()) {
+        if let Some(resource) = self.cache.get(&key) {
+            return resource.clone();
+        }
+        // Reserve cache metadata even for a file that will be rejected.
+        if !self.budget.bytes(key.len() as u64) || !self.budget.nodes(1) {
             return None;
         }
         let result = (|| {
-            let bytes = read_resource(&path)?;
+            let bytes = self.budget.read_resource(&path)?;
             let text = std::str::from_utf8(&bytes).ok()?;
-            let xml = roxmltree::Document::parse_with_options(
-                text,
-                roxmltree::ParsingOptions {
-                    allow_dtd: true,
-                    ..Default::default()
-                },
-            )
-            .ok()?;
-            let mut source = parse(&xml, None, true).ok()?;
-            self.expand(&mut source, Some(&canonical), depth);
-            let target = if fragment.is_empty() {
-                source.root_element()
-            } else {
-                source.element_by_id(&fragment)?
-            };
+            let xml = self.budget.parse_xml(text)?;
+            let mut source = self.budget.parse_tree(&xml)?;
+            // Keep the parsed file independent of the first instance's context.
+            normalize_hrefs(&mut source, Some(&canonical));
+            // Reserve the owned cache representation before capturing it.
+            let bytes = source.attrs.iter().map(|a| a.value.len() as u64).sum::<u64>()
+                + source.descendants().filter(|n| n.is_text()).map(|n| n.text().len() as u64).sum::<u64>();
+            if !self.budget.nodes(source.nodes.len()) || !self.budget.bytes(bytes) {
+                return None;
+            }
             Some(Arc::new(Resource {
-                target: Snapshot::capture(target, 0)?,
+                file: key.clone(),
                 definitions: Snapshot::capture(source.root(), 0)?,
             }))
         })();
-        self.active.remove(&key);
-        if let Some(resource) = &result {
-            self.cache.insert(key, resource.clone());
-        }
+        // Remember failures too: different fragments must not retry a rejected file.
+        self.cache.insert(key, result.clone());
         result
+    }
+}
+
+// KaminIDE patch: preserve resource bases in the cached file and every instance.
+fn normalize_hrefs(doc: &mut Document, base: Option<&Url>) {
+    for attr in &mut doc.attrs {
+        if attr.name == AId::Href && !attr.value.starts_with('#') {
+            if let Some(uri) = resolve(&attr.value, base) {
+                let text = if uri.fragment().is_none() {
+                    uri.to_file_path().ok()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or(uri.to_string())
+                } else {
+                    uri.to_string()
+                };
+                attr.value = roxmltree::StringStorage::new_owned(&text);
+            }
+        }
     }
 }
 
@@ -141,14 +171,6 @@ fn resolve(href: &str, base: Option<&Url>) -> Option<Url> {
 // as well: metadata alone cannot protect against a file growing after open.
 const RESOURCE_BYTE_LIMIT: u64 = 16 * 1024 * 1024;
 
-fn read_resource(path: &std::path::Path) -> Option<Vec<u8>> {
-    let file = std::fs::File::open(path).ok()?;
-    if file.metadata().ok()?.len() > RESOURCE_BYTE_LIMIT {
-        return None;
-    }
-    read_bounded(file, RESOURCE_BYTE_LIMIT)
-}
-
 fn read_bounded(reader: impl std::io::Read, limit: u64) -> Option<Vec<u8>> {
     use std::io::Read;
     let mut bytes = Vec::new();
@@ -157,29 +179,4 @@ fn read_bounded(reader: impl std::io::Read, limit: u64) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
-mod byte_limit_tests {
-    use super::read_bounded;
-    use std::cell::Cell;
-    use std::io::{self, Read};
-
-    #[test]
-    fn accepts_the_limit_and_rejects_one_extra_byte() {
-        assert_eq!(read_bounded(&b"abcd"[..], 4), Some(b"abcd".to_vec()));
-        assert!(read_bounded(&b"abcde"[..], 4).is_none());
-    }
-
-    #[test]
-    fn growing_source_is_never_read_past_limit_plus_one() {
-        struct Growing<'a>(&'a Cell<usize>);
-        impl Read for Growing<'_> {
-            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-                buf.fill(b'x');
-                self.0.set(self.0.get() + buf.len());
-                Ok(buf.len())
-            }
-        }
-        let count = Cell::new(0);
-        assert!(read_bounded(Growing(&count), 4).is_none());
-        assert_eq!(count.get(), 5);
-    }
-}
+mod tests;

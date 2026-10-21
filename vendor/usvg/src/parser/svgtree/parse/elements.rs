@@ -8,6 +8,8 @@ pub(crate) fn parse_svg_element<'input>(
     ignore_ids: bool,
     doc: &mut Document<'input>,
 ) -> Result<NodeId, Error> {
+    // KaminIDE patch: reject before copying attributes or allocating a typed node.
+    doc.check_node_budget()?;
     let attrs_start_idx = doc.attrs.len();
     let mut href_idx: Option<usize> = None;
 
@@ -199,10 +201,6 @@ pub(crate) fn parse_svg_element<'input>(
         for declaration in simplecss::DeclarationTokenizer::from(value) {
             write_declaration(&declaration);
         }
-    }
-
-    if doc.nodes.len() > 1_000_000 {
-        return Err(Error::NodesLimitReached);
     }
 
     let node_id = doc.append(

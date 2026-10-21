@@ -1,6 +1,15 @@
 //! Typed-tree arena insertion and attribute storage.
 use super::*;
 impl<'input> Document<'input> {
+    // KaminIDE patch: every fallible parser insertion checks the arena budget.
+    pub(crate) fn check_node_budget(&self) -> Result<(), Error> {
+        if self.nodes.len() >= self.node_limit {
+            Err(Error::NodesLimitReached)
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn append(&mut self, parent_id: NodeId, kind: NodeKind) -> NodeId {
         let new_child_id = NodeId::from(self.nodes.len());
         self.nodes.push(NodeData {
