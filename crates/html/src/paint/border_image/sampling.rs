@@ -102,7 +102,9 @@ pub(super) fn paint_slice(
         && !unscaled
         && window.current_transformation() == gpui::TransformationMatrix::unit();
     let key: SliceKey = (
-        std::sync::Arc::as_ptr(raster) as usize,
+        // The raster id, not the Arc address: a freed raster's address can be
+        // reused by a new raster and would return the old slice.
+        raster.id.0,
         (sx * kx).round() as u32,
         (sy * ky).round() as u32,
         (sw * kx).round().max(1.0) as u32,
