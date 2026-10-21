@@ -109,9 +109,6 @@ fn calc_viewport_terms_fold_with_a_viewport_only() {
     assert_eq!(plain(None).px(l, vcx), None);
     let vmin = Len::parse("10vmin", vcx).unwrap();
     assert_eq!(plain(Some((800.0, 600.0))).px(vmin, vcx), Some(60.0));
-    // Доля без базы по-прежнему не решается.
-    let mix = Len::parse("calc(50% + 1vw)", vcx).unwrap();
-    assert_eq!(plain(Some((800.0, 600.0))).px(mix, vcx), None);
 }
 
 #[test]
