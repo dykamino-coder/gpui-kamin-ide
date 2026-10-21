@@ -51,6 +51,7 @@ pub(super) fn rules(
         .chain(super::presentational_hr::rule(tag, attrs, vcx))
         .chain(super::presentational_legacy::rule(tag, attrs, path, vcx))
         .chain(foreign_object(tag, attrs))
+        .chain(svg::path_length(tag, attrs))
         .collect()
 }
 

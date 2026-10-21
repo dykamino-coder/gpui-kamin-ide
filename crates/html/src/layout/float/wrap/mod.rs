@@ -1,9 +1,8 @@
-//! Обтекание флоатов: `wrap_floats` и хвост потока.
+//! Обтекание флоатов: `wrap_floats` lowers every float run of a block
+//! container into the shared measured band host.
 
 use crate::document::state::ValueCx;
 // owner: A
-
-use std::ops::ControlFlow;
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;
@@ -11,10 +10,6 @@ use crate::style::computed::Computed;
 mod prepare;
 use prepare::{prepare_float_nodes, unfloated_flow};
 mod float_run;
-mod lone;
-mod row;
-mod run;
-mod shaped;
 use float_run::wrap_float_run;
 
 #[allow(clippy::too_many_arguments)]
@@ -74,12 +69,12 @@ pub(crate) fn wrap_floats(
             i += 1;
             continue;
         };
-        let Some(side) = e.style.float.filter(|f| *f != 0) else {
+        if e.style.float.is_none_or(|f| f == 0) {
             out.push(nodes[i].clone());
             i += 1;
             continue;
-        };
-        if let ControlFlow::Break(_) = wrap_float_run(
+        }
+        wrap_float_run(
             parent,
             cb_top_open,
             em,
@@ -87,14 +82,11 @@ pub(crate) fn wrap_floats(
             parent_bfc,
             cell_bfc,
             cb,
-            &mut nodes,
+            &nodes,
             &mut out,
             &mut i,
-            side,
             vcx,
-        ) {
-            continue;
-        }
+        );
     }
     out
 }

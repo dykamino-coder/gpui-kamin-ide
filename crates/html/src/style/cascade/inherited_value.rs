@@ -3,6 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::Computed;
+use crate::style::values::value::Len;
 
 mod registry;
 pub(crate) use registry::Property;
@@ -40,7 +41,11 @@ pub(super) fn apply_explicit_inheritance(c: &mut Computed, parent: &Computed, vc
 pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn pending(nodes: &[Node]) -> bool {
         nodes.iter().any(|n| match n {
-            Node::Element(e) => !e.style.explicit_inherit.is_empty() || pending(&e.children),
+            Node::Element(e) => {
+                !e.style.explicit_inherit.is_empty()
+                    || !matches!(e.style.svg_path_length, None | Some(Len::Px(_) | Len::Auto))
+                    || pending(&e.children)
+            }
             _ => false,
         })
     }
@@ -48,7 +53,18 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
         for node in nodes {
             let Node::Element(e) = node else { continue };
             apply_explicit_inheritance(&mut e.style, parent, vcx);
-            let computed = super::inherit::inherit_unpainted(parent, &e.style, vcx);
+            let mut own = (*e.style).clone();
+            let media = vcx.doc.media.get();
+            own.resolve_viewport((media.width, media.height), vcx);
+            let mut computed = super::inherit::inherit_unpainted(parent, &own, vcx);
+            if let Some(mut length) = computed.svg_path_length {
+                let font = computed.font_cx();
+                length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
+                if let Some(value) = length.to_px(None, font, vcx) {
+                    computed.svg_path_length = Some(Len::Px(value.max(0.0)));
+                }
+                e.style.svg_path_length = computed.svg_path_length;
+            }
             apply_inheritance_to_descendants(&mut e.children, &computed, vcx);
         }
     }

@@ -78,10 +78,8 @@ pub(super) fn initial_letter_style(
     let mut style = Computed {
         // Сторона — начало строки: rtl отправляет буквицу вправо.
         float: Some(if rtl { 1 } else { -1 }),
-        // Оба размера в точках: без них `float_flow` откатывается на плоский
-        // ряд, и строки под буквицей не возвращаются к левому краю. Ширина
-        // несёт и внутренний отступ строки буквицы, и ведущие пробелы:
-        // `float_flow` меряет обтекание по ней (`float.rs` `narrow`).
+        // Both sizes in points: the width carries the letter line's inner
+        // indent and leading spaces, and the bands shorten the lines by it.
         width: Some(Len::Px(
             crate::text::metrics::ch_ex_px(&letter_family, letter_px, vcx).0 + indent + lead_w,
         )),

@@ -161,7 +161,7 @@ pub(super) fn place_nest(
         x: bx0,
         y: top,
         avail: (bx1 - bx0).max(0.0),
-        i: (bx1 - bx0).max(0.0),
+        i: (ix1 - ix0 + il + ir).max(0.0),
         h: Some(h),
         kids: kids_slots,
         b: it + h + ib,

@@ -40,6 +40,9 @@ impl Hooks for Tap {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.inner.paint(window, cx);
+        // A probe wrapper is not a stacking context: the child's inline
+        // foreground stays in the enclosing paint phases (CSS 2.1 Appendix
+        // E.2 steps 4, 5, 7).
+        gpui::paint_reopen(|| self.inner.paint(window, cx));
     }
 }
