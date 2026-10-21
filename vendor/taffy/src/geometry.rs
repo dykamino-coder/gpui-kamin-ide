@@ -38,6 +38,14 @@ impl<T> Size<T> {
         }
     }
 
+    /// Set either the physical width or height.
+    pub fn set_abs(&mut self, axis: AbsoluteAxis, value: T) {
+        match axis {
+            AbsoluteAxis::Horizontal => self.width = value,
+            AbsoluteAxis::Vertical => self.height = value,
+        }
+    }
+
     /// Swap the width and height components
     #[inline(always)]
     pub fn transpose(self) -> Size<T> {

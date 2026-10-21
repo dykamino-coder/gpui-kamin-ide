@@ -20,7 +20,7 @@ pub(in crate::style::computed) enum CalcSize {
     /// Основа — длина: значение известно сразу.
     Fixed(f32),
     /// Основа — ключевое слово размера: `(mul, add, max, min)` над ним.
-    Over((f32, f32, f32, f32)),
+    Over((f32, f32, f32, f32), CalcSizeBasis),
 }
 
 /// `calc-size(<basis>, <calc-sum>)` (css-values-5 §calc-size,
@@ -88,11 +88,7 @@ pub(in crate::style::computed) fn calc_size_arg(v: &str) -> Option<CalcSize> {
         let (mul, add, max, min) = f;
         return Some(CalcSize::Fixed((b * mul + add).min(max).max(min).max(0.0)));
     }
-    matches!(
-        basis,
-        "auto" | "fit-content" | "min-content" | "max-content" | "content"
-    )
-    .then_some(CalcSize::Over(f))
+    Some(CalcSize::Over(f, CalcSizeBasis::parse(basis)?))
 }
 
 /// `xywh()` (css-images-4 §object-view-box; css-shapes-1 §basic-shape-rect).

@@ -123,6 +123,26 @@ pub(super) fn inherit_explicit(
             _ => c.padding.left = parent.padding.left,
         }
     }
+    for (i, inherited) in [
+        own.width_inherit,
+        own.height_inherit,
+        own.minmax_inherit[0],
+        own.minmax_inherit[1],
+        own.minmax_inherit[2],
+        own.minmax_inherit[3],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if inherited {
+            c.calc_size_basis[i] = parent.calc_size_basis[i];
+            if i < 4 {
+                c.calc_size[i] = parent.calc_size[i];
+            } else {
+                c.calc_size_max[i - 4] = parent.calc_size_max[i - 4];
+            }
+        }
+    }
     if own.width_inherit {
         c.width = parent.width;
     }

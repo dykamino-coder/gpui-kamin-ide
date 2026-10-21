@@ -38,6 +38,7 @@ FIXES = {
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
         "Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
+        "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
@@ -63,6 +64,7 @@ FIXES = {
         "Grid/subgrid/lanes: retain local track sizing, masonry and fragmentation algorithms with their regression fixtures.",
         "Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.",
         "Packaging: retain the selected source/examples; omit the upstream generated test module.",
+        "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],
     "html5ever": [
         "Parse processing instructions into DOM nodes instead of bogus comments.",

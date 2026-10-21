@@ -21,6 +21,7 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
         is_replaced -> bool,
         is_containing_block -> ContainingBlockClaims,
         box_sizing -> BoxSizing,
+        calc_size_content_box -> bool,
         scrollbar_width -> f32,
         position -> Position,
         safe_alignment -> (bool, bool, bool, bool),
@@ -88,6 +89,11 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
         } else {
             [width, height, min_width, min_height]
         }
+    }
+    fn calc_size_basis(&self) -> [Dimension; 6] {
+        let [w, h, min_w, min_h, max_w, max_h] = self.style.calc_size_basis();
+        if self.flow.vertical { [h, w, min_h, min_w, max_h, max_w] }
+        else { [w, h, min_w, min_h, max_w, max_h] }
     }
     fn margin_trim(&self) -> u8 {
         let value = self.style.margin_trim();

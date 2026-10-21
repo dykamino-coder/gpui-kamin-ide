@@ -67,6 +67,14 @@ pub(super) fn available(
     }
 }
 
+/// A fit-content keyword's clamped intrinsic result is the used cross size.
+/// Passing it only as available space would let overflowing children enlarge it.
+pub(super) fn fit_content_size(child: &FlexItem, constants: &AlgoConstants, space: AvailableSpace) -> Option<f32> {
+    matches!(child.size_style.cross(constants.dir).tag(),
+        CompactLength::FIT_CONTENT_PX_TAG | CompactLength::FIT_CONTENT_PERCENT_TAG | CompactLength::FIT_CONTENT_KEYWORD_TAG
+    ).then(|| space.into_option()).flatten()
+}
+
 pub(super) fn allows_alignment_stretch(child: &FlexItem, constants: &AlgoConstants) -> bool {
     let style = child.size_style.cross(constants.dir);
     // An unresolved percentage retains its automatic-size behavior; intrinsic

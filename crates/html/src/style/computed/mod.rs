@@ -9,6 +9,8 @@ use crate::document::state::ValueCx;
 #[macro_use]
 mod declaration_parse;
 pub(crate) use declaration_parse::ParseResult;
+mod calc_basis;
+pub use calc_basis::CalcSizeBasis;
 mod appearance;
 pub(crate) mod flat_background;
 pub(crate) mod formatting_context;

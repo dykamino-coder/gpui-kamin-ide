@@ -36,6 +36,9 @@ pub(crate) fn natural_control_with(
     inner.margin = Default::default();
     inner.min_size = Default::default();
     inner.max_size = Default::default();
+    inner.calc_size = Some([None; 4]);
+    inner.calc_size_max = Some([None; 2]);
+    inner.calc_size_basis = Some([None; 6]);
     inner.sizing_keywords = None;
     inner.min_sizing_keywords = None;
     inner.max_sizing_keywords = None;

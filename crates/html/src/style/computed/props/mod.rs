@@ -3,6 +3,7 @@
 mod background;
 pub(super) mod border;
 mod box_model;
+mod calc_size;
 mod display_flex;
 mod effects;
 mod font;

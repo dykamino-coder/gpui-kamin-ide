@@ -324,6 +324,12 @@ pub struct Style {
     /// `min-height`: `(mul, add, max, min)` в логических точках (см.
     /// `taffy::Style::calc_size`).
     pub calc_size: [Option<(f32, f32, f32, f32)>; 4],
+    /// KaminIDE patch: calculations use the CSS content box before adding edges.
+    pub calc_size_content_box: bool,
+    /// Sizing keyword basis retained independently of the calculation.
+    pub calc_size_basis: [Option<CssSizingKeyword>; 6],
+    /// Maximum-size calculations, X/Y.
+    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
     /// KaminIDE patch: узел не отдаёт базовые линии родителю
     /// (css-contain-2 §3.2 п.7, `contain: layout`).
     pub hides_baseline: bool,
@@ -1098,6 +1104,9 @@ impl Default for Style {
             content_box: false,
             percent_basis_from_parent: false,
             calc_size: [None; 4],
+            calc_size_content_box: false,
+            calc_size_basis: [None; 6],
+            calc_size_max: [None; 2],
             hides_baseline: false,
             baseline_from_last: false,
             baseline_unavailable: false,

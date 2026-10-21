@@ -833,6 +833,10 @@ impl ToTaffy<taffy::style::Style> for Style {
             percent_basis_from_parent: self.percent_basis_from_parent,
             // KaminIDE patch: `calc-size()`; длины выражения — в точки
             // раскладки (тот же множитель, что у прочих длин `to_taffy`).
+            calc_size_content_box: self.calc_size_content_box,
+            calc_size_basis: self.calc_size_basis.map(|basis| basis.map(|k| k.to_native(scale_factor)).unwrap_or_else(taffy::Dimension::auto)),
+            calc_size_max: self.calc_size_max.map(|f| f.map(|(mul, add, max, min)|
+                (mul, add * scale_factor, max * scale_factor, min * scale_factor))),
             calc_size: self.calc_size.map(|f| {
                 f.map(|(mul, add, max, min)| {
                     (
