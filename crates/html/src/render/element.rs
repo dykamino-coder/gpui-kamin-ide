@@ -33,9 +33,6 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
-    if e.marks.outside_block {
-        return crate::layout::float::outside_block::render(e, inherited, opts);
-    }
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized =

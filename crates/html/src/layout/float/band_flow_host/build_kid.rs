@@ -75,6 +75,11 @@ pub(super) fn build_band_kid(
         copy.children.clear();
         copy.style.height = height.map(Len::Px);
         copy.style.border_box = None;
+        // A paint group's opacity and transform belong to the group around
+        // the box and its descendants (`Nest::group`), not to the box alone.
+        if crate::layout::float::band_nest::paint_group(&copy.style) {
+            crate::layout::float::band_nest::group_shell(&mut copy.style);
+        }
         return element(&copy, inherited, opts);
     }
     // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
@@ -203,8 +208,7 @@ pub(super) fn build_band_kid(
     // through element(), then contributes its measured outer box to bands.
     let multicol = crate::layout::multicol::spanner::multicol_container(&copy.style);
     if float && !table && !replaced && !vertical && !own_vertical && !list_item && !multicol {
-        // Флоат — блочная коробка (§9.7) каким бы ни был тег: тем
-        // же путём, что у статического хоста (`shape_flow`).
+        // Флоат — блочная коробка (§9.7) каким бы ни был тег.
         // Таблица — своей веткой `element` ниже: каркас блока её
         // не соберёт.
         super::float_box::float_box(&copy, node, cb, inherited, opts)

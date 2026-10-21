@@ -18,7 +18,7 @@ pub(super) use leading::split_leading_float;
 /// пишут её плавающим блоком (`initial-letter-drop-initial-ref`: `float:
 /// left; width: 80px; height: 80px; margin-top: 2px` при `font: 20px/24px
 /// Ahem` и `initial-letter: 3`), и наше обтекание (`wrap_floats` →
-/// ряд `Marks::float_row` → `float_flow`) такой узел уже ведёт — поэтому буквица
+/// общий измеряемый хост полос) такой узел уже ведёт — поэтому буквица
 /// расшивается в синтетический флоат ДО `wrap_floats`, и обе стороны пары
 /// идут одним путём.
 ///

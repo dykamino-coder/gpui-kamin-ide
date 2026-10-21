@@ -2,8 +2,7 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::layout::block::struts::top_edge_open;
-use crate::render::{in_flow, inline_marked_block, is_blank, own_context};
+use crate::render::{in_flow, inline_marked_block, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
 
@@ -101,44 +100,4 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
         )
         && own_context(n)
         && bw.is_some_and(|bw| bw + float_min_w > cb + 0.01)
-}
-
-/// `clear` первого ребёнка ведущей цепочки ПРОЗРАЧНОЙ обёртки: обычный блок,
-/// открытый сверху, без фона, без своего `clear` и позиционирования, а поля
-/// цепочки ниже него нулевые. Тогда верх очищающего внука совпадает с верхом
-/// обёртки, и спуск ВСЕЙ обёртки под флоаты (§9.5.2) ничего видимого не
-/// сдвигает — а ряд обтекания иначе увозит её в колонку сбоку от флоата
-/// (`second-float-inside-empty-cleared-block`: второй флоат на x = 100, y = 1
-/// вместо x = 0, y = 50).
-pub(super) fn leading_clear(e: &Element) -> Option<i8> {
-    if (e.inline && !inline_marked_block(e))
-        || !in_flow(&e.style)
-        || !matches!(e.style.display, None | Some(Display::Block))
-        || !top_edge_open(e)
-        || e.style.clear.is_some()
-        || e.style.position.is_some()
-        || e.style.background.is_some()
-        || e.style.bg_image.is_some()
-        || e.style.gradient.is_some()
-    {
-        return None;
-    }
-    let Node::Element(k) = e.children.iter().find(|n| !is_blank(n))? else {
-        return None;
-    };
-    if (k.inline && !inline_marked_block(k))
-        || !in_flow(&k.style)
-        || !matches!(k.style.margin.top, None | Some(Len::Px(0.0)))
-    {
-        return None;
-    }
-    k.style.clear.or_else(|| leading_clear(k))
-}
-
-/// Обрывает ли `clear` обтекание со стороны `side` (-1 слева, 1 справа).
-///
-/// `clear: left` правый флоат не трогает и наоборот (CSS 2.1 §9.5.2);
-/// прежде `clear` был двузначным, и любая сторона обрывала любой ряд.
-pub(super) fn clears_side(clear: Option<i8>, side: i8) -> bool {
-    matches!(clear, Some(c) if c == 0 || c == side)
 }

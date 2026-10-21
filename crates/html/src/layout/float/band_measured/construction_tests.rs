@@ -1,7 +1,7 @@
 //! Band host construction keeps float order, width and paragraph continuation.
 
 use super::*;
-use crate::dom::{BandPath, parse};
+use crate::dom::parse;
 use crate::layout::float::band_flow_host::band_flow_rest_lift;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -41,9 +41,7 @@ fn measured_host_keeps_float_order_and_containing_width() {
     assert_eq!(host.style.width, None);
     let shape = host.marks.shape_flow.expect("band marks");
     assert_eq!(shape.cbw, Some(200.0));
-    assert_eq!(shape.bands, Some(BandPath::Measured));
     assert_eq!(shape.count, 2);
-    assert!(!shape.right);
     let ids: Vec<_> = host
         .children
         .iter()
@@ -96,10 +94,7 @@ fn inline_ruby_remains_in_the_measured_paragraph_across_breaks() {
             default_host(nodes, vcx).expect("inline ruby is measured by its paragraph");
         assert_eq!(end, nodes.len());
         assert!(lifted.is_empty());
-        assert_eq!(
-            host.marks.shape_flow.expect("host").bands,
-            Some(BandPath::Measured)
-        );
+        assert!(host.marks.shape_flow.is_some());
         let runs: Vec<_> = host
             .children
             .iter()
@@ -132,10 +127,7 @@ fn nested_percentage_width_keeps_one_shared_float_context() {
     let (host, end, _) =
         default_host(nodes, vcx).expect("percentage width does not establish an independent BFC");
     assert_eq!(end, nodes.len());
-    assert_eq!(
-        host.marks.shape_flow.expect("host").bands,
-        Some(BandPath::Measured)
-    );
+    assert!(host.marks.shape_flow.is_some());
     assert_eq!(
         find(&host.children, "nested").expect("nested").style.width,
         Some(Len::Pct(2.))

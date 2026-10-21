@@ -72,7 +72,6 @@ pub(super) fn band_host_m_tail(
             cbw: cb.width,
             wm: cb.wm,
             icb: cb.icb,
-            ..Default::default()
         },
         children,
     );

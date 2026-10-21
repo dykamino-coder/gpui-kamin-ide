@@ -89,3 +89,47 @@ fn percentage_nest_uses_its_definite_containing_block_height() {
         assert_eq!(opts.cx.avail_h, basis);
     }
 }
+
+#[test]
+fn paint_group_nests_unless_an_absolute_descendant_needs_it() {
+    let float = Element::synthetic(
+        "div",
+        Computed {
+            float: Some(-1),
+            ..Default::default()
+        },
+        Default::default(),
+        vec![],
+    );
+    let group = |extra: Vec<Node>| {
+        let mut children = vec![Node::Element(float.clone()), Node::Text("text".into())];
+        children.extend(extra);
+        Element::synthetic(
+            "div",
+            Computed {
+                opacity: Some(0.5),
+                ..Default::default()
+            },
+            Default::default(),
+            children,
+        )
+    };
+    let wm = WritingMode::default();
+    assert!(paint_group(&group(vec![]).style));
+    assert!(band_nest_block(&group(vec![]), 16., wm));
+    let absolute = Element::synthetic(
+        "div",
+        Computed {
+            position: Some(crate::style::computed::Position::Absolute),
+            ..Default::default()
+        },
+        Default::default(),
+        vec![],
+    );
+    assert!(!band_nest_block(
+        &group(vec![Node::Element(absolute)]),
+        16.,
+        wm
+    ));
+    assert!(!paint_group(&Computed::default()));
+}

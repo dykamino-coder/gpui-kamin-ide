@@ -188,32 +188,40 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         c.position,
         Some(Position::Relative) | Some(Position::Absolute) | Some(Position::Fixed)
     ) {
-        // Чистый px-сдвиг `transform` складывается сюда же
-        // (`Computed::folded_shift`); матрицу обёртки он тогда не трогает.
-        let folded = c.folded_shift();
-        if c.translate.is_some() || folded.is_some() {
-            let px_of = |l: Len| match l {
-                Len::Px(v) => v,
-                _ => 0.0,
-            };
-            let (mut dx, mut dy) = c
-                .translate
-                .map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
-            if let Some((fx, fy)) = folded {
-                dx += fx;
-                dy += fy;
-            }
-            if dx != 0.0 || dy != 0.0 {
-                d = d.relative();
-                if dx != 0.0 {
-                    d = d.left(gpui::px(dx));
-                }
-                if dy != 0.0 {
-                    d = d.top(gpui::px(dy));
-                }
-            }
-        }
-        return d;
+        return static_shift(d, c);
     }
     crate::interactive::scrollbar_gutter::positioned::apply(box_inset(d, c, vcx), c, vcx)
+}
+
+/// The visual shift of a box that is not positioned: `translate`
+/// (css-transforms-2 §individual-transforms) plus a pure px `transform`
+/// shift folded into it (`Computed::folded_shift`); the transform wrapper
+/// then leaves its matrix alone.
+pub(crate) fn static_shift(mut d: Div, c: &Computed) -> Div {
+    // Чистый px-сдвиг `transform` складывается сюда же
+    // (`Computed::folded_shift`); матрицу обёртки он тогда не трогает.
+    let folded = c.folded_shift();
+    if c.translate.is_some() || folded.is_some() {
+        let px_of = |l: Len| match l {
+            Len::Px(v) => v,
+            _ => 0.0,
+        };
+        let (mut dx, mut dy) = c
+            .translate
+            .map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
+        if let Some((fx, fy)) = folded {
+            dx += fx;
+            dy += fy;
+        }
+        if dx != 0.0 || dy != 0.0 {
+            d = d.relative();
+            if dx != 0.0 {
+                d = d.left(gpui::px(dx));
+            }
+            if dy != 0.0 {
+                d = d.top(gpui::px(dy));
+            }
+        }
+    }
+    d
 }
