@@ -147,7 +147,7 @@ pub(super) fn expand(
                         sel,
                         decls: decls.clone(),
                         order: *order,
-                        origin: 0,
+                        origin: crate::style::css::Origin::UserAgent,
                         layer: cx.layer_of_rules(),
                     });
                     *order += 1;

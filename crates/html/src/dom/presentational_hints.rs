@@ -33,7 +33,7 @@ pub(super) fn hint(css: &str) -> Option<Rule> {
         sel: Selector::parse("*")?,
         decls: parse_decls(css),
         order: 0,
-        origin: 1,
+        origin: crate::style::css::Origin::PresHint,
         // Below every author layer, above UA rules; part of author for revert.
         // CSS Cascade 5 §6.4: author presentational hint origin.
         layer: Vec::new(),

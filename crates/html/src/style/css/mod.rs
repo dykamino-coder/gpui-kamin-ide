@@ -23,7 +23,9 @@ pub(crate) use variable_tokens::block_end;
 pub(crate) mod variable_values;
 pub use crate::style::css::selector::*;
 pub(super) mod declaration;
+mod origin;
 pub use crate::style::css::declaration::{DeclBlock, Declaration, VarMap};
+pub use crate::style::css::origin::Origin;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
 pub(crate) use decls::split_top_level;
@@ -47,14 +49,13 @@ pub struct Rule {
     pub decls: DeclBlock,
     /// Порядок в исходнике: при равной специфичности выигрывает последнее.
     pub order: usize,
-    /// Откуда правило: 0 — таблица агента, 1 — таблица документа.
+    /// Происхождение правила (css-cascade-5 §6.3): таблица агента,
+    /// представленческие подсказки или таблица документа.
     ///
     /// Происхождение СТАРШЕ специфичности (CSS Cascade §6.4.4): авторское
     /// правило перебивает умолчание агента, даже когда специфичность у него
-    /// ниже. Пока обе таблицы лежали в одном списке и сравнивались только
-    /// специфичностью, `* { margin: 0 }` со специфичностью (0,0,0) проигрывал
-    /// нашему `p { margin: 6px 0 }` — то есть не работал ни один reset.
-    pub origin: u8,
+    /// ниже (`* { margin: 0 }` против агентского `p { margin: 6px 0 }`).
+    pub origin: Origin,
     /// Каскадный слой (css-cascade-5 §6.4): путь индексов от корня слоёв,
     /// собственные правила слоя — с хвостом `u32::MAX`, поэтому они идут
     /// ПОСЛЕ своих подслоёв; правила вне слоёв — `[u32::MAX]`, последний

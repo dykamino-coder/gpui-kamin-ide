@@ -7,6 +7,7 @@ use crate::style::css::DeclBlock;
 use crate::style::css::parse_decls;
 
 mod cascade;
+mod cascade_winners;
 mod decor_inset;
 
 fn computed(css: &str, vcx: ValueCx<'_>) -> Computed {
@@ -194,12 +195,12 @@ fn cascade_order_specificity_then_inline() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let rules = crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }");
-    let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
-    let c = Computed::resolve(&mut matched, &parse_decls("color: green"), vcx);
+    let matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
+    let c = Computed::resolve(&matched, &parse_decls("color: green"), vcx);
     assert_eq!(c.color.map(|c| c.g), Some(0.5019608), "инлайн бьёт таблицу");
 
-    let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
-    let c = Computed::resolve(&mut matched, &DeclBlock::new(), vcx);
+    let matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
+    let c = Computed::resolve(&matched, &DeclBlock::new(), vcx);
     assert_eq!(
         c.color.map(|c| c.b),
         Some(1.0),
