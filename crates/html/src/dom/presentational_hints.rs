@@ -1,7 +1,7 @@
 //! Представленческие атрибуты HTML на границе DOM и каскада.
 //! `rules` собирает для элемента правила происхождения «author presentational
 //! hint» (css-cascade-5 §6.4: ниже всех авторских слоёв, выше листа агента):
-//! `nowrap` ячеек с quirks-исключением, `cellpadding` ближайшей таблицы,
+//! `nowrap` ячеек с quirks-исключением, `cellpadding` ближайшей таблицы, `cellspacing` таблицы,
 //! `height` таблицы, `width` колонок, `color` у `<font>`, подсказки `<hr>`
 //! (`presentational_hr`), таблиц/списков/вложений (`presentational_legacy`) и
 //! атрибуты `<foreignObject>` (SVG 2 §6.6). `colors` — `bgcolor`/`text`
@@ -52,6 +52,7 @@ pub(super) fn rules(
     nowrap(tag, attrs, quirks)
         .into_iter()
         .chain(cell_padding(tag, path))
+        .chain(cell_spacing(tag, attrs))
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
         .chain(font_color(tag, attrs, vcx))
@@ -101,10 +102,19 @@ fn cell_padding(tag: &str, path: &[crate::style::select::Ancestor]) -> Option<Ru
         .iter()
         .find(|(name, _)| name == "cellpadding")?
         .1;
-    let raw = raw.trim_start_matches(['\t', '\n', '\u{c}', '\r', ' ']);
-    let digits: String = raw.chars().take_while(char::is_ascii_digit).collect();
-    let px: u32 = digits.parse().ok()?;
+    let px = super::presentational_hr::non_negative_integer(raw)?;
     hint(&format!("padding: {px}px"))
+}
+
+/// HTML rendering §15.3.8: `cellspacing` задаёт пиксельный `border-spacing`
+/// в происхождении подсказок, где авторские объявления имеют приоритет.
+fn cell_spacing(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+    if tag != "table" {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "cellspacing")?.1;
+    let px = super::presentational_hr::non_negative_integer(raw)?;
+    hint(&format!("border-spacing: {px}px"))
 }
 
 fn table_height(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
@@ -198,37 +208,4 @@ pub(super) fn colors(
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::dom::{Element, Node};
-    use crate::style::values::value::Len;
-
-    fn column(nodes: &[Node]) -> Option<&Element> {
-        for node in nodes {
-            if let Node::Element(e) = node {
-                if e.tag == "col" {
-                    return Some(e);
-                }
-                if let Some(found) = column(&e.children) {
-                    return Some(found);
-                }
-            }
-        }
-        None
-    }
-
-    #[test]
-    fn column_attributes_participate_below_author_width() {
-        for (html, expected) in [
-            ("<table><col width='18junk'></table>", Some(Len::Px(18.0))),
-            ("<table><col width='25%'></table>", Some(Len::Pct(0.25))),
-            (
-                "<style>col{width:auto}</style><table><col width='18'></table>",
-                Some(Len::Auto),
-            ),
-            ("<table><col width='-18'></table>", None),
-        ] {
-            let nodes = crate::dom::parse(html, "");
-            assert_eq!(column(&nodes).unwrap().style.width, expected);
-        }
-    }
-}
+mod tests;

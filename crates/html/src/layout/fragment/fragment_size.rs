@@ -46,18 +46,17 @@ pub(crate) fn measure(
         return Some(m);
     }
     let shape = &mut m.shape;
-    let resolve = |value: Option<Len>, padding: bool| match value {
-        Some(Len::Px(1.0)) if padding && cx.cell_pad.is_some() => cx.cell_pad.unwrap(),
+    let resolve = |value: Option<Len>| match value {
         Some(Len::Px(v)) => v,
         Some(Len::Vw(k)) => cx.viewport.map_or(0.0, |v| k * v.0),
         Some(Len::Vh(k)) => cx.viewport.map_or(0.0, |v| k * v.1),
         _ => 0.0,
     };
     let border = element.style.borders();
-    let decoration = resolve(element.style.padding.top, true)
-        + resolve(element.style.padding.bottom, true)
-        + resolve(border.top, false)
-        + resolve(border.bottom, false);
+    let decoration = resolve(element.style.padding.top)
+        + resolve(element.style.padding.bottom)
+        + resolve(border.top)
+        + resolve(border.bottom);
     let height = constrain(
         shape.height,
         &element.style,

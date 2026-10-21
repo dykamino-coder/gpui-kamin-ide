@@ -6,32 +6,18 @@ use crate::layout::fragment::ShapeCx;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
-/// `cellspacing`/`cellpadding` уступают авторскому стилю, но заменяют
-/// каскадное умолчание тега `<table>` (2px); у `display: table` его нет.
+/// Зазор берётся из каскада; контекст меры ячеек не зависит от HTML-атрибутов.
 pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
         _ => None,
     };
-    let attr_px = |name: &str| {
-        c.attr(name)
-            .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
+    let spacing = match &c.style.border_spacing {
+        Some((_, y)) => px_of(y)?,
+        None => 0.0,
     };
-    let ua_default = matches!(
-        c.style.border_spacing,
-        Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))))
-    );
-    let spacing = match (attr_px("cellspacing"), ua_default, &c.style.border_spacing) {
-        (Some(v), true, _) | (Some(v), _, None) => v,
-        (_, _, Some((_, y))) => px_of(y)?,
-        _ => 0.0,
-    };
-    let cell_cx = ShapeCx {
-        cell_pad: attr_px("cellpadding"),
-        ..cx
-    };
-    Some((spacing, cell_cx))
+    Some((spacing, cx))
 }
 
 pub(crate) fn is_row(e: &Element) -> bool {
@@ -134,19 +120,18 @@ mod tests {
     }
 
     #[test]
-    fn author_spacing_overrides_attribute_but_ua_default_does_not() {
+    fn cascaded_spacing_is_never_replaced_by_attributes() {
         let mut table = element("table");
         table.attrs = vec![
             ("cellspacing".into(), " 7px ".into()),
             ("cellpadding".into(), "3".into()),
         ];
         table.style.border_spacing = Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))));
-        let (spacing, cx) = cell_settings(&table, ShapeCx::COLUMNS).unwrap();
-        assert_eq!(spacing, 7.0);
-        assert_eq!(cx.cell_pad, Some(3.0));
+        let (spacing, _) = cell_settings(&table, ShapeCx::COLUMNS).unwrap();
+        assert_eq!(spacing, 2.0);
         table.style.border_spacing = Some((Some(Len::Px(5.0)), Some(Len::Px(9.0))));
         assert_eq!(cell_settings(&table, ShapeCx::COLUMNS).unwrap().0, 9.0);
         table.style.border_spacing = None;
-        assert_eq!(cell_settings(&table, ShapeCx::COLUMNS).unwrap().0, 7.0);
+        assert_eq!(cell_settings(&table, ShapeCx::COLUMNS).unwrap().0, 0.0);
     }
 }
