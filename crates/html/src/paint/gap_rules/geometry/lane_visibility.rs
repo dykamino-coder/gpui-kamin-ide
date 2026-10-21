@@ -30,7 +30,7 @@ pub(super) fn hidden_lane_segments(
         .map(|&(lo, hi)| (lo + hi) / 2.0)
         .filter(|&c| c > r.0 + GAP_RULE_EPS && c < r.1 - GAP_RULE_EPS)
         .collect();
-    stops.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    stops.sort_by(f32::total_cmp);
     stops.dedup_by(|x, y| (*x - *y).abs() <= GAP_RULE_EPS);
     let in_lane =
         |i: &GapItem, (s, e): (f32, f32)| i.a0 < e - GAP_RULE_EPS && i.a1 > s + GAP_RULE_EPS;
@@ -73,7 +73,7 @@ pub(super) fn lane_entry_block(
             .iter()
             .filter(|v| v.a0 < e - GAP_RULE_EPS && v.a1 > s + GAP_RULE_EPS)
             .collect();
-        row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+        row.sort_by(|x, y| x.b0.total_cmp(&y.b0));
         let index = row.iter().position(|v| std::ptr::eq(*v, i)).unwrap_or(0);
         let centre = |c: &(f32, f32)| (c.0 + c.1) / 2.0;
         let start = index
@@ -108,7 +108,7 @@ pub(super) fn cross_window(
         let above = items
             .iter()
             .filter(|i| !std::ptr::eq(*i, next) && covers(i, lane) && i.b0 < next.b0 - GAP_RULE_EPS)
-            .max_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+            .max_by(|x, y| x.b0.total_cmp(&y.b0));
         if let Some(above) = above {
             running = running.max(above.b1 + above.margin_end + g);
         }

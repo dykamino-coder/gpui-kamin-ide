@@ -90,10 +90,7 @@ pub(crate) fn grow_pushed(
         // выше, и `at` из одного плана остаётся верным для всех записей
         // прохода (рост дорожки иначе находил ряд по устаревшим полосам:
         // `grid-item-fragmentation-048`, два разрыва в одном проходе).
-        grows.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then(b.1.partial_cmp(&a.1).unwrap_or(core::cmp::Ordering::Equal))
-        });
+        grows.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
         let mut changed = false;
         for (kid, at, grow, forced) in grows {
             let c = &mut kids[kid].0;

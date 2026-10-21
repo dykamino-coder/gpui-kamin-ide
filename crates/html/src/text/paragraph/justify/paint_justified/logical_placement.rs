@@ -60,8 +60,7 @@ impl Paragraph {
                             (i, x, width)
                         })
                         .collect();
-                    mirrored
-                        .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+                    mirrored.sort_by(|a, b| f32::from(a.1).total_cmp(&f32::from(b.1)));
                     // Промежутки между зеркальными соседями: в логическом
                     // порядке те же самые, только в обратную сторону.
                     let gaps: Vec<Pixels> = mirrored

@@ -21,6 +21,19 @@ pub(super) struct Cand {
 
 pub(super) type SegKey = (f32, u8, u8, u32);
 
+/// Total order of segment keys: width first (`f32::total_cmp`, so a NaN
+/// width cannot break the sort), then style, source and document order.
+pub(super) fn key_order(p: &SegKey, q: &SegKey) -> std::cmp::Ordering {
+    p.0.total_cmp(&q.0)
+        .then((p.1, p.2, p.3).cmp(&(q.1, q.2, q.3)))
+}
+
+impl Cand {
+    fn key(&self) -> SegKey {
+        (self.w, self.style, self.source, u32::MAX - self.doc_ix)
+    }
+}
+
 pub(super) type Seg = (
     SegKey,
     bool,
@@ -75,11 +88,7 @@ pub(super) fn draw_cands(
     half_at_h: &dyn Fn(f32, f32) -> f32,
     segs: &mut Vec<Seg>,
 ) {
-    cands.sort_by(|p, q| {
-        p.line
-            .partial_cmp(&q.line)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    cands.sort_by(|p, q| p.line.total_cmp(&q.line));
     // Крайние линии таблицы: кромка не центрируется, а рисуется
     // внутрь бокса (наружная половина у браузеров уходит в поля,
     // эталоны считают рамку частью коробки).
@@ -102,7 +111,7 @@ pub(super) fn draw_cands(
             .iter()
             .find_map(|c| (c.outward != 0).then_some(c.outward));
         let mut cuts: Vec<f32> = group.iter().flat_map(|c| [c.a, c.b]).collect();
-        cuts.sort_by(|p, q| p.partial_cmp(q).unwrap_or(std::cmp::Ordering::Equal));
+        cuts.sort_by(f32::total_cmp);
         cuts.dedup_by(|p, q| (*p - *q).abs() < 0.5);
         for seg in cuts.windows(2) {
             let (a, b) = (seg[0], seg[1]);
@@ -119,11 +128,7 @@ pub(super) fn draw_cands(
             }
             let win = covering
                 .iter()
-                .max_by(|p, q| {
-                    let kp = (p.w, p.style, p.source, u32::MAX - p.doc_ix);
-                    let kq = (q.w, q.style, q.source, u32::MAX - q.doc_ix);
-                    kp.partial_cmp(&kq).unwrap_or(std::cmp::Ordering::Equal)
-                })
+                .max_by(|p, q| key_order(&p.key(), &q.key()))
                 .unwrap();
             if win.w <= 0.0 || win.colour.a == 0.0 {
                 continue;
@@ -175,13 +180,50 @@ pub(super) fn draw_cands(
                     size: gpui::size(gpui::px(b - a), gpui::px(hi - lo)),
                 }
             };
-            segs.push((
-                (win.w, win.style, win.source, u32::MAX - win.doc_ix),
-                vertical,
-                rect,
-                win.colour,
-            ));
+            segs.push((win.key(), vertical, rect, win.colour));
         }
         i = j;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Cand, Seg, draw_cands, key_order};
+    use crate::style::values::value::Color;
+
+    #[test]
+    fn nan_widths_and_lines_keep_a_total_order() {
+        // 64 candidates, every third with a NaN line or width: the sorts and
+        // the winner choice must not panic (`sort_by` checks total order).
+        let mut cands: Vec<Cand> = (0..64u32)
+            .map(|i| {
+                let nan = i % 3 == 0;
+                Cand {
+                    line: if nan {
+                        f32::NAN
+                    } else {
+                        ((i * 37) % 101) as f32
+                    },
+                    a: 0.0,
+                    b: 10.0,
+                    w: if nan { f32::NAN } else { 1.0 + (i % 4) as f32 },
+                    style: 9,
+                    source: 0,
+                    doc_ix: i,
+                    colour: Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                    outward: 0,
+                }
+            })
+            .collect();
+        let mut segs: Vec<Seg> = vec![];
+        draw_cands(&mut cands, true, None, &|_, _| 0.5, &|_, _| 0.5, &mut segs);
+        assert!(!segs.is_empty());
+        segs.sort_by(|p, q| key_order(&p.0, &q.0));
+        assert!(segs.windows(2).all(|w| key_order(&w[0].0, &w[1].0).is_le()));
     }
 }

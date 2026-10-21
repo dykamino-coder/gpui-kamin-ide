@@ -10,7 +10,7 @@ use crate::paint::gap_rules::geometry::tracks::tracks_a;
 /// элементов сливаются в одну строку.
 pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
     let mut v: Vec<(f32, f32)> = items.iter().map(|i| (i.a0, i.a1)).collect();
-    v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
         match out.last_mut() {
@@ -81,7 +81,7 @@ pub(crate) fn line_runs(
                     }
                 })
                 .collect();
-            row.sort_by(|x, y| x.b0.partial_cmp(&y.b0).unwrap_or(std::cmp::Ordering::Equal));
+            row.sort_by(|x, y| x.b0.total_cmp(&y.b0));
             if let Some(g) = lane_gap {
                 return row
                     .windows(2)

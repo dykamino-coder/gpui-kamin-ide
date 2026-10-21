@@ -136,9 +136,7 @@ impl Hooks for EdgePainter {
             &mut segs,
         );
         segs.sort_by(|p, q| {
-            p.0.partial_cmp(&q.0)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then(p.1.cmp(&q.1).reverse())
+            super::edge_segments::key_order(&p.0, &q.0).then(p.1.cmp(&q.1).reverse())
         });
         // Snap every band edge to the device pixel grid the same way layout
         // bounds are rounded (`round()` of the absolute edge), so two bands
