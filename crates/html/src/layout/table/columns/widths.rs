@@ -11,10 +11,10 @@ use gpui::AnyElement;
 ///
 /// Одно тело на слой групп и слой колонок: различаются они только набором
 /// элементов и порядком вызова (§17.5.1 — группы ПОД колонками).
-pub(crate) fn push_col_bands(
-    els: &[Option<&Element>],
+pub(in crate::layout::table) fn push_col_bands(
+    layers: &mut [crate::layout::table::context::ColumnLayer<'_>],
+    cols: usize,
     have_rows: bool,
-    rects_by_col: &mut [Option<crate::layout::table::paint::RowRects>],
     cells: &mut Vec<AnyElement>,
     vcx: ValueCx<'_>,
 ) {
@@ -23,13 +23,13 @@ pub(crate) fn push_col_bands(
     // полосой.
     let mut by_node: std::collections::HashMap<u64, crate::layout::table::paint::RowRects> =
         Default::default();
-    for (i, el) in els.iter().enumerate() {
-        let Some(el) = el else { continue };
+    for (i, layer) in layers.iter_mut().enumerate() {
+        let Some(el) = layer.element else { continue };
         // Полоса красит СВОИ ЯЧЕЙКИ. Ячеек нет — красить нечего
         // (`table-column-rendering-001`: колонка сама по себе не рисуется).
         // Дорожка за краем сетки буфера не получает: её пробы не напишет
         // никто.
-        if !have_rows || i >= rects_by_col.len() {
+        if !have_rows || i >= cols {
             continue;
         }
         let picture = el.style.bg_image.is_some() || el.style.gradient_raw.is_some();
@@ -39,7 +39,7 @@ pub(crate) fn push_col_bands(
             continue;
         }
         let rects = by_node.entry(el.node_id).or_default().clone();
-        rects_by_col[i] = Some(rects.clone());
+        layer.rects = Some(rects.clone());
         if !seen.contains(&el.node_id) {
             seen.push(el.node_id);
             let mut band_style = (*el.style).clone();

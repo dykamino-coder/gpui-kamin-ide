@@ -38,11 +38,20 @@ fn one_buffer_per_col_element_and_per_build() {
     let (a, b) = (col(7), col(8));
     let els = [Some(&a), Some(&a), Some(&b)];
     let build = || {
-        let mut rects = vec![None, None, None];
+        let mut layers: Vec<_> = els
+            .iter()
+            .map(|&element| crate::layout::table::context::ColumnLayer {
+                element,
+                rects: None,
+            })
+            .collect();
         let mut cells = Vec::new();
-        push_col_bands(&els, true, &mut rects, &mut cells, vcx);
+        push_col_bands(&mut layers, 3, true, &mut cells, vcx);
         assert_eq!(cells.len(), 2, "one painter per element");
-        rects.into_iter().map(Option::unwrap).collect::<Vec<_>>()
+        layers
+            .into_iter()
+            .map(|layer| layer.rects.unwrap())
+            .collect::<Vec<_>>()
     };
     let first = build();
     assert!(Rc::ptr_eq(&first[0], &first[1]));
