@@ -90,6 +90,8 @@ export interface WsMsgSessionEnd {
 /** Client requests session resume */
 export interface WsMsgSessionResume {
   type: 'session:resume'
+  /** Missing transcript returns session:resume-not-found without spawning. */
+  noSpawnOnNotFound?: boolean
   token: string
   conversationId: string
   cwd?: string
@@ -336,6 +338,7 @@ export interface WsMsgJsonlDownloadResponse {
 }
 
 export type ServerToClientMsg =
+  | { type: 'session:resume-not-found' }
   | WsMsgSessionCreated
   | WsMsgSessionOutput
   | WsMsgSessionExit

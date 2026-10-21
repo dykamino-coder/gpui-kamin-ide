@@ -147,6 +147,8 @@ export const SEND: Record<string, string> = {
   closeTab: "tab:close",
   disconnectTab: "tab:disconnect",
   reconnectTab: "tab:reconnect",
+  chooseNewConversation: "session:choose-new",
+  retryStoredConversation: "session:retry-stored",
   switchTab: "tab:switch",
   connect: "connect",
   disconnect: "disconnect",

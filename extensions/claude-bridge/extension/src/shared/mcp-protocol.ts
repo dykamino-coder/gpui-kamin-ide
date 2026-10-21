@@ -8,7 +8,7 @@ export type ClientMessage =
   | { type: 'mcp:response'; sessionId?: string; requestId: string; result: unknown }
   | { type: 'mcp:denied'; sessionId?: string; requestId: string; reason: string }
   | { type: 'elicitation:response'; requestId: string; action: 'accept' | 'deny' | 'dismiss'; content?: Record<string, unknown> }
-  | { type: 'session:resume'; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
+  | { type: 'session:resume'; noSpawnOnNotFound?: boolean; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number; protocolVersion?: number }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
   | { type: 'session:delete-data'; conversationId: string }
@@ -18,7 +18,8 @@ export type ClientMessage =
 // Server → VSIX bridge host
 export type ServerMessage =
   | { type: 'mcp:result-ack'; sessionId: string; requestId: string; accepted: boolean }
-  | { type: 'session:created'; sessionId: string; effort?: string; model?: string; settingsDir?: string }
+  | { type: 'session:resume-not-found' }
+  | { type: 'session:created'; resumeNotFound?: boolean; sessionId: string; effort?: string; model?: string; settingsDir?: string }
   | { type: 'session:output'; data: string }
   | { type: 'session:exit'; code: number; sessionId: string }
   | { type: 'session:error'; error: string; fatal?: boolean }

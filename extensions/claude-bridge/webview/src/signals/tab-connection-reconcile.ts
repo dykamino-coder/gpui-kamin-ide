@@ -40,6 +40,7 @@ function fromTab(tab: TabInfo): ConnectionState {
     revision: tab.connectionRevision,
     sessionId: tab.sessionId,
     error: tab.error,
+    resumeNotFound: tab.resumeNotFound,
     nextRetryAt: tab.nextRetryAt,
     retryAttempt: tab.retryAttempt,
   }
@@ -55,6 +56,7 @@ function withState(tab: TabInfo, state: ConnectionState): TabInfo {
     connectionRevision: revision(state),
     sessionId: state.sessionId,
     error: state.error,
+    resumeNotFound: state.resumeNotFound,
     nextRetryAt: state.nextRetryAt,
     retryAttempt: state.retryAttempt,
   }
@@ -68,6 +70,7 @@ function sameState(tab: TabInfo, state: ConnectionState): boolean {
     && tab.connectionRevision === revision(state)
     && tab.sessionId === state.sessionId
     && tab.error === state.error
+    && tab.resumeNotFound === state.resumeNotFound
     && tab.nextRetryAt === state.nextRetryAt
     && tab.retryAttempt === state.retryAttempt
 }

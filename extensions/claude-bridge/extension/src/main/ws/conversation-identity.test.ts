@@ -43,7 +43,7 @@ const A = '00000000-0000-4000-8000-000000000001'
 const B = '00000000-0000-4000-8000-000000000002'
 
 const managers: ConnectionManager[] = []
-const adopted: Array<[string, string]> = []
+const adopted: Array<[string, string | null]> = []
 const detached: Array<[string, string]> = []
 
 function manager(stored?: string) {
@@ -108,7 +108,7 @@ describe('INC-2026-0070 conversation identity across reconnects', () => {
     }
     h.warnings[0]!.answer('Start new conversation')
     await vi.advanceTimersByTimeAsync(0)
-    expect(m.getConversationId()).toBeNull()
+    expect(m.getConversationId()).toBe(A)
     expect(h.identity.some((r) => r.action === 'user-new')).toBe(true)
     frames.length = 0
     internal.ws = socket
@@ -137,38 +137,66 @@ describe('INC-2026-0070 conversation identity across reconnects', () => {
     expect(socket.terminate).toHaveBeenCalled()
   })
 
-  it('resume-not-found keeps the stored id, records the fresh one in history only', async () => {
-    const { m, internal } = manager(A)
-    internal.dispatchMessage({ type: 'session:created', sessionId: 's', resumeNotFound: true })
-    internal.dispatchMessage({ type: 'session:conversation-id', sessionId: 's', conversationId: B })
-
+  it('not-found without a session preserves identity and blocks input and output until a choice', async () => {
+    const { m, internal, frames, socket } = manager(A)
+    await startSession(internal, socket)
+    expect(frames[0]).toMatchObject({ type: 'session:resume', conversationId: A, noSpawnOnNotFound: true })
+    internal.dispatchMessage({ type: 'session:resume-not-found' })
+    expect(m.getState()).toMatchObject({ status: 'error', resumeNotFound: true })
+    expect(m.getState().sessionId).toBeUndefined()
+    expect(internal.establishTimer).toBeNull()
+    expect(internal.resumeParked).toBe(true)
     expect(m.getConversationId()).toBe(A)
-    expect(m.isIdentityHeld()).toBe(true)
+    frames.length = 0
+    m.sendInput('blocked')
+    internal.dispatchMessage({ type: 'session:output', data: 'temporary' })
+    internal.dispatchMessage({ type: 'session:conversation-id', sessionId: 's', conversationId: B })
+    expect(frames).toEqual([])
     expect(adopted).toEqual([])
-    expect(detached).toEqual([['tab', B]])
-    expect(h.warnings).toHaveLength(1)
-    expect(h.identity.find((r) => r.action === 'hold')).toMatchObject({
-      storedRef: conversationRef(A),
-      nextRef: conversationRef(B),
-    })
-
-    // A later reconnect resumes the STORED conversation, not the temporary one.
-    internal.state = { status: 'connected' }
-    const frames: Array<Record<string, unknown>> = []
-    internal.ws = { readyState: 1, send: (f: string) => frames.push(JSON.parse(f)), terminate: vi.fn(), removeAllListeners: vi.fn(), on: vi.fn(), close: vi.fn() }
-    await internal.startSession(internal.ws)
+    expect(internal.window.webContents.send.mock.calls.some(([channel]: string[]) => channel === 'pty-output')).toBe(false)
+    m.retryStoredConversation()
+    expect(m.getConversationId()).toBe(A)
+    expect(socket.terminate).toHaveBeenCalled()
+    await startSession(internal, socket)
     expect(frames[0]).toMatchObject({ type: 'session:resume', conversationId: A })
   })
 
-  it('choosing a new conversation after not-found adopts the running fresh session', async () => {
-    const { m, internal } = manager(A)
-    internal.dispatchMessage({ type: 'session:created', sessionId: 's', resumeNotFound: true })
-    internal.dispatchMessage({ type: 'session:conversation-id', sessionId: 's', conversationId: B })
-    h.warnings[0]!.answer('Start new conversation')
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(m.getConversationId()).toBe(B)
+  it('old-server fallback ends its temporary CLI and explicit new sends create before unbinding', async () => {
+    const { m, internal, frames } = manager(A)
+    internal.dispatchMessage({ type: 'session:created', sessionId: 'temporary', resumeNotFound: true })
+    expect(frames).toEqual([{ type: 'session:end' }])
+    expect(m.getState().sessionId).toBeUndefined()
+    internal.dispatchMessage({ type: 'session:conversation-id', sessionId: 'temporary', conversationId: B })
+    internal.dispatchMessage({ type: 'session:exit', sessionId: 'temporary', code: 0 })
+    expect(m.getConversationId()).toBe(A)
+    expect(internal.reconnectTimer).toBeNull()
+    m.chooseNewConversation()
+    await Promise.resolve()
+    expect(frames.at(-1)).toMatchObject({ type: 'session:create' })
+    expect(m.getConversationId()).toBe(A)
+    expect(m.isIdentityHeld()).toBe(true)
+    internal.dispatchMessage({ type: 'session:created', sessionId: 'chosen' })
+    expect(m.getConversationId()).toBeNull()
     expect(m.isIdentityHeld()).toBe(false)
-    expect(adopted).toEqual([['tab', B]])
+    internal.dispatchMessage({ type: 'session:conversation-id', sessionId: 'chosen', conversationId: B })
+    expect(m.getConversationId()).toBe(B)
+    expect(adopted).toEqual([['tab', null], ['tab', B]])
+  })
+
+  it('failed explicit create preserves the saved identity and can be retried as resume', async () => {
+    const { m, internal, frames, socket } = manager(A)
+    internal.dispatchMessage({ type: 'session:resume-not-found' })
+    m.chooseNewConversation()
+    await Promise.resolve()
+    expect(frames.at(-1)).toMatchObject({ type: 'session:create' })
+    internal.dispatchMessage({ type: 'session:error', error: 'Synthetic creation failure' })
+    expect(m.getConversationId()).toBe(A)
+    expect(adopted).toEqual([])
+    expect(m.getState().resumeNotFound).toBe(true)
+    m.retryStoredConversation()
+    internal.ws = socket
+    await startSession(internal, socket)
+    expect(frames.at(-1)).toMatchObject({ type: 'session:resume', conversationId: A })
   })
 
   it('a successful resume ends a hold; first discovery and compact-chain changes are adopted and logged', () => {

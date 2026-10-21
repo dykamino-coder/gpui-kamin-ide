@@ -231,7 +231,13 @@ export function wireConnectionCallbacks(tabManager: TabManager, configStore: Con
   ConnectionManager.onConversationId = (tabId, conversationId) => {
     const tab = tabManager.getTab(tabId)
     if (!tab) return
-    tab.conversationId = conversationId
+    tab.conversationId = conversationId ?? undefined
+    if (conversationId === null) {
+      tab.sessionTitle = undefined
+      tab.label = 'New conversation'
+      tabManager.notifyTabListChangedPublic()
+      return
+    }
     configStore.addSavedSession({
       conversationId, cwd: tab.config.cwd || "", label: tab.sessionTitle || tab.label,
       folderName: tab.folderName, model: tab.model || "", lastActivity: new Date().toISOString(), messageCount: 0,

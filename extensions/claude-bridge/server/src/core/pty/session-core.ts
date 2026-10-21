@@ -5,6 +5,7 @@
 import { devCli, waitForDevCliStartup } from './dev-cli'
 import { randomUUID } from 'crypto'
 import fs from 'fs'
+import { ResumeNotFoundError } from './session-resume-not-found'
 import os from 'os'
 import path from 'path'
 import type { WebSocket as WS } from 'ws'
@@ -175,6 +176,8 @@ async function createAdmittedSession(
         conversationId: config.resumeConversationId,
       })
     } else {
+      if (config.noSpawnOnNotFound) throw new ResumeNotFoundError()
+      // Legacy clients require a fresh session response.
       // The conversation JSONL exists in NO slug dir — it's gone (expired /
       // deleted / never on this server / different machine). Passing
       // `--resume <id>` here makes the CLI exit code 1 ("No conversation found"),

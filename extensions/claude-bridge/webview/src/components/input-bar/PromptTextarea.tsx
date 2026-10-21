@@ -28,12 +28,15 @@ export function PromptTextarea({ textareaRef: externalRef, onInput, onKeyDown, o
   const tab = tabs.value.find(t => t.id === tabId)
   const connStatus = tab?.status ?? 'disconnected'
   const isDisconnected = connStatus === 'disconnected' || connStatus === 'error' || connStatus === 'connecting'
-  // The textarea is never disabled: while the bridge (re)connects the user can
-  // keep typing, only SENDING is blocked (InputBar). A disabled textarea also
+  // During ordinary reconnects the user can
+  // keep typing; only sending is blocked (InputBar). A disabled textarea also
   // dropped focus and swallowed keystrokes during a short reconnect.
   const isBusy = !isDisconnected && (!isPromptReady || mcp)
 
-  const placeholder = isBusy
+  const resumeNotFound = tab?.resumeNotFound === true
+  const placeholder = resumeNotFound
+    ? 'Choose Retry or Start new conversation to continue.'
+    : isBusy
     ? 'Type to queue message... (will send when ready)'
     : getPlaceholder(mcp, connStatus, isPromptReady)
 
@@ -59,6 +62,8 @@ export function PromptTextarea({ textareaRef: externalRef, onInput, onKeyDown, o
       ref={ref}
       id="prompt-input"
       placeholder={placeholder}
+      disabled={resumeNotFound}
+      title={resumeNotFound ? placeholder : undefined}
       rows={1}
       onInput={handleInput}
       onKeyDown={onKeyDown}

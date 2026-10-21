@@ -40,6 +40,7 @@ export interface ConnectionState {
   revision: number
   sessionId?: string
   error?: string
+  resumeNotFound?: boolean
   /** Epoch ms of the scheduled reconnect. The UI counts down to it, which a
    *  message baked at schedule time ("in 8s") cannot do — that number is stale
    *  the moment it is written, so a user watching a long backoff could not tell
@@ -65,6 +66,7 @@ export interface TabInfo {
   connectionAuthoritySequence: number
   connectionRevision: number
   error?: string
+  resumeNotFound?: boolean
   /** Mirrored from the tab's ConnectionState so the header can count down to a
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
@@ -281,6 +283,8 @@ export interface KaminBridgeApi {
   closeTab(tabId: string): void
   disconnectTab(tabId: string): void
   reconnectTab(tabId: string): void
+  chooseNewConversation(tabId: string): void
+  retryStoredConversation(tabId: string): void
   /** VSIX-only: ask the CLI to regenerate this session's AI title from chat. */
   regenerateTitle(tabId: string): void
   switchTab(tabId: string): void

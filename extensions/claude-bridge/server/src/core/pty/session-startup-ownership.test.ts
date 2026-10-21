@@ -1,3 +1,4 @@
+import { ResumeNotFoundError } from './session-resume-not-found'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
@@ -155,6 +156,23 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('INC-2026-0013 actual WebSocket startup ownership', () => {
+  it('INC-0074 sends a no-session result and accepts an explicit create on the same socket', async () => {
+    h.create.mockRejectedValueOnce(new ResumeNotFoundError())
+    await socket.message({
+      type: 'session:resume',
+      token: 'synthetic',
+      conversationId: 'missing',
+      noSpawnOnNotFound: true,
+    })
+    expect(h.create.mock.calls[0]![3]).toMatchObject({ noSpawnOnNotFound: true })
+    expect(socket.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([{ type: 'session:resume-not-found' }])
+    expect(h.destroy).not.toHaveBeenCalled()
+    const session = makeSession('chosen', socket)
+    h.create.mockResolvedValueOnce(session)
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    expect(getSessionWs('chosen')).toBe(socket)
+    expect(socket.send.mock.calls.some(([raw]) => JSON.parse(raw).type === 'session:created')).toBe(true)
+  })
   it.each(['session:create', 'session:resume'])('preserves admission error handling for %s', async (type) => {
     h.create.mockRejectedValue(new SessionAdmissionError('token', 10))
     const close = vi.spyOn(socket, 'close')

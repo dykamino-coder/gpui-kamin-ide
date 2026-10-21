@@ -13,6 +13,7 @@ import { replayProgressByTab } from '../../signals/replay-progress'
 import { activeLocalQueue } from '../../signals/queue'
 import { AttachmentsArea } from './AttachmentsArea'
 import { PromptTextarea } from './PromptTextarea'
+import { ResumeNotFoundNotice } from './ResumeNotFoundNotice'
 import { SendButton } from './SendButton'
 import type { SendMode } from './SendButton'
 import { AttachButton } from './AttachButton'
@@ -97,7 +98,7 @@ export function InputBar(): JSX.Element {
   }
 
   function handleButtonClick(): void {
-    if (!tabId) return
+    if (!tabId || tab?.resumeNotFound) return
     // Stop must work even while the transcript is still downloading — a resumed
     // session can be mid-generation during that 15-20s window, which is exactly
     // when interrupting matters most. Only SEND is gated below.
@@ -195,6 +196,10 @@ export function InputBar(): JSX.Element {
 
   return (
     <div class={`input-bar${(isDisconnected || isNotReady) && sendMode !== 'stop' ? ' disabled' : ''}`} id="input-bar" title={isNotReady && sendMode !== 'stop' ? 'Loading the session…' : undefined} style={{ position: 'relative' }}>
+      {tab?.resumeNotFound && tabId && <ResumeNotFoundNotice
+        onNew={() => bridge.chooseNewConversation(tabId)}
+        onRetry={() => bridge.retryStoredConversation(tabId)}
+      />}
       <ScrollDownPill />
       <ActiveFileStatusBar />
       <div class="input-wrapper">
