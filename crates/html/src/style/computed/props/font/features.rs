@@ -15,7 +15,16 @@ impl Computed {
         match key {
             // --- Текст -------------------------------------------------------
             // `font: [начертание] [вес] размер[/интерлиньяж] семейство`.
-            "font" => font_shorthand::apply(self, v, vcx),
+            "font" => {
+                let value = join_slash(v);
+                let (_, family) = split_font(&value, vcx);
+                if v != "inherit"
+                    && (family.is_empty() || !family.split(',').all(|f| family_name_ok(f.trim())))
+                {
+                    return;
+                }
+                font_shorthand::apply(self, v, vcx);
+            }
             "font-synthesis"
             | "font-synthesis-weight"
             | "font-synthesis-style"

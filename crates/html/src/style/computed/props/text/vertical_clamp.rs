@@ -5,6 +5,9 @@
 use super::*;
 use crate::document::state::ValueCx;
 
+mod clamp_values;
+use clamp_values::{clamp_value, ellipsis_value, initial_letter};
+
 impl Computed {
     pub(super) fn apply_text_vertical_clamp(
         &mut self,
@@ -31,6 +34,8 @@ impl Computed {
                     )
                 {
                     self.accept_declaration();
+                } else {
+                    return;
                 }
                 // Sub/super shift within the line. Font fractions approximate
                 // normal line-height; percentage shifts retain their own slot.
@@ -76,61 +81,18 @@ impl Computed {
             // -webkit-legacy?`; `auto` — срез по высоте контейнера. Строка
             // многоточия идёт маркером абзаца (`lines::marker_str`).
             "line-clamp" => {
-                self.accept_declaration();
-                self.line_clamp = None;
-                self.clamp_auto = None;
-                self.clamp_legacy = Some(false);
-                self.clamp_mark = None;
-                // Одна строка многоточия без числа — `max-lines: none` при
-                // `continue: collapse` (§5.1: «Sets continue to collapse if
-                // either or both values are specified»), то есть срез по
-                // высоте, как у `auto` (`line-clamp-balance-009`).
-                let mut ellipsis_given = false;
-                let mut rest = v.trim();
-                while !rest.is_empty() {
-                    let quote = rest.as_bytes()[0];
-                    let (word, tail) = if quote == b'"' || quote == b'\'' {
-                        match rest[1..].find(quote as char) {
-                            Some(end) => (&rest[..end + 2], &rest[end + 2..]),
-                            None => (rest, ""),
-                        }
-                    } else {
-                        match rest.find(char::is_whitespace) {
-                            Some(end) => (&rest[..end], &rest[end..]),
-                            None => (rest, ""),
-                        }
-                    };
-                    rest = tail.trim_start();
-                    if word.len() >= 2 && (word.starts_with('"') || word.starts_with('\'')) {
-                        self.clamp_mark = Some(word[1..word.len() - 1].to_string());
-                        ellipsis_given = true;
-                    } else if word.eq_ignore_ascii_case("no-ellipsis") {
-                        self.clamp_mark = Some(String::new());
-                        ellipsis_given = true;
-                    } else if word.eq_ignore_ascii_case("auto") {
-                        self.clamp_auto = Some(true);
-                    } else if let Ok(n) = word.parse::<u32>() {
-                        self.line_clamp = Some(n);
-                    }
-                }
-                if ellipsis_given && self.line_clamp.is_none() {
-                    self.clamp_auto = Some(true);
-                }
+                let (lines, auto, mark) = parsed_value!(self, clamp_value(v));
+                self.line_clamp = lines;
+                self.clamp_auto = auto;
+                self.clamp_legacy = Some(v.ends_with("-webkit-legacy"));
+                self.clamp_mark = mark;
             }
+
             // Лонгхенд `block-ellipsis`: `no-ellipsis | auto | <string>`.
             "block-ellipsis" => {
-                self.accept_declaration();
-                let t = v.trim();
-                self.clamp_mark = if t.eq_ignore_ascii_case("no-ellipsis") {
-                    Some(String::new())
-                } else if t.len() >= 2 && (t.starts_with('"') || t.starts_with('\'')) {
-                    Some(collapse_forced_breaks(&unescape_content(
-                        &t[1..t.len() - 1],
-                    )))
-                } else {
-                    None
-                };
+                self.clamp_mark = parsed_value!(self, ellipsis_value(v));
             }
+
             // CSS Overflow 4 §5.2: collapse enables height clamping without
             // max-lines; auto undoes it. The initial block ellipsis is empty.
             "continue" => match v.trim().to_ascii_lowercase().as_str() {
@@ -149,11 +111,21 @@ impl Computed {
                 _ => {}
             },
             "-webkit-line-clamp" => {
-                self.line_clamp = record_parsed!(self, v.trim().parse().ok());
+                self.line_clamp = parsed_value!(
+                    self,
+                    if v == "none" {
+                        Some(None)
+                    } else {
+                        v.parse::<u32>().ok().filter(|n| *n > 0).map(Some)
+                    }
+                );
                 self.clamp_auto = None;
                 self.clamp_legacy = Some(true);
             }
             "-webkit-box-orient" => {
+                if !matches!(v, "horizontal" | "vertical" | "inline-axis" | "block-axis") {
+                    return;
+                }
                 self.webkit_box_vertical =
                     accept_parsed!(self, Some(v.eq_ignore_ascii_case("vertical")))
             }
@@ -169,73 +141,78 @@ impl Computed {
             // слов свободный (`drop 3`). Кегль и строку буквицы считает
             // раскладка (`render::initial_letter_float`).
             "initial-letter" => {
-                if v == "normal" {
-                    self.accept_declaration();
-                }
-                self.initial_letter = None;
-                if v != "normal" {
-                    let mut size: Option<f32> = None;
-                    let mut sink: Option<u32> = None;
-                    for word in v.split_ascii_whitespace() {
-                        match word {
-                            "drop" => sink = Some(0),
-                            "raise" => sink = Some(1),
-                            w if size.is_none() => {
-                                size = w.parse::<f32>().ok().filter(|n| *n >= 1.0);
-                            }
-                            w => sink = w.parse::<u32>().ok().filter(|n| *n >= 1),
-                        }
-                    }
-                    if let Some(size) = size {
-                        self.accept_declaration();
-                        let sink = match sink {
-                            Some(0) | None => (size.floor() as u32).max(1),
-                            Some(n) => n,
-                        };
-                        self.initial_letter = Some((size, sink));
-                    }
-                }
+                self.initial_letter = parsed_value!(self, initial_letter(v));
             }
+
             // css-rhythm-1 §2: значение кроме `none`/`auto` создаёт независимый
             // контекст форматирования (`flow_root`), хотя сам шаг ритма не
             // считается (`block-step-size-establishes-*`).
             "block-step-size" => {
                 if v == "none" || v == "auto" || Len::parse(v, vcx).is_some() {
                     self.accept_declaration();
+                } else {
+                    return;
                 }
                 if v != "none" && v != "auto" {
                     self.flow_root = Some(true);
                 }
             }
             "text-orientation" => {
+                if !matches!(
+                    v,
+                    "mixed" | "upright" | "sideways" | "sideways-right" | "use-glyph-orientation"
+                ) {
+                    return;
+                }
                 self.accept_declaration();
                 self.text_orientation =
                     Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
             }
             "writing-mode" => {
+                if !matches!(
+                    v,
+                    "horizontal-tb"
+                        | "vertical-rl"
+                        | "vertical-lr"
+                        | "sideways-rl"
+                        | "sideways-lr"
+                        | "lr"
+                        | "lr-tb"
+                        | "rl"
+                        | "rl-tb"
+                        | "tb"
+                        | "tb-rl"
+                ) {
+                    return;
+                }
                 self.accept_declaration();
                 self.writing_mode = Some(
                     crate::style::computed::writing_mode::WritingModeKw::parse(v),
                 );
             }
             "text-combine-upright" => {
-                let mut it = v.split_whitespace();
-                self.combine_upright = record_parsed!(
+                let words: Vec<_> = v.split_whitespace().collect();
+                self.combine_upright = parsed_value!(
                     self,
-                    match it.next() {
-                        Some("none") | None => None,
-                        Some("all") => Some(0),
-                        Some("digits") => Some(it.next().and_then(|n| n.parse().ok()).unwrap_or(2)),
+                    match words.as_slice() {
+                        ["none"] => Some(None),
+                        ["all"] => Some(Some(0)),
+                        ["digits"] => Some(Some(2)),
+                        ["digits", n] => n
+                            .parse::<u8>()
+                            .ok()
+                            .filter(|n| (2..=4).contains(n))
+                            .map(Some),
                         _ => None,
                     }
                 );
-                if v == "none" {
-                    self.accept_declaration();
-                }
             }
 
             // --- Переносы и обрезка -------------------------------------------
             "hyphens" => {
+                if !matches!(v, "none" | "manual" | "auto") {
+                    return;
+                }
                 self.accept_declaration();
                 self.hyphenate = Some(v != "none");
                 // `manual` только УВАЖАЕТ расставленные знаки мягкого

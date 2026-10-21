@@ -12,45 +12,38 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
-        if self.declaration_parse != ParseResult::Inactive
-            && matches!(
-                key,
-                "inline-size"
-                    | "block-size"
-                    | "min-inline-size"
-                    | "min-block-size"
-                    | "max-inline-size"
-                    | "max-block-size"
-            )
-        {
-            let mut parsed = None;
-            assign_size(&mut parsed, v, vcx);
-            self.note_parsed(&parsed);
-            if v == "none" {
-                self.accept_declaration();
-            }
+        let size_index = [
+            "inline-size",
+            "block-size",
+            "min-inline-size",
+            "min-block-size",
+            "max-inline-size",
+            "max-block-size",
+        ]
+        .iter()
+        .position(|name| *name == key);
+        if let Some(i) = size_index {
+            let parsed = parsed_value!(
+                self,
+                super::super::calc_size::ParsedSize::parse(v, i >= 4, vcx)
+            );
+            let logical = self.logical();
+            let slot = match i {
+                0 => &mut logical.inline_size,
+                1 => &mut logical.block_size,
+                2 => &mut logical.min_inline,
+                3 => &mut logical.min_block,
+                4 => &mut logical.max_inline,
+                _ => &mut logical.max_block,
+            };
+            assign_size(slot, parsed.length);
+            return;
         }
         match key {
-            // --- Логические свойства ---------------------------------------
-            // Письмо у нас только слева направо и сверху вниз, поэтому
-            // логические оси совпадают с физическими один в один.
-            // Разбор — тот же, что у физических `width`/`height`
-            // (`assign_size`): смесь «доля ± точки» в `calc()` доживает до
-            // раскладки (css-logical-1 §4.1 — те же значения, что у
-            // `width`). Прежде `Len::parse` роняло `calc(100% - 20px)` в
-            // ничто (`css-break/table/table-row-paint-htb-ltr-ref`).
-            "inline-size" => assign_size(&mut self.logical().inline_size, v, vcx),
-            "block-size" => assign_size(&mut self.logical().block_size, v, vcx),
-            "min-inline-size" => assign_size(&mut self.logical().min_inline, v, vcx),
-            "min-block-size" => assign_size(&mut self.logical().min_block, v, vcx),
-            "max-inline-size" => assign_size(&mut self.logical().max_inline, v, vcx),
-            "max-block-size" => assign_size(&mut self.logical().max_block, v, vcx),
             "padding-inline" | "padding-block" | "margin-inline" | "margin-block"
             | "inset-inline" | "inset-block" => {
-                let (a, b) = axis_pair(v, vcx);
-                if a.is_some() && b.is_some() {
-                    self.accept_declaration();
-                }
+                let (a, b) = parsed_value!(self, axis_pair(v, !key.starts_with("padding"), vcx));
+                let (a, b) = (Some(a), Some(b));
                 let block = key.ends_with("block");
                 let which = key.split('-').next().unwrap_or("").to_string();
                 let seq = self.decl_seq;
@@ -85,7 +78,7 @@ impl Computed {
             | "inset-block-start"
             | "inset-block-end" => {
                 let seq = self.decl_seq;
-                let parsed = record_parsed!(self, Len::parse(v, vcx));
+                let parsed = apply_parsed!(self, side_length(v, !key.starts_with("padding"), vcx));
                 let logical = self.logical();
                 let target = if key.starts_with("padding") {
                     &mut logical.padding
@@ -115,30 +108,8 @@ impl Computed {
                 // слово и отдавать отношение всем подряд нельзя
                 // (`replaced-element-020/029/030`): слово живёт флагом, и
                 // отрисовка замещаемого его учитывает (`image_with::ratio_of`).
-                let body = v
-                    .split_whitespace()
-                    .filter(|t| !t.eq_ignore_ascii_case("auto"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let ratio = match body.split_once('/') {
-                    Some((a, b)) => match (a.trim().parse::<f32>(), b.trim().parse::<f32>()) {
-                        (Ok(a), Ok(b)) if b != 0.0 => Some(a / b),
-                        _ => None,
-                    },
-                    None => body.trim().parse().ok(),
-                }
-                // Вырожденное отношение (ноль или бесконечность в любой части)
-                // ведёт себя как `auto` (css-sizing-4 Overview.bs:533: «If the
-                // <ratio> is degenerate, the property instead behaves as
-                // auto»; css-values-4 Overview.bs:1665): `0/1` давал
-                // соотношение 0, и коробка `width: 100px` получала бесконечную
-                // высоту (`zero-or-infinity-001`).
-                .filter(|r: &f32| r.is_finite() && *r > 0.0);
-                self.note_parsed(&ratio);
-                if v == "auto" {
-                    self.accept_declaration();
-                }
-                if v.split_whitespace().any(|t| t.eq_ignore_ascii_case("auto")) {
+                let (auto, ratio) = parsed_value!(self, aspect_ratio(v));
+                if auto {
                     self.aspect_ratio_auto = ratio;
                     self.aspect_ratio = None;
                 } else {
@@ -147,12 +118,43 @@ impl Computed {
                 }
             }
             "frame-sizing" => {
-                self.frame_sizing_height = accept_parsed!(
+                self.frame_sizing_height = parsed_value!(
                     self,
-                    matches!(v.trim().to_ascii_lowercase().as_str(), "content-height")
+                    match v {
+                        "content-height" => Some(true),
+                        "fixed" => Some(false),
+                        _ => None,
+                    }
                 );
             }
             _ => *hit = false,
         }
     }
+}
+
+fn aspect_ratio(v: &str) -> Option<(bool, Option<f32>)> {
+    let mut auto = false;
+    let mut body = Vec::new();
+    for token in v.split_whitespace() {
+        if token.eq_ignore_ascii_case("auto") {
+            if auto {
+                return None;
+            }
+            auto = true;
+        } else {
+            body.push(token);
+        }
+    }
+    if body.is_empty() {
+        return auto.then_some((true, None));
+    }
+    let body = body.join(" ");
+    let (a, b) = body.split_once('/').unwrap_or((&body, "1"));
+    let a: f32 = a.trim().parse().ok()?;
+    let b: f32 = b.trim().parse().ok()?;
+    if a < 0.0 || b < 0.0 {
+        return None;
+    }
+    let ratio = a / b;
+    Some((auto, (ratio.is_finite() && ratio > 0.0).then_some(ratio)))
 }

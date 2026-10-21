@@ -3,6 +3,8 @@
 //! apply_text_vertical_clamp.
 
 use super::*;
+mod grammar;
+mod indent;
 use crate::document::state::ValueCx;
 
 impl Computed {
@@ -13,13 +15,16 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
+        if !grammar::valid(key, v) {
+            return;
+        }
         match key {
             // Отступ первой строки. Кроме длины значение несёт до двух
             // ключевых слов (css-text-3 §7.1): `each-line` повторяет отступ
             // после КАЖДОГО жёсткого разрыва, `hanging` переворачивает выбор —
             // отступ получают все строки, КРОМЕ той, что получила бы его.
             // Порядок слов свободный, поэтому значение разбирается по словам.
-            "text-indent" => text_indent::apply(self, v, vcx),
+            "text-indent" => indent::apply(self, v, vcx),
             // `text-box-trim` (css-inline-3 §4.2): у блочного контейнера
             // срезается ПОЛУЛИДИНГ первой и/или последней строки, чтобы край
             // содержимого сел на метрику текста. Свойство НЕ наследуется.
@@ -68,7 +73,7 @@ impl Computed {
                         _ => {}
                     }
                 }
-                self.hanging = accept_parsed!(self, (h != Hanging::default()).then_some(h));
+                self.hanging = parsed_value!(self, Some((h != Hanging::default()).then_some(h)));
             }
             // Разрыв ВНУТРИ слова разрешают по-разному, и разница видна на
             // экране. `word-break: break-all` и `line-break: anywhere` рвут
@@ -114,6 +119,9 @@ impl Computed {
                 );
             }
             "overflow-wrap" | "word-wrap" => {
+                if !matches!(v, "normal" | "break-word" | "anywhere") {
+                    return;
+                }
                 self.accept_declaration();
                 self.break_word = Some(matches!(v, "break-word" | "anywhere"));
                 // `anywhere` отличается от `break-word` ровно одним: он МЕНЯЕТ
@@ -124,6 +132,12 @@ impl Computed {
                 self.wrap_anywhere = Some(v == "anywhere");
             }
             "word-break" => {
+                if !matches!(
+                    v,
+                    "normal" | "break-all" | "keep-all" | "break-word" | "auto-phrase"
+                ) {
+                    return;
+                }
                 self.accept_declaration();
                 self.auto_phrase = Some(v == "auto-phrase");
                 // `break-word` — устаревший псевдоним, и по спецификации он
@@ -142,6 +156,9 @@ impl Computed {
                 }
             }
             "line-break" => {
+                if !matches!(v, "auto" | "loose" | "normal" | "strict" | "anywhere") {
+                    return;
+                }
                 self.accept_declaration();
                 self.break_anywhere = Some(v == "anywhere");
                 self.break_anywhere_strict = Some(v == "anywhere");

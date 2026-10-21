@@ -1,7 +1,7 @@
 //! Группа свойств `Computed::apply_one`: `background*`, `box-shadow`,
 //! `object-fit`, `image-orientation`. Здесь `background-image` разбирается в
 //! типизированный `ImageSource` (`ImageSource::parse`): `none` гасит картинку и
-//! градиент, негодная запись (`Invalid`) тоже; `light-dark()` выбирает вариант по
+//! градиент; негодная запись сохраняет прежние поля; `light-dark()` выбирает вариант по
 //! схеме. Сокращение и списки слоёв уходят в подмодули (`shorthand`,
 //! `gradient_layer`, `layer_props`).
 
@@ -10,7 +10,8 @@ use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};
 
 mod gradient_layer;
-mod layer_props;
+pub(super) mod layer_props;
+mod list_values;
 mod shorthand;
 
 impl Computed {
@@ -27,10 +28,12 @@ impl Computed {
             // одно, и картинка терялась при заданном цвете.
             "background" | "background-color" => self.apply_background_shorthand(key, v, vcx),
             "box-shadow" if has_font_units(v) => {
+                if !box_shadow_valid(v, vcx) {
+                    return;
+                }
                 self.shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "box-shadow" => {
-                self.shadow_raw = None;
                 if v == "inherit" {
                     self.shadow_inherit = true;
                     return;
@@ -43,20 +46,30 @@ impl Computed {
                     return;
                 }
                 self.accept_declaration();
+                self.shadow_raw = None;
                 let (inset, outer): (Vec<&str>, Vec<&str>) = crate::style::css::split_args(v)
                     .into_iter()
                     .partition(|one| one.contains("inset"));
                 self.shadows = parse_shadows(&outer.join(","), vcx);
                 self.inset_shadows = parse_shadows(&inset.join(",").replace("inset", " "), vcx);
             }
-            "object-fit" => self.object_fit = accept_parsed!(self, Some(v.to_string())),
+            "object-fit" => {
+                self.object_fit = apply_parsed!(
+                    self,
+                    matches!(v, "fill" | "contain" | "cover" | "none" | "scale-down")
+                        .then(|| v.to_string())
+                )
+            }
             // `image-orientation` (css-images-3 §5.4): `from-image | none |
             // [<angle> || flip]`. Угол со `flip` спека сама помечает
             // необязательным и устаревшим («optional to implement and
             // deprecated»), и в корпусе его не просит ни один рефтест —
             // разбираем два ключевых слова.
             "image-orientation" => {
-                self.image_orient_none = accept_parsed!(self, Some(v.trim() == "none"))
+                self.image_orient_none = apply_parsed!(
+                    self,
+                    matches!(v, "none" | "from-image").then_some(v == "none")
+                )
             }
             // `light-dark(<image>, <image>)` (css-color-5 §light-dark,
             // `image-light-dark`): вариант по схеме узла.

@@ -3,6 +3,8 @@
 //! углов.
 
 use super::*;
+mod outline;
+use outline::border_value_valid;
 
 impl Computed {
     pub(super) fn apply_border_sides_outline(
@@ -15,37 +17,50 @@ impl Computed {
         if key.ends_with("-color") && v.eq_ignore_ascii_case("currentcolor") {
             self.accept_declaration();
         }
-        if self.declaration_parse != ParseResult::Inactive
-            && key.starts_with("border-")
-            && (key.contains("inline") || key.contains("block"))
-        {
-            let physical = match key.rsplit('-').next() {
-                Some("width") => "border-top-width",
-                Some("style") => "border-top-style",
-                Some("color") => "border-top-color",
-                _ => "border-top",
+        if key.starts_with("border-") && (key.contains("inline") || key.contains("block")) {
+            let prop = key.rsplit('-').next().unwrap_or("");
+            let words = split_outside_parens(v);
+            let valid = match prop {
+                "width" => {
+                    !words.is_empty()
+                        && words.len() <= 2
+                        && words.iter().all(|w| line_width(w, vcx).is_some())
+                }
+                "style" => {
+                    !words.is_empty()
+                        && words.len() <= 2
+                        && words.iter().all(|w| border_style_rank(w).is_some())
+                }
+                "color" => {
+                    !words.is_empty()
+                        && words.len() <= 2
+                        && words
+                            .iter()
+                            .all(|w| w == "currentcolor" || Color::parse(w, vcx).is_some())
+                }
+                _ => border_value_valid(v, vcx),
             };
-            let result = Self::declaration_result(physical, v, vcx);
-            if result == ParseResult::Accepted {
-                self.accept_declaration();
+            if !valid {
+                return;
             }
+            self.accept_declaration();
         }
         match key {
             "border-top-width" => {
                 self.border_width.top =
-                    record_parsed!(self, line_width(v, vcx)).or(self.border_width.top)
+                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.top)
             }
             "border-right-width" => {
                 self.border_width.right =
-                    record_parsed!(self, line_width(v, vcx)).or(self.border_width.right)
+                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.right)
             }
             "border-bottom-width" => {
                 self.border_width.bottom =
-                    record_parsed!(self, line_width(v, vcx)).or(self.border_width.bottom)
+                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.bottom)
             }
             "border-left-width" => {
                 self.border_width.left =
-                    record_parsed!(self, line_width(v, vcx)).or(self.border_width.left)
+                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.left)
             }
             "border-inline" => {
                 let l = self.logical();
@@ -109,16 +124,36 @@ impl Computed {
                 self.logical().border_long.push((side, prop, v.to_string()));
             }
             "border-top-color" => {
-                self.border_colors[0] = record_parsed!(self, side_color(v, self.color, vcx))
+                self.border_colors[0] = parsed_value!(
+                    self,
+                    side_color(v, self.color, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "currentcolor").then_some(None))
+                )
             }
             "border-right-color" => {
-                self.border_colors[1] = record_parsed!(self, side_color(v, self.color, vcx))
+                self.border_colors[1] = parsed_value!(
+                    self,
+                    side_color(v, self.color, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "currentcolor").then_some(None))
+                )
             }
             "border-bottom-color" => {
-                self.border_colors[2] = record_parsed!(self, side_color(v, self.color, vcx))
+                self.border_colors[2] = parsed_value!(
+                    self,
+                    side_color(v, self.color, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "currentcolor").then_some(None))
+                )
             }
             "border-left-color" => {
-                self.border_colors[3] = record_parsed!(self, side_color(v, self.color, vcx))
+                self.border_colors[3] = parsed_value!(
+                    self,
+                    side_color(v, self.color, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "currentcolor").then_some(None))
+                )
             }
             "border-top-style" => self.set_border_style(v, Some(0)),
             "border-right-style" => self.set_border_style(v, Some(1)),
@@ -138,7 +173,10 @@ impl Computed {
                     list[pick].to_ascii_lowercase()
                 };
                 let list: Vec<&str> = v.split_whitespace().collect();
-                if list.is_empty() {
+                if list.is_empty()
+                    || list.len() > 4
+                    || !list.iter().all(|v| border_style_rank(v).is_some())
+                {
                     return;
                 }
                 if list.len() <= 4 && list.iter().all(|v| border_style_rank(v).is_some()) {
@@ -170,71 +208,18 @@ impl Computed {
                 }
             }
             "border-spacing" => {
-                let (a, b) = axis_pair(v, vcx);
-                if a.is_some() && b.is_some() {
-                    self.accept_declaration();
-                }
-                self.border_spacing = Some((a, b));
-            }
-            "outline" => {
-                if v == "inherit" {
-                    self.inherit_bits |= inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S;
+                let words = split_outside_parens(v);
+                if !(1..=2).contains(&words.len()) {
                     return;
                 }
-                // Initial medium width is 3px.
-                let mut o = self.outline.unwrap_or(Outline {
-                    width: Some(Len::Px(3.0)),
-                    color: None,
-                    offset: None,
-                    inset: false,
-                    style: None,
-                });
-                for token in split_ws_top(v) {
-                    if let Some(st) = outline_style_of(token) {
-                        self.accept_declaration();
-                        o.style = Some(st);
-                    } else if let Some(l) = outline_width_of(token, vcx) {
-                        self.accept_declaration();
-                        o.width = Some(l);
-                    } else if let Some(c) = Color::parse(token, vcx) {
-                        self.accept_declaration();
-                        o.color = Some(c);
-                    }
-                }
-                self.outline = Some(o);
+                let (a, b) = parsed_value!(
+                    self,
+                    line_width(&words[0], vcx).zip(line_width(&words[words.len() - 1], vcx))
+                );
+                self.border_spacing = Some((Some(a), Some(b)));
             }
-            "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
-                if v == "inherit" {
-                    self.inherit_bits |= match key {
-                        "outline-width" => inh::OUTLINE_W,
-                        "outline-color" => inh::OUTLINE_C,
-                        "outline-style" => inh::OUTLINE_S,
-                        _ => inh::OUTLINE_O,
-                    };
-                    return;
-                }
-                let mut o = self.outline.unwrap_or_default();
-                match key {
-                    "outline-width" if matches!(v, "initial" | "unset") => {
-                        o.width = Some(Len::Px(3.0))
-                    }
-                    "outline-width" => {
-                        o.width = record_parsed!(self, outline_width_of(v, vcx)).or(o.width)
-                    }
-                    "outline-color" => o.color = record_parsed!(self, Color::parse(v, vcx)),
-                    "outline-style" => o.style = record_parsed!(self, outline_style_of(v)),
-                    // Inset moves the outline inward by its width.
-                    _ => {
-                        o.inset = v == "inset";
-                        o.offset = if o.inset {
-                            self.accept_declaration();
-                            None
-                        } else {
-                            record_parsed!(self, Len::parse(v, vcx))
-                        };
-                    }
-                }
-                self.outline = Some(o);
+            "outline" | "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
+                self.apply_outline(key, v, vcx)
             }
             "border-image"
             | "border-image-source"

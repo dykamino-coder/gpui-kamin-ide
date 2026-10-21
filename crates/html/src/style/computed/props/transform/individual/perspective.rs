@@ -21,7 +21,10 @@ impl Computed {
             // `backface-visibility: hidden` обязан исчезнуть
             // (css-transforms-2 §backface-visibility, признак m33 < 0).
             "backface-visibility" => {
-                self.backface_hidden = accept_parsed!(self, Some(v == "hidden"))
+                self.backface_hidden = apply_parsed!(
+                    self,
+                    matches!(v, "hidden" | "visible").then_some(v == "hidden")
+                )
             }
             // `perspective` (css-transforms-2 §perspective-property): длина в
             // точках, «values less than 1px must be treated as 1px» — так и
@@ -30,10 +33,11 @@ impl Computed {
             // сюда не доезжают (None). Ячейка заводится здесь, при разборе:
             // у родителя и его детей будет один и тот же Rc.
             "perspective" => {
-                self.perspective = record_parsed!(
+                self.perspective = parsed_value!(
                     self,
                     match Len::parse(v, vcx) {
-                        Some(Len::Px(d)) => Some(d.max(1.0)),
+                        Some(Len::Px(d)) if d >= 0.0 => Some(Some(d.max(1.0))),
+                        _ if v == "none" => Some(None),
                         _ => None,
                     }
                 );
@@ -48,6 +52,9 @@ impl Computed {
             // отрисовки, доля — от коробки самого элемента (она же — коробка
             // родителя для его детей).
             "perspective-origin" => {
+                if !crate::style::computed::props::background::layer_props::position_valid(v, vcx) {
+                    return;
+                }
                 let axis = |t: &str, default: f32| -> f32 {
                     match t {
                         "left" | "top" => 0.0,
@@ -85,7 +92,10 @@ impl Computed {
             // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
             // (css-transforms-2 §3d-rendering-context, лист контекста).
             "transform-style" => {
-                self.preserve_3d = accept_parsed!(self, Some(v.trim() == "preserve-3d"));
+                self.preserve_3d = apply_parsed!(
+                    self,
+                    matches!(v, "preserve-3d" | "flat").then_some(v == "preserve-3d")
+                );
                 self.frame_3d = match self.preserve_3d {
                     Some(true) => Some(Frame3d::default()),
                     _ => None,
@@ -95,8 +105,7 @@ impl Computed {
             // коробку и НАЧАЛО отсчёта на bounding box фигуры; по умолчанию
             // (`view-box`) длины в `transform-origin` считаются от вьюпорта.
             "transform-box" => {
-                self.transform_box_fill = Some(v.trim() == "fill-box");
-                self.transform_box = record_parsed!(
+                self.transform_box = apply_parsed!(
                     self,
                     match v.trim() {
                         "view-box" => Some(0),
@@ -105,11 +114,15 @@ impl Computed {
                         _ => None,
                     }
                 );
+                self.transform_box_fill = Some(v.trim() == "fill-box");
             }
             // SVG 2 §vector-effect: `non-scaling-stroke` — толщина обводки в
             // точках экрана; нужна опорной коробке и толщине в `svg.rs`.
             "vector-effect" => {
-                self.svg_non_scaling = accept_parsed!(self, Some(v.trim() == "non-scaling-stroke"))
+                self.svg_non_scaling = apply_parsed!(
+                    self,
+                    matches!(v, "non-scaling-stroke" | "none").then_some(v == "non-scaling-stroke")
+                )
             }
             _ => *hit = false,
         }

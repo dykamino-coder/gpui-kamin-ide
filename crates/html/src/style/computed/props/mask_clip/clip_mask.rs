@@ -6,6 +6,9 @@ use crate::document::state::ValueCx;
 
 impl Computed {
     pub(super) fn apply_clip_mask(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
+        if key == "clip-path" && !super::shape_valid(v) {
+            return;
+        }
         if key == "mask" && mask_shorthand::apply(self, v, vcx) {
             self.accept_declaration();
             return;

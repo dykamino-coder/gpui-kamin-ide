@@ -8,6 +8,9 @@ impl Computed {
     /// `border-left-style: solid` — рисунок одной стороны. Без рисунка её
     /// толщина не считается, поэтому видимость помним по сторонам.
     pub(crate) fn set_border_style(&mut self, v: &str, side: Option<usize>) {
+        if border_style_rank(v).is_none() {
+            return;
+        }
         let on = border_style(v);
         if let Some(r) = border_style_rank(v) {
             self.accept_declaration();

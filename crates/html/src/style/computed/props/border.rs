@@ -103,8 +103,16 @@ impl Computed {
                     left: at(3),
                 };
             }
-            "border-collapse" => self.border_collapse = accept_parsed!(self, Some(v == "collapse")),
-            "empty-cells" => self.empty_cells_hide = accept_parsed!(self, Some(v.trim() == "hide")),
+            "border-collapse" => {
+                self.border_collapse = apply_parsed!(
+                    self,
+                    matches!(v, "collapse" | "separate").then_some(v == "collapse")
+                )
+            }
+            "empty-cells" => {
+                self.empty_cells_hide =
+                    apply_parsed!(self, matches!(v, "hide" | "show").then_some(v == "hide"))
+            }
             "border-color" => {
                 // От одного до четырёх значений, как у всякого сокращения по
                 // сторонам (§8.5.2). Прежде строка разбиралась целиком, и
@@ -210,11 +218,14 @@ fn line_width(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
 }
 
 /// Пара значений «вдоль оси»: одно значение — обе грани, два — по порядку.
-pub(crate) fn axis_pair(v: &str, vcx: ValueCx<'_>) -> (Option<Len>, Option<Len>) {
-    let mut it = v.split_whitespace();
-    let a = it.next().and_then(|s| Len::parse(s, vcx));
-    let b = it.next().and_then(|s| Len::parse(s, vcx)).or(a);
-    (a, b)
+pub(crate) fn axis_pair(v: &str, auto: bool, vcx: ValueCx<'_>) -> Option<(Len, Len)> {
+    let parts = split_outside_parens(v);
+    if !(1..=2).contains(&parts.len()) {
+        return None;
+    }
+    super::box_model::sides::side_length(&parts[0], auto, vcx).zip(
+        super::box_model::sides::side_length(&parts[parts.len() - 1], auto, vcx),
+    )
 }
 
 /// Цвет стороны рамки; `currentColor` даёт цвет текста этого же узла.
