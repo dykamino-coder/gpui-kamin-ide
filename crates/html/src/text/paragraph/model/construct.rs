@@ -114,7 +114,9 @@ impl Paragraph {
         self.measures = cx.doc().paragraph_measures.clone();
         self.paint_context = cx.vertical_paint.clone();
         self.inline_measure = cx.inline_measure.clone();
-        self.clamp_rows = cx.doc().paragraph_rows.clone();
+        self.clamp_rows = cx
+            .clamp_measure()
+            .map_or_else(|| cx.doc().paragraph_rows.clone(), |(_, m)| m.rows);
         self
     }
 

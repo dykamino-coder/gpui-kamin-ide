@@ -39,6 +39,58 @@ impl<T: 'static> Sink<T> {
     }
 }
 
+/// Проба раскладки: запись снимается до уничтожения временного layout-движка.
+pub(crate) fn layout_record<T: 'static>(sink: Sink<(gpui::LayoutId, T)>, value: T) -> AnyElement {
+    use crate::hooks::IntoHooked;
+    LayoutRecord {
+        sink,
+        value: Some(value),
+    }
+    .hooked()
+}
+
+struct LayoutRecord<T> {
+    sink: Sink<(gpui::LayoutId, T)>,
+    value: Option<T>,
+}
+
+impl<T: 'static> crate::hooks::Hooks for LayoutRecord<T> {
+    type Layout = ();
+    type Prepaint = ();
+
+    fn request_layout(
+        &mut self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> (gpui::LayoutId, ()) {
+        let mut style = gpui::Style {
+            position: gpui::Position::Absolute,
+            ..Default::default()
+        };
+        style.inset.top = gpui::px(0.).into();
+        style.inset.left = gpui::px(0.).into();
+        style.size = gpui::size(gpui::relative(1.).into(), gpui::relative(1.).into());
+        let id = window.request_layout(style, [], cx);
+        if let Some(value) = self.value.take() {
+            self.sink.push((id, value));
+        }
+        (id, ())
+    }
+
+    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut gpui::Window, _: &mut gpui::App) {
+    }
+
+    fn paint(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        _: &mut gpui::Window,
+        _: &mut gpui::App,
+    ) {
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Sink;

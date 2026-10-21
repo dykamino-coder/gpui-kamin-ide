@@ -59,6 +59,24 @@ fn automatic_budget_preserves_a_previous_smaller_budget() {
 }
 
 #[test]
+fn balanced_taller_rows_reclamp_without_previous_frame_budget() {
+    let geometry = ClampGeometry {
+        limit: None,
+        max_h: Some(30.0),
+        trim_end: 0.0,
+    };
+    let rows = HashMap::from([(0, vec![(0.0, 20.0), (20.0, 30.0), (30.0, 50.0)])]);
+    let initial = geometry.compute(vec![paragraph(0, 0.0, 50.0)], &rows, 0.0, None);
+    assert_eq!(initial.para, Some((0, 2)));
+    let mut applied = paragraph(0, 0.0, 40.0);
+    applied.clamped = Some(2);
+    let balanced_rows = HashMap::from([(0, vec![(0.0, 20.0), (20.0, 40.0)])]);
+    let refined = geometry.compute(vec![applied], &balanced_rows, 0.0, None);
+    assert_eq!(refined.para, Some((0, 1)));
+    assert_eq!(refined.cut, 20.0);
+}
+
+#[test]
 fn empty_box_after_last_line_places_point_between_paragraphs() {
     let geometry = ClampGeometry {
         limit: None,

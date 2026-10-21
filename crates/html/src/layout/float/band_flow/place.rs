@@ -132,6 +132,7 @@ pub(super) fn place_seq(
                     x,
                     y: t,
                     geometry: p.last_geometry.clone(),
+                    clamp: p.last_clamp.clone(),
                     avail,
                     b: bh,
                     i: bw,

@@ -49,6 +49,7 @@ pub(super) fn place_flow(
         avail,
         shapes: Some(shapes),
         geometry: p.last_geometry.clone(),
+        clamp: p.last_clamp.clone(),
         b: bh,
         i: bw,
         ..Slot::default()

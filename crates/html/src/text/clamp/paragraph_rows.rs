@@ -1,6 +1,4 @@
-//! Связь абзацев с clamp-контейнером на одном кадре: пробы строк и коробок (`clamp_probe`,
-//! `clamp_empty_probe`) пишут свои границы в prepaint; отрисовка абзаца публикует настоящие
-//! строки в `ParagraphRows` документа, откуда их забирает `ClampCut` своего контейнера.
+//! Записи строк и блочных коробок: Measure снимает layout, легаси — prepaint.
 
 use super::{ClampEntry, ClampLines};
 use gpui::AnyElement;
@@ -9,7 +7,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 type Rows = HashMap<(u64, u32), Vec<(f32, f32)>>;
 
-/// Actual paragraph rows shared with the document's clamp cut elements.
+/// Exact paragraph rows keyed by clamp container and paragraph sequence.
 #[derive(Default)]
 pub(crate) struct ParagraphRows(RefCell<Rows>);
 
@@ -32,12 +30,12 @@ impl ParagraphRows {
     }
 }
 
-/// Проба строк: канвас в элементе с текстом (или блоке), пишет границы и
-/// высоту строки в prepaint своего кадра.
-// The probe records paragraph identity, line geometry and clamp constraints.
+/// Проба коробки: Measure сохраняет LayoutId для чтения до освобождения
+/// движка; документный адаптер записывает границы при prepaint.
 #[allow(clippy::too_many_arguments)]
-pub fn clamp_probe(
+pub(crate) fn clamp_probe(
     lines: ClampLines,
+    measure: Option<super::ClampMeasure>,
     line: f32,
     skip_count: bool,
     fixed_height: bool,
@@ -49,7 +47,7 @@ pub fn clamp_probe(
     bt_before: f32,
     positioned: bool,
 ) -> AnyElement {
-    lines.record(move |bounds| ClampEntry {
+    let entry = move |bounds| ClampEntry {
         bounds,
         line,
         skip_count,
@@ -65,15 +63,22 @@ pub fn clamp_probe(
         span: span.as_ref().map(|s| s.get()),
         bt_before,
         positioned,
-    })
+    };
+    match measure {
+        Some(m) => m.record(entry),
+        None => lines.record(entry),
+    }
 }
 
 /// Проба пустой поточной блочной коробки клэмп-контейнера: только её
 /// положение. Точка среза после неё (§5.3 «a point between two in-flow
 /// block-level sibling boxes») отделяет предыдущую строку от точки, и знака
 /// обрыва на той строке нет (`line-clamp-auto-039/032`).
-pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
-    lines.record(move |bounds| ClampEntry {
+pub(crate) fn clamp_empty_probe(
+    lines: ClampLines,
+    measure: Option<super::ClampMeasure>,
+) -> AnyElement {
+    let entry = move |bounds| ClampEntry {
         bounds,
         line: 0.0,
         skip_count: false,
@@ -89,7 +94,11 @@ pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
         span: None,
         bt_before: 0.0,
         positioned: false,
-    })
+    };
+    match measure {
+        Some(m) => m.record(entry),
+        None => lines.record(entry),
+    }
 }
 
 #[cfg(test)]

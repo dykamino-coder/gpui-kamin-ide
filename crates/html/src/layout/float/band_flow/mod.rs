@@ -21,9 +21,11 @@
 //! элементами, а построителями, и строятся заново на каждую пробу и на `prepaint`.
 
 use crate::layout::float::bands::FloatBands;
+mod clamp;
 mod clearance;
 mod kid;
 mod piece;
+mod prepaint;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
 pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
@@ -84,6 +86,7 @@ impl Edge {
 /// ребёнок строится заново в `prepaint`).
 #[derive(Clone, Debug, Default)]
 struct Slot {
+    clamp: crate::text::clamp::MeasuredClamp,
     geometry: crate::layout::fragment::flow::FlowGeometry,
     x: f32,
     y: f32,
@@ -115,6 +118,9 @@ pub(super) struct Probe<'a> {
     pub(super) cx: &'a mut App,
     pub(super) vert: bool,
     fragment: Option<fragment::FragmentFlow>,
+    clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
+    last_clamp: crate::text::clamp::MeasuredClamp,
+    positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
     last_geometry: crate::layout::fragment::flow::FlowGeometry,
 }
 
