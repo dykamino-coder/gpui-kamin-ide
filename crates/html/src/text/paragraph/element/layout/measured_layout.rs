@@ -172,6 +172,7 @@ pub(crate) fn measured_layout(
     let across = {
         probe.lines = lines.clone();
         let pads = probe.line_padding();
+        probe.publish_measured_clamp(limit, line_height, window);
         probe.publish_fragment_lines(
             &pads,
             f32::from(if vertical {

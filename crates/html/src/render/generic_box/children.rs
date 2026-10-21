@@ -8,7 +8,6 @@ mod probes;
 pub(crate) use probes::child_probes;
 
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
 use crate::layout::block::reorder::{orthogonal_vertical_children, resolve_inline_pct};
 use crate::layout::block::struts::margin_px;
 use crate::layout::block::vertical_flow_margins;
@@ -21,8 +20,6 @@ use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Computed;
-use crate::style::values::value::px_lossy_zero;
-use crate::text::text_box::text_box_trim_px;
 use gpui::{AnyElement, IntoElement, ParentElement};
 use std::borrow::Cow;
 
@@ -190,47 +187,6 @@ pub(crate) fn generic_children(
     );
     if let Some(scope) = cb_scope {
         kids.extend(scope.finish());
-    }
-    if is_clamp {
-        // Бюджет среза — высота ПОЛЯ СОДЕРЖИМОГО: при `box-sizing:
-        // border-box` из `max-height` вычитаются вертикальные рамки и
-        // паддинги (`line-clamp-auto-003`: 138 − 2×(1+4) = 128).
-        let bb_y = if merged.border_box == Some(true) {
-            let side = px_lossy_zero;
-            let bw = merged.borders();
-            side(bw.top) + side(bw.bottom) + side(merged.padding.top) + side(merged.padding.bottom)
-        } else {
-            0.0
-        };
-        // Потолок высоты участвует в выборе точки среза только в
-        // авто-режиме (`line-clamp: auto` / `4 auto`); счётный
-        // `line-clamp: 4` и `-webkit-line-clamp` режут ТОЛЬКО по числу
-        // строк, а не влезшее в `max-height` переполняет коробку
-        // (`line-clamp-035`, `webkit-line-clamp-with-max-height`).
-        let max_h = match auto_clamp_limit(&merged) {
-            Some(v) if e.style.clamp_auto == Some(true) => Some((v - bb_y).max(0.0)),
-            _ => None,
-        };
-        // `text-box-trim: trim-end` клампа: последняя строка перед
-        // обрывом срезается (css-inline-3 §4.2; Blink триммит строку у
-        // точки клампа). Метрика — по стилю контейнера.
-        let clamp_trim = if merged.text_box_trim_end {
-            text_box_trim_px(&merged, false, opts)
-        } else {
-            0.0
-        };
-        kids.push(
-            crate::text::clamp::ClampCut::new(
-                e.node_id,
-                crate::text::clamp::clamp_lines_for(e.node_id, opts.cx.vcx()),
-                e.style.clamp_lines(),
-                max_h,
-                &opts.cx,
-            )
-            .measure_context(&opts.cx)
-            .trim_end(clamp_trim)
-            .hooked(),
-        );
     }
     // Абсолют с `anchor()`-вставками: раскладка поставила его к краю
     // содержащего блока (нулевая вставка), сдвиг до края якоря

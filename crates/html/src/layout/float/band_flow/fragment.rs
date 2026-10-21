@@ -24,9 +24,14 @@ impl<'a> super::Probe<'a> {
         vert: bool,
         fragment: Option<&FragmentFlow>,
         paint: Rc<crate::paint::context::PaintCx>,
+        clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
+        positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
     ) -> Self {
         Self {
             paint,
+            clamp,
+            positioning,
+            last_clamp: Default::default(),
             window,
             cx,
             vert,

@@ -18,6 +18,7 @@ use std::cell::RefCell;
 
 mod scope;
 pub(crate) use scope::LayerScope;
+mod deferred;
 
 use super::oof::OofHost;
 
@@ -52,7 +53,7 @@ pub struct Positioning {
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
     /// once both exist. Keyed by the container's node id.
-    flex_content: RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>,
+    flex_content: std::rc::Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
 }
 
 impl Positioning {

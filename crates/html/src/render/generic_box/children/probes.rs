@@ -122,6 +122,7 @@ pub(crate) fn child_probes(
         if !is_clamp && (has_box_style_probe(&e.style) || monolithic || sized || ends) {
             kids.push(crate::text::clamp::clamp_probe(
                 crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
+                opts.cx.clamp_measure().map(|(_, m)| m),
                 0.0,
                 skip,
                 // `min-height` alone does not make the box monolithic: it
@@ -172,6 +173,7 @@ pub(crate) fn child_probes(
         {
             kids.push(crate::text::clamp::clamp_empty_probe(
                 crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
+                opts.cx.clamp_measure().map(|(_, m)| m),
             ));
         }
     }

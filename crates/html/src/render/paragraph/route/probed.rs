@@ -59,6 +59,7 @@ pub(crate) fn paragraph_probed(
             .child(para)
             .child(crate::text::clamp::clamp_probe(
                 crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
+                opts.cx.clamp_measure().map(|(_, m)| m),
                 line_height_px(inherited, opts),
                 skip,
                 false,

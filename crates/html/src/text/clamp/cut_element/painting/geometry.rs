@@ -3,7 +3,8 @@
 use super::{ClampBox, ClampEntry, fit, paragraph};
 use std::collections::HashMap;
 
-pub(super) struct ClampGeometry {
+#[derive(Clone)]
+pub(crate) struct ClampGeometry {
     pub limit: Option<u32>,
     pub max_h: Option<f32>,
     pub trim_end: f32,

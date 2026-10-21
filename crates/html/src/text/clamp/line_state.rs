@@ -14,7 +14,7 @@ use gpui::{Bounds, Pixels};
 /// считаются; блок, пересекающий точку среза, прячется целиком — срез
 /// поднимается к его верху. Точка меряется пробами построенного кадра и
 /// применяется потолком высоты на СЛЕДУЮЩЕМ (перестройка каждый кадр).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ClampEntry {
     pub bounds: Bounds<Pixels>,
     /// Высота строки в точках; 0 — блок без собственного текста.
@@ -130,22 +130,26 @@ pub fn close_clamp_span(span: Option<ClampSpan>, cx: &LayoutCx) {
     }
 }
 
+#[allow(dead_code)] // Legacy document-state reader retained during caller migration.
 pub fn clamp_cut(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
     vcx.doc.clamp.cuts.borrow().get(&key).copied()
 }
 
 /// Бюджет строк абзаца со знаком обрыва: (номер абзаца, сколько строк
-/// оставить). Считает `ClampCut::paint` прошлого кадра.
+/// оставить) в сохранённом состоянии документа.
+#[allow(dead_code)] // Legacy document-state reader retained during caller migration.
 pub fn clamp_para(key: u64, vcx: ValueCx<'_>) -> Option<(u32, usize)> {
     vcx.doc.clamp.para.borrow().get(&key).copied()
 }
 
 /// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).
+#[allow(dead_code)] // Legacy document-state reader retained during caller migration.
 pub fn clamp_next(key: u64, vcx: ValueCx<'_>) -> Option<u32> {
     vcx.doc.clamp.next.borrow().get(&key).copied()
 }
 
 /// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
+#[allow(dead_code)] // Legacy document-state reader retained during caller migration.
 pub fn clamp_extent(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
     vcx.doc.clamp.extent.borrow().get(&key).copied()
 }

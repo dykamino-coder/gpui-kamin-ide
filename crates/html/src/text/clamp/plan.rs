@@ -14,10 +14,10 @@ pub(crate) struct ClampPlan {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)] // Вход измерения подключается хостом clamp.
 pub(crate) enum ClampInput {
     Measure(ClampMeasure),
     Apply(Rc<ClampPlan>),
+    ApplyMeasured(Rc<ClampPlan>, ClampMeasure),
 }
 
 #[derive(Clone, Default)]
@@ -33,7 +33,7 @@ impl ClampPlans {
         let next = state.next.borrow();
         let extent = state.extent.borrow();
         let boxes = state.boxes.borrow().clone();
-        // ClampCut публикует полный результат до следующей сборки.
+        // Адаптер читает сохранённый результат старого пути документа.
         // Отсутствующий срез отличается от измеренного бесконечного.
         let plans = cuts
             .iter()
@@ -55,7 +55,7 @@ impl ClampPlans {
     }
     pub(crate) fn plan(&self, key: u64) -> Option<&ClampPlan> {
         match self.plans.get(&key)? {
-            ClampInput::Apply(plan) => Some(plan),
+            ClampInput::Apply(plan) | ClampInput::ApplyMeasured(plan, _) => Some(plan),
             ClampInput::Measure(_) => None,
         }
     }
