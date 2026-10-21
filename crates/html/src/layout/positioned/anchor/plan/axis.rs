@@ -172,7 +172,6 @@ impl AnchorPlan {
 
 /// Куда просится край по `anchor()`.
 // `FromEdge` names the anchor-relative inset, not a nested `Edge`.
-#[allow(clippy::enum_variant_names)]
 pub(super) enum Edge {
     Abs(f32),
     FromEdge(f32),

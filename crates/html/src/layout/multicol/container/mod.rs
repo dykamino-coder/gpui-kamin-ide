@@ -26,7 +26,7 @@ pub(crate) use spanner::multicol_spanner_segments;
 mod fixed_height;
 use fixed_height::fixed_column_height;
 
-#[allow(clippy::too_many_arguments, clippy::needless_return)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn multicol_column_stack(
     d: gpui::Div,
     e: &Element,

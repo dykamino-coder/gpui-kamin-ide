@@ -2,7 +2,6 @@ mod alignment_adapter;
 mod measurement;
 mod line_baselines;
 mod measured_content;
-mod native_trace;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;
 
@@ -20,7 +19,7 @@ use crate::{
 use collections::{FxHashMap, FxHashSet};
 use std::{fmt::Debug, ops::Range};
 use taffy::{
-    TaffyTree,
+    TaffyTree, TraversePartialTree as _,
     geometry::{Point as TaffyPoint, Rect as TaffyRect, Size as TaffySize},
     prelude::{max_content, min_content},
     style::AvailableSpace as TaffyAvailableSpace,
@@ -238,6 +237,53 @@ impl TaffyLayoutEngine {
         self.taffy.set_style(id.0, style).expect(EXPECT_MESSAGE);
     }
 
+    // Used to understand performance
+    #[allow(dead_code)]
+    fn count_all_children(&self, parent: LayoutId) -> anyhow::Result<u32> {
+        let mut count = 0;
+
+        for child in self.taffy.children(parent.0)? {
+            // Count this child.
+            count += 1;
+
+            // Count all of this child's children.
+            count += self.count_all_children(LayoutId(child))?
+        }
+
+        Ok(count)
+    }
+
+    // Used to understand performance
+    #[allow(dead_code)]
+    fn max_depth(&self, depth: u32, parent: LayoutId) -> anyhow::Result<u32> {
+        println!(
+            "{parent:?} at depth {depth} has {} children",
+            self.taffy.child_count(parent.0)
+        );
+
+        let mut max_child_depth = 0;
+
+        for child in self.taffy.children(parent.0)? {
+            max_child_depth = std::cmp::max(max_child_depth, self.max_depth(0, LayoutId(child))?);
+        }
+
+        Ok(depth + 1 + max_child_depth)
+    }
+
+    // Used to understand performance
+    #[allow(dead_code)]
+    fn get_edges(&self, parent: LayoutId) -> anyhow::Result<Vec<(LayoutId, LayoutId)>> {
+        let mut edges = Vec::new();
+
+        for child in self.taffy.children(parent.0)? {
+            edges.push((parent, LayoutId(child)));
+
+            edges.extend(self.get_edges(LayoutId(child))?);
+        }
+
+        Ok(edges)
+    }
+
     /// KaminIDE patch: то же, но замер отдаёт ПЕРВУЮ и ПОСЛЕДНЮЮ базовые
     /// линии содержимого (`last baseline`, css-align-3 §9.1).
     pub fn request_measured_layout_with_baselines(
@@ -325,7 +371,6 @@ impl TaffyLayoutEngine {
             _taffy_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
-        native_trace::dump(self, id, scale_factor);
     }
 
     /// KaminIDE patch: размер узла БЕЗ округления к физической точке.
@@ -588,7 +633,7 @@ impl From<LayoutId> for NodeId {
 /// KaminIDE patch: see [`TaffyLayoutEngine::cap_child_outer_width`]. `outer` is
 /// in native (device) units. Only absolute margins, borders and paddings are
 /// subtracted; the caller never caps a box whose edges are percentages.
-pub(crate) fn cap_child_outer_width(
+fn cap_child_outer_width(
     tree: &mut TaffyTree<NodeContext>,
     parent: NodeId,
     index: usize,

@@ -58,7 +58,6 @@ pub(super) fn with_viewport(markup: &str, tile: (f32, f32)) -> String {
 
 /// Premultiplied cross-fade over the computed operand weights.
 // Pixel channel indices address the source and accumulator buffers together.
-#[allow(clippy::needless_range_loop)]
 pub(super) fn rasterize_cross_fade(
     src: &crate::style::computed::ImageSource,
     w: u32,

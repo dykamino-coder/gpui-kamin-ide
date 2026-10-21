@@ -12,7 +12,6 @@ use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::redundant_field_names)]
 pub(super) fn finish_element(
     mut style: Computed,
     mut children: Vec<Node>,

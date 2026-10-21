@@ -110,6 +110,14 @@ python vendor/regenerate-patch.py gpui /tmp/upstream/gpui-pre-0.3.8 --check
 python vendor/regenerate-patch.py taffy /tmp/upstream/taffy-2d936b7
 ```
 
+`python vendor/check-patches.py [crate ...]` сам собирает чистые базы из
+закреплённых источников (архивы crates.io со сверкой SHA-256, Git-источники по
+полному commit id, `cargo package` Taffy toolchain из `rust-toolchain.toml`) и
+выполняет `--check` для всех крейтов; CI запускает его при изменениях
+`vendor/`. Lockfile `cargo package` зависит от даты registry, поэтому для Taffy
+он восстанавливается обратным применением секции `Cargo.lock` из патча; все
+остальные файлы базы проверяются независимо.
+
 Повторить для каждого изменённого крейта. `--scratch` задаёт внешний каталог
 для временного дерева проверки. Генератор нормализует CRLF в LF, учитывает
 все tracked и неигнорируемые новые файлы крейта, проверяет применение патча
@@ -161,7 +169,9 @@ git apply --unidiff-zero vendor/gpui-kaminide.patch
 | `KAMIN_FORCE_SCALE` | `crates/html/examples/wptrun.rs`: стабильный scale 1 для WPT; Windows display читает положительный scale |
 | `KAMIN_PREPAINT_PROF=1` | профилировщик GPUI и `crates/shell/src/web/diag*.rs`: время prepaint по типам элементов |
 | `KAMIN_DIAG_GPU_TIMING=1` | Windows batch-cost timestamps; `gpui::batch_cost::take_line()` читается диагностикой shell |
+| `KAMIN_DEBUG_D3D_DEVICE=warp\|d3d11on12` | `vendor/gpui-windows/src/debug_device.rs`, только debug-сборки: устройство WARP или D3D11On12 для native acceptance (`scripts/start_native_acceptance.ps1`, `docs/NATIVE_ACCEPTANCE_SEAMS.md`); release переменную не читает |
 
 `ORD_DBG`, `VERT_DBG` и `IMG_DBG` были локальными печатными пробами без
-потребителей и удалены. Новая диагностическая переменная требует реального
+потребителей и удалены. `GPUI_NATIVE_TREE` (печать дерева Taffy в
+stderr) удалён по той же причине. Новая диагностическая переменная требует реального
 потребителя и записи в этой таблице.

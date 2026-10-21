@@ -18,7 +18,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_borrow)]
 pub(super) fn collect_children(
     handle: &Handle,
     tree: &TreeIndex,

@@ -7,7 +7,6 @@ use gpui::{App, Bounds, Pixels, Window, point, px, size};
 impl PageStack {
     #[allow(clippy::too_many_arguments)]
     // Page indices address both the plan and parallel per-page layout state.
-    #[allow(clippy::needless_range_loop)]
     pub(super) fn prepaint_pages(
         &mut self,
         bounds: Bounds<Pixels>,

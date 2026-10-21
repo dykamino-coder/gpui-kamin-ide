@@ -624,21 +624,8 @@ impl LineLayoutCache {
         curr_frame.used_wrapped_lines_by_hash.clear();
     }
 
-    pub fn layout_wrapped_line<Text>(
-        &self,
-        text: Text,
-        font_size: Pixels,
-        runs: &[FontRun],
-        wrap_width: Option<Pixels>,
-        max_lines: Option<usize>,
-    ) -> Arc<WrappedLineLayout> where
-        Text: AsRef<str>,
-        SharedString: From<Text>,
-    {
-        self.layout_wrapped_line_spaced(text, font_size, runs, wrap_width, max_lines, px(0.))
-    }
-
-    /// KaminIDE patch: `layout_wrapped_line` с трекингом. Трекинг применяется
+    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
+    /// upstream `layout_wrapped_line`). Трекинг применяется
     /// ТОЛЬКО когда переноса нет (`wrap_width.is_none()`): при переносе
     /// границы считает `compute_wrap_boundaries` по неучтённым ширинам, и
     /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,

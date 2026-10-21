@@ -46,6 +46,12 @@ FIXES = {
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",
         "Diagnostics: GPU batch measurements consumed by the application's diagnostic panel.",
         "Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.",
+        "Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state,"
+        " called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory is touched in three places only: the frame-capture"
+        " readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads"
+        " a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and"
+        " external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that"
+        " reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",

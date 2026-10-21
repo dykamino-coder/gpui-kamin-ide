@@ -4,7 +4,7 @@
 
 use super::*;
 
-#[allow(clippy::too_many_arguments, unused_variables)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn transform_function(
     t: &mut Transform,
     name: &str,
@@ -108,6 +108,6 @@ pub(super) fn transform_function(
             t.scale.1 *= k;
             t.push(Transform::diag(1.0, k), NO_SHIFT);
         }
-        _ => transform_function_3d(t, name, arg, nums, first, angle, angle_at, frac_at),
+        _ => transform_function_3d(t, name, arg, nums, first, angle, angle_at),
     }
 }

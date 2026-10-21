@@ -14,7 +14,9 @@ edition.workspace = true
 # него собирается таблица в `docs/html-css-mapping.html`. Скрипты (JS) вне цели.
 
 [features]
-# Static-capture controls used only by the WPT example, never by normal consumers.
+# Builds the Windows-only WPT reftest runner (`examples/wptrun.rs`) and its
+# capture dev-dependencies; it gates no library code. The paged-media API the
+# runner calls (`render::render_paged*`, `flow::PageGeom`) is public engine API.
 wpt-harness = []
 
 [[example]]
@@ -48,7 +50,7 @@ unicode-linebreak = "0.1"
 # прогона переставляет набор, здесь только порядок самих прогонов.
 unicode-bidi = "0.3.18"
 # Typographic units for text-combine-upright include combining marks.
-unicode-segmentation = "=1.13.3"
+unicode-segmentation = "1.13.3"
 # Unicode categories for first-letter punctuation in every script.
 unicode-properties = { version = "0.1.4", default-features = false, features = ["general-category"] }
 # Слогораздел по образцам Лианга — `hyphens: auto`. Образцы вшиты в крейт по

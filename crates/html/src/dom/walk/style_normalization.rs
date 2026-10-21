@@ -14,7 +14,6 @@ use crate::style::computed::{Computed, Position};
 use crate::style::select::Ancestor;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_borrow)]
 pub(super) fn normalize_style(
     mut style: &mut Computed,
     tag: &str,

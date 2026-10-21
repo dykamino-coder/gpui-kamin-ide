@@ -13,7 +13,7 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-#[allow(clippy::too_many_arguments, clippy::needless_return)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn multicol_spanner_segments(
     mut d: gpui::Div,
     e: &Element,

@@ -23,7 +23,7 @@ mod frag_div;
 mod paginate;
 use frag_div::frag_box_div;
 
-#[allow(clippy::too_many_arguments, clippy::needless_borrow)]
+#[allow(clippy::too_many_arguments)]
 pub(super) fn multicol_stack_child(
     ix: usize,
     c: Element,

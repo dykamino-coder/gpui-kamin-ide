@@ -32,7 +32,6 @@ pub(super) fn ends_with_zwsp(out: &[Piece]) -> bool {
     false
 }
 
-#[allow(clippy::needless_borrow)]
 pub(super) fn collect_text(
     t: &str,
     inherited: &Computed,

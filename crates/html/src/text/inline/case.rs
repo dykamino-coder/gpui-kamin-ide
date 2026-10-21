@@ -14,7 +14,6 @@ fn full_width_spaces(style: &Computed) -> bool {
 /// это три куска, а `<span>` с полем или рамкой делит абзац и вовсе на
 /// отдельные элементы. Замена знак-в-знак: нулевой пробел и идеографический
 /// занимают в UTF-8 одинаково, поэтому прогоны не съезжают.
-#[allow(clippy::needless_range_loop)] // Shared indices also address neighboring pieces.
 pub fn space_transform_pieces(pieces: &mut [Piece]) {
     let mut seq: Vec<(usize, usize, char)> = vec![];
     for (i, piece) in pieces.iter().enumerate() {

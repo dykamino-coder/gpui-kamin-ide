@@ -73,7 +73,6 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    #[allow(clippy::needless_return)]
     pub(crate) fn paint_empty_line(
         &self,
         range: &std::ops::Range<usize>,

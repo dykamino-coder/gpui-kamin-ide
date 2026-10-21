@@ -4,3 +4,6 @@
 # the shebang line ends in \r. Hit for real while building 6.3.131 on Windows.
 *.sh text eol=lf
 Dockerfile text eol=lf
+# Vendor patches embed Git binary-patch literals and are applied byte for
+# byte; any CRLF conversion on checkout corrupts those sections.
+*.patch -text

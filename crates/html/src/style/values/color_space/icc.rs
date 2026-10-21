@@ -118,7 +118,6 @@ fn icc_tag(profile: &[u8], sig: &[u8; 4]) -> Option<(usize, usize)> {
 
 /// Матрица колорантов профиля: столбцы rXYZ/gXYZ/bXYZ (в PCS D50).
 // ICC colorant indices become corresponding columns of the conversion matrix.
-#[allow(clippy::needless_range_loop)]
 fn icc_matrix(profile: &[u8]) -> Option<[f32; 9]> {
     let mut cols = [[0.0f32; 3]; 3];
     for (i, sig) in [b"rXYZ", b"gXYZ", b"bXYZ"].into_iter().enumerate() {

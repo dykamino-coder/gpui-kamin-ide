@@ -8,7 +8,6 @@ use crate::text::paragraph::*;
 use gpui::{App, Pixels, SharedString, Window, point, px};
 
 impl Paragraph {
-    #[allow(clippy::needless_borrow)]
     pub(crate) fn paint_words(
         &self,
         context: JustifiedPaint<'_>,
