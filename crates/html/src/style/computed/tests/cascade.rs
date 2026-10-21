@@ -46,19 +46,19 @@ fn important_survives_a_later_ordinary_rule() {
         sel: crate::style::css::Selector::parse("p").expect("селектор тега"),
         decls: crate::style::css::parse_decls("color: red !important"),
         order: 0,
-        origin: 1,
+        origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
     };
     let late = crate::style::css::Rule {
         sel: crate::style::css::Selector::parse("p.x").expect("селектор класса"),
         decls: crate::style::css::parse_decls("color: green"),
         order: 1,
-        origin: 1,
+        origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
     };
-    let mut matched = vec![&early, &late];
+    let matched = vec![&early, &late];
     let c = crate::style::computed::Computed::resolve(
-        &mut matched,
+        &matched,
         &crate::style::css::DeclBlock::new(),
         vcx,
     );
@@ -80,19 +80,19 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
         sel: crate::style::css::Selector::parse("p").expect("селектор тега"),
         decls: crate::style::css::parse_decls("margin-top: 6px"),
         order: 0,
-        origin: 0,
+        origin: crate::style::css::Origin::UserAgent,
         layer: vec![u32::MAX],
     };
     let author = crate::style::css::Rule {
         sel: crate::style::css::Selector::parse("*").expect("универсальный селектор"),
         decls: crate::style::css::parse_decls("margin-top: 0"),
         order: 1,
-        origin: 1,
+        origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
     };
-    let mut matched = vec![&ua, &author];
+    let matched = vec![&ua, &author];
     let c = crate::style::computed::Computed::resolve(
-        &mut matched,
+        &matched,
         &crate::style::css::DeclBlock::new(),
         vcx,
     );

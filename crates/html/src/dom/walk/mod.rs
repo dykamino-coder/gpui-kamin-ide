@@ -82,7 +82,7 @@ fn build_dom_node(
                 sibs,
                 tree,
             );
-            let (mut style, own_vars, scheme, shadow) = cascade_element(
+            let (mut style, own_vars, scheme, shadow, important) = cascade_element(
                 &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs, vcx,
             );
             let vcx = vcx.with_scheme(scheme);
@@ -223,7 +223,7 @@ fn build_dom_node(
                 children =
                     details_content::wrap(children, &attrs, rules, vars, &me, path, sibs, vcx);
             }
-            let anim = animation_frames(&style, frames, vars, vcx);
+            let anim = animation_frames(&style, frames, vars, important.as_ref(), vcx);
             finish_element(
                 style,
                 children,

@@ -66,7 +66,7 @@ pub(super) fn shadow_scope(
         {
             rules.push(Rule {
                 order: base + i,
-                origin: 1,
+                origin: crate::style::css::Origin::Author,
                 ..r
             });
         }

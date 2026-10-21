@@ -99,7 +99,7 @@ mod tests {
         let declarations = crate::style::css::parse_decls(
             "border-image-width: 3; border-image: url(x.png) 25% / / 2 5px",
         );
-        let c = Computed::resolve(&mut vec![], &declarations, vcx);
+        let c = Computed::resolve(&[], &declarations, vcx);
         let image = c.border_image.unwrap();
         assert_eq!(image.width, [BorderImageWidth::Times(1.0); 4]);
         assert_eq!(image.outset[0].px(20.0, 100.0), 40.0);

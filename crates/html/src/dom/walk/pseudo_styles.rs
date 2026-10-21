@@ -9,8 +9,9 @@
 
 use super::initial_pseudos;
 use crate::document::state::ValueCx;
+use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::{Computed, Display};
-use crate::style::css::{Rule, VarMap};
+use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
@@ -30,21 +31,18 @@ pub(super) fn pseudo_styles(
     Option<Computed>,
     Option<Computed>,
 ) {
-    let mut hovered: Vec<&Rule> = rules
+    let hovered: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref() == Some("hover"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
         .collect();
-    hovered.sort_by_key(|r| (r.sel.specificity(), r.order));
     // Слой наведения собирается ПОВЕРХ базового стиля, а не с нуля:
     // правило `:hover` меняет два-три свойства, а не весь стиль. Со
     // сборкой «с нуля» плавный переход на середине пути показывал
     // голый огрызок — без отступов, размеров и шрифта.
     let hover = (!hovered.is_empty()).then(|| {
         let mut merged = style.clone();
-        for rule in hovered.iter() {
-            merged.apply_decls_with_vars(&rule.decls, vars, vcx);
-        }
+        merged.cascade_onto(&hovered, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
         merged
     });
     // Псевдоэлементы первой буквы и первой строки — тем же слоем
@@ -65,12 +63,11 @@ pub(super) fn pseudo_styles(
     // `counter(list-item)` в его `content` обязан видеть своё
     // значение.
     let marker_layer = {
-        let mut found: Vec<&Rule> = rules
+        let found: Vec<&Rule> = rules
             .iter()
             .filter(|r| r.sel.pseudo.as_deref() == Some("marker"))
             .filter(|r| matches_ignoring_pseudo(&r.sel, &me, path, sibs))
             .collect();
-        found.sort_by_key(|r| (r.sel.specificity(), r.order));
         (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
             // CSS Lists 3 marker UA style preserves spaces and tab characters.
             let mut m = Computed {
@@ -83,9 +80,7 @@ pub(super) fn pseudo_styles(
             if !found.is_empty() {
                 m.bidi_isolate = Some(true);
             }
-            for rule in found.iter() {
-                m.apply_decls_with_vars(&rule.decls, vars, vcx);
-            }
+            m.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
             m
         })
     };

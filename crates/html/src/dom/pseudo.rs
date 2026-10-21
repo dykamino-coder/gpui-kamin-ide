@@ -117,7 +117,7 @@ pub(super) fn pseudo_box_named(
     attrs: &[(String, String)],
     vcx: ValueCx<'_>,
 ) -> Option<Element> {
-    let mut matched: Vec<&Rule> = rules
+    let matched: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref().is_some_and(|p| names.contains(&p)))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
@@ -125,7 +125,7 @@ pub(super) fn pseudo_box_named(
     if matched.is_empty() {
         return None;
     }
-    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
+    let mut style = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     content::inherit_generated(&mut style, Some(me));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,

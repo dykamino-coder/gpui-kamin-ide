@@ -15,21 +15,21 @@ mod color_initial;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
-mod inline_rollback;
+pub(crate) mod key;
+pub(crate) mod map;
 mod pass;
-mod revert;
 pub mod vars;
-use revert::revert_layers;
+use map::CascadeMap;
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
-    pub fn resolve(matched: &mut Vec<&Rule>, inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
+    pub fn resolve(matched: &[&Rule], inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
         Computed::resolve_with_vars(matched, inline, &VarMap::new(), vcx)
     }
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(
-        matched: &mut Vec<&Rule>,
+        matched: &[&Rule],
         inline: &DeclBlock,
         vars: &VarMap,
         vcx: ValueCx<'_>,
@@ -40,85 +40,41 @@ impl Computed {
     /// То же для элемента `cx`: его атрибуты и место среди братьев видят
     /// `attr()` и `sibling-index()`.
     pub fn resolve_in(
-        matched: &mut Vec<&Rule>,
+        matched: &[&Rule],
         inline: &DeclBlock,
         vars: &VarMap,
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Computed {
-        // Слой старше специфичности (css-cascade-5 §6.4): у обычных
-        // объявлений поздний слой сильнее, у важных — ранний.
-        matched.sort_by(|a, b| {
-            (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
-                b.origin,
-                &b.layer,
-                b.sel.specificity(),
-                b.order,
-            ))
-        });
-        let inline_rollback = inline_rollback::prepare(matched, inline);
-        let inline = inline_rollback.as_ref().map_or(inline, |(_, d)| d);
-        let rollback_refs: Vec<&Rule> = inline_rollback
-            .iter()
-            .flat_map(|(rules, _)| rules.iter())
-            .collect();
-        let matched = if inline_rollback.is_some() {
-            rollback_refs.as_slice()
-        } else {
-            matched.as_slice()
-        };
-        // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
-        // объявления откатываемого слоя (а у важного — и всё между его
-        // обычным и важным уровнями) снимаются с копий правил.
-        let reverted = revert_layers(matched);
-        let owned_refs: Vec<&crate::style::css::Rule> = reverted.iter().flatten().collect();
-        let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
-            owned_refs
-        } else {
-            matched.to_vec()
-        };
         let mut c = Computed::default();
-        // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
-        // — самый старший ключ сравнения (CSS Cascade §6.1), поэтому важное
-        // объявление раннего правила обязано пережить обычное объявление
-        // позднего. Пока проходы шли внутри правила, `!important` действовал
-        // только против соседей по тому же блоку.
-        for rule in matched.iter() {
-            c.apply_pass(&rule.decls, vars, false, cx, vcx);
-        }
-        c.apply_pass(inline, vars, false, cx, vcx);
-        // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
-        // старше важного авторского (§6.4.4), поэтому применяется последним.
-        let mut important: Vec<&&Rule> = matched.iter().collect();
-        important.sort_by(|a, b| {
-            (
-                std::cmp::Reverse(a.origin),
-                std::cmp::Reverse(&a.layer),
-                a.sel.specificity(),
-                a.order,
-            )
-                .cmp(&(
-                    std::cmp::Reverse(b.origin),
-                    std::cmp::Reverse(&b.layer),
-                    b.sel.specificity(),
-                    b.order,
-                ))
-        });
-        for rule in important {
-            c.apply_pass(&rule.decls, vars, true, cx, vcx);
-        }
-        c.apply_pass(inline, vars, true, cx, vcx);
+        c.cascade_onto(matched, inline, vars, cx, vcx);
+        c
+    }
+
+    /// Каскад правил `matched` и `style=""` поверх уже стоящих значений:
+    /// один победитель на имя свойства по ключу каскада (css-cascade-5
+    /// §6.2), откаты `revert`/`revert-layer` по истории кандидатов.
+    /// Слои стиля (`::first-letter`, `:hover`) кладутся этим же путём на
+    /// копию стиля хозяина.
+    pub(crate) fn cascade_onto(
+        &mut self,
+        matched: &[&Rule],
+        inline: &DeclBlock,
+        vars: &VarMap,
+        cx: CascadeCx,
+        vcx: ValueCx<'_>,
+    ) {
+        let map = CascadeMap::collect(matched, inline);
+        self.apply_map(&map, vars, cx, vcx);
         // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
         // подставляем уже после того, как цвет стал известен.
-        if c.border_color_is_current {
-            c.border_color = c.color;
+        if self.border_color_is_current {
+            self.border_color = self.color;
         }
-
         // Окраска фильтром здесь НЕ делается: результат оседал в
         // долгоживущем стиле узла, и покадровая окраска в `style::cascade::inherit`
         // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
         // точка окраски — слияние при отрисовке.
-        c
     }
 
     // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же

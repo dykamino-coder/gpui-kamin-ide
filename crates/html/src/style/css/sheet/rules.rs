@@ -106,7 +106,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
                 decls: decls.clone(),
                 order,
                 // Происхождение ставит тот, кто подключает таблицу (см. `dom`).
-                origin: 0,
+                origin: crate::style::css::Origin::UserAgent,
                 layer: cx.layer_of_rules(),
             });
             order += 1;
