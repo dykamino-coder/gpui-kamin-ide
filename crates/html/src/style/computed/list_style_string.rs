@@ -9,8 +9,7 @@ pub(super) fn apply_string(style: &mut Computed, key: &str, raw: &str) -> bool {
     let mut marker = None;
     let mut placement = None;
     let mut image_none = false;
-    while !rest.is_empty() {
-        let ch = rest.chars().next().unwrap();
+    while let Some(ch) = rest.chars().next() {
         if ch == '"' || ch == '\'' {
             if marker.is_some() {
                 return false;

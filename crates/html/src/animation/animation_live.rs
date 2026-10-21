@@ -63,7 +63,7 @@ pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> 
         return painted(e, inherited, opts);
     }
     let base = painted(e, inherited, opts);
-    let id = gpui::ElementId::Integer(e.node_id);
+    let id = e.state_id("html-animation");
     let source = e.clone();
     let inherited = inherited.clone();
     let opts = opts.clone();

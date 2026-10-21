@@ -156,7 +156,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
                 ]
                 .iter()
                 .any(|v| name.eq_ignore_ascii_case(v));
-                declarations.push(*declarations.last().unwrap() || !group);
+                declarations.push(declarations.last().copied().unwrap_or(false) || !group);
                 head = i + 1;
             }
             b'}' if brackets == 0 => {
@@ -167,7 +167,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
             }
             b';' if brackets == 0 => head = i + 1,
             b':' if brackets == 0
-                && !declarations.last().unwrap()
+                && !declarations.last().copied().unwrap_or(false)
                 && (i == 0 || b[i - 1] != b':')
                 && b.get(i + 1) != Some(&b':') =>
             {

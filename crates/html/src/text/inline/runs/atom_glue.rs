@@ -190,8 +190,10 @@ pub(super) fn glue_atoms(pieces: Vec<Piece>) -> Vec<Vec<Piece>> {
     }
     let mut out: Vec<Vec<Piece>> = Vec::with_capacity(cut.len());
     for (i, (p, _)) in cut.into_iter().enumerate() {
-        if bind[i] && !out.is_empty() {
-            out.last_mut().expect("группа уже открыта").push(p);
+        if bind[i]
+            && let Some(group) = out.last_mut()
+        {
+            group.push(p);
         } else {
             out.push(vec![p]);
         }

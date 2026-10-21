@@ -48,12 +48,10 @@ pub fn split_first_letter(
     let Some((pos, _)) = text.char_indices().find(|(_, c)| !c.is_whitespace()) else {
         return pieces;
     };
-    let start = ranges
-        .iter()
-        .flatten()
-        .find(|r| r.contains(&pos))
-        .unwrap()
-        .start;
+    let Some(range) = ranges.iter().flatten().find(|r| r.contains(&pos)) else {
+        return pieces;
+    };
+    let start = range.start;
     let end = first_letter_end(&text, pos);
     let mut out = Vec::with_capacity(pieces.len() + 2);
     for (piece, range) in pieces.into_iter().zip(ranges) {

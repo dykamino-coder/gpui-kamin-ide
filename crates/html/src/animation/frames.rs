@@ -41,7 +41,7 @@ pub(crate) fn transitioned(
     });
     Some(
         crate::animation::transition::Transition::new(
-            gpui::ElementId::Integer(e.node_id),
+            e.state_id("html-transition"),
             seconds,
             build,
         )

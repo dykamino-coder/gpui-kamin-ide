@@ -157,6 +157,7 @@ pub(crate) fn content_text(
                 text.push_str(&chain.join(sep));
             }
             crate::style::computed::ContentItem::Attr(..) => {
+                // resolve_content_attributes выше заменяет все Attr или возвращает None.
                 unreachable!("attributes were substituted")
             }
         }

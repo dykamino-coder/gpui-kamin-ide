@@ -27,11 +27,17 @@ pub(crate) fn dispatch_element(
     inherited: &Computed,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
-    mut built_iframe: Option<AnyElement>,
+    built_iframe: Option<AnyElement>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return math;
+    }
+    // Вложенный документ имеет приоритет перед картинкой и запасным содержимым.
+    if matches!(e.tag.as_str(), "iframe" | "object")
+        && let Some(frame) = built_iframe
+    {
+        return frame;
     }
     match e.tag.as_str() {
         // CSS Lists 3 §2: a block list item generates its own marker even
@@ -90,12 +96,6 @@ pub(crate) fn dispatch_element(
         // src, object через data, video через poster (css-images §5:
         // object-fit/-position действуют на всех замещаемых).
         "embed" if e.attr("src").is_some() => image(e, &opts.cx),
-        // Вложенный документ (`<iframe>` и `<object>` с документом в `data`)
-        // построен выше; рукав стоит ПЕРЕД картиночным `object`, иначе
-        // документ уходил в `image()` пустой коробкой. Объект с документом,
-        // который не прочитался, в картинку не превращается — падает в общий
-        // рукав и показывает запасное содержимое (HTML §4.8.7).
-        "iframe" | "object" if built_iframe.is_some() => built_iframe.take().unwrap(),
         // Плавающий кадр без адреса — замещаемая коробка в своём BFC: пустой
         // контекст просмотра держит размер по умолчанию (CSS 2.1 §§10.3.2,
         // 10.6.2).

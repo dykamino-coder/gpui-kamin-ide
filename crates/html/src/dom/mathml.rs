@@ -17,6 +17,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
         return vec![];
     }
     let mut rule = Rule {
+        // Литеральный универсальный селектор всегда допустим в грамматике Selectors.
         sel: Selector::parse("*").expect("universal selector"),
         decls: parse_decls(""),
         order: 0,

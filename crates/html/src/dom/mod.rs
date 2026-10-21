@@ -130,6 +130,11 @@ pub struct Element {
 }
 
 impl Element {
+    /// Роль разделяет состояния обёрток одного узла без арифметики над node_id.
+    pub(crate) fn state_id(&self, role: &'static str) -> gpui::ElementId {
+        gpui::ElementId::NamedInteger(role.into(), self.node_id)
+    }
+
     /// A box layout inserts into the tree (anonymous block, float host, row):
     /// no markup node, attributes or pseudo-element layers of its own.
     pub(crate) fn synthetic(tag: &str, style: Computed, marks: Marks, children: Vec<Node>) -> Self {
