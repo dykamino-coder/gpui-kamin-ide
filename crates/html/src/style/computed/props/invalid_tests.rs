@@ -197,12 +197,24 @@ fn invalid_component_rejects_the_entire_shorthand() {
 
 #[test]
 fn valid_reset_is_distinct_from_invalid_value() {
+    assert!(one("background: currentcolor").background_rcs.is_some());
     let c = one(
         "margin: 9px; margin: auto; max-width: 20px; max-width: none; text-combine-upright: all; text-combine-upright: none",
     );
     assert_eq!(c.margin.top, Some(Len::Auto));
     assert!(c.max_width.is_none());
     assert!(c.combine_upright.is_none());
+}
+
+#[test]
+fn valid_inherit_clears_local_inherited_lengths() {
+    let c = one(
+        "font-size: 20px; font-size: inherit; line-height: 1em; line-height: inherit; letter-spacing: 3px; letter-spacing: inherit; word-spacing: 3px; word-spacing: inherit",
+    );
+    assert_eq!(c.font_size, None);
+    assert_eq!(c.line_height, None);
+    assert_eq!(c.letter_spacing, None);
+    assert_eq!(c.word_spacing, None);
 }
 
 #[test]

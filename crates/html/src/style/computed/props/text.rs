@@ -70,7 +70,12 @@ impl Computed {
                 };
                 self.line_height = match parsed {
                     Some(l) if neg(&l) => self.line_height,
-                    other => apply_parsed!(self, other),
+                    other => parsed_value!(
+                        self,
+                        other
+                            .map(Some)
+                            .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                    ),
                 };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
@@ -163,7 +168,12 @@ impl Computed {
                 }
             }
             "letter-spacing" => {
-                self.letter_spacing = apply_parsed!(self, Len::parse_spacing(v, vcx))
+                self.letter_spacing = parsed_value!(
+                    self,
+                    Len::parse_spacing(v, vcx)
+                        .map(Some)
+                        .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                )
             }
             _ => self.apply_text_overflow_case(key, v, hit, vcx),
         }

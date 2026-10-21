@@ -89,7 +89,12 @@ impl Computed {
                 self.font_size = match Len::parse(v, vcx) {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
-                        let parsed = apply_parsed!(self, other);
+                        let parsed = parsed_value!(
+                            self,
+                            other
+                                .map(Some)
+                                .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                        );
                         self.font_size_step = 0;
                         self.math_font_size = false;
                         parsed

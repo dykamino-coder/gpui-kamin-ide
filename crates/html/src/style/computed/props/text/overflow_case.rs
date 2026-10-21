@@ -109,7 +109,14 @@ impl Computed {
                 _ => {}
             },
             "white-space" => white_space::apply(self, v),
-            "word-spacing" => self.word_spacing = apply_parsed!(self, Len::parse_spacing(v, vcx)),
+            "word-spacing" => {
+                self.word_spacing = parsed_value!(
+                    self,
+                    Len::parse_spacing(v, vcx)
+                        .map(Some)
+                        .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                )
+            }
             "text-transform" => {
                 // Свойство наследуемое: `inherit` очищает свой слот, иначе
                 // прежнее объявление того же правила его переживало.

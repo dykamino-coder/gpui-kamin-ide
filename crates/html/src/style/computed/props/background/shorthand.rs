@@ -29,7 +29,9 @@ impl Computed {
         // Негодное объявление не сбрасывает ничего (§4.1.7).
         let valid = key != "background"
             || (Self::background_list_valid(BgListProp::Shorthand, v, vcx)
-                && background_shorthand_valid(&v.to_ascii_lowercase(), vcx));
+                && (background_shorthand_valid(&v.to_ascii_lowercase(), vcx)
+                    || crate::style::values::color_space::ColorExpression::parse(v, vcx)
+                        .is_some()));
         if !valid {
             return;
         }
