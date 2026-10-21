@@ -16,7 +16,6 @@ use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_return)]
 pub(super) fn hidden_element(
     style: Computed,
     tag: String,

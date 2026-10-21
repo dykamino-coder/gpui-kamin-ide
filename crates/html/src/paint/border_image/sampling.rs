@@ -13,11 +13,14 @@ use gpui::{Bounds, px};
 /// знак, растянутый на всю сторону рамки, размывается фильтрацией с соседями
 /// по атласу — зелёная кромка тонула в красной середине (`border-image-002`).
 /// Вырезка на каждый кадр непозволительна, поэтому куски запоминаются.
+///
+/// Бюджет 64 МиБ по байтам кусков.
 type SliceKey = (usize, u32, u32, u32, u32, u32, u32, bool);
-type SliceCache =
-    std::sync::Mutex<std::collections::HashMap<SliceKey, std::sync::Arc<gpui::RenderImage>>>;
-static SLICES: std::sync::OnceLock<SliceCache> = std::sync::OnceLock::new();
-const SLICE_CAP: usize = 256;
+static SLICES: crate::paint::cache::BoundedCache<SliceKey, std::sync::Arc<gpui::RenderImage>> =
+    crate::paint::cache::BoundedCache::new(
+        64 * crate::paint::cache::MIB,
+        crate::paint::cache::arc_image_bytes,
+    );
 
 /// Нарисовать ОДИН кусок образа в своё место.
 pub(super) fn paint_slice(
@@ -99,7 +102,9 @@ pub(super) fn paint_slice(
         && !unscaled
         && window.current_transformation() == gpui::TransformationMatrix::unit();
     let key: SliceKey = (
-        std::sync::Arc::as_ptr(raster) as usize,
+        // The raster id, not the Arc address: a freed raster's address can be
+        // reused by a new raster and would return the old slice.
+        raster.id.0,
         (sx * kx).round() as u32,
         (sy * ky).round() as u32,
         (sw * kx).round().max(1.0) as u32,
@@ -108,9 +113,8 @@ pub(super) fn paint_slice(
         out_h,
         filtered_mode,
     );
-    let cache = SLICES.get_or_init(Default::default);
     let piece = {
-        let hit = cache.lock().ok().and_then(|m| m.get(&key).cloned());
+        let hit = SLICES.get(&key);
         match hit {
             Some(found) => found,
             None => {
@@ -128,12 +132,7 @@ pub(super) fn paint_slice(
                 else {
                     return;
                 };
-                if let Ok(mut m) = cache.lock() {
-                    if m.len() >= SLICE_CAP {
-                        m.clear();
-                    }
-                    m.insert(key, cut.clone());
-                }
+                SLICES.insert(key, cut.clone());
                 cut
             }
         }

@@ -104,7 +104,9 @@ pub(super) fn blank_box(
         sized.position = None;
         physical_sides::project_box(inherited, &mut copy.style);
         physical_sides::project_box(inherited, &mut sized);
-        let boxel = crate::paint::box_tree::styled::styled_div_with(&copy, &sized, cx)
+        let boxel = cx
+            .build
+            .styled_box(&copy, &sized, cx)
             .absolute()
             .top(gpui::px(dy));
         out.push(Piece::Overlay(

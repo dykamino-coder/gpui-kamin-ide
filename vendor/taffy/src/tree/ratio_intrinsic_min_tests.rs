@@ -126,11 +126,8 @@ fn verify_equal_columns(lanes: bool, bound: u8) {
                     width: length(10.0),
                     height: length(10.0),
                 },
-                grid_auto_flow: if lanes {
-                    GridAutoFlow::Row
-                } else {
-                    GridAutoFlow::Row
-                },
+                // KaminIDE patch: both grid modes use row auto-placement.
+                grid_auto_flow: GridAutoFlow::Row,
                 grid_template_columns: if lanes {
                     vec![repeat("auto-fill", vec![auto()])]
                 } else {

@@ -49,10 +49,7 @@ pub(crate) fn resolve_sizing_keyword(
             .map(|size| SizingKeywordResolution::Measure(AvailableSpace::Definite(size))),
         #[cfg(feature = "calc")]
         _ if style.is_fit_content_calc() => percent_resolution_basis.map(|basis| {
-            SizingKeywordResolution::Measure(AvailableSpace::Definite(calc_resolver(
-                style.calc_value(),
-                basis,
-            )))
+            SizingKeywordResolution::Measure(AvailableSpace::Definite(calc_resolver(style.calc_value(), basis)))
         }),
         CompactLength::STRETCH_TAG => stretch_size.map(SizingKeywordResolution::Exact),
         _ => None,
@@ -108,10 +105,7 @@ pub(crate) fn resolve_absolute_sizing_keywords(
                 node,
                 Size::NONE,
                 area_size.map(Some),
-                Size {
-                    width: available_width,
-                    height: available_height,
-                },
+                Size { width: available_width, height: available_height },
                 sizing_mode,
                 Line::FALSE,
             );
@@ -125,10 +119,7 @@ pub(crate) fn resolve_absolute_sizing_keywords(
                         node,
                         *known_dimensions,
                         area_size.map(Some),
-                        Size {
-                            width: available_width,
-                            height: AvailableSpace::Definite(stretch_size.height),
-                        },
+                        Size { width: available_width, height: AvailableSpace::Definite(stretch_size.height) },
                         sizing_mode,
                         AbsoluteAxis::Horizontal,
                         Line::FALSE,

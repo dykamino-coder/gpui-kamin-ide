@@ -3,17 +3,27 @@
 //! разобранное кэшируется по строке. Ключ кэша учитывает `image-orientation` (css-images-3
 //! §5.4): приставка `exif-none|` отделяет сырой растр от развёрнутого.
 
-use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_fragment};
+use super::{CACHE, Source, decode, read_bytes, svg_fragment};
 use crate::document::state::ValueCx;
-use std::{collections::HashMap, sync::Mutex};
+
+/// Байты, которые держит запомненный источник: точки растра или текст разметки.
+pub(super) fn held_bytes(found: &Option<Source>) -> usize {
+    fn bytes(source: &Source) -> usize {
+        match source {
+            Source::Raster(image) => crate::paint::cache::image_bytes(image),
+            Source::Filtered { image, .. } => bytes(image),
+            Source::Vector { markup, .. } => markup.len(),
+            Source::Shape { raw } => raw.len(),
+            Source::Gradient { .. } => 0,
+        }
+    }
+    found.as_ref().map_or(0, bytes)
+}
 
 /// Разобрать ссылку в источник картинки; результат запоминается.
 pub fn source(src: &str, _vcx: ValueCx<'_>) -> Option<Source> {
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(map) = cache.lock()
-        && let Some(hit) = map.get(src)
-    {
-        return hit.clone();
+    if let Some(hit) = CACHE.get(src) {
+        return hit;
     }
     // Приставка снимается ДО чтения файла: читать надо настоящий адрес.
     let (orient, src_plain) = match src.strip_prefix("exif-none|") {
@@ -30,12 +40,8 @@ pub fn source(src: &str, _vcx: ValueCx<'_>) -> Option<Source> {
     if matches!(
         found,
         Some(Source::Raster(_) | Source::Vector { .. } | Source::Shape { .. }) | None
-    ) && let Ok(mut map) = cache.lock()
-    {
-        if map.len() >= CACHE_CAP {
-            map.clear();
-        }
-        map.insert(src.to_string(), found.clone());
+    ) {
+        CACHE.insert(src.to_string(), found.clone());
     }
     found
 }
@@ -82,18 +88,7 @@ fn load_url(src: &str, orient: bool) -> Option<Source> {
     } else {
         format!("exif-none|{src}")
     };
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(found) = cache.lock().ok().and_then(|map| map.get(&key).cloned()) {
-        return found;
-    }
-    let found = decode_url(src, orient);
-    if let Ok(mut map) = cache.lock() {
-        if map.len() >= CACHE_CAP {
-            map.clear();
-        }
-        map.insert(key, found.clone());
-    }
-    found
+    CACHE.get_or_insert_with(key, || decode_url(src, orient))
 }
 
 fn decode_url(src: &str, orient: bool) -> Option<Source> {

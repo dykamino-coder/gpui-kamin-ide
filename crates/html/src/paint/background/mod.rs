@@ -26,10 +26,9 @@ mod filtered_raster;
 mod source_types;
 pub use source_types::Source;
 
+use crate::paint::cache::{BoundedCache, MIB};
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 pub(crate) mod alpha_sampling;
 mod flat_vector;
 mod float_geometry;
@@ -71,11 +70,10 @@ pub use crate::paint::background::image_decode::*;
 pub(super) mod tiles;
 pub use crate::paint::background::tiles::*;
 
-type Cache = Mutex<HashMap<String, Option<Source>>>;
-static CACHE: OnceLock<Cache> = OnceLock::new();
-
-/// Сколько разных картинок держим декодированными.
-const CACHE_CAP: usize = 32;
+/// Разобранные источники по строке ссылки. Бюджет 128 МиБ декодированных точек и
+/// разметки рисунков: недавние картинки документа остаются декодированными.
+static CACHE: BoundedCache<String, Option<Source>> =
+    BoundedCache::new(128 * MIB, sources::held_bytes);
 
 /// Потолок на число плиток вдоль оси: битый `background-size` иначе просит
 /// миллионы копий.

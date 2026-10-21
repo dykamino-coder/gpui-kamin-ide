@@ -5,6 +5,7 @@ use crate::{
     Size,
 };
 
+/// KaminIDE patch: Resolve the block root's definite dimensions and constraints.
 pub(super) fn known(
     tree: &impl LayoutPartialTree,
     root: NodeId,

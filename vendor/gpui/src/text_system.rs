@@ -1119,15 +1119,14 @@ impl WindowTextSystem {
         let substituted;
         let text = if text.contains('\u{2011}') {
             let mut out = String::with_capacity(text.len());
-            let mut at = 0usize;
             let mut runs_iter = font_runs.iter();
             let mut run = runs_iter.next();
             let mut run_end = run.map_or(usize::MAX, |r| r.len);
             for (i, ch) in text.char_indices() {
                 while i >= run_end {
                     run = runs_iter.next();
-                    at = run_end;
-                    run_end = run.map_or(usize::MAX, |r| at + r.len);
+                    let start = run_end;
+                    run_end = run.map_or(usize::MAX, |r| start + r.len);
                 }
                 // Отсутствующий знак DirectWrite отдаёт глифом 0 (.notdef), а
                 // не `None`.

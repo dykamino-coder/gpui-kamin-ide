@@ -106,7 +106,6 @@ impl Paragraph {
 }
 
 impl Paragraph {
-    #[allow(clippy::let_and_return)]
     pub(crate) fn reversed_offset(&self, count: usize, step: &dyn Fn(usize) -> Pixels) -> f32 {
         // Строки снизу вверх: место строки считается ОТ ВЕРХА коробки одним
         // сложением (`origin + px(смещение)`), как у `point_of`. Прежде

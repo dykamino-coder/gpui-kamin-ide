@@ -23,7 +23,9 @@ pub(crate) fn collect_has_args(sel: &Selector, out: &mut Vec<String>) -> bool {
             }
         } else {
             let list = match name {
-                "is" | "where" | "matches" | "any" => default_ns::is_args(arg),
+                "is" | "where" | "matches" | "any" => {
+                    default_ns::is_args(arg, sel.argument_namespace)
+                }
                 "not" | "host" | "host-context" | "slotted" | "has-slotted" => {
                     split_selector_list(arg)
                         .into_iter()

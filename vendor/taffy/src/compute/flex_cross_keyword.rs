@@ -8,6 +8,7 @@ use crate::tree::{LayoutFlexboxContainer, LayoutInput, LayoutPartialTreeExt, Run
 use crate::util::MaybeMath;
 use crate::{BoxSizing, CompactLength};
 
+/// KaminIDE patch: Resolve cross-axis space for an intrinsic sizing keyword.
 pub(super) fn available(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,
@@ -75,6 +76,7 @@ pub(super) fn fit_content_size(child: &FlexItem, constants: &AlgoConstants, spac
     ).then(|| space.into_option()).flatten()
 }
 
+/// KaminIDE patch: Whether the cross-size keyword permits alignment stretching.
 pub(super) fn allows_alignment_stretch(child: &FlexItem, constants: &AlgoConstants) -> bool {
     let style = child.size_style.cross(constants.dir);
     // An unresolved percentage retains its automatic-size behavior; intrinsic
@@ -84,6 +86,7 @@ pub(super) fn allows_alignment_stretch(child: &FlexItem, constants: &AlgoConstan
         || (!style.is_sizing_keyword() && style.into_raw().uses_percentage())
 }
 
+/// KaminIDE patch: Measure the cross-axis contribution under the requested constraint.
 fn probe(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,

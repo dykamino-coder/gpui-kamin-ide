@@ -55,6 +55,7 @@ pub(super) fn absolute_area(
     }
 }
 
+/// KaminIDE patch: Compute the physical area covered by a lane range.
 pub(super) fn track_area(
     tracks: &[GridTrack],
     start: usize,

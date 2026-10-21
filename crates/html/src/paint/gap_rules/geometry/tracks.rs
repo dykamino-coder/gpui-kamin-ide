@@ -100,7 +100,7 @@ pub(crate) type GridTracks = (Vec<(f32, f32)>, Vec<(f32, f32)>);
 pub(crate) fn uncollapsed(mut tracks: Vec<(f32, f32)>, gap: f32) -> Vec<(f32, f32)> {
     // При `rtl` и обратных осях раскладка отдаёт дорожки в логическом
     // порядке — здесь нужен физический.
-    tracks.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    tracks.sort_by(|x, y| x.0.total_cmp(&y.0));
     if gap <= GAP_RULE_EPS {
         return tracks;
     }

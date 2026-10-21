@@ -9,7 +9,7 @@
 
 use gpui::{
     AnyElement, Div, InteractiveElement, ParentElement, ScrollHandle, StatefulInteractiveElement,
-    Styled, div, px, relative, rgba,
+    Styled, div, px, rgba,
 };
 
 /// Ширина полосы — как у нативной тонкой полосы Windows.
@@ -73,21 +73,6 @@ fn thumb(offset: f32, max: f32, view: f32) -> Option<Div> {
             // чтобы полоса не съедала ширину документа.
             .bg(rgba(0x8a90a480)),
     )
-}
-
-/// Тот же приём для горизонтальной прокрутки — нужен блокам кода: длинная
-/// строка не должна ни переноситься, ни растягивать панель.
-pub fn h_scroll(
-    id: &'static str,
-    handle: &ScrollHandle,
-    content: AnyElement,
-) -> gpui::Stateful<Div> {
-    div()
-        .id(id)
-        .w_full()
-        .overflow_x_scroll()
-        .track_scroll(handle)
-        .child(div().w(relative(1.0)).child(content))
 }
 
 #[cfg(test)]

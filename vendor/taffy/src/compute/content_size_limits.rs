@@ -1,6 +1,7 @@
 //! Intrinsic probes ignore the measured axis's own min/max size constraints.
 use crate::{LayoutInput, RequestedAxis, Size, SizingMode};
 
+/// KaminIDE patch: Resolve content-box min/max limits for an intrinsic measurement.
 pub(super) fn for_measurement(
     mut limits: Size<Option<f32>>,
     inputs: LayoutInput,

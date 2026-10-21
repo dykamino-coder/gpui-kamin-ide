@@ -726,6 +726,9 @@ impl DirectXRenderer {
         let row = (w * 4) as usize;
         let mut bgra = vec![0u8; row * h as usize];
         for y in 0..h as usize {
+            // KaminIDE patch: SAFETY: the mapped staging texture is w x h
+            // BGRA8, so each of its h rows has RowPitch >= w * 4 readable
+            // bytes until Unmap below.
             let src = unsafe {
                 std::slice::from_raw_parts(
                     (mapped.pData as *const u8).add(y * mapped.RowPitch as usize),

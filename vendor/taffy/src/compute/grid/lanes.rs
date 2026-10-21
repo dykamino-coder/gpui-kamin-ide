@@ -72,12 +72,17 @@ mod final_placement;
 
 /// Размещённый элемент.
 struct Placed {
+    /// KaminIDE patch: Measured first physical x baseline.
     baseline_x: Option<f32>,
+    /// KaminIDE patch: Measured last physical x baseline.
     last_baseline_x: Option<f32>,
+    /// KaminIDE patch: Writing-mode and baseline-side flags.
     baseline_x_flags: u8,
+    /// KaminIDE patch: Layout tree node for this item.
     node: NodeId,
     /// Дорожки по оси решётки.
     start: usize,
+    /// KaminIDE patch: Exclusive end of the occupied lane range.
     end: usize,
     /// Смещение коробки (border-box) по оси решётки от начала контейнера.
     grid_pos: f32,
@@ -93,14 +98,21 @@ struct Placed {
     stack_relative: f32,
     /// Внешний размер по оси укладки (без зазора).
     outer_stack: f32,
+    /// KaminIDE patch: Resolved item padding.
     padding: Rect<f32>,
+    /// KaminIDE patch: Resolved item border widths.
     border: Rect<f32>,
+    /// KaminIDE patch: Space reserved for item scrollbars.
     scrollbar_size: Size<f32>,
     #[cfg_attr(not(feature = "content_size"), allow(dead_code))]
+    /// KaminIDE patch: Scrollable overflow in item coordinates.
     scrollable_overflow_rect: Rect<f32>,
+    /// KaminIDE patch: Item containment flags.
     contain: Contain,
     #[cfg_attr(not(feature = "content_size"), allow(dead_code))]
+    /// KaminIDE patch: Item overflow modes on each physical axis.
     overflow: Point<Overflow>,
+    /// KaminIDE patch: Measured first physical y baseline.
     baseline: Option<f32>,
     /// Выравнивание по оси укладки (css-grid-3 §stacking-self-alignment).
     stack_align: Option<AlignSelf>,
@@ -116,6 +128,7 @@ struct Placed {
     /// KaminIDE patch: последняя базовая (от верха рамки) и участие в
     /// группе `last baseline` по оси решётки.
     last_baseline: Option<f32>,
+    /// KaminIDE patch: Whether last-baseline alignment participates on the grid axis.
     grid_last_baseline: bool,
 }
 
@@ -123,7 +136,9 @@ struct Placed {
 /// `grid_lanes_running_positions.cc:167-227`).
 #[derive(Clone, Copy)]
 struct Opening {
+    /// KaminIDE patch: Beginning of the available stacking interval.
     start: f32,
+    /// KaminIDE patch: End of the available stacking interval.
     end: f32,
     /// Элемент НАД проёмом (его выравнивание этот проём и раздаёт).
     candidate: Option<usize>,
@@ -131,25 +146,43 @@ struct Opening {
 
 /// Результат раскладки одного элемента.
 struct ItemBox {
+    /// KaminIDE patch: Measured first physical x baseline.
     baseline_x: Option<f32>,
+    /// KaminIDE patch: Measured last physical x baseline.
     last_baseline_x: Option<f32>,
+    /// KaminIDE patch: Writing-mode and baseline-side flags.
     baseline_x_flags: u8,
+    /// KaminIDE patch: Measured physical border-box size.
     size: Size<f32>,
+    /// KaminIDE patch: Resolved physical margins.
     margin: Rect<f32>,
     /// Смещение border-box внутри области по оси решётки.
     grid_offset: f32,
+    /// KaminIDE patch: Relative-position offset on the stacking axis.
     stack_relative: f32,
+    /// KaminIDE patch: Resolved item padding.
     padding: Rect<f32>,
+    /// KaminIDE patch: Resolved item border widths.
     border: Rect<f32>,
+    /// KaminIDE patch: Space reserved for item scrollbars.
     scrollbar_size: Size<f32>,
+    /// KaminIDE patch: Scrollable overflow in item coordinates.
     scrollable_overflow_rect: Rect<f32>,
+    /// KaminIDE patch: Item containment flags.
     contain: Contain,
+    /// KaminIDE patch: Item overflow modes on each physical axis.
     overflow: Point<Overflow>,
+    /// KaminIDE patch: Measured first physical y baseline.
     baseline: Option<f32>,
+    /// KaminIDE patch: Self-alignment on the stacking axis.
     stack_align: Option<AlignSelf>,
+    /// KaminIDE patch: Whether the stacking-axis size is definite.
     stack_size_fixed: bool,
+    /// KaminIDE patch: Whether first-baseline alignment participates on the grid axis.
     grid_baseline: bool,
+    /// KaminIDE patch: Measured last physical y baseline.
     last_baseline: Option<f32>,
+    /// KaminIDE patch: Whether last-baseline alignment participates on the grid axis.
     grid_last_baseline: bool,
 }
 
@@ -1332,11 +1365,12 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                 last.end = effective_stack;
             }
         }
-        for index in 0..placed.len() {
-            let Some(alignment) = placed[index].stack_align else {
+        // KaminIDE patch: keep the same item order and candidate indices.
+        for (index, placed_item) in placed.iter_mut().enumerate() {
+            let Some(alignment) = placed_item.stack_align else {
                 continue;
             };
-            let (s, e) = (placed[index].start, placed[index].end);
+            let (s, e) = (placed_item.start, placed_item.end);
             let mut space = f32::INFINITY;
             for track in openings.iter().take(e).skip(s) {
                 match track.iter().find(|o| o.candidate == Some(index)) {
@@ -1352,26 +1386,26 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
             match alignment.keyword {
                 AlignItemsKeyword::Stretch => {
-                    if placed[index].stack_size_fixed {
+                    if placed_item.stack_size_fixed {
                         continue;
                     }
                     let grown = (if rows {
-                        placed[index].size.width
+                        placed_item.size.width
                     } else {
-                        placed[index].size.height
+                        placed_item.size.height
                     }) + space;
                     let item = layout_lanes_item(
                         tree,
-                        placed[index].node,
+                        placed_item.node,
                         rows,
                         lanes.stack_block,
-                        placed[index].area,
+                        placed_item.area,
                         stack_avail,
                         Some(grown),
-                        placed[index].stack_fit,
+                        placed_item.stack_fit,
                         container_align,
                     );
-                    let p = &mut placed[index];
+                    let p = &mut *placed_item;
                     p.size = item.size;
                     p.scrollable_overflow_rect = item.scrollable_overflow_rect;
                     p.contain = item.contain;
@@ -1384,17 +1418,17 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     }
                 }
                 AlignItemsKeyword::Center => {
-                    placed[index].stack_pos += if lanes.fill_reverse {
+                    placed_item.stack_pos += if lanes.fill_reverse {
                         -space / 2.0
                     } else {
                         space / 2.0
                     }
                 }
                 AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd if !lanes.fill_reverse => {
-                    placed[index].stack_pos += space
+                    placed_item.stack_pos += space
                 }
                 AlignItemsKeyword::Start | AlignItemsKeyword::FlexStart if lanes.fill_reverse => {
-                    placed[index].stack_pos -= space
+                    placed_item.stack_pos -= space
                 }
                 _ => {}
             }
@@ -1487,7 +1521,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        // KaminIDE: grid lanes still lays out its own absolutely positioned children (they are
+        // KaminIDE patch: grid lanes still lays out its own absolutely positioned children (they are
         // not emitted as oof candidates: the stacking axis has no grid lines for `oof.rs` to
         // resolve). Candidates surfacing from their subtrees are dropped here as before the
         // upgrade; with GPUI every node is positioned, so such candidates are always claimed
@@ -1544,7 +1578,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     {
         let lane_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
             counts,
-            grid_tracks.iter().cloned().collect(),
+            grid_tracks.to_vec(),
             Default::default(),
         );
         let stack_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
@@ -1585,11 +1619,15 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
 /// шаблоне ровно один `repeat(auto-*)` и в нём есть дорожка без
 /// фиксированной грани (иначе счёт общий, `compute_explicit_grid_size_in_axis`).
 enum OwnedComponent {
+    /// KaminIDE patch: One non-repeating track definition.
     Single(TrackSizingFunction),
+    /// KaminIDE patch: A fixed repeat count and its owned track definitions.
     Count(u16, Vec<TrackSizingFunction>),
+    /// KaminIDE patch: Track definitions in an automatic repetition.
     Auto(Vec<TrackSizingFunction>),
 }
 
+/// KaminIDE patch: Copy borrowed track definitions into owned lane template entries.
 fn owned_template(
     style: &impl GridContainerStyle,
     axis: AbsoluteAxis,

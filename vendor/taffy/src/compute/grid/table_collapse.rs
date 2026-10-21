@@ -1,6 +1,7 @@
 //! CSS Tables 3 visibility collapse: size the full grid, then remove collapsed tracks.
 use super::types::GridTrack;
 
+/// KaminIDE patch: Whether a table row is collapsed.
 fn removed(index: usize, rows: &[u16]) -> bool {
     if index % 2 == 1 {
         rows.contains(&((index / 2) as u16))
@@ -12,6 +13,7 @@ fn removed(index: usize, rows: &[u16]) -> bool {
     }
 }
 
+/// KaminIDE patch: Sum track sizes after excluding collapsed table rows.
 pub(super) fn visible_sum(
     tracks: &[GridTrack],
     collapse: Option<&(bool, Vec<u16>)>,
@@ -27,6 +29,7 @@ pub(super) fn visible_sum(
         .sum::<f64>() as f32
 }
 
+/// KaminIDE patch: Apply collapsed table-row adjustments to grid geometry.
 pub(super) fn apply(
     tracks: &mut [GridTrack],
     collapse: Option<&(bool, Vec<u16>)>,

@@ -1,6 +1,6 @@
 //! Проба якорного элемента: ключ, неявный якорь, регистрация (probe_for).
 
-use super::{AnchorRec, reframe_if_stale, tf_map};
+use super::{AnchorRec, frame::note_checked, reframe_if_stale, tf_map};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
@@ -186,6 +186,8 @@ pub(crate) fn record(
                 .is_some_and(same));
         if stale {
             reframe_if_stale(window, vcx);
+        } else {
+            note_checked(vcx);
         }
     }
 }

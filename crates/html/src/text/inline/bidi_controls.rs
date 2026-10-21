@@ -1,8 +1,8 @@
 //! Знаки управления двунаправленностью для строчного куска: `unicode-bidi` и `direction`
 //! (css-writing-modes-4 §2.2) отображаются в открывающую/закрывающую последовательности Юникода
 //! (LRE/RLE/LRO/RLO/LRI/RLI/FSI/PDF/PDI). `isolate-override` требует обоих уровней вложения;
-//! `plaintext` сам выбирает направление по первому сильному знаку. Здесь же явное наследование
-//! режима (`unicode-bidi: inherit`) при каскаде.
+//! `plaintext` сам выбирает направление по первому сильному знаку. Явное наследование режима
+//! (`unicode-bidi: inherit`) при каскаде — в `style::computed::box_predicates`.
 use crate::style::computed::Computed;
 
 pub fn bidi_marks(
@@ -36,14 +36,4 @@ pub fn bidi_marks(
         return (Some(open), Some("\u{202c}"));
     }
     (None, None)
-}
-
-/// CSS Writing Modes 4 section 2.2: only explicit inheritance copies the mode.
-pub(crate) fn resolve(parent: &Computed, child: &mut Computed) {
-    if child.bidi_inherit {
-        child.bidi_override = parent.bidi_override;
-        child.bidi_isolate = parent.bidi_isolate;
-        child.bidi_embed = parent.bidi_embed;
-        child.bidi_plaintext = parent.bidi_plaintext;
-    }
 }

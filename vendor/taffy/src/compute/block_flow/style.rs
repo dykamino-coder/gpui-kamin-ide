@@ -2,11 +2,15 @@
 use crate::style::*;
 use crate::{Point, Rect, Size};
 
+/// KaminIDE patch: Wrap a style with the block-flow projection used by the algorithm.
 pub(super) struct Logical<S> {
+    /// KaminIDE patch: Underlying physical style.
     pub style: S,
+    /// KaminIDE patch: Writing-mode axis projection.
     pub flow: BlockFlow,
 }
 
+/// KaminIDE patch: Forward style properties that do not need axis projection.
 macro_rules! forward {
     ($($name:ident -> $result:ty),* $(,)?) => { $(
         fn $name(&self) -> $result { self.style.$name() }

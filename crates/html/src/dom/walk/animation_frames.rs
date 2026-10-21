@@ -13,7 +13,6 @@ use crate::style::css::{Decls, Keyframes};
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::let_and_return, clippy::needless_borrow)]
 pub(super) fn animation_frames(
     style: &Computed,
     frames: &HashMap<String, Keyframes>,

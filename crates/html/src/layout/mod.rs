@@ -1,27 +1,26 @@
 //! Алгоритмы раскладки: блок, флоаты, колонки, фрагменты, страницы, таблицы, позиционирование.
 
-pub mod atom;
-pub mod block;
+pub(crate) mod atom;
+pub(crate) mod block;
 pub(crate) mod box_kind;
 pub(crate) mod build_contracts;
-pub mod cx;
-pub mod float;
-pub mod fragment;
-pub mod grid;
+pub(crate) mod cx;
+pub(crate) mod float;
+pub(crate) mod fragment;
+pub(crate) mod grid;
 pub(crate) mod intrinsic_wrap;
-pub mod list;
+pub(crate) mod list;
 pub(crate) mod mathml;
-pub mod multicol;
-pub mod options;
+pub(crate) mod multicol;
+pub(crate) mod options;
 pub(crate) mod order;
-pub mod page;
-pub mod positioned;
-pub mod replaced;
-pub mod table;
-// Writing-mode algorithms are maintained separately; preserve their explicit
-// axis predicates and staged style construction during this cleanup.
-#[allow(clippy::nonminimal_bool, clippy::field_reassign_with_default)]
-pub mod writing_mode;
+pub(crate) mod page;
+pub(crate) mod positioned;
+pub(crate) mod replaced;
+pub(crate) mod table;
+// Writing-mode algorithms keep their explicit per-axis predicates.
+#[allow(clippy::nonminimal_bool)]
+pub(crate) mod writing_mode;
 
 #[cfg(test)]
 mod marks_tests {

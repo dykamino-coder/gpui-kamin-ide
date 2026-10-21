@@ -4,6 +4,7 @@
 use super::types::GridItem;
 use crate::{AlignItemsKeyword, Baselines};
 
+/// KaminIDE patch: Select the grid container's first and last exported baselines.
 pub(super) fn compute(items: &[GridItem]) -> Baselines {
     Baselines {
         first: baseline(items, false),
@@ -11,6 +12,7 @@ pub(super) fn compute(items: &[GridItem]) -> Baselines {
     }
 }
 
+/// KaminIDE patch: Select items on the requested outer grid edge.
 fn select(
     items: &[GridItem],
     accepts: impl Fn(&GridItem) -> bool,
@@ -24,6 +26,7 @@ fn select(
     }
 }
 
+/// KaminIDE patch: Return the item's requested measured baseline.
 fn measured(item: &GridItem, last: bool) -> Option<f32> {
     if last {
         item.last_baseline.or(item.first_baseline)
@@ -32,6 +35,7 @@ fn measured(item: &GridItem, last: bool) -> Option<f32> {
     }
 }
 
+/// KaminIDE patch: Convert an item baseline into container coordinates.
 fn coordinate(item: &GridItem, last: bool) -> f32 {
     let baseline = measured(item, last).unwrap_or(item.height);
     let baseline = if item.overflow.y.is_scroll_container() {
@@ -42,6 +46,7 @@ fn coordinate(item: &GridItem, last: bool) -> f32 {
     item.y_position + baseline
 }
 
+/// KaminIDE patch: Select the shared or synthesized baseline for an outer grid edge.
 fn baseline(items: &[GridItem], last: bool) -> Option<f32> {
     let edge = if last {
         items.iter().map(|item| item.row.end.0).max()?

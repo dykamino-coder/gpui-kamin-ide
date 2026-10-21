@@ -1,7 +1,7 @@
 use crate::{
     App, Bounds, DevicePixels, Half, Hsla, LineLayout, Pixels, Point, RenderGlyphParams, Result,
     SharedString, StrikethroughStyle, TextAlign, UnderlineStyle, Window, WrapBoundary,
-    WrappedLineLayout, black, fill, point, px, size, underline_y_offset,
+    WrappedLineLayout, black, point, px, size, underline_y_offset,
 };
 use derive_more::{Deref, DerefMut};
 use smallvec::SmallVec;
@@ -642,7 +642,6 @@ fn paint_line(
         let mut first_glyph_x = origin.x;
         // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
         let mut line_ix = 0usize;
-        let mut gaps_passed = 0usize;
         let mut prev_space = false;
         for (run_ix, run) in layout.runs.iter().enumerate() {
             max_glyph_size = text_system.bounding_box(run.font_id, run.font_size).size;
@@ -659,7 +658,6 @@ fn paint_line(
                     // глифа копится от предыдущего, и повторное прибавление
                     // растащило бы буквы внутри слова.
                     if prev_space && !space {
-                        gaps_passed += 1;
                         glyph_origin.x += extras.get(line_ix).copied().unwrap_or(px(0.));
                     }
                 }
@@ -668,7 +666,6 @@ fn paint_line(
                 if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
                     wraps.next();
                     line_ix += 1;
-                    gaps_passed = 0;
                     prev_space = false;
                     if let Some((underline_origin, underline_style, underline_range)) =
                         current_underline.as_mut()
@@ -1001,7 +998,6 @@ fn paint_line_background(
         let mut max_glyph_size = size(px(0.), px(0.));
         // KaminIDE patch: выключка — добавка на каждый пройденный промежуток.
         let mut line_ix = 0usize;
-        let mut gaps_passed = 0usize;
         let mut prev_space = false;
         // KaminIDE patch: набор БЕЗ ЕДИНОГО глифа. «Default ignorable» (U+FEFF
         // и родня) выбрасывается набором целиком, цикл ниже не идёт ни разу, и
@@ -1047,7 +1043,6 @@ fn paint_line_background(
                     // Та же добавка, что и в проходе глифов: подложки прогонов
                     // обязаны стоять там же, где буквы.
                     if prev_space && !space {
-                        gaps_passed += 1;
                         glyph_origin.x += extras.get(line_ix).copied().unwrap_or(px(0.));
                     }
                 }
@@ -1056,7 +1051,6 @@ fn paint_line_background(
                 if wraps.peek() == Some(&&WrapBoundary { run_ix, glyph_ix }) {
                     wraps.next();
                     line_ix += 1;
-                    gaps_passed = 0;
                     prev_space = false;
                     if let Some((background_origin, background_color)) = current_background.as_mut()
                     {

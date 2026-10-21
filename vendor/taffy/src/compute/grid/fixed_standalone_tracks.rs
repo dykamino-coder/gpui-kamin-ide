@@ -11,6 +11,7 @@ pub(super) fn standalone_tracks<Tree: crate::LayoutPartialTree>(
     standalone_tracks_with_known(tree, style, columns, basis, Size::NONE)
 }
 
+/// KaminIDE patch: Size non-subgridded tracks using the known container dimensions.
 pub(super) fn standalone_tracks_with_known<Tree: crate::LayoutPartialTree>(
     tree: &Tree,
     style: &impl crate::GridContainerStyle,

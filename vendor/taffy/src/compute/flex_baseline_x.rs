@@ -2,6 +2,7 @@
 //! CSS Align 3 §9.2: opposite flow with opposite preference shares the same side.
 use super::*;
 
+/// KaminIDE patch: Determine the physical side of the child's column baseline group.
 fn side(child: &FlexItem, constants: &AlgoConstants) -> Option<bool> {
     let last = child.participates_in_last_baseline_alignment(constants.dir);
     if !last && !child.participates_in_baseline_alignment(constants.dir) {
@@ -10,6 +11,7 @@ fn side(child: &FlexItem, constants: &AlgoConstants) -> Option<bool> {
     Some((child.baseline_x_flags & 1 != 0) != last)
 }
 
+/// KaminIDE patch: Measure column-flex baselines for participating items.
 pub(super) fn measure(
     tree: &mut impl LayoutFlexboxContainer,
     node_size: Size<Option<f32>>,
@@ -84,6 +86,7 @@ pub(super) fn measure(
     }
 }
 
+/// KaminIDE patch: Find the maximum baseline distance on each physical side.
 pub(super) fn maxima(items: &[FlexItem]) -> [f32; 2] {
     let mut max = [f32::NEG_INFINITY; 2];
     for child in items {
@@ -94,6 +97,7 @@ pub(super) fn maxima(items: &[FlexItem]) -> [f32; 2] {
     max
 }
 
+/// KaminIDE patch: Compute the cross size required by column baseline groups.
 pub(super) fn cross_size(items: &[FlexItem], constants: &AlgoConstants) -> f32 {
     let max = maxima(items);
     items
@@ -108,6 +112,7 @@ pub(super) fn cross_size(items: &[FlexItem], constants: &AlgoConstants) -> f32 {
         .fold(0.0, f32::max)
 }
 
+/// KaminIDE patch: Compute an item's offset within its column baseline group.
 pub(super) fn offset(
     child: &FlexItem,
     max: [f32; 2],

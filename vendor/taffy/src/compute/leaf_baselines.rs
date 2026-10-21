@@ -3,6 +3,7 @@
 
 use crate::{Baselines, CoreStyle, MeasureOutput, Rect};
 
+/// KaminIDE patch: Resolve first and last physical x baselines from the measured leaf.
 pub(super) fn physical_x(
     style: &impl CoreStyle,
     measured: MeasureOutput,
@@ -27,6 +28,7 @@ pub(super) fn physical_x(
     )
 }
 
+/// KaminIDE patch: Add the content-box inset to a measured baseline.
 pub(super) fn with_inset(
     style: &impl CoreStyle,
     first: Option<f32>,

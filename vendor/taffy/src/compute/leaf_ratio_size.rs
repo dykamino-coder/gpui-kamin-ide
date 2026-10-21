@@ -1,6 +1,7 @@
 //! Infer only automatic ratio height, then respect independent min/max bounds.
 use crate::{MaybeMath, Size};
 
+/// KaminIDE patch: Apply the preferred aspect ratio to the measured leaf size.
 pub(super) fn size(
     clamped: Size<f32>,
     known_height: Option<f32>,

@@ -3422,11 +3422,6 @@ impl Window {
         ScaledPixels(round_stroke_to_device_pixel(value.0, self.scale_factor()))
     }
 
-    #[inline]
-    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
-        edges.map(|e| self.snap_stroke(*e))
-    }
-
     /// Floors the near edge and ceils the far edge, producing a strict superset of the raw region.
     #[inline]
     fn cover_bounds(&self, bounds: Bounds<Pixels>) -> Bounds<ScaledPixels> {

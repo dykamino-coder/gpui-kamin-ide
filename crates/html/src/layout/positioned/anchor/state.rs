@@ -58,9 +58,19 @@ pub(crate) struct AnchorState {
     /// This frame's build sized a box from the PREVIOUS frame's anchor
     /// registry (`anchor-size()`, `position-area` cell percentages).
     pub(super) used_last: Cell<bool>,
-    /// Extra frames requested for this document because those previous-frame
-    /// values changed (bounded, so an oscillating page cannot loop forever).
+    /// Extra frames requested in the current chain of frames whose
+    /// previous-frame values kept changing (bounded, so an oscillating page
+    /// cannot loop forever). The chain ends at a checked frame with no stale
+    /// value (`frame::reset`).
     pub(super) reframes: Cell<u32>,
+    /// This frame compared a previous-frame value against its current one
+    /// (`frame::note_checked`): only such a frame may end a reframe chain.
+    pub(super) frame_checked: Cell<bool>,
+    /// This frame found a stale previous-frame value (`reframe_if_stale`).
+    pub(super) frame_stale: Cell<bool>,
+    /// This frame already requested its one extra frame: stale records of
+    /// the same frame coalesce into a single request and a single budget step.
+    pub(super) frame_requested: Cell<bool>,
 }
 
 impl AnchorState {

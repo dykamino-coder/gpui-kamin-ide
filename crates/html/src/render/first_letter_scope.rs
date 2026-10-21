@@ -6,7 +6,7 @@
 use crate::dom::Node;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph_route::paragraph_probed;
+use crate::render::paragraph::route::paragraph_probed;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::blank_text;
 use gpui::AnyElement;

@@ -3,6 +3,7 @@
 
 use crate::Baselines;
 
+/// KaminIDE patch: Export first and last baselines from row-oriented lanes.
 pub(super) fn compute(placed: &[super::super::Placed]) -> Baselines {
     let items: crate::util::sys::Vec<_> = placed
         .iter()
@@ -21,19 +22,30 @@ pub(super) fn compute(placed: &[super::super::Placed]) -> Baselines {
     baselines(&items)
 }
 
+/// KaminIDE patch: Placed item data needed for container baseline selection.
 struct Candidate {
+    /// KaminIDE patch: First occupied lane.
     start: usize,
+    /// KaminIDE patch: Exclusive end of the occupied lane range.
     end: usize,
+    /// KaminIDE patch: Item origin in the container.
     placement: f32,
+    /// KaminIDE patch: Baseline-axis alignment offset.
     offset: f32,
+    /// KaminIDE patch: Item extent along the baseline axis.
     height: f32,
+    /// KaminIDE patch: Measured first baseline.
     first: Option<f32>,
+    /// KaminIDE patch: Measured last baseline.
     last: Option<f32>,
+    /// KaminIDE patch: Whether the first baseline participates in a shared group.
     first_shared: bool,
+    /// KaminIDE patch: Whether the last baseline participates in a shared group.
     last_shared: bool,
 }
 
 impl Candidate {
+    /// KaminIDE patch: Return the requested measured baseline.
     fn measured(&self, last: bool) -> Option<f32> {
         if last {
             self.last.or(self.first)
@@ -42,10 +54,12 @@ impl Candidate {
         }
     }
 
+    /// KaminIDE patch: Convert the requested baseline into container coordinates.
     fn coordinate(&self, last: bool) -> f32 {
         self.offset + self.measured(last).unwrap_or(self.height)
     }
 
+    /// KaminIDE patch: Whether the requested baseline is shared with its group.
     fn shared(&self, last: bool) -> bool {
         if last {
             self.last_shared
@@ -55,6 +69,7 @@ impl Candidate {
     }
 }
 
+/// KaminIDE patch: Select candidates at the requested outer lane edge.
 fn select(
     items: &[Candidate],
     accepts: impl Fn(&Candidate) -> bool,
@@ -77,6 +92,7 @@ fn select(
     selected
 }
 
+/// KaminIDE patch: Select a shared or synthesized baseline from the candidates.
 fn baseline(items: &[Candidate], last: bool) -> Option<f32> {
     let edge = if last {
         items.iter().map(|item| item.end).max()?
@@ -117,6 +133,7 @@ fn baseline(items: &[Candidate], last: bool) -> Option<f32> {
     select(items, |_| true, last).map(|item| item.offset + item.height)
 }
 
+/// KaminIDE patch: Compute both exported baselines from the candidates.
 fn baselines(items: &[Candidate]) -> Baselines {
     Baselines {
         first: baseline(items, false),

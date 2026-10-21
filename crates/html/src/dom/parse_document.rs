@@ -222,7 +222,7 @@ pub(super) fn parse_input(
     resolve_rule_color_inherit(&mut out, &RuleColors::default());
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
-    crate::layout::table::anon::inline_anon_tables(&mut out);
+    crate::dom::table_boxes::inline_anon_tables(&mut out);
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     lanes_as_grid(&mut out);

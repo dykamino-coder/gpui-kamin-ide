@@ -1,6 +1,7 @@
 //! Тесты: пустые многоколоночные боксы не получают запасных внутренних промежутков сетки.
 
 use super::*;
+use crate::dom::Node;
 use crate::layout::fragment::types::StackAxis;
 
 #[test]

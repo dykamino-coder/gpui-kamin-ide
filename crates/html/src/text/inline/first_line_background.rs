@@ -9,7 +9,7 @@ pub(super) fn paint_color(child: Option<Color>, first_line: Option<Color>) -> Op
     // non-pseudo parent. The first-line background is a lower paint layer,
     // rather than an override of backgrounds on its inline descendants.
     match (child, first_line) {
-        (Some(child), Some(parent)) => Some(crate::paint::background::over(child, parent)),
+        (Some(child), Some(parent)) => Some(crate::style::values::composite::over(child, parent)),
         (child, None) => child,
         (None, parent) => parent,
     }

@@ -8,7 +8,9 @@ use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 use std::rc::Rc;
 
 mod insets;
+mod try_rule;
 use insets::fill_anchor_pairs;
+pub(crate) use try_rule::apply_try_rule;
 
 /// Выбранный на прошлом кадре вариант `position-try-fallbacks` (`CHOSEN`) —
 /// в стиль ДО раскладки (зовёт `render::element` сразу после ключей):
@@ -37,7 +39,7 @@ pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
         if let Some(n) = &fb.name
             && let Some(decls) = vcx.doc.try_rule(n)
         {
-            c.apply_decls(&decls, vcx);
+            apply_try_rule(c, &decls, vcx);
         }
         if let Some(area) = fb.area {
             c.position_area = Some(area);

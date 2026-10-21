@@ -61,14 +61,20 @@ fn extended_lang_filter(range: &str, tag: &str) -> bool {
 /// псевдоклассов компаунда (основной решает `matches`, слои — отбор
 /// по имени). Неизвестный или слойный (`:hover`) здесь считается
 /// НЕвыполненным: базовый каскад такое правило не применяет.
-pub(super) fn pseudo_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> bool {
+pub(super) fn pseudo_holds(
+    pseudo: &str,
+    namespace: TypeNamespace,
+    me: &Ancestor,
+    path: &[Ancestor],
+    sibs: Sibs,
+) -> bool {
     if let Some(inner) = pseudo
         .strip_prefix("not(")
         .and_then(|r| r.strip_suffix(')'))
     {
         return Selector::parse(inner).is_some_and(|inner| !matches(&inner, me, path, sibs));
     }
-    if let Some(ok) = is_holds(pseudo, me, path, sibs) {
+    if let Some(ok) = is_holds(pseudo, namespace, me, path, sibs) {
         return ok;
     }
     if pseudo == "empty" {
@@ -178,14 +184,20 @@ pub(super) fn has_slotted_holds(pseudo: &str, me: &Ancestor) -> bool {
 /// `:is()`/`:where()` (и устаревшие `:matches()`/`:any()`): узел совпадает
 /// хоть с одним ГОДНЫМ селектором списка; негодные части прощаются
 /// (selectors-4 §4.2 «forgiving selector list»). `None` — не этот псевдокласс.
-pub(super) fn is_holds(pseudo: &str, me: &Ancestor, path: &[Ancestor], sibs: Sibs) -> Option<bool> {
+pub(super) fn is_holds(
+    pseudo: &str,
+    namespace: TypeNamespace,
+    me: &Ancestor,
+    path: &[Ancestor],
+    sibs: Sibs,
+) -> Option<bool> {
     let (name, arg) = pseudo.split_once('(')?;
     if !matches!(name, "is" | "where" | "matches" | "any") {
         return None;
     }
     let arg = arg.strip_suffix(')')?;
     Some(
-        crate::style::css::default_ns::is_args(arg)
+        crate::style::css::default_ns::is_args(arg, namespace)
             .into_iter()
             .any(|inner| matches(&inner, me, path, sibs)),
     )

@@ -41,10 +41,6 @@ pub(crate) struct ShapeCx {
     /// Nested fragmentainers and cloned decorations retain their own model.
     pub(crate) legacy_oof: bool,
     pub(crate) viewport: Option<(f32, f32)>,
-    /// Презентационный `cellpadding` таблицы — отступ ЭТОЙ ячейки поверх
-    /// умолчания `td { padding: 1px }` (как в `table()`); потомкам не
-    /// передаётся.
-    pub(crate) cell_pad: Option<f32>,
     /// Мера ПОТОКА, а не коробки: заданная высота не обрезает ни высоту, ни
     /// точки разреза, ни монолитные диапазоны. Переполнение коробки с
     /// заданной высотой — параллельный поток (css-break-3 §3), и укладке
@@ -65,7 +61,6 @@ impl ShapeCx {
         paged: false,
         legacy_oof: false,
         viewport: None,
-        cell_pad: None,
         unclamped: false,
     };
 }

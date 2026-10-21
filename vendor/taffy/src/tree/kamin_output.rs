@@ -3,6 +3,7 @@
 use crate::style::Style;
 use crate::tree::{Baselines, LayoutOutput};
 
+/// KaminIDE patch: Adapt physical layout output to the authored root writing mode.
 pub(super) fn adapt(mut output: LayoutOutput, style: &Style) -> LayoutOutput {
     if let (None, Some((offset, from_right))) = (output.baselines_x.first, style.baseline_x_hint) {
         output.baselines_x.first = Some(if from_right {

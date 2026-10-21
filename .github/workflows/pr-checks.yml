@@ -29,6 +29,8 @@ jobs:
       bridge_extension: ${{ steps.changes.outputs.bridge_extension }}
       bridge_webview: ${{ steps.changes.outputs.bridge_webview }}
       rust: ${{ steps.changes.outputs.rust }}
+      vendor: ${{ steps.changes.outputs.vendor }}
+      vendor_taffy: ${{ steps.changes.outputs.vendor_taffy }}
       release_pipeline: ${{ steps.changes.outputs.release_pipeline }}
       release_candidate: ${{ steps.changes.outputs.release_candidate }}
       installer_candidate: ${{ steps.changes.outputs.installer_candidate }}
@@ -117,6 +119,8 @@ jobs:
           set_scope bridge_extension '^(extensions/claude-bridge/extension/|builtin-extensions/claude-bridge/(extension\.js|package\.json)$|src/kamin-host/rolling-log\.ts$)'
           set_scope bridge_webview '^(extensions/claude-bridge/webview/|builtin-extensions/claude-bridge/(chat|tools|customize)\.html$)'
           set_scope rust '^(Cargo\.(toml|lock)$|rust-toolchain(\.toml)?$|\.cargo/|crates/|vendor/|scripts/check_(event_routing|conventions)\.py$|(clippy|rustfmt)\.toml$)'
+          set_scope vendor '^(vendor/|rust-toolchain\.toml$)'
+          set_scope vendor_taffy '^(vendor/taffy/|vendor/taffy-kaminide\.patch$|rust-toolchain\.toml$)'
           set_scope release_pipeline '^(\.github/workflows/docker\.yml$|scripts/release/|extensions/claude-bridge/server/)'
 
           {
@@ -602,6 +606,50 @@ jobs:
           docker logs "$container" >&2
           exit 1
 
+  vendor-patches:
+    name: vendor patch round-trip
+    needs: scope
+    if: needs.scope.outputs.vendor == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Every vendor/<crate>-kaminide.patch must recreate vendor/<crate>/ from
+      # its pinned clean upstream base (docs/VENDORING.md).
+      - name: Rebuild upstream bases and round-trip every vendor patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --no-self-update
+          python3 vendor/check-patches.py
+
+  vendor-taffy:
+    name: vendor Taffy standalone quality
+    needs: scope
+    if: needs.scope.outputs.vendor_taffy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the pull request merge candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # Taffy is excluded from the root workspace; its own targets need a gate.
+      - name: Check standalone Taffy lints and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          rustup toolchain install "$channel" --profile minimal --component clippy --no-self-update
+          cargo clippy --manifest-path vendor/taffy/Cargo.toml --locked --all-targets -j 6 -- -D warnings
+          cargo test --manifest-path vendor/taffy/Cargo.toml --locked -j 6
+
   quality-gate:
     name: required quality gate
     needs:
@@ -612,6 +660,8 @@ jobs:
       - bridge-extension
       - bridge-webview
       - rust-windows
+      - vendor-patches
+      - vendor-taffy
       - windows-installer
       - release-dry-run
     if: ${{ always() }}
@@ -627,6 +677,8 @@ jobs:
           EXTENSION_RESULT: ${{ needs.bridge-extension.result }}
           WEBVIEW_RESULT: ${{ needs.bridge-webview.result }}
           RUST_RESULT: ${{ needs.rust-windows.result }}
+          VENDOR_RESULT: ${{ needs.vendor-patches.result }}
+          TAFFY_RESULT: ${{ needs.vendor-taffy.result }}
           INSTALLER_RESULT: ${{ needs.windows-installer.result }}
           RELEASE_RESULT: ${{ needs.release-dry-run.result }}
         shell: bash
@@ -640,6 +692,8 @@ jobs:
             "$EXTENSION_RESULT" \
             "$WEBVIEW_RESULT" \
             "$RUST_RESULT" \
+            "$VENDOR_RESULT" \
+            "$TAFFY_RESULT" \
             "$INSTALLER_RESULT" \
             "$RELEASE_RESULT"; do
             case "$result" in

@@ -6,6 +6,7 @@ use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt};
 use crate::util::{sys::Vec, ResolveOrZero};
 use crate::GridContainerStyle;
 
+/// KaminIDE patch: Resolve constraints from the subgrid's standalone cross-axis tracks.
 pub(super) fn own_tracks(
     tree: &impl LayoutPartialTree,
     style: &impl GridContainerStyle,

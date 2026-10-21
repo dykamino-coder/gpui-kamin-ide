@@ -17,6 +17,7 @@ const run = (overrides = {}) => spawnSync("bash", ["-c", script], {
 
 test("aggregate observes every dependency and runs even after failure/cancellation", () => {
   assert.ok(needs.includes("windows-installer"));
+  assert.ok(needs.includes("vendor-taffy"));
   assert.deepEqual(bindings.map((m) => m[2]).sort(), needs.toSorted());
   assert.match(gate, /if: \$\{\{ always\(\) \}\}/);
   assert.equal(run().status, 0);

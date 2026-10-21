@@ -170,7 +170,6 @@ pub(super) fn column_bands<'a>(
 // Group edges consume the same element/band records as column construction.
 #[allow(clippy::type_complexity)]
 // Row indices also address the independently accumulated edge arrays.
-#[allow(clippy::needless_range_loop)]
 pub(super) fn collect_group_edges<'a>(
     rows: &[(
         &'a Element,

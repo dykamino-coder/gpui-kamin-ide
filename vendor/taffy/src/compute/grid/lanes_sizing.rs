@@ -8,6 +8,7 @@ use crate::tree::{
     SizingMode,
 };
 
+/// KaminIDE patch: Resolve intrinsic lane sizing keywords against available space.
 pub(super) fn resolve_lane_sizing_keywords(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,

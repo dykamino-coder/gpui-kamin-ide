@@ -18,7 +18,7 @@ use grid_box::{paint_table_border, table_grid_box};
 mod captions;
 use captions::{collect_captions, wrap_with_captions};
 
-#[allow(clippy::too_many_arguments, clippy::ptr_arg)]
+#[allow(clippy::too_many_arguments)]
 // Finishing consumes row elements and the corresponding band geometry together.
 #[allow(clippy::type_complexity)]
 pub(super) fn table_finish(

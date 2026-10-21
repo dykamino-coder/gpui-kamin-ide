@@ -20,7 +20,6 @@ use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_borrow)]
 pub(super) fn cascade_element(
     me: &mut Ancestor,
     attrs: &Vec<(String, String)>,

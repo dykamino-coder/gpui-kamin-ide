@@ -116,7 +116,6 @@ pub fn render_paged_select(
         paged: true,
         legacy_oof: false,
         viewport: Some(opts.viewport),
-        cell_pad: None,
         unclamped: false,
     };
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои

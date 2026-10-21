@@ -5,6 +5,7 @@ use crate::geometry::{Line, Rect, Size};
 use crate::{SUBGRID_COLUMNS, SUBGRID_ROWS};
 
 #[allow(clippy::too_many_arguments)]
+/// KaminIDE patch: Resolve subgrid item margins, padding, and borders.
 pub(super) fn resolve(
     ext: Rect<f32>,
     edges: Rect<f32>,

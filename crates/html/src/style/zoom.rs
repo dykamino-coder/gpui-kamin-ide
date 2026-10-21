@@ -180,7 +180,6 @@ fn set_side(s: &mut Sides, i: usize, v: Len) {
 /// снимается — слияние эту сторону уже не копирует. Не в точках — флаг
 /// остаётся, слияние копирует как прежде (доля и `auto` зуму безразличны).
 // The side index selects both the inheritance flag and the matching CSS edge.
-#[allow(clippy::needless_range_loop)]
 fn per_side(flags: &mut [bool; 4], into: &mut Sides, from: &Sides, k: f32) {
     for i in 0..4 {
         if flags[i]

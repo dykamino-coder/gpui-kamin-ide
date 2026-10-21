@@ -18,7 +18,7 @@ fn walk(nodes: &mut [Node], containing_grid: bool) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         let grid = matches!(el.style.display, Some(Display::Grid | Display::InlineGrid));
-        let establishes_cb = crate::text::inline::establishes_cb(&el.style);
+        let establishes_cb = crate::style::computed::box_predicates::establishes_cb(&el.style);
         walk(
             &mut el.children,
             if establishes_cb {

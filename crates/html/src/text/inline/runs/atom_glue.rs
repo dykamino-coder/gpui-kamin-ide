@@ -42,7 +42,6 @@ pub(super) fn glue_marker(p: &Piece) -> bool {
 /// Две соседние коробки БЕЗ знака-склейки не склеиваются: между ними точка
 /// переноса есть (`line-breaking-atomic-007`).
 // Piece indices address the parallel break flags and look ahead across atomic runs.
-#[allow(clippy::needless_range_loop)]
 pub(super) fn glue_atoms(pieces: Vec<Piece>) -> Vec<Vec<Piece>> {
     // Шаг 1: у каких текстовых кусков сосед — атом (сквозь служебные метки).
     let mut before_atom = vec![false; pieces.len()];

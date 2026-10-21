@@ -11,11 +11,7 @@ pub fn print_tree(tree: &impl PrintTree, root: NodeId) {
 }
 
 /// Writes a debug representation of the computed layout to the writer, starting with the passed root node.
-pub fn write_tree(
-    mut writer: impl io::Write,
-    tree: &impl PrintTree,
-    root: NodeId,
-) -> io::Result<()> {
+pub fn write_tree(mut writer: impl io::Write, tree: &impl PrintTree, root: NodeId) -> io::Result<()> {
     writeln!(writer, "TREE")?;
     write_node(&mut writer, tree, root, false, String::new())?;
 
@@ -31,36 +27,32 @@ pub fn write_tree(
         let display = tree.get_debug_label(node_id);
         let num_children = tree.child_count(node_id);
 
-        let fork_string = if has_sibling {
-            "├── "
-        } else {
-            "└── "
-        };
+        let fork_string = if has_sibling { "├── " } else { "└── " };
         #[cfg(feature = "content_size")]
         writeln!(
-            writer,
-            "{lines}{fork} {display} [x: {x:<4} y: {y:<4} w: {width:<4} h: {height:<4} overflow: l:{ol} r:{or} t:{ot} b:{ob}, border: l:{bl} r:{br} t:{bt} b:{bb}, padding: l:{pl} r:{pr} t:{pt} b:{pb}] ({key:?})",
-            lines = lines_string,
-            fork = fork_string,
-            display = display,
-            x = layout.location.x,
-            y = layout.location.y,
-            width = layout.size.width,
-            height = layout.size.height,
-            ol = layout.scrollable_overflow_rect.left,
-            or = layout.scrollable_overflow_rect.right,
-            ot = layout.scrollable_overflow_rect.top,
-            ob = layout.scrollable_overflow_rect.bottom,
-            bl = layout.border.left,
-            br = layout.border.right,
-            bt = layout.border.top,
-            bb = layout.border.bottom,
-            pl = layout.padding.left,
-            pr = layout.padding.right,
-            pt = layout.padding.top,
-            pb = layout.padding.bottom,
-            key = node_id,
-        )?;
+                writer,
+                "{lines}{fork} {display} [x: {x:<4} y: {y:<4} w: {width:<4} h: {height:<4} overflow: l:{ol} r:{or} t:{ot} b:{ob}, border: l:{bl} r:{br} t:{bt} b:{bb}, padding: l:{pl} r:{pr} t:{pt} b:{pb}] ({key:?})",
+                lines = lines_string,
+                fork = fork_string,
+                display = display,
+                x = layout.location.x,
+                y = layout.location.y,
+                width = layout.size.width,
+                height = layout.size.height,
+                ol = layout.scrollable_overflow_rect.left,
+                or = layout.scrollable_overflow_rect.right,
+                ot = layout.scrollable_overflow_rect.top,
+                ob = layout.scrollable_overflow_rect.bottom,
+                bl = layout.border.left,
+                br = layout.border.right,
+                bt = layout.border.top,
+                bb = layout.border.bottom,
+                pl = layout.padding.left,
+                pr = layout.padding.right,
+                pt = layout.padding.top,
+                pb = layout.padding.bottom,
+                key = node_id,
+            )?;
         #[cfg(not(feature = "content_size"))]
         writeln!(
             writer,

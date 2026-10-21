@@ -11,15 +11,14 @@ pub(crate) use self::alloc::*;
 /// For when `std` is enabled
 #[cfg(feature = "std")]
 mod std {
-    /// KaminIDE: `format!` for generated grid line names (`<area>-start`/`-end`)
+    /// KaminIDE patch: `format!` for generated grid line names (`<area>-start`/`-end`)
     pub(crate) use std::format;
     /// A string
     pub(crate) type String = std::string::String;
     /// The default type for representing strings in Taffy styles
     pub(crate) type DefaultCheapStr = String;
     /// A map
-    pub(crate) type Map<K, V> =
-        std::collections::HashMap<K, V, std::collections::hash_map::RandomState>;
+    pub(crate) type Map<K, V> = std::collections::HashMap<K, V, std::collections::hash_map::RandomState>;
     /// An allocation-backend agnostic vector type
     pub(crate) type Vec<A> = std::vec::Vec<A>;
     /// An allocation-backend agnostic boxed pointer type
@@ -88,7 +87,7 @@ mod std {
 mod alloc {
     extern crate alloc;
 
-    /// KaminIDE: `format!` for generated grid line names (`<area>-start`/`-end`)
+    /// KaminIDE patch: `format!` for generated grid line names (`<area>-start`/`-end`)
     pub(crate) use alloc::format;
     /// A string
     pub(crate) type String = alloc::string::String;

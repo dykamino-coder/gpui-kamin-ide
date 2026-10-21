@@ -16,7 +16,6 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 mod replaced;
 use replaced::replaced_abs_atom;
 
-#[allow(clippy::needless_return)]
 pub(super) fn static_position_atom(
     inherited: &Computed,
     e: &Element,
@@ -121,7 +120,6 @@ pub(super) fn static_position_atom(
     };
 }
 
-#[allow(clippy::needless_return)]
 pub(super) fn absolute_atom(
     inherited: &Computed,
     e: &Element,

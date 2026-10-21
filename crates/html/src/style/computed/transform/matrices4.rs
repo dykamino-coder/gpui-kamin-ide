@@ -51,7 +51,6 @@ impl Transform {
     /// Только плоская 2×3 (`lin`/`tr`) — для объёмных функций, чья
     /// сплющенная тень нужна SVG и клипу.
     // Matrix multiplication uses the same row/column indices in both operands.
-    #[allow(clippy::needless_range_loop)]
     pub(crate) fn push2(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
         let m = self.lin;
         self.lin = [

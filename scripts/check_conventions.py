@@ -49,6 +49,14 @@ RULES = [
     ("7 panic on NaN", r"partial_cmp\([^)]*\)\s*\.unwrap\(\)", r"\.rs$"),
 ]
 
+# Rule 7 for float ordering: `partial_cmp(..).unwrap_or(Equal)` is not a total
+# order once a NaN appears (`sort_by` may panic, `max_by` picks arbitrarily);
+# `f32::total_cmp` is. Matched over whole files because rustfmt splits the
+# chain across lines; a changed file may not add occurrences.
+PARTIAL_FALLBACK = re.compile(
+    r"partial_cmp\s*\((?:[^()]|\([^()]*\))*\)\s*\.unwrap_or(?:_else|_default)?\s*\("
+)
+
 
 def windows(src):
     lines = [re.sub(r"\s+", "", line) for line in src.splitlines()]
@@ -110,6 +118,11 @@ def check(args):
                 bad.append(("5 file over 250 lines (grew)", filename, f"{old_size} -> {size}"))
             if not src.lstrip("\ufeff").startswith("//!"):
                 bad.append(("5 missing //! header", filename, ""))
+            found = len(PARTIAL_FALLBACK.findall(src))
+            old_found = len(PARTIAL_FALLBACK.findall(old_sources.get(filename, "")))
+            if found > old_found:
+                bad.append(("7 float order: partial_cmp(..).unwrap_or(..), use total_cmp",
+                            filename, f"{old_found} -> {found}"))
         now, before = shared_counts(sources, changed), shared_counts(old_sources, changed)
         for filename in changed:
             for other, count in sorted(now[filename].items(), key=lambda pair: -pair[1]):

@@ -30,12 +30,7 @@ impl ItemBatcher {
     /// Create a new ItemBatcher for the specified axis
     #[inline(always)]
     fn new(axis: AbstractAxis) -> Self {
-        ItemBatcher {
-            index_offset: 0,
-            axis,
-            current_span: 1,
-            current_is_flex: false,
-        }
+        ItemBatcher { index_offset: 0, axis, current_span: 1, current_is_flex: false }
     }
 
     /// This is basically a manual version of Iterator::next which passes `items`
@@ -59,8 +54,7 @@ impl ItemBatcher {
             items
                 .iter()
                 .position(|item: &&mut GridItem| {
-                    item.crosses_flexible_track(self.axis)
-                        || item.span(self.axis) > self.current_span
+                    item.crosses_flexible_track(self.axis) || item.span(self.axis) > self.current_span
                 })
                 .unwrap_or(items.len())
         };
@@ -117,11 +111,7 @@ where
     /// Compute the item's resolved margins for size contributions. Horizontal percentage margins always resolve
     /// to zero if the container size is indefinite as otherwise this would introduce a cyclic dependency.
     #[inline(always)]
-    fn margins_axis_sums_with_baseline_shims(
-        &self,
-        item: &GridItem,
-        percentage_basis: Option<f32>,
-    ) -> Size<f32> {
+    fn margins_axis_sums_with_baseline_shims(&self, item: &GridItem, percentage_basis: Option<f32>) -> Size<f32> {
         item.margins_axis_sums_with_baseline_shims(percentage_basis, self.tree)
     }
 
@@ -136,14 +126,8 @@ where
     fn min_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
-        let margin_axis_sums =
-            self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution = item.min_content_contribution_cached(
-            self.axis,
-            self.tree,
-            grid_area_size,
-            available_space,
-        );
+        let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
+        let contribution = item.min_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space);
         contribution + margin_axis_sums.get(self.axis)
     }
 
@@ -152,14 +136,8 @@ where
     fn max_content_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
-        let margin_axis_sums =
-            self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution = item.max_content_contribution_cached(
-            self.axis,
-            self.tree,
-            grid_area_size,
-            available_space,
-        );
+        let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
+        let contribution = item.max_content_contribution_cached(self.axis, self.tree, grid_area_size, available_space);
         contribution + margin_axis_sums.get(self.axis)
     }
 
@@ -174,15 +152,9 @@ where
     fn minimum_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
         let grid_area_size = self.grid_area_size(item, axis_tracks);
         let available_space = grid_area_size.with(self.axis, None);
-        let margin_axis_sums =
-            self.margins_axis_sums_with_baseline_shims(item, available_space.width);
-        let contribution = item.minimum_contribution_cached(
-            self.tree,
-            self.axis,
-            axis_tracks,
-            grid_area_size,
-            self.inner_node_size,
-        );
+        let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item, available_space.width);
+        let contribution =
+            item.minimum_contribution_cached(self.tree, self.axis, axis_tracks, grid_area_size, self.inner_node_size);
         contribution + margin_axis_sums.get(self.axis)
     }
 }
@@ -242,8 +214,8 @@ pub(super) fn compute_alignment_gutter_adjustment(
             .map(|track_size_sum| f32_max(0.0, axis_inner_node_size - track_size_sum))
             .unwrap_or(0.0);
 
-        let weighted_track_count = (((tracks.len() - 3) / 2) * inner_gutter_weight as usize)
-            + (2 * outer_gutter_weight as usize);
+        let weighted_track_count =
+            (((tracks.len() - 3) / 2) * inner_gutter_weight as usize) + (2 * outer_gutter_weight as usize);
 
         return (free_space / weighted_track_count as f32) * inner_gutter_weight as f32;
     }
@@ -253,18 +225,10 @@ pub(super) fn compute_alignment_gutter_adjustment(
 
 /// Convert origin-zero coordinates track placement in grid track vector indexes
 #[inline(always)]
-pub(super) fn resolve_item_track_indexes(
-    items: &mut [GridItem],
-    column_counts: TrackCounts,
-    row_counts: TrackCounts,
-) {
+pub(super) fn resolve_item_track_indexes(items: &mut [GridItem], column_counts: TrackCounts, row_counts: TrackCounts) {
     for item in items {
-        item.column_indexes = item
-            .column
-            .map(|line| line.into_track_vec_index(column_counts) as u16);
-        item.row_indexes = item
-            .row
-            .map(|line| line.into_track_vec_index(row_counts) as u16);
+        item.column_indexes = item.column.map(|line| line.into_track_vec_index(column_counts) as u16);
+        item.row_indexes = item.row.map(|line| line.into_track_vec_index(row_counts) as u16);
     }
 }
 
@@ -276,18 +240,14 @@ pub(super) fn determine_if_item_crosses_flexible_or_intrinsic_tracks(
     rows: &[GridTrack],
 ) {
     for item in items {
-        item.crosses_flexible_column = item
-            .track_range_excluding_lines(AbstractAxis::Inline)
-            .any(|i| columns[i].is_flexible());
-        item.crosses_intrinsic_column = item
-            .track_range_excluding_lines(AbstractAxis::Inline)
-            .any(|i| columns[i].has_intrinsic_sizing_function());
-        item.crosses_flexible_row = item
-            .track_range_excluding_lines(AbstractAxis::Block)
-            .any(|i| rows[i].is_flexible());
-        item.crosses_intrinsic_row = item
-            .track_range_excluding_lines(AbstractAxis::Block)
-            .any(|i| rows[i].has_intrinsic_sizing_function());
+        item.crosses_flexible_column =
+            item.track_range_excluding_lines(AbstractAxis::Inline).any(|i| columns[i].is_flexible());
+        item.crosses_intrinsic_column =
+            item.track_range_excluding_lines(AbstractAxis::Inline).any(|i| columns[i].has_intrinsic_sizing_function());
+        item.crosses_flexible_row =
+            item.track_range_excluding_lines(AbstractAxis::Block).any(|i| rows[i].is_flexible());
+        item.crosses_intrinsic_row =
+            item.track_range_excluding_lines(AbstractAxis::Block).any(|i| rows[i].has_intrinsic_sizing_function());
     }
 }
 
@@ -385,15 +345,14 @@ pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
     // something like stretch alignment), not just any available space. To do this we map definite available space to AvailableSpace::MaxContent
     // in the case that inner_node_size is None. Preserve min-content constraints in both axes:
     // CSS Grid §11.7 requires a zero flex fraction under a min-content constraint.
-    let axis_available_space_for_expansion =
-        if let Some(available_space) = inner_node_size.get(axis) {
-            AvailableSpace::Definite(available_space)
-        } else {
-            match available_grid_space.get(axis) {
+    let axis_available_space_for_expansion = if let Some(available_space) = inner_node_size.get(axis) {
+        AvailableSpace::Definite(available_space)
+    } else {
+        match available_grid_space.get(axis) {
                 AvailableSpace::MinContent => AvailableSpace::MinContent,
-                _ => AvailableSpace::MaxContent,
-            }
-        };
+            _ => AvailableSpace::MaxContent,
+        }
+    };
 
     // 11.7. Expand Flexible Tracks
     // This step sizes flexible tracks using the largest value it can assign to an fr without exceeding the available space.
@@ -413,11 +372,7 @@ pub(super) fn track_sizing_algorithm<Tree: LayoutPartialTree>(
     // 11.8. Stretch auto Tracks
     // This step expands tracks that have an auto max track sizing function by dividing any remaining positive, definite free space equally amongst them.
     if axis_alignment == AlignContent::STRETCH {
-        stretch_auto_tracks(
-            axis_tracks,
-            axis_min_size,
-            axis_available_space_for_expansion,
-        );
+        stretch_auto_tracks(axis_tracks, axis_min_size, axis_available_space_for_expansion);
     }
 }
 
@@ -589,7 +544,8 @@ fn resolve_item_baseline_groups(
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
         // Get the row index of the current row
-        let current_row = group_of(&remaining_items[0]);
+        // KaminIDE patch: remaining_items already contains item references.
+        let current_row = group_of(remaining_items[0]);
 
         // Find the item index of the first item that is in a different row (or None if we've reached the end of the list)
         let next_row_first_item = remaining_items
@@ -734,6 +690,7 @@ fn resolve_item_baseline_groups(
                 }
                 own => own,
             };
+
             item.baseline = Some(
                 baseline_coordinate(baseline, height, item.overflow.y.is_scroll_container())
                     + item
@@ -767,7 +724,7 @@ fn resolve_item_baseline_groups(
                 item.baseline_shim = shim;
             }
             // Upstream #1226: the shims feed the item's known dimensions, so drop the cached entry.
-            item.known_dimensions_cache = None;
+                item.known_dimensions_cache = None;
         }
     }
 }
@@ -797,8 +754,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
     // Items that cross a flexible track are all processed together in a single batch (regardless of their span), so
     // they only need to be moved to the end of the list. And the order in which items within a batch are processed
     // does not affect the result, so the remaining items only need to be sorted if any of them span more than one track.
-    let mut partitioned_items: FrontBackVecBuilder<&mut GridItem> =
-        FrontBackVecBuilder::with_capacity(items.len());
+    let mut partitioned_items: FrontBackVecBuilder<&mut GridItem> = FrontBackVecBuilder::with_capacity(items.len());
     let mut needs_sort = false;
     for item in items.iter_mut() {
         if item.crosses_flexible_track(axis) {
@@ -826,13 +782,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
     // Also, minimum contribution <= min-content contribution <= max-content contribution.
 
     let axis_inner_node_size = inner_node_size.get(axis);
-    let mut item_sizer = IntrinsicSizeMeasurer {
-        tree,
-        other_axis_tracks,
-        axis,
-        inner_node_size,
-        get_track_size_estimate,
-    };
+    let mut item_sizer =
+        IntrinsicSizeMeasurer { tree, other_axis_tracks, axis, inner_node_size, get_track_size_estimate };
 
     let mut batched_item_iterator = ItemBatcher::new(axis);
     while let Some((batch, is_flex)) = batched_item_iterator.next(items) {
@@ -856,10 +807,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                     ),
                     // If the container size is indefinite and has not yet been resolved then percentage sized
                     // tracks are treated as auto
-                    _ if track
-                        .min_track_sizing_function
-                        .behaves_as_auto(axis_inner_node_size) =>
-                    {
+                    _ if track.min_track_sizing_function.behaves_as_auto(axis_inner_node_size) => {
                         let space = match axis_available_grid_space {
                             // QUIRK: The spec says that:
                             //
@@ -872,18 +820,14 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                             AvailableSpace::MinContent | AvailableSpace::MaxContent
                                 if !item.overflow.get(axis).is_scroll_container() =>
                             {
-                                let axis_minimum_size =
-                                    item_sizer.minimum_contribution(item, axis_tracks);
-                                let axis_min_content_size =
-                                    item_sizer.min_content_contribution(item, axis_tracks);
+                                let axis_minimum_size = item_sizer.minimum_contribution(item, axis_tracks);
+                                let axis_min_content_size = item_sizer.min_content_contribution(item, axis_tracks);
                                 let limit = track
                                     .max_track_sizing_function
                                     .definite_limit(axis_inner_node_size, |val, basis| {
                                         item_sizer.calc(val, basis)
                                     });
-                                axis_min_content_size
-                                    .maybe_min(limit)
-                                    .max(axis_minimum_size)
+                                axis_min_content_size.maybe_min(limit).max(axis_minimum_size)
                             }
                             _ => item_sizer.minimum_contribution(item, axis_tracks),
                         };
@@ -911,17 +855,13 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                 let planned_increase = if max_track_sizing_function.is_fit_content() {
                     // Always increase the growth limit to at least the size of the *fit-content limited*
                     // max-content contribution
-                    let max_content_contribution = f32_min(
-                        item_sizer.max_content_contribution(item, axis_tracks),
-                        fit_content_limit,
-                    );
+                    let max_content_contribution =
+                        f32_min(item_sizer.max_content_contribution(item, axis_tracks), fit_content_limit);
 
                     // If item is not a scroll container, then increase the growth limit to at least the
                     // size of the min-content contribution
                     match min_content_contribution {
-                        Some(min_content_contribution)
-                            if !item.overflow.get(axis).is_scroll_container() =>
-                        {
+                        Some(min_content_contribution) if !item.overflow.get(axis).is_scroll_container() => {
                             Some(f32_max(min_content_contribution, max_content_contribution))
                         }
                         _ => Some(max_content_contribution),
@@ -964,10 +904,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
 
         // 1. For intrinsic minimums:
         // First increase the base size of tracks with an intrinsic min track sizing function
-        for item in batch
-            .iter_mut()
-            .filter(|item| item.crosses_intrinsic_track(axis))
-        {
+        for item in batch.iter_mut().filter(|item| item.crosses_intrinsic_track(axis)) {
             // ...by distributing extra space as needed to accommodate these items’ minimum contributions.
             //
             // QUIRK: The spec says that:
@@ -982,17 +919,14 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                     if !item.overflow.get(axis).is_scroll_container() =>
                 {
                     let axis_minimum_size = item_sizer.minimum_contribution(item, axis_tracks);
-                    let axis_min_content_size =
-                        item_sizer.min_content_contribution(item, axis_tracks);
+                    let axis_min_content_size = item_sizer.min_content_contribution(item, axis_tracks);
                     let limit = item.spanned_track_limit(
                         axis,
                         axis_tracks,
                         axis_inner_node_size,
                         &|val, basis| item_sizer.calc(val, basis),
                     );
-                    let limited_min_content = axis_min_content_size
-                        .maybe_min(limit)
-                        .max(axis_minimum_size);
+                    let limited_min_content = axis_min_content_size.maybe_min(limit).max(axis_minimum_size);
 
                     // For items crossing flexible tracks, browsers hand the content-derived contribution to
                     // the flexible tracks only in proportion to the crossed flex factor sum, clamped at one
@@ -1029,8 +963,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                         .is_none()
                 };
                 if item.overflow.get(axis).is_scroll_container() {
-                    let fit_content_limit =
-                        move |track: &GridTrack| track.fit_content_limited_growth_limit();
+                    let fit_content_limit = move |track: &GridTrack| track.fit_content_limited_growth_limit();
                     distribute_item_space_to_base_size(
                         is_flex,
                         space,
@@ -1059,19 +992,14 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
         let has_min_or_max_content_min_track_sizing_function =
             move |track: &GridTrack| track.min_track_sizing_function.is_min_or_max_content();
         for item in batch.iter_mut() {
-            if !item.spans_track_matching(
-                axis,
-                axis_tracks,
-                has_min_or_max_content_min_track_sizing_function,
-            ) {
+            if !item.spans_track_matching(axis, axis_tracks, has_min_or_max_content_min_track_sizing_function) {
                 continue;
             }
             let space = item_sizer.min_content_contribution(item, axis_tracks);
             let tracks = &mut axis_tracks[item.track_range_excluding_lines(axis)];
             if space > 0.0 {
                 if item.overflow.get(axis).is_scroll_container() {
-                    let fit_content_limit =
-                        move |track: &GridTrack| track.fit_content_limited_growth_limit();
+                    let fit_content_limit = move |track: &GridTrack| track.fit_content_limited_growth_limit();
                     distribute_item_space_to_base_size(
                         is_flex,
                         space,
@@ -1114,8 +1042,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
             ///    "If the max is less than the min, then the max will be floored by the min (essentially yielding minmax(min, min))"
             #[inline(always)]
             fn has_auto_min_track_sizing_function(track: &GridTrack) -> bool {
-                track.min_track_sizing_function.is_auto()
-                    && !track.max_track_sizing_function.is_min_content()
+                track.min_track_sizing_function.is_auto() && !track.max_track_sizing_function.is_min_content()
             }
 
             /// Whether a track has a MaxContent min track sizing function
@@ -1126,8 +1053,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
 
             for item in batch.iter_mut() {
                 if !item.spans_track_matching(axis, axis_tracks, |track| {
-                    has_auto_min_track_sizing_function(track)
-                        || has_max_content_min_track_sizing_function(track)
+                    has_auto_min_track_sizing_function(track) || has_max_content_min_track_sizing_function(track)
                 }) {
                     continue;
                 }
@@ -1146,11 +1072,8 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                 // the scaling already applied to the min-content contribution.
                 if is_flex {
                     let spanned_tracks = &axis_tracks[item.track_range_excluding_lines(axis)];
-                    let inflexible_sizes: f32 = spanned_tracks
-                        .iter()
-                        .filter(|track| !track.is_flexible())
-                        .map(|track| track.base_size)
-                        .sum();
+                    let inflexible_sizes: f32 =
+                        spanned_tracks.iter().filter(|track| !track.is_flexible()).map(|track| track.base_size).sum();
                     let scale = f32_min(crossed_flex_factor_sum(spanned_tracks), 1.0);
                     space = inflexible_sizes + f32_max(space - inflexible_sizes, 0.0) * scale;
                 }
@@ -1197,11 +1120,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
         let has_max_content_min_track_sizing_function =
             move |track: &GridTrack| track.min_track_sizing_function.is_max_content();
         for item in batch.iter_mut() {
-            if !item.spans_track_matching(
-                axis,
-                axis_tracks,
-                has_max_content_min_track_sizing_function,
-            ) {
+            if !item.spans_track_matching(axis, axis_tracks, has_max_content_min_track_sizing_function) {
                 continue;
             }
             let axis_max_content_size = item_sizer.max_content_contribution(item, axis_tracks);
@@ -1238,22 +1157,14 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
                     .has_definite_value(axis_inner_node_size)
             };
             for item in batch.iter_mut() {
-                if !item.spans_track_matching(
-                    axis,
-                    axis_tracks,
-                    has_intrinsic_max_track_sizing_function,
-                ) {
+                if !item.spans_track_matching(axis, axis_tracks, has_intrinsic_max_track_sizing_function) {
                     continue;
                 }
                 let axis_min_content_size = item_sizer.min_content_contribution(item, axis_tracks);
                 let space = axis_min_content_size;
                 let tracks = &mut axis_tracks[item.track_range_excluding_lines(axis)];
                 if space > 0.0 {
-                    distribute_item_space_to_growth_limit(
-                        space,
-                        tracks,
-                        has_intrinsic_max_track_sizing_function,
-                    );
+                    distribute_item_space_to_growth_limit(space, tracks, has_intrinsic_max_track_sizing_function);
                 }
             }
             // Mark any tracks whose growth limit changed from infinite to finite in this step as infinitely growable for the next step.
@@ -1264,26 +1175,17 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
             // fit-content() tracks by their fit-content() argument.
             let has_max_content_max_track_sizing_function = |track: &GridTrack| {
                 track.max_track_sizing_function.is_max_content_alike()
-                    || (track.max_track_sizing_function.uses_percentage()
-                        && axis_inner_node_size.is_none())
+                    || (track.max_track_sizing_function.uses_percentage() && axis_inner_node_size.is_none())
             };
             for item in batch.iter_mut() {
-                if !item.spans_track_matching(
-                    axis,
-                    axis_tracks,
-                    has_max_content_max_track_sizing_function,
-                ) {
+                if !item.spans_track_matching(axis, axis_tracks, has_max_content_max_track_sizing_function) {
                     continue;
                 }
                 let axis_max_content_size = item_sizer.max_content_contribution(item, axis_tracks);
                 let space = axis_max_content_size;
                 let tracks = &mut axis_tracks[item.track_range_excluding_lines(axis)];
                 if space > 0.0 {
-                    distribute_item_space_to_growth_limit(
-                        space,
-                        tracks,
-                        has_max_content_max_track_sizing_function,
-                    );
+                    distribute_item_space_to_growth_limit(space, tracks, has_max_content_max_track_sizing_function);
                 }
             }
             // Mark any tracks whose growth limit changed from infinite to finite in this step as infinitely growable for the next step.
@@ -1303,11 +1205,7 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
 /// The sum of the flex factors of the flexible tracks in an item's spanned track range
 #[inline(always)]
 fn crossed_flex_factor_sum(tracks: &[GridTrack]) -> f32 {
-    tracks
-        .iter()
-        .filter(|track| track.is_flexible())
-        .map(|track| track.flex_factor())
-        .sum()
+    tracks.iter().filter(|track| track.is_flexible()).map(|track| track.flex_factor()).sum()
 }
 
 /// 11.5.1. Distributing Extra Space Across Spanned Tracks
@@ -1331,11 +1229,7 @@ fn distribute_item_space_to_base_size(
         // blend flex-factor-proportional and equal distribution when the sum is below one. But Chrome
         // computes the sum over only the affected tracks and uses pure flex-factor ratios whenever
         // that sum is non-zero, so we do the same for compatibility.
-        let flex_factor_sum: f32 = tracks
-            .iter()
-            .filter(|track| filter(track))
-            .map(|track| track.flex_factor())
-            .sum();
+        let flex_factor_sum: f32 = tracks.iter().filter(|track| filter(track)).map(|track| track.flex_factor()).sum();
         if flex_factor_sum > 0.0 {
             distribute_item_space_to_base_size_inner(
                 space,
@@ -1417,8 +1311,7 @@ fn distribute_item_space_to_base_size(
             //   - any affected track that happens to also have a max-content max track sizing function
             let mut filter = match intrinsic_contribution_type {
                 IntrinsicContributionType::Minimum => {
-                    (|track: &GridTrack| track.max_track_sizing_function.is_intrinsic())
-                        as fn(&GridTrack) -> bool
+                    (|track: &GridTrack| track.max_track_sizing_function.is_intrinsic()) as fn(&GridTrack) -> bool
                 }
                 IntrinsicContributionType::Maximum => {
                     (|track: &GridTrack| track.max_track_sizing_function.is_max_or_fit_content())
@@ -1427,11 +1320,8 @@ fn distribute_item_space_to_base_size(
             };
 
             // If there are no such tracks (matching filter above), then use all affected tracks.
-            let number_of_tracks = tracks
-                .iter()
-                .filter(|track| track_is_affected(track))
-                .filter(|track| filter(track))
-                .count();
+            let number_of_tracks =
+                tracks.iter().filter(|track| track_is_affected(track)).filter(|track| filter(track)).count();
             if number_of_tracks == 0 {
                 filter = (|_| true) as fn(&GridTrack) -> bool;
             }
@@ -1472,13 +1362,7 @@ fn distribute_item_space_to_growth_limit(
     // Skip this distribution if there is either
     //   - no space to distribute
     //   - no affected tracks to distribute space to
-    if space == 0.0
-        || tracks
-            .iter()
-            .filter(|track| track_is_affected(track))
-            .count()
-            == 0
-    {
+    if space == 0.0 || tracks.iter().filter(|track| track_is_affected(track)).count() == 0 {
         return;
     }
 
@@ -1552,9 +1436,7 @@ fn maximise_tracks(axis_tracks: &mut [GridTrack], axis_available_grid_space: Ava
     let used_space: f32 = axis_tracks.iter().map(|track| track.base_size).sum();
     let free_space = axis_available_grid_space.compute_free_space(used_space);
     if free_space == f32::INFINITY {
-        axis_tracks
-            .iter_mut()
-            .for_each(|track| track.base_size = track.growth_limit);
+        axis_tracks.iter_mut().for_each(|track| track.base_size = track.growth_limit);
     } else if free_space > 0.0 {
         distribute_space_up_to_limits(
             free_space,
@@ -1587,13 +1469,8 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
     inner_node_size: Size<Option<f32>>,
     get_track_size_estimate: impl Fn(&GridTrack, Option<f32>, &Tree) -> Option<f32>,
 ) {
-    let mut item_sizer = IntrinsicSizeMeasurer {
-        tree,
-        other_axis_tracks,
-        axis,
-        inner_node_size,
-        get_track_size_estimate,
-    };
+    let mut item_sizer =
+        IntrinsicSizeMeasurer { tree, other_axis_tracks, axis, inner_node_size, get_track_size_estimate };
 
     // First, find the grid’s used flex fraction:
     let flex_fraction = match axis_available_space_for_expansion {
@@ -1638,8 +1515,7 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
                     .iter_mut()
                     .filter(|item| item.crosses_flexible_track(axis))
                     .map(|item| {
-                        let max_content_contribution =
-                            item_sizer.max_content_contribution(item, axis_tracks);
+                        let max_content_contribution = item_sizer.max_content_contribution(item, axis_tracks);
                         let tracks = &axis_tracks[item.track_range_excluding_lines(axis)];
                         find_size_of_fr(tracks, max_content_contribution)
                     })
@@ -1676,10 +1552,7 @@ fn expand_flexible_tracks<Tree: LayoutPartialTree>(
 
     // For each flexible track, if the product of the used flex fraction and the track’s flex factor is greater
     // than the track’s base size, set its base size to that product.
-    for track in axis_tracks
-        .iter_mut()
-        .filter(|track| track.max_track_sizing_function.is_fr())
-    {
+    for track in axis_tracks.iter_mut().filter(|track| track.max_track_sizing_function.is_fr()) {
         let track_flex_factor = track.max_track_sizing_function.0.value();
         track.base_size = f32_max(track.base_size, track_flex_factor * flex_fraction);
     }
@@ -1716,8 +1589,7 @@ fn find_size_of_fr(tracks: &[GridTrack], space_to_fill: f32) -> f32 {
         for track in tracks.iter() {
             // Tracks for which flex_factor * hypothetical_fr_size < track.base_size are treated as inflexible
             if track.max_track_sizing_function.is_fr()
-                && track.max_track_sizing_function.0.value() * hypothetical_fr_size
-                    >= track.base_size
+                && track.max_track_sizing_function.0.value() * hypothetical_fr_size >= track.base_size
             {
                 naive_flex_factor_sum += track.max_track_sizing_function.0.value();
             } else {
@@ -1760,10 +1632,7 @@ fn stretch_auto_tracks(
     axis_min_size: Option<f32>,
     axis_available_space_for_expansion: AvailableSpace,
 ) {
-    let num_auto_tracks = axis_tracks
-        .iter()
-        .filter(|track| track.max_track_sizing_function.is_auto())
-        .count();
+    let num_auto_tracks = axis_tracks.iter().filter(|track| track.max_track_sizing_function.is_auto()).count();
     if num_auto_tracks > 0 {
         let used_space: f32 = axis_tracks.iter().map(|track| track.base_size).sum();
 
@@ -1838,10 +1707,8 @@ fn distribute_space_up_to_limits(
             })
             .min_by(|a, b| a.total_cmp(b))
             .unwrap(); // We will never pass an empty track list to this function
-        let iteration_item_incurred_increase = f32_min(
-            min_increase_limit,
-            space_to_distribute / track_distribution_proportion_sum,
-        );
+        let iteration_item_incurred_increase =
+            f32_min(min_increase_limit, space_to_distribute / track_distribution_proportion_sum);
 
         for track in tracks.iter_mut().filter(|track| track_is_affected(track)) {
             let increase = iteration_item_incurred_increase * track_distribution_proportion(track);

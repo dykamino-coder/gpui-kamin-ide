@@ -44,6 +44,8 @@ fn attach_anchor(sel: &mut Selector, lead: char) {
     }
     let sentinel = Selector {
         tag: None,
+        tag_namespace: Default::default(),
+        argument_namespace: Default::default(),
         id: None,
         classes: vec![],
         attrs: vec![crate::style::css::AttrSel {

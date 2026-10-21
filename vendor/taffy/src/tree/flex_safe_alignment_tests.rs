@@ -44,8 +44,12 @@ fn safe_overflow_uses_native_rtl_column_start() {
     assert_eq!(position(false, FlexWrap::NoWrap, Direction::Rtl), -10.0);
 }
 #[test]
-fn wrapping_reversal_does_not_reverse_logical_start() {
-    assert_eq!(position(false, FlexWrap::WrapReverse, Direction::Ltr), 0.0);
+fn wrapping_reversal_positions_the_overwide_line_from_cross_start() {
+    // KaminIDE patch: safe centers the item within its 40px line (no free space).
+    // The line itself overflows the 30px container at reversed cross-start:
+    // align-content: stretch falls back to flex-start, placing it at 30 - 40.
+    // https://www.w3.org/TR/css-flexbox-1/#align-content-property
+    assert_eq!(position(false, FlexWrap::WrapReverse, Direction::Ltr), -10.0);
 }
 #[test]
 fn ordinary_ltr_overflow_stays_at_logical_start() {

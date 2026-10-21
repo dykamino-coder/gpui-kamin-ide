@@ -14,7 +14,6 @@ use crate::style::computed::{Computed, Position};
 use crate::style::select::Ancestor;
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_borrow)]
 pub(super) fn normalize_style(
     mut style: &mut Computed,
     tag: &str,
@@ -41,14 +40,7 @@ pub(super) fn normalize_style(
             Some(crate::style::values::value::Len::Px(v)) => v,
             Some(crate::style::values::value::Len::Em(k))
             | Some(crate::style::values::value::Len::Pct(k)) => k * font,
-            _ => {
-                let f = crate::text::metrics::normal_line(&family, vcx);
-                if f > 0.0 {
-                    crate::text::metrics::normal_px(f, font, vcx)
-                } else {
-                    1.2 * font
-                }
-            }
+            _ => crate::style::values::value::root_normal_line_px(&family, font, vcx),
         };
         crate::style::values::value::set_root_metrics(vcx.doc, font, line);
         crate::style::values::value::set_root_family(vcx.doc, &family);

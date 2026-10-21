@@ -115,7 +115,7 @@ pub(in super::super) fn place_items<Tree: LayoutGridContainer>(
 
     // Upstream #1200/#1259: create the items once in document order and resolve the named lines of
     // their placements once; the results drive both the grid size estimate and placement.
-    // KaminIDE patch (superseded): the estimate used to miss NAMED edges far outside the explicit
+    // KaminIDE patch: (superseded) the estimate used to miss NAMED edges far outside the explicit
     // grid (`grid-column: x -5`, css-grid-2 §8.3), overflowing the occupancy matrix; upstream now
     // resolves named lines before the estimate, so the separate widening pass is gone.
     let child_count = tree.child_count(node);

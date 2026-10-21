@@ -76,6 +76,17 @@ pub fn set_root_metrics(doc: &crate::document::state::DocState, font_px: f32, li
     }
 }
 
+/// Высота строки `line-height: normal` корня (`family` кеглем `font`) для
+/// `set_root_metrics`: метрика шрифта, без неё — `1.2 * font`.
+pub fn root_normal_line_px(family: &str, font: f32, vcx: ValueCx<'_>) -> f32 {
+    let f = crate::text::metrics::normal_line(family, vcx);
+    if f > 0.0 {
+        crate::text::metrics::normal_px(f, font, vcx)
+    } else {
+        1.2 * font
+    }
+}
+
 pub fn root_font_px(vcx: ValueCx<'_>) -> f32 {
     with_root(vcx, |r| r.font_px)
 }

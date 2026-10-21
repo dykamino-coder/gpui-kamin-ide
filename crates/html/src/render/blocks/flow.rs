@@ -1,7 +1,7 @@
 //! Цикл по детям блока: строчные прогоны, блочные дети, позиционированные (blocks_flow).
 
 use crate::layout::options::RenderOpts;
-use crate::render::paragraph_route::paint_inline_step7;
+use crate::render::paragraph::route::paint_inline_step7;
 mod inline_node;
 pub(super) use inline_node::inline_node;
 

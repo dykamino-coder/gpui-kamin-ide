@@ -10,7 +10,6 @@ use crate::dom::tree_index::TreeIndex;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
 
-#[allow(clippy::ptr_arg, clippy::let_and_return)]
 pub(super) fn element_ancestor(
     handle: &Handle,
     tag: &str,

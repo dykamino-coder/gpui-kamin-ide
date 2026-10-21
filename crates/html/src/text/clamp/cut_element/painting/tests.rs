@@ -102,3 +102,26 @@ fn fragmented_block_reports_its_used_size_without_mutating_the_probe() {
     assert_eq!(plan.cut, 24.0);
     assert_eq!(f32::from(probes[0].bounds.size.height), 50.0);
 }
+
+#[test]
+fn small_cut_change_is_recorded_without_requesting_a_frame() {
+    use super::{CutUpdate, cut_update};
+    let small = cut_update(Some(100.0), 103.0);
+    assert_eq!(
+        small,
+        CutUpdate {
+            write: true,
+            reframe: false
+        }
+    );
+    let large = cut_update(Some(100.0), 105.0);
+    assert!(large.write && large.reframe);
+    let same = cut_update(Some(100.0), 100.0);
+    assert!(!same.write && !same.reframe);
+    let first = cut_update(None, f32::INFINITY);
+    assert!(first.write && first.reframe);
+    let unclamped = cut_update(Some(100.0), f32::INFINITY);
+    assert!(unclamped.write && unclamped.reframe);
+    let stable_inf = cut_update(Some(f32::INFINITY), f32::INFINITY);
+    assert!(!stable_inf.write && !stable_inf.reframe);
+}

@@ -15,7 +15,6 @@ use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::needless_borrow)]
 pub(super) fn pseudo_styles(
     style: &mut Computed,
     tag: &str,

@@ -33,30 +33,15 @@ where
     MeasureFunction: FnOnce(Size<Option<f32>>, Size<AvailableSpace>) -> Measurement,
     Measurement: Into<MeasureOutput>,
 {
-    let LayoutInput {
-        known_dimensions,
-        parent_size,
-        available_space,
-        sizing_mode,
-        run_mode,
-        ..
-    } = inputs;
+    let LayoutInput { known_dimensions, parent_size, available_space, sizing_mode, run_mode, .. } = inputs;
 
     // Note: both horizontal and vertical percentage padding/borders are resolved against the container's inline size (i.e. width).
     // This is not a bug, but is how CSS is specified (see: https://developer.mozilla.org/en-US/docs/Web/CSS/padding#values)
-    let padding = style
-        .padding()
-        .resolve_or_zero(parent_size.width, &resolve_calc_value);
-    let border = style
-        .border()
-        .resolve_or_zero(parent_size.width, &resolve_calc_value);
+    let padding = style.padding().resolve_or_zero(parent_size.width, &resolve_calc_value);
+    let border = style.border().resolve_or_zero(parent_size.width, &resolve_calc_value);
     let padding_border = padding + border;
     let pb_sum = padding_border.sum_axes();
-    let box_sizing_adjustment = if style.box_sizing() == BoxSizing::ContentBox {
-        pb_sum
-    } else {
-        Size::ZERO
-    };
+    let box_sizing_adjustment = if style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 
     // Resolve node's preferred/min/max sizes (width/heights) against the available space (percentages resolve to pixel values)
     // For ContentSize mode, we pretend that the node has no size styles as these should be ignored.
@@ -107,11 +92,7 @@ where
 
     // Return early if both width and height are known
     if run_mode == RunMode::ComputeSize && has_styles_preventing_being_collapsed_through {
-        if let Size {
-            width: Some(width),
-            height: Some(height),
-        } = node_size
-        {
+        if let Size { width: Some(width), height: Some(height) } = node_size {
             let size = Size { width, height }
                 .maybe_clamp(node_min_size, node_max_size)
                 .maybe_max(padding_border.sum_axes().map(Some));
@@ -140,8 +121,7 @@ where
             .maybe_set(known_dimensions.width)
             .maybe_set(node_size.width)
             .map_definite_value(|size| {
-                size.maybe_clamp(node_min_size.width, node_max_size.width)
-                    - content_box_inset.horizontal_axis_sum()
+                size.maybe_clamp(node_min_size.width, node_max_size.width) - content_box_inset.horizontal_axis_sum()
             }),
         height: known_dimensions
             .height
@@ -150,8 +130,7 @@ where
             .maybe_set(known_dimensions.height)
             .maybe_set(node_size.height)
             .map_definite_value(|size| {
-                size.maybe_clamp(node_min_size.height, node_max_size.height)
-                    - content_box_inset.vertical_axis_sum()
+                size.maybe_clamp(node_min_size.height, node_max_size.height) - content_box_inset.vertical_axis_sum()
             }),
     };
 
@@ -185,28 +164,15 @@ where
     // containers do not extend their overflow region by their own padding.
     #[cfg(feature = "content_size")]
     let scrollable_overflow_rect = {
-        let is_scroll_container =
-            style.overflow().x.is_scroll_container() || style.overflow().y.is_scroll_container();
+        let is_scroll_container = style.overflow().x.is_scroll_container() || style.overflow().y.is_scroll_container();
         let is_rtl = style.direction().is_rtl();
         let start_padding = if is_rtl { padding.right } else { padding.left };
         let end_padding = if is_rtl { padding.left } else { padding.right };
         Rect {
             left: 0.0,
-            right: start_padding
-                + measured_size.width
-                + if is_scroll_container {
-                    end_padding
-                } else {
-                    0.0
-                },
+            right: start_padding + measured_size.width + if is_scroll_container { end_padding } else { 0.0 },
             top: 0.0,
-            bottom: padding.top
-                + measured_size.height
-                + if is_scroll_container {
-                    padding.bottom
-                } else {
-                    0.0
-                },
+            bottom: padding.top + measured_size.height + if is_scroll_container { padding.bottom } else { 0.0 },
         }
     };
 

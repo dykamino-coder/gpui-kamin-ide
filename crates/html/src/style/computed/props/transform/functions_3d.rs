@@ -3,7 +3,6 @@
 
 use super::*;
 
-#[allow(clippy::too_many_arguments, unused_variables)]
 pub(super) fn transform_function_3d(
     t: &mut Transform,
     name: &str,
@@ -12,7 +11,6 @@ pub(super) fn transform_function_3d(
     first: f32,
     angle: f32,
     angle_at: &impl Fn(usize) -> f32,
-    frac_at: &impl Fn(usize, f32) -> f32,
 ) {
     match name {
         // Поворот вокруг оси экрана БЕЗ перспективы — это

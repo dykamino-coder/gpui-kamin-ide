@@ -131,12 +131,12 @@ pub(crate) fn row_plan(
 }
 
 pub(crate) struct RowPlan {
-    pub(super) col_w_px: Option<f32>,
-    pub(super) want: Option<usize>,
-    pub(super) col_h: Option<f32>,
-    pub(super) box_h: Option<f32>,
-    pub(super) row_gap: f32,
-    pub(super) rows: Option<crate::layout::fragment::types::Rows>,
-    pub(super) nest_phase: f32,
-    pub(super) nest_rows: Option<f32>,
+    pub(crate) col_w_px: Option<f32>,
+    pub(crate) want: Option<usize>,
+    pub(crate) col_h: Option<f32>,
+    pub(crate) box_h: Option<f32>,
+    pub(crate) row_gap: f32,
+    pub(crate) rows: Option<crate::layout::fragment::types::Rows>,
+    pub(crate) nest_phase: f32,
+    pub(crate) nest_rows: Option<f32>,
 }

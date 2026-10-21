@@ -22,6 +22,7 @@ pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;
 mod border_color;
+pub(crate) mod box_predicates;
 pub(crate) mod font_family;
 mod font_kerning;
 pub(super) mod font_members;

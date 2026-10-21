@@ -7,9 +7,11 @@
 
 use crate::document::state::ValueCx;
 
+use crate::style::computed::box_predicates::{
+    backdrop_root, establishes_cb, resolve_bidi_inheritance,
+};
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::{Color, Len};
-use crate::text::inline::{backdrop_root, bidi_controls, establishes_cb};
 
 mod containing;
 mod decorate;

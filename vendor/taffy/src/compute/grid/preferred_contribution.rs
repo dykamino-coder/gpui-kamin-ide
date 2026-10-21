@@ -4,6 +4,7 @@ use super::types::GridItem;
 use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt};
 use crate::{MaybeMath, MaybeResolve, Size};
 
+/// KaminIDE patch: Resolve the item's preferred size contribution to grid tracks.
 pub(super) fn resolve(
     item: &GridItem,
     tree: &impl LayoutPartialTree,

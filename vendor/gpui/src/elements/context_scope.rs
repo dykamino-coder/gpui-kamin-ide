@@ -19,8 +19,11 @@ use std::rc::Rc;
 /// Фаза, на которую обёртка входит в контекст.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScopePhase {
+    /// Запрос раскладки дочернего элемента.
     RequestLayout,
+    /// Предварительная отрисовка (prepaint).
     Prepaint,
+    /// Отрисовка.
     Paint,
 }
 
@@ -34,6 +37,7 @@ pub struct ContextScope {
 }
 
 impl ContextScope {
+    /// Оборачивает `child`: каждая фаза выполняется внутри `enter(phase)`.
     pub fn new(enter: ScopeEnter, child: AnyElement) -> Self {
         ContextScope { enter, child }
     }

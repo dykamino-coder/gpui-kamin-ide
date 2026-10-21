@@ -2,14 +2,14 @@
 //! `position`, якорные `anchor-name`/`position-anchor`/`position-area`/
 //! `position-try*`/`position-visibility` (css-anchor-position-1), вставки
 //! `top`…`inset`, `z-index`, `overflow*` и `overflow-clip-margin`, `float`,
-//! `clear`, `opacity`, `visibility`. Разбор якорных значений — в модуле `anchor`.
+//! `clear`, `opacity`, `visibility`. Разбор якорных значений — в `style::values::position_area`.
 
 use crate::document::state::ValueCx;
 mod z_index;
-use crate::layout::positioned::anchor::parse::{
+use crate::style::computed::*;
+use crate::style::values::position_area::{
     parse_area, parse_try_fallbacks, parse_try_order, parse_visibility,
 };
-use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 impl Computed {
