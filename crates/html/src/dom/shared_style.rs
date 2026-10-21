@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn element_copies_share_pseudo_layers_and_keyframes() {
-        let mut node = crate::layout::table::anon::anon_element("div", vec![]);
+        let mut node = crate::dom::table_boxes::anon_element("div", vec![]);
         node.hover = Some(Computed::default().into());
         node.first_letter = node.hover.clone();
         node.first_line = node.hover.clone();
