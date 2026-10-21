@@ -176,21 +176,22 @@ fn convert_base_gradient(
     Some((mode, points))
 }
 
-/// KaminIDE patch: the tile is rasterized at the device scale of the
-/// pattern (`render_pattern_pixmap`), so when tile space maps to device
-/// space 1:1 (axis-aligned, scale ±1 — flips included) every device pixel
-/// is a tile texel. Bicubic (Mitchell) sampling still blurs such a texel
-/// with its neighbours and with the wrapped opposite edge, bleeding colours
-/// across the pattern's own cell boundaries; browsers paint it crisp
-/// (WPT css-transforms `svg-matrix-*`). Nearest is exact there; any other
-/// mapping keeps the bicubic filter.
+/// KaminIDE patch: nearest sampling is exact only when device pixels coincide
+/// with tile texels. SVG 2 section 14.3.1 preserves the complete pattern transform,
+/// including fractional translation: https://svgwg.org/svg2-draft/pservers.html#Patterns
+/// Unit axis-aligned maps with integer translation preserve that alignment;
+/// other maps require interpolation across neighbouring and wrapped tile texels.
 fn pattern_quality(
     transform: tiny_skia::Transform,
     patt_ts: tiny_skia::Transform,
 ) -> tiny_skia::FilterQuality {
     let full = transform.pre_concat(patt_ts);
     let unit = |v: f32| (v.abs() - 1.0).abs() < 1e-4;
-    if full.kx.abs() < 1e-6 && full.ky.abs() < 1e-6 && unit(full.sx) && unit(full.sy) {
+    if full.kx.abs() < 1e-6
+        && full.ky.abs() < 1e-6
+        && unit(full.sx) && unit(full.sy)
+        && full.tx.fract() == 0.0 && full.ty.fract() == 0.0
+    {
         tiny_skia::FilterQuality::Nearest
     } else {
         tiny_skia::FilterQuality::Bicubic
@@ -214,13 +215,28 @@ fn render_pattern_pixmap(
     )?;
     let mut pixmap = tiny_skia::Pixmap::new(img_size.width(), img_size.height())?;
 
-    let transform = tiny_skia::Transform::from_scale(sx, sy);
-    crate::render::render_nodes(pattern.root(), ctx, transform, &mut pixmap.as_mut());
+    let tile_transform = tiny_skia::Transform::from_scale(sx, sy);
+    crate::render::render_nodes(pattern.root(), ctx, tile_transform, &mut pixmap.as_mut());
 
     let mut ts = tiny_skia::Transform::default();
     ts = ts.pre_concat(pattern.transform());
     ts = ts.pre_translate(rect.x(), rect.y());
     ts = ts.pre_scale(1.0 / sx, 1.0 / sy);
 
+    // KaminIDE patch: tiny-skia 0.12 forces nearest for pure translations even
+    // when fractional. Reflect the backing texels and their coordinates together:
+    // T * (width - x, y) maps the mirrored tile to exactly the original pattern.
+    // The equivalent non-translation map retains the requested interpolation.
+    let full = transform.pre_concat(ts);
+    if full.is_translate() && (full.tx.fract() != 0.0 || full.ty.fract() != 0.0) {
+        let width = pixmap.width() as usize;
+        for row in pixmap.pixels_mut().chunks_exact_mut(width) {
+            row.reverse();
+        }
+        ts = ts.pre_translate(width as f32, 0.0).pre_scale(-1.0, 1.0);
+    }
     Some((pixmap, ts))
 }
+
+#[cfg(test)]
+mod pattern_tests;
