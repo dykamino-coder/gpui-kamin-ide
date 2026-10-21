@@ -1,24 +1,22 @@
 //! Растеризация разметки через resvg и кэш готовых растров.
 
 use super::DENSITY;
+use crate::paint::cache::{BoundedCache, MIB, optional_image_bytes};
 use gpui::RenderImage;
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
 /// Кэш готовых растров: ключ — разметка и размер растра в пикселях устройства.
 ///
 /// Без него рисунок растрировался бы на КАЖДЫЙ кадр — элементы в GPUI
 /// пересоздаются каждый раз, и вместе с ними пересоздавалась бы картинка.
 /// Для графика в чате это десятки миллисекунд на кадр вместо нуля.
-type Cache = HashMap<(u64, u32, u32), Option<Arc<RenderImage>>>;
-
-static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
-
-/// Потолок: рисунки в чате мелкие, но их может накопиться много за длинную
-/// сессию — держим последние, а не всё подряд.
-const CACHE_CAP: usize = 128;
+///
+/// Бюджет 128 МиБ: рисунки в чате мелкие, но их может накопиться много за
+/// длинную сессию — держим недавние; самый крупный растр (64 МиБ) помещается.
+static CACHE: BoundedCache<(u64, u32, u32), Option<Arc<RenderImage>>> =
+    BoundedCache::new(128 * MIB, optional_image_bytes);
 
 /// Растрировать рисунок. `None`, если разметка не разбирается — тогда
 /// вызывающий покажет запасной текст, а не пустое место.
@@ -50,20 +48,7 @@ pub(super) fn cached(
     create: impl FnOnce() -> Option<Arc<RenderImage>>,
 ) -> Option<Arc<RenderImage>> {
     let key = (hash, device_extent(w), device_extent(h));
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(map) = cache.lock()
-        && let Some(hit) = map.get(&key)
-    {
-        return hit.clone();
-    }
-    let image = create();
-    if let Ok(mut map) = cache.lock() {
-        if map.len() >= CACHE_CAP {
-            map.clear();
-        }
-        map.insert(key, image.clone());
-    }
-    image
+    CACHE.get_or_insert_with(key, create)
 }
 
 /// `rasterize` with `pad` logical pixels of extra canvas on the right and

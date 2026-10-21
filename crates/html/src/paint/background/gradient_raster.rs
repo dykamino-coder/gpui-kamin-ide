@@ -5,13 +5,15 @@
 
 use super::{gradient_geometry::Geometry, place_stops, wrap_repeat};
 use crate::document::state::ValueCx;
+use crate::paint::cache::{BoundedCache, Hinted, MIB, hint, optional_image_bytes};
 use crate::style::values::color_space::gradient_colour_at as colour_at;
 use gpui::RenderImage;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
-type TileKey = (crate::style::computed::ImageSource, u32, u32, u32, u32);
-type TileCache = Mutex<Vec<(TileKey, Option<Arc<RenderImage>>)>>;
-static TILES: OnceLock<TileCache> = OnceLock::new();
+type TileKey = Hinted<(crate::style::computed::ImageSource, u32, u32, u32, u32)>;
+/// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
+static TILES: BoundedCache<TileKey, Option<Arc<RenderImage>>> =
+    BoundedCache::new(64 * MIB, optional_image_bytes);
 
 /// Device-sized samples depend on the concrete CSS line as well as the bitmap.
 pub(super) fn tile(
@@ -24,23 +26,12 @@ pub(super) fn tile(
     if !src.cacheable() {
         return raster(src, w, h, css, true, vcx);
     }
-    let key = (src.clone(), w, h, css.0.to_bits(), css.1.to_bits());
-    let cache = TILES.get_or_init(Default::default);
-    if let Some(hit) = cache
-        .lock()
-        .ok()
-        .and_then(|c| c.iter().find(|(k, _)| k == &key).map(|(_, v)| v.clone()))
-    {
-        return hit;
-    }
-    let result = raster(src, w, h, css, true, vcx);
-    if let Ok(mut cache) = cache.lock() {
-        if cache.len() >= 32 {
-            cache.clear();
-        }
-        cache.push((key, result.clone()));
-    }
-    result
+    let bits = (css.0.to_bits(), css.1.to_bits());
+    let key = Hinted {
+        hint: hint((std::mem::discriminant(src), w, h, bits)),
+        key: (src.clone(), w, h, bits.0, bits.1),
+    };
+    TILES.get_or_insert_with(key, || raster(src, w, h, css, true, vcx))
 }
 
 pub(super) fn raster(

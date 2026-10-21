@@ -7,6 +7,7 @@ pub mod apply;
 pub mod background;
 pub mod border_image;
 pub(crate) mod box_tree;
+pub(crate) mod cache;
 pub mod decorations;
 pub mod effects;
 pub mod gap_rules;
