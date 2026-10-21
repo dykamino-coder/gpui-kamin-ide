@@ -1,4 +1,4 @@
-//! KaminIDE: registered opaque calc handles owned by a `TaffyTree`; no
+//! KaminIDE patch: registered opaque calc handles owned by a `TaffyTree`; no
 //! supplied pointer is dereferenced.
 //!
 //! A handle is the 1-based index of a `(px, fraction)` pair times 8 (the low

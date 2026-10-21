@@ -1487,7 +1487,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             }
         };
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        // KaminIDE: grid lanes still lays out its own absolutely positioned children (they are
+        // KaminIDE patch: grid lanes still lays out its own absolutely positioned children (they are
         // not emitted as oof candidates: the stacking axis has no grid lines for `oof.rs` to
         // resolve). Candidates surfacing from their subtrees are dropped here as before the
         // upgrade; with GPUI every node is positioned, so such candidates are always claimed

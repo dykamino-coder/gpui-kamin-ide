@@ -19,7 +19,7 @@ impl<S: CheapCloneStr> DetailedGridInfo<S> {
             GridAreaAxis::Column,
             padding_box.left,
             padding_box.right,
-            // KaminIDE: the HTML adapter projects RTL/writing modes into `grid_axis_reversed`
+            // KaminIDE patch: the HTML adapter projects RTL/writing modes into `grid_axis_reversed`
             // (folded into `axis_reversed`), so the caller's `direction` may stay Ltr.
             direction.is_rtl() || self.axis_reversed.width,
         );

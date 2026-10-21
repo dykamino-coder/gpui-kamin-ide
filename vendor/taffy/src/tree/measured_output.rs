@@ -2,7 +2,7 @@
 
 use crate::geometry::Size;
 
-/// KaminIDE leaf callback adapter: measured content size and physical-axis
+/// KaminIDE patch: leaf callback adapter: measured content size and physical-axis
 /// baseline offsets. The leaf algorithm adds its content-box inset before
 /// putting them into LayoutOutput; these must not be border-box offsets.
 #[derive(Debug, Copy, Clone, PartialEq)]

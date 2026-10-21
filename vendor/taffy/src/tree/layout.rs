@@ -1,8 +1,6 @@
 //! Final data structures that represent the high-level UI layout
 use crate::geometry::{AbsoluteAxis, Line, Point, Rect, Size};
-use crate::style::{
-    AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace, CheapCloneStr, Position,
-};
+use crate::style::{AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace, CheapCloneStr, Position};
 use crate::style_helpers::TaffyMaxContent;
 use crate::sys::DefaultCheapStr;
 use crate::tree::NodeId;
@@ -45,23 +43,14 @@ pub struct CollapsibleMarginSet {
 
 impl CollapsibleMarginSet {
     /// A default margin set with no collapsible margins
-    pub const ZERO: Self = Self {
-        positive: 0.0,
-        negative: 0.0,
-    };
+    pub const ZERO: Self = Self { positive: 0.0, negative: 0.0 };
 
     /// Create a set from a single margin
     pub fn from_margin(margin: f32) -> Self {
         if margin >= 0.0 {
-            Self {
-                positive: margin,
-                negative: 0.0,
-            }
+            Self { positive: margin, negative: 0.0 }
         } else {
-            Self {
-                positive: 0.0,
-                negative: margin,
-            }
+            Self { positive: 0.0, negative: margin }
         }
     }
 
@@ -183,10 +172,7 @@ impl LayoutInput {
         run_mode: RunMode::PerformHiddenLayout,
         // The rest will be ignored
         known_dimensions: Size::NONE,
-        known_dimensions_are_definite: Size {
-            width: true,
-            height: true,
-        },
+        known_dimensions_are_definite: Size { width: true, height: true },
         parent_size: Size::NONE,
         available_space: Size::MAX_CONTENT,
         sizing_mode: SizingMode::InherentSize,
@@ -230,10 +216,7 @@ pub struct Baselines {
 
 impl Baselines {
     /// A `Baselines` with neither a first nor a last baseline
-    pub const NONE: Self = Self {
-        first: None,
-        last: None,
-    };
+    pub const NONE: Self = Self { first: None, last: None };
 
     /// Create a `Baselines` from just a first baseline
     pub const fn from_first(first: Option<f32>) -> Self {
@@ -280,11 +263,7 @@ pub struct AxisStaticAlign {
 impl AxisStaticAlign {
     /// Create a `AxisStaticAlign` from a keyword with no safe fallback
     pub const fn from_keyword(keyword: AxisStaticEdge) -> Self {
-        Self {
-            keyword,
-            safety: AlignmentSafety::Default,
-            fallback: keyword,
-        }
+        Self { keyword, safety: AlignmentSafety::Default, fallback: keyword }
     }
 }
 
@@ -309,13 +288,7 @@ impl AxisStaticPosition {
     /// Create a `AxisStaticPosition` with a degenerate (zero-extent) area at `anchor` and no
     /// safe fallback
     pub const fn from_edge(anchor: f32, edge: AxisStaticEdge) -> Self {
-        Self {
-            area: Line {
-                start: anchor,
-                end: anchor,
-            },
-            align: AxisStaticAlign::from_keyword(edge),
-        }
+        Self { area: Line { start: anchor, end: anchor }, align: AxisStaticAlign::from_keyword(edge) }
     }
 
     /// Create a `AxisStaticPosition` which aligns the box within `area` according to its
@@ -330,17 +303,14 @@ impl AxisStaticPosition {
     /// containing block, in which case `start` and `end` are flipped.
     pub fn from_alignment(alignment: AlignSelf, area: Line<f32>, axis_is_rtl: bool) -> Self {
         debug_assert!(
-            !matches!(
-                alignment.keyword,
-                AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd
-            ),
+            !matches!(alignment.keyword, AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd),
             "self-start/self-end must be resolved before computing the static position"
         );
         /// The edge of the static-position rectangle that a (resolved) alignment keyword
         /// aligns the box to. Normal and Stretch (and anything else that is not an end or
         /// center alignment) fall back to start-alignment for static-position purposes.
         fn edge_for(keyword: AlignItemsKeyword, axis_is_rtl: bool) -> AxisStaticEdge {
-            // KaminIDE: `last baseline` falls back to (safe) self-end (css-align-3 §9.1;
+            // KaminIDE patch: `last baseline` falls back to (safe) self-end (css-align-3 §9.1;
             // Blink `absolute_utils.cc` GetAlignmentInsetBias: kLastBaseline -> InlineEnd).
             let start_position = !matches!(
                 keyword,
@@ -415,27 +385,19 @@ impl OofCandidates {
     /// The candidates as a slice
     #[inline]
     pub fn as_slice(&self) -> &[OofCandidate] {
-        self.inner
-            .as_ref()
-            .map(|boxed| boxed.as_slice())
-            .unwrap_or(&[])
+        self.inner.as_ref().map(|boxed| boxed.as_slice()).unwrap_or(&[])
     }
 
     /// The candidates as a mutable slice
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut [OofCandidate] {
-        self.inner
-            .as_mut()
-            .map(|boxed| boxed.as_mut_slice())
-            .unwrap_or(&mut [])
+        self.inner.as_mut().map(|boxed| boxed.as_mut_slice()).unwrap_or(&mut [])
     }
 
     /// Append a candidate to the list
     #[inline]
     pub fn push(&mut self, candidate: OofCandidate) {
-        self.inner
-            .get_or_insert_with(Default::default)
-            .push(candidate);
+        self.inner.get_or_insert_with(Default::default).push(candidate);
     }
 
     /// Move all candidates from `other` into `self`, leaving `other` empty
@@ -525,7 +487,7 @@ pub struct LayoutOutput {
     pub scrollable_overflow_rect: Rect<f32>,
     /// The first and last baselines of the node in the horizontal axis, if any
     pub baselines: Baselines,
-    /// KaminIDE: vertical-text first/last baselines, measured from the left
+    /// KaminIDE patch: vertical-text first/last baselines, measured from the left
     /// border-box edge along the physical x axis. Horizontal baselines remain
     /// in the native baselines channel; the two axes must not alias.
     pub baselines_x: Baselines,
@@ -539,7 +501,7 @@ pub struct LayoutOutput {
     /// Whether margins can be collapsed through this node. This is used for CSS block layout and can
     /// be set to `false` for other layout modes that don't support margin collapsing
     pub margins_can_collapse_through: bool,
-    /// KaminIDE: the last baseline this box exports to an enclosing `inline-block`
+    /// KaminIDE patch: the last baseline this box exports to an enclosing `inline-block`
     /// whose baseline is being computed. Block containers report it separately
     /// because tables (at any block-flow depth) contribute no baseline in that mode
     /// (CSS 2.1 §10.8.1 counts only line boxes; Blink `block_layout_algorithm.cc`
@@ -591,8 +553,7 @@ impl LayoutOutput {
     /// Constructor to create a `LayoutOutput` from just the size, scrollable overflow rectangle and baselines
     pub fn from_sizes_and_baselines(
         size: Size<f32>,
-        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
-        scrollable_overflow_rect: Rect<f32>,
+        #[cfg_attr(not(feature = "content_size"), allow(unused_variables))] scrollable_overflow_rect: Rect<f32>,
         baselines: Baselines,
     ) -> Self {
         Self::from_sizes_and_all_baselines(
@@ -603,7 +564,7 @@ impl LayoutOutput {
         )
     }
 
-    /// KaminIDE: preserve both physical baseline axes through container output.
+    /// KaminIDE patch: preserve both physical baseline axes through container output.
     pub fn from_sizes_and_all_baselines(
         size: Size<f32>,
         #[cfg_attr(not(feature = "content_size"), allow(unused_variables))]
@@ -626,12 +587,12 @@ impl LayoutOutput {
         }
     }
 
-    /// KaminIDE: a missing last baseline uses the first, as in the previous fork.
+    /// KaminIDE patch: a missing last baseline uses the first, as in the previous fork.
     pub fn last_or_first_y(&self) -> Option<f32> {
         self.baselines.last.or(self.baselines.first)
     }
 
-    /// KaminIDE: last baseline as seen by an enclosing `inline-block` (tables skipped).
+    /// KaminIDE patch: last baseline as seen by an enclosing `inline-block` (tables skipped).
     pub fn inline_block_last_y(&self) -> Option<f32> {
         self.inline_block_last_y
             .unwrap_or_else(|| self.last_or_first_y())
@@ -663,10 +624,9 @@ impl LayoutOutput {
             margins_can_collapse_through: false,
             inline_block_last_y: None,
             oof_candidates: self.oof_candidates,
-            oof_positioning_area: self.oof_positioning_area.map(|area| OofPositioningArea {
-                size: area.size.transpose(),
-                offset: area.offset.transpose(),
-            }),
+            oof_positioning_area: self
+                .oof_positioning_area
+                .map(|area| OofPositioningArea { size: area.size.transpose(), offset: area.offset.transpose() }),
         }
     }
 
@@ -763,30 +723,19 @@ impl Layout {
     /// Get the width of the node's content box
     #[inline]
     pub fn content_box_width(&self) -> f32 {
-        self.size.width
-            - self.padding.left
-            - self.padding.right
-            - self.border.left
-            - self.border.right
+        self.size.width - self.padding.left - self.padding.right - self.border.left - self.border.right
     }
 
     /// Get the height of the node's content box
     #[inline]
     pub fn content_box_height(&self) -> f32 {
-        self.size.height
-            - self.padding.top
-            - self.padding.bottom
-            - self.border.top
-            - self.border.bottom
+        self.size.height - self.padding.top - self.padding.bottom - self.border.top - self.border.bottom
     }
 
     /// Get the size of the node's content box
     #[inline]
     pub fn content_box_size(&self) -> Size<f32> {
-        Size {
-            width: self.content_box_width(),
-            height: self.content_box_height(),
-        }
+        Size { width: self.content_box_width(), height: self.content_box_height() }
     }
 
     /// Get x offset of the node's content box relative to it's parent's border box
@@ -807,9 +756,7 @@ impl Layout {
     pub fn scroll_width(&self) -> f32 {
         f32_max(
             0.0,
-            self.scrollable_overflow_rect.right
-                + f32_min(self.scrollbar_size.width, self.size.width)
-                - self.size.width
+            self.scrollable_overflow_rect.right + f32_min(self.scrollbar_size.width, self.size.width) - self.size.width
                 + self.border.left
                 + self.border.right,
         )
@@ -820,8 +767,7 @@ impl Layout {
     pub fn scroll_height(&self) -> f32 {
         f32_max(
             0.0,
-            self.scrollable_overflow_rect.bottom
-                + f32_min(self.scrollbar_size.height, self.size.height)
+            self.scrollable_overflow_rect.bottom + f32_min(self.scrollbar_size.height, self.size.height)
                 - self.size.height
                 + self.border.top
                 + self.border.bottom,
