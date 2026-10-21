@@ -26,26 +26,18 @@ pub(crate) fn paragraph_probed(
     inherited: &Computed,
     opts: &RenderOpts,
 ) -> AnyElement {
-    // Знак обрыва АВТО-режима: бюджет строк ИМЕННО ЭТОГО абзаца посчитал
-    // `ClampCut` прошлого кадра. Кладём его ДО сборки абзаца — многоточие
-    // нарисует строчный слой (`lines::clamp_lines` → `paint_line`), тот
-    // самый, что уже зелен на `webkit-line-clamp-014` (bidi) 0.00,
-    // `block-ellipsis-bidi-001/002` 0.00, `block-ellipsis-028/031` 0.19.
-    // Номер абзаца выдаётся в порядке ПОСТРОЕНИЯ и уезжает в пробу,
-    // поэтому сопоставление кадров не зависит от порядка обхода на
-    // отрисовке.
+    // Номер абзаца сопоставляет план с пробами независимо от порядка краски.
     let ctx = crate::text::clamp::clamp_context(&opts.cx).filter(|_| opts.cx.clamp_atom_depth == 0);
     let seq = ctx.map(|(key, _)| crate::text::clamp::clamp_next_seq(key, &opts.cx));
     let budget = match (ctx, seq) {
-        (Some((key, _)), Some(s)) => match crate::text::clamp::clamp_para(key, opts.cx.vcx()) {
+        (Some((key, _)), Some(s)) => match opts.cx.clamp_plan(key).and_then(|p| p.para) {
             Some((ps, k)) if ps == s => Some(k),
             _ => None,
         },
         _ => None,
     };
     let paragraph_opts = opts.inner(|cx| {
-        cx.clamp_budget = budget;
-        cx.clamp_tag = ctx.zip(seq).map(|((key, _), s)| (key, s));
+        cx.clamp_paragraph = ctx.zip(seq).map(|((key, _), s)| (key, s));
     });
     let para = paragraph(taken, inherited, &paragraph_opts);
     let para = with_text_shadow(para, inherited, taken, opts);
@@ -53,7 +45,7 @@ pub(crate) fn paragraph_probed(
     // reveals the overflow of earlier content (css-overflow-4 §5.3).
     let para = match (ctx, seq) {
         (Some((key, false)), Some(s))
-            if crate::text::clamp::hidden_after_point(key, s, opts.cx.vcx()) =>
+            if crate::text::clamp::hidden_after_point(key, s, &opts.cx) =>
         {
             let mut hidden = div().w_full().child(para);
             hidden.style().visibility = Some(gpui::Visibility::Hidden);

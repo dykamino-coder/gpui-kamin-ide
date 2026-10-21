@@ -123,7 +123,7 @@ pub(crate) fn styled_div_with(
     // A box fragmented at a line-clamp point ends there (css-overflow-4
     // §5.3): content after the point no longer sizes it (`line-clamp-024/
     // 025`: margins of boxes after the point).
-    if !sized && let Some(h) = crate::text::clamp::clamp_box_height(e.node_id, vcx) {
+    if !sized && let Some(h) = cx.clamp_box_height(e.node_id) {
         d = d.max_h(px(h));
     }
     // В многоколоночнике `continue: collapse` ведёт себя как `auto`
@@ -139,11 +139,13 @@ pub(crate) fn styled_div_with(
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
     if !multicol && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some() {
-        if let Some(cut) =
-            crate::text::clamp::clamp_cut(e.node_id, vcx).filter(|c| !sized && c.is_finite())
+        if let Some(cut) = cx
+            .clamp_plan(e.node_id)
+            .map(|p| p.cut)
+            .filter(|c| !sized && c.is_finite())
         {
             d = d.max_h(px(cut + mbp_y));
-            crate::text::clamp::extend_clip(d.style(), e.node_id, cut, side(c.padding.bottom), vcx);
+            crate::text::clamp::extend_clip(d.style(), e.node_id, cut, side(c.padding.bottom), cx);
         }
         // Прячется только содержимое ЗА точкой среза — по блочной оси;
         // оставленные строки по строчной оси переполняют коробку как
@@ -169,7 +171,10 @@ pub(crate) fn styled_div_with(
             Some(Len::Em(k)) => k * font,
             _ => 1.2 * font,
         };
-        let cut = crate::text::clamp::clamp_cut(e.node_id, vcx).unwrap_or(n as f32 * line);
+        let cut = cx
+            .clamp_plan(e.node_id)
+            .map(|p| p.cut)
+            .unwrap_or(n as f32 * line);
         // The clamp point only replaces the AUTOMATIC height: a tighter
         // `max-height` still sizes the box and the kept lines overflow it
         // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
@@ -205,7 +210,7 @@ pub(crate) fn styled_div_with(
                 d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
             }
             if !sized {
-                crate::text::clamp::extend_clip(d.style(), e.node_id, cut, pad_bottom, vcx);
+                crate::text::clamp::extend_clip(d.style(), e.node_id, cut, pad_bottom, cx);
             }
             // Lines before the clamp point overflowing a tighter
             // `max-height` stay visible: the clip edge is the clamp point.

@@ -176,7 +176,7 @@ fn main() {
             })
         });
         let empty = Rc::new(Document::new("", BROWSER_CSS));
-        if capture::offscreen() {
+        if capture::offscreen() || capture::first_frame() {
             gpui::frame_capture::enable();
         }
         let window = cx

@@ -9,15 +9,7 @@ pub(super) struct ClampGeometry {
     pub trim_end: f32,
 }
 
-#[derive(Debug, PartialEq)]
-pub(super) struct ClampPlan {
-    pub nodes: Vec<u64>,
-    pub sizes: Vec<(u64, f32)>,
-    pub para: Option<(u32, usize)>,
-    pub next: Option<u32>,
-    pub extent: Option<f32>,
-    pub cut: f32,
-}
+pub(super) use crate::text::clamp::ClampPlan;
 
 impl ClampGeometry {
     pub fn compute(

@@ -16,6 +16,10 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
+    /// Неизменяемые планы clamp этого построения.
+    pub(crate) clamp_plans: Rc<crate::text::clamp::ClampPlans>,
+    /// Вход измерения или применения плана активного clamp-контейнера.
+    pub(crate) clamp_input: Option<crate::text::clamp::ClampInput>,
     /// Active clamp count root and paragraph sequence of this build.
     pub(crate) clamp_build: crate::text::clamp::ClampBuild,
     /// Child-build requests of the render orchestrator (`ChildBuild`).
@@ -33,8 +37,7 @@ pub struct LayoutCx {
     /// Enclosing atomic inlines relative to this clamp count root.
     pub(crate) clamp_atom_depth: u32,
     /// Inputs offered only to the paragraph currently being built.
-    pub(crate) clamp_budget: Option<usize>,
-    pub(crate) clamp_tag: Option<(u64, u32)>,
+    pub(crate) clamp_paragraph: Option<(u64, u32)>,
     /// Build a physical row of atoms without turning its enclosing text line.
     pub(crate) pure_atom_paragraph: bool,
     /// Keep scrollbar hover and drag at rest for a static host capture.
@@ -129,6 +132,30 @@ impl Default for BuildDoc {
 }
 
 impl LayoutCx {
+    pub(crate) fn clamp_plan(&self, key: u64) -> Option<&crate::text::clamp::ClampPlan> {
+        if let Some(input) = &self.clamp_input
+            && crate::text::clamp::clamp_context(self).is_some_and(|(own, _)| own == key)
+        {
+            return match input {
+                crate::text::clamp::ClampInput::Apply(plan) => Some(plan),
+                crate::text::clamp::ClampInput::Measure(_) => None,
+            };
+        }
+        self.clamp_plans.plan(key)
+    }
+
+    pub(crate) fn clamp_box_height(&self, node: u64) -> Option<f32> {
+        match &self.clamp_input {
+            Some(crate::text::clamp::ClampInput::Measure(_)) => None,
+            Some(crate::text::clamp::ClampInput::Apply(plan)) => plan
+                .sizes
+                .iter()
+                .find(|(key, _)| *key == node)
+                .map(|(_, h)| *h),
+            None => self.clamp_plans.box_height(node),
+        }
+    }
+
     /// The document being built.
     pub(crate) fn doc(&self) -> &Rc<crate::document::state::DocState> {
         &self.doc.0
