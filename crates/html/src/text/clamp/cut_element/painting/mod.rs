@@ -120,19 +120,36 @@ impl ClampCut {
         // Infinity records a completed measurement with no cut; an absent
         // registry entry means no measurement has been applied yet.
         let v = plan.cut;
-        let prev = clamp_cut(self.key, vcx);
-        // Preserve the existing tolerance for clamp-induced margin movement.
-        let changed = match prev {
-            Some(a) if a.is_finite() && v.is_finite() => (a - v).abs() > 4.0,
-            Some(a) => a.is_finite() != v.is_finite(),
-            None => true,
-        };
-        if changed {
-            {
-                let m = &vcx.doc.clamp.cuts;
-                m.borrow_mut().insert(self.key, v);
-            };
+        let update = cut_update(clamp_cut(self.key, vcx), v);
+        if update.write {
+            vcx.doc.clamp.cuts.borrow_mut().insert(self.key, v);
+        }
+        if update.reframe {
             window.request_animation_frame();
         }
+    }
+}
+
+/// Как применить новый срез `v` к записи реестра `prev`.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct CutUpdate {
+    /// Записать `v`: реестр всегда хранит точное значение последнего замера,
+    /// иначе потребители (`clamp_extent`, высота коробки) читают устаревшую
+    /// геометрию.
+    pub write: bool,
+    /// Запросить ещё кадр. Допуск 4px (сдвиг полей, вызванный самим срезом)
+    /// гасит лишние кадры, но не саму запись.
+    pub reframe: bool,
+}
+
+pub(super) fn cut_update(prev: Option<f32>, v: f32) -> CutUpdate {
+    let reframe = match prev {
+        Some(a) if a.is_finite() && v.is_finite() => (a - v).abs() > 4.0,
+        Some(a) => a.is_finite() != v.is_finite(),
+        None => true,
+    };
+    CutUpdate {
+        write: prev.is_none_or(|a| a.to_bits() != v.to_bits()),
+        reframe,
     }
 }
