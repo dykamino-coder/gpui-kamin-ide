@@ -191,10 +191,7 @@ impl ColumnStack {
         not_at_start: usize,
     ) -> (usize, Vec<Frag>, f32) {
         let count = self.count;
-        let space = Space {
-            not_at_start,
-            ..Space::columns(self.copies)
-        };
+        let space = Space::columns(self.copies).with_not_at_start(not_at_start);
         let line_h = |l: usize| if l == 0 { first } else { cap };
         let (cols, _, plan) = plan::fill_at(kids, &|c| line_h(c / count), space);
         let n = cols.div_ceil(count).max(1);

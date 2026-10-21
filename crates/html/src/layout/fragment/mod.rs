@@ -15,6 +15,13 @@ pub mod shape_contents;
 mod shape_kids;
 pub(crate) mod static_coordinates;
 pub mod table_bands;
+// Модель токенов вводится раньше потребителей: укладка читает из неё
+// `Space`, остальное подключают шаги перехода на токены.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "break-token model lands before its consumers")
+)]
+pub(crate) mod token;
 pub mod types;
 
 pub(crate) mod effect_fragment;

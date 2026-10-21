@@ -1,5 +1,6 @@
 //! Планировщик фрагментации: укладка детей-`Kid` по фрагментаинерам (колонки и страницы) в план `Frag`.
 
+use crate::layout::fragment::token;
 use crate::layout::fragment::types::{Frag, Kid};
 mod pieces;
 use pieces::fill_pieces;
@@ -10,41 +11,43 @@ use cuts::{cut_at, forced_or_fits, place_cut};
 mod clone_dec;
 use clone_dec::fill_clone_dec;
 
-/// Фрагментаинеры плана — то, что Blink несёт в `ConstraintSpace`
-/// (`constraint_space.h`: `BlockFragmentationType`, `IsAtFragmentainerStart`):
-/// предел их числа (копий ребёнка), вид (страницы или колонки) и сколько
-/// первых фрагментаинеров начинаются НЕ с их верха. Высота каждого — отдельный
+/// Фрагментаинеры плана: пространство модели токенов (`token::Space` — вид,
+/// начало фрагментаинеров; Blink `ConstraintSpace`) и предел числа
+/// фрагментаинеров (копий ребёнка), которого у модели токенов нет: его несёт
+/// только укладка по копиям. Высота каждого фрагментаинера — отдельный
 /// аргумент `target_at`: её подбирает балансировка.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Space {
     pub(crate) limit: usize,
-    /// Стопка СТРАНИЦ (`fill`): монолит, переполнивший страницу, занимает
-    /// место и на следующих.
-    pub(crate) paged: bool,
+    pub(crate) space: token::Space,
+}
+
+impl Space {
+    /// Колонки многоколоночника, все — с верха.
+    pub(crate) fn columns(limit: usize) -> Self {
+        Space {
+            limit,
+            space: token::Space::columns(),
+        }
+    }
+
+    /// Page areas стопки страниц.
+    pub(crate) fn pages(limit: usize) -> Self {
+        Space {
+            limit,
+            space: token::Space::pages(),
+        }
+    }
+
     /// Сколько первых фрагментаинеров стоят не с верха: первый ряд
     /// вложенного многоколоночника, начатого ниже верха внешней колонки. Не
     /// влезший с верха такой колонки монолит уходит дальше, а не переполняет
     /// её (Blink: `is_at_fragmentainer_start` ложно — `BreakBeforeChildIfNeeded`,
     /// css-break-3 §4.1 «may be pushed»).
-    pub(crate) not_at_start: usize,
-}
-
-impl Space {
-    /// Колонки многоколоночника, все — с верха.
-    pub(crate) const fn columns(limit: usize) -> Self {
+    pub(crate) fn with_not_at_start(self, not_at_start: usize) -> Self {
         Space {
-            limit,
-            paged: false,
-            not_at_start: 0,
-        }
-    }
-
-    /// Page areas стопки страниц.
-    pub(crate) const fn pages(limit: usize) -> Self {
-        Space {
-            limit,
-            paged: true,
-            not_at_start: 0,
+            space: self.space.with_not_at_start(not_at_start),
+            ..self
         }
     }
 }
@@ -56,7 +59,7 @@ impl Space {
 /// ЗАКОННОЙ точке (класс A); без таких точек — по краю колонки, если
 /// он выше колонки, иначе уходит в следующую целиком; монолит режется
 /// никогда и с верха пустой колонки переполняет её (css-break-3 §4.1).
-/// `space.paged` — стопка СТРАНИЦ, а не колонок: монолит, переполнивший
+/// `space.space.is_paginated()` — стопка СТРАНИЦ, а не колонок: монолит, переполнивший
 /// страницу, занимает место и на следующих (Blink, crbug 1402540:
 /// содержимое после него продолжается там, где кончилось переполнение,
 /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
@@ -95,11 +98,9 @@ pub(crate) fn fill_at(
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
 ) -> (usize, f32, Vec<Frag>) {
-    let Space {
-        limit,
-        paged,
-        not_at_start: not_top,
-    } = space;
+    let limit = space.limit;
+    let paged = space.space.is_paginated();
+    let not_top = space.space.not_at_start;
     let mut col = 0usize;
     let mut y = 0.0f32;
     let mut prev_mb = 0.0f32;
