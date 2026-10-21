@@ -6,7 +6,7 @@
 //! `:hover`, `::before` и прочие состояния применяет отдельный слой отрисовки.
 
 use crate::dom::language;
-use crate::style::css::Selector;
+use crate::style::css::{Selector, TypeNamespace};
 use crate::style::select::has::has_id;
 use crate::style::select::{Ancestor, Sibs, Spot};
 
@@ -54,7 +54,7 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);
         }
-        if let Some(ok) = is_holds(pseudo, me, path, sibs) {
+        if let Some(ok) = is_holds(pseudo, sel.argument_namespace, me, path, sibs) {
             if !ok {
                 return false;
             }
@@ -158,7 +158,11 @@ pub(crate) fn matches_ignoring_pseudo(
     }
     // Дополнительные псевдоклассы компаунда (`li:first-child:last-child`)
     // обязаны выполниться ВСЕ; раньше выживал только последний.
-    if !sel.also.iter().all(|p| pseudo_holds(p, me, path, sibs)) {
+    if !sel
+        .also
+        .iter()
+        .all(|p| pseudo_holds(p, sel.argument_namespace, me, path, sibs))
+    {
         return false;
     }
     // Соседний комбинатор: `+` — ровно предыдущий сосед-элемент, `~` — любой
