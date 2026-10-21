@@ -211,10 +211,16 @@ fn valid_inherit_clears_local_inherited_lengths() {
     let c = one(
         "font-size: 20px; font-size: inherit; line-height: 1em; line-height: inherit; letter-spacing: 3px; letter-spacing: inherit; word-spacing: 3px; word-spacing: inherit",
     );
-    assert_eq!(c.font_size, None);
-    assert_eq!(c.line_height, None);
-    assert_eq!(c.letter_spacing, None);
-    assert_eq!(c.word_spacing, None);
+    assert!(c.font_size.is_none() && c.line_height.is_none());
+    assert!(c.letter_spacing.is_none() && c.word_spacing.is_none());
+    let c = one(
+        "top:3px;top:inherit;right:3px;right:inherit;bottom:3px;bottom:inherit;left:3px;left:inherit;left:invalid()",
+    );
+    assert_eq!(c.inset_inherit, [true; 4]);
+    assert_eq!(
+        [c.inset.top, c.inset.right, c.inset.bottom, c.inset.left],
+        [None; 4]
+    );
 }
 
 #[test]

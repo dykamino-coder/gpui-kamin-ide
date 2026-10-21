@@ -129,9 +129,12 @@ impl Computed {
                 self.position_visibility = accept_parsed!(self, parse_visibility(v));
             }
             "top" | "right" | "bottom" | "left" => {
-                let parsed = apply_parsed!(
+                let parsed = parsed_value!(
                     self,
-                    Len::parse(v, vcx).or_else(|| Len::parse_mixed(v, vcx))
+                    Len::parse(v, vcx)
+                        .or_else(|| Len::parse_mixed(v, vcx))
+                        .map(Some)
+                        .or_else(|| (v == "inherit").then_some(None))
                 );
                 let (side, slot) = match key {
                     "top" => (0, &mut self.inset.top),
