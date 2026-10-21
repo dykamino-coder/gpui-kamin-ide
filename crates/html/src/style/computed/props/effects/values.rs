@@ -70,7 +70,10 @@ impl Computed {
         // известного свойства остаётся отклонённой декларацией.
         match key {
             "cursor" => {
-                if let Some(value) = cursor_value(v) {
+                if self.css_wide_value {
+                    self.accept_declaration();
+                    self.cursor = None;
+                } else if let Some(value) = cursor_value(v) {
                     self.accept_declaration();
                     self.cursor = Some(value);
                 }

@@ -165,8 +165,7 @@ impl Computed {
                         "space-around" => Some(RubyAlign::SpaceAround),
                         _ => None,
                     }
-                )
-                .or(self.ruby_align);
+                );
             }
             "ruby-overhang" => {
                 self.ruby_overhang = apply_parsed!(
@@ -177,8 +176,7 @@ impl Computed {
                         "spaces" => Some(RubyOverhang::Spaces),
                         _ => None,
                     }
-                )
-                .or(self.ruby_overhang);
+                );
             }
             "ruby-merge" => {
                 if matches!(v, "separate" | "merge" | "auto") {
@@ -203,6 +201,13 @@ impl Computed {
                 self.text_shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "text-shadow" => {
+                css_wide_reset!(
+                    self,
+                    self.text_shadow,
+                    self.text_shadow_raw,
+                    self.text_shadow_none,
+                    self.text_shadow_rest,
+                );
                 if !box_shadow_valid(v, vcx) || v.split_whitespace().any(|w| w == "inset") {
                     return;
                 }

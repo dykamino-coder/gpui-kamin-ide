@@ -60,6 +60,14 @@ impl Computed {
                 // «inline-size» и не видел paint внутри `content`
                 // (css-contain-1 §3.1: strict = size layout paint style,
                 // content = layout paint style).
+                css_wide_reset!(
+                    self,
+                    self.contain_size,
+                    self.contain_inline_size,
+                    self.contain_layout,
+                    self.contain_paint,
+                    self.contain_style,
+                );
                 let words: Vec<_> = v.split_whitespace().collect();
                 if words.is_empty()
                     || !words.iter().all(|w| {

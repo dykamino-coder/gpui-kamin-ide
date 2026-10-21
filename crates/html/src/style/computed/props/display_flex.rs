@@ -227,7 +227,6 @@ impl Computed {
                         _ => None,
                     }
                 )
-                .or(self.flex_dir)
             }
             _ => self.apply_flex_items(key, v, hit, vcx),
         }

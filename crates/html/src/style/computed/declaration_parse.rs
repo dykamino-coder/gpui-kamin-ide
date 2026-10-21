@@ -12,16 +12,21 @@ pub(crate) enum ParseResult {
     Unsupported,
 }
 
+/// CSS Cascade 5 §7.3: the keywords every property accepts in addition to its
+/// own grammar (`initial`, `inherit`, `unset`, `revert`, `revert-layer`).
+pub(crate) fn css_wide_keyword(value: &str) -> bool {
+    ["initial", "inherit", "unset", "revert", "revert-layer"]
+        .iter()
+        .any(|keyword| value.trim().eq_ignore_ascii_case(keyword))
+}
+
 impl Computed {
     pub(crate) fn declaration_result(key: &str, value: &str, vcx: ValueCx<'_>) -> ParseResult {
         if !Self::recognizes_property(key, vcx) {
             return ParseResult::Unsupported;
         }
         // CSS Cascade 5 §7.3: CSS-wide keywords belong to every known property.
-        if ["initial", "inherit", "unset", "revert", "revert-layer"]
-            .iter()
-            .any(|keyword| value.eq_ignore_ascii_case(keyword))
-        {
+        if css_wide_keyword(value) {
             return ParseResult::Accepted;
         }
         let mut parser = Self {

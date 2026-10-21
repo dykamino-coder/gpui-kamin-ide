@@ -74,11 +74,11 @@ impl Computed {
             // Раньше бралось только первое число, и `flex: 0 0 200px` терял
             // фиксированную основу — блок начинал растягиваться.
             "flex" => {
-                let (grow, shrink, basis, content) = parsed_value!(self, flex_value(v, vcx));
-                self.flex_grow = Some(grow);
-                self.flex_shrink = Some(shrink);
-                self.flex_basis = Some(basis);
-                self.basis_content = Some(content);
+                let flex = apply_parsed!(self, flex_value(v, vcx));
+                self.flex_grow = flex.map(|f| f.0);
+                self.flex_shrink = flex.map(|f| f.1);
+                self.flex_basis = flex.map(|f| f.2);
+                self.basis_content = flex.map(|f| f.3);
             }
             "flex-basis" if v == "content" => {
                 self.flex_basis = accept_parsed!(self, Some(Len::Auto));

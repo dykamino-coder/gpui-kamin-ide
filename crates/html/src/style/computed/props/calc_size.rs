@@ -48,6 +48,7 @@ impl Computed {
     }
 }
 
+#[derive(Default)]
 pub(super) struct ParsedSize {
     pub(super) length: Option<Len>,
     fit: Option<Len>,

@@ -35,6 +35,9 @@ fn fill(value: &str) -> Option<u8> {
 
 impl Computed {
     pub(super) fn apply_animation(&mut self, key: &str, value: &str) {
+        if key == "animation" {
+            css_wide_reset!(self, self.animation, self.animation_easing);
+        }
         if !grammar::valid(key, value) {
             return;
         }

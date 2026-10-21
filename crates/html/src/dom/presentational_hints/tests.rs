@@ -92,7 +92,8 @@ fn author_resets_and_nearest_table_control_cell_hints() {
     let spacing = find(&nodes, "table").unwrap().style.border_spacing;
     assert_eq!(spacing, Computed::default().border_spacing);
     let padding = find(&nodes, "td").unwrap().style.padding;
-    assert_eq!(padding.top, Computed::default().padding.top);
+    // css-box-4 §4.1: the initial value of a padding side is 0.
+    assert_eq!(padding.top, Some(Len::Px(0.0)));
     assert_eq!(padding.bottom, Some(Len::Px(10.0)));
 
     let nodes = crate::dom::parse(
@@ -107,4 +108,45 @@ fn author_resets_and_nearest_table_control_cell_hints() {
         find(&nodes, "th").unwrap().style.padding.top,
         Some(Len::Px(3.0))
     );
+}
+
+/// CSS Cascade 5 §7.3 and HTML rendering §15.3.8: a CSS-wide keyword of the
+/// author origin beats the table hint of the same longhand and leaves the
+/// other longhands of the hint shorthand intact.
+#[test]
+fn css_wide_keywords_override_table_hints() {
+    let table = "<table cellspacing=10 cellpadding=10 width=200 height=50 bgcolor=red align=center><tr><td></td></tr></table>";
+    for keyword in ["initial", "unset"] {
+        let html = format!(
+            "<!doctype html><style>table{{border-spacing:{keyword};width:{keyword};height:{keyword};background-color:{keyword};margin-left:{keyword}}}td{{padding-top:{keyword};padding-left:{keyword}}}</style>{table}"
+        );
+        let doc = crate::document::Document::new(&html, "");
+        let nodes = doc.nodes();
+        // The initial value, explicit or as the empty slot.
+        let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+        let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+        let t = &find(nodes, "table").unwrap().style;
+        assert_eq!(t.border_spacing, Computed::default().border_spacing);
+        assert!(auto(t.width) && auto(t.height), "{keyword}");
+        assert!(t.background.is_none_or(|c| c.a == 0.0), "{keyword}");
+        assert!(zero(t.margin.left), "{keyword}");
+        assert_eq!(t.margin.right, Some(Len::Auto), "{keyword}");
+        let td = &find(nodes, "td").unwrap().style;
+        // css-box-4 §4.1: the initial value of a padding side is 0.
+        assert_eq!(td.padding.top, Some(Len::Px(0.0)), "{keyword}");
+        assert_eq!(td.padding.left, Some(Len::Px(0.0)), "{keyword}");
+        assert_eq!(td.padding.bottom, Some(Len::Px(10.0)), "{keyword}");
+    }
+
+    // `inherit` takes the parent's value instead of the hint.
+    let html = format!(
+        "<!doctype html><style>div{{border-spacing:3px}}table{{border-spacing:inherit}}td{{padding-top:inherit}}</style><div>{table}</div>"
+    );
+    let doc = crate::document::Document::new(&html, "");
+    let nodes = doc.nodes();
+    let spacing = find(nodes, "table").unwrap().style.border_spacing;
+    assert_eq!(spacing, Some((Some(Len::Px(3.0)), Some(Len::Px(3.0)))));
+    let td = &find(nodes, "td").unwrap().style;
+    assert!(td.padding_inherit_side[0]);
+    assert_eq!(td.padding.bottom, Some(Len::Px(10.0)));
 }

@@ -46,7 +46,14 @@ impl Computed {
                 // Тот же `<filter-value-list>`, что у `filter`
                 // (filter-effects-2 §BackdropFilterProperty): разбор общий,
                 // размытие идёт своим проходом, цветовые функции — матрицей.
-                let parsed = parsed_value!(self, filter::ParsedFilter::parse(v, None, vcx));
+                let Some(parsed) = apply_parsed!(self, filter::ParsedFilter::parse(v, None, vcx))
+                else {
+                    self.backdrop_blur = None;
+                    self.backdrop_color = None;
+                    self.backdrop_filter_set = false;
+                    self.backdrop_ref = None;
+                    return;
+                };
                 let f = parsed.program.filter.unwrap_or_else(Filter::neutral);
                 self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
                 self.backdrop_color = f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
@@ -185,6 +192,13 @@ impl Computed {
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" | "counter-increment" | "counter-set" => {
+                if v != "inherit" {
+                    match key {
+                        "counter-reset" => css_wide_reset!(self, self.counter_reset),
+                        "counter-increment" => css_wide_reset!(self, self.counter_increment),
+                        _ => css_wide_reset!(self, self.counter_set),
+                    }
+                }
                 if !values::counter_value(v, key == "counter-reset") {
                     return;
                 }

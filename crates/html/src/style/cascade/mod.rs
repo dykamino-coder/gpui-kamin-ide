@@ -5,7 +5,8 @@ use crate::document::state::ValueCx;
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
 use crate::style::computed::{
-    BgListProp, Computed, ParseResult, background_layers, font_members, top_level_comma,
+    BgListProp, Computed, ParseResult, background_layers, css_wide_keyword, font_members,
+    top_level_comma,
 };
 use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::values::value::Color;
@@ -182,8 +183,14 @@ impl Computed {
         } else {
             v
         };
+        // Каждое свойство принимает CSS-wide keyword (css-cascade-5 §7.3); не
+        // покрытое таблицами выше слово сбрасывает поля свойства к пустому,
+        // начальному представлению, а не отвергается грамматикой значения.
+        let css_wide = css_wide_keyword(v);
+        let outer = std::mem::replace(&mut self.css_wide_value, css_wide);
         self.apply_property(key, parsed, vcx);
-        let accepted = self.declaration_parse == ParseResult::Accepted || v == "inherit";
+        self.css_wide_value = outer;
+        let accepted = self.declaration_parse == ParseResult::Accepted || css_wide;
         self.declaration_parse = if observer == ParseResult::Inactive {
             observer
         } else if accepted {

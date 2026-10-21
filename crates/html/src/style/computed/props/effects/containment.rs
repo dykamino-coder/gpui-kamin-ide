@@ -122,6 +122,7 @@ impl Computed {
                 }
             }
             "mix-blend-mode" => {
+                css_wide_reset!(self, self.blend);
                 if v != "plus-lighter"
                     && BlendMode::parse(v)
                         .filter(|mode| *mode != BlendMode::Inherit)
@@ -163,6 +164,7 @@ impl Computed {
                 )
             }
             "user-select" | "-webkit-user-select" => {
+                css_wide_reset!(self, self.no_select);
                 if !matches!(v, "auto" | "text" | "none" | "all" | "contain") {
                     return;
                 }

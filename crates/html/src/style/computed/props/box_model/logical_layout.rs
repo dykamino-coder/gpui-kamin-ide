@@ -42,8 +42,8 @@ impl Computed {
         match key {
             "padding-inline" | "padding-block" | "margin-inline" | "margin-block"
             | "inset-inline" | "inset-block" => {
-                let (a, b) = parsed_value!(self, axis_pair(v, !key.starts_with("padding"), vcx));
-                let (a, b) = (Some(a), Some(b));
+                let pair = apply_parsed!(self, axis_pair(v, !key.starts_with("padding"), vcx));
+                let (a, b) = (pair.map(|p| p.0), pair.map(|p| p.1));
                 let block = key.ends_with("block");
                 let which = key.split('-').next().unwrap_or("").to_string();
                 let seq = self.decl_seq;

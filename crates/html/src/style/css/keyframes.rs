@@ -95,8 +95,17 @@ pub fn parse_keyframes_in(
             // (css-animations-1 §3: «declarations in a keyframe rule that are
             // qualified with !important are ignored»); обычное одноимённое
             // того же кадра остаётся (`important-prop`).
+            // `revert`/`revert-layer` in the animation origin roll back to the
+            // author origin (css-cascade-5 §7.3.3, §7.3.4): the frame keeps
+            // the underlying value, which is the base style it is applied over.
             let mut decls = parse_decls(&inner[b + 1..b + c]);
-            decls.retain(|d| !d.important);
+            decls.retain(|d| {
+                !d.important
+                    && !matches!(
+                        d.value.trim().to_ascii_lowercase().as_str(),
+                        "revert" | "revert-layer"
+                    )
+            });
             inner = &inner[b + c + 1..];
             for stop in stops.split(',') {
                 let at = match stop.trim() {
@@ -145,5 +154,17 @@ mod keyframe_tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         assert!(parse_keyframes(".a { color: red }", vcx).is_empty());
+    }
+
+    #[test]
+    fn reverting_keyframe_declarations_keep_the_underlying_value() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let k = parse_keyframes(
+            "@keyframes a { to { width: revert-layer; height: REVERT; opacity: 0 } }",
+            doc.values(),
+        );
+        let to = &k.get("a").expect("frames")[0].1;
+        assert!(!to.contains("width") && !to.contains("height"));
+        assert_eq!(to.last("opacity"), Some("0"));
     }
 }

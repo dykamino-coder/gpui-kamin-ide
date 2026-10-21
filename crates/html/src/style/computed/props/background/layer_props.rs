@@ -102,6 +102,7 @@ impl Computed {
                 self.bg_size = match v {
                     "cover" => accept_parsed!(self, BgSize::Cover),
                     "contain" => accept_parsed!(self, BgSize::Contain),
+                    _ if self.css_wide_value => accept_parsed!(self, BgSize::default()),
                     _ => {
                         // Отрицательная длина делает декларацию невалидной
                         // целиком (css-backgrounds-3 §3.9) — размер не трогать.
@@ -126,7 +127,7 @@ impl Computed {
                             })
                             .collect::<Option<Vec<_>>>();
                         let sizes = parsed_value!(self, sizes);
-                        let w = Some(sizes[0]);
+                        let w = sizes.first().copied();
                         let h = sizes.get(1).copied();
                         if neg(&w) || neg(&h) {
                             return;
@@ -144,6 +145,7 @@ impl Computed {
                     self.inherit_bits |= inh::BG_POS;
                     return;
                 }
+                css_wide_reset!(self, self.bg_pos, self.bg_position_math);
                 if !position_valid(v, vcx) {
                     return;
                 }

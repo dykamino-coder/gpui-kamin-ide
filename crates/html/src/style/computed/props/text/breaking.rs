@@ -132,6 +132,7 @@ impl Computed {
                 self.wrap_anywhere = Some(v == "anywhere");
             }
             "word-break" => {
+                css_wide_reset!(self, self.auto_phrase, self.break_anywhere, self.keep_all);
                 if !matches!(
                     v,
                     "normal" | "break-all" | "keep-all" | "break-word" | "auto-phrase"
@@ -156,6 +157,12 @@ impl Computed {
                 }
             }
             "line-break" => {
+                css_wide_reset!(
+                    self,
+                    self.break_anywhere,
+                    self.break_anywhere_strict,
+                    self.line_break_loose,
+                );
                 if !matches!(v, "auto" | "loose" | "normal" | "strict" | "anywhere") {
                     return;
                 }

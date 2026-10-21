@@ -5,6 +5,13 @@ pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
         text_indent::apply(style, value, vcx);
         return;
     }
+    if style.css_wide_value {
+        style.accept_declaration();
+        style.text_indent = None;
+        style.text_indent_each_line = None;
+        style.text_indent_hanging = None;
+        return;
+    }
     let (mut length, mut each, mut hanging) = (None, false, false);
     for word in split_outside_parens(value) {
         match word.as_str() {
@@ -24,8 +31,7 @@ pub(super) fn apply(style: &mut Computed, value: &str, vcx: ValueCx<'_>) {
             _ => return,
         }
     }
-    let length = parsed_value!(style, length);
-    style.text_indent = Some(length);
+    style.text_indent = apply_parsed!(style, length);
     style.text_indent_each_line = each.then_some(true);
     style.text_indent_hanging = hanging.then_some(true);
 }

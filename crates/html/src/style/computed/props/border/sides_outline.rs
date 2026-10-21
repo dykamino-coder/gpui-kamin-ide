@@ -40,28 +40,20 @@ impl Computed {
                 }
                 _ => border_value_valid(v, vcx),
             };
-            if !valid {
+            if !valid && !self.css_wide_value {
                 return;
             }
             self.accept_declaration();
         }
         match key {
-            "border-top-width" => {
-                self.border_width.top =
-                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.top)
-            }
+            "border-top-width" => self.border_width.top = apply_parsed!(self, line_width(v, vcx)),
             "border-right-width" => {
-                self.border_width.right =
-                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.right)
+                self.border_width.right = apply_parsed!(self, line_width(v, vcx))
             }
             "border-bottom-width" => {
-                self.border_width.bottom =
-                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.bottom)
+                self.border_width.bottom = apply_parsed!(self, line_width(v, vcx))
             }
-            "border-left-width" => {
-                self.border_width.left =
-                    apply_parsed!(self, line_width(v, vcx)).or(self.border_width.left)
-            }
+            "border-left-width" => self.border_width.left = apply_parsed!(self, line_width(v, vcx)),
             "border-inline" => {
                 let l = self.logical();
                 l.border[1] = Some(v.to_string());
@@ -212,11 +204,11 @@ impl Computed {
                 if !(1..=2).contains(&words.len()) {
                     return;
                 }
-                let (a, b) = parsed_value!(
+                let pair = apply_parsed!(
                     self,
                     line_width(&words[0], vcx).zip(line_width(&words[words.len() - 1], vcx))
                 );
-                self.border_spacing = Some((Some(a), Some(b)));
+                self.border_spacing = pair.map(|(a, b)| (Some(a), Some(b)));
             }
             "outline" | "outline-width" | "outline-color" | "outline-offset" | "outline-style" => {
                 self.apply_outline(key, v, vcx)

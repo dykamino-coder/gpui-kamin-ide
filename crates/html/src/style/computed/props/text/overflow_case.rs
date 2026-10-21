@@ -18,6 +18,12 @@ impl Computed {
                     self.text_overflow_inherit = true;
                     return;
                 }
+                css_wide_reset!(
+                    self,
+                    self.ellipsis,
+                    self.overflow_marker,
+                    self.text_overflow_inherit,
+                );
                 // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
                 // сторон. Наша обрезка — конец строки: берётся последнее
                 // не-clip значение.

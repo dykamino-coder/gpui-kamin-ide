@@ -35,7 +35,7 @@ impl Computed {
                     self.margin_inherit[0] = true;
                     return;
                 }
-                if side_length(v, true, vcx).is_none() {
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
                     return;
                 }
                 self.margin.top = apply_parsed!(self, Len::parse(v, vcx));
@@ -46,7 +46,7 @@ impl Computed {
                     self.margin_inherit[1] = true;
                     return;
                 }
-                if side_length(v, true, vcx).is_none() {
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
                     return;
                 }
                 // Смесь «доля ± точки» доживает индексом: раскладка складывает
@@ -67,7 +67,7 @@ impl Computed {
                     self.margin_inherit[2] = true;
                     return;
                 }
-                if side_length(v, true, vcx).is_none() {
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
                     return;
                 }
                 self.margin.bottom = apply_parsed!(self, Len::parse(v, vcx));
@@ -78,7 +78,7 @@ impl Computed {
                     self.margin_inherit[3] = true;
                     return;
                 }
-                if side_length(v, true, vcx).is_none() {
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
                     return;
                 }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
@@ -109,7 +109,7 @@ impl Computed {
             self.padding_inherit_side[index] = true;
             return;
         }
-        if side_length(value, false, vcx).is_none() {
+        if !self.css_wide_value && side_length(value, false, vcx).is_none() {
             return;
         }
         let parsed = apply_parsed!(

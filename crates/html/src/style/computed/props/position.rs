@@ -30,7 +30,6 @@ impl Computed {
                         _ => None,
                     }
                 )
-                .or(self.position)
             }
             // css-anchor-position-1 §anchor-name: `none | <dashed-ident>#`.
             "anchor-name" => {
@@ -159,11 +158,11 @@ impl Computed {
                 if !(1..=2).contains(&words.len()) {
                     return;
                 }
-                let (x, y) = parsed_value!(
+                let pair = apply_parsed!(
                     self,
                     parse_overflow(words[0]).zip(parse_overflow(words[words.len() - 1]))
                 );
-                let (x, y) = (Some(x), Some(y));
+                let (x, y) = (pair.map(|p| p.0), pair.map(|p| p.1));
                 self.scroll.forced = [
                     v.split_whitespace().next() == Some("scroll"),
                     v.split_whitespace().nth(1).or(v.split_whitespace().next()) == Some("scroll"),
