@@ -1,3 +1,5 @@
+//! Тесты точек разрыва блочной стопки по заданной геометрии border box.
+
 use super::BlockBox;
 use crate::dom::Node;
 use crate::layout::fragment::flow::FlowGeometry;
