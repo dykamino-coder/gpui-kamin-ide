@@ -4,9 +4,9 @@
 
 use super::prepare::{host_for_run, wrap_into_host};
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::is_blank;
 use crate::layout::float::FloatCb;
 use crate::layout::float::band_measured::{band_float_m, band_host_m};
-use crate::render::is_blank;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

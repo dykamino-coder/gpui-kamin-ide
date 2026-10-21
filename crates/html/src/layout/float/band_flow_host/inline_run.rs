@@ -4,8 +4,8 @@
 
 use super::subtree_has_text;
 use crate::dom::Node;
+use crate::layout::box_kind::{inline_level, is_blank, out_of_flow, replaced_tag};
 use crate::layout::float::band_host::{BandPiece, band_piece};
-use crate::render::{inline_level, is_blank, out_of_flow, replaced_tag};
 use crate::style::computed::Display;
 
 /// `(atoms, hostable)`: the run holds only atoms of known size, and the run

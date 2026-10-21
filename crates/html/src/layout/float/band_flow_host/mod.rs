@@ -7,10 +7,11 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
+use crate::layout::box_kind::{block_level_in_flow, own_context, replaced_tag};
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
-use crate::render::{RenderOpts, block_level_in_flow, own_context, replaced_tag};
+use crate::layout::options::RenderOpts;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

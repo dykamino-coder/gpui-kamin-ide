@@ -1,7 +1,7 @@
 //! Владение trim анонимных абзацев в общей последовательности BFC.
 
 use crate::dom::{Element, Node};
-use crate::render::{holds_line_box, is_blank, out_of_flow};
+use crate::layout::box_kind::{holds_line_box, is_blank, out_of_flow};
 use crate::style::computed::Computed;
 
 /// CSS Inline 3: the last formatted line owns end trimming; clearance after

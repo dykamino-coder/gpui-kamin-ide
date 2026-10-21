@@ -1,8 +1,8 @@
 //! Флоаты: полосы обтекания, очистка, буквица, обтекание по форме.
 
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::is_blank;
 use crate::layout::float::band_host::px_margin_box;
-use crate::render::is_blank;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};

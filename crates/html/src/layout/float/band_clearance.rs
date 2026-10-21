@@ -7,7 +7,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{Strut, solve};
-use crate::render::{is_blank, out_of_flow};
+use crate::layout::box_kind::{is_blank, out_of_flow};
 
 pub(super) fn mark_start(host: &mut Element, top_open: bool, preceding: &[Node]) {
     if top_open
