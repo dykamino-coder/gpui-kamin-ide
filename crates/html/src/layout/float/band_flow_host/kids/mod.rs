@@ -5,7 +5,7 @@ use crate::dom::{Element, Node};
 use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::shape_exclusion::measured_shape;
-use crate::render::{RenderOpts, element};
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
 mod deferred;
@@ -53,7 +53,7 @@ pub(crate) fn band_kids(
         let p = p.clone();
         let inherited = inherited.clone();
         deferred(opts, false, move |opts, _cb, _avail, _shapes, _h| {
-            element(&p, &inherited, opts)
+            opts.cx.build.element(&p, &inherited, opts)
         })
     };
     // Первый прогон — щуп для всех флоатов при `nowrap`.

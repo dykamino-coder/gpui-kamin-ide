@@ -7,11 +7,12 @@
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::top_edge_open;
+use crate::layout::box_kind::{block_level_in_flow, is_blank, own_context, replaced_tag};
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::{band_flow_rest, band_kids, band_orthogonal};
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::{band_float_m, lead_probes};
-use crate::render::{RenderOpts, block_level_in_flow, is_blank, own_context, replaced_tag};
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
@@ -118,13 +119,13 @@ pub(super) fn band_nest(
         merged.height = Some(Len::Px(height));
     }
     let opts = &*opts.inner(|cx| cx.avail_h = height);
-    crate::render::pseudo_line_layers::install(c, &mut merged, vcx);
+    crate::dom::pseudo_line_layers::install(c, &mut merged, vcx);
     // The first formatted line may belong to a nested in-flow block;
     // floats and positioned children cannot consume its pseudo layer.
-    let children = crate::render::first_line_descendants::route(
-        collapse_margins(&c.children, false, cb, vcx),
-        &merged,
-    );
+    let children = opts
+        .cx
+        .build
+        .first_line_route(collapse_margins(&c.children, false, cb, vcx), &merged);
     let mut seq = band_seq(
         children,
         inner_em,

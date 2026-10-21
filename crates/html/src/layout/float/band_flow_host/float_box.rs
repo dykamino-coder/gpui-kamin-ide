@@ -1,10 +1,10 @@
 //! Независимое горизонтальное содержимое float, границы clamp и эффекты paint.
 
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
@@ -27,12 +27,12 @@ pub(super) fn float_box(
         // A float can own a clamp context as well as isolate its parent's
         // counter. The native box installs that context, its cut and probes;
         // inheriting the paragraph's line limit alone loses the root strut.
-        crate::render::element(copy, inherited, opts)
+        opts.cx.build.element(copy, inherited, opts)
     } else if copy.tag == "img" {
         image(copy, &opts.cx)
     } else {
         let span = open_clamp_span(&opts.cx);
-        let mut kids = blocks(&copy.children, &merged, opts);
+        let mut kids = opts.cx.build.blocks(&copy.children, &merged, opts);
         close_clamp_span(span.clone(), &opts.cx);
         // CSS Overflow 4 section 5.3: its lines belong to an independent BFC,
         // but a float intersecting the clamp point keeps its border-box extent.
@@ -46,8 +46,12 @@ pub(super) fn float_box(
             }
             margin => margin,
         };
-        crate::render::generic_box::child_probes(copy, &probed, opts, &mut kids, true, false, span);
-        styled_div_with(copy, &merged, &opts.cx)
+        opts.cx
+            .build
+            .probes(copy, &probed, opts, &mut kids, true, false, span);
+        opts.cx
+            .build
+            .styled_box(copy, &merged, &opts.cx)
             .children(kids)
             .into_any_element()
     };

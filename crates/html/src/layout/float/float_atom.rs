@@ -5,9 +5,9 @@
 
 use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::image::image_with;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
-use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
@@ -40,8 +40,10 @@ pub(super) fn band_atom(
             &opts.cx,
         )
     } else {
-        styled_div_with(&inner, &merged, &opts.cx)
-            .children(blocks(&inner.children, &merged, opts))
+        opts.cx
+            .build
+            .styled_box(&inner, &merged, &opts.cx)
+            .children(opts.cx.build.blocks(&inner.children, &merged, opts))
             .into_any_element()
     };
     let el = if px_margin_box(&inner.style) == Some((w, h)) {
