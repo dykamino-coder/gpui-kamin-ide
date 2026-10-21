@@ -84,7 +84,7 @@ pub(super) fn table_grid_child(
     table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     e: &Element,
     spacing: (f32, f32),
-    from_cols: Vec<Option<f32>>,
+    from_cols: &[Option<f32>],
     bw: [f32; 4],
     have_rows: bool,
     cells: Vec<AnyElement>,
