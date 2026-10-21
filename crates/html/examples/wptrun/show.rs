@@ -1,6 +1,6 @@
 //! Show one document in the runner window and poll until its own frame has settled.
 
-use super::capture::{CaptureCursor, offscreen};
+use super::capture::{CaptureCursor, first_frame, offscreen};
 use super::capture_dump::Shot;
 use super::frame_metrics::flat;
 use super::page::Page;
@@ -19,8 +19,9 @@ pub(super) struct Stage {
     /// Чем кончился опрос кадра у каждого показа пары: `s` — кадр
     /// сменился и устоялся, `b` — страница осталась равной разделителю,
     /// `o` — запас опроса вышел, кадр есть, `n` — окно за весь запас не
-    /// отдало НИ ОДНОГО кадра. Без этого «пара идёт 27 секунд» и «пара
-    /// пустая» — два разных наблюдения без связи между ними.
+    /// отдало НИ ОДНОГО кадра; `f` — первый GPU-кадр без ожидания покоя.
+    /// Без этого «пара идёт 27 секунд» и «пара пустая» — два разных
+    /// наблюдения без связи между ними.
     pub(super) trace: Rc<RefCell<String>>,
 }
 
@@ -43,6 +44,7 @@ impl Stage {
     ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
+        let first = first_frame();
         let _ = cx.update_window(window, |view, window, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
@@ -58,6 +60,9 @@ impl Stage {
                     page.select = reftest_pages(&html);
                     cx.notify();
                 });
+            }
+            if first {
+                gpui::frame_capture::arm_first();
             }
             window.refresh();
         });
@@ -89,7 +94,7 @@ impl Stage {
             // Напоминание раз в полсекунды выводит его из этого
             // состояния; на здоровых показах до него не доходит —
             // кадр устаивается раньше.
-            if step % 30 == 29 {
+            if !first && step % 30 == 29 {
                 let _ = cx.update_window(window, |view, window, cx| {
                     if let Ok(page) = view.downcast::<Page>() {
                         page.update(cx, |_, cx| cx.notify());
@@ -97,8 +102,16 @@ impl Stage {
                     window.refresh();
                 });
             }
-            let shot = captures.next(hwnd);
+            let shot = if first {
+                gpui::frame_capture::take_first().map(|f| (f.width, f.height, f.bgra))
+            } else {
+                captures.next(hwnd)
+            };
             let Some(now) = shot else { continue };
+            if first {
+                note.borrow_mut().push('f');
+                return Some(now);
+            }
             let changed = prev.as_ref().is_none_or(|before| *before != now.2);
             let settled = last.as_ref().is_some_and(|before| before.2 == now.2);
             // ПРОБОВАЛИ И ОТКАТИЛИ: требовать ТРИ одинаковых кадра

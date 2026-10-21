@@ -3,17 +3,20 @@
 //! коробки hidden for paint вместо обрезки контейнера). Опускает клип контейнера до видимой
 //! протяжённости и прячет абзацы и поточные блочные коробки за точкой при сборке стилей.
 
-use super::{clamp_cut, clamp_extent, clamp_para};
-use crate::document::state::ValueCx;
 use crate::layout::cx::LayoutCx;
 
 /// The visible extent of the content before the clamp point reaches below
 /// the cut (css-overflow-4 §5.3: only boxes and lines AFTER the clamp point
 /// are hidden; Blink marks them hidden for paint instead of clipping the
 /// container). Returns that extent from the content top.
-pub fn revealed_extent(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
-    let cut = clamp_cut(key, vcx).filter(|c| c.is_finite())?;
-    clamp_extent(key, vcx).filter(|e| *e > cut + 0.5)
+pub fn revealed_extent(key: u64, cx: &LayoutCx) -> Option<f32> {
+    let cut = cx
+        .clamp_plan(key)
+        .map(|p| p.cut)
+        .filter(|c| c.is_finite())?;
+    cx.clamp_plan(key)
+        .and_then(|p| p.extent)
+        .filter(|e| *e > cut + 0.5)
 }
 
 /// Extend the container's clip edge down to the revealed extent; `cut` is
@@ -24,9 +27,9 @@ pub fn extend_clip(
     key: u64,
     cut: f32,
     pad_bottom: f32,
-    vcx: ValueCx<'_>,
+    cx: &LayoutCx,
 ) {
-    if let Some(ext) = revealed_extent(key, vcx) {
+    if let Some(ext) = revealed_extent(key, cx) {
         style.overflow_clip_offset = Some([0.0, 0.0, ext - cut - pad_bottom, 0.0]);
     }
 }
@@ -35,11 +38,16 @@ pub fn extend_clip(
 /// hidden for paint. A fixed-height float can extend the container past the
 /// counted line without extending the separately measured overflow extent
 /// (CSS Overflow 4 section 5.3; Blink marks following boxes hidden for paint).
-pub fn hidden_after_point(key: u64, seq: u32, vcx: ValueCx<'_>) -> bool {
-    clamp_cut(key, vcx).is_some_and(f32::is_finite)
-        && match clamp_para(key, vcx) {
+pub fn hidden_after_point(key: u64, seq: u32, cx: &LayoutCx) -> bool {
+    cx.clamp_plan(key)
+        .map(|p| p.cut)
+        .is_some_and(f32::is_finite)
+        && match cx.clamp_plan(key).and_then(|p| p.para) {
             Some((s, _)) => seq > s,
-            None => super::line_state::clamp_next(key, vcx).is_some_and(|n| seq >= n),
+            None => cx
+                .clamp_plan(key)
+                .and_then(|p| p.next)
+                .is_some_and(|n| seq >= n),
         }
 }
 
@@ -76,7 +84,7 @@ pub fn hide_box_after_point(
     if let (Some((key, false)), Some(first)) = (outer, first)
         && !is_clamp
         && in_flow
-        && hidden_after_point(key, first, cx.vcx())
+        && hidden_after_point(key, first, cx)
     {
         d.style().visibility = Some(gpui::Visibility::Hidden);
     }
@@ -110,16 +118,20 @@ mod tests {
     #[test]
     fn counted_point_hides_later_paragraphs_below_a_tall_float() {
         let doc = DocState::new(Default::default());
-        let vcx = doc.frame_values();
         let key = 1;
         doc.clamp.cuts.borrow_mut().insert(key, 200.0);
         doc.clamp.extent.borrow_mut().insert(key, 128.0);
         doc.clamp.para.borrow_mut().insert(key, (3, 1));
-        assert!(revealed_extent(key, vcx).is_none());
-        assert!(!hidden_after_point(key, 3, vcx));
-        assert!(hidden_after_point(key, 4, vcx));
+        let mut cx = LayoutCx {
+            clamp_plans: super::super::ClampPlans::snapshot(&doc.clamp),
+            ..Default::default()
+        };
+        assert!(revealed_extent(key, &cx).is_none());
+        assert!(!hidden_after_point(key, 3, &cx));
+        assert!(hidden_after_point(key, 4, &cx));
         doc.clamp.cuts.borrow_mut().insert(key, f32::INFINITY);
-        assert!(!hidden_after_point(key, 4, vcx));
+        cx.clamp_plans = super::super::ClampPlans::snapshot(&doc.clamp);
+        assert!(!hidden_after_point(key, 4, &cx));
     }
 
     #[test]
@@ -133,19 +145,22 @@ mod tests {
         a.clamp.para.borrow_mut().insert(1, (2, 1));
         b.clamp.cuts.borrow_mut().insert(1, 100.0);
         b.clamp.para.borrow_mut().insert(1, (4, 2));
-        assert_eq!(clamp_cut(1, av), Some(50.0));
-        assert_eq!(clamp_cut(1, bv), Some(100.0));
-        assert!(hidden_after_point(1, 3, av));
-        assert!(!hidden_after_point(1, 3, bv));
-        assert!(!std::rc::Rc::ptr_eq(
-            &clamp_lines_for(1, av),
-            &clamp_lines_for(1, bv)
-        ));
-        assert!(std::rc::Rc::ptr_eq(
-            &clamp_lines_for(1, av),
-            &clamp_lines_for(1, av)
-        ));
+        let ac = LayoutCx {
+            clamp_plans: super::super::ClampPlans::snapshot(&a.clamp),
+            ..Default::default()
+        };
+        let bc = LayoutCx {
+            clamp_plans: super::super::ClampPlans::snapshot(&b.clamp),
+            ..Default::default()
+        };
+        assert_eq!(ac.clamp_plan(1).map(|p| p.cut), Some(50.0));
+        assert_eq!(bc.clamp_plan(1).map(|p| p.cut), Some(100.0));
+        assert!(hidden_after_point(1, 3, &ac));
+        assert!(!hidden_after_point(1, 3, &bc));
+        assert!(!clamp_lines_for(1, av).same(&clamp_lines_for(1, bv)));
+        assert!(clamp_lines_for(1, av).same(&clamp_lines_for(1, av)));
         a.clamp.cuts.borrow_mut().clear();
-        assert_eq!(clamp_cut(1, bv), Some(100.0));
+        assert_eq!(ac.clamp_plan(1).map(|p| p.cut), Some(50.0));
+        assert_eq!(bc.clamp_plan(1).map(|p| p.cut), Some(100.0));
     }
 }

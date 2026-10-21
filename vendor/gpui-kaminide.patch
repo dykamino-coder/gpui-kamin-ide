@@ -5,7 +5,7 @@
 # 3. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
 # 4. Tests: retain bundled upstream fonts for SVG regression coverage and import the moved image-fit type explicitly.
 # 5. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 6. Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.
+# 6. Host integration: frame capture with an opt-in first-frame latch for WPT convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.
 # 7. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
 # 8. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
 #
@@ -7357,10 +7357,10 @@ index 0000000000000000000000000000000000000000..08346850fb33a5dcb84176f662333246
 +}
 diff --git a/vendor/gpui/src/frame_capture.rs b/vendor/gpui/src/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..557819ec6e86d7cdd092af0eae85a966a55865f0
+index 0000000000000000000000000000000000000000..104d82fe7b18928e2508e5f8c6ee2494418b07d2
 --- /dev/null
 +++ b/vendor/gpui/src/frame_capture.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,78 @@
 +//! KaminIDE patch: read the rendered frame back from the GPU, for the WPT runner.
 +//!
 +//! The runner used to capture its window with `PrintWindow`, i.e. from the DWM
@@ -7376,7 +7376,13 @@ index 0000000000000000000000000000000000000000..557819ec6e86d7cdd092af0eae85a966
 +
 +static ENABLED: AtomicBool = AtomicBool::new(false);
 +static SEQ: AtomicU64 = AtomicU64::new(0);
-+static LAST: Mutex<Option<CapturedFrame>> = Mutex::new(None);
++static FRAMES: Mutex<Frames> = Mutex::new(Frames { latest: None, first: None });
++
++struct Frames {
++    latest: Option<CapturedFrame>,
++    // Some(None) arms the next GPU readback; later frames cannot replace it.
++    first: Option<Option<CapturedFrame>>,
++}
 +
 +/// One captured frame: BGRA rows top to bottom, `width * 4` bytes each.
 +#[derive(Clone)]
@@ -7403,14 +7409,34 @@ index 0000000000000000000000000000000000000000..557819ec6e86d7cdd092af0eae85a966
 +
 +/// The most recently drawn frame, if any.
 +pub fn latest() -> Option<CapturedFrame> {
-+    LAST.lock().ok()?.clone()
++    FRAMES.lock().ok()?.latest.clone()
++}
++
++/// Retain the next drawn frame until `take_first`, even if more frames arrive.
++/// Arm on the UI thread after replacing the document and before requesting redraw.
++pub fn arm_first() {
++    if let Ok(mut frames) = FRAMES.lock() {
++        frames.first = Some(None);
++    }
++}
++
++/// Consume the armed frame, or keep waiting when no GPU draw has completed.
++pub fn take_first() -> Option<CapturedFrame> {
++    let mut frames = FRAMES.lock().ok()?;
++    let frame = frames.first.as_mut()?.take()?;
++    frames.first = None;
++    Some(frame)
 +}
 +
 +#[doc(hidden)]
 +pub fn store(width: u32, height: u32, bgra: Vec<u8>) {
 +    let seq = SEQ.fetch_add(1, Ordering::AcqRel) + 1;
-+    if let Ok(mut last) = LAST.lock() {
-+        *last = Some(CapturedFrame { width, height, bgra, seq });
++    if let Ok(mut frames) = FRAMES.lock() {
++        let frame = CapturedFrame { width, height, bgra, seq };
++        if let Some(first @ None) = &mut frames.first {
++            *first = Some(frame.clone());
++        }
++        frames.latest = Some(frame);
 +    }
 +}
 diff --git a/vendor/gpui/src/geometry.rs b/vendor/gpui/src/geometry.rs

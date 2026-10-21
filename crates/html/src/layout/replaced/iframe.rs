@@ -209,6 +209,8 @@ pub(crate) fn build_embedded(
     sub.viewport = viewport;
     sub.cx.positioning = Default::default();
     sub.cx.frame_depth += 1;
+    sub.cx.clamp_plans = crate::text::clamp::ClampPlans::snapshot(&embedded.state.clamp);
+    sub.cx.clamp_input = None;
     sub.cx.doc = crate::layout::cx::BuildDoc(embedded.state.clone());
     // Свой слой ICB на вложенный документ: его абсолюты без позиционированного
     // предка держатся ЕГО начального содержащего блока — области просмотра

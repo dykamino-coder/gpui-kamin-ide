@@ -36,7 +36,7 @@ FIXES = {
         "Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.",
         "Tests: retain bundled upstream fonts for SVG regression coverage and import the moved image-fit type explicitly.",
         "Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.",
-        "Host integration: frame capture, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
+        "Host integration: frame capture with an opt-in first-frame latch for WPT convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
     ],

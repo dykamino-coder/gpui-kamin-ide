@@ -19,7 +19,7 @@ use std::cell::RefCell;
 mod scope;
 pub(crate) use scope::LayerScope;
 
-type Taken = Vec<(SpotCell, AnyElement)>;
+use super::oof::OofHost;
 
 /// Which boxes a nearest-containing-block layer takes.
 const ABS: u8 = 1;
@@ -32,7 +32,7 @@ struct CbLayer {
     /// boxes whose NEAREST containing block is its owner — the CB-ancestor
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
-    taken: Taken,
+    taken: OofHost,
 }
 
 #[derive(Default)]
@@ -43,11 +43,11 @@ pub struct Positioning {
     /// block, a nested document. By §10.1 an out-of-flow box without a
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
-    icb: RefCell<Vec<Taken>>,
+    icb: RefCell<Vec<OofHost>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
-    late: RefCell<Vec<Taken>>,
+    late: RefCell<Vec<OofHost>>,
     /// Content boxes of flex containers measured in this pass's prepaint
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
@@ -96,7 +96,7 @@ impl Positioning {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
-            taken: Vec::new(),
+            taken: OofHost::default(),
         });
     }
 
@@ -114,7 +114,7 @@ impl Positioning {
         let mut layers = self.cb.borrow_mut();
         match layers.iter_mut().rev().find(|l| l.takes & FIX != 0) {
             Some(layer) => {
-                layer.taken.push((spot, el));
+                layer.taken.push(spot, el);
                 None
             }
             None => Some(el),
@@ -131,7 +131,7 @@ impl Positioning {
             .find(|l| l.takes & ABS != 0 && l.strict.is_none_or(|d| d == nearest));
         match layer {
             Some(layer) => {
-                layer.taken.push((spot, el));
+                layer.taken.push(spot, el);
                 None
             }
             None => Some(el),
@@ -141,28 +141,19 @@ impl Positioning {
     /// Take what the top containing-block layer collected and close it.
     pub fn cb_close(&self) -> Vec<AnyElement> {
         let layer = self.cb.borrow_mut().pop();
-        layer
-            .map(|l| l.taken)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(spot, el)| icb_place(spot, el))
-            .collect()
+        layer.map(|l| l.taken).unwrap_or_default().place(icb_place)
     }
 
     /// Open an initial-containing-block layer: the document, a strip block or
     /// a nested document.
     pub fn icb_open(&self) {
-        self.icb.borrow_mut().push(Vec::new());
+        self.icb.borrow_mut().push(OofHost::default());
     }
 
     /// Take what the top ICB layer collected and close it.
     pub fn icb_close(&self) -> Vec<AnyElement> {
         let layer = self.icb.borrow_mut().pop();
-        layer
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(spot, el)| icb_place(spot, el))
-            .collect()
+        layer.unwrap_or_default().place(icb_place)
     }
 
     /// Is an ICB layer open?
@@ -178,7 +169,7 @@ impl Positioning {
     pub fn icb_push(&self, spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
         match self.icb.borrow_mut().last_mut() {
             Some(layer) => {
-                layer.push((spot, el));
+                layer.push(spot, el);
                 None
             }
             None => Some(el),
@@ -187,17 +178,13 @@ impl Positioning {
 
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
-        self.late.borrow_mut().push(Vec::new());
+        self.late.borrow_mut().push(OofHost::default());
     }
 
     /// Take what the top paint layer collected and close it.
     pub fn late_close(&self) -> Vec<AnyElement> {
         let layer = self.late.borrow_mut().pop();
-        layer
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(spot, el)| spot_place(spot, el))
-            .collect()
+        layer.unwrap_or_default().place(spot_place)
     }
 
     /// Does the open top paint layer hold anything? The container's child
@@ -216,7 +203,7 @@ impl Positioning {
     pub fn late_push(&self, spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
         match self.late.borrow_mut().last_mut() {
             Some(layer) => {
-                layer.push((spot, el));
+                layer.push(spot, el);
                 None
             }
             None => Some(el),

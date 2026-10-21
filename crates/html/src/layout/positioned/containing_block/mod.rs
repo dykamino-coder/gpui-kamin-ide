@@ -14,6 +14,7 @@ pub use hang::InlineStartHang;
 mod source_paint;
 pub(crate) use source_paint::split as split_source_paint;
 mod layers;
+mod oof;
 pub(crate) use layers::LayerScope;
 pub use layers::Positioning;
 
