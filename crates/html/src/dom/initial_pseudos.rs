@@ -8,7 +8,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
@@ -16,7 +16,7 @@ use crate::style::select::{Ancestor, Sibs};
 pub(super) fn resolve(
     name: &str,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     me: &Ancestor,
     path: &[Ancestor],
     sibs: Sibs,

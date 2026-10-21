@@ -15,7 +15,7 @@ mod arena;
 mod scoped;
 mod value_cx;
 
-use crate::style::css::{Decls, Media, PageRule, Registered};
+use crate::style::css::{DeclBlock, Media, PageRule, Registered};
 use crate::style::generated::counter_style_rules::CounterStyles;
 use crate::style::values::value::{AnchorFn, RootMetrics, Sum};
 use std::cell::{Cell, RefCell};
@@ -69,7 +69,7 @@ pub struct DocState {
     /// Правила `@page` в порядке появления (css-page-3 §cascading-and-page-context).
     pub(crate) page_rules: RefCell<Vec<PageRule>>,
     /// `@position-try <dashed-ident>` (css-anchor-position-1 §fallback-rule).
-    pub(crate) try_rules: RefCell<HashMap<String, Decls>>,
+    pub(crate) try_rules: RefCell<HashMap<String, DeclBlock>>,
     /// `@property` (css-properties-values-api-1 §3).
     pub(crate) property_rules: RefCell<HashMap<String, Registered>>,
     /// `@counter-style` (css-counter-styles-3 §3).
@@ -119,7 +119,7 @@ impl DocState {
     }
 
     /// Объявления правила `@position-try` по имени (`--x`), копией.
-    pub(crate) fn try_rule(&self, name: &str) -> Option<crate::style::css::Decls> {
+    pub(crate) fn try_rule(&self, name: &str) -> Option<crate::style::css::DeclBlock> {
         self.try_rules.borrow().get(name).cloned()
     }
 

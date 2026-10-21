@@ -9,7 +9,7 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
     // иначе при ЗАДАННОЙ переменной оставалась лишняя скобка и значение
     // умирало, а при незаданной выходило случайно верно — из-за чего
     // дефект и не был виден.
-    let mut vars = crate::style::css::Decls::new();
+    let mut vars = crate::style::css::VarMap::new();
     vars.insert("--c".into(), "red".into());
     let mut c = crate::style::computed::Computed::default();
     c.apply_decls_with_vars(
@@ -25,7 +25,7 @@ fn var_fallback_with_nested_parens_survives_a_defined_variable() {
     let mut c = crate::style::computed::Computed::default();
     c.apply_decls_with_vars(
         &crate::style::css::parse_decls("color: var(--none, rgba(0,0,0,1))"),
-        &crate::style::css::Decls::new(),
+        &crate::style::css::VarMap::new(),
         vcx,
     );
     assert_eq!(
@@ -59,7 +59,7 @@ fn important_survives_a_later_ordinary_rule() {
     let mut matched = vec![&early, &late];
     let c = crate::style::computed::Computed::resolve(
         &mut matched,
-        &crate::style::css::Decls::new(),
+        &crate::style::css::DeclBlock::new(),
         vcx,
     );
     assert_eq!(
@@ -93,7 +93,7 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
     let mut matched = vec![&ua, &author];
     let c = crate::style::computed::Computed::resolve(
         &mut matched,
-        &crate::style::css::Decls::new(),
+        &crate::style::css::DeclBlock::new(),
         vcx,
     );
     assert_eq!(

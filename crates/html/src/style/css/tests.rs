@@ -5,11 +5,8 @@ use super::*;
 #[test]
 fn decls_keep_commas_inside_functions() {
     let d = parse_decls("color: rgba(1, 2, 3, .5); padding : 4px ");
-    assert_eq!(
-        d.get("color").map(String::as_str),
-        Some("rgba(1, 2, 3, .5)")
-    );
-    assert_eq!(d.get("padding").map(String::as_str), Some("4px"));
+    assert_eq!(d.last("color"), Some("rgba(1, 2, 3, .5)"));
+    assert_eq!(d.last("padding"), Some("4px"));
 }
 
 #[test]
@@ -18,7 +15,7 @@ fn layer_block_is_transparent_and_supports_not_is_honoured() {
     // Слой — обёртка: правило внутри него живёт.
     let rules = parse_stylesheet_media("@layer base { p { color: red } }", media);
     assert_eq!(rules.len(), 1);
-    assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
+    assert_eq!(rules[0].decls.last("color"), Some("red"));
     // Отрицание — запасная ветка для движка БЕЗ поддержки; применять её
     // нельзя, иначе применяются обе ветки пары сразу.
     let neg = parse_stylesheet_media("@supports not (display: grid) { p { color: red } }", media);
@@ -28,13 +25,22 @@ fn layer_block_is_transparent_and_supports_not_is_honoured() {
 }
 
 #[test]
-fn important_stays_in_the_value_for_the_cascade() {
-    // Раньше тест закреплял обратное — что пометка срезается при разборе.
-    // Именно из-за этого важность не работала вовсе: до каскада значение
-    // доезжало неотличимым от обычного. Снимает пометку тот, кто
-    // раскладывает каскад (`Computed::resolve_with_vars`).
-    let d = parse_decls("color: red !important");
-    assert_eq!(d.get("color").map(String::as_str), Some("red !important"));
+fn important_is_a_flag_of_the_declaration() {
+    // Важность доезжает до каскада флагом объявления, значение — без
+    // пометки; повтор свойства остаётся отдельной записью на своём месте.
+    let d = parse_decls("color: red !important; margin: 0; color: blue");
+    let flags: Vec<(&str, &str, bool)> = d
+        .iter()
+        .map(|d| (d.name.as_str(), d.value.as_str(), d.important))
+        .collect();
+    assert_eq!(
+        flags,
+        [
+            ("color", "red", true),
+            ("margin", "0", false),
+            ("color", "blue", false)
+        ]
+    );
 }
 
 #[test]
@@ -42,8 +48,8 @@ fn bang_that_is_not_important_kills_the_declaration() {
     // После восклицательного знака стоит ровно `important` (CSS 2.1
     // §4.1.8); всё прочее делает объявление недействительным целиком.
     let d = parse_decls("color: red ! fail; background: green");
-    assert_eq!(d.get("color"), None);
-    assert_eq!(d.get("background").map(String::as_str), Some("green"));
+    assert_eq!(d.last("color"), None);
+    assert_eq!(d.last("background"), Some("green"));
 }
 
 #[test]
@@ -118,7 +124,7 @@ fn media_rules_apply_when_the_condition_holds() {
     let sels: Vec<String> = rules.iter().map(|r| r.sel.classes.join(",")).collect();
     // Условие выполнено при ширине по умолчанию — правило внутри работает.
     assert_eq!(sels, vec!["a", "b", "c", "d"]);
-    assert_eq!(rules[0].decls.get("color").map(String::as_str), Some("red"));
+    assert_eq!(rules[0].decls.last("color"), Some("red"));
 }
 
 #[test]
@@ -177,15 +183,22 @@ fn page_rules_cascade_by_layer_before_specificity() {
             name: name.map(str::to_string),
             ..PageSel::default()
         }],
-        decls: vec![("margin".into(), margin.into())],
+        decls: parse_decls(&format!("margin: {margin}")),
         margins: Vec::new(),
         layer,
     };
     let last = |rules: &[PageRule], name: &str| {
         page_decls_in(rules, 0, name, false)
-            .last()
-            .map(|(_, v)| v.clone())
+            .last("margin")
+            .map(str::to_string)
     };
+    // Важные идут после обычных, и у них ранний слой сильнее.
+    let rules = vec![
+        rule(None, "1px !important", vec![0, u32::MAX]),
+        rule(None, "2px !important", vec![1, u32::MAX]),
+        rule(None, "3px", vec![u32::MAX]),
+    ];
+    assert_eq!(last(&rules, "").as_deref(), Some("1px"));
     // `@layer l2, l1;` — l1 объявлен позже и сильнее, хоть и записан раньше.
     let rules = vec![
         rule(None, "1cm", vec![1, u32::MAX]),

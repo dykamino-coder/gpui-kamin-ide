@@ -13,7 +13,7 @@ mod values;
 use crate::style::generated::counters_scan::values::{decl_has, decl_value};
 
 use crate::style::computed::{Computed, Display};
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{Rule, VarMap};
 use crate::style::select::{Ancestor, Sibs, Spot, ancestor_of, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
 mod style;
@@ -24,7 +24,7 @@ struct Scan<'a> {
     tree: &'a crate::dom::tree_index::TreeIndex,
     vcx: crate::document::state::ValueCx<'a>,
     rules: &'a [Rule],
-    vars: &'a Decls,
+    vars: &'a VarMap,
     name: &'a str,
     num: i64,
     last: i64,
@@ -159,7 +159,7 @@ impl Scan<'_> {
 pub(crate) fn reversed_initial(
     tree: &crate::dom::tree_index::TreeIndex,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     name: &str,
     creator: &Handle,
     me: &Ancestor,

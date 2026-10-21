@@ -10,7 +10,7 @@ use super::walk_children;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, Keyframes, Rule};
+use crate::style::css::{Keyframes, Rule, VarMap};
 use crate::style::select::Ancestor;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
@@ -24,7 +24,7 @@ pub(super) fn hidden_element(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,

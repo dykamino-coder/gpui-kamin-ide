@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::css::Decls;
+use crate::style::css::DeclBlock;
 use crate::style::css::parse_decls;
 
 mod cascade;
@@ -199,7 +199,7 @@ fn cascade_order_specificity_then_inline() {
     assert_eq!(c.color.map(|c| c.g), Some(0.5019608), "инлайн бьёт таблицу");
 
     let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
-    let c = Computed::resolve(&mut matched, &Decls::new(), vcx);
+    let c = Computed::resolve(&mut matched, &DeclBlock::new(), vcx);
     assert_eq!(
         c.color.map(|c| c.b),
         Some(1.0),

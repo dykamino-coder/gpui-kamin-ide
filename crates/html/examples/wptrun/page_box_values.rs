@@ -40,12 +40,12 @@ pub(super) fn logical_side(wm: (bool, bool, bool), block: bool, start: bool) -> 
 /// `em` — от кегля контекста страницы (css-page-3 §page-properties: «Values
 /// in units of em … relative to the font associated with their context»);
 /// кегль листа по умолчанию — 16 (`content-004`: `margin: 4em` = 64).
-pub(super) fn page_font_size(decls: &[(String, String)], vcx: ValueCx<'_>) -> f32 {
+pub(super) fn page_font_size(decls: &kamin_html::css::DeclBlock, vcx: ValueCx<'_>) -> f32 {
     decls
         .iter()
         .rev()
-        .find(|(k, _)| k == "font-size")
-        .and_then(|(_, v)| match Len::parse(v.trim(), vcx) {
+        .find(|d| d.name == "font-size")
+        .and_then(|d| match Len::parse(d.value.trim(), vcx) {
             Some(Len::Px(p)) => Some(p),
             Some(Len::Em(k)) => Some(k * 16.0),
             Some(Len::Pct(k)) => Some(k * 16.0),

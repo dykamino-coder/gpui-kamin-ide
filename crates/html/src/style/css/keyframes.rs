@@ -9,7 +9,7 @@ use crate::style::css::*;
 use std::collections::HashMap;
 
 /// Кадры анимации: доля времени и объявления на этой доле.
-pub type Keyframes = Vec<(f32, Decls)>;
+pub type Keyframes = Vec<(f32, DeclBlock)>;
 
 /// `@keyframes имя { 0% {…} 100% {…} }` — все наборы кадров таблицы.
 ///
@@ -93,15 +93,10 @@ pub fn parse_keyframes_in(
             };
             // Объявление кадра с `!important` игнорируется ЦЕЛИКОМ
             // (css-animations-1 §3: «declarations in a keyframe rule that are
-            // qualified with !important are ignored»). Отсекается ДО разбора:
-            // `parse_decls` оставляет из двух одноимённых важное, и обычное
-            // `border-color: green` того же кадра пропадало вместе с ним
-            // (`important-prop`).
-            let plain: Vec<&str> = split_top_level(&inner[b + 1..b + c], ';')
-                .into_iter()
-                .filter(|d| top_level_bang(d.trim()).is_none())
-                .collect();
-            let decls = parse_decls(&plain.join(";"));
+            // qualified with !important are ignored»); обычное одноимённое
+            // того же кадра остаётся (`important-prop`).
+            let mut decls = parse_decls(&inner[b + 1..b + c]);
+            decls.retain(|d| !d.important);
             inner = &inner[b + c + 1..];
             for stop in stops.split(',') {
                 let at = match stop.trim() {
@@ -142,7 +137,7 @@ mod keyframe_tests {
         let frames = k.get("pulse").expect("набор кадров по имени");
         assert_eq!(frames.len(), 3);
         assert_eq!(frames[1].0, 0.5);
-        assert_eq!(frames[0].1.get("opacity").map(String::as_str), Some("0"));
+        assert_eq!(frames[0].1.last("opacity"), Some("0"));
     }
 
     #[test]

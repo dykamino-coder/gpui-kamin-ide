@@ -53,8 +53,8 @@ fn page_margin_boxes(
     let vcx = opts.cx.vcx();
     let (ctx, boxes) = decls;
     let mut ctx_own = Computed::default();
-    for (k, v) in ctx {
-        ctx_own.apply_one(k, v, vcx);
+    for d in ctx {
+        ctx_own.apply_one(&d.name, &d.value, vcx);
     }
     page_counters::resolve(&mut ctx_own, root);
     counters.begin(page, pages, &ctx_own);
@@ -67,8 +67,8 @@ fn page_margin_boxes(
         let last = |key: &str| {
             list.iter()
                 .rev()
-                .find(|(k, _)| k == key)
-                .map(|(_, v)| v.trim().to_string())
+                .find(|d| d.name == key)
+                .map(|d| d.value.trim().to_string())
         };
         let Some(content) = last("content") else {
             continue;
@@ -85,9 +85,9 @@ fn page_margin_boxes(
         let va = last("vertical-align").unwrap_or_else(|| va.to_string());
         let mut own = Computed::default();
         own.apply_one("text-align", ta, vcx);
-        for (k, v) in list {
-            if k != "content" && k != "vertical-align" {
-                own.apply_one(k, v, vcx);
+        for d in list {
+            if d.name != "content" && d.name != "vertical-align" {
+                own.apply_one(&d.name, &d.value, vcx);
             }
         }
         page_counters::resolve(&mut own, &ctx_own);

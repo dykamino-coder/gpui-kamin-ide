@@ -18,7 +18,9 @@ use crate::dom::shadow::*;
 use crate::dom::tree_index::{NodeKey, TreeIndex};
 use crate::dom::walk::*;
 use crate::dom::xhtml::*;
-use crate::style::css::{Decls, LayerRegistry, Media, Rule, parse_document_sheet, parse_keyframes};
+use crate::style::css::{
+    LayerRegistry, Media, Rule, VarMap, parse_document_sheet, parse_keyframes,
+};
 use crate::style::select::has::{HasArg, collect_has_args, mark_has, parse_has_arg};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
@@ -146,7 +148,7 @@ pub(super) fn parse_input(
     // Собираются до обхода, потому что нужны каждому узлу.
     // Пользовательские свойства НАСЛЕДУЮТСЯ и каскадируют, поэтому корень
     // стартует пустым: каждый узел добавляет свои и передаёт вниз.
-    let vars = Decls::new();
+    let vars = VarMap::new();
 
     let mut out = vec![];
     // Наборы кадров собираются из тех же источников, что и правила.

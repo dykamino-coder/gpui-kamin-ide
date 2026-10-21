@@ -14,7 +14,7 @@ use crate::dom::scroll_markers::marker_collect::purge_scroll_markers;
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Display, Position};
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
@@ -41,7 +41,7 @@ pub(super) struct ScrollPseudos {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn scroll_marker_pass(
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
@@ -166,7 +166,7 @@ pub(super) fn scroll_marker_pass(
         .filter(|r| r.sel.pseudo.as_deref() == Some("scroll-marker-group"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
-    let mut gstyle = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
+    let mut gstyle = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
     if gstyle.display == Some(Display::None) {
         return out;
     }

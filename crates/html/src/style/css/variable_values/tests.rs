@@ -1,22 +1,30 @@
 //! Тесты вычисления пользовательских свойств (`compute`/`substitute`) без
 //! отрисовки: экраны в именах, общие CSS-слова через `var()`, `@property`.
 
-use super::super::parse_decls;
+use super::super::{VarMap, parse_decls};
 use super::{compute, has_var, substitute};
 use std::collections::HashMap;
 
+/// Custom-property declarations of a block as a substitution map.
+fn vars(css: &str) -> VarMap {
+    parse_decls(css)
+        .iter()
+        .map(|d| (d.name.clone(), d.value.clone()))
+        .collect()
+}
+
 #[test]
 fn variable_names_are_not_unescaped_twice() {
-    let raw = parse_decls(r"--a\\31: green; --b: var(--a\\31)");
+    let raw = vars(r"--a\\31: green; --b: var(--a\\31)");
     let values = compute(&raw, &HashMap::new(), &HashMap::new(), |_, _| true);
     assert_eq!(values["--b"].trim(), "green");
 }
 
 #[test]
 fn substituted_wide_keywords_apply_to_the_custom_property() {
-    let parent = parse_decls("--a: green");
+    let parent = vars("--a: green");
     let values = compute(
-        &parse_decls("--a: var(--missing,unset)"),
+        &vars("--a: var(--missing,unset)"),
         &parent,
         &HashMap::new(),
         |_, _| true,
@@ -29,7 +37,7 @@ fn substituted_wide_keywords_apply_to_the_custom_property() {
     };
     let registered = HashMap::from([("--a".to_string(), reg)]);
     let values = compute(
-        &parse_decls("--a: var(--missing,initial)"),
+        &vars("--a: var(--missing,initial)"),
         &parent,
         &registered,
         |_, _| true,
@@ -40,7 +48,7 @@ fn substituted_wide_keywords_apply_to_the_custom_property() {
 #[test]
 fn inherited_variables_are_frozen_before_child_overrides() {
     let parent = compute(
-        &parse_decls("--a: green; --b: var(--a)"),
+        &vars("--a: green; --b: var(--a)"),
         &HashMap::new(),
         &HashMap::new(),
         |_, _| true,
@@ -54,7 +62,7 @@ fn inherited_variables_are_frozen_before_child_overrides() {
 #[test]
 fn cycles_invalidate_participants_but_dependents_can_use_fallbacks() {
     let values = compute(
-        &parse_decls("--a: var(--b,red); --b: var(--a,red); --c: var(--a,green)"),
+        &vars("--a: var(--b,red); --b: var(--a,red); --c: var(--a,green)"),
         &HashMap::new(),
         &HashMap::new(),
         |_, _| true,
@@ -67,7 +75,7 @@ fn cycles_invalidate_participants_but_dependents_can_use_fallbacks() {
 #[test]
 fn unused_fallbacks_do_not_create_cycles() {
     let values = compute(
-        &parse_decls("--a: green; --b: var(--a,var(--b))"),
+        &vars("--a: green; --b: var(--a,var(--b))"),
         &HashMap::new(),
         &HashMap::new(),
         |_, _| true,
@@ -104,9 +112,9 @@ fn universal_registrations_keep_failed_substitutions_invalid() {
         initial: Some("green".into()),
     };
     let registered = HashMap::from([("--a".to_string(), reg)]);
-    let parent = parse_decls("--a: red");
+    let parent = vars("--a: red");
     for value in ["--a: var(--missing)", "--a: var(--a,blue)"] {
-        let values = compute(&parse_decls(value), &parent, &registered, |_, _| true);
+        let values = compute(&vars(value), &parent, &registered, |_, _| true);
         assert!(!values.contains_key("--a"));
     }
 }

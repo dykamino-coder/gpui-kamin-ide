@@ -13,7 +13,7 @@ use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, Rule, parse_decls};
+use crate::style::css::{DeclBlock, Rule, VarMap, parse_decls};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
@@ -27,14 +27,14 @@ pub(super) fn cascade_element(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],
-    inherited_vars: &Decls,
+    inherited_vars: &VarMap,
     path: &[Ancestor],
     spot: Spot,
     sibs: Sibs,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> (
     Computed,
-    Decls,
+    VarMap,
     crate::style::values::value::Scheme,
     Option<Rc<crate::dom::shadow::Shadow>>,
 ) {
@@ -53,7 +53,7 @@ pub(super) fn cascade_element(
         me.target_current = true;
     }
     let vars = inherited_vars;
-    let inline_decls: Decls = attrs
+    let inline_decls: DeclBlock = attrs
         .iter()
         .find(|(k, _)| k == "style")
         .map(|(_, v)| parse_decls(v))
@@ -114,12 +114,12 @@ pub(super) fn cascade_element(
         });
         let mut last: Option<String> = None;
         for rule in by_cascade {
-            if let Some(v) = rule.decls.get("color-scheme") {
-                last = Some(v.clone());
+            if let Some(v) = rule.decls.last("color-scheme") {
+                last = Some(v.to_string());
             }
         }
-        if let Some(v) = inline_decls.get("color-scheme") {
-            last = Some(v.clone());
+        if let Some(v) = inline_decls.last("color-scheme") {
+            last = Some(v.to_string());
         }
         last
     };

@@ -11,12 +11,8 @@ pub(crate) struct ResourceRule {
 
 /// Resource descriptors share declaration tokenization, but do not accept priority.
 pub(crate) fn descriptor(block: &str, name: &str) -> Option<String> {
-    let declarations = super::parse_decls(block);
-    declarations
-        .get(name)?
-        .split(super::DECL_SEP)
-        .rev()
-        .find(|value| super::top_level_bang(value).is_none())
+    super::parse_decls(block)
+        .descriptor(name)
         .map(str::to_string)
 }
 

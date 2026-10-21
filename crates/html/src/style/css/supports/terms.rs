@@ -184,36 +184,14 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx, vcx: ValueCx<'_>) 
         }
         // Пометка важности к ПОДДЕРЖКЕ отношения не имеет и обязана быть
         // допустима (css-conditional-3 §4: «Property declarations in an
-        // @supports rule can have !important specified»). `parse_decls`
-        // оставляет её в значении для каскада — здесь она мешает разобрать
-        // само значение (`css-supports-004`, `at-supports-007`).
-        let clean: crate::style::css::Decls = decls
-            .iter()
-            .map(|(k, v)| {
-                if k == ORDER_KEY {
-                    return (k.clone(), v.clone());
-                }
-                let parts: Vec<&str> = v
-                    .split(DECL_SEP)
-                    .map(|part| match top_level_bang(part) {
-                        Some(at) => part[..at].trim(),
-                        None => part,
-                    })
-                    .collect();
-                (k.clone(), parts.join(&DECL_SEP.to_string()))
-            })
-            .collect();
+        // @supports rule can have !important specified»): значение
+        // объявления хранится без неё (`css-supports-004`, `at-supports-007`).
         // CSS Conditional 3 §6.1 tests whether the declaration is accepted,
         // independently of its resulting value or cascade bookkeeping.
-        let accepted = clean
-            .iter()
-            .filter(|(key, _)| key.as_str() != ORDER_KEY)
-            .any(|(key, value)| {
-                value.split(DECL_SEP).any(|part| {
-                    crate::style::computed::Computed::declaration_result(key, part, vcx)
-                        == crate::style::computed::ParseResult::Accepted
-                })
-            });
+        let accepted = decls.iter().any(|d| {
+            crate::style::computed::Computed::declaration_result(&d.name, &d.value, vcx)
+                == crate::style::computed::ParseResult::Accepted
+        });
         return if accepted {
             SupTri::True
         } else {
