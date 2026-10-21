@@ -72,9 +72,13 @@ mod tests {
     #[test]
     fn f01_escaped_control_selector_in_document_does_not_panic() {
         let r = std::panic::catch_unwind(|| {
-            crate::document::Document::new("<style>\\1 {color:red}</style><div id=d>x</div>", "")
-                .nodes()
-                .len()
+            crate::document::Document::builder(
+                "<style>\\1 {color:red}</style><div id=d>x</div>",
+                "",
+            )
+            .build()
+            .nodes()
+            .len()
         });
         assert!(r.is_ok(), "Document::new паникует на селекторе `\\1`");
     }
