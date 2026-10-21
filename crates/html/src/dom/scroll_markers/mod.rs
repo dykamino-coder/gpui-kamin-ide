@@ -161,12 +161,12 @@ pub(super) fn scroll_marker_pass(
             || style.contain_paint == Some(true);
         collect_scroll_markers(children, abs_ok, fixed_ok, &mut markers);
     }
-    let mut matched: Vec<&Rule> = rules
+    let matched: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref() == Some("scroll-marker-group"))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
         .collect();
-    let mut gstyle = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
+    let mut gstyle = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     if gstyle.display == Some(Display::None) {
         return out;
     }

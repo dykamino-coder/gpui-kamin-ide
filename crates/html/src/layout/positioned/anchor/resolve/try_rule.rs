@@ -1,9 +1,10 @@
 //! Наложение объявлений правила `@position-try` на стиль кандидата.
 
 use crate::document::state::ValueCx;
+use crate::style::cascade::map::CascadeMap;
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, VarMap};
+use crate::style::css::{DeclBlock, Origin, VarMap};
 
 /// «Accepted @position-try properties» (css-anchor-position-1
 /// §fallback-rule): вставки, поля, размеры, самовыравнивание,
@@ -51,18 +52,19 @@ const ACCEPTED: &[&str] = &[
     "position-area",
 ];
 
-/// Объявления правила накладываются тем же проходом каскада, что и обычные
-/// правила (`apply_pass`: порядок «сокращение, затем длинные свойства»,
-/// детерминированный). Неподходящие свойства отбрасываются; `!important`
-/// внутри правила делает объявление недействительным (§fallback-rule), и
-/// проход обычных объявлений его не берёт.
+/// Объявления правила — источник происхождения `Try` (css-anchor-position-1
+/// §fallback-rule: выше автора, ниже анимаций), накладываются тем же
+/// применением карты каскада, что и правила. Неподходящие свойства
+/// отбрасываются; `!important` внутри правила делает объявление
+/// недействительным.
 pub(crate) fn apply_try_rule(c: &mut Computed, decls: &DeclBlock, vcx: ValueCx<'_>) {
     let accepted: DeclBlock = decls
         .iter()
-        .filter(|d| ACCEPTED.contains(&d.name.as_str()))
+        .filter(|d| ACCEPTED.contains(&d.name.as_str()) && !d.important)
         .cloned()
         .collect();
-    c.apply_pass(&accepted, &VarMap::default(), false, CascadeCx::NONE, vcx);
+    let map = CascadeMap::single(&accepted, Origin::Try);
+    c.apply_map(&map, &VarMap::default(), CascadeCx::NONE, vcx);
 }
 
 #[cfg(test)]

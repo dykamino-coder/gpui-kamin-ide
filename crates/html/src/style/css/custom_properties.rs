@@ -5,56 +5,31 @@
 //! зарегистрированных `@property` — проверка синтаксиса и запасное
 //! начальное/унаследованное значение.
 
-use super::{DeclBlock, Registered, Rule, VarMap};
+use super::{Registered, VarMap};
+use crate::style::cascade::map::{CascadeMap, Pick};
 use std::collections::HashMap;
 
-pub(crate) fn cascade(
-    matched: &[&Rule],
-    inline: &DeclBlock,
+/// Пользовательские свойства элемента по его карте каскада.
+pub(crate) fn cascade_map(
+    map: &CascadeMap<'_>,
     parent: &VarMap,
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
 ) -> VarMap {
+    // Тот же ключ каскада и те же откаты, что у обычных свойств
+    // (css-cascade-5 §6.2, §7.2–7.3; CSS Variables §2): важное агента
+    // старше встроенного авторского, `revert`/`revert-layer` откатывают по
+    // истории кандидатов, откат без цели — `unset`.
     let mut selected = VarMap::new();
-    for important in [false, true] {
-        let mut ordered = matched.to_vec();
-        if important {
-            ordered.sort_by(|a, b| {
-                (
-                    std::cmp::Reverse(a.origin),
-                    std::cmp::Reverse(&a.layer),
-                    a.sel.specificity(),
-                    a.order,
-                )
-                    .cmp(&(
-                        std::cmp::Reverse(b.origin),
-                        std::cmp::Reverse(&b.layer),
-                        b.sel.specificity(),
-                        b.order,
-                    ))
-            });
-        } else {
-            ordered.sort_by(|a, b| {
-                (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
-                    b.origin,
-                    &b.layer,
-                    b.sel.specificity(),
-                    b.order,
-                ))
-            });
-        }
-        let mut inline_done = false;
-        for rule in ordered {
-            // Important UA declarations outrank author inline declarations
-            // (CSS Cascade §6.2); normal inline declarations still come last.
-            if important && rule.origin == 0 && !inline_done {
-                select(&mut selected, inline, important);
-                inline_done = true;
+    for name in map.names().iter().filter(|k| k.starts_with("--")) {
+        match map.picks(name).next() {
+            Some(Pick::Value(c, _)) => {
+                selected.insert(name.to_string(), c.decl.value.clone());
             }
-            select(&mut selected, &rule.decls, important);
-        }
-        if !inline_done {
-            select(&mut selected, inline, important);
+            Some(Pick::Unset(_)) => {
+                selected.insert(name.to_string(), "unset".into());
+            }
+            None => {}
         }
     }
     let mut result = parent.clone();
@@ -116,16 +91,6 @@ pub(crate) fn cascade(
     result
 }
 
-/// Объявления `--*` блока нужной важности по порядку записи: последнее
-/// побеждает.
-fn select(selected: &mut VarMap, decls: &DeclBlock, important: bool) {
-    for d in decls {
-        if d.name.starts_with("--") && d.important == important {
-            selected.insert(d.name.clone(), d.value.clone());
-        }
-    }
-}
-
 pub(super) fn keyword(
     value: &str,
     parent: Option<&str>,
@@ -145,8 +110,25 @@ pub(super) fn keyword(
 #[cfg(test)]
 mod tests {
     use super::super::{DeclBlock, Rule, Selector, VarMap, parse_decls};
-    use super::{cascade, keyword};
+    use super::{cascade_map, keyword};
+    use crate::style::cascade::map::CascadeMap;
+    use crate::style::css::Registered;
     use std::collections::HashMap;
+
+    fn cascade(
+        matched: &[&Rule],
+        inline: &DeclBlock,
+        parent: &VarMap,
+        registered: &HashMap<String, Registered>,
+        accepts: impl Fn(&str, &str) -> bool,
+    ) -> VarMap {
+        cascade_map(
+            &CascadeMap::collect(matched, inline),
+            parent,
+            registered,
+            accepts,
+        )
+    }
 
     #[test]
     fn repeated_declarations_keep_priority_and_literal_bangs() {
@@ -183,7 +165,7 @@ mod tests {
             sel: Selector::parse("p").unwrap(),
             decls: parse_decls(value),
             order,
-            origin: 1,
+            origin: super::super::Origin::Author,
             layer: vec![u32::MAX],
         };
         let first = rule("--a: green !important", 0);
