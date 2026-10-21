@@ -44,6 +44,7 @@ export interface ConnectionState {
   revision: number
   sessionId?: string
   error?: string
+  resumeNotFound?: boolean
   /** Epoch ms of the scheduled reconnect. The UI counts down to it, which a
    *  message baked at schedule time ("in 8s") cannot do — that number is stale
    *  the moment it is written, so a user watching a long backoff could not tell
@@ -71,6 +72,7 @@ export interface TabInfo {
   connectionRevision: number
   /** Latest connection/session failure surfaced in the status tooltip. */
   error?: string
+  resumeNotFound?: boolean
   /** Mirrored from the tab's ConnectionState so the header can count down to a
    *  pending reconnect (see ConnectionStatusBadge). */
   nextRetryAt?: number
@@ -287,6 +289,8 @@ export interface KaminBridgeApi {
   closeTab(tabId: string): void
   disconnectTab(tabId: string): void
   reconnectTab(tabId: string): void
+  chooseNewConversation(tabId: string): void
+  retryStoredConversation(tabId: string): void
   switchTab(tabId: string): void
   listTabs(): Promise<TabInfo[]>
   getActiveTab(): Promise<string | null>

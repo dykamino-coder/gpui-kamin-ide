@@ -10,6 +10,7 @@ import fs from 'fs'
 import fsp from 'fs/promises'
 import path from 'path'
 import { subagentTranscriptPath } from './subagent-transcript-path'
+import { ResumeNotFoundError } from './session-resume-not-found'
 import { SessionAdmissionError } from './session-admission'
 import { rememberModelSelection } from './model-selection'
 import { armSwitchConfirm, effortCommand, isEffortLevel, isSafeModelId, modelCommand } from './live-switch'
@@ -488,6 +489,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 cols: msg.cols,
                 rows: msg.rows,
                 resumeConversationId: msg.conversationId,
+                noSpawnOnNotFound: msg.noSpawnOnNotFound === true,
                 // A resumed session respawns the CLI, so it must carry the
                 // prompt too — otherwise the instructions only ever applied to
                 // brand-new sessions.
@@ -568,6 +570,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             } catch (err) {
               if (!ownsStartup(operation)) return
               const errMsg = err instanceof Error ? err.message : String(err)
+              if (err instanceof ResumeNotFoundError) {
+                ws.send(JSON.stringify({ type: 'session:resume-not-found' }))
+                return
+              }
               errorLog('Failed to resume session', { error: errMsg })
               sendError(
                 ws,

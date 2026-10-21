@@ -517,6 +517,7 @@ export class TabManager {
       connectionAuthoritySequence: connection.authoritySequence,
       connectionRevision: connection.revision,
       error: connection.error,
+      resumeNotFound: connection.resumeNotFound,
       nextRetryAt: connection.nextRetryAt,
       retryAttempt: connection.retryAttempt,
       effort: tab.effort,
