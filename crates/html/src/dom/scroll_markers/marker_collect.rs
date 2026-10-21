@@ -74,7 +74,7 @@ pub(super) fn collect_scroll_markers(
         if nested || e.style.display == Some(Display::None) {
             continue;
         }
-        let abs2 = abs_ok || crate::text::inline::establishes_cb(&e.style);
+        let abs2 = abs_ok || crate::style::computed::box_predicates::establishes_cb(&e.style);
         let fixed2 = fixed_ok
             || e.style.transform.is_some()
             || e.style.contain_layout == Some(true)

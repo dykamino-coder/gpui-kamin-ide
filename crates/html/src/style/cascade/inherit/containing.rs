@@ -11,7 +11,7 @@ pub(super) fn inherit_containing(
     vcx: ValueCx<'_>,
 ) {
     c.first_letter_excluded = own.first_letter_excluded || parent.first_letter_excluded;
-    bidi_controls::resolve(parent, c);
+    resolve_bidi_inheritance(parent, c);
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
     c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);

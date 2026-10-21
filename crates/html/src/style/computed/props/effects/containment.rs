@@ -21,7 +21,7 @@ impl Computed {
                 // одной строчной оси. Обособления РАСКЛАДКИ в этом списке НЕТ,
                 // и ставить его нельзя: у нас `contain_layout` делает элемент
                 // содержащим блоком для `absolute` и `fixed`
-                // (`inline::establishes_cb`, `style::cascade::inherit`), а корпус
+                // (`box_predicates::establishes_cb`, `style::cascade::inherit`), а корпус
                 // требует обратного — `no-layout-containment-abspos`,
                 // `-fixedpos`, `-baseline` (все 0.00) проверяют, что абсолют,
                 // `fixed` и базовая линия проходят СКВОЗЬ контейнер.

@@ -155,7 +155,7 @@ pub(super) fn scroll_marker_pass(
     }
     let mut markers = vec![];
     {
-        let abs_ok = crate::text::inline::establishes_cb(style);
+        let abs_ok = crate::style::computed::box_predicates::establishes_cb(style);
         let fixed_ok = style.transform.is_some()
             || style.contain_layout == Some(true)
             || style.contain_paint == Some(true);

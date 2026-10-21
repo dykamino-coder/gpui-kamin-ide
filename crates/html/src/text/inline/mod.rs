@@ -27,10 +27,9 @@ mod first_line;
 pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
+pub(crate) use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
 pub use crate::text::inline::collapse::collapse_across_pieces;
 pub(crate) use crate::text::inline::containing_block::InlineCbOffer;
-pub(crate) use crate::text::inline::containing_block::backdrop_root;
-pub(crate) use crate::text::inline::containing_block::establishes_cb;
 use crate::text::inline::containing_block::mark_inline_cb;
 pub use crate::text::inline::first_line::style_first_line;
 
