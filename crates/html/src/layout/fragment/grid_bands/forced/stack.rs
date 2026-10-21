@@ -134,10 +134,7 @@ pub(crate) fn grow_grid_track(c: &mut Element, at: f32, grow: f32) -> bool {
     let Some(bands) = grid_px_row_bands(&c.style) else {
         return false;
     };
-    let px_of = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => *v,
-        _ => 0.0,
-    };
+    let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
     let top = px_of(&c.style.padding.top) + px_of(&c.style.borders().top);
     let Some(i) = bands.iter().position(|b| (top + b.0 - at).abs() < 0.01) else {
         return false;
