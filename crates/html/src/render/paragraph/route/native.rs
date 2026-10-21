@@ -1,8 +1,9 @@
 //! Построение абзаца с собственной раскладкой строк.
 
-use super::{paragraph_spans, rotate_rel_spans};
+use super::spans::{paragraph_spans, rotate_rel_spans};
+use super::{LineAtoms, NativeRequest};
 use crate::layout::options::{RenderOpts, own_size};
-use crate::render::{native_paragraph_route, paragraph::metrics::flow_metrics};
+use crate::render::paragraph::metrics::flow_metrics;
 use crate::style::{computed::Computed, values::value::Len};
 use crate::text::{
     fonts::style_font::measure_font, inline, metrics, paragraph::text_id::text_id,
@@ -16,7 +17,7 @@ use gpui::{AnyElement, IntoElement, SharedString};
 pub(crate) fn native_paragraph(
     inherited: &Computed,
     opts: &RenderOpts,
-    native_request: Option<&native_paragraph_route::Request<'_>>,
+    native_request: Option<&NativeRequest<'_>>,
     native: bool,
     selectable: bool,
     text: String,
@@ -29,12 +30,7 @@ pub(crate) fn native_paragraph(
     indent: crate::text::paragraph::Indent,
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
-    line_atoms: Vec<(
-        usize,
-        AnyElement,
-        crate::text::paragraph::AtomAlign,
-        crate::text::paragraph::RubyExtents,
-    )>,
+    line_atoms: LineAtoms,
 ) -> AnyElement {
     let inherited = if native {
         native_request.unwrap().style
@@ -223,7 +219,7 @@ pub(crate) fn native_paragraph(
         opts.frag.watch.as_ref().map(|w| w.flow.clone()),
         crate::layout::fragment::types::StackAxis::of(inherited.wm()),
     );
-    let para = super::super::first_line_box::configure(para, inherited, opts);
+    let para = crate::render::paragraph::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
         para.selectable(id, opts.selection_color())
     } else {

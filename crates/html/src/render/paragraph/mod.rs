@@ -2,8 +2,7 @@
 
 use crate::layout::options::RenderOpts;
 use crate::render::first_line_text;
-use crate::render::native_paragraph_route;
-use crate::render::paragraph::pieces::paragraph_pieces_routed;
+use crate::render::paragraph::route::{NativeRequest, paragraph_pieces_routed};
 use crate::text::shadow_text::normalize_for_shadow;
 mod vertical;
 pub(super) use vertical::vertical_paragraph;
@@ -24,7 +23,7 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(crate) mod atom_piece;
-pub(super) mod pieces;
+pub(crate) mod route;
 
 pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)
@@ -34,7 +33,7 @@ fn paragraph_routed(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
-    native_request: Option<&native_paragraph_route::Request<'_>>,
+    native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
     // Vertical paragraphs choose the physical text route after inline collection.
     if inherited.wm().vertical() {

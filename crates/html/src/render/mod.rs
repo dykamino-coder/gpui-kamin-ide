@@ -4,8 +4,6 @@
 //! собираются в один абзац (`paragraph`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
-mod paragraph_route;
-
 use crate::layout::order::unkeyed_positions;
 
 use crate::dom::Node;
@@ -15,7 +13,6 @@ mod first_letter_descendants;
 mod first_letter_scope;
 pub(super) mod first_line_descendants;
 mod first_line_text;
-pub(super) mod native_paragraph_route;
 
 pub use crate::layout::page::names::{PageMarginDecls, PageMarginDeclsFn, first_page_name};
 pub use crate::layout::page::paged::{render_paged, render_paged_select};

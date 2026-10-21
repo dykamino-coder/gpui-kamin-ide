@@ -2,7 +2,7 @@
 
 use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
-use crate::render::native_paragraph_route;
+use crate::render::paragraph::route::NativeRequest;
 use crate::text::fonts::style_font::measure_font;
 use crate::text::paragraph::text_id::text_id;
 mod upright;
@@ -22,7 +22,7 @@ pub(crate) fn vertical_paragraph(
     nodes: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
-    _native_request: Option<&native_paragraph_route::Request<'_>>,
+    _native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     // `text-orientation: upright`: глифы СТОЯТ и идут сверху вниз —
@@ -102,7 +102,7 @@ pub(crate) fn vertical_paragraph(
     flow.ortho_limit = Some(fallback);
     flow.orthogonal_inline = native_vertical::constraint(inherited, fallback);
     let built = std::cell::Cell::new(false);
-    let request = native_paragraph_route::Request {
+    let request = NativeRequest {
         style: &flow,
         built: &built,
     };

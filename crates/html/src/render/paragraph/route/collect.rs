@@ -1,26 +1,17 @@
-//! Сборка строчных кусков абзаца (paragraph_pieces_routed).
+//! Сбор строчных кусков абзаца: атомы с выравниванием по строке, схлопывание и
+//! срез пробелов, стили первой строки, отступ первой строки и распорки атомов,
+//! поставленных в строку; затем выбор пути (`choose::route_pieces`).
 
+use super::choose::route_pieces;
+use super::styling::style_pieces;
+use super::{LineAtoms, NativeRequest};
+use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::render::native_paragraph_route;
 use crate::render::paragraph::alignment::atom_line_align;
 use crate::render::paragraph::atom_piece::AtomRuby;
 use crate::render::paragraph::atom_piece::atom_piece;
 use crate::render::paragraph::edges::has_flow_text;
 use crate::render::paragraph::metrics::atoms_fit_line;
-mod styling;
-pub(super) use styling::style_pieces;
-
-mod routing;
-pub(super) use routing::route_pieces;
-
-mod native;
-pub(super) use native::native_paragraph;
-
-mod spans;
-pub(super) use spans::paragraph_spans;
-use spans::rotate_rel_spans;
-
-use crate::dom::{Element, Node};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -33,7 +24,7 @@ pub(crate) fn paragraph_pieces_routed(
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,
-    native_request: Option<&native_paragraph_route::Request<'_>>,
+    native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
@@ -192,12 +183,7 @@ pub(crate) fn paragraph_pieces_routed(
     // Прежде абзац с атомом уходил в гибкий ряд слов (`as_wrapped_row`): одна
     // высота строки на ряд, базовая линия текста taffy не видна, `top`/
     // `bottom`/`text-top` не выражались.
-    let mut line_atoms: Vec<(
-        usize,
-        AnyElement,
-        crate::text::paragraph::AtomAlign,
-        crate::text::paragraph::RubyExtents,
-    )> = Vec::new();
+    let mut line_atoms: LineAtoms = Vec::new();
     let atom_count = pieces
         .iter()
         .filter(|p| matches!(p, inline::Piece::Atom(_)))

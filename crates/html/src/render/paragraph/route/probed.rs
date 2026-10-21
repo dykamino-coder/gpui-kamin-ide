@@ -1,9 +1,9 @@
 //! Сборка абзаца с пробами и слоями inline-окраски.
 
-use super::paragraph::paragraph;
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::paint::decorations::text_shadows::with_text_shadow;
+use crate::render::paragraph::paragraph;
 use crate::style::computed::Computed;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -17,11 +17,11 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// позиционированных (шаг 8). Обёртка раскладку не меняет: при открытом
 /// собирателе краски (`gpui::PaintCollect`) абзац уходит в него, иначе
 /// рисуется на месте (`gpui::PaintInline`).
-pub(super) fn paint_inline_step7(para: AnyElement) -> AnyElement {
+pub(crate) fn paint_inline_step7(para: AnyElement) -> AnyElement {
     gpui::PaintInline::new(para).into_any_element()
 }
 
-pub(super) fn paragraph_probed(
+pub(crate) fn paragraph_probed(
     taken: &[Node],
     inherited: &Computed,
     opts: &RenderOpts,
