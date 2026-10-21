@@ -1,4 +1,5 @@
-//! Keep calc-size basis and calculation together across cascade and inheritance.
+//! Разбор `calc-size()` в `width`/`height`/`min-*`/`max-*`: базис и выражение хранятся
+//! вместе, чтобы пройти каскад и наследование одной парой.
 
 use crate::style::computed::*;
 

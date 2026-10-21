@@ -1,4 +1,6 @@
-//! Pass calc-size metadata without changing ordinary sizing keywords.
+//! Перевод `calc-size()` в стиль коробки GPUI: выражения размеров, их базис
+//! (`CalcSizeBasis` → `CssSizingKeyword`) и бокс отсчёта; обычные ключевые слова
+//! размеров этот этап не трогает.
 
 use super::*;
 use crate::style::computed::CalcSizeBasis;
