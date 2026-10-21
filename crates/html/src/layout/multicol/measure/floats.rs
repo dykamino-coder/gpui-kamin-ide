@@ -1,7 +1,7 @@
 //! Подготовка полноширинных плавающих детей к стопке колонок.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::render::is_blank;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;

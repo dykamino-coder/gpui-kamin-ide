@@ -1,21 +1,14 @@
 //! Выбор многоколоночного маршрута с сохранением ранних возвратов и состояния коробки.
 
-use crate::dom::whitespace::is_blank;
 use crate::layout::options::RenderOpts;
-mod rows;
-pub(super) use rows::RowPlan;
-pub(super) use rows::row_plan;
-
 mod stack;
 pub(super) use stack::stack_box;
 
 use crate::dom::{Element, Node};
-use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::multicol::container::multicol_spanner_segments;
+use crate::layout::multicol::measure::{RowPlan, row_plan, tail_rest_height};
 use crate::layout::multicol::spanner::{hoist_spanners, spanner_box};
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
@@ -96,51 +89,9 @@ pub(crate) fn multicol_box(
     };
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
     let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
-    // Хвостовой ряд колонок при `column-fill: auto` НЕ стоит перед
-    // спаннером, и §column-fill («content in a multi-column line that
-    // does not immediately precede a spanner») велит заполнять его
-    // подряд до высоты коробки. Сегмент ниже теряет высоту
-    // (`sub.style.height = None`) и уходил в балансировку:
-    // `no-balancing-after-column-span` — 200×50 двумя колонками
-    // вместо 100×100 одной. Высота хвоста — остаток коробки после
-    // спаннера (Blink `ConstrainColumnBlockSize`:
-    // `max -= CurrentContentBlockOffset(line_offset)`). Только когда
-    // до хвоста стоит ОДИН измеримый спаннер и больше ничего:
-    // высоту сбалансированных рядов до спаннера здесь не знаем.
-    // То же при балансе: колонки хвоста не выше остатка коробки, лишние
-    // переполняют вбок (Blink `ConstrainColumnBlockSize` действует и на
-    // балансируемый ряд; `multicol-span-all-012`: 120 в трёх колонках по 30
-    // после спаннера 70 в коробке 100).
-    let cap_only = rows.is_none_or(|r| r.cap);
-    let rest_h: Option<f32> = match (box_h, cap_only) {
-        (Some(total), true) => e.children.iter().rposition(&is_span).and_then(|j| {
-            let px = |l: &Option<Len>| match l {
-                None => Some(0.0),
-                Some(Len::Px(v)) => Some(*v),
-                _ => None,
-            };
-            let mut used = 0.0f32;
-            let mut spans = 0usize;
-            for n in &e.children[..=j] {
-                if is_blank(n) {
-                    continue;
-                }
-                let Node::Element(sp) = n else {
-                    return None;
-                };
-                if !is_span(n) {
-                    return None;
-                }
-                spans += 1;
-                let st = inherit(&merged, &sp.style, vcx);
-                used += shape_full(sp, 4, ShapeCx::COLUMNS, vcx)?.height
-                    + px(&st.margin.top)?
-                    + px(&st.margin.bottom)?;
-            }
-            (spans == 1).then(|| (total - used).max(0.0))
-        }),
-        _ => None,
-    };
+    // Высота хвостового ряда после единственного спаннера
+    // (`tail_rest_height`, css-multicol-1 §column-fill).
+    let rest_h: Option<f32> = tail_rest_height(e, &merged, box_h, rows, vcx);
     if e.children.iter().any(&is_span) && !unified {
         return Err(multicol_spanner_segments(
             d, e, merged, opts, col_w_px, want, lone_span, rest_h, span_prev, seg_open, is_span,
