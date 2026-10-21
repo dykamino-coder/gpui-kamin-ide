@@ -24,17 +24,29 @@ impl ColumnStack {
                     window,
                     cx,
                 );
-                c.measure_flow(sz, self.axis, window);
                 let h = f32::from(sz.height);
                 c.h = h;
                 // Видимое переполнение потомков — параллельный поток
                 // (css-break-3 §3): продолжается в следующих колонках само.
                 c.over = h.max(f32::from(content.height));
+                c.measure_breaks(sz, self.axis, window);
                 // Целый вложенный многоколоночник выше колонки — не монолит:
                 // его режет край внешней колонки (`StackChild::fit_whole`).
                 if c.fit_whole {
                     c.monolith = self.fixed_height.is_none_or(|f| h <= f + 0.01);
                 }
+            } else if let Some(w) = c.breaks_w {
+                // Точки разрыва блочной стопки — по раскладке главной копии
+                // в колонку (`StackChild::breaks_w`).
+                let sz = c.el.layout_as_root(
+                    gpui::size(
+                        gpui::AvailableSpace::Definite(gpui::px(w)),
+                        gpui::AvailableSpace::MaxContent,
+                    ),
+                    window,
+                    cx,
+                );
+                c.replace_breaks(sz, self.axis, window);
             }
         }
         self.paginate_children(window, cx);

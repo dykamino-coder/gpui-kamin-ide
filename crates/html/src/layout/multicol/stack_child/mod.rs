@@ -15,6 +15,7 @@ mod finish;
 use finish::{finish_stack_child, nest_row_of};
 mod cuts;
 use cuts::{copy_cuts_and_height, stack_child_of};
+mod breaks;
 mod build;
 mod fixed;
 mod whole;
@@ -180,7 +181,8 @@ pub(super) fn multicol_stack_child(
     // `with_content_mask`) режет их вместе с
     // содержимым — вид `slice` css-break-3 §4.
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let watched = crate::layout::fragment::paginate::watch::Watched::new(&[]);
+    let (own, line_w) = (dec.is_some() || whole || nest_row.is_some(), line_col_w);
+    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, line_w, own);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
@@ -232,7 +234,8 @@ pub(super) fn multicol_stack_child(
         opts.cx.vcx(),
     );
     child.paginate = paginate;
-    child.flow = Some(watched.flow.clone());
+    child.watched = Some(watched);
+    child.breaks_w = breaks_w.filter(|_| child.measure.is_none() && !child.span);
     // CSS 2.1 §10.3.3: у переопределённых полей отбрасывается конец по
     // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
     // левого края (Blink `ComputeMarginsFor` по стилю контейнера).

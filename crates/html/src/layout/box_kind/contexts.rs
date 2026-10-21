@@ -30,3 +30,15 @@ pub(crate) fn own_context(e: &Element) -> bool {
         || ((e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true))
             && !multicol_container(&e.style))
 }
+
+/// Блочный контейнер — корень своего блочного контекста: поля детей через
+/// его край не схлопываются (CSS 2.1 §8.3.1; `fieldset` — HTML §15.3.13
+/// «establishes a new block formatting context»).
+pub(crate) fn bfc_root(c: &Element) -> bool {
+    use crate::style::computed::Display;
+    matches!(
+        c.style.display,
+        None | Some(Display::Block) | Some(Display::ListItem)
+    ) && !c.inline
+        && (crate::layout::box_kind::own_context(c) || c.tag == "fieldset")
+}

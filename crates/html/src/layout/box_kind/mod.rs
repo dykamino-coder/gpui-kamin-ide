@@ -8,7 +8,7 @@ pub(crate) use line_boxes::phantom_inline;
 pub(crate) use line_boxes::replaced_tag;
 
 mod contexts;
-pub(crate) use contexts::own_context;
+pub(crate) use contexts::{bfc_root, own_context};
 
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};
