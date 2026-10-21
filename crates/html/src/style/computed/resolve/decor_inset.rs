@@ -64,26 +64,11 @@ impl Computed {
     /// Inline collection has no general viewport-resolution pass. Only the
     /// decoration's outstanding viewport terms are resolved there.
     pub(crate) fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
-        let insets = self.viewport_unit_insets.unwrap_or_default();
-        let viewport = (
-            (viewport.0 - insets[0]).max(0.0),
-            (viewport.1 - insets[1]).max(0.0),
-        );
-        let vertical = self.wm().vertical();
-        let container = Some((
-            self.cq_box.0.unwrap_or(viewport.0),
-            self.cq_box.1.unwrap_or(viewport.1),
-        ));
-        let fix = |length: &mut Option<Len>| match *length {
-            Some(Len::Vw(k)) => *length = Some(Len::Px(k * viewport.0)),
-            Some(Len::Vh(k)) => *length = Some(Len::Px(k * viewport.1)),
-            Some(Len::Calc(i)) => {
-                let mut sum = calc_get(i, vcx);
-                if sum.fold_viewport(viewport, vertical, container) {
-                    *length = sum.collapse_mixed(vcx);
-                }
+        let vp = self.viewport_cx(viewport);
+        let fix = |length: &mut Option<Len>| {
+            if let Some(v) = *length {
+                *length = Some(v.fold_viewport(vp, vcx));
             }
-            _ => {}
         };
         if let Some(Some(pair)) = &mut self.td_inset {
             for value in pair {

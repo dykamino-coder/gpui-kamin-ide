@@ -15,7 +15,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::line_shape::{inline_content, line_run_shape};
 use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::table_bands::{table_box, table_shape};
-use crate::style::computed::Display;
+use crate::style::computed::{Display, LenCx};
 use crate::style::values::value::Len;
 mod kids;
 use kids::{kid_break_flags, shape_from_kids};
@@ -51,13 +51,15 @@ pub(super) fn shape_contents(
     // Кадр меры строк (наследование и ширина) — только при `with_lines`.
     let lines = crate::layout::fragment::LineCx::child(c, vcx);
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
-    let px_or = |l: &Option<Len>, strict: bool| match l {
-        None => Some(0.0),
-        Some(Len::Px(v)) => Some(*v),
-        Some(Len::Vw(k)) if cx.viewport.is_some() => Some(*k * cx.viewport.unwrap().0),
-        Some(Len::Vh(k)) if cx.viewport.is_some() => Some(*k * cx.viewport.unwrap().1),
-        Some(_) if !strict => Some(0.0),
-        _ => None,
+    // Нет значения — ноль; нерешённое: `strict` (высота) — непроходимо,
+    // иначе (поля, отступы, рамки) ничего не добавляет.
+    let lens = LenCx::viewport(cx.viewport);
+    let px_or = |l: &Option<Len>, strict: bool| {
+        if strict {
+            lens.px_missing_zero(*l, vcx)
+        } else {
+            Some(lens.px_lossy_zero(*l, vcx))
+        }
     };
     // Коробка из одних флоатов (`float_only_box`): мера — высота их ряда,
     // точек разреза внутри нет (флоаты пустые), рамка сверху — монолит, как

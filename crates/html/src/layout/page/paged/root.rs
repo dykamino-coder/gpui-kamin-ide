@@ -45,10 +45,7 @@ pub(super) fn resolve_root_page(
             break;
         }
         let e = (*e).clone();
-        let side = |l: &Option<Len>| match l {
-            Some(Len::Px(v)) => *v,
-            _ => 0.0,
-        };
+        let side = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
         let b = e.style.borders();
         // Обёртку с видимой рамкой или своим `display` (сетка, флекс) не
         // снимаем: снятая теряла рамку и раскладку (`page-box-011-print-ref`:

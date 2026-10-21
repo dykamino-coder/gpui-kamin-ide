@@ -13,7 +13,7 @@ use crate::layout::fragment::oof_reach::Measure;
 use crate::layout::fragment::shape_contents::shape_contents;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::fragment::{Shape, ShapeCx};
-use crate::style::computed::{Computed, Overflow};
+use crate::style::computed::{Computed, LenCx, Overflow};
 use crate::style::values::value::Len;
 
 pub(crate) fn shape_full(
@@ -46,12 +46,9 @@ pub(crate) fn measure(
         return Some(m);
     }
     let shape = &mut m.shape;
-    let resolve = |value: Option<Len>| match value {
-        Some(Len::Px(v)) => v,
-        Some(Len::Vw(k)) => cx.viewport.map_or(0.0, |v| k * v.0),
-        Some(Len::Vh(k)) => cx.viewport.map_or(0.0, |v| k * v.1),
-        _ => 0.0,
-    };
+    // Рамка и отступ: нерешённое ничего не добавляет к мере.
+    let lens = LenCx::viewport(cx.viewport);
+    let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx);
     let border = element.style.borders();
     let decoration = resolve(element.style.padding.top)
         + resolve(element.style.padding.bottom)
@@ -63,6 +60,7 @@ pub(crate) fn measure(
         decoration,
         cx.viewport,
         cx.unclamped,
+        vcx,
     );
     if height < shape.height {
         shape
@@ -94,13 +92,11 @@ pub(super) fn constrain(
     decoration: f32,
     viewport: Option<(f32, f32)>,
     overflow_extent: bool,
+    vcx: ValueCx<'_>,
 ) -> f32 {
-    let resolve = |length: Option<Len>| match length {
-        Some(Len::Px(v)) => Some(v),
-        Some(Len::Vw(k)) => viewport.map(|v| k * v.0),
-        Some(Len::Vh(k)) => viewport.map(|v| k * v.1),
-        _ => None,
-    };
+    // Предел, который не решается, не ограничивает.
+    let lens = LenCx::viewport(viewport);
+    let resolve = |length: Option<Len>| lens.px_strict(length, vcx);
     let border_size = |v: f32| border_size(v, style, decoration);
     let minimum = resolve(style.min_height).map(border_size);
     let maximum = resolve(style.max_height).map(border_size);
