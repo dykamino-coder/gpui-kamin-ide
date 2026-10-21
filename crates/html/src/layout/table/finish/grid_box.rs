@@ -6,6 +6,8 @@ use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 use gpui::{ParentElement, Styled, div, px};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(super) fn table_grid_box(
     e: &Element,
@@ -103,7 +105,7 @@ pub(super) fn table_grid_box(
 }
 
 pub(super) fn paint_table_border(
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     e: &Element,
     bw: [f32; 4],
     outer_win: [f32; 4],

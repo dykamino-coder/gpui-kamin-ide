@@ -7,6 +7,8 @@ use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, Styled};
+use std::cell::RefCell;
+use std::rc::Rc;
 mod outer;
 use outer::{finish_table_outer, table_outer_box};
 mod tracks;
@@ -24,9 +26,9 @@ use captions::{collect_captions, wrap_with_captions};
 pub(super) fn table_finish(
     under: Vec<AnyElement>,
     paint_layers: bool,
-    cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
+    cell_bgs: Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     cells: Vec<AnyElement>,
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     cells_over: Vec<AnyElement>,
     e: &Element,
     inherited: &Computed,

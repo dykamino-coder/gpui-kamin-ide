@@ -8,6 +8,8 @@ use crate::layout::table::{
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::ParentElement;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 // Edge probes retain border colors, styles and widths as one record.
@@ -18,7 +20,7 @@ pub(super) fn cell_edge_probes(
     cols: u16,
     collapse_cells: bool,
     row_elements: &Vec<&Element>,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     col_rects: &[Option<crate::layout::table::paint::RowRects>],
     col_els: &Vec<Option<&Element>>,
     grp_rects: &[Option<crate::layout::table::paint::RowRects>],

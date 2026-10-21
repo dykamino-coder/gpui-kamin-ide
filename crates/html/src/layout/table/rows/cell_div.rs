@@ -8,13 +8,15 @@ use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 // The cell box consumes the border decoration record produced by preparation.
 #[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn cell_box_div(
     paint_layers: bool,
-    cell_bgs: &std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
+    cell_bgs: &Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row: &Element,
     carry: (
         f32,
