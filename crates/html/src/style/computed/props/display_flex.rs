@@ -205,6 +205,7 @@ impl Computed {
                         _ => None,
                     }
                 )
+                .filter(|_| math_layout.is_none())
                 .or(self.display);
                 self.inline_display = inline_display;
                 self.math_layout = math_layout;

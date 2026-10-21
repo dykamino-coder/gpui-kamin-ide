@@ -15,8 +15,8 @@ impl Computed {
         }
         let layers = background_layers(v);
         layers.iter().enumerate().all(|(i, value)| {
-            // Первый слой длинного свойства разбирает его типизированный обработчик.
-            if i == 0 && prop != BgListProp::Shorthand {
+            // Первый слой разбирает обработчик; url дополнительно требует полного потребления.
+            if i == 0 && !matches!(prop, BgListProp::Shorthand | BgListProp::Image) {
                 return true;
             }
             match prop {
@@ -50,7 +50,8 @@ fn image_valid(v: &str, vcx: ValueCx<'_>) -> bool {
         let args = crate::style::css::split_args(inner);
         return args.len() == 2 && args.iter().all(|a| image_valid(a.trim(), vcx));
     }
-    ImageSource::parse(v, vcx).is_some()
+    (!crate::style::css::at_url(v) || crate::style::css::skip_url(v) == v.len())
+        && ImageSource::parse(v, vcx).is_some()
 }
 
 fn size_valid(v: &str, vcx: ValueCx<'_>) -> bool {

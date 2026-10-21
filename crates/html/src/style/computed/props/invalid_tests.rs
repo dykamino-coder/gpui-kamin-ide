@@ -178,6 +178,7 @@ fn invalid_component_rejects_the_entire_shorthand() {
         ("background-repeat", "repeat, no-repeat", "space, invalid()"),
         ("background-size", "7px, 9px", "20px, invalid()"),
         ("background", "red", "url(a) invalid()"),
+        ("background-image", "url(a)", "url(b) invalid()"),
     ] {
         let mut c = Computed::default();
         c.apply_one(key, valid, st.values());
