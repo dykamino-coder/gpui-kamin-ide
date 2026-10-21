@@ -13,6 +13,7 @@
 
 mod arena;
 mod scoped;
+mod synthetic_ids;
 mod value_cx;
 
 use crate::style::css::{Decls, Media, PageRule, Registered};
@@ -31,6 +32,8 @@ pub use value_cx::{ValueCx, ValueDoc};
 /// кадра и фазы GPUI этого документа.
 #[derive(Default)]
 pub struct DocState {
+    /// Следующий ключ синтетической коробки, независимо от авторских node_id.
+    synthetic_id: RefCell<Vec<u8>>,
     /// Clamp probes and previous-frame cuts belonging to this document.
     pub(crate) clamp: std::rc::Rc<crate::text::clamp::ClampState>,
     /// Anchor geometry and fallback selection belonging to this document.
