@@ -86,6 +86,24 @@ impl Specified {
     }
 }
 
+/// Новое имя свойства для устаревшего (css-cascade-5 §2.1 «legacy name
+/// alias»: при разборе старое имя превращается в новое, и оба имени делят
+/// одно место каскада). Список — Blink `css_properties.json5` `alias_for` для
+/// свойств, чей разбор у нас одинаков под обоими именами.
+pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "-webkit-appearance" => "appearance",
+        "-webkit-background-clip" => "background-clip",
+        "-webkit-user-select" => "user-select",
+        "-webkit-mask-clip" => "mask-clip",
+        "-webkit-mask-origin" => "mask-origin",
+        "-webkit-mask-position" => "mask-position",
+        "-webkit-mask-repeat" => "mask-repeat",
+        "-webkit-mask-size" => "mask-size",
+        _ => return None,
+    })
+}
+
 /// Дописать в блок разобранное объявление `name: value`: сокращение реестра —
 /// его длинными свойствами на одном месте блока, длинное свойство реестра —
 /// только годным значением. Без документа (`vcx`) значения длинных свойств не
@@ -97,6 +115,7 @@ pub fn push_declared(
     important: bool,
     vcx: Option<ValueCx<'_>>,
 ) {
+    let name = legacy_name_alias(&name).map_or(name, str::to_string);
     let pos = out.next_pos();
     if let Some(shorthand) = ShorthandId::from_name(&name) {
         for (id, specified, text) in shorthand.expand(value, vcx).unwrap_or_default() {
