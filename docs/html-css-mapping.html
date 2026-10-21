@@ -123,6 +123,9 @@
 <main>
 <h1>HTML+CSS в GPUI — карта соответствий</h1>
 <p class="sub">Справочник по крейту <code>kamin-html</code>: что из разметки мы рисуем сами, во что оно превращается и где проходит граница возможного.</p>
+<div class="lead">
+  <p style="margin:0"><b>Что здесь актуально.</b> Источник правды о покрытии — реестр <code>crates/html/src/coverage.rs</code>: раздел «Полная таблица свойств» собирается из него скриптом <code>scripts/css_coverage_table.py</code>, разделы «Как пользоваться» и «Как устроено внутри» описывают текущий крейт. Остальные пояснительные разделы написаны по аудиту августа 2026 — до того, как движок перешёл на собственную раскладку по WPT (флоаты, многоколоночник, фрагментация, вертикальное письмо, <code>@media</code>/<code>@supports</code>, <code>calc()</code>, единицы окна, фильтры, объёмные трансформы). Их примеры и оговорки читать как историю решений, а границу возможного — по таблице и по <code>ARCHITECTURE.md</code>.</p>
+</div>
 
 <h2 class="sec" id="zachem">Зачем это нужно</h2>
 <p><b>Что это.</b> <code>kamin-html</code> — переводчик разметки в элементы интерфейса KaminIDE. Он принимает фрагмент HTML со стилями и возвращает дерево элементов GPUI — тех же самых, из которых собран весь остальной интерфейс приложения.</p>
@@ -148,15 +151,23 @@
 <p class="why">Отдельно показательно, чего в нашем CSS нет вовсе: ни одного <code>float</code>, ни одной табличной раскладки, ни одного адаптивного <code>@media</code>, ни одной множественной тени, ни <code>clip-path</code>, ни трёхмерных трансформаций. Это не случайность — современная вёрстка держится на флексе, а флекс в GPUI есть целиком.</p>
 
 <h2 class="sec" id="kak">Как пользоваться</h2>
-<p>Два вызова: разобрать и отрисовать.</p>
-<pre><code>use kamin_html::{parse, render, RenderOpts};
+<p>Два вызова: разобрать один раз, отрисовывать каждый кадр.</p>
+<pre><code>use kamin_html::{Document, RenderOpts, BROWSER_CSS};
 
-// 1. Разбор: HTML + таблица стилей приложения (тема).
-let nodes = parse(html, theme_css);
+// 1. Разбор: HTML + таблица стилей приложения (тема). `Document` живёт между
+//    кадрами; `update` пересобирает дерево только при смене разметки.
+let doc = Document::new(html, theme_css);          // чатовые умолчания тегов
+let page = Document::new(html, BROWSER_CSS);       // браузерные умолчания — для страницы
 
-// 2. Отрисовка: базовый стиль текста задаёт приложение.
-let opts = RenderOpts { text: window.text_style(), table_min_col: 80. };
-let elements = render(&nodes, &opts);
+// 2. Отрисовка: базовый стиль текста и размер окна задаёт приложение.
+let opts = RenderOpts {
+    text: window.text_style(),
+    viewport: (width, height),
+    normal_line_height: 1.31,
+    cx: Default::default(),
+    frag: Default::default(),
+};
+let elements = doc.render(&opts);
 
 // 3. Элементы вставляются как любые другие.
 div().flex().flex_col().children(elements)</code></pre>
@@ -166,15 +177,17 @@ div().flex().flex_col().children(elements)</code></pre>
 <table>
   <thead><tr><th>Шаг</th><th>Модуль</th><th>Что делает</th></tr></thead>
   <tbody>
-    <tr><td>1. Разбор разметки</td><td><code>dom.rs</code></td><td>html5ever строит дерево и чинит ошибки автора (незакрытые теги, пропущенные обёртки)</td></tr>
-    <tr><td>2. Разбор стилей</td><td><code>css.rs</code></td><td>Правила из <code>&lt;style&gt;</code> и объявления из <code>style=""</code></td></tr>
-    <tr><td>3. Каскад</td><td><code>computed.rs</code></td><td>Умолчания тега → тема → таблица документа → инлайн</td></tr>
-    <tr><td>4. Перевод стиля</td><td><code>apply.rs</code></td><td>Вычисленный стиль → вызовы GPUI</td></tr>
-    <tr><td>5. Инлайн-поток</td><td><code>inline.rs</code></td><td>Текст с вкраплениями в один блок или в гибкую строку</td></tr>
-    <tr><td>6. Сборка</td><td><code>render.rs</code></td><td>Блоки, списки, таблицы, картинки</td></tr>
+    <tr><td>1. Разбор разметки</td><td><code>dom/</code></td><td>html5ever строит дерево и чинит ошибки автора; обход <code>dom/walk</code> вешает на узлы вычисленный стиль и чинит дерево коробок (анонимные ряды таблиц, руби, сетки)</td></tr>
+    <tr><td>2. Разбор стилей</td><td><code>style/css</code></td><td>Правила из <code>&lt;style&gt;</code>, объявления из <code>style=""</code>, условные правила <code>@media</code>/<code>@supports</code>, <code>@font-face</code>, <code>@page</code></td></tr>
+    <tr><td>3. Каскад</td><td><code>style/cascade</code>, <code>style/select</code></td><td>Умолчания тега → тема → таблица документа → инлайн; наследование и <code>var()</code></td></tr>
+    <tr><td>4. Вычисленный стиль</td><td><code>style/computed</code></td><td><code>Computed</code> — одна структура с полем на свойство; её поля и есть граница охвата</td></tr>
+    <tr><td>5. Перевод стиля</td><td><code>paint/apply</code></td><td>Вычисленный стиль → стиль коробки GPUI (taffy)</td></tr>
+    <tr><td>6. Раскладка</td><td><code>layout/</code>, <code>text/</code></td><td>Блочный поток и схлопывание полей, флоаты, таблицы, многоколоночник и фрагментация, страницы, позиционирование; строчный поток, абзац и перенос строк, руби, вертикальное письмо</td></tr>
+    <tr><td>7. Покраска</td><td><code>paint/</code>, <code>svg/</code></td><td>Фон и градиенты, рамки, маски, фильтры, трансформы, контексты наложения; <code>&lt;svg&gt;</code> через resvg</td></tr>
+    <tr><td>8. Сборка</td><td><code>render/</code></td><td>Дерево узлов → элементы GPUI; <code>Document::render</code> обходит узлы и вызывает фазы</td></tr>
   </tbody>
 </table>
-<p class="why">Промежуточная структура вычисленного стиля (шаг 3) существует не для красоты: она проверяется тестами без окна и рендера, и именно её поля задают границу охвата. Есть поле — свойство поддержано; нет поля — свойство пропущено осознанно.</p>
+<p class="why">Промежуточная структура вычисленного стиля (шаг 4) существует не для красоты: она проверяется тестами без окна и рендера, и именно её поля задают границу охвата. Есть поле — свойство поддержано; нет поля — свойство пропущено осознанно. Подробнее о слоях и их зависимостях — раздел «Движок HTML/CSS: crates/html» в <code>ARCHITECTURE.md</code>.</p>
 
 <h2 class="sec" id="box">Бокс-модель</h2>
 <p><b>Что это.</b> Отступы снаружи (<code>margin</code>), рамка (<code>border</code>) и отступы внутри (<code>padding</code>) — та самая коробка, из которой собрана любая вёрстка.</p>
