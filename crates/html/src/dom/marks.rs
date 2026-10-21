@@ -14,6 +14,8 @@
 /// the default (no marks).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Marks {
+    /// Document root/body eligible for the quirks-mode block-size fill rules.
+    pub(crate) quirks_fill: bool,
     /// A column-wide float lifted into the multicol stack as a block; set by
     /// the multicol float pass, read by the stack construction.
     pub(crate) float_block: bool,

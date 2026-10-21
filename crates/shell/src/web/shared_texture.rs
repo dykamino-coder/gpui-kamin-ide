@@ -136,15 +136,13 @@ pub(crate) fn texture_for(
     }
     // Копия под захватом keyed mutex: читать общую текстуру Chromium прямо в
     // своей отрисовке нельзя — так делает и эталонный `cef-mixer`.
-    let own = super::copy_frame::copy_into_own(
-        id,
-        device.raw(),
-        windows::core::Interface::as_raw(&context),
-        &incoming.shared,
-    );
+    let context_raw = windows::core::Interface::as_raw(&context);
+    let own = super::copy_frame::copy_into_own(id, device.raw(), context_raw, &incoming.shared);
     // Жалобы слоя проверки читаем ПОСЛЕ копирования: на нём он и ругается.
     super::d3d_log::drain(device.raw());
     let own = own?;
+    // Пустую копию не видит ни один счётчик — проба (INC-2026-0073).
+    super::blank_probe::check(id, device.raw(), context_raw, &own, incoming.content);
 
     let known = SLOTS.lock().ok().and_then(|m| {
         m.get(id)

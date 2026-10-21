@@ -1,7 +1,23 @@
-//! SVG foreignObject presentation attributes mapped into the HTML cascade.
+//! SVG presentation attributes whose CSS mappings participate in our cascade.
 
 use super::hint;
 use crate::style::css::Rule;
+
+/// The experimental mapping uses an SVG number as a CSS pixel length.
+pub(super) fn path_length(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
+    if !matches!(
+        tag,
+        "path" | "rect" | "circle" | "ellipse" | "line" | "polyline" | "polygon"
+    ) {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "pathLength")?.1;
+    let number = raw.trim().parse::<f32>().ok()?;
+    if !number.is_finite() || number < 0.0 {
+        return None;
+    }
+    hint(&format!("path-length: {number}px"))
+}
 
 /// SVG 2 §6.6 presentation attributes of `<foreignObject>` that style its
 /// HTML formatting context (the box and the inherited text properties of its
