@@ -107,8 +107,6 @@ pub(super) fn shape_contents(
     let b = c.style.borders();
     let mt = px_or(&c.style.margin.top, false)?;
     let mb = px_or(&c.style.margin.bottom, false)?;
-    // `cellpadding` — только этой коробке (её кладёт `table_shape`).
-    let cell_pad = cx.cell_pad;
     // Бюджет разжатия — ОДИН на путь. Мера потока снимает обрезку заданной
     // высотой только у ВЕРХНЕЙ ограниченной коробки: по css-break-3 §3
     // вложенная ограниченная коробка заводит СВОЙ параллельный поток, и её
@@ -124,16 +122,11 @@ pub(super) fn shape_contents(
     // (`overflowed-block-with-room-after-000`: 70 > 200 > 70+60+70).
     let unclamp = cx.unclamped;
     let cx = ShapeCx {
-        cell_pad: None,
         unclamped: cx.unclamped && c.style.height.is_none(),
         ..cx
     };
-    let pad = |l: &Option<Len>| match cell_pad {
-        Some(v) if matches!(l, Some(Len::Px(p)) if *p == 1.0) => Some(v),
-        _ => px_or(l, false),
-    };
-    let top = pad(&c.style.padding.top)? + px_or(&b.top, false)?;
-    let bot = pad(&c.style.padding.bottom)? + px_or(&b.bottom, false)?;
+    let top = px_or(&c.style.padding.top, false)? + px_or(&b.top, false)?;
+    let bot = px_or(&c.style.padding.bottom, false)? + px_or(&b.bottom, false)?;
     if let Some(measure) = crate::layout::fragment::flex_lines::measure_rows(
         c, depth, cx, unclamp, top, bot, mt, mb, vcx,
     ) {

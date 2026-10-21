@@ -1,5 +1,5 @@
-//! Коробка ячейки из сырого стиля: inherit-отступы и рамки, полкромки сросшейся модели,
-//! cellpadding.
+//! Коробка ячейки из каскадированного стиля: inherit-отступы и рамки,
+//! полкромки сросшейся модели.
 
 use crate::dom::Element;
 use crate::layout::table::{collapsed_cell_edge, table_spanning_size};
@@ -32,13 +32,8 @@ pub(super) fn prepare_cell_box(
     [u8; 4],
     u32,
 )> {
-    // `padding: inherit` и `border: inherit` решаются только в СЛИТОМ
-    // стиле (`cm`, `style::cascade::inherit`, ветки `padding_inherit`/`border_inherit*`),
-    // а коробку ячейки, полкромки сросшейся модели и `cellpadding`
-    // ниже строят из СЫРОГО стиля: там лежало умолчание `td {padding:
-    // 1px}` вместо 5px ряда (CSS 2.1 §6.2.1 — значение родителя).
-    // `row-margin-border-padding`, `row-group-margin-border-padding`:
-    // все четыре стола с `.inherited` выходили меньше эталона.
+    // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
+    // где `style::cascade::inherit` уже разрешил значения родителя.
     if cell.style.padding_inherit || cell.style.padding_inherit_side.contains(&true) {
         cell.style.padding = cm.padding;
     }
@@ -75,25 +70,6 @@ pub(super) fn prepare_cell_box(
     if clipped {
         cell.style.overflow_x = None;
         cell.style.overflow_y = None;
-    }
-    // Презентационный `cellpadding="N"` таблицы: хинт ниже авторского
-    // padding, но выше умолчания браузера `td { padding: 1px }` —
-    // применяется, только когда у ячейки ровно оно.
-    if let Some(pad) = e
-        .attr("cellpadding")
-        .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok())
-    {
-        let ua = |l: Option<Len>| matches!(l, Some(Len::Px(1.0)));
-        let pd = &cell.style.padding;
-        if ua(pd.top) && ua(pd.right) && ua(pd.bottom) && ua(pd.left) {
-            let v = Some(Len::Px(pad));
-            cell.style.padding = crate::style::computed::Sides {
-                top: v,
-                right: v,
-                bottom: v,
-                left: v,
-            };
-        }
     }
     // Ячейка схлопнутой колонки не рисуется: колонка выброшена
     // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка

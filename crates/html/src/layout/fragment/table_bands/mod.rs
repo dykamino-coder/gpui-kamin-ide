@@ -141,3 +141,6 @@ pub(crate) fn repeat_leads(
 ) -> crate::layout::fragment::types::RepeatGeom {
     repeat_bands(c, fixed, rows, vcx).map_or_else(Default::default, |r| r.2)
 }
+
+#[cfg(test)]
+mod hint_tests;

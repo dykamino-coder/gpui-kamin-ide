@@ -16,20 +16,7 @@ pub(super) fn border_spacing_of(
     opts: &RenderOpts,
     inherited: &Computed,
 ) -> (f32, f32) {
-    let cell_spacing_attr = e
-        .attr("cellspacing")
-        .and_then(|v| v.trim().trim_end_matches("px").parse::<f32>().ok());
-    let ua_default = matches!(
-        e.style.border_spacing,
-        Some((Some(Len::Px(2.0)), Some(Len::Px(2.0))))
-    );
-    let border_spacing = match (cell_spacing_attr, ua_default, e.style.border_spacing) {
-        (Some(v), true, _) | (Some(v), _, None) => Some((Some(Len::Px(v)), Some(Len::Px(v)))),
-        _ => e.style.border_spacing,
-    };
-    // Раздельные рамки — умолчание; при `collapse` зазора между ячейками нет.
-
-    table_spacing(e, opts, inherited, border_spacing)
+    table_spacing(e, opts, inherited, e.style.border_spacing)
 }
 
 // Table setup returns row elements with the corresponding column bands.
