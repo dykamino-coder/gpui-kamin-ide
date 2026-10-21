@@ -1,10 +1,12 @@
 //! Блок объявлений в порядке записи (css-cascade-5 §6.4 «order of
 //! appearance»): каждое объявление — имя, значение без пометки важности,
-//! флаг `!important` и место в исходном блоке. Повтор свойства хранится
-//! отдельной записью: действительность значения пока известна только
-//! применению (CSS 2.1 §4.1.7 — негодный повтор не гасит прежний), поэтому
-//! блок не сводит повторы при разборе.
+//! вид заданного значения, флаг `!important` и место в исходном блоке.
+//! Сокращения реестра приходят уже раскрытыми в длинные свойства (они делят
+//! место сокращения). Повтор свойства хранится отдельной записью: у свойств
+//! вне реестра действительность значения пока известна только применению
+//! (CSS 2.1 §4.1.7 — негодный повтор не гасит прежний).
 
+use super::property::{LonghandId, Specified};
 use std::collections::HashMap;
 
 /// Вычисленные значения пользовательских свойств элемента (`--*` → поток
@@ -22,6 +24,30 @@ pub struct Declaration {
     pub important: bool,
     /// Место в исходном блоке; переживает удаление соседей откатом.
     pub pos: u32,
+    /// Длинное свойство реестра, если имя в нём есть.
+    pub id: Option<LonghandId>,
+    /// Вид заданного значения: обычное, общее слово или с подстановкой.
+    pub specified: Specified,
+}
+
+impl Declaration {
+    /// Объявление с видом значения по его тексту.
+    pub fn new(
+        name: impl Into<String>,
+        value: impl Into<String>,
+        important: bool,
+        pos: u32,
+    ) -> Self {
+        let (name, value) = (name.into(), value.into());
+        Declaration {
+            id: LonghandId::from_name(&name),
+            specified: Specified::of(&value),
+            name,
+            value,
+            important,
+            pos,
+        }
+    }
 }
 
 /// Объявления блока в порядке записи.
@@ -33,15 +59,21 @@ impl DeclBlock {
         Self::default()
     }
 
-    /// Дописать объявление в конец блока.
+    /// Дописать объявление в конец блока; сокращение реестра — его длинными
+    /// свойствами (без проверки значений: блок собирает сам движок).
     pub fn push(&mut self, name: impl Into<String>, value: impl Into<String>, important: bool) {
-        let pos = self.0.last().map_or(0, |d| d.pos + 1);
-        self.0.push(Declaration {
-            name: name.into(),
-            value: value.into(),
-            important,
-            pos,
-        });
+        super::property::push_declared(self, name.into(), &value.into(), important, None);
+    }
+
+    /// Место следующего объявления в блоке.
+    pub fn next_pos(&self) -> u32 {
+        self.0.last().map_or(0, |d| d.pos + 1)
+    }
+
+    /// Дописать готовое объявление (длинное свойство раскрытого сокращения
+    /// несёт место сокращения).
+    pub fn push_decl(&mut self, decl: Declaration) {
+        self.0.push(decl);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -94,17 +126,21 @@ impl DeclBlock {
 
     /// Задать свойство одним обычным объявлением: прежние объявления того
     /// же имени уходят, новое встаёт на место первого из них (или в конец).
+    /// Сокращение реестра задаёт так каждое своё длинное свойство.
     pub fn set(&mut self, name: &str, value: &str) {
-        let (name, value) = (name.to_string(), value.to_string());
+        let mut parsed = DeclBlock::new();
+        parsed.push(name, value, false);
+        for decl in parsed.0 {
+            self.set_decl(decl);
+        }
+    }
+
+    fn set_decl(&mut self, decl: Declaration) {
+        let name = decl.name.clone();
         match self.0.iter().position(|d| d.name == name) {
             Some(at) => {
                 let pos = self.0[at].pos;
-                self.0[at] = Declaration {
-                    name: name.clone(),
-                    value,
-                    important: false,
-                    pos,
-                };
+                self.0[at] = Declaration { pos, ..decl };
                 let mut seen = false;
                 self.0.retain(|d| {
                     if d.name != name {
@@ -115,7 +151,10 @@ impl DeclBlock {
                     keep
                 });
             }
-            None => self.push(name, value, false),
+            None => {
+                let pos = self.next_pos();
+                self.0.push(Declaration { pos, ..decl });
+            }
         }
     }
 
@@ -123,8 +162,15 @@ impl DeclBlock {
     /// этого блока и встают в конец в своём порядке.
     pub fn merge(&mut self, other: DeclBlock) {
         self.0.retain(|d| !other.contains(&d.name));
+        let mut pos = self.next_pos();
+        let mut last = None;
         for d in other.0 {
-            self.push(d.name, d.value, d.important);
+            // Длинные свойства одного сокращения сохраняют общее место.
+            if last.is_some_and(|l| l != d.pos) {
+                pos += 1;
+            }
+            last = Some(d.pos);
+            self.0.push(Declaration { pos, ..d });
         }
     }
 
@@ -150,35 +196,4 @@ impl FromIterator<Declaration> for DeclBlock {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::DeclBlock;
-
-    #[test]
-    fn keeps_write_order_and_repeats() {
-        let mut d = DeclBlock::new();
-        d.push("color", "red", false);
-        d.push("margin", "0", true);
-        d.push("color", "green", false);
-        assert_eq!(d.names(), ["color", "margin"]);
-        assert_eq!(d.last("color"), Some("green"));
-        assert_eq!(d.descriptor("margin"), None);
-        assert_eq!(d.iter().map(|d| d.pos).collect::<Vec<_>>(), [0, 1, 2]);
-    }
-
-    #[test]
-    fn set_and_merge_replace_same_names() {
-        let mut d = DeclBlock::new();
-        d.push("width", "1px", false);
-        d.push("height", "2px", false);
-        d.push("width", "3px", true);
-        d.set("width", "4px");
-        assert_eq!(d.len(), 2);
-        assert_eq!(d.0[0].value, "4px");
-        assert!(!d.0[0].important);
-        let mut other = DeclBlock::new();
-        other.push("height", "5px", false);
-        d.merge(other);
-        assert_eq!(d.names(), ["width", "height"]);
-        assert_eq!(d.last("height"), Some("5px"));
-    }
-}
+mod tests;

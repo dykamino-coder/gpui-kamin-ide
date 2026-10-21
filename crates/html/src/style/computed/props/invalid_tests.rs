@@ -120,10 +120,10 @@ fn invalid_value_preserves_computed_for_every_registered_property() {
             for mut c in [Computed::default(), seed.clone()] {
                 c.apply_one(prop.name, prop.sample, st.values());
                 let before = format!("{c:?}");
-                let seq = c.decl_seq;
+                let seq = c.decl_order;
                 c.apply_one(prop.name, invalid, st.values());
                 // Счётчик входных деклараций сам по себе не является значением свойства.
-                c.decl_seq = seq;
+                c.decl_order = seq;
                 if before != format!("{c:?}") {
                     failures.push(format!("{}: {invalid}", prop.name));
                     break;
@@ -182,10 +182,10 @@ fn invalid_component_rejects_the_entire_shorthand() {
     ] {
         let mut c = Computed::default();
         c.apply_one(key, valid, st.values());
-        let seq = c.decl_seq;
+        let seq = c.decl_order;
         let before = format!("{c:?}");
         c.apply_one(key, invalid, st.values());
-        c.decl_seq = seq;
+        c.decl_order = seq;
         assert_eq!(format!("{c:?}"), before, "{key}: {invalid}");
         assert_ne!(
             Computed::declaration_result(key, invalid, st.values()),
@@ -234,9 +234,9 @@ fn invalid_declaration_preserves_background_lists_and_flow_alignment() {
         let mut c = Computed::default();
         c.apply_one(key, valid, st.values());
         let before = format!("{c:?}");
-        let seq = c.decl_seq;
+        let seq = c.decl_order;
         c.apply_one(key, "invalid()", st.values());
-        c.decl_seq = seq;
+        c.decl_order = seq;
         assert_eq!(format!("{c:?}"), before, "{key}");
     }
 }

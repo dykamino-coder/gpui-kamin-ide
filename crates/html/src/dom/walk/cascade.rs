@@ -14,7 +14,7 @@ use crate::dom::*;
 use crate::style::cascade::map::{CascadeMap, Pick};
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, Rule, VarMap, parse_decls};
+use crate::style::css::{DeclBlock, Rule, VarMap, parse_decls_in};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
@@ -58,7 +58,7 @@ pub(super) fn cascade_element(
     let inline_decls: DeclBlock = attrs
         .iter()
         .find(|(k, _)| k == "style")
-        .map(|(_, v)| parse_decls(v))
+        .map(|(_, v)| parse_decls_in(v, vcx))
         .unwrap_or_default();
     let mut matched: Vec<&Rule> = rules
         .iter()

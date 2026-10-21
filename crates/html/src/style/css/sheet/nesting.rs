@@ -135,7 +135,7 @@ pub(super) fn expand(
     for item in items(body) {
         match item {
             Item::Decls(text) => {
-                let decls = parse_decls(text);
+                let decls = parse_decls_in(text, vcx);
                 if decls.is_empty() {
                     continue;
                 }

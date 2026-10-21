@@ -217,17 +217,6 @@ fn line_width(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
     }
 }
 
-/// Пара значений «вдоль оси»: одно значение — обе грани, два — по порядку.
-pub(crate) fn axis_pair(v: &str, auto: bool, vcx: ValueCx<'_>) -> Option<(Len, Len)> {
-    let parts = split_outside_parens(v);
-    if !(1..=2).contains(&parts.len()) {
-        return None;
-    }
-    super::box_model::sides::side_length(&parts[0], auto, vcx).zip(
-        super::box_model::sides::side_length(&parts[parts.len() - 1], auto, vcx),
-    )
-}
-
 /// Цвет стороны рамки; `currentColor` даёт цвет текста этого же узла.
 fn side_color(v: &str, current: Option<Color>, vcx: ValueCx<'_>) -> Option<Color> {
     if v.eq_ignore_ascii_case("currentcolor") {

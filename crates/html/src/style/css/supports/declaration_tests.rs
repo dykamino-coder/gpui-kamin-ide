@@ -92,12 +92,10 @@ fn cascade_bookkeeping_does_not_accept_an_invalid_declaration() {
     let vcx = doc.values();
     let mut parser = Computed {
         declaration_parse: ParseResult::Invalid,
-        decl_seq: 42,
         ..Computed::default()
     };
     parser.apply_one("color", "rainbow", vcx);
     assert_eq!(parser.declaration_parse, ParseResult::Invalid);
-    assert_eq!(parser.decl_seq, 43);
     for value in ["initial", "inherit", "unset", "revert", "revert-layer"] {
         assert_eq!(
             Computed::declaration_result("color", value, vcx),

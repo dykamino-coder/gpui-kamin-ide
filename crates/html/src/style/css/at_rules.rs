@@ -157,7 +157,8 @@ fn in_cascade_order<'d>(
     for (i, imp) in normal.chain(important.into_iter().map(|(_, i)| (*i, true))) {
         for block in blocks(i) {
             for d in block.iter().filter(|d| d.important == imp) {
-                out.push(d.name.clone(), d.value.clone(), imp);
+                let pos = out.next_pos();
+                out.push_decl(Declaration { pos, ..d.clone() });
             }
         }
     }

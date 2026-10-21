@@ -19,7 +19,6 @@ const KNOWN_GAPS: &[&str] = &[
     "align-items",
     "align-self",
     "appearance",
-    "background",
     "background-color",
     "background-image",
     "border",
@@ -61,13 +60,14 @@ const KNOWN_GAPS: &[&str] = &[
 /// bookkeeping (sequence numbers and the capability-query result).
 fn fields(style: &Computed) -> Vec<String> {
     let mut style = style.clone();
-    style.decl_seq = 0;
-    style.side_seq = Default::default();
+    style.decl_order = Default::default();
+    style.side_order = Default::default();
     style.declaration_parse = Default::default();
     if let Some(logical) = style.logical.as_mut() {
-        logical.padding.seq = [0; 4];
-        logical.margin.seq = [0; 4];
-        logical.inset.seq = [0; 4];
+        logical.padding.order = [None; 4];
+        logical.margin.order = [None; 4];
+        logical.inset.order = [None; 4];
+        logical.size_order = [None; 6];
     }
     let text = format!("{style:?}");
     let inner = &text[text.find('{').unwrap_or(0) + 1..text.rfind('}').unwrap_or(text.len())];

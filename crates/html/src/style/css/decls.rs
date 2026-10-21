@@ -1,6 +1,7 @@
 //! Объявления: разбор блока, вложенные блоки, экранирование, url(), комментарии, деление
 //! аргументов.
 
+use crate::document::state::ValueCx;
 use crate::style::css::*;
 
 mod continuation;
@@ -13,8 +14,21 @@ pub use lexical::{split_args, unescape};
 use urls::has_bad_url;
 pub(crate) use urls::{Piece, at_url, skip_url, strip_comments};
 
-/// Разбор `style="a: 1; b: 2"`.
+/// Разбор `style="a: 1; b: 2"` CSS самого движка (умолчания, подсказки,
+/// дескрипторы): сокращения раскрываются, значения длинных свойств реестра
+/// не проверяются — для этого нужен документ ([`parse_decls_in`]).
 pub fn parse_decls(raw: &str) -> DeclBlock {
+    parse_block(raw, None)
+}
+
+/// Разбор блока объявлений документа: негодное значение длинного свойства
+/// реестра (и сокращение с негодной частью) объявлением не становится
+/// (CSS Syntax §4.1.7, css-cascade-5 §4).
+pub fn parse_decls_in(raw: &str, vcx: ValueCx<'_>) -> DeclBlock {
+    parse_block(raw, Some(vcx))
+}
+
+fn parse_block(raw: &str, vcx: Option<ValueCx<'_>>) -> DeclBlock {
     let raw = component_tokens::complete(raw);
     let mut out = DeclBlock::new();
     for item in split_top_level(&raw, ';') {
@@ -85,7 +99,7 @@ pub fn parse_decls(raw: &str) -> DeclBlock {
             // (CSS 2.1 §4.1.7 — недействительное объявление игнорируется,
             // а не гасит предыдущее). Повтор — отдельная запись блока на
             // своём месте.
-            out.push(key, val, important);
+            property::push_declared(&mut out, key, &val, important, vcx);
         }
     }
     out

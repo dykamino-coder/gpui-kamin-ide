@@ -57,13 +57,9 @@ pub(super) fn inherited_property(key: &str) -> bool {
 /// Значения взяты из спецификаций; свойства, начальное значение которых у нас
 /// и так «поле не задано», сюда не входят — им сброс не нужен.
 pub(super) fn initial_value(key: &str) -> Option<&'static str> {
+    // Свойства реестра (`style::css::property`) берут начальное значение
+    // оттуда и сюда не доходят.
     Some(match key {
-        // css-position-3 §insets: начальное значение вставок — `auto`
-        // (`left: unset` в `@position-try` снимает вставку базы).
-        "top" | "right" | "bottom" | "left" | "inset" | "inset-block" | "inset-inline"
-        | "inset-block-start" | "inset-block-end" | "inset-inline-start" | "inset-inline-end" => {
-            "auto"
-        }
         "scroll-snap-type" | "scroll-snap-align" | "path-length" => "none",
         "scroll-padding"
         | "scroll-padding-top"
@@ -88,10 +84,6 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         }
         "hyphens" => "manual",
         "text-shadow" => "none",
-        "margin" => "0",
-        // css-box-4 §4.1: a padding side starts at 0 — an explicit value, so the
-        // author keyword also beats a form control's default padding.
-        "padding" | "padding-top" | "padding-right" | "padding-bottom" | "padding-left" => "0",
         "direction" => "ltr",
         "font-family" => "serif",
         "font-size" => "medium",
