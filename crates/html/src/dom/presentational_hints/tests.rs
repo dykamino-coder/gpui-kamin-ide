@@ -120,7 +120,7 @@ fn css_wide_keywords_override_table_hints() {
         let html = format!(
             "<!doctype html><style>table{{border-spacing:{keyword};width:{keyword};height:{keyword};background-color:{keyword};margin-left:{keyword}}}td{{padding-top:{keyword};padding-left:{keyword}}}</style>{table}"
         );
-        let doc = crate::document::Document::new(&html, "");
+        let doc = crate::document::Document::builder(&html, "").build();
         let nodes = doc.nodes();
         // The initial value, explicit or as the empty slot.
         let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
@@ -142,7 +142,7 @@ fn css_wide_keywords_override_table_hints() {
     let html = format!(
         "<!doctype html><style>div{{border-spacing:3px}}table{{border-spacing:inherit}}td{{padding-top:inherit}}</style><div>{table}</div>"
     );
-    let doc = crate::document::Document::new(&html, "");
+    let doc = crate::document::Document::builder(&html, "").build();
     let nodes = doc.nodes();
     let spacing = find(nodes, "table").unwrap().style.border_spacing;
     assert_eq!(spacing, Some((Some(Len::Px(3.0)), Some(Len::Px(3.0)))));
