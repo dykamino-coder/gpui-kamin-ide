@@ -70,7 +70,9 @@ mod tests {
         assert_eq!(maximum, MAX_DEPTH);
         let nodes = super::super::parse(&source, "");
         assert!(!nodes.is_empty());
-        let document = crate::document::Document::new_with_base(&source, "", "file:///deep.html");
+        let document = crate::document::Document::builder(&source, "")
+            .base_uri("file:///deep.html")
+            .build();
         assert!(document.node_count() <= MAX_DEPTH);
     }
 

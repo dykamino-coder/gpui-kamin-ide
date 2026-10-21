@@ -180,8 +180,9 @@ pub(crate) fn multicol_column_stack(
     // блочной оси.
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
-    let d =
-        d.children(painter.map(|(b, s)| GapRulePainter::new(b, s, opts.cx.paint.clone()).hooked()));
+    let d = d.children(painter.map(|(b, s)| {
+        crate::hooks::PaintOnly(GapRulePainter::new(b, s, opts.cx.paint.clone())).hooked()
+    }));
     let mut d = column_stack_div(
         d,
         e,

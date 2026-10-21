@@ -20,8 +20,8 @@ fn margin(doc: &Document) -> Option<String> {
 
 #[test]
 fn two_documents_keep_their_own_rules() {
-    let a = Document::new(A, "");
-    let b = Document::new(B, "");
+    let a = Document::builder(A, "").build();
+    let b = Document::builder(B, "").build();
     assert!(a.values().doc.try_rule("--a").is_some());
     assert!(a.values().doc.try_rule("--b").is_none());
     assert_eq!(root_font_px(a.values()), 20.0);
@@ -34,7 +34,7 @@ fn two_documents_keep_their_own_rules() {
 
 #[test]
 fn nested_document_does_not_touch_the_outer_one() {
-    let a = Document::new(A, "");
+    let a = Document::builder(A, "").build();
     let inner = parse_embedded(B, "", (100.0, 100.0));
     assert!(a.values().doc.try_rule("--a").is_some());
     assert!(a.values().doc.try_rule("--b").is_none());
@@ -46,7 +46,7 @@ fn nested_document_does_not_touch_the_outer_one() {
 
 #[test]
 fn parse_without_document_gets_its_own() {
-    let a = Document::new(A, "");
+    let a = Document::builder(A, "").build();
     let parsed = crate::dom::parse(B, "");
     assert!(parsed.doc.try_rule("--b").is_some());
     assert!(a.values().doc.try_rule("--a").is_some());
@@ -56,8 +56,8 @@ fn parse_without_document_gets_its_own() {
 #[test]
 fn medium_belongs_to_the_document() {
     const P: &str = "<!doctype html><style>@media print { html { font-size: 30px } }</style>";
-    let print = Document::new_media(P, "", true);
-    let screen = Document::new(P, "");
+    let print = Document::builder(P, "").print(true).build();
+    let screen = Document::builder(P, "").build();
     assert!(print.is_print() && !screen.is_print());
     assert_eq!(root_font_px(print.values()), 30.0);
     assert_eq!(root_font_px(screen.values()), 16.0);

@@ -15,7 +15,7 @@ fn element(nodes: &[Node]) -> &Element {
 
 #[test]
 fn measured_margins_keep_auto_zero_and_reject_unresolved_lengths() {
-    let doc = Document::new("<!doctype html><div>x</div>", "");
+    let doc = Document::builder("<!doctype html><div>x</div>", "").build();
     let mut c = element(doc.nodes()).clone();
     let kids = RefCell::new(Vec::new());
     let whole = RefCell::new(Vec::new());

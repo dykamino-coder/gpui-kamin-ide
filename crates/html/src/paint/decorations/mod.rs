@@ -5,7 +5,7 @@ mod borders;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
 
-use crate::hooks::IntoHooked;
+use crate::hooks::{IntoHooked, PaintOnly};
 use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
@@ -67,11 +67,11 @@ pub(crate) fn decorations(
             _ => "none".to_string(),
         };
         out.push(
-            crate::paint::effects::filter::FilterLayer {
+            PaintOnly(crate::paint::effects::filter::FilterLayer {
                 def,
                 id: id.to_string(),
                 fill,
-            }
+            })
             .hooked(),
         );
     }
