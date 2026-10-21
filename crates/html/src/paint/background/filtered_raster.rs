@@ -6,12 +6,14 @@
 
 use super::Source;
 use crate::document::state::ValueCx;
+use crate::paint::cache::{BoundedCache, Hinted, MIB, hint, optional_image_bytes};
 use gpui::RenderImage;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
-type Key = (usize, crate::style::computed::ImageFilter, u32, u32, bool);
-type Cache = Mutex<Vec<(Key, Option<Arc<RenderImage>>)>>;
-static CACHE: OnceLock<Cache> = OnceLock::new();
+type Key = Hinted<(usize, crate::style::computed::ImageFilter, u32, u32, bool)>;
+/// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
+static CACHE: BoundedCache<Key, Option<Arc<RenderImage>>> =
+    BoundedCache::new(64 * MIB, optional_image_bytes);
 
 pub(super) fn raster(
     input: &Source,
@@ -31,13 +33,12 @@ pub(super) fn raster(
         Source::Gradient { image } => super::gradient_raster::tile(image, w, h, tile, vcx),
         _ => input.sampled_raster(tile, pixelated, vcx),
     }?;
-    let key = (image.id.0, list.clone(), w, h, pixelated);
-    let cache = CACHE.get_or_init(Default::default);
+    let key = Hinted {
+        hint: hint((image.id.0, w, h, pixelated)),
+        key: (image.id.0, list.clone(), w, h, pixelated),
+    };
     if list.cacheable()
-        && let Some(hit) = cache
-            .lock()
-            .ok()
-            .and_then(|c| c.iter().find(|(k, _)| k == &key).map(|(_, v)| v.clone()))
+        && let Some(hit) = CACHE.get(&key)
     {
         return hit;
     }
@@ -49,13 +50,8 @@ pub(super) fn raster(
         iw > 0 && ih > 0 && w >= iw && h >= ih && w.is_multiple_of(iw) && h.is_multiple_of(ih);
     let resized = resize(&image, w, h, pixelated || integral)?;
     let result = super::filter_image::apply(&resized, list, (w as f32 / tile.0, h as f32 / tile.1));
-    if list.cacheable()
-        && let Ok(mut cache) = cache.lock()
-    {
-        if cache.len() >= 32 {
-            cache.clear();
-        }
-        cache.push((key, result.clone()));
+    if list.cacheable() {
+        CACHE.insert(key, result.clone());
     }
     result
 }

@@ -2,14 +2,13 @@
 //! премультиплицированной альфе, чтобы цвет прозрачных точек не просачивался на край; полностью
 //! непрозрачные картинки и совпадающие размеры отдаются без пересчёта, результат кэшируется.
 
+use crate::paint::cache::{BoundedCache, MIB, optional_image_bytes};
 use gpui::RenderImage;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::sync::Arc;
 
-type Cache = HashMap<(usize, u32, u32), Option<Arc<RenderImage>>>;
-static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+/// Бюджет 128 МиБ: самый крупный результат (4096 x 4096 точек, 64 МиБ) помещается.
+static CACHE: BoundedCache<(usize, u32, u32), Option<Arc<RenderImage>>> =
+    BoundedCache::new(128 * MIB, optional_image_bytes);
 
 pub(crate) fn resample(image: &Arc<RenderImage>, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let size = image.size(0);
@@ -17,15 +16,18 @@ pub(crate) fn resample(image: &Arc<RenderImage>, w: u32, h: u32) -> Option<Arc<R
     if w == 0 || h == 0 || w > 4096 || h > 4096 || (iw, ih) == (w as usize, h as usize) {
         return None;
     }
-    let key = (image.id.0, w, h);
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(cache) = cache.lock()
-        && let Some(found) = cache.get(&key)
-    {
-        return found.clone();
-    }
+    CACHE.get_or_insert_with((image.id.0, w, h), || premultiplied(image, (iw, ih), w, h))
+}
+
+/// `None` — картинка целиком непрозрачна: пересчёт не нужен.
+fn premultiplied(
+    image: &RenderImage,
+    (iw, ih): (usize, usize),
+    w: u32,
+    h: u32,
+) -> Option<Arc<RenderImage>> {
     let bytes = image.as_bytes(0)?;
-    let result = if bytes.chunks_exact(4).all(|p| p[3] == 255) {
+    if bytes.chunks_exact(4).all(|p| p[3] == 255) {
         None
     } else {
         let mut out = Vec::with_capacity((w * h * 4) as usize);
@@ -57,12 +59,5 @@ pub(crate) fn resample(image: &Arc<RenderImage>, w: u32, h: u32) -> Option<Arc<R
             }
         }
         gpui::bgra_bytes_to_image(w, h, out)
-    };
-    if let Ok(mut cache) = cache.lock() {
-        if cache.len() >= 32 {
-            cache.clear();
-        }
-        cache.insert(key, result.clone());
     }
-    result
 }
