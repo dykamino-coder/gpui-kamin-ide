@@ -1,4 +1,5 @@
-//! Em tests for inline; split out to keep the owning module within 250 lines.
+//! Тесты разрешения `em` при наследовании (от своего и унаследованного кегля) и знаков акцента
+//! `text-emphasis` у наследника: форма и сторона по режиму письма и языку, явное `none`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

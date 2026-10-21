@@ -1,4 +1,9 @@
-//! Min content for measure; split out to keep the owning module within 250 lines.
+//! Ширина абзаца по минимальному содержимому: самый широкий кусок между
+//! точками разрыва без висящего хвоста и трекинга последнего знака
+//! (css-text-3 §8.2); `overflow-wrap: anywhere` (абзаца или куска) делает
+//! точками все границы знаков (css-text-3 §5.5); с `text-indent` отступ
+//! прибавляется к первому куску каждой отступающей строки (css-text-3 §7.1,
+//! CSS 2.1 §16.1).
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};

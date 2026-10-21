@@ -1,6 +1,8 @@
-//! Unicode letter casing with language tailoring (`lang_case`: Turkic, Lithuanian,
-//! Greek, Dutch IJ titlecase).
-//! CSS Text 3 #text-transform-mapping applies tailoring before glyph shaping.
+//! `text-transform` над текстом куска до набора (css-text-3 §2.1): прописные/строчные с
+//! языковыми поправками (`lang_case`: турецкий, литовский, греческий, голландский `IJ`),
+//! `capitalize` титульным регистром по первой букве слова (границы слов по UAX #29, контекст
+//! сквозь границы строчных элементов), `full-width`, затем `full-size-kana` и `math-auto`
+//! для одиночного знака (MathML Core §2.1.5).
 
 use super::lang_case;
 use crate::style::computed::{Computed, TextTransform};

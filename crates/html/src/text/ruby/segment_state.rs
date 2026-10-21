@@ -1,4 +1,6 @@
-//! Segment state for ruby; split out to keep the owning module within 250 lines.
+//! Состояние разрезания `<ruby>` на сегменты: вид дочернего узла по роли (`Kind`), открытие
+//! и закрытие сегмента, сброс анонимной базы, начало новой базы после аннотаций или явного
+//! `<rbc>` (css-ruby-1 §2.3.1) и сбор баз внутри `<rbc>` с пробелами между `<rb>`.
 
 use super::ruby_role;
 use super::{RubySegment, RubyUnit};

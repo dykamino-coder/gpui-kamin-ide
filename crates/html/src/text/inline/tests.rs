@@ -1,4 +1,6 @@
-//! Tests for inline; split out to keep the owning module within 250 lines.
+//! Тесты строчного потока: схлопывание пробелов как в HTML, логическая выключка по направлению
+//! письма, подсказки переносчику только для чужого набора, сборка кусков разного кегля в один
+//! блок, наследование текстовых свойств без коробочных.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

@@ -1,4 +1,9 @@
-//! Paragraph row geometry, selection runs, and justified line painting.
+//! Вспомогательные шаги отрисовки абзаца: публикация рядов строк для
+//! `ClampCut` (`publish_rows` в `ParagraphRows` документа), прогоны с учётом выделения (без
+//! подчёркиваний GPUI, когда оформление рисует сам абзац), выключенная
+//! строка со знаком обрыва на её базовой линии, и смещение первой строки
+//! при обратном порядке строк (`vertical-lr`) одним сложением от верха
+//! коробки, как у `point_of`.
 
 use crate::text::paragraph::*;
 use gpui::{Bounds, Pixels, point, px};

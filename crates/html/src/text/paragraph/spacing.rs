@@ -1,5 +1,9 @@
-//! Paragraph-owned spacing keeps compatible inline text in one shaping call.
-//! CSS Text 3 §8.2: space typographic units, not individual glyphs or controls.
+//! Трекинг и межсловный интервал силами абзаца: совместимый горизонтальный
+//! текст набирается одним вызовом без скалярного трекинга GPUI, а добавки
+//! накладываются на готовый набор по типографским единицам (графемам), а
+//! не по глифам и управляющим знакам (css-text-3 §8.2; Blink
+//! `line_breaker.cc` `ShapeText`) — смена трекинга на границе куска не
+//! рвёт лигатуру. Здесь же условие этого пути (`joined_spacing`).
 
 use super::*;
 use gpui::{LineLayout, Pixels, ShapedLine, px};

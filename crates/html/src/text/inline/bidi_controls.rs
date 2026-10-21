@@ -1,5 +1,8 @@
-//! CSS Writing Modes 4 §2.2 maps inline bidi values to Unicode control sequences.
-//! Isolated overrides need both nesting levels; plaintext chooses its own first strong direction.
+//! Знаки управления двунаправленностью для строчного куска: `unicode-bidi` и `direction`
+//! (css-writing-modes-4 §2.2) отображаются в открывающую/закрывающую последовательности Юникода
+//! (LRE/RLE/LRO/RLO/LRI/RLI/FSI/PDF/PDI). `isolate-override` требует обоих уровней вложения;
+//! `plaintext` сам выбирает направление по первому сильному знаку. Здесь же явное наследование
+//! режима (`unicode-bidi: inherit`) при каскаде.
 use crate::style::computed::Computed;
 
 pub fn bidi_marks(

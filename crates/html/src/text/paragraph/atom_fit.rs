@@ -1,16 +1,15 @@
-//! Shrink-to-fit width of atomic inlines in a line (CSS 2.1 §10.3.9,
+//! Ширина атомарных строчных элементов по shrink-to-fit (CSS 2.1 §10.3.9,
 //! §10.3.10, §17.5.2: `min(max(min-content, available), max-content)`).
 //!
-//! The atom is laid out before the paragraph is measured, at max-content
-//! (`lay_atoms`), because inside the measure callback the layout engine is
-//! busy. Its available width — the containing block, i.e. the paragraph's own
-//! width, not the space left on the line — is known only inside that callback.
-//! So every atom whose min-content is narrower than its max-content keeps an
-//! independent copy of its layout tree (`LayoutMeasurement`): the callback
-//! measures the copy at the shrink-to-fit width, and prepaint lays the real
-//! atom out at the same width. Blink does the same in one pass: the atomic
-//! inline is laid out with the line's containing block size as its available
-//! size (`inline_layout_algorithm.cc` → `LayoutAtomicInline`).
+//! Атом раскладывается ДО замера абзаца, по max-content (`lay_atoms`): внутри
+//! замера движок раскладки занят. Его доступная ширина — содержащий блок, то
+//! есть ширина самого абзаца, а не остаток строки — известна только внутри
+//! замера. Поэтому каждый атом, чей min-content уже max-content, хранит
+//! независимую копию своего дерева раскладки (`LayoutMeasurement`): замер
+//! меряет копию на ширине shrink-to-fit, а prepaint раскладывает настоящий
+//! атом на той же ширине. Blink делает то же за один проход: атомарный
+//! строчный элемент раскладывается с размером содержащего блока строки как
+//! доступным (`inline_layout_algorithm.cc` → `LayoutAtomicInline`).
 
 use super::*;
 use gpui::{App, Window, px, size};

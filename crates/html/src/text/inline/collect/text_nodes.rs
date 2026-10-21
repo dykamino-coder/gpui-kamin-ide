@@ -1,4 +1,7 @@
-//! Text nodes for collect; split out to keep the owning module within 250 lines.
+//! Текстовый узел при сборе кусков абзаца: возврат каретки как пробел (css-text-3 §4.1),
+//! сохранение или схлопывание пробелов по `white-space`, преобразование регистра, точки
+//! переноса и правило нулевого пробела у перевода строки сквозь границу коробки
+//! (css-text-4 §4.1.3). На выходе один `Piece::Text` с унаследованным стилем.
 
 use crate::style::computed::Computed;
 use crate::text::inline::*;

@@ -1,4 +1,4 @@
-//! OpenType MATH constants, checked once when a web font is decoded.
+//! Константы OpenType MATH, проверяемые один раз при декодировании веб-шрифта.
 
 #[derive(Clone, Debug)]
 pub(crate) struct Constants {

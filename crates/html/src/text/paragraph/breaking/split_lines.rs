@@ -1,4 +1,9 @@
-//! Document-owned line-break reuse, clamp truncation and balanced paragraph layout.
+//! Вход резчика строк: `split` с памятью разрезов по ключу в кэше документа (разрез
+//! гоняется по 3–5 раз на абзац за кадр), `split_uncached` — набор строк, усечение
+//! `text-overflow: ellipsis` (css-overflow-3), обрыв `line-clamp` и подбор
+//! самой узкой колонки при `text-wrap: balance` вместе с обрывом (место под
+//! знак обрыва входит в колонку, css-text-4 §5). Здесь же выравнивание длин
+//! строк по группам между жёсткими разрывами (css-text-4 §7.1) и `lay`.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};
@@ -81,16 +86,11 @@ impl Paragraph {
             .last()
             .map(|l| l.range.end)
             .unwrap_or(0);
-        // ЗАМЕРЕНО И ОТКАЧЕНО: резервировать при подборе место под
-        // МНОГОТОЧИЕ (условие `l.width + ell <= middle`). Срез из 27 пар
-        // семей balance/clamp/text-wrap: 0 и 0 — колонка, к которой сходится
-        // двоичный поиск, от этого условия не меняется.
-        // `text-wrap-balance-line-clamp-*` держит не подбор ширины.
         // Место под МНОГОТОЧИЕ входит в колонку: на оборванной строке за
         // текстом рисуется знак обрыва, и колонка, в которую он не влезает,
         // подбором не годится (css-text-4 §5: обрыв — часть последней
-        // строки). Прошлый заход мерил ширину строки КАК ЕСТЬ; здесь хвост
-        // сперва обрезается, как это делает сам обрыв (`ellipsize`).
+        // строки). Ширина берётся без висящего хвоста (`trim_hanging`) — так,
+        // как строку оставит сам обрыв (`ellipsize`).
         // clamp_lines may leave an empty final line at the next word's
         // start. Collapsed trailing spaces are not part of the visible text
         // that a narrower layout must retain.

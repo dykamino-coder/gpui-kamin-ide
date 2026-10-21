@@ -1,4 +1,9 @@
-//! Punctuation for breaking; split out to keep the owning module within 250 lines.
+//! Классы знаков для разбиения на строки и свисающей пунктуации: открывающие и
+//! закрывающие скобки/кавычки, точки и запятые (`hanging-punctuation`),
+//! буквенные единицы письма (`word-break: keep-all`), запреты разрыва до и
+//! после знака (классы UAX #14), а также наборы css-text-3 §5.2 для
+//! `line-break: normal`/`loose` в ja/zh: центрированная пунктуация, широкие
+//! префиксы и постфиксы, класс CJ, знаки повтора.
 
 /// Открывающий знак — скобка или кавычка.
 pub(crate) fn is_opening(ch: char) -> bool {

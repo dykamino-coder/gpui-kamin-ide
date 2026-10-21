@@ -1,4 +1,8 @@
-//! Paint emphasis marks centered on character advances before added spacing.
+//! Отрисовка знаков акцента `text-emphasis` (css-text-decor-3 §5.3) над
+//! или под набранным прогоном: как аннотация руби над базой — коробка знака
+//! на краю строчной коробки базы, сам знак по центру продвижения своего
+//! знака БЕЗ добавленного трекинга; разделители, управляющие и пунктуация
+//! пропускаются.
 
 use super::*;
 use gpui::{App, Pixels, Point, SharedString, TextRun, Window, point, px};
@@ -7,7 +11,7 @@ impl Paragraph {
     /// Знаки акцента прогона (css-text-decor-3 §5.3): «drawn exactly as if
     /// each character was assigned the mark as its ruby annotation text …
     /// and the ruby alignment as centered». Как `<rt>` над базой руби
-    /// (`render.rs`, рукав контейнера руби): коробка аннотации стоит на краю
+    /// (`layout::atom::raw`, рукав контейнера руби): коробка аннотации стоит на краю
     /// строчной коробки базы (её `line-height`, полулидинг от подъёма и
     /// спуска шрифта базы), сама она — строка кегля знака с `line-height: 1`
     /// (UA `rt`), знак — по центру продвижения своего знака базы.

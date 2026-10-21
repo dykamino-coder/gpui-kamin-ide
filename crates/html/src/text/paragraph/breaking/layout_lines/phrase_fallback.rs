@@ -1,4 +1,6 @@
-//! Restore auto-phrase hyphenation only when the unbroken word overflows.
+//! Запасной перенос при `word-break: auto-phrase`: мягкие переносы внутри
+//! фразы возвращаются только когда неразорванное слово не влезает в строку;
+//! берётся последняя влезающая точка, без неё — первая.
 use crate::text::paragraph::*;
 use gpui::Pixels;
 

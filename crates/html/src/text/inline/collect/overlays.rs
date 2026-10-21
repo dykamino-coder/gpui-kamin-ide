@@ -1,4 +1,7 @@
-//! Static-position probes and relative shifts for overlays in inline rows.
+//! Куски вне потока (`Piece::Overlay`) при сборе: нулевая распорка статической позиции в ряду
+//! (`overlay_in_row`), перенос относительного сдвига строчного предка на наложения
+//! (`shift_overlays`; CSS 2.1 §9.4.3) и перевод физического смещения в до-поворотный кадр
+//! повёрнутой вертикальной строки (`to_rotated_frame`; css-writing-modes-4 §7.1).
 
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;

@@ -1,4 +1,9 @@
-//! Inline static points and containing blocks from the measured paragraph lines.
+//! Геометрия строки для отрисовки и кусков вне потока: выключка строки с
+//! учётом `text-align-last` и стороны абзаца при `unicode-bidi: plaintext`
+//! (css-writing-modes-4 §2.2), место байта в коробке (`point_of`, с тем же
+//! стартовым смещением, что у отрисовки, и зеркальным номером строки при
+//! `lines_reversed`), и содержащий блок из фрагментов строчной коробки
+//! (CSS 2.1 §10.1 п.4.1, Blink `ComputeInlineContainingBlocks`).
 
 use super::{align_of_value, line_offset};
 use crate::text::paragraph::*;
@@ -93,7 +98,7 @@ impl Paragraph {
         // свисающий открывающий знак, левый вырез обтекания. Без него точка
         // жила от голого края коробки, и статическая позиция абсолюта в
         // строке с `text-indent` промахивалась ровно на отступ
-        // (htb-ltr-*: регресс 08-12, зелёные квадраты не закрывали красное).
+        // (htb-ltr-*: зелёные квадраты не закрывали красное).
         let hang = self.hang_first(line.range.start);
         let shift = self.span(segs, line.range.start, line.range.start + hang);
         let lead =
@@ -117,14 +122,12 @@ impl Paragraph {
                 bounds.origin.y + self.line_height * visual as f32,
             );
         }
-        // ЗАМЕРЕНО И ОТКАЧЕНО (04.09): прибавлять сюда долю ВЫКЛЮЧКИ
-        // (`text-align: center|right`) тем же счётом, что и отрисовка
-        // (`free/2` и `free`). Срез из 633 пар статической позиции и
-        // абсолютов: 382 -> 359, приобретено 0, потеряно 23 — вся семья
-        // `abs-pos-non-replaced-v{lr,rl}-1xx` (0.00 -> 2.67) и
-        // `abspos-width-change-inline-container-001`. В повёрнутом абзаце
+        // Не прибавлять сюда долю ВЫКЛЮЧКИ (`text-align: center|right`) тем же
+        // счётом, что и отрисовка (`free/2` и `free`): в повёрнутом абзаце
         // `bounds.size.width` — не та ось, и остаток строки считается не от
-        // той стороны; возвращать вместе с осевым остатком.
+        // той стороны — ломается вся семья `abs-pos-non-replaced-v{lr,rl}-1xx`
+        // и `abspos-width-change-inline-container-001`. Вернуть можно только
+        // вместе с осевым остатком.
         // Строки рисуются снизу вверх (`lines_reversed` — это `vertical-lr`),
         // и НОМЕР строки в списке тогда зеркален её месту на экране. Щуп
         // статической позиции брал номер как есть и садился на зеркальную

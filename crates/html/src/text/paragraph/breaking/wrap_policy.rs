@@ -1,4 +1,8 @@
-//! Wrap policy for breaking; split out to keep the owning module within 250 lines.
+//! Правила переноса ПО МЕСТУ в тексте: какой `Wrap` действует на байте
+//! (свой кусок, иначе абзац), неперносима ли точка между двумя знаками по
+//! их общему предку (css-text-3 §5.1), разрешён ли аварийный разрыв и
+//! разрыв «где угодно», считаются ли сохранённые пробелы содержимым, и
+//! удаление схлопываемых пробелов с конца строки (css-text-3 §4.1.3).
 
 use crate::text::paragraph::*;
 
@@ -12,16 +16,14 @@ impl Paragraph {
         let which = |i: usize| self.spans.iter().position(|(r, _)| r.contains(&i));
         let left = which(at.saturating_sub(1));
         let right = which(at);
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.10): точку переноса после ПРОБЕЛА решает
-        // `white-space` элемента с самим пробелом (css-text-3 §5.1, «for soft
-        // wrap opportunities created by characters that disappear or are
-        // preserved spaces»), а не общий предок. Срез 1973 пар (css-text,
-        // CSS2/text, <pre>): +1/−3 — white-space-wrap-after-nowrap-001
-        // 0.62 -> 0.28, но white-space-007 0.04 -> 11.99,
-        // white-space-collapsing-breaks-001 0.00 -> «красное видно». Причина
-        // не разобрана; подозрение — после схлопывания через границу куска
-        // (`collapse_across_pieces`) уцелевший пробел лежит не в том куске,
-        // что у браузера.
+        // Не решать точку переноса после ЛЮБОГО пробела по `white-space`
+        // элемента с самим пробелом вместо общего предка (css-text-3 §5.1,
+        // «soft wrap opportunities created by characters that disappear or
+        // are preserved spaces»): `white-space-007` и
+        // `white-space-collapsing-breaks-001` ломаются — после схлопывания
+        // через границу куска (`collapse_across_pieces`) уцелевший пробел
+        // лежит не в том куске, что у браузера. Ниже — узкое правило только
+        // для сохраняемых пробелов.
         // CSS Text 3 §5.1: preserved spaces own their soft wrap
         // opportunities, including across the closing bidi isolate.
         if let Some(i) = left
@@ -50,8 +52,8 @@ impl Paragraph {
     /// СТРОКИ, а не только из её ширины: подложка куска больше не тянется по
     /// пробелу (`line-break-anywhere-and-white-space-004`). Схлопываемые —
     /// U+0020, табуляция и U+1680 при normal/nowrap/pre-line (§4.1.3); U+3000,
-    /// U+00A0 и прочие Zs не схлопываются, они ВИСЯТ и рисуются (★ откат у
-    /// `trim_hanging`: обрезка подложки по всему `hangs` ломала
+    /// U+00A0 и прочие Zs не схлопываются, они ВИСЯТ и рисуются (обрезать
+    /// подложку по всему `hangs` в `trim_hanging` нельзя: ломает
     /// `trailing-ideographic-space-*`).
     pub(crate) fn drop_collapsible_tail(&self, start: usize, end: usize) -> usize {
         let mut at = end;

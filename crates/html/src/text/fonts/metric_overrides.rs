@@ -1,7 +1,7 @@
-//! CSS Fonts 4 metric descriptors, kept per CSS face rather than native family.
-//!
-//! Private font feature tags carry the selected face's metrics through GPUI's
-//! font aliases. They do not change glyph shaping or the native font's metrics.
+//! Дескрипторы метрик `@font-face` (css-fonts-4): `ascent-override`, `descent-override`,
+//! `line-gap-override`, хранимые на CSS-лицо, а не на системное семейство. Приватные теги
+//! возможностей (`kasc`, `kdsc`, `kgap`) проносят метрики выбранного лица через алиасы шрифтов
+//! gpui; они не меняют ни шейпинг глифов, ни метрики системного шрифта.
 
 use crate::document::state::ValueCx;
 use std::collections::HashMap;

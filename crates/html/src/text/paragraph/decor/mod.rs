@@ -1,9 +1,10 @@
-//! Text decoration lines (css-text-decor-3 §2, css-text-decor-4 §2–§4).
+//! Линии оформления текста (css-text-decor-3 §2, css-text-decor-4 §2–§4):
+//! подчёркивание, надчёркивание, зачёркивание и их стили при отрисовке абзаца.
 //!
-//! Geometry follows Blink `TextDecorationInfo` / `TextDecorationOffset` /
-//! `DecorationLinePainter`, which work in device pixels (zoom-for-DSF): the
-//! thickness is rounded there, the line is snapped vertically to the device
-//! grid, and the run ends land on whole device pixels.
+//! Геометрия следует Blink `TextDecorationInfo` / `TextDecorationOffset` /
+//! `DecorationLinePainter`, которые работают в точках устройства
+//! (zoom-for-DSF): толщина округляется там, линия прижимается по вертикали к
+//! сетке устройства, а концы прогона ложатся на целые точки устройства.
 
 mod ink;
 mod paint_decor;

@@ -1,4 +1,8 @@
-//! Overflow config for model; split out to keep the owning module within 250 lines.
+//! Строители `Paragraph` для обрыва и переполнения: `text-indent`,
+//! `text-justify`, `line-clamp` и его знак `block-ellipsis`, метка
+//! клэмп-контейнера, `text-overflow` с маркером в шрифте и кегле блока,
+//! цвет знака обрыва, знак и предел переноса, позиции табуляции, куски вне
+//! потока, `text-fit`. Здесь же признак расхождения трекинга кусков с общим.
 
 use super::Indent;
 use super::Paragraph;

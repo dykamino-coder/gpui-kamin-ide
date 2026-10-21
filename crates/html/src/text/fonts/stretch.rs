@@ -1,4 +1,6 @@
-//! Select a document font face by its CSS stretch descriptor.
+//! Ширина начертания лиц `@font-face`: разбор дескриптора `font-stretch` в отрезок процентов
+//! (css-fonts-4 §font-stretch-desc) и выбор настоящего имени семейства по запрошенной ширине
+//! (§font-matching, шаг `font-stretch`: при равном расстоянии побеждает объявленное позже).
 
 use super::alias;
 use crate::document::state::ValueCx;

@@ -1,4 +1,8 @@
-//! Segments for ruby; split out to keep the owning module within 250 lines.
+//! Разрезание детей `<ruby>` на сегменты и единицы (css-ruby-1 §2.2 п.3–8, §2.3): анонимные
+//! базы из строчного содержимого, `<rb>`/`<rbc>` как базы, `<rt>` как анонимный уровень и
+//! `<rtc>` как уровень (пустой — распорная аннотация), судьба пробелов по соседям (краевые и
+//! межуровневые вон, межбазовые и межаннотационные — свои единицы, межсегментные — свой
+//! сегмент), `<rp>` не показывается; затем спаривание по колонкам.
 
 use super::ruby_role;
 use super::segment_state::{collect_bases, kind_of};
@@ -16,15 +20,10 @@ use crate::text::text_box::blank_text;
 /// Прочий строчный контент образует анонимную базу (п.3). `<rp>` не
 /// показывается (A.1). Аннотации внутри `<rbc>` (неправильно вложенные, п.2)
 /// пока идут содержимым базы — анонимный руби-контейнер для них: шаг 3.
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v146, `scout-ruby-2026-09d.md` шаг 4):
-/// дополнительный лидинг §3.4 полем на атом руби (`ruby_leading` +
-/// `row.mt/mb`). Срез css-ruby+css-transforms+css-masking+filter-effects+
-/// css-writing-modes+css-inline+css-overflow+css-break 3936: −7 —
-/// `ruby-align-001/001a/space-around` (0.05…0.08 → 0.69…1.01),
-/// `rt-display-001` (0.01 → 0.62), `ruby-lang-specific-style-001`,
-/// `ruby-overhang-none`, `ruby-tab-in-base-002`; обещанных плюсов срез
-/// не показал. Поле на атоме растит короб строки, но и сдвигает базу
-/// относительно соседей — нужен настоящий лидинг строки, а не поле.
+/// Не давать дополнительный лидинг §3.4 полем на атом руби (`ruby_leading` +
+/// `row.mt/mb`): поле растит короб строки, но и сдвигает базу относительно
+/// соседей (`ruby-align-001/001a/space-around`, `rt-display-001`,
+/// `ruby-overhang-none`) — нужен настоящий лидинг строки, а не поле.
 pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
     // Вид — по РОЛИ (тег или `display: ruby*`, `ruby_role`): `span.rt
     // { display: ruby-text }` — аннотация (`rt-display-001`), `span#rbc

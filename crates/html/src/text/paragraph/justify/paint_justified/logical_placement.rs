@@ -1,4 +1,7 @@
-//! Logical placement for paint_justified; split out to keep the owning module within 250 lines.
+//! Места слов ltr-прогонов внутри зеркальной rtl-строки: зеркало строки
+//! переворачивает ВСЕ слова разом, и латинский прогон выходил задом
+//! наперёд; прогоны левого уровня (UAX #9 L2) выкладываются заново в своём
+//! порядке на своём месте с теми же промежутками.
 
 use super::{Edge, Seg, Word};
 use crate::text::paragraph::*;

@@ -1,4 +1,7 @@
-//! Greek for lang_case; split out to keep the owning module within 250 lines.
+//! Греческий прописной регистр для `text-transform: uppercase` (ICU `GreekUpper::toUpper`,
+//! css-text-3 §2.1.1): тонос, вария и периспомени снимаются, диалитика остаётся, ударная
+//! гласная перед `ι`/`υ` даёт той букве диалитику, одиночное разделительное `ή` сохраняет
+//! ударение.
 
 /// Greek letter → (uppercase base, has dialytika, had an accent).
 pub(super) fn greek_parts(ch: char) -> Option<(char, bool, bool)> {

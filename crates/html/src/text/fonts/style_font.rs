@@ -1,6 +1,6 @@
-//! The font a computed style asks for: family (with `@font-face` aliases and
-//! generic fallbacks), weight, style and features, as text measurement and
-//! shaping request it.
+//! Шрифт, который запрашивает вычисленный стиль: семейство (с алиасами `@font-face` и
+//! общими запасными), насыщенность, начертание и возможности — в том виде, в каком его
+//! запрашивают измерение и шейпинг текста.
 
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;

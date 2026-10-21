@@ -1,4 +1,8 @@
-//! Shaped for decor; split out to keep the owning module within 250 lines.
+//! Оформление поверх набранного прогона (`ShapedLine`): отображение байтов
+//! абзаца в x по набору — для rtl через видимые грозди глифов с обратной
+//! нумерацией, для ltr через `x_for_index`, — базовая линия прогона и вызов
+//! `paint_decor`. Здесь же подъём прогона по байту и вертикальный сдвиг
+//! оформляющей коробки группы (`text-decoration-decorating-box-001`).
 
 use super::*;
 use gpui::{Pixels, Point, Window, px};

@@ -1,4 +1,9 @@
-//! Unicode breaks for breaking; split out to keep the owning module within 250 lines.
+//! Точки переноса по UAX #14 (`unicode_linebreak`) для текста абзаца:
+//! распорки полей строчных коробок (`inline::SPACER`) из текста вынимаются,
+//! а смещения отображаются обратно; распорка атома читается знаком U+FFFC
+//! (класс CB), и у атома разрыв есть с обеих сторон, кроме соседства с
+//! GL/WJ/ZWJ (css-text-3 §5.1); `word-break: break-all` подменяет классы
+//! букв и цифр на ID перед вызовом переносчика (css-text-3 §5.2).
 
 use crate::text::paragraph::*;
 

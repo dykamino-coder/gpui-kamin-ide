@@ -1,4 +1,8 @@
-//! Word preparation for paint_justified; split out to keep the owning module within 250 lines.
+//! Подготовка слов строки к отрисовке по словам (`prepare_words`): разрезы
+//! по границам кусков с трекингом, сдвигами и краями коробок, по краям
+//! видимых прогонов UAX #9 L2 и распорок; пробелы левее последней
+//! табуляции раздачи не получают (css-text-4 §8.1); шаг раздачи остатка на
+//! каждый пробел и начало строки.
 
 use super::{Edge, Seg, Word};
 use crate::text::paragraph::*;

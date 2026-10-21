@@ -1,4 +1,9 @@
-//! Paragraph layout probes retain text, geometry, and document measurement ownership.
+//! `request_layout` абзаца: раскладка атомов и метрик прогонов ДО замера,
+//! струт первой строки, и регистрация замеряемой раскладки у окна. Ширина
+//! известна только раскладке, поэтому строки считаются в замере — в callback
+//! уезжает копия абзаца со ВСЕМИ правилами кусков, обрывом `line-clamp`,
+//! отступом и атомами (и общей памятью замера документа), иначе щуп отдаёт
+//! другое число строк, чем отрисовка.
 
 mod measured_layout;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;

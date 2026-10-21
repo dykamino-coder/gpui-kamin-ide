@@ -1,4 +1,9 @@
-//! Clamp probe element and its layout, prepaint, and plan application lifecycle.
+//! Элемент `ClampCut` — вычислитель точки среза `line-clamp`: абсолютный элемент последним
+//! ребёнком clamp-контейнера, размером во весь контейнер. На входе пробы строк и коробок кадра
+//! (`ClampEntry`), предел строк, `max-height` и `text-box-trim`; на выходе точка среза, бюджет
+//! строк абзаца и размеры фрагментированных коробок в состоянии документа (`ClampState`) и
+//! запрос нового кадра. Здесь — сам элемент и его поля; `layout`, `prepaint`, `painting`
+//! реализуют фазы `Hooks`.
 
 mod layout;
 mod painting;

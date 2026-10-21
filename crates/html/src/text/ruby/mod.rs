@@ -1,4 +1,8 @@
-//! Руби: сегменты и уровни.
+//! Руби (css-ruby-1): роль элемента по `display: ruby*` или тегу, разрезание детей `<ruby>` на
+//! сегменты с базами и уровнями аннотаций (`segments`, `segment_state`, `pairing`), сокрытие
+//! аннотаций, снятие трансформаций с единиц, геометрия слоёв аннотаций (`layers`) и строчный
+//! контейнер руби атомом строки (`container`). Вход — узлы DOM со стилями, выход — элемент
+//! gpui для строки абзаца.
 mod pairing;
 mod segment_state;
 mod segments;
@@ -8,8 +12,6 @@ use crate::text::ruby::segment_state::close_segment;
 use crate::text::ruby::segment_state::flush_run;
 use crate::text::ruby::segment_state::fresh;
 use crate::text::ruby::segments::ruby_segments;
-
-// owner: A
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;

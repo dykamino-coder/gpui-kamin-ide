@@ -1,4 +1,7 @@
-//! Word-space justification is disabled for ruby annotations (CSS Text 4 §7.3).
+//! Выключка внутри руби: `text-justify: ruby` отключает раздачу остатка по
+//! пробелам в единицах руби (css-text-4 §7.3), и без точек раздачи
+//! `space-between` центрирует содержимое (css-ruby-1 §4.3); здесь же
+//! признак общей повёрнутой растровой рамки руби и соседнего текста.
 
 use super::{Align, Paragraph};
 

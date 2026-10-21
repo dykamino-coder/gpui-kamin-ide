@@ -1,4 +1,10 @@
-//! Soft break opportunities separated from mandatory breaks and final filtering.
+//! Мягкие точки разрыва абзаца — отдельно от обязательных разрывов и
+//! итоговой фильтрации: `line-break: anywhere` (абзац или вложенный кусок),
+//! точки UAX #14 через `linebreaks`, послабления `line-break: normal`/`loose`
+//! (css-text-3 §5.2–5.3: класс CJ, знаки повтора, `‥…`, дефисы после
+//! иероглифа, волнистое тире, центрированная пунктуация, широкие префиксы и
+//! постфиксы в ja/zh), мягкий перенос, каждый сохранённый пробел при
+//! `break-spaces` и запрет `word-break: keep-all` между буквенными единицами.
 
 use super::{
     centered_punctuation, conditional_japanese_starter, iteration_mark, letter_unit,

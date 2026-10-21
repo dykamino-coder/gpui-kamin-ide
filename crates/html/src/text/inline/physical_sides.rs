@@ -1,5 +1,7 @@
-//! Convert physical inline decorations to the paragraph's unrotated shaping plane.
-//! The containing paragraph fixes this plane even if an inline overrides writing-mode.
+//! Физические украшения строчной коробки (отступы, рамки, цвета граней, радиусы углов) в
+//! неповёрнутой плоскости набора абзаца: плоскость задаёт содержащий абзац, даже если строчный
+//! элемент переопределяет `writing-mode`. Обёртка над `physical_projection` для `Sides` и
+//! целого `Computed`.
 use crate::style::computed::{Computed, Sides};
 
 pub(super) fn project<T: Copy>(flow: &Computed, sides: [T; 4]) -> [T; 4] {

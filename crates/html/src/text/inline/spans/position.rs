@@ -1,4 +1,8 @@
-//! Relative and baseline displacements of inline text ranges.
+//! Смещения кусков по байтовым отрезкам текста абзаца: относительный сдвиг (CSS 2.1 §9.4.3,
+//! на поток не влияет) и сдвиг базовой линии `vertical-align` (§10.8.1: `sub`/`super`, длина,
+//! процент от `line-height` куска, `text-top`/`text-bottom`, `middle`) с учётом центральной
+//! доминантной базовой линии повёрнутой строки (css-writing-modes-4 §4.2, css-inline-3);
+//! к вне-поточной коробке выравнивание не применяется.
 
 use super::{text_ranges, text_size};
 use crate::layout::options::RenderOpts;
@@ -28,18 +32,9 @@ pub fn rel_spans(pieces: &[Piece]) -> Vec<(std::ops::Range<usize>, (f32, f32), (
 ///
 /// `vertical-align: super`/`sub` поднимает и опускает кусок внутри строки.
 /// Доля кегля взята браузерная: треть вверх и пятая часть вниз.
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (11.09, `scout-centralbaseline-2026-09.md`,
-// 4 хунка): центральная доминантная базовая линия у повёрнутой строки
-// (css-writing-modes-4 §4.2: «the central baseline is used as the
-// dominant baseline when text-orientation is mixed or upright»,
-// величина по css-inline-3 A.2 = (ascent − descent)/2; Blink —
-// `computed_style.cc:2154`). Патч включал разделение `mixed` и
-// `sideways`, которые у нас хранятся одним булем.
-// Срез 1476 пар, база тем же списком: **+0 / −3**. Обещанные
-// `text-baseline-vrl-002` и `-vlr-003` НЕ позеленели, а ушли
-// `vertical-alignment-003` 0.39 → 0.61, `-009` 0.39 → 0.55,
-// `-vlr-025` 0.17 → 1.17. Возвращать только вместе с разбором того,
-// почему поправка не даёт нуля там, где арифметика скаута его даёт.
+///
+/// Центральная доминантная базовая линия повёрнутой строки и `middle` учитываются
+/// в `dominant_shift`; `central` — её смещение у струта строки.
 pub fn shift_spans(
     pieces: &[Piece],
     base_size: f32,
@@ -77,8 +72,8 @@ pub fn shift_spans(
             .or_else(|| style.vertical_shift.map(|k| k * size))
             // Процент считается от `line-height` САМОГО куска (§10.8.1), а не
             // от кегля: `vertical-align: 50%` при `line-height: 2` — это кегль
-            // целиком, а не половина. Замерено: 0 и 0 — правка по спеке, в
-            // своде такой записи почти нет.
+            // целиком, а не половина (правка по спеке; в своде такой записи
+            // почти нет).
             .or_else(|| {
                 style.vertical_shift_pct.map(|k| {
                     let own = match style.line_height {
@@ -106,7 +101,7 @@ pub fn shift_spans(
                 let vertical = style.wm().vertical() || style.wm().turned();
                 // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
                 // half-leading comes from its computed line-height. The line's
-                // strut is not that box (Blink inline_box_state.cc:144-150).
+                // strut is not that box (Blink `inline_box_state.cc`).
                 // The edge is physical, so this holds for the central
                 // dominant baseline of mixed/upright text too.
                 let own_line = if vertical {

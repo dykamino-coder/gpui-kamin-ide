@@ -1,4 +1,6 @@
-//! Measured clamp paragraph rows and layout probes.
+//! Связь абзацев с clamp-контейнером на одном кадре: пробы строк и коробок (`clamp_probe`,
+//! `clamp_empty_probe`) пишут свои границы в prepaint; отрисовка абзаца публикует настоящие
+//! строки в `ParagraphRows` документа, откуда их забирает `ClampCut` своего контейнера.
 
 use super::{ClampEntry, ClampLines};
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};

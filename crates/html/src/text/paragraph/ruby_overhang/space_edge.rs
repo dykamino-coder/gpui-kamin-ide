@@ -1,5 +1,9 @@
-//! CSS Ruby 1 §ruby-overhang: preserved whitespace and blank punctuation edges.
-//! Blink ruby_utils.cc handles control advances and Han-kerning edges separately.
+//! Ширина пустого края у соседа руби для `ruby-overhang: spaces` (css-ruby-1
+//! §4.4): сохранённые пробелы и табуляции плюс пустая половина или четверть
+//! полноширинной пунктуации по классам css-text-4 §text-spacing-trim
+//! (неоднозначные двоеточие и точка — по чернилам глифа). Blink
+//! `ruby_utils.cc` считает продвижения управляющих знаков и края
+//! Han-кернинга раздельно.
 
 use super::is_space_separator;
 use crate::text::paragraph::{Paragraph, Seg, slice_runs};

@@ -9,14 +9,12 @@ use crate::text::inline::whitespace::line_breaks::wide_punct;
 
 use crate::text::inline::*;
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158→v162, `scout-trimedge-2026-09.md` Х1):
-/// узкий гейт «атом обрывает ВЕДУЩИЙ срез, если за рядом пробелов текст»
-/// (`trim_edge` на срезе + `text_after_spaces`). Обещание 0/0 с восьмёркой
-/// контроля — восьмёрка устояла, но `baseline-inline-non-replaced-004`
-/// 0.40 → «красное видно»; без гейта (v162) снова 0.40. Плюсов ноль. Пробел
-/// за атомом остаётся прозрачным; эталоны `text-emphasis` по-прежнему ждут
-/// другой раскладки — искать её в `as_wrapped_row`, а не в срезе краёв.
 /// Пробелы по КРАЯМ строки, сквозь ПУСТУЮ строчную коробку.
+///
+/// Не ставить узкий гейт «атом обрывает ВЕДУЩИЙ срез, если за рядом пробелов
+/// текст» (`text_after_spaces`): ломает `baseline-inline-non-replaced-004`, а
+/// эталоны `text-emphasis` не чинит — пробел за атомом остаётся прозрачным,
+/// другую раскладку для них искать в `as_wrapped_row`, а не в срезе краёв.
 ///
 /// По css-text-3 §4.1.3 схлопываемые пробелы в конце строки удаляются. Пустая
 /// строчная коробка (`<span style="border-left:30px solid green"></span>`)
@@ -42,16 +40,11 @@ pub fn trim_edge_spaces_solid_atoms(pieces: &mut [Piece]) {
 /// Один край строки: куски идут от него внутрь, коробки пропускаются.
 fn trim_edge<'a>(pieces: impl Iterator<Item = &'a mut Piece>, leading: bool, solid_atoms: bool) {
     for piece in pieces {
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v155, `scout-emphasis-2026-09.md`):
-        // отрисовка `text-emphasis` (11 хунков) вместе с правкой `trim_edge`
-        // (`Piece::Atom` перестаёт быть прозрачным для среза краевого пробела).
-        // Срез css-text-decor+css-pseudo+css-lists+css-counter-styles+css-ruby+
-        // css-text+css-inline+CSS2 8145: +4/−8 у этой части —
-        // `inline-block-baseline-015/016` 0.00 → 99.00,
-        // `vertical-align-117a/118a` 0.11 → 6.84, `inline-formatting-context-013`,
-        // `line-breaking-030/032`, `inline-block-replaced-width-003`.
-        // Срез краевого пробела после атома трогает всю строчную раскладку —
-        // мерить отдельно и сначала только его.
+        // Не делать `Piece::Atom` непрозрачным для среза краевого пробела
+        // попутно с другой правкой (например, отрисовкой `text-emphasis`):
+        // это трогает всю строчную раскладку (`inline-block-baseline-015/016`,
+        // `vertical-align-117a/118a`, `inline-formatting-context-013`,
+        // `line-breaking-030/032`) — мерить отдельно и сначала только его.
         match piece {
             Piece::Atom(_) if solid_atoms => return,
             // Коробка без текста для ряда пробелов прозрачна.
@@ -126,6 +119,13 @@ pub(super) fn split_glued_tail(pieces: Vec<Piece>) -> Vec<Piece> {
     out
 }
 
+/// Убрать ХВОСТОВОЙ пробельный кусок строки-ряда.
+///
+/// По CSS пробел в конце строки висит за краем и на раскладку не влияет. В
+/// ряду он влияет: это отдельная коробка со своей высотой, и строка растёт на
+/// его спуск — между двумя картинками 60×60 появлялась полоса в полкегля
+/// (`line-breaking-030`). В сохранённых пробелах (`white-space: pre*`) кусок
+/// значим и остаётся.
 pub(super) fn drop_hanging_tail(mut pieces: Vec<Piece>) -> Vec<Piece> {
     while let Some(Piece::Text { text, style }) = pieces.last() {
         // Схлопываемый пробел по CSS — только `space`, `tab`, `CR`, `LF`.

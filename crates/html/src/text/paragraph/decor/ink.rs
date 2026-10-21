@@ -1,4 +1,9 @@
-//! Ink for decor; split out to keep the owning module within 250 lines.
+//! Протяжённость и чернила для линий оформления текста: ширина
+//! оформленного диапазона по всем строкам без висящих пробелов, коробки
+//! чернил знаков в точках устройства для `text-decoration-skip-ink`
+//! (замена Blink `GetTextIntercepts`, без CJK как в `kExcludeCJK`), отступы
+//! концов `text-decoration-inset` (css-text-decor-4 §4.1) и отрисовка
+//! накопленных узорных линий в конце строки.
 
 use super::is_cjk;
 use super::*;

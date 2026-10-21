@@ -1,19 +1,18 @@
-//! Document-owned fallback measures for rotated atomic subtrees.
+//! Запасные измерения для повёрнутых атомарных поддеревьев, принадлежащие документу.
 //!
-//! Native vertical Paragraphs and definite orthogonal inline constraints already
-//! measure in one pass. The rotated atomic adapter still claims its block size
-//! before its flex parent resolves the final inline length. Prepaint lays out
-//! the flat child at that length and records the resulting block size for the
-//! next frame. The claim-cap and fit-limit paths also retain this fallback.
+//! Нативные вертикальные абзацы и определённые ортогональные строчные ограничения уже
+//! измеряются за один проход. Адаптер повёрнутого атома всё ещё заявляет свой блочный размер
+//! раньше, чем его flex-родитель разрешит итоговую строчную длину. Prepaint раскладывает
+//! плоского ребёнка на этой длине и записывает получившийся блочный размер для следующего
+//! кадра. Эти запасные данные держат и пути claim-cap и fit-limit.
 //!
-//! A copied GPUI LayoutMeasurement can measure without borrowing the parent's
-//! engine. Using it here requires replacing the fixed width claim with a
-//! measured leaf and resolving auto-height against the containing block or ICB
-//! (CSS Writing Modes 4 section 7.3), rather than its current parent stretch.
-//! Moving the built AnyElement into a nested engine is invalid: descendants
-//! retain LayoutIds from the original tree. This module only isolates the
-//! existing fallback; it does not make that sizing contract one-pass.
-//! Storage and occurrence numbering belong to one document, including iframes.
+//! Скопированный GPUI LayoutMeasurement может измерять, не заимствуя движок родителя. Чтобы
+//! использовать его здесь, нужно заменить фиксированное заявление ширины измеряемым листом и
+//! разрешать auto-высоту относительно содержащего блока или ICB (CSS Writing Modes 4, раздел 7.3),
+//! а не по текущему растяжению родителя. Переносить собранный AnyElement во вложенный движок
+//! нельзя: потомки хранят LayoutId исходного дерева. Модуль лишь изолирует существующий запасной
+//! путь; контракт размеров от этого однопроходным не становится.
+//! Хранилище и нумерация вхождений принадлежат одному документу, включая iframe.
 
 use gpui::Pixels;
 use std::cell::RefCell;

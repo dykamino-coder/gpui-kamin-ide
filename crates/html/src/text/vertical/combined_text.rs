@@ -1,5 +1,8 @@
-//! Horizontal compositions apply only in vertical writing modes, with no letter spacing.
-//! CSS Writing Modes 4 §9.1 and §9.1.2 preserve font settings inside the composition.
+//! Кусок `text-combine-upright` при сборе абзаца: только в вертикальном письме без
+//! `sideways`, при `digits N` — лишь цифры не длиннее N; внутри композиции нулевой
+//! `letter-spacing`, высота строки в кегль, возможности `hwid`/`twid`/`qwid` по числу знаков и
+//! сужение полноширинных форм (css-writing-modes-4 §9.1, §9.1.2, §9.1.3.1). На выходе атом
+//! `CombinedUpright` с внутренним абзацем.
 
 use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};

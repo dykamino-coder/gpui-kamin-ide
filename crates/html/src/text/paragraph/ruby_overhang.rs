@@ -1,16 +1,16 @@
-//! Ruby annotation overhang (css-ruby-1 §4.4 `ruby-overhang`).
+//! Свес аннотации руби (css-ruby-1 §4.4 `ruby-overhang`).
 //!
-//! An annotation wider than its base may overhang the content next to the
-//! ruby: the ruby's advance in the line shrinks by the overhang on each side,
-//! and the atom is drawn shifted left by the start overhang. The amounts follow
-//! Blink `ruby_utils.cc` (`GetOverhang`, `CommitPendingEndOverhang`):
-//! - `auto`: by at most half the annotation font size on each side, and not
-//!   more than the base inset (half the excess for centred annotations);
-//!   the end overhang covers at most half of the following text and never
-//!   text set in a larger font than the base.
-//! - `spaces`: over adjacent space separators, preserved tabs and the blank
-//!   edges of fullwidth punctuation, up to the base inset.
-//! - `none`: never.
+//! Аннотация шире базы может нависать над соседним содержимым: продвижение
+//! руби в строке уменьшается на свес с каждой стороны, а атом рисуется со
+//! сдвигом влево на начальный свес. Величины — по Blink `ruby_utils.cc`
+//! (`GetOverhang`, `CommitPendingEndOverhang`):
+//! - `auto`: не больше половины кегля аннотации с каждой стороны и не больше
+//!   отступа базы (половина излишка при центрированной аннотации); конечный
+//!   свес закрывает не больше половины следующего текста и никогда — текст
+//!   кеглем крупнее базы.
+//! - `spaces`: над соседними пробельными разделителями, сохранёнными
+//!   табуляциями и пустыми краями полноширинной пунктуации, до отступа базы.
+//! - `none`: никогда.
 
 mod space_edge;
 

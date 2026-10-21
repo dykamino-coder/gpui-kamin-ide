@@ -1,4 +1,7 @@
-//! Clamp point by box-tree order: content before the point keeps its overflow.
+//! Применение точки среза в порядке дерева коробок: содержимое ДО точки сохраняет своё
+//! переполнение (css-overflow-4 §5.3 прячет только то, что ПОСЛЕ точки; Blink помечает такие
+//! коробки hidden for paint вместо обрезки контейнера). Опускает клип контейнера до видимой
+//! протяжённости и прячет абзацы и поточные блочные коробки за точкой при сборке стилей.
 
 use super::{clamp_cut, clamp_extent, clamp_para};
 use crate::document::state::ValueCx;

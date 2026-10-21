@@ -1,4 +1,7 @@
-//! CSS Overflow 3 §2.2: line boxes belong to scrollable overflow, unlike glyph ink.
+//! Вклад строк абзаца в прокручиваемое переполнение контейнера (css-overflow-3
+//! §2.2: в него входят строчные коробки, а не чернила глифов): на prepaint
+//! каждая строка с её выключкой, отступом, вырезом обтекания и надбавками
+//! записывается владельцу прокрутки, в вертикальном письме — повёрнутой.
 use super::*;
 use gpui::{Bounds, LayoutId, Pixels, Window, point, px, size};
 pub(super) struct ScrollOwner {

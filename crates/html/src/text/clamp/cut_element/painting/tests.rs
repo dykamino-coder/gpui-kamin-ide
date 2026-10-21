@@ -1,4 +1,4 @@
-//! Clamp plans from immutable probe snapshots, independent of window and registries.
+//! Тесты планов clamp по неизменяемым снимкам опросов, независимо от окна и реестров.
 
 use super::ClampEntry;
 use super::geometry::ClampGeometry;

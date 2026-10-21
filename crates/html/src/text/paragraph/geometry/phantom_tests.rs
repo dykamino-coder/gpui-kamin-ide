@@ -1,4 +1,4 @@
-//! Phantom paragraphs retain an inline static point without creating a line.
+//! Тесты: фантомные абзацы хранят строчную статическую точку, не создавая строки.
 
 use crate::layout::float::shapes::FloatShape;
 use crate::text::paragraph::*;

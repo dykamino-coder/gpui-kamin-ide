@@ -1,4 +1,6 @@
-//! Windows names for fonts; split out to keep the owning module within 250 lines.
+//! Починка таблицы `name` перед передачей шрифта системе: дублирует записи platform 0 как записи
+//! Windows (platform 3, en-US), иначе DirectWrite не находит семейство по имени и текст молча
+//! рисуется системной подменой (тестовые шрифты WPT вроде FontWithFancyFeatures).
 
 /// Дописать в name-таблицу записи Windows (platform 3, en-US).
 ///

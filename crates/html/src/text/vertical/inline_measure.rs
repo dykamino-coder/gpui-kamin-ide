@@ -1,4 +1,4 @@
-//! Inline extent collected by one intrinsic measurement, independent of its parent.
+//! Строчный размер, собранный одним внутренним измерением независимо от родителя.
 
 use std::cell::Cell;
 use std::rc::Rc;

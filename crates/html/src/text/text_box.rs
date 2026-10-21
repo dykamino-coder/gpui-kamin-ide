@@ -1,7 +1,10 @@
-//! `text-box`, высота строки, пустой текст.
+//! Метрики строки блока для сборки дерева: стиль и владелец первой/последней отформатированной
+//! строки контейнера для `text-box-trim` (css-inline-3 §4.2, css-pseudo-4), величина среза по
+//! `text-box-edge` (§4.3, включая `alphabetic` по BASE `romn` и синтезированную em-коробку),
+//! высота строки для статической позиции, доля `line-height: normal` по шрифту элемента или
+//! документа и пустота текстового узла по CSS (только space/tab/CR/LF).
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::Node;
 use crate::layout::box_kind::{

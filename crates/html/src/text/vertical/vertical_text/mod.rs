@@ -1,4 +1,8 @@
-//! Vertical text geometry, element ownership, and GPUI phase hooks.
+//! Элемент `VerticalText` — строка вертикального письма (`vertical-rl`, `vertical-lr`,
+//! `sideways-*`): сам меряет горизонтально набранное содержимое, отдаёт раскладке размер с
+//! переставленными осями и на отрисовке поворачивает его на четверть оборота. Здесь — поля
+//! элемента и реализация `Wrap`; фазы в `layout`, `prepaint`, `painting`, настройки в
+//! `vertical_style`.
 
 mod layout;
 mod painting;
@@ -7,6 +11,13 @@ mod prepaint;
 use crate::hooks::Wrap;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 
+/// Строка вертикального письма: `writing-mode: vertical-rl` и `vertical-lr`.
+///
+/// Поворота мало: у повёрнутого текста меняются местами ширина и высота, и
+/// раскладка обязана считать их поменянными — иначе строка занимает место как
+/// горизонтальная и наезжает на соседей. Поэтому это свой элемент: он
+/// измеряет текст сам, отдаёт раскладке перевёрнутый размер, а на отрисовке
+/// разворачивает содержимое на четверть оборота по часовой стрелке.
 pub struct VerticalText {
     pub(crate) inline_measure: Option<super::InlineMeasure>,
     pub(crate) paint_context: std::rc::Rc<super::VerticalPaint>,
@@ -32,14 +43,14 @@ pub struct VerticalText {
     /// css-writing-modes-4, таблица Abstract-Physical Mapping: у `sideways-lr`
     /// line-left = НИЗ, line-right = ВЕРХ, over = ЛЕВО (у всех остальных
     /// вертикальных письмён line-left = верх, over = право). Blink различает
-    /// эти два случая ровно так же — `paint/line_relative_rect.cc:69-75`:
+    /// эти два случая ровно так же — `paint/line_relative_rect.cc`:
     /// `AffineTransform(0, 1, -1, 0, …)` против `AffineTransform(0, -1, 1, 0, …)`.
     pub(crate) ccw: bool,
     /// Ячейка вертикальной таблицы: мерить содержимое по МИНИМАЛЬНОМУ
     /// вдоль строки, а не по максимальному. Тогда заявленная высота
     /// повёрнутой коробки — вклад ячейки в меру её КОЛОНКИ (css-tables-3
     /// §computing-column-measures), и дорожку считает решётка, а не
-    /// инлайн-размер всего стола. Ставится из `render.rs` (`col_min`).
+    /// инлайн-размер всего стола. Ставится из `render/paragraph/vertical.rs` (`col_min`).
     pub(crate) col_min: bool,
     /// `vertical-lr` при повороте по часовой: строки поданы снизу вверх, и
     /// первая строка — ЛЕВАЯ колонка (у `vertical-rl` — правая).

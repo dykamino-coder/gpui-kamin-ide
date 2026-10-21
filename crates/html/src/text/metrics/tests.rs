@@ -1,4 +1,5 @@
-//! Metric fallback, scaling and isolation between documents on one thread.
+//! Тесты метрик `ch`/`ex`: запасные полкегля без щупа, масштабирование замера по кеглю и
+//! изоляция щупов, семейств и `normal` между документами одного потока.
 
 use super::*;
 use crate::document::state::DocState;

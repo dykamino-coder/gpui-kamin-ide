@@ -1,4 +1,5 @@
-//! Prepaint for cut_element; split out to keep the owning module within 250 lines.
+//! Фаза `prepaint` элемента `ClampCut`: пустая. Пробы строк пишут свои границы в prepaint
+//! своего кадра, а срез считается уже в `paint`, когда все пробы контейнера собраны.
 
 use super::ClampCut;
 use gpui::{App, Bounds, Pixels, Window};

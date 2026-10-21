@@ -1,7 +1,7 @@
-//! Measure U+0020 through the text shaper, including glyph fallback and font features.
-//!
-//! CSS Text numeric tab sizes use the block container's space advance. The
-//! zero glyph is not an equivalent metric in proportional or fallback fonts.
+//! Ширина пробела U+0020 через шейпер текста, с подстановкой глифов и возможностями шрифта:
+//! числовой `tab-size` (css-text-3) считается от продвижения пробела блочного контейнера, а
+//! глиф нуля в пропорциональных и подстановочных шрифтах ему не равен. Щуп ставит владелец
+//! системы шрифтов; без него или при негодном замере — `None`.
 
 use gpui::{Font, TextSystem, px};
 use std::{cell::RefCell, sync::Arc};

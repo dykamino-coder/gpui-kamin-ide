@@ -1,4 +1,9 @@
-//! Ellipsis for clamp; split out to keep the owning module within 250 lines.
+//! Усечение строки многоточием (css-overflow-3 §text-overflow): по точкам
+//! переноса, иначе по знакам, первый знак остаётся всегда; при rtl — с
+//! логического начала; при смешанном направлении знаки прячутся с конечного
+//! края в ВИДИМОМ порядке (`visual_cut`). Здесь же выбор знака обрыва:
+//! строка `text-overflow: <string>` или U+2026, знак `block-ellipsis` для
+//! `line-clamp` (css-overflow-4), и ширина знака в наборе куска.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, Window, px};

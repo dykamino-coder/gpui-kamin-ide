@@ -1,4 +1,7 @@
-//! Selection runs and mouse tracking over a paragraph layout snapshot.
+//! Выделение текста мышью: прогоны с подложкой на выделенном куске
+//! (прогон на границе режется надвое) и слежение за мышью — замыкания живут
+//! дольше кадра и берут свой снимок раскладки абзаца, чтобы переводить
+//! точку в байт; состояние выделения хранит окно по `GlobalElementId` абзаца.
 
 use crate::interactive::selection::{selected_runs, track_selection};
 use crate::text::paragraph::*;
