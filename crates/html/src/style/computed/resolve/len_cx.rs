@@ -24,18 +24,6 @@ pub struct ViewportCx {
     pub container: Option<(f32, f32)>,
 }
 
-impl ViewportCx {
-    /// Окно без оси письма и контейнера: горизонтальное письмо, контейнер —
-    /// само окно.
-    pub const fn plain(size: (f32, f32)) -> Self {
-        ViewportCx {
-            size,
-            vertical: false,
-            container: None,
-        }
-    }
-}
-
 /// Контекст перевода длины в точки. `None` в поле — эта природа единиц в
 /// данном месте не решается.
 #[derive(Clone, Copy, Debug, Default)]
@@ -48,11 +36,28 @@ pub struct LenCx<'a> {
     pub viewport: Option<ViewportCx>,
 }
 
+impl ViewportCx {
+    /// Окно заданного размера для коробки со стилем `style`: ось её письма и
+    /// её контейнер запросов размера (недостающая ось — окно). Полосы
+    /// прокрутки не вычитаются: размер уже окончательный.
+    pub fn for_box(size: (f32, f32), style: &Computed) -> Self {
+        ViewportCx {
+            size,
+            vertical: style.wm().vertical(),
+            container: Some((
+                style.cq_box.0.unwrap_or(size.0),
+                style.cq_box.1.unwrap_or(size.1),
+            )),
+        }
+    }
+}
+
 impl<'a> LenCx<'a> {
-    /// Только окно: доли и шрифтовые единицы не решаются.
-    pub fn viewport(viewport: Option<(f32, f32)>) -> Self {
+    /// Только окно коробки со стилем `style` (`ViewportCx::for_box`): доли и
+    /// шрифтовые единицы не решаются.
+    pub fn box_viewport(viewport: Option<(f32, f32)>, style: &Computed) -> Self {
         LenCx {
-            viewport: viewport.map(ViewportCx::plain),
+            viewport: viewport.map(|size| ViewportCx::for_box(size, style)),
             ..LenCx::default()
         }
     }
@@ -66,7 +71,17 @@ impl<'a> LenCx<'a> {
             Len::Px(v) => v,
             Len::Pct(k) => pct(k)?,
             Len::Calc(i) => {
-                let (k, add) = calc_get(i, vcx).pct_px()?;
+                // Слагаемые окна и контейнера сворачиваются по окну
+                // контекста; после свёртки сумма из одних точек — длина.
+                let mut sum = calc_get(i, vcx);
+                let folded = self
+                    .viewport
+                    .is_some_and(|vp| sum.fold_viewport(vp.size, vp.vertical, vp.container));
+                let (k, add) = if folded {
+                    sum.length_percentage()?
+                } else {
+                    sum.pct_px()?
+                };
                 if k == 0.0 { add } else { pct(k)? + add }
             }
             Len::Vw(k) => k * self.viewport?.size.0,
@@ -149,14 +164,7 @@ impl Computed {
     pub fn viewport_cx(&self, raw: (f32, f32)) -> ViewportCx {
         let insets = self.viewport_unit_insets.unwrap_or_default();
         let size = ((raw.0 - insets[0]).max(0.0), (raw.1 - insets[1]).max(0.0));
-        ViewportCx {
-            size,
-            vertical: self.wm().vertical(),
-            container: Some((
-                self.cq_box.0.unwrap_or(size.0),
-                self.cq_box.1.unwrap_or(size.1),
-            )),
-        }
+        ViewportCx::for_box(size, self)
     }
 }
 

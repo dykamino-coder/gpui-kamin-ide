@@ -47,7 +47,7 @@ pub(crate) fn measure(
     }
     let shape = &mut m.shape;
     // Рамка и отступ: нерешённое ничего не добавляет к мере.
-    let lens = LenCx::viewport(cx.viewport);
+    let lens = LenCx::box_viewport(cx.viewport, &element.style);
     let resolve = |value: Option<Len>| lens.px_lossy_zero(value, vcx);
     let border = element.style.borders();
     let decoration = resolve(element.style.padding.top)
@@ -95,7 +95,7 @@ pub(super) fn constrain(
     vcx: ValueCx<'_>,
 ) -> f32 {
     // Предел, который не решается, не ограничивает.
-    let lens = LenCx::viewport(viewport);
+    let lens = LenCx::box_viewport(viewport, style);
     let resolve = |length: Option<Len>| lens.px_strict(length, vcx);
     let border_size = |v: f32| border_size(v, style, decoration);
     let minimum = resolve(style.min_height).map(border_size);
