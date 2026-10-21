@@ -1,4 +1,4 @@
-//! Float margins use computed font metrics before lowering into a band host.
+//! Тесты: поля float используют вычисленные метрики шрифта до приведения к band-хосту.
 
 use super::*;
 

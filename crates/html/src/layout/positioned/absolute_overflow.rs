@@ -1,4 +1,7 @@
-//! Preserve abspos self alignment until actual static and original CB bounds exist.
+//! Безопасное самовыравнивание абсолюта в flex-контейнере (css-align-3 §auto-safety-position):
+//! `align-self: safe …` откладывается до `prepaint`, когда известны и статическая
+//! прямоугольная область flex-родителя (щуп-канвас `probe`), и исходный содержащий блок,
+//! и коробка сдвигается по их объединению (`SafePlace` поверх `absolute_overflow_math`).
 
 use crate::document::state::ValueCx;
 use crate::hooks::{IntoHooked, Wrap};

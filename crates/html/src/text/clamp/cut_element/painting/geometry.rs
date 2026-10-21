@@ -1,4 +1,4 @@
-//! Pure clamp geometry from the current frame's box and paragraph probes.
+//! Чистая геометрия clamp по опросам боксов и абзацев текущего кадра.
 
 use super::{ClampBox, ClampEntry, fit, paragraph};
 use std::collections::HashMap;

@@ -1,4 +1,9 @@
-//! CSS coverage table fragments, concatenated at compile time without changing order.
+//! Таблица покрытия CSS: разделы реестра, склеенные на этапе компиляции.
+//!
+//! Конструкторы `m`/`no`/`part`/`imp` задают вердикт свойства (`Support`),
+//! разделы лежат в дочерних модулях, а `PROPERTIES` собирает их в один массив
+//! `const fn`-конкатенацией без изменения порядка: порядок — тот же, что в
+//! документации, и по нему считается процент в `coverage::mapped_pct`.
 
 use crate::coverage::{Prop, Support};
 mod box_model;

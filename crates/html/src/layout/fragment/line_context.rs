@@ -1,4 +1,4 @@
-//! Immutable line-measurement inputs retained by each fragmentation path.
+//! Неизменяемые входы измерения строк, сохраняемые каждым путём фрагментации.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

@@ -1,4 +1,7 @@
-//! Measured CSS boxes and extent proxies belonging to the current HTML scrollport.
+//! Щупы текущего HTML-scrollport: прозрачные элементы и записи, через которые раскладка
+//! сообщает `Frame` измеренные коробки потомков, строки текста, области scroll-snap и маркер
+//! прокси переполнения, а покраска получает обрезку декораций вьюпорта и корня прокрутки.
+//! В переполнение входят line box'ы, но не чернила `text-decoration`.
 
 use super::{Clip, Frame, snap};
 use crate::hooks::IntoHooked;

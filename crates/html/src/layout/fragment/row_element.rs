@@ -1,4 +1,8 @@
-//! Flow children retain absolute fractional origins until device rounding.
+//! Реализация `gpui::Element` для построчного потока атомов `FlowRow` (`types`): замер —
+//! раскладка пробы без детей по пределу инлайн-оси (в вертикальном письме — высота), на
+//! `prepaint` дети ставятся по слотам в неокруглённых координатах, чтобы дробные начала
+//! дожили до округления устройства; `vertical-rl`/`vertical-lr`/`sideways-lr` переводят
+//! слоты в физические оси.
 
 use crate::hooks::Hooks;
 use crate::layout::fragment::types::{FlowChild, FlowRow};

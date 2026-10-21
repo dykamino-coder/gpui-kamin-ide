@@ -1,4 +1,4 @@
-//! Active clamp count root and paragraph numbers passed through layout builds.
+//! Корень активного счётчика clamp и номера абзацев, передаваемые через сборки раскладки.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

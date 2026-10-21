@@ -1,4 +1,5 @@
-//! inherit_stage, этап шрифта и строки: кегль и высота строки при font-size-adjust, начертание, выравнивание текста, письмо, сетка родителя, интервалы, text-transform/indent/box, разрывы.
+//! inherit_stage, этап шрифта и строки: кегль и высота строки при font-size-adjust, начертание,
+//! выравнивание текста, письмо, сетка родителя, интервалы, text-transform/indent/box, разрывы.
 
 use super::*;
 
@@ -32,7 +33,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     c.underline = own.underline.or(parent.underline);
     c.line_through = own.line_through.or(parent.line_through);
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
-    // строки родителя; сырое `Lh` уходило в `apply.rs` как `relative(2)` от
+    // строки родителя; сырое `Lh` уходило в `paint/apply/` как `relative(2)` от
     // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
     // У подогнанного родителя числовой `line-height` переведён в точки ЕГО
     // вычисленным кеглем; ребёнок наследует сам множитель.
@@ -97,7 +98,7 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
         _ => own.vertical_align_base,
     };
     // Сетка-родитель и её письмо: у вертикальной сетки оси выравнивания
-    // элемента переставляются (`apply.rs`), а по оси x идут группы базовых.
+    // элемента переставляются (`paint/apply/`), а по оси x идут группы базовых.
     c.parent_grid = match parent.display {
         Some(crate::style::computed::Display::Grid)
         | Some(crate::style::computed::Display::InlineGrid) => {

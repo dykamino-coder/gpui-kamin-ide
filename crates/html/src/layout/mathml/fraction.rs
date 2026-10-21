@@ -1,4 +1,4 @@
-//! MathML Core §3.3.2: ruled fractions and zero-rule stacks, without painting.
+//! MathML Core §3.3.2: дроби с чертой и стопки без черты, без отрисовки.
 
 use super::geometry::Metrics;
 

@@ -1,7 +1,11 @@
-//! Наследование стиля.
+//! Каскад: наследование стиля — слияние вычисленного стиля родителя с
+//! собственным стилем узла (`inherit`). Вход — два `Computed`, выход — стиль
+//! узла, у которого разрешены `em`/проценты кегля, цвет рамки по умолчанию,
+//! абсолютный `tab-size`, flow-относительное выравнивание и декорации; этапы
+//! разнесены по подмодулям (containing, sizes, explicit, fonts, text_layout,
+//! paint, decorate). `inherit_unpainted` — то же без окраски фильтром.
 
 use crate::document::state::ValueCx;
-// owner: B
 
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::{Color, Len};
@@ -24,15 +28,11 @@ use paint::inherit_paint;
 use sizes::inherit_sizes;
 use text_layout::inherit_text_layout;
 
-// ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09): `zoom` (css-viewport-1) как домножение
-// использованных длин здесь, в `inherit`, плюс `zoom`/`zoom_eff` и `scale_px`
-// в `Computed`. Срез 6315 пар (css-viewport + все пары с `zoom:` + весь
-// CSS2): 5722 -> 4918, то есть **+354/-1158**. Потери — сплошь CSS2
-// `background-*` (0.00 -> 8.3), таблицы, абсолюты; «приобретения» ложные:
-// позеленели JS-тесты `insert-block-in-inlines-*`, у которых обе стороны
-// сломались одинаково. Гейт `zoom_eff != 1.0` не удержал: домножение
-// задело общий путь длин. Возвращаться только через отдельный проход после
-// каскада, а не через самую горячую функцию крейта.
+// `zoom` (css-viewport-1) не делать домножением использованных длин здесь,
+// в `inherit` (с `zoom_eff`/`scale_px` в `Computed`): гейт `zoom_eff != 1.0`
+// не удерживает — домножение задевает общий путь длин (CSS2 `background-*`,
+// таблицы, абсолюты). Только отдельным проходом после каскада
+// (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Computed {
     inherit_stage(parent, own, true, vcx)
 }
@@ -86,7 +86,7 @@ fn inherit_stage(
     // «не такой, как у базового») и терял перенос по словам.
     // `larger`/`smaller`: шаг по таблице ключевых кеглей, если кегль
     // родителя в ней стоит (§15.7; таблица та же, что у слов в
-    // `computed.rs`). Вне таблицы работает запасной `Len::Em` (1.2 и 5/6).
+    // `style::computed`). Вне таблицы работает запасной `Len::Em` (1.2 и 5/6).
     if c.font_size_step != 0 {
         const TABLE: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
         if let Some(i) = TABLE.iter().position(|t| (t - parent_px).abs() < 0.01) {

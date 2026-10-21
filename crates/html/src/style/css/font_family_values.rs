@@ -1,4 +1,8 @@
-//! Preserve identifier-token validity when decoding escaped font-family names.
+//! Разбор CSS: нормализация значения `font-family` с экранами. Ряд
+//! идентификаторов и строка обозначают одно семейство (CSS Fonts 4 §4.1.2);
+//! токены проверяются до раскодирования (CSS Syntax 3 §4.3.9/§4.3.11), имена с
+//! экранированными цифрами и знаками сериализуются строкой, а экранированные
+//! родовые и CSS-слова остаются ключевыми словами.
 
 pub(super) fn normalize(property: &str, value: &str) -> String {
     if property != "font-family" || !value.contains('\\') {

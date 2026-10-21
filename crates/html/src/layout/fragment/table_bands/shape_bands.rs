@@ -52,15 +52,14 @@ pub(super) fn table_shape_bands(
     let bot = px_of(&c.style.padding.bottom)? + px_of(&b.bottom)?;
     let (spacing, cell_cx) = cell_settings(c, cx)?;
     // Дети чинятся ТЕМ ЖЕ `fixup_table_children`, которым их чинит рисователь
-    // `table()` (render.rs:13551; css-tables-3 §3 fixup): бесхозная ячейка,
+    // `layout::table::table` (css-tables-3 §3 fixup): бесхозная ячейка,
     // блок или текст прямо в таблице получают анонимный ряд, не-ячейка внутри
     // ряда — анонимную ячейку, `display: contents` растворяется, а ряды внутри
-    // групп чинит рекурсивный заход. Прежде мера шла по СЫРОМУ дереву, и любой
-    // ребёнок, которому нужна анонимная коробка, отдавал `None`; у колонок
-    // `None` — отказ от укладки целиком, и многоколоночник не фрагментировался
-    // вовсе: первая колонка переполнялась, остальные пустовали
-    // (`table-border-000` 6.25 — зелёное до y=566 при коробке до y=191,
-    // `table-cell-border-001` 2.08, `overflow-scroll-row`).
+    // групп чинит рекурсивный заход. Мера по СЫРОМУ дереву отдавала бы `None` на
+    // любом ребёнке, которому нужна анонимная коробка; у колонок `None` — отказ
+    // от укладки целиком, и многоколоночник не фрагментировался бы вовсе:
+    // первая колонка переполнялась, остальные пустовали
+    // (`table-border-000`, `table-cell-border-001`, `overflow-scroll-row`).
     // `fixed` объявлен ДО `parts`: `parts` держит ссылки внутрь него.
     let fixed = fixup_table_children(&c.children, vcx);
     // Подпись — НЕ ряд и не группа: она живёт в анонимной ОБЁРТКЕ таблицы, а
@@ -68,12 +67,10 @@ pub(super) fn table_shape_bands(
     // «A block container box generated around table grid boxes to account for
     // any space occupied by each table-caption it owns»; table grid box —
     // «A block-level box containing the table-internal boxes, EXCLUDING its
-    // captions»). `fixup_table_children` её не чинит (ветка `is_cap` →
-    // `out.push(child.clone())`, render.rs:16726), и в разборе ниже она
-    // уходила в `_ => return None`: таблица с подписью в колонках не
-    // фрагментировалась ВОВСЕ — первая колонка переполнялась, остальные
-    // пустовали. Снимок `table-border-004`: красное 41,67..134,191 — три
-    // колонки из четырёх пусты (11750 точек фона многоколоночника).
+    // captions»). `fixup_table_children` её не чинит (ветка `is_cap` кладёт
+    // подпись как есть), и в разборе ниже она уходила бы в `_ => return None`:
+    // таблица с подписью в колонках не фрагментировалась бы ВОВСЕ — первая
+    // колонка переполнялась, остальные пустовали (`table-border-004`).
     // Сторона — с самой подписи, при пустоте — с таблицы (наследование
     // `caption-side`), ровно как в рисователе `table()`; порядок внутри
     // стороны — разметки (`sections-and-captions-mixed-order`: сверху 1 и 2,

@@ -1,4 +1,4 @@
-//! CSS font-face names, descriptors and loaded sources belonging to one document.
+//! CSS-имена font-face, дескрипторы и загруженные источники, принадлежащие одному документу.
 
 use std::{cell::RefCell, collections::HashMap};
 

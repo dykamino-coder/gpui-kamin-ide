@@ -1,6 +1,8 @@
-//! Keep authored polar CIE/OK coordinates until interpolation and final gamut mapping.
-//! CSS Color 4 section 12.2: converting a color already in the interpolation
-//! space through RGB is unnecessary and can change a hue at the 0/360 seam.
+//! Цветовые пространства: градиент `in lch`/`in oklch`, у которого все стопы
+//! записаны в том же полярном пространстве. Авторские координаты L, C, H
+//! сохраняются до интерполяции и финального gamut mapping: CSS Color 4 §12.2 —
+//! перевод цвета, уже лежащего в пространстве интерполяции, через RGB не нужен
+//! и способен сдвинуть тон на шве 0/360. Тон не премультиплицируется (§12.3).
 
 use super::*;
 use crate::document::state::ValueCx;

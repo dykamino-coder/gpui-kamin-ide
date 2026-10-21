@@ -1,4 +1,4 @@
-//! MathML Core mspace dimensions: CSS hints and independent requested ascent.
+//! Размеры mspace из MathML Core: CSS-подсказки и независимо запрошенный ascent.
 
 use crate::document::state::ValueCx;
 use crate::style::css::{Decls, parse_decls};

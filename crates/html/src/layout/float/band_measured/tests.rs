@@ -1,4 +1,4 @@
-//! Transforms preserve float placement inputs (CSS Transforms 1 section 3).
+//! Тесты: transform сохраняет входы размещения float (CSS Transforms 1, раздел 3).
 
 use super::band_float_m;
 use crate::dom::Element;

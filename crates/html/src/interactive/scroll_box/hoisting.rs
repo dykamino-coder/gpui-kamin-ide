@@ -5,10 +5,6 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::{edge_set, stays_positioned};
 use crate::style::computed::{Computed, Display};
 
-/// Обернуть элемент лентой прокрутки, если `overflow` её просит.
-///
-/// `auto` и `scroll` в CSS означают именно ленту; обрезка без прокрутки —
-/// это `hidden`, и подменять одно другим значило терять содержимое.
 /// Вынуть из поддерева ленты прокрутки абсолютных потомков, которым лента не
 /// содержащий блок.
 ///

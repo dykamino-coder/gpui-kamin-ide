@@ -1,5 +1,8 @@
-//! Export vertical paragraph baselines from the same line origins used for painting.
-//! Right-origin offsets are translated by native layout after the final width is known.
+//! Базовые линии вертикального абзаца для родителя — от тех же начал строк,
+//! что и отрисовка: центральная доминантная базовая для upright/mixed,
+//! алфавитная для sideways; смещения от правого края раскладка переводит
+//! сама, когда известна окончательная ширина. Здесь же выбор доминантной
+//! базовой и признак повёрнутой строки с центральной базовой.
 
 use super::*;
 use gpui::{Pixels, px};

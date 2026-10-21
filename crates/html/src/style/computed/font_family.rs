@@ -1,4 +1,9 @@
-//! Retain authored families for glyph fallback while keeping the first available font metrics.
+//! Вычисленный стиль: разбор `font-family`. Выбирается первое ДОСТУПНОЕ
+//! семейство списка (css-fonts-4 §first-available-font: установленное или
+//! подменённое `@font-face`, с глифом U+0020) — от него считаются метрики; при
+//! его отсутствии подставляется родовое или шрифт документа (пустое имя). Весь
+//! авторский список сохраняется (`font_families`) для подбора недостающих
+//! глифов (CSS Fonts 4 §5.2). Имена проверяются и нормализуются по CSS2 §15.3.
 
 use super::{Computed, family_name_ok, generic_family, is_generic, is_quote};
 
@@ -81,8 +86,8 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // Правило `@font-face` с `unicode-range` без пробела обязано
     // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
     // по `B`, а не по первому имени списка. Прежде подмена от
-    // такого правила проходила как доступная, и после `7dbbfd2`
-    // (замер по настоящему имени) доли кегля брались с ЧУЖОГО
+    // такого правила проходила как доступная, и при замере по
+    // настоящему имени доли кегля брались с ЧУЖОГО
     // файла — `first-available-font-002/007`, `ex-unit-004`.
     let available = |f: &str| {
         (crate::text::metrics::font_installed(f) || crate::text::fonts::alias(f, vcx).is_some())

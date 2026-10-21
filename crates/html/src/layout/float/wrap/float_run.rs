@@ -1,7 +1,6 @@
-//! A float run starting at node `i` goes into the shared measured host
-//! (`band_flow`): together with the content after it when that tail is
-//! representable in the plan, otherwise alone, the tail following the host
-//! in the ordinary flow below the floats.
+//! Серия флоатов с узла `i` уходит в общий измеряемый хост (`band_flow`):
+//! вместе с содержимым после неё, если этот хвост представим в плане, иначе
+//! одна, а хвост за хостом идёт обычным потоком под флоатами.
 
 use super::prepare::{host_for_run, wrap_into_host};
 use crate::dom::{Element, Node};

@@ -1,10 +1,13 @@
-//! Parse white-space without replacing inheritance or invalid values with normal.
+//! Вычисленный стиль: разбор `white-space` (CSS Text 3 §3) в четыре признака —
+//! `nowrap`, сохранение пробелов, сохранение переводов строк, перенос после
+//! пробелов. `inherit` очищает слоты под наследование, неизвестное слово не
+//! подменяется `normal` и оставляет прежние значения.
 
 use super::Computed;
 
 pub(super) fn apply(style: &mut Computed, value: &str) {
     // CSS Cascade 4 section 7.3.2 inherits the parent's computed value.
-    // These optional slots inherit during inline::inherit; explicit false
+    // These optional slots inherit during style::cascade::inherit; explicit false
     // would instead override every component with normal's behavior.
     if value.eq_ignore_ascii_case("inherit") {
         style.nowrap = None;

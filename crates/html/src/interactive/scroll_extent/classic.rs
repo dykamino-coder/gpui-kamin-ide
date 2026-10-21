@@ -1,5 +1,7 @@
-//! Classic scrollbar visibility is computed from CSS overflow, not decoration bounds.
-//! Blink PaintLayerScrollableArea::UpdateAfterLayout relayouts after auto bars change.
+//! Видимость классических полос прокрутки считается из CSS `overflow` и измеренного диапазона,
+//! а не из границ декораций: `scroll` всегда, `auto` — когда есть переполнение. Смена набора
+//! полос перекладывает коробку, как Blink `PaintLayerScrollableArea::UpdateAfterLayout`.
+//! Модель gutter записывается в `Frame` для раскладки и покраски.
 use super::Frame;
 use crate::style::computed::{Computed, Overflow};
 use gpui::{Bounds, Pixels};

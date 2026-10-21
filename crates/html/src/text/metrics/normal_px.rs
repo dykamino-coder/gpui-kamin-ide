@@ -1,8 +1,8 @@
-//! `line-height: normal` in pixels with whole-pixel font metrics, as Blink computes it.
-//!
-//! Blink rounds the primary font's ascent, descent and line gap separately
-//! (`SimpleFontData::PlatformInit`, `FontMetrics::AscentDescentWithHacks`)
-//! and sums them into the line spacing.
+//! `line-height: normal` в пикселях по целопиксельным метрикам шрифта, как считает Blink:
+//! подъём, спуск и зазор строк основного шрифта округляются порознь
+//! (`SimpleFontData::PlatformInit`, `FontMetrics::AscentDescentWithHacks`) и складываются в
+//! интерлиньяж. Доли регистрирует замер семейства; без них — доля × кегль. Здесь же высота
+//! области содержимого полосы фона строчной коробки.
 
 use crate::document::state::ValueCx;
 

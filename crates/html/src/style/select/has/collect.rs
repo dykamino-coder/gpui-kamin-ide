@@ -1,4 +1,7 @@
-//! Registration of relational selectors, including arguments evaluated in another tree scope.
+//! `:has()`: сбор аргументов из селектора до построения паспортов узлов —
+//! рекурсивно через `:is()`/`:not()`/`:host()`/`:nth-*(... of S)` и
+//! комбинаторы, включая аргументы, вычисляемые в другой области дерева.
+//! Вложенный `:has()` делает селектор негодным.
 
 use crate::style::css::{Selector, default_ns, nth_of_parts, split_selector_list};
 

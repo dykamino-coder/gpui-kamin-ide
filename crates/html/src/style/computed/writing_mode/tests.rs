@@ -1,4 +1,4 @@
-//! Abstract-physical mapping and rotation-model queries of `WritingMode`.
+//! Тесты отображения abstract-physical и запросов модели поворота у `WritingMode`.
 use super::*;
 
 fn mode(vertical: bool, rl: bool, sideways: bool) -> WritingMode {

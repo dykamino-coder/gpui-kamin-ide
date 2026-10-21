@@ -1,6 +1,6 @@
-//! Which inline runs between blocks the measured float host can lay out:
-//! a run of atoms of known size (`FlowRow`), or a paragraph (text, `<br>`,
-//! empty atomic boxes the paragraph sizes).
+//! Какие inline-серии между блоками измеряемый float-хост умеет раскладывать:
+//! серию атомов известного размера (`FlowRow`) или абзац (текст, `<br>`, пустые
+//! атомарные боксы, размер которых определяет абзац).
 
 use super::subtree_has_text;
 use crate::dom::Node;

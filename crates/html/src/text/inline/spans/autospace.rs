@@ -1,4 +1,8 @@
-//! Autospace for spans; split out to keep the owning module within 250 lines.
+//! Зазоры `text-autospace` (css-text-4 §7) по тексту абзаца: между иероглифом и соседней
+//! буквой (`ideograph-alpha`) или цифрой (`ideograph-numeric`) — 1/8 кегля трекингом на знаке
+//! перед границей, диапазоном без разрезания куска; соседство считается по знакам сквозь
+//! границы кусков, соединительные знаки прозрачны, атом соседство рвёт. Здесь же классы
+//! иероглифа и соединительного знака по UAX #14.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -64,11 +68,10 @@ pub fn autospace_spans(
                 let family = p_style.font_family.clone().unwrap_or_default();
                 let had =
                     crate::text::metrics::spacing_px(p_style.letter_spacing, &family, p_size, vcx);
-                // ЗАМЕРЕНО И ОТКАЧЕНО: считать зазор от `ic`, а не от кегля
-                // (css-text-4 §7.1 «1/8 of the ideographic advance»). Полный
-                // свод CSS3: приобретено 0, потеряно 1 —
-                // `text-autospace-supplementary-ideograph` 0.08 -> 0.59.
-                // Пары `text-autospace-elements-005/005b` (0.56) не сдвинулись.
+                // Не считать зазор от `ic` вместо кегля (css-text-4 §7.1 «1/8 of
+                // the ideographic advance»): это ломает
+                // `text-autospace-supplementary-ideograph`, а
+                // `text-autospace-elements-005/005b` не чинит.
                 out.push((p_at..p_at + p_len, gpui::px(had + p_size / 8.0)));
             }
             prev = Some((at + off, ch.len_utf8(), ch, size, style));

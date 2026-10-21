@@ -1,4 +1,4 @@
-//! Computed math expressions retain percentage-dependent branches until geometry is known.
+//! Вычисленные математические выражения хранят ветви, зависящие от процентов, до геометрии.
 
 use super::Sum;
 use super::calc::{Calc, Val};

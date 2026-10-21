@@ -1,4 +1,4 @@
-//! Resolve font and ICC resource URLs against the document's effective base.
+//! Разрешает URL шрифтов и ICC-ресурсов относительно действующей базы документа.
 
 use url::Url;
 

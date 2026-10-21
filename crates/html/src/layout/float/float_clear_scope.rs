@@ -1,4 +1,7 @@
-//! Resolve clearance only for boxes to which CSS 2.1 section 9.5.2 applies.
+//! Используемое значение `clear` на копии дерева для раскладки: клиренс получают только
+//! коробки, к которым применима CSS 2.1 §9.5.2. У строчной коробки `clear` снимается (кроме
+//! `<br>` — отдельного механизма разрыва строки), но до снятия вычисленное значение
+//! наследуется детям с `clear_inherit`.
 
 use crate::dom::Node;
 use crate::render::{inline_level_box, out_of_flow};

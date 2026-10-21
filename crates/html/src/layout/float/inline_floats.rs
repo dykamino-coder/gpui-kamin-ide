@@ -1,5 +1,9 @@
-//! Lift floats from undecorated inline containers into their block's float layout.
-//! Text fragments retain the inline's inherited style on both sides of each float.
+//! Подъём флоатов из неоформленных строчных контейнеров в раскладку флоатов их блока
+//! (перед `wrap_floats`): прозрачный `<span>` рвётся на фрагменты вокруг каждого флоата,
+//! текст по обе стороны сохраняет унаследованный стиль строчного, а содержащим блоком
+//! флоата остаётся блок (CSS 2 §9.5, §10.1). Последовательность `nowrap` не рвётся
+//! (CSS Text §5.1); ортогональные флоаты и руби остаются в своём строчном.
+//! `transparent` — общий предикат неоформленного строчного для соседних проходов.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

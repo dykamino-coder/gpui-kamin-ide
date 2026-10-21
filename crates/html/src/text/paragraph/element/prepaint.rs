@@ -1,4 +1,4 @@
-//! Paragraph geometry publication, inline anchors and positioned overlays before paint.
+//! `prepaint` абзаца: округление, подбор кегля, атомы, строки, куски вне потока, выделение.
 
 use crate::text::paragraph::*;
 use gpui::{

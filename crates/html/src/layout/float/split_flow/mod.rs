@@ -1,8 +1,8 @@
-//! A paragraph split at a text offset measured during layout: the first
-//! formatted line in its own `::first-line` style, the rest below it
-//! (`FirstLine`). The container width is known only at measurement, and the
-//! tree cannot be built while layout runs, so the measurement computes only
-//! the cut and the height; the subtree is built at prepaint.
+//! Абзац, разрезанный по текстовому смещению во время layout: первая
+//! отформатированная строка в собственном стиле `::first-line`, остальное под ней
+//! (`FirstLine`). Ширина контейнера известна только при измерении, а дерево нельзя
+//! строить во время layout, поэтому измерение считает лишь разрез и высоту;
+//! поддерево строится при prepaint.
 
 use gpui::{AnyElement, Pixels};
 use std::rc::Rc;

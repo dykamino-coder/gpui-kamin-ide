@@ -1,4 +1,4 @@
-//! Containing-block inheritance and transformed fixed-background tests.
+//! Тесты наследования содержащего блока и fixed-фона у трансформированного предка.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

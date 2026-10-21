@@ -1,5 +1,7 @@
-//! Size ranges apply to a complete math expression, not its individual terms.
-//! CSS Values 4 §10.12 accepts out-of-range math and clamps its resolved result.
+//! Разбор неотрицательной длины для размеров и радиусов: ограничение диапазона
+//! действует на математическое выражение целиком, а не на его слагаемые.
+//! CSS Values 4 §10.12: `calc()`/`min()`/`max()`/`clamp()` вне диапазона годны
+//! и зажимаются по результату, а голое отрицательное значение негодно.
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;

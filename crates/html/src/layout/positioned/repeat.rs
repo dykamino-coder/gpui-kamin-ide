@@ -1,4 +1,6 @@
-//! Containing blocks and out-of-flow descendants of repeated table sections.
+//! Внепоточные потомки повторяемых секций таблицы (css-tables-3 §repeated-headers): копия
+//! шапки/подвала несёт только оформление, и абсолют или `fixed`, чей содержащий блок лежит
+//! вне копии, из неё удаляется; здесь же признак коробки — содержащего блока `fixed`.
 
 use crate::dom::Node;
 

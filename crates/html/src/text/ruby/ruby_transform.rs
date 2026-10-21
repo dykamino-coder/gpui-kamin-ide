@@ -1,5 +1,7 @@
-//! CSS Transforms 1 §transformable-element excludes non-replaced inline boxes.
-//! Ruby units use block wrappers internally; that must not make them transformable.
+//! Снятие трансформаций с коробок руби: css-transforms-1 §transformable-element исключает
+//! незамещённые строчные коробки, а единицы руби внутри рисуются блочными обёртками — это не
+//! должно делать их трансформируемыми. Блочный главный бокс руби и элемент без роли
+//! трансформации сохраняют.
 
 use crate::dom::Element;
 use crate::style::computed::{Computed, Display, inh};

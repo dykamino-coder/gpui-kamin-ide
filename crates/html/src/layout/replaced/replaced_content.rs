@@ -1,4 +1,7 @@
-//! Replaced content can be empty without erasing its surrounding CSS box.
+//! Замещаемое содержимое может быть пустым, не стирая свою CSS-коробку: размер пустого
+//! `<iframe>` по умолчанию объекта (CSS 2.1 §10.3.2, §10.6.2) с учётом quirks-долей и
+//! `contain: size`, `object-position` у `Img` и замещаемый `<svg>` внутри стилевого `div`
+//! при ненулевой рамке или отбивке (CSS 2.1 §10.3.4), чтобы фон и рамка рисовались.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

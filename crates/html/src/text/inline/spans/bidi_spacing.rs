@@ -1,5 +1,7 @@
-//! Letter spacing across bidi reordering (css-text-3 §8.2: tracking is
-//! applied after bidi reordering, between VISUALLY adjacent units).
+//! Межбуквенный интервал после переупорядочивания bidi (css-text-3 §8.2: трекинг ставится
+//! между ВИЗУАЛЬНО соседними единицами). Буква, оторванная переупорядочиванием (UAX #9 L2) от
+//! логического преемника, граничит с буквой другого куска и берёт зазор общего предка —
+//! блока; возвращаются только переопределения поверх уже посчитанных диапазонов.
 
 use crate::text::inline::*;
 use gpui::Pixels;

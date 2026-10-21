@@ -1,4 +1,6 @@
-//! Resolve CSS angle-percentage calculations in turns before stop fixup.
+//! Разбор `<angle-percentage>` конического градиента в долях оборота до раскладки стопов:
+//! `deg`/`grad`/`rad`/`turn`/`%` и их `calc()`/`min()`/`max()` (CSS Values 4: 100% — один
+//! оборот) через общий разборщик математики с единой размерностью.
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;

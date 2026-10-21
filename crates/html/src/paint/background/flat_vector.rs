@@ -1,4 +1,7 @@
-//! Preserve uniform SVG coverage without rasterizing enormous viewports.
+//! Однотонная SVG-картинка фона без растра: `<svg>` с единственным непрозрачным `<rect>`,
+//! покрывающим весь viewBox (SVG 2 §8.2), красится одним квадом видимого пересечения. Так
+//! огромные вьюпорты не растрируются и не теряют точность координат; Blink
+//! `SVGShapePainter::FillShape` тоже красит геометрию прямоугольника напрямую.
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::Color;

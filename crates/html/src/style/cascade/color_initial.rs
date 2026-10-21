@@ -1,4 +1,7 @@
-//! Preserve color initial until the document can resolve the quirks table rule.
+//! Каскад: `color: initial` помечается флагом `color_initial` и держится до
+//! момента, когда документ сможет разрешить правило цвета таблиц в quirks.
+//! `inherit`/`currentcolor` и любой разобранный цвет снимают пометку;
+//! неразобранное значение её сохраняет.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

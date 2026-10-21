@@ -1,4 +1,4 @@
-//! MathML Core formatting contexts, separate from HTML block/inline layout.
+//! Контексты форматирования MathML Core, отдельные от HTML block/inline layout.
 
 mod arrangement;
 mod assembly;

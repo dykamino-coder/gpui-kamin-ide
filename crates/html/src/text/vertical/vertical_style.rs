@@ -1,4 +1,7 @@
-//! Configuration for rotated text sizing and writing-mode projection.
+//! Конструктор и настройки `VerticalText`: порядок колонок (`vertical-lr`), сторона поворота
+//! (`sideways-lr`), метрики первой строки для базовой по оси x, ключ двухкадрового замера,
+//! заявка высоты потолком или пределом, мера по минимальному содержимому для ячейки таблицы
+//! и ограничение строчного размера ортогонального потока.
 use crate::text::vertical::VerticalText;
 use gpui::{AnyElement, Pixels};
 

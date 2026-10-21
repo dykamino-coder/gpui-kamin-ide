@@ -1,4 +1,4 @@
-//! Parse CSS image grammar once into semantic image operands.
+//! Однократный разбор грамматики CSS-изображений в семантические операнды.
 
 use super::*;
 

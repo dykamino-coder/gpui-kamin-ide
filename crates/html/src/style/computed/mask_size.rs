@@ -1,4 +1,6 @@
-//! Parse mask dimensions without duplicating a single value into both axes.
+//! Вычисленный стиль: `mask-size` — `contain`/`cover`/`auto` или одна-две
+//! длины; одиночное значение задаёт ширину, а высота остаётся `auto`
+//! (CSS Masking §7.8 → CSS Backgrounds §3.9), не дублируясь на обе оси.
 
 use super::Computed;
 use crate::document::state::ValueCx;

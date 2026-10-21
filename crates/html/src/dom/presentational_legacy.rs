@@ -1,11 +1,11 @@
-//! HTML rendering §15 presentational hints for tables, lists, `br` and
-//! embedded content (§15.3.8 tables, §15.3.7 lists, §15.3.10 `br`,
-//! §15.4.3 attributes for embedded content and images).
+//! HTML rendering §15: представленческие подсказки таблиц, списков, `br` и
+//! вложенного содержимого (§15.3.8 таблицы, §15.3.7 списки, §15.3.10 `br`,
+//! §15.4.3 атрибуты вложений и картинок).
 //!
-//! Servo spells the selector-expressible part as `presentational-hints.css`;
-//! here every hint is computed from the element's own attributes (and, for
-//! table cells, the owning table) and lands in the presentational-hint origin
-//! through [`super::presentational_hints::hint`], below all author rules.
+//! Servo выражает селекторную часть листом `presentational-hints.css`; здесь
+//! каждая подсказка считается по собственным атрибутам элемента (у ячеек — и
+//! по владеющей таблице) и ложится в происхождение подсказок через
+//! [`super::presentational_hints::hint`], ниже всех авторских правил.
 
 use crate::document::state::ValueCx;
 use crate::style::css::Rule;

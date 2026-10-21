@@ -1,4 +1,6 @@
-//! Слой-градиент в сокращении background (`linear-gradient(…) 1ch 0 / 4ch 1ch no-repeat green`): функция, положение, размер, повтор и цвет нижнего слоя. Тело ветви градиента из Computed::apply_background_shorthand.
+//! Слой-градиент в сокращении background (`linear-gradient(…) 1ch 0 / 4ch 1ch no-repeat green`):
+//! функция, положение, размер, повтор и цвет нижнего слоя. Тело ветви градиента из
+//! Computed::apply_background_shorthand.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -1,6 +1,6 @@
-//! What the paragraph hands to the build of one inline atom (`LayoutCx`):
-//! its ruby annotation collection, the line-box slot of an out-of-flow atom
-//! and the offer of a positioned inline ancestor as its containing block.
+//! Что абзац передаёт сборке одного строчного атома (`LayoutCx`): набор его ruby-аннотаций,
+//! слот строчного бокса для атома вне потока и предложение позиционированного строчного
+//! предка в роли его содержащего блока.
 
 use crate::dom::Element;
 use crate::layout::box_kind::replaced_tag;

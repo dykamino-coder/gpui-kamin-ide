@@ -1,4 +1,10 @@
-//! Content language lookup shared by selectors and automatic quotation marks.
+//! Язык содержимого по `lang`/`xml:lang` — общий для селекторов и автоматических
+//! кавычек.
+//!
+//! `effective` — язык узла или ближайшего предка; `parent` — язык родителя
+//! для кавычек элемента (css-content-3 §quotes-property: у корня — свой);
+//! `pseudo` — явное `quotes: auto` на псевдоэлементе выбирает язык
+//! порождающего элемента и ставит его счётчикам кавычек.
 
 use crate::style::select::Ancestor;
 

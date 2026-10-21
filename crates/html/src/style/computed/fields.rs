@@ -54,7 +54,7 @@ pub struct Computed {
     pub align_self_normal: bool,
     /// Элемент гибкого РЯДА, поперечный размер которого тянет строка
     /// (`stretch` при `height: auto`). Взводит сборщик детей гибкого
-    /// контейнера (`render.rs`, ветка `flex_context`), где виден родитель;
+    /// контейнера (`render::blocks::flow_children`, ветка `flex_context`), где виден родитель;
     /// читает обособление размера в `apply::apply_box`.
     pub(crate) cross_stretched: bool,
     pub flex_basis: Option<Len>,
@@ -116,8 +116,8 @@ pub struct Computed {
     /// и гасить его нельзя.
     ///
     /// ВАЖНО: маршрут СРЕЗА дорожек эти поля не меняют — срез по-прежнему на
-    /// скалярном `subgrid`. Перевод среза на поосевые признаки замерен и
-    /// откачен (шапка `dom.rs: subgrid_takes_parent_tracks`, +2/−3).
+    /// скалярном `subgrid`. Перевод среза на поосевые признаки без второго
+    /// прохода ломает наследование дорожек (заметка у `subgrid_inhibited`).
     pub subgrid_cols: bool,
     pub subgrid_rows: bool,
     /// `container-type: size | inline-size` — элемент стал контейнером
@@ -135,7 +135,8 @@ pub struct Computed {
     /// index)», `csswg-drafts/css-grid-3/Overview.bs:469-471`) требует считать
     /// каждую запись тела по ЕЁ функции; скалярные `track`/`intrinsic_min`
     /// этого не выражают. Пишется РЯДОМ с `AutoRepeat` и `grid_tracks` не
-    /// трогает: тот путь замерен и откачен (патч II 07.09, v143).
+    /// трогает: тот путь ломает `auto-repeat-auto-011` и родню (заметка в
+    /// `props/grid.rs`).
     pub auto_repeat_body_cols: Option<Vec<TrackSize>>,
     pub auto_repeat_body_rows: Option<Vec<TrackSize>>,
 
@@ -191,7 +192,7 @@ pub struct Computed {
     pub try_base: Option<std::rc::Rc<Computed>>,
     /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
     /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
-    /// содержащего блока абсолюта (`inline::inherit`; 0 — начальный, окно),
+    /// содержащего блока абсолюта (`style::cascade::inherit`; 0 — начальный, окно),
     /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
     /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
     pub self_node: u64,
@@ -257,7 +258,7 @@ pub struct Computed {
     /// только цвет.
     pub(crate) background_all_inherit: bool,
     /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
-    /// от родителя при слиянии (`inline::inherit`), как у padding/border.
+    /// от родителя при слиянии (`style::cascade::inherit`), как у padding/border.
     pub(crate) width_inherit: bool,
     pub(crate) height_inherit: bool,
     /// То же у пределов: `min-width`, `min-height`, `max-width`, `max-height`.
@@ -354,7 +355,7 @@ pub struct Computed {
     /// Сторона получила `currentColor` из БОКОВОГО сокращения без цвета
     /// (`border-top: solid 1em`) поверх общего `border-color`, пришедшего
     /// раньше. Внутренний флаг каскада: цвет текста в `border_colors`
-    /// подставляет `inline::inherit`, когда тот известен.
+    /// подставляет `style::cascade::inherit`, когда тот известен.
     pub(crate) border_side_current: [bool; 4],
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
@@ -404,7 +405,7 @@ pub struct Computed {
     /// Слой `::marker` (css-lists-3 §marker-properties): ТОЛЬКО объявления
     /// самих правил `::marker` поверх таблицы агента, без копии стиля
     /// хозяина — при отрисовке накладывается на стиль пункта через
-    /// `inline::inherit`. Копия стиля пункта сюда не годится: она утянула бы
+    /// `style::cascade::inherit`. Копия стиля пункта сюда не годится: она утянула бы
     /// в маркер рамку, поля и размеры самого `<li>`. Blink делает то же —
     /// текст маркера набирается стилем САМОГО `::marker`
     /// (`CreateAnonymousStyleWithDisplay(marker.StyleRef(), …)`,
@@ -427,17 +428,17 @@ pub struct Computed {
     /// Отношение из записи `auto <ratio>` (css-sizing-4 §5.1): у замещаемого
     /// оно ЗАПАСНОЕ — природное сильнее. Отдельным полем, потому что
     /// НЕзамещаемой коробке отношение из этой записи наша раскладка пока не
-    /// выражает (★ ЗАМЕРЕНО: в общем поле `block-aspect-ratio-002/015/016/018/
-    /// 043/047`, `grid-aspect-ratio-005/008` уходили с 0.00 в 14.25).
+    /// выражает (в общем поле ломаются `block-aspect-ratio-002/015/016/018/
+    /// 043/047`, `grid-aspect-ratio-005/008`).
     pub aspect_ratio_auto: Option<f32>,
     /// Коробка с `aspect-ratio` — элемент ГИБКОГО контейнера (ставит
-    /// `render.rs` при раскладке детей ряда/колонки). Её автоминимум по
+    /// `render::blocks::ordered_children` при раскладке детей ряда/колонки). Её автоминимум по
     /// соотношению считает раскладка (css-flexbox-1 §4.5: подсказка по
     /// содержимому), а не явный минимум `apply::ratio_as_auto_min`
     /// (`flex-aspect-ratio-002/004`).
     pub flex_item_ratio: bool,
     /// Коробка АБСОЛЮТНА, но позиционирование с неё снято ради статической
-    /// позиции (`render.rs`). Само `position` там обнуляется, а знать о нём
+    /// позиции (`render::blocks::positioned`). Само `position` там обнуляется, а знать о нём
     /// нужно: размер по свободной строчной оси у абсолюта считается по
     /// содержимому, и без этой пометки вертикальный абзац снова растягивался
     /// бы на весь предел ортогонального потока.
@@ -448,11 +449,11 @@ pub struct Computed {
     /// Ставится сборщиком детей сетки, глубже не наследуется.
     pub hug_inline: bool,
     /// Родитель — ВЕРТИКАЛЬНАЯ сетка с невытягивающим `justify-*` (или блок
-    /// по цепочке под ней, `render.rs: vertical_hug_children`): повёрнутый
+    /// по цепочке под ней, `layout::writing_mode::vertical_hug`): повёрнутый
     /// абзац заявляет высотой длину своей строки. Отдельно от `hug_inline`:
     /// ортогональным элементам горизонтальной сетки (и лункам) такая заявка
     /// противопоказана (`grid-lanes/.../column-explicit-placement-002`
-    /// 0.00 -> 10.02 при общем флаге).
+    /// при общем флаге ломается).
     pub hug_claim: bool,
     /// Ортогональный (вертикальный) блок в потоке горизонтального блочного
     /// контейнера: baseline-набор родителя его не берёт (css-writing-modes-4
@@ -485,12 +486,12 @@ pub struct Computed {
     /// `align-self: self-start`/`self-end` — начало и конец берутся по письму
     /// САМОГО элемента, а не контейнера (css-align-3 §6.2). Значение при этом
     /// остаётся физическим, а «мерить по себе» помнится здесь: зеркалит его
-    /// `inline::inherit`, где известны письмо элемента И письмо родителя.
+    /// `style::cascade::inherit`, где известны письмо элемента И письмо родителя.
     pub align_self_own_axis: bool,
     /// Ключевое слово `align-self` — ГИБКОЕ (`flex-start`/`flex-end`): его
     /// концы следуют `wrap-reverse` строки, а `start`/`end`/`self-*` — нет
     /// (css-align-3 §6.1). `Align` различия не несёт, его зеркалит
-    /// `inline::inherit` (`self-align-start-end-flex-001`).
+    /// `style::cascade::inherit` (`self-align-start-end-flex-001`).
     pub align_self_flex_kw: bool,
     /// `justify-self: self-start`/`self-end` — по письму САМОГО элемента, как
     /// `align_self_own_axis` (`align-self-static-position-006`).
@@ -505,18 +506,18 @@ pub struct Computed {
     /// Нужно, чтобы отличать значение автора от приёмов сборки, которые
     /// пишут в то же поле `align_self` (блок собран колонкой flex): только
     /// авторское значение гасится у коробки вне гибкого контейнера и сетки
-    /// (`inline::inherit`), и только оно же переходит по `inherit` к детям —
+    /// (`style::cascade::inherit`), и только оно же переходит по `inherit` к детям —
     /// вычисленное значение родителя от гашения не меняется (css-align-3
     /// §6.1 «Applies to: flex items, grid items, and absolutely-positioned
     /// boxes»; css-cascade-4 §7.3).
     pub(crate) align_self_decl: Option<Option<Align>>,
-    /// `align-self: inherit` — значение берёт `inline::inherit` у родителя
+    /// `align-self: inherit` — значение берёт `style::cascade::inherit` у родителя
     /// (свойство ненаследуемое, слово копирует вычисленное значение).
     pub(crate) align_self_inherit: bool,
     /// `inherit` у `align-items`/`justify-items`/`align-content`/
     /// `justify-content`/`justify-self` (разряды `ainh::*`): свойства
     /// ненаследуемые, слово копирует вычисленное значение родителя
-    /// (css-cascade-4 §7.3.1) — его берёт `inline::inherit`.
+    /// (css-cascade-4 §7.3.1) — его берёт `style::cascade::inherit`.
     pub(crate) align_inherit: u8,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
@@ -576,7 +577,7 @@ pub struct Computed {
     /// разные цвета сторон дорисовываются полосами.
     pub border_colors: [Option<Color>; 4],
     /// `font-size: larger` (+1) / `smaller` (−1): шаг по таблице ключевых
-    /// кеглей от кегля родителя (§15.7). Разрешает `inline::inherit`.
+    /// кеглей от кегля родителя (§15.7). Разрешает `style::cascade::inherit`.
     pub(crate) font_size_step: i8,
     /// Ранги стилей кромок по сторонам [верх, право, низ, лево] для
     /// разбора конфликтов сросшихся рамок (CSS 2.1 §17.6.2.1):
@@ -645,7 +646,7 @@ pub struct Computed {
     /// него (`normal`) `direction` строчного элемента порядка знаков НЕ
     /// меняет (css-writing-modes-3 §2.2: «normal — the element does not open
     /// an additional level of embedding»). Атрибут `dir` ставит его сам
-    /// (`dom.rs: apply_direction`).
+    /// (`dom`: `apply_direction`).
     pub bidi_embed: Option<bool>,
     /// `unicode-bidi: plaintext` — сторона письма решается для каждого абзаца
     /// между жёсткими разрывами. HTML ставит это правило на `dir="auto"`.
@@ -879,7 +880,7 @@ pub struct Computed {
     /// кладёт ячейке `SetAvailableSize({cell_inline_size, …})`, где
     /// `cell_inline_size` собран из `column_locations` — то есть из дорожки.
     /// Флаг ставит `table()` своим ячейкам; ГЛУБЖЕ НЕ НАСЛЕДУЕТСЯ (как
-    /// `hug_inline`): `inline::inherit` начинает с `own.clone()`, а у
+    /// `hug_inline`): `style::cascade::inherit` начинает с `own.clone()`, а у
     /// вложенного элемента поле пусто.
     pub ortho_col: bool,
     /// Physical paragraph of a `text-orientation: upright` vertical stack
@@ -934,7 +935,7 @@ pub struct Computed {
     /// Родитель — сетка (не лунки): 1 — горизонтальная, 2 — `vertical-lr`,
     /// 3 — `vertical-rl`. Ставится при наследовании; по нему элементу
     /// переставляются оси выравнивания вертикальной сетки и пишутся биты
-    /// базовой по оси x (`apply.rs`).
+    /// базовой по оси x (`paint/apply/`).
     pub(crate) parent_grid: u8,
     /// Grid content baseline alignment requires a coordinated self alignment.
     pub(crate) parent_grid_align_items: Option<Align>,
@@ -1000,7 +1001,7 @@ pub struct Computed {
     pub inline_radius: Option<f32>,
     /// Сплошная заливка предка с `background-clip: text` (css-backgrounds-4
     /// §background-clip): глифы поддерева красятся цветом текста ПОВЕРХ неё.
-    /// Ставит и снимает `inline::inherit`; `None` — такого предка нет.
+    /// Ставит и снимает `style::cascade::inherit`; `None` — такого предка нет.
     pub text_clip_fill: Option<Color>,
     /// Цвет текста ДО наложения на `text_clip_fill`: его получают внепоточные
     /// потомки — в геометрию текста они не входят.
@@ -1057,7 +1058,7 @@ pub struct Computed {
     pub(crate) flex_main_def: Option<bool>,
     /// Элемент ГИБКОГО контейнера (родитель `display: flex | inline-flex`).
     /// Ставится сборкой детей ряда/колонки в `render::blocks`, не каскадом и
-    /// не наследуется (`inline::inherit` клонирует СВОЙ стиль ребёнка). Нужен
+    /// не наследуется (`style::cascade::inherit` клонирует СВОЙ стиль ребёнка). Нужен
     /// таблице: у неё гибким элементом становится обёртка с подписями
     /// (css-flexbox-1 §4).
     pub(crate) flex_item: bool,
@@ -1111,7 +1112,7 @@ pub struct Computed {
     pub tab_size: Option<f32>,
     /// `tab-size` в ДЛИНЕ: шаг табуляции задан не числом знаков, а величиной.
     /// Наследуется абсолютным (`tab-size-inheritance-001`), поэтому к детям
-    /// уходит уже в точках — перевод делает `inline::inherit`.
+    /// уходит уже в точках — перевод делает `style::cascade::inherit`.
     pub tab_size_len: Option<Len>,
     /// `contain: paint` — содержимое обрезается по коробке.
     pub contain_paint: Option<bool>,
@@ -1243,7 +1244,7 @@ pub struct Computed {
     pub hoisted_block: bool,
     /// Пользовательская единица SVG-ребёнка в CSS-точках (масштаб `viewBox`
     /// или `zoom`); 0 — не задано (= 1). Интринзик плитки маски у такого
-    /// ребёнка считается в его единицах (`interact::Grouped::mask_scale`).
+    /// ребёнка считается в его единицах (`paint::effects::grouped_element::Grouped::mask_scale`).
     pub mask_user_scale: f32,
     /// `mask-clip`: коробка окраски маски; вне её элемент скрыт. 255 — no-clip.
     pub mask_clip: Option<u8>,
@@ -1279,14 +1280,6 @@ pub struct Computed {
     /// pages"). `auto` хранится отсутствием значения: используемое значение
     /// берётся у ближайшего предка с именем (там же, шаг 1 алгоритма).
     pub page: Option<String>,
-    /// ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
-    /// `box-decoration-break: clone` — украшение на каждом фрагменте
-    /// (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
-    /// `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
-    /// `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
-    /// `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
-    /// работавший `slice` у вложенных случаев; нужен отдельный проход
-    /// планирования фрагментов, а не правка общей укладки.
     /// `break-inside: avoid*` — коробку нельзя разрывать между колонками и
     /// страницами (css-break-3 §4.1). Свойство не разбиралось вовсе, и
     /// отличить монолит от обычной коробки было нечем.
@@ -1295,6 +1288,9 @@ pub struct Computed {
     /// box fragment is independently wrapped with the border, padding, and
     /// margin … The background is drawn independently in each fragment».
     /// Не наследуется; начальное `slice` = `false`.
+    /// Укладку `clone` не делать веткой в общей `fill_at`: она ломает уже
+    /// работавший `slice` у вложенных случаев (`clone-005.tentative`,
+    /// `clone-007`); нужен отдельный проход планирования фрагментов.
     pub bdb_clone: bool,
     /// `break-before`/`break-after` (css-break-4 §3.1): принудительный разрыв
     /// колонки/страницы перед или после коробки.
@@ -1322,7 +1318,7 @@ pub struct Computed {
     /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`
     /// тождество, и страница без `zoom` не несёт ни множителя, ни ветки.
     /// Ставится проходом `zoom::resolve` на каждый элемент под зумом; в
-    /// слитый стиль попадает через `own.clone()` в `inline::inherit` —
+    /// слитый стиль попадает через `own.clone()` в `style::cascade::inherit` —
     /// своей строки там не имеет. Читатели шага 2: природный размер
     /// картинки, `resolve_viewport`.
     pub zoom_eff: Option<f32>,
@@ -1412,10 +1408,10 @@ pub struct Computed {
     /// Ordered color operations for platform scrollbar primitives.
     pub(crate) scrollbar_filter_ops: Vec<Filter>,
     /// `filter: url(#id)` — ссылка на SVG-`<filter>` документа; рисуется
-    /// растровым слоем поверх коробки (`interact::FilterLayer`).
+    /// растровым слоем поверх коробки (`paint::effects::filter::FilterLayer`).
     pub filter_ref: Option<String>,
     /// `filter: drop-shadow(...)` — тень фильтра; у коробки со сплошным
-    /// фоном становится внешней тенью (`inline::inherit`).
+    /// фоном становится внешней тенью (`style::cascade::inherit`).
     pub drop_shadow: Option<Shadow>,
 
     /// `background-image: url(...)` — ссылка на картинку-заливку.
@@ -1500,7 +1496,7 @@ pub struct Computed {
     /// `text-underline-position` (наследуется), биты `UPOS_*`.
     pub underline_pos: Option<u8>,
     /// Блочный тег (`<p>`, `<div>`…): при пустом `display` коробка блочная
-    /// (`dom.rs`, не наследуется) — украшениям нужна своя строчная коробка.
+    /// (`dom`, не наследуется) — украшениям нужна своя строчная коробка.
     pub block_tag: bool,
     /// `text-decoration-skip-ink` (наследуется): 0 `none`, 1 `auto`, 2 `all`.
     pub skip_ink: Option<u8>,
@@ -1512,7 +1508,7 @@ pub struct Computed {
     pub decors: Vec<Decor>,
     /// `ruby-position` (css-ruby-1 §4.1): `Some(true)` — аннотация ПОД базой
     /// (`under`), `Some(false)` — над (`over`/`alternate`/`inter-character`),
-    /// `None` — не задано. Наследуется (`inline::inherit`). Прежде делил флаг
+    /// `None` — не задано. Наследуется (`style::cascade::inherit`). Прежде делил флаг
     /// с акцентом, и `text-emphasis-position: under` переворачивал руби.
     pub ruby_under: Option<bool>,
     /// `ruby-align` (css-ruby-1 §4.3); `None` — начальное `space-around`.

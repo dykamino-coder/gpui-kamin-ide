@@ -1,4 +1,6 @@
-//! Directional disclosure symbols, CSS Counter Styles 3 section 6.2.
+//! Стили счётчиков: контекст направления (`direction`, `writing-mode`) для
+//! маркеров `disclosure-open`/`disclosure-closed`, чей знак зависит от
+//! строчного и блочного направления (CSS Counter Styles 3 §6.2).
 
 use crate::style::computed::Computed;
 

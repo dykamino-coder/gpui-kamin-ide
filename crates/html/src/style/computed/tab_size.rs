@@ -1,4 +1,7 @@
-//! Preserve the number/length distinction for CSS Text's tab-size property.
+//! Вычисленный стиль: `tab-size` (CSS Text 3 §4.2) с различием числа и длины —
+//! число наследуется множителем ширины пробела, длина хранится отдельным полем
+//! и наследуется абсолютной величиной; отрицательные и неконечные значения
+//! негодны и не затирают прежнее объявление.
 
 use super::Computed;
 use crate::document::state::ValueCx;

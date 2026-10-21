@@ -1,4 +1,8 @@
-//! Containing block for inline; split out to keep the owning module within 250 lines.
+//! Содержащий блок внепоточных потомков при сборе кусков абзаца: устанавливает ли коробка
+//! содержащий блок (CSS 2.1 §10.1 п.4 плюс барьеры css-transforms, css-contain, css-will-change),
+//! корень подложки (filter-effects-2 §BackdropRoot), глубина позиционированных строчных предков
+//! и пометка абсолютов с краями, чей содержащий блок — строчная коробка (`InlineCb`), метками её
+//! краёв в списке кусков.
 
 use super::{InlineCb, OverlayAt, Piece};
 use crate::dom::Element;

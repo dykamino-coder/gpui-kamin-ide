@@ -1,5 +1,7 @@
-//! `iframe`.
-// owner: A
+//! Вложенный документ `<iframe>` (и `<object>` с документом): разбор `srcdoc` или
+//! локального `src` с привязкой относительных `url(...)`, размер рамки по CSS, атрибутам
+//! и умолчанию 300×150, свой viewport, quirks и слой ICB для вложенного дерева,
+//! ограничение глубины вложенности и высота по содержимому (css-sizing-4 §frame-sizing).
 
 use crate::dom::Element;
 use crate::layout::block::reorder::orthogonal_vertical_children;

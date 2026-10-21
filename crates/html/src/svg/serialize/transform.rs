@@ -77,7 +77,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // (css-transforms-1 §transformable-element), — но до растеризатора не
     // доезжало: матрица выше собирается из `lin`/`tr` свойства `transform`, а
     // `translate:` живёт отдельным полем `Computed::translate`, и его
-    // единственный потребитель `apply.rs` двигает CSS-КОРОБКУ, внутрь `<svg>`
+    // единственный потребитель `paint/apply/` двигает CSS-КОРОБКУ, внутрь `<svg>`
     // не заходя. Оттого `<rect style="translate: 100px 100px">` стоял на
     // месте: наш зелёный — (10,67)-(134,191) точек устройства, эталонный —
     // (135,192)-(259,316), ровно 100 css-точек по обеим осям, и накрываемый
@@ -90,7 +90,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // Доли — от выбранной опорной коробки (§transform-box).
     //
     // Корневой `<svg>` исключён: он обычная CSS-коробка, и `translate:` ему
-    // уже сдвигает `apply.rs` — иначе сдвиг лёг бы дважды.
+    // уже сдвигает `paint/apply/` — иначе сдвиг лёг бы дважды.
     let ind_t = e
         .style
         .translate

@@ -6,8 +6,6 @@ use crate::text::ruby::container::stacks::level_wrap;
 use crate::text::ruby::container::stacks::over_stack;
 use crate::text::ruby::container::unit_boxes::unit_box;
 
-// owner: A
-
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;

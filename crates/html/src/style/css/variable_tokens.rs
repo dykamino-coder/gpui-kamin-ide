@@ -1,4 +1,7 @@
-//! Validate substitution functions before declarations enter the cascade.
+//! Разбор CSS: синтаксическая проверка `var()` до попадания объявления в каскад
+//! (CSS Variables §2.1, §3: негодный `var()` делает объявление недействительным,
+//! даже если переменная есть и запас не понадобился бы). Здесь же общие
+//! сканеры токенов — конец экрана, строки и блока (CSS Syntax §5.4.8).
 
 /// CSS Variables §2.1 and §3: invalid var() syntax invalidates the declaration,
 /// even when the variable exists and its fallback would never be substituted.

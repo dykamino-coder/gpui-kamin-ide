@@ -1,4 +1,6 @@
-//! Computed::apply_border, хвост цепочки: ширины сторон, логические кромки, цвета и стили сторон, border-style, border-spacing, outline*, border-image*. Ветви в исходном порядке после ветвей углов.
+//! Computed::apply_border, хвост цепочки: ширины сторон, логические кромки, цвета и стили сторон,
+//! border-style, border-spacing, outline*, border-image*. Ветви в исходном порядке после ветвей
+//! углов.
 
 use super::*;
 

@@ -1,4 +1,11 @@
-//! CSS Easing 1 functions, applied to each keyframe interval rather than the timeline.
+//! Функции времени css-easing-1: разбор и выборка значения по доле прогресса.
+//!
+//! Вход — текст `animation-timing-function` (`linear`, `ease*`, `cubic-bezier()`,
+//! `steps()`); выход — `Easing` и его `sample(progress, before)`. Кривая Безье
+//! обращается по `x` бинарным поиском, `y` не зажимается (выброс законен);
+//! `steps()` учитывает позицию скачка и сторону `before`. Применяется к
+//! КАЖДОМУ интервалу между кадрами, а не к шкале времени целиком: так велит
+//! спека, и так считают `frames::frame_at` и `frames::frozen`.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Easing {

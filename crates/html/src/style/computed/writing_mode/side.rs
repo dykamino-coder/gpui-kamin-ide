@@ -1,4 +1,4 @@
-//! Physical sides and line turns that the abstract-physical mapping (§6.4) answers in.
+//! Физические стороны и повороты строк, в которых отвечает отображение abstract-physical (§6.4).
 
 /// How a horizontally typeset line is turned to become the vertical line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

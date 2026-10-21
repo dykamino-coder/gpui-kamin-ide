@@ -1,4 +1,4 @@
-//! MathML Core operator dictionary and explicit operator properties.
+//! Словарь операторов MathML Core и явные свойства операторов.
 use crate::style::values::value::px_strict;
 use crate::{
     dom::{Element, Node},

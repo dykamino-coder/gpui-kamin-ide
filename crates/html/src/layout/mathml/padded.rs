@@ -1,4 +1,4 @@
-//! MathML Core mpadded geometry after resolving length-percentage attributes.
+//! Геометрия mpadded из MathML Core после разрешения атрибутов length-percentage.
 use super::geometry::Metrics;
 #[derive(Clone, Copy, Debug, Default)]
 pub(super) struct Parameters {

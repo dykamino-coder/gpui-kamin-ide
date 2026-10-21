@@ -1,4 +1,6 @@
-//! Regression checks for SVG initial views and Media Fragments error handling.
+//! Тесты начального вида SVG по фрагменту адреса (SVG 2 §16.3.2, Media Fragments §6): частичное
+//! переопределение параметров корня, кодированные пробелы и сегмент `t=`, отказ от испорченной
+//! спецификации, проценты от исходного размера и правило последней валидной записи `xywh=`.
 
 use super::super::rewrite_svg_fragment;
 

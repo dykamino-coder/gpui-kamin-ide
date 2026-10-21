@@ -1,4 +1,6 @@
-//! CSS property coverage for box model: kept in registry order.
+//! Реестр покрытия CSS, раздел «бокс-модель»: размеры, пределы, `aspect-ratio`,
+//! `padding`/`margin` с логическими сторонами. Порядок записей — порядок
+//! реестра и документации; фрагменты склеивает `properties::PROPERTIES`.
 
 use super::m;
 use crate::coverage::Prop;

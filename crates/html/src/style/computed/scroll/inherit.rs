@@ -1,4 +1,4 @@
-//! Inherited scrollbar colors and computed overflow-axis normalization.
+//! Наследуемые цвета полос прокрутки и нормализация вычисленных осей overflow.
 
 use super::{Color, Computed};
 

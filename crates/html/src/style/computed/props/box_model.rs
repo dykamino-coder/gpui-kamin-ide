@@ -1,4 +1,8 @@
-//! Computed::apply_one: width/height/min/max, logical sizes, padding*, margin*, aspect-ratio, box-sizing.
+//! Группа свойств `Computed::apply_one`: `width`/`height`, `min-*`/`max-*`,
+//! логические размеры, `padding*`, `margin*`, `aspect-ratio`, `box-sizing`.
+//! Здесь — размеры с `calc-size()`, ключевыми словами `stretch`/`fit-content(N)`
+//! и пометками `inherit`, а также `padding` (отрицательное роняет объявление);
+//! стороны и логические свойства — в подмодулях `sides`, `logical_layout`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

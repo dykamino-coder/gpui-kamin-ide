@@ -1,4 +1,5 @@
-//! apply_paint, этап теней: цвет тени без своего цвета (currentColor), внутренние и внешние box-shadow.
+//! apply_paint, этап теней: цвет тени без своего цвета (currentColor), внутренние и внешние
+//! box-shadow.
 
 use super::*;
 

@@ -1,4 +1,9 @@
-//! Shared hypothetical row geometry for flex fragmentation (CSS Flexbox sections 9.3/9.4).
+//! Общая гипотетическая геометрия строк flex-ряда для фрагментации (css-flexbox-1 §9.3/§9.4):
+//! гейт контейнера (`row_container`), строки с мерами элементов (`collect_rows`), высота
+//! строки — наибольшая внешняя высота, растяжение элемента `height: auto` на строку полом
+//! `min-height`, монолит сплошной на всю высоту (css-break-4 §4.1), принудительный разрыв
+//! строки. Ею пользуются мера ряда (`measure`), поиск коробки роста (`push::row`) и край
+//! ряда (`edges`), чтобы все три видели одни смещения.
 
 use super::line_layout::collect_lines;
 use crate::document::state::ValueCx;

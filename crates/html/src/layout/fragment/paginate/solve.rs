@@ -1,13 +1,12 @@
-//! Pagination struts from laid-out candidate geometry.
-//!
-//! Coordinates are the copy's own (`0` = its border-box top). The child starts
-//! `y0` below the top of its first fragmentainer, so the fragmentainer
-//! boundaries inside the copy are `k·H − y0` for `k ≥ 1` (css-break-3 §4: a
-//! boundary is a class-A breakpoint of the flow thread). Blink takes the same
-//! decisions inside layout: `MovePastBreakpoint` / `BreakBeforeChildIfNeeded`
-//! (`fragmentation_utils.cc:896,1069`) push a monolith that does not fit the
-//! remaining space unless it is at the fragmentainer start, and a forced break
-//! always starts a new fragmentainer.
+//! Решатель распорок пагинации по разложенной геометрии кандидатов (`Geom`): первое
+//! нарушение в порядке документа и сдвиг, который его чинит (`first_violation`), и усечение
+//! `row-gap` у границы фрагментаинера (`gap_violation`). Координаты — копии (`0` — верх её
+//! border-box). Ребёнок начинается на `y0` ниже верха первого фрагментаинера, поэтому
+//! границы внутри копии — `k·H − y0` при `k ≥ 1` (css-break-3 §4: граница — точка разрыва
+//! класса A потока). Blink принимает те же решения внутри раскладки: `MovePastBreakpoint` /
+//! `BreakBeforeChildIfNeeded` (`fragmentation_utils.cc`) сдвигают монолит, не
+//! влезающий в остаток, если он не в начале фрагментаинера, а принудительный разрыв всегда
+//! начинает новый фрагментаинер.
 
 use super::Cand;
 

@@ -131,8 +131,8 @@ pub(crate) fn item_sizing(
     // rules for block-level elements» — строчная ось заполняет
     // область (как stretch), а БЛОЧНАЯ идёт из соотношения, не
     // растягиваясь на ряд: там `start`
-    // (`grid-aspect-ratio-001/007/010/038`). ★ ЗАМЕРЕНО: `start`
-    // и по строчной оси — `grid-aspect-ratio-018/038` в красное.
+    // (`grid-aspect-ratio-001/007/010/038`). `start` и по строчной оси
+    // не ставить: ломает `grid-aspect-ratio-018/038`.
     if ratio_ok
         && matches!(
             inherited.display,

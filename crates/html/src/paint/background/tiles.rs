@@ -59,9 +59,8 @@ pub(super) fn paint_tiles_in(
     // (`background-root-019`, `-023`).
     let pos = {
         // Переводятся ТОЛЬКО единицы шрифта: всё прочее (точки, проценты,
-        // `calc`) ниже по пути уже понимают, а лишний перевод их портит —
-        // ЗАМЕРЕНО: сплошной перевод дал CSS2 4614 -> 4610, вся потеря в
-        // семье `border-*-width-applies-to-00*`.
+        // `calc`) ниже по пути уже понимают, а лишний перевод их портит
+        // (семья `border-*-width-applies-to-00*`).
         let to_px = |l: Option<Len>| match l {
             Some(u @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_) | Len::Ic(_) | Len::Lh(_))) => {
                 Some(Len::Px(crate::text::metrics::spacing_px(

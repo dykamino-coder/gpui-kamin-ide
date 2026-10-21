@@ -1,5 +1,5 @@
-//! Таблицы: драйвер раскладки.
-// owner: A
+//! Таблицы (CSS 2.1 §17, css-tables-3): драйвер раскладки — одна сетка на таблицу: дети и
+//! анонимные объекты, `thead`/`tfoot`, ряды и колонки, ширины и кромки, слои фонов, ряды.
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
@@ -136,7 +136,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // нет, а слой кромок (ниже) обязан лечь после ВСЕХ полос.
     let under: Vec<AnyElement> = vec![];
     // Фоны ячеек сросшейся модели — отдельным слоем под кромками
-    // (`interact::CellBgs`): так кромки красятся поверх фонов ячеек, но под
+    // (`layout::table::paint::cell_bg::CellBgs`): так кромки красятся поверх фонов ячеек, но под
     // их содержимым — у Blink сросшиеся кромки идут в фазе
     // `kDescendantBlockBackgroundsOnly` (`box_fragment_painter.cc:952`), а
     // строчное/плавающее/позиционированное содержимое ячеек — позже

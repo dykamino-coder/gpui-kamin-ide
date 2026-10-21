@@ -1,4 +1,8 @@
-//! Collect lines by hypothetical sizes before resolving an oversized item's shrink.
+//! Сбор строк flex-ряда по гипотетическим главным размерам (css-flexbox-1 §9.3 шаг 5): элемент
+//! шире контейнера занимает строку один и сжимается по §9.7 до известного min-content, но
+//! собирается по базе. Копия элемента получает ширину в точках; порядок — `order`.
+//! Элементы с ростом, ограничениями ширины, `auto`-полями по поперечной оси и иным
+//! выравниванием выводят из этого пути (`None`).
 
 use super::super::items::row_item_width;
 use super::geometry::row_container;

@@ -1,4 +1,4 @@
-//! Traverse computed CSS image operands independently of their paint routing.
+//! Обход вычисленных CSS-операндов изображений независимо от маршрута их отрисовки.
 
 use super::{Computed, ImageSource};
 impl Computed {

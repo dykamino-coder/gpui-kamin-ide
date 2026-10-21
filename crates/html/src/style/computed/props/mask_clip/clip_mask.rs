@@ -1,4 +1,5 @@
-//! Ветвь clip-path / mask / mask-image из Computed::apply_mask_clip: сокращение mask, маска-изображение, опорная коробка, url(#id); базовые фигуры — в basic_shape.
+//! Ветвь clip-path / mask / mask-image из Computed::apply_mask_clip: сокращение mask,
+//! маска-изображение, опорная коробка, url(#id); базовые фигуры — в basic_shape.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -1,4 +1,6 @@
-//! Keep inline box backgrounds above the first-line pseudo-element's background.
+//! Подложка `::first-line` под фоном строчных коробок первой строки: фон псевдоэлемента —
+//! нижний слой, а не замена фона потомков (css-pseudo-4 §2.1.3), поэтому цвет полосы прогона
+//! — композиция фона куска поверх фона первой строки.
 
 use crate::style::values::value::Color;
 

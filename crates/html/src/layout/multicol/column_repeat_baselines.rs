@@ -1,4 +1,6 @@
-//! Repeated table bands nominate only the content lines visible in their painted masks.
+//! Базовые линии повторяемых полос таблицы (шапка и подвал) в колонках: полоса предлагает
+//! только те строки содержимого, что видны в её отрисованной маске, с теми же индексами
+//! копий, маской и началом, что в `ColumnStack::prepaint`/`paint`.
 
 use super::*;
 use crate::layout::fragment::types::{Frag, StackChild};

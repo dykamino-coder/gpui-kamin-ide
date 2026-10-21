@@ -1,4 +1,8 @@
-//! Project CSS grid flow onto physical axes after swapping vertical track templates.
+//! Применение к GPUI: проекция потока сетки на физические оси после обмена
+//! шаблонов дорожек при вертикальном письме. По `writing-mode`, `direction`
+//! и `text-orientation` считается, какая физическая ось идёт в обратную
+//! сторону; прямостоящий вертикальный текст даёт используемое направление LTR,
+//! боковое письмо ориентацию не учитывает.
 use crate::style::computed::Computed;
 
 pub(super) fn reversed(c: &Computed) -> [bool; 2] {

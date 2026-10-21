@@ -1,4 +1,8 @@
-//! Resolve CSS Images 3 concrete object size before applying Filter Effects 1 §13.
+//! Растр `filter(<image>, …)` под конкретный размер плитки: вход (градиент или картинка)
+//! сначала приводится к конкретному размеру объекта по CSS Images 3, затем к нему применяется
+//! список фильтров (Filter Effects 1 §13), чтобы длины тени оставались в CSS-точках. Плавное
+//! масштабирование идёт в премультиплицированной альфе, целочисленное увеличение и
+//! `image-rendering: pixelated` — ближайшей точкой; результат кэшируется.
 
 use super::Source;
 use crate::document::state::ValueCx;

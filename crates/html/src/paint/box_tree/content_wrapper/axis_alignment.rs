@@ -1,4 +1,6 @@
-//! A height-only intrinsic wrapper must preserve automatic block width independently.
+//! Предикат для обёртки размера по содержимому: заполняет ли коробка ширину
+//! родителя. Обёртка только по высоте не должна сжимать `width: auto` блока
+//! в потоке — такая коробка растягивается на дорожку, а не прижимается к началу.
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

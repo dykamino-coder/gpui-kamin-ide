@@ -1,4 +1,7 @@
-//! Размер и начало плитки background image.
+//! Геометрия плитки фоновой картинки: размер по `background-size` (CSS Backgrounds 3 §3.9,
+//! `cover`/`contain` и перенос одной стороны через природное соотношение), смещение первой
+//! плитки по `background-position` от свободного места (§3.6) и подгонка размера под целое
+//! число копий для `background-repeat: round` (§3.4).
 
 use crate::document::state::ValueCx;
 use crate::paint::background::*;

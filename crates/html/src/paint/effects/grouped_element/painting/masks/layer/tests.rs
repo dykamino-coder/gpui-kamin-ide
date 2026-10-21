@@ -1,4 +1,4 @@
-//! Typed clipping geometry retains the source layer's composition settings.
+//! Тесты: типизированная геометрия обрезки сохраняет настройки композиции исходного слоя.
 use super::*;
 use gpui::IntoElement;
 

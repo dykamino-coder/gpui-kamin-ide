@@ -1,4 +1,4 @@
-//! Class-B fragment boundaries from the paragraph's actual line boxes.
+//! Границы фрагментов класса B по фактическим строковым боксам абзаца.
 
 use super::Paragraph;
 use crate::layout::fragment::flow::{FlowGeometry, FlowMeasurements, FlowNode};

@@ -1,14 +1,13 @@
-//! Child-build contract: how layout, text and paint algorithms ask for the
-//! boxes inside the one they lay out.
+//! Контракт построения потомков: как алгоритмы layout, text и paint запрашивают
+//! боксы внутри того, который они раскладывают.
 //!
-//! In Servo the box-tree builder and in Blink the layout object tree walk
-//! own the recursion; the algorithms receive built children. Here the walk is
-//! the render orchestrator, so an algorithm that must build its own children
-//! (a list item's contents, a table cell, a column's copy) calls the
-//! operations of this contract carried in [`LayoutCx::build`] instead of
-//! importing render. The contract type belongs to its consumers; render
-//! supplies the implementation (`impl Default for ChildBuild` in
-//! `render/child_builder.rs`), so every `LayoutCx` carries it.
+//! В Servo рекурсией владеет построитель дерева боксов, в Blink — обход дерева
+//! layout-объектов; алгоритмы получают уже построенных потомков. Здесь обход — это
+//! оркестратор render, поэтому алгоритм, которому нужно построить собственных
+//! потомков (содержимое list item, ячейка таблицы, копия колонки), вызывает
+//! операции этого контракта из [`LayoutCx::build`], не импортируя render. Тип
+//! контракта принадлежит потребителям; реализацию даёт render (`impl Default for
+//! ChildBuild` в `render/child_builder.rs`), так что её несёт каждый `LayoutCx`.
 //!
 //! [`LayoutCx::build`]: crate::layout::cx::LayoutCx::build
 

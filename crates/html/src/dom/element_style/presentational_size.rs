@@ -1,4 +1,11 @@
-//! Presentational size for element_style; split out to keep the owning module within 250 lines.
+//! Размер из атрибутов `width`/`height` замещаемых элементов и перевод
+//! `aspect-ratio: auto <ratio>` в соотношение border-box.
+//! `apply_presentational_size`: у `img`/`canvas`/`embed`/`iframe`/`video`/`object`
+//! атрибуты ложатся в `attr_width`/`attr_height` и, пока автор не задал ось в
+//! CSS, в `width`/`height`; холст получает умолчание 300×150 (HTML §4.12.5), его
+//! атрибуты — природный размер, не авторский (css-sizing-4 §4.1); таблице
+//! атрибуты не принадлежат (намёк каскада). `promote_auto_ratio`: у незамещаемой
+//! коробки с `border-box` соотношение контента переводится по оси в точках (§5.1).
 
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -152,8 +159,8 @@ pub(crate) fn apply_presentational_size(
     // выходил 10 точек вместо 100 (`intrinsic-percent-replaced-001`).
     // Когда обе оси пришли от атрибутов, это и есть природный размер — там
     // ничего не меняется, и `flex-basis: content`, `contain: size` и спаннер
-    // многоколоночника, читающие `attr_width`/`attr_height` отдельно
-    // (`render.rs:3140`, `:16979`), работают как прежде.
+    // многоколоночника, читающие `attr_width`/`attr_height` отдельно,
+    // работают как прежде.
     if natural_pair && !(style.attr_sized.0 && style.attr_sized.1) {
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (style.attr_width, style.attr_height)
             && w > 0.0

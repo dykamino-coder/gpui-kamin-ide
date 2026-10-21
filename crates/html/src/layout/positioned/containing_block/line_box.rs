@@ -1,4 +1,4 @@
-//! Line-box hand-off to a static-position probe, restored after prepaint or unwind.
+//! Передача line-box пробе статической позиции; восстанавливается после prepaint или unwind.
 
 use gpui::Pixels;
 

@@ -1,5 +1,7 @@
-//! CSS mask images are positioned in the unrounded positioning box; tile
-//! edges are snapped afterwards by `mask_size::snap_tile`.
+//! Коробка позиционирования слоя `mask-image`: для одиночной картинки без трансформа берётся
+//! неокруглённая коробка раскладки, так как доли `mask-position` отсчитываются от геометрии
+//! раскладки (css-masking-1 §7.7) и округление начала сдвинуло бы полупиксельное смещение;
+//! края плитки привязываются потом в `mask_size::snap_tile`.
 
 use gpui::{Bounds, LayoutId, Pixels, Window};
 

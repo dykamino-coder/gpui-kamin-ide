@@ -1,4 +1,11 @@
-//! Flow items for fixup_tree; split out to keep the owning module within 250 lines.
+//! Правки потока по собранному дереву: вбегание `run-in` и флоаты у детей
+//! flex/grid.
+//!
+//! `fold_run_ins` (CSS 2.1 §9.2.3): элемент `display: run-in` без блочного
+//! содержимого, за которым сквозь схлопываемый пробел идёт обычный блок,
+//! становится его первым строчным ребёнком; внепоточные соседи прозрачны.
+//! `flex_items_lose_float` (css-flexbox-1 §4, css-grid-2 §6): у потокового
+//! ребёнка flex/grid `float` и `clear` вычисляются в `none`.
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Display, Position};
@@ -101,9 +108,9 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         run.style.display = None;
         run.style.run_in = None;
         // Наследование от ИСХОДНОГО родителя (§9.2.3) НЕ запекается:
-        // inline::inherit сливает и рендерные поля, и замер показал минус
-        // (run-in-inherit-001: 5.88 -> 7.35). Цвет нового блока вбёгнутый
-        // перенимает неправильно — хвост запаркован.
+        // `style::cascade::inherit` сливает и рендерные поля, и `run-in-inherit-001`
+        // от этого ломается. Цвет нового блока вбёгнутый перенимает
+        // неправильно — хвост не решён.
         let _ = parent;
         let Node::Element(target) = &mut nodes[j - 1] else {
             unreachable!()

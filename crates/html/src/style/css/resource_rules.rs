@@ -1,4 +1,4 @@
-//! Resource at-rules use stylesheet tokens and the same conditional rules as the cascade.
+//! At-правила ресурсов используют токены таблицы стилей и те же условные правила, что каскад.
 
 use super::{Media, Piece, next_piece, strip_comments, supports, unescape};
 use crate::document::state::ValueCx;

@@ -1,4 +1,4 @@
-//! Body of a style rule cut into declaration runs and nested blocks (css-nesting-1 §2).
+//! Тело правила стиля, разрезанное на серии объявлений и вложенные блоки (css-nesting-1 §2).
 
 /// Часть тела правила: серия объявлений или вложенный блок `(прелюдия, тело)`.
 pub(super) enum Item<'a> {

@@ -5,8 +5,6 @@ mod borders;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
 
-// owner: A
-
 use crate::hooks::IntoHooked;
 use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;

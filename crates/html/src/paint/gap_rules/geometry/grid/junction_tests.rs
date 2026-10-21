@@ -1,4 +1,6 @@
-//! Junction classification uses geometric visibility independently of ink.
+//! Тесты пересечений линеек сетки: невидимые (`rule-style: none`) поперечные линейки всё равно
+//! образуют junction по геометрии, а `rule-visibility-items: between` его снимает
+//! (css-gaps-1 §3.3, §visibility-items).
 use super::*;
 use crate::style::computed::{GapInset, GapList};
 use crate::style::values::value::{Color, Len};

@@ -1,4 +1,4 @@
-//! Resolve parsed gradient lengths after font inheritance, before paint.
+//! Разрешает разобранные длины градиента после наследования шрифта, до отрисовки.
 
 use super::{Computed, Gradient, GradientShape, Len, RadialSize};
 use crate::document::state::ValueCx;

@@ -1,5 +1,8 @@
-//! CSS Writing Modes 4 §9.1.2–3: center and compress a physical 1em composition.
-//! Window composes inner·outer; final offsets therefore use physical glyph axes.
+//! Матрица составного знака `text-combine-upright` (css-writing-modes-4 §9.1.2–9.1.3):
+//! контр-поворот вокруг центра квадрата кегля, сжатие по строчной оси до 1em и центрирование;
+//! окно композирует матрицы как `outer · inner`, поэтому четверть оборота сопрягается в
+//! локальное пространство объемлющей вертикальной строки, а смещения считаются по физическим
+//! осям глифов.
 use gpui::{Bounds, Pixels, Radians, Size, TransformationMatrix, point, px, size};
 
 pub(super) fn transform(

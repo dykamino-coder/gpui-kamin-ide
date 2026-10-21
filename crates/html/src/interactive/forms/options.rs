@@ -1,4 +1,6 @@
-//! HTML option labels and the menu's intrinsic sizing content.
+//! Подписи пунктов `<select>`: обход `<option>` и `<optgroup>`, подпись из атрибута `label`
+//! или схлопнутого по пробелам текста, индекс выбранного пункта. Набор подписей — содержимое,
+//! по которому меню получает intrinsic-размер.
 
 use crate::dom::{Element, Node};
 

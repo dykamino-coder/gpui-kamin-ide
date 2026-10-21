@@ -1,4 +1,6 @@
-//! Computed::apply_text, хвост цепочки: vertical-align/baseline-shift, line-clamp, block-ellipsis, writing-mode, text-orientation, hyphens, tab-size. Ветви в исходном порядке после apply_text_breaking.
+//! Computed::apply_text, хвост цепочки: vertical-align/baseline-shift, line-clamp, block-ellipsis,
+//! writing-mode, text-orientation, hyphens, tab-size. Ветви в исходном порядке после
+//! apply_text_breaking.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -194,8 +196,9 @@ impl Computed {
                     }
                 }
             }
-            // CSS Rhythm 1 §2: a step establishes an independent formatting
-            // context even while rhythm layout itself is unimplemented.
+            // css-rhythm-1 §2: значение кроме `none`/`auto` создаёт независимый
+            // контекст форматирования (`flow_root`), хотя сам шаг ритма не
+            // считается (`block-step-size-establishes-*`).
             "block-step-size" => {
                 if v == "none" || v == "auto" || Len::parse(v, vcx).is_some() {
                     self.accept_declaration();

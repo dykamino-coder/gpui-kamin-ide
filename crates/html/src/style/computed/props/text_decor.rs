@@ -1,4 +1,7 @@
-//! Computed::apply_one: text-decoration*, text-underline-*, text-emphasis*, text-shadow, ruby-*.
+//! Группа свойств `Computed::apply_one`: оформление текста —
+//! `text-decoration*` (сокращение css-text-decor-4 §2 и longhand: линии, стиль,
+//! цвет, толщина, `-inset`, `-skip-*`), `text-underline-offset`/`-position`;
+//! `text-emphasis*`, `text-shadow`, `ruby-*` — в подмодуле `emphasis_ruby`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

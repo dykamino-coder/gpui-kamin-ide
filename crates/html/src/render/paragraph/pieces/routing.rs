@@ -116,8 +116,7 @@ pub(crate) fn route_pieces(
     // а вложенный атом свою первую базовую линию пропагирует
     // (`flexbox.rs:405`). Кусок заявляет 1.0em, атом — 0.8em: атом тонет на
     // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
-    // (§10.8). Замерено зондом `target/probe/atom-probe2.html`: при
-    // `font: 100px/1 Ahem` короб 120, атом на +20.
+    // (§10.8): при `font: 100px/1 Ahem` короб 120, атом на +20.
     let mut render_text = |t: String, style: &Computed| -> AnyElement {
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`

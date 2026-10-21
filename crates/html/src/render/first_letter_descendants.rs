@@ -1,4 +1,10 @@
-//! Route first-letter styling to the first in-flow block's formatted line.
+//! Сборка дерева: перенос слоя `::first-letter` в первый блочный потомок в потоке.
+//!
+//! CSS 2 §5.12.1–5.12.2 и css-pseudo-4 §first-letter-tree ставят фиктивный
+//! строчный элемент внутрь потомка, который даёт первую форматированную строку;
+//! относительные шрифтовые единицы остаются относительными к тому тексту.
+//! Плавающие буквицы, `initial-letter` и пересечение с `::first-line` идут
+//! своей раскладкой и сюда не попадают.
 
 use crate::dom::Node;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};

@@ -1,4 +1,4 @@
-//! Mask sources share computed image resolution and retain their layer order.
+//! Тесты: источники маски делят вычисленное разрешение изображений и сохраняют порядок слоёв.
 
 use crate::style::computed::{Computed, ImageSource};
 use crate::style::values::value::Len;

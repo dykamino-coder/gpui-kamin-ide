@@ -1,4 +1,11 @@
-//! The basic appearance UA sheet participates below author declarations.
+//! Лист агента для `appearance: base` у `input`/`textarea`/`button` (CSS Forms 1,
+//! basic appearance stylesheet).
+//!
+//! `rule` даёт одно правило происхождения агента в последнем слое: наследуемые
+//! шрифт и цвет, прозрачная поверхность, рамка `currentColor`, у кнопок —
+//! inline-flex с отступами в `em`. Участвует в каскаде ниже авторских
+//! объявлений, до наследования и нормализации длин, а не в краске; типы
+//! `input` с собственным виджетом (флажок, ползунок, цвет, файл) не получают его.
 
 use crate::style::computed::{Appearance, Computed};
 use crate::style::css::{Rule, Selector, parse_decls};

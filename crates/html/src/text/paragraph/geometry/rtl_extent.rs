@@ -1,4 +1,8 @@
-//! Rtl extent for geometry; split out to keep the owning module within 250 lines.
+//! Визуальные координаты в rtl-строке и для кусков вне потока: отрезок
+//! знаков и продвижение места от ЛЕВОГО края по прогонам UAX #9 в видимом
+//! порядке (L2), уровень bidi на месте куска (нейтральный U+FFFC, правила
+//! N1/N2), и статическая позиция блочного куска вне потока на следующей
+//! строке (CSS 2.1 §10.6.4).
 
 use crate::text::paragraph::*;
 use gpui::{Bounds, Pixels, Point, point, px};

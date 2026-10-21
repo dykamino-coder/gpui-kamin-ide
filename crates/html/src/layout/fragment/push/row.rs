@@ -1,4 +1,7 @@
-//! Growth searches use the same flex-row offsets as the shape pass.
+//! Поиск коробки роста и рост внутри многострочного flex-ряда теми же смещениями строк, что у
+//! меры (`flex_lines::row_geometry`): точка на границе строки двигает ВСЮ строку полями её
+//! элементов (разрыв класса A, css-flexbox-1 §12), точка внутри элемента спускается в него,
+//! точка в уже усечённом зазоре строки рост не даёт (css-gaps §gaps).
 
 use super::pushed_box_at;
 use crate::document::state::ValueCx;

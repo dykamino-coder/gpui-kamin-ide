@@ -1,5 +1,8 @@
-//! Grid content baseline alignment shares the row baseline while keeping the box stretched.
-//! The native content-shift contract also serves baseline-aligned table cells.
+//! Применение к GPUI: `align-content: baseline` у элемента сетки. Коробка
+//! остаётся растянутой, а её содержимое сдвигается к общей базовой ряда тем же
+//! контрактом сдвига содержимого, что и ячейки таблицы с `vertical-align:
+//! baseline`. Реализован только физически-вертикальный первый baseline;
+//! остальные предпочтения оставляют прежний запасной путь без сдвига коробки.
 
 use crate::style::computed::{Align, Computed, Position};
 

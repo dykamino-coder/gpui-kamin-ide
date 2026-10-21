@@ -1,6 +1,8 @@
-//! Paint affine-compatible gradient slices before any intermediate quantization.
-//! CSS Backgrounds 3 §6.6 scales the source image, rather than rebuilding a
-//! gradient in each slice. Clip a virtual whole image in the slice's mapping.
+//! Кусок `border-image` из линейного градиента красится аналитически, без промежуточного
+//! квантования в растр: CSS Backgrounds 3 §6.6 масштабирует исходную картинку, а не строит
+//! градиент заново в каждом куске, поэтому виртуальная целая картинка рисуется в отображении
+//! куска и обрезается его назначением. Радиальные, повторяющиеся и несовместимые с аффинным
+//! отображением случаи уходят на растровый путь.
 
 use crate::document::state::ValueCx;
 use crate::paint::background::Source;

@@ -1,4 +1,7 @@
-//! CSS Scroll Snap 1: non-inherited snap type, alignment, snapport and snap area.
+//! Вычисленный стиль привязки прокрутки (CSS Scroll Snap 1): `SnapStyle` —
+//! `scroll-snap-type`, `scroll-snap-align`, `scroll-padding*` (snapport) и
+//! `scroll-margin*` (область привязки). Свойства не наследуются; `inherit`
+//! помечается битами и копируется от родителя при наследовании по свойствам.
 
 use super::{Computed, Sides, split_outside_parens};
 use crate::document::state::ValueCx;

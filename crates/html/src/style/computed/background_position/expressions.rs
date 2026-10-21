@@ -1,4 +1,7 @@
-//! Capture typed comparison expressions for background-position axes and edge offsets.
+//! `background-position`: выделение типизированных выражений сравнения. `math` узнаёт
+//! `min()`/`max()`/`clamp()` с долями, `capture` вынимает их по осям из записи со смещениями
+//! от краёв (для `right`/`bottom` выражение пересчитывается `offset_from_end`); доли
+//! подставляются только при вычислении используемого значения (`PositionExpression::evaluate`).
 
 use super::PositionExpression;
 use crate::document::state::ValueCx;

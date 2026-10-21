@@ -1,4 +1,8 @@
-//! Load font faces, cache decoded sources and register page-local family aliases.
+//! Загрузка шрифтов страницы: по правилам `@font-face` читает файлы, отдаёт их системе и
+//! заполняет таблицы семейства документа — подмену имени, лица с дескрипторами, возможности,
+//! `size-adjust` по наклону, покрытие пробела `unicode-range` (css-fonts-4 §first-available-font)
+//! и базовую линию `romn`. Полная загрузка сбрасывает таблицы документа, дозагрузка
+//! (`<iframe>`) — нет.
 
 use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
 use crate::document::state::ValueCx;
@@ -195,7 +199,7 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
 }
 
 /// Множитель `size-adjust` лица, которое подбор по наклону (css-fonts-4
-/// §font-style-matching; Blink `font_face_cache.cc:227-259`) выберет для
+/// §font-style-matching; Blink `font_face_cache.cc`) выберет для
 /// запроса `want`: 0 normal, 1 italic, 2 oblique. Порядок наклонов лиц:
 /// italic → italic, oblique, normal; normal → normal, oblique, italic
 /// (§5.2 шаг 2); oblique → oblique, normal, italic — наклонный запрос на

@@ -1,4 +1,4 @@
-//! Computed-value eligibility and geometry of a single circular CSS corner.
+//! Допустимость вычисленных значений и геометрия одного круглого CSS-угла.
 
 use crate::style::computed::{BgClip, Computed, Overflow};
 use crate::style::values::value::Len;

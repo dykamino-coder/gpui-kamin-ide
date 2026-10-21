@@ -20,10 +20,9 @@ impl ColumnStack {
             // (`ResolveColumnAutoBlockSize` ниже) и пробег рядов
             // (`balance_run`) отступ не трогает НАМЕРЕННО: там лишняя колонка
             // от отступа растит `target` на весь недолаз и МЕНЯЕТ высоту
-            // многоколоночника. Считано руками на `balance-break-avoidance-002`
-            // (сегодня 0.53): баланс уходит 75 -> 125 при верных 100 — то есть
-            // в балансе отступ мало поставить, надо ещё выбрать высоту, а это
-            // отдельный шаг с отдельным замером.
+            // многоколоночника (`balance-break-avoidance-002`: баланс уходит
+            // в 125 при верных 100) — в балансе отступ мало поставить, надо
+            // ещё выбрать высоту, а это отдельный шаг.
             let (_, _, slots) = Self::fill_avoiding(kids, &|_| h, Space::columns(limit));
             return (h, slots);
         }
@@ -62,8 +61,7 @@ impl ColumnStack {
         // `column_layout_algorithm.cc` — `tallest_unbreakable_block_size` в
         // `CalculateBalancedColumnBlockSize`). Без этого монолит-потомок выше
         // оценки резался краем колонки (`single-line-row-flex-fragmentation-
-        // 037`: `contain: size` 100 при оценке 75). Прежний замер (06.09, v103)
-        // терял `multicol-overflow-clip`; на integration-7 она цела.
+        // 037`: `contain: size` 100 при оценке 75).
         // Верхнее поле ПЕРВОГО ребёнка не примыкает к разрыву (начало контекста
         // фрагментации, css-break-3 §5.2 усекает поля только у разрыва) — монолит
         // под ним целиком в первой колонке, и Blink растит баланс на недолаз
@@ -97,14 +95,14 @@ impl ColumnStack {
                 //
                 // Гейты — те же, что у Blink перед растяжением. (1) Рост идёт
                 // через `clamp`, то есть в потолок `cap` = заданная высота коробки
-                // (`Rows::cap`, `render.rs`; Blink `ConstrainColumnBlockSize`,
+                // (`Rows::cap`, `render::generic_box::multicol`; Blink `ConstrainColumnBlockSize`,
                 // `:1172`, `:1785-1788`, `:1812`), и если выше не вышло — план
                 // принимается С НАРУШЕНИЕМ (`:1175-1178` «Give up if we cannot
                 // get taller columns»; css-break-3 §4.3: «rules 1, 2 and 4 are
-                // dropped»). ★ Без этого гейта (замер 30.09, `Rows::cap` ещё не
-                // было) `flex-/grid-lanes-container-fragmentation-003/004` —
+                // dropped»). Без этого гейта
+                // `flex-/grid-lanes-container-fragmentation-003/004` —
                 // `height: 100px`, 50 + 50 + 300 в четырёх колонках — росли
-                // 100 → 400 за коробку. (2) Принудительных разрывов не меньше
+                // вчетверо за коробку. (2) Принудительных разрывов не меньше
                 // `count − 1` — растягивать бесполезно (`:1152`, `forced_breaks`).
                 if Self::forced_breaks(kids) + 1 < self.count
                     && let Some(d) = Self::first_avoid_violation(kids, &slots)

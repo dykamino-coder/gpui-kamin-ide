@@ -1,4 +1,7 @@
-//! Sample gradient geometry and stop lengths before quantizing straight-alpha BGRA.
+//! Растр линейных и радиальных градиентов и `cross-fade()`: стопы решаются по длине
+//! градиентной линии (CSS Images 3 §3.2.3, §3.4.3), цвет берётся в центрах пикселей устройства
+//! в выбранном интерполяционном пространстве и квантуется в straight-alpha BGRA; плитки
+//! кэшируются по записи, размеру растра и конкретному CSS-размеру.
 
 use super::{gradient_geometry::Geometry, place_stops, wrap_repeat};
 use crate::document::state::ValueCx;

@@ -1,4 +1,6 @@
-//! Grid rule runs use the same logical slots for ink and crossing widths.
+//! Слои линеек сетки по обеим физическим осям: пробеги строятся из коробок элементов и дорожек
+//! шаблона с учётом обращения осей, и одни и те же логические слоты списков служат и для
+//! краски линейки, и для ширины пересекающей линейки в junction'ах.
 
 use crate::paint::gap_rules::geometry::{GapItem, GapRun, GridTracks, grid_runs};
 use crate::paint::gap_rules::{GapAxisRule, GapRuleSpec};

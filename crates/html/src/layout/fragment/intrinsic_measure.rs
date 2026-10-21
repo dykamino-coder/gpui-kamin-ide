@@ -1,4 +1,6 @@
-//! Intrinsic column contributions use layout sizes before paint rounding.
+//! Ширина элемента для вклада в размер колонки (`multicol::column_measure`): корневая
+//! раскладка по max-content без округления к пикселям краски, чтобы вклад совпадал с
+//! размером раскладки.
 
 use gpui::{AnyElement, App, AvailableSpace, Window, size};
 

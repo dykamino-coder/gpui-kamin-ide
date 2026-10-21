@@ -121,7 +121,7 @@ pub(super) fn build_band_kid(
         copy.style.width = Some(Len::Px(k * w));
     }
     // Вырезы полос — строкам ЭТОЙ коробки, от её верха (шаг F4):
-    // `inline::inherit` начинает слитый стиль с собственного, и
+    // `style::cascade::inherit` начинает слитый стиль с собственного, и
     // вырезы доезжают до прямых строк коробки.
     // CSS Writing Modes §3.2: changing writing-mode establishes an independent
     // formatting context. Blink block_layout_algorithm.cc:1545 clears its
@@ -183,8 +183,7 @@ pub(super) fn build_band_kid(
     // Замещаемый флоат, кроме `<img>` (`embed`, `object`,
     // `video`…), — своей веткой `element` ниже: каркас блока со
     // `blocks(детей)` рисовал вместо картинки пустую коробку, и
-    // `object-fit-*-00Ne/o/p` (88 пар `css-images`) теряли
-    // содержимое.
+    // `object-fit-*-00Ne/o/p` (`css-images`) теряли содержимое.
     let replaced = replaced_tag(&copy) && copy.tag != "img";
     // Вертикальный флоат — общим путём `element`: только там блок
     // вертикального письма раскладывает детей рядом по

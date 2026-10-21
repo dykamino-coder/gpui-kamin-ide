@@ -1,4 +1,8 @@
-//! Build emphasis spans with their line geometry and clipped background fill.
+//! Знаки акцента `text-emphasis` по кускам абзаца (css-text-decor-3 §5.3–5.4): из `Piece::Text`
+//! собираются отрезки `EmphSpan` с байтовым диапазоном, размером знака (половина кегля базы),
+//! интерлиньяжем куска, стороной (над/под, в вертикальном письме — право/лево, `auto` по языку),
+//! формой по режиму письма и цветом с учётом `background-clip: text`; руби получает отметку о
+//! знаке для раскладки слоёв.
 
 use super::Piece;
 use crate::style::values::value::Color;

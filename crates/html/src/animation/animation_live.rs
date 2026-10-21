@@ -1,4 +1,11 @@
-//! Live keyframes rebuild the actual formatting node, rather than sizing an extra box.
+//! Живая анимация по `@keyframes`: пересборка настоящего узла на каждом кадре.
+//!
+//! Вход — элемент с набором кадров (`anim`) и `AnimSpec`; выход — GPUI-элемент,
+//! обёрнутый в `with_animation`. Остановленная (`frozen`) анимация запекается
+//! в один стиль и собирается как обычный элемент. На живом кадре выборка
+//! накладывается на исходный узел (`animation_frame::sample`), и собирается
+//! сам форматирующий узел, а не отдельная коробка-обёртка: иначе анимируемые
+//! размеры и цвета не доезжали бы до раскладки и детей.
 
 use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};

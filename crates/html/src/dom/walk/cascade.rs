@@ -1,4 +1,12 @@
-//! Cascade stylesheet, inline and presentational declarations for an element.
+//! Каскад одного элемента при обходе: от правил и атрибутов к `Computed`.
+//! `cascade_element` отмечает ссылку-маркер группы `scroll-target-group`,
+//! отбирает совпавшие правила (документ, умолчания MathML, `::slotted` из
+//! `TreeIndex`, `:host` из тени хоста), считает собственные пользовательские
+//! свойства поверх родительских, выбирает используемую схему цвета
+//! (`color-scheme`; её значение возвращается вызывающему на время поддерева),
+//! добавляет представленческие подсказки (HTML и MathML), разрешает стиль, при
+//! `appearance: base` докладывает лист форм, затем наследует `content`/счётчики
+//! по DOM. Типизированный `attr()` видит атрибуты только этого элемента.
 
 use super::presentational_hints;
 use crate::dom::tree_index::TreeIndex;

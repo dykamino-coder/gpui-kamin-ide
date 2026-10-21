@@ -1,5 +1,4 @@
 //! Текст: руби, вертикальный текст, обрезка строк.
-// owner: coordinator
 
 pub mod clamp;
 pub mod fonts;

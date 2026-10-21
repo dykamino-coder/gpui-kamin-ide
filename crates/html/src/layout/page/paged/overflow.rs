@@ -14,11 +14,11 @@ use crate::style::computed::Computed;
 /// whose containing block is in the normal flow of the root fragmented
 /// element». Узкий флоат (`width: 60%`, `auto`) — параллельный поток, стопкой
 /// его не выразить, и он по-прежнему гейт (FRAG-PARALLEL-FLOW).
-/// ВНИМАНИЕ: `Len::Pct` — ДОЛЯ, а не проценты (`value.rs:175`
+/// ВНИМАНИЕ: `Len::Pct` — ДОЛЯ, а не проценты (в разборе
 /// `Len::Pct(v / 100.0)`, то есть `100%` хранится как `Pct(1.0)`), сравнение
 /// идёт с единицей.
 /// Отрисовку это не меняет: `apply()` читает `float` ровно в одном месте
-/// (`apply.rs:924`, предикат `shrink_to_fit`) и только при `width: None|Auto`,
+/// (предикат `shrink_to_fit` в `style::apply::box_model`) и только при `width: None|Auto`,
 /// а здесь ширина задана явно.
 /// Коробка своё переполнение ПОКАЗЫВАЕТ. Обрезающая (`hidden`/`clip`) и
 /// прокручиваемая (`scroll`) коробка параллельного потока не рождает
@@ -35,7 +35,7 @@ pub(crate) fn visible_overflow(c: &Computed) -> bool {
     // §overflow-control: «if the other axis specifies a scrollable value, a
     // specified value of visible computes to auto»; `clip` прокручиваемым
     // значением не является, и `visible` по y остаётся видимым (раскраска по
-    // осям раздельная, `apply.rs` `overflow.x = Clip`). `overflow-clip-003/008`:
+    // осям раздельная, `paint/apply/` `overflow.x = Clip`). `overflow-clip-003/008`:
     // `overflow-x: clip` на коробке 150/200 с содержимым 200/400 — хвост обязан
     // уйти в следующие колонки, а ворота отдавали ему нулевой поток.
     matches!(c.overflow_y, None | Some(Overflow::Visible))

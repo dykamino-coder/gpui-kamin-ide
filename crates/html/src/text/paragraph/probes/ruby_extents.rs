@@ -1,4 +1,9 @@
-//! Ruby extents for probes; split out to keep the owning module within 250 lines.
+//! Сбор экстентов руби для атома строки: узлы стопок аннотаций над и под
+//! базой (`RubyExtents`; строка растёт ровно на выход аннотации за её
+//! коробку, css-ruby-1 §3.4, Blink `ComputeAnnotationOverflow`), входные
+//! данные свеса `ruby-overhang` (css-ruby-1 §4.4, Blink `GetOverhang`) и
+//! одноразовое предложение приёмника ширины базы (`RubyBaseOffer`), в который первый
+//! абзац базы сообщает свою ширину по содержимому при замере.
 
 use super::LayoutTap;
 use crate::hooks::IntoHooked;

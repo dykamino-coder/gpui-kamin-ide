@@ -1,5 +1,8 @@
-//! Family-specific alternate names, CSS Fonts 4 §6.8–6.9.
-//! Resolution follows inheritance and precedes font-feature-settings (§7.2).
+//! Именованные альтернативы семейства: `@font-feature-values` и `font-variant-alternates`
+//! (css-fonts-4 §6.8–6.9). Регистрация определений по семействам при разборе стилей, разбор
+//! значения свойства и разрешение в теги OpenType (`ss##`, `cv##`, `salt`, `swsh`, `ornm`…).
+//! Разрешение идёт по наследованию и предшествует `font-feature-settings` (§7.2); запрос несёт
+//! снимок определений своего документа, чтобы разбор `<iframe>` не менял внешний документ.
 
 use crate::document::state::ValueCx;
 use std::collections::HashMap;

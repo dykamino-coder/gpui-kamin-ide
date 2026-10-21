@@ -1,4 +1,4 @@
-//! Monolithic descendants and indivisible column-copy classification.
+//! Классификация монолитных потомков и неделимых копий колонок.
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

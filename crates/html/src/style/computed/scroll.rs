@@ -1,4 +1,9 @@
-//! CSS Scrollbars 1 styling, owned by HTML.
+//! Вычисленный стиль полос прокрутки (CSS Scrollbars 1): `ScrollStyle` —
+//! `scrollbar-width`, `scrollbar-gutter`, `scrollbar-color`, принудительный
+//! `overflow: scroll` и используемая толщина (Blink `scrollbar_theme_aura.cc`:
+//! 15px, `thin` 10px). По умолчанию наследуется только цвет (§2), ширина и
+//! желоб остаются у контейнера. Здесь же нормализация пары `overflow-x/y`
+//! (CSS Overflow 3 §3) при наследовании.
 
 use super::{Computed, split_outside_parens};
 use crate::document::state::ValueCx;

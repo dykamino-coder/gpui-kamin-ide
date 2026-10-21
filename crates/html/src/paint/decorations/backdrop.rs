@@ -1,5 +1,4 @@
 //! `backdrop-filter` цветовой матрицей (filter-effects-2 §BackdropFilterProperty).
-// owner: A
 
 use crate::document::state::ValueCx;
 use crate::paint::effects::mask::svg_filter_matrix;

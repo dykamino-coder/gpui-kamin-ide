@@ -1,4 +1,7 @@
-//! Select the containing block for a replaced inline box with one explicit inset axis.
+//! Выбор содержащего блока для строчной замещаемой коробки с одной заданной осью вставок:
+//! абсолют без позиционированного предка уходит в начальный содержащий блок (CSS 2.1
+//! §10.1), статическую координату по авто-оси даёт щуп, и строчная обёртка содержащим
+//! блоком не становится; остальные идут отложенным размещением `late_push`.
 
 use crate::layout::positioned::containing_block::{Positioning, SpotCell};
 use crate::style::computed::{Computed, Position};

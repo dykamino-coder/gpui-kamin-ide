@@ -1,5 +1,7 @@
-//! Records the left edge of the root's content-sized box under `vertical-rl`
-//! for the canvas background (`DocState::root_left`).
+//! Левый край коробки корня по содержимому при `vertical-rl` для фона холста
+//! (`DocState::root_left`): обёртка `RecordRootLeft` на подготовке пишет левый край своей
+//! коробки минус поля тела и рамку корня, не меняя раскладки; отрисовка холста того же кадра
+//! позиционирует от него фон (CSS 2.2 §14.2).
 
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AnyElement, App, Bounds, Pixels, Window};

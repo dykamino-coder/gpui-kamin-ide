@@ -1,7 +1,11 @@
-//! Флекс-строки при фрагментации.
+//! Раскрытие многострочного flex-контейнера — ребёнка стопки колонок — в его элементы по
+//! строкам (`split_flex_lines`): строки колоночного контейнера и элементы строки рядного —
+//! параллельные потоки группы (`types::Par`), как у Blink `flex_layout_algorithm.cc`.
+//! Вход: дети стопки с мерами `Shape`; выход: раскрытый список, описание потоков, стили
+//! родителей и начала групп. Подмодули: колонка (`column`), ряд (`row`), гейты элементов
+//! (`items`).
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::fragment::Shape;
@@ -24,15 +28,19 @@ pub(crate) use items::inline_display;
 pub(crate) use items::item_container;
 use items::{constrained_inside, row_item_width};
 
+/// Раскрывает ли `split_flex_lines` колоночный flex `c` в его строки.
+pub(crate) fn explodes(c: &Element, col_w: Option<f32>, vcx: ValueCx<'_>) -> bool {
+    flex_lines_of(c, col_w, vcx).is_some()
+}
+
 /// Многострочный КОЛОНОЧНЫЙ flex-контейнер — ребёнок стопки колонок —
-/// раскрывается в свои элементы, разложенные по строкам (`flow::Par`): строки
-/// такого контейнера — параллельные потоки (Blink `flex_layout_algorithm.cc`
-/// :2108-2112 — `FlexColumnBreakInfo` на каждую строку; :2504-2515 — разрыв
-/// элемента переходит к следующей СТРОКЕ, а не обрывает контейнер; :2536-2560
-/// — рост элемента от фрагментации двигает только его строку,
-/// `item_offset_adjustment`). Прежде контейнер мерился стопкой ВСЕХ
-/// элементов подряд (`shape_full`, ветка `flex_items`), и строки ложились одна
-/// под другой (`multi-line-column-flex-fragmentation-*`: «красное видно»).
+/// раскрывается в свои элементы, разложенные по строкам (`types::Par`): строки
+/// такого контейнера — параллельные потоки (Blink `flex_layout_algorithm.cc`:
+/// `FlexColumnBreakInfo` на каждую строку; разрыв элемента переходит к
+/// следующей СТРОКЕ, а не обрывает контейнер; рост элемента от фрагментации
+/// двигает только его строку, `item_offset_adjustment`). Без раскрытия
+/// контейнер мерился бы стопкой ВСЕХ элементов подряд (`shape_full`), и строки
+/// ложились бы одна под другой (`multi-line-column-flex-fragmentation-*`).
 ///
 /// Строки — по css-flexbox-1 §9.3 (шаг 5, «collect consecutive items one by one
 /// until the first time that the next collected item would not fit into the
@@ -50,11 +58,6 @@ use items::{constrained_inside, row_item_width};
 /// дети — блочные элементы в потоке без `flex-grow`, `flex-basis`,
 /// `align-self`, боковых полей и отбивок, ширина в точках либо пустой
 /// `auto`. Иначе контейнер идёт прежним путём.
-/// Whether `split_flex_lines` opens the column flex `c` into its lines.
-pub(crate) fn explodes(c: &Element, col_w: Option<f32>, vcx: ValueCx<'_>) -> bool {
-    flex_lines_of(c, col_w, vcx).is_some()
-}
-
 // Keep each flex line paired with its height and break flags.
 #[allow(clippy::type_complexity)]
 pub(crate) fn split_flex_lines(

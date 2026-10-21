@@ -1,5 +1,8 @@
-//! Resolve vertical text's inline contribution during the parent's native measurement.
-//! Intrinsic probes and final constraints share the actual paragraph shaping path.
+//! Предел строки абзаца при замере (`measured_inline_limit`): заданный
+//! размер, доступное место, min-content или, для вертикального текста в
+//! ортогональном потоке, ограничение родителя (`InlineConstraint`),
+//! разрешённое по min/max-content самого абзаца. Щупы внутренних размеров и
+//! окончательное ограничение идут одним путём набора.
 
 use super::*;
 use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};

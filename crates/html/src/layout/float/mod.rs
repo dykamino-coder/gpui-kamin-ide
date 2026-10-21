@@ -1,5 +1,4 @@
 //! Флоаты: полосы обтекания, очистка, буквица, обтекание по форме.
-// owner: A
 
 use crate::dom::{Element, Node};
 use crate::layout::float::band_host::px_margin_box;

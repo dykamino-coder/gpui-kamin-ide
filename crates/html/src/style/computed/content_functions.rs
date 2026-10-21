@@ -1,5 +1,9 @@
-//! Generated-content functions retain the CSS token types of their arguments.
-//! CSS Lists 3 #counter-functions: quoted strings cannot name a counter or its style.
+//! Вычисленный стиль: разбор значения `content` в список `ContentItem`
+//! (css-content-3 §2) — строки, слова кавычек, `counter()`/`counters()`,
+//! `attr()`, `url()` и `filter()` как замещающее изображение. Аргументы функций
+//! сохраняют типы токенов CSS: строка в кавычках не может быть именем счётчика
+//! или его стиля (CSS Lists 3 #counter-functions). Негодная запись делает
+//! объявление недействительным целиком, а не печатается литеральным текстом.
 
 use super::{ContentItem, unescape_content};
 use crate::document::state::ValueCx;

@@ -1,4 +1,11 @@
-//! Collect rendered children, shadow content and generated scroll controls.
+//! Сборка детей элемента при обходе: псевдоэлементы, тень или слот, маркеры.
+//!
+//! `collect_children` строит `::before` до детей и `::after` после (счётчики
+//! в порядке браузера); дети берутся из корня тени (плоское дерево,
+//! css-shadow-1 §3.3), из распределённых узлов слота (стили области хоста,
+//! наследование от слота) или из светлых детей. Затем `scroll_marker_pass`
+//! и собственный `::scroll-marker` элемента (он идёт во внешнюю группу), а
+//! колонки вне таблицы/группы колонок отбрасываются (CSS 2.1 §17.2.1).
 
 use super::{build_dom_node, walk_children};
 use crate::dom::tree_index::TreeIndex;

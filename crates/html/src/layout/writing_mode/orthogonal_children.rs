@@ -1,4 +1,8 @@
-//! Orthogonal horizontal children keep percentages and native intrinsic sizing.
+//! Ортогональные горизонтальные дети вертикального контейнера: проценты полей и ширины
+//! сводятся к точкам от размера контейнера или начального содержащего блока
+//! (css-writing-modes-4 §7.3.1), авто-высота не растягивается к параллельным соседям
+//! (§7.3), а авто-ширина получает предел потока — stretch-fit, shrink-to-fit при явном
+//! `auto` (§7.3.2) либо нативный `fit-content` через `orthogonal_horizontal`.
 use crate::dom::Node;
 use crate::layout::box_kind::in_flow;
 use crate::style::computed::{Align, Computed, Display};
@@ -92,7 +96,7 @@ pub(crate) fn orthogonal_children(
                 // потолком не выразить: длинное слово упрётся в предел и
                 // вылезет — его эталоны (`-011/-023`) сходятся в пределах
                 // допуска. Неявной ширине по-прежнему растяжка: потолок
-                // вместо неё замерен и откачен (E1).
+                // вместо неё ломает stretch-fit, описанный выше.
                 Some(Len::Px(w)) if explicit_auto => {
                     let b = ch.style.borders();
                     let extra = side(ch.style.padding.left)

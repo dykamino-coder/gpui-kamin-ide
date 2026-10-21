@@ -1,4 +1,8 @@
-//! CSS Fonts 4 §5.2: select one face before using its metrics and features.
+//! Подбор лица `@font-face` по css-fonts-4 §5.2: среди правил одного семейства выбирается одно
+//! лицо по ширине, затем наклону, затем весу (направленный поиск), прежде чем брать его метрики и
+//! возможности. Здесь разбор диапазонов дескрипторов `font-weight`/`font-style`, выбор лица для
+//! запроса и его возможности с подавлением синтеза (`nsyw`/`nsys`), когда дескриптор уже даёт
+//! нужный стиль.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

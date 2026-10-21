@@ -1,4 +1,7 @@
-//! Unit tests for the HTML §15 legacy presentational hints (`hr`, tables, lists).
+//! Тесты представленческих подсказок HTML §15: `hr size` с `color`/`noshade` и
+//! без (§15.3.11), разбор неотрицательного целого и устаревшего цвета
+//! (§2.3.6: пустая строка и `transparent` не цвет), регистр `ol type`
+//! (§15.3.7), нулевая ширина таблицы игнорируется (§15.3.8).
 
 use super::presentational_hr;
 use super::presentational_legacy;

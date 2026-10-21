@@ -1,7 +1,7 @@
-//! Whether a box needs an intrinsic-sizing wrapper: a `min-content`,
-//! `max-content` or `fit-content` preferred size that its parent must see
-//! (css-sizing-3 §5), unless size containment or out-of-flow positioning
-//! makes the content size irrelevant.
+//! Нужна ли боксу intrinsic-обёртка: предпочтительный размер `min-content`,
+//! `max-content` или `fit-content`, который должен видеть родитель (css-sizing-3
+//! §5), кроме случаев, когда size containment или вынос из потока делает размер
+//! содержимого несущественным.
 
 use crate::dom::Element;
 use crate::layout::writing_mode::native_intrinsic;

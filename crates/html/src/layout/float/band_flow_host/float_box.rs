@@ -1,4 +1,4 @@
-//! Independent horizontal float contents, clamp boundaries and paint effects.
+//! Независимое горизонтальное содержимое float, границы clamp и эффекты paint.
 
 use crate::dom::Element;
 use crate::layout::replaced::image::image;

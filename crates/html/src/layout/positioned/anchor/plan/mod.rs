@@ -27,7 +27,7 @@ impl AnchorPlan {
     pub(super) fn rec(&self, name: Option<&str>) -> Option<AnchorRec> {
         // Реестр ТЕКУЩЕГО кадра знает только якоря, уже прошедшие подготовку.
         // Якорь раньше по дереву, но в слое, который готовится ПОЗЖЕ коробки
-        // (слой ICB у `fixed`, `interact::icb_close` — последние дети
+        // (слой ICB у `fixed`, `containing_block::layers::icb_close` — последние дети
         // документа), в нём ещё не записан: `anchor-abspos-to-fixedpos-001` —
         // `fixed`-якорь и абсолют без краёв в потоке, коробка падала на
         // статическую позицию под якорь. Спека требует лишь «laid out

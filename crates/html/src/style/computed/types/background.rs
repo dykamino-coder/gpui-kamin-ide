@@ -1,4 +1,5 @@
-//! Типы фона: background-clip/size/position (с разбором слов положения), background-repeat и укладка.
+//! Типы фона: background-clip/size/position (с разбором слов положения), background-repeat и
+//! укладка.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -51,7 +52,7 @@ pub fn parse_pos_words(v: &str, vcx: ValueCx<'_>) -> BgPos {
     // плитки складывает `доля × свободное место + точки` (`background::origin`,
     // css-values-4 §10.9 — именно `background-position` спека приводит
     // примером «preserves the percentage in a calc()»).
-    // ★ НЕ ДЕЛАТЬ: сворачивать `min()`/`max()` из одних процентов
+    // НЕ ДЕЛАТЬ: сворачивать `min()`/`max()` из одних процентов
     // при разборе. Сравниваются РАЗРЕШЁННЫЕ длины, а база доли — свободное
     // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
     // там равно 100% (`background-position-calc-minmax-001` ловит именно это).

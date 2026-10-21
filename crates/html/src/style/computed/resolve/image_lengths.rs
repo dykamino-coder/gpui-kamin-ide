@@ -1,4 +1,8 @@
-//! Resolve gradient font units after the element's font and line height are known.
+//! Разрешение шрифтовых единиц (`em`, `rem`, `ex`, `ch`, `lh`) в записях
+//! градиентов фона, маски и в выражениях `background-position` — после того как
+//! известны шрифт и высота строки элемента. Замер шрифта делается только для
+//! образов с относительными длинами, чтобы обычные фоны и маски его не платили;
+//! доли остаются для конкретной геометрии образа при краске.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

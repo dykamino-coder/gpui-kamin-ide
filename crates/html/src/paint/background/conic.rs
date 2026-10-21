@@ -1,4 +1,7 @@
-//! Conic gradient rays in CSS coordinates, sampled at device pixel centers.
+//! Растр `conic-gradient()` и `repeating-conic-gradient()` (CSS Images 4 §conic-gradients):
+//! начальный угол `from`, центр `at`, стопы и подсказки перехода в долях оборота; лучи в
+//! CSS-координатах с выборкой в центрах пикселей устройства, чтобы не интерполировать жёсткие
+//! стопы второй раз на дробном DPI. Цвет в точке считает общая для градиентов `colour_at`.
 
 use super::{Source, len_px, wrap_repeat};
 use crate::document::state::ValueCx;

@@ -1,10 +1,11 @@
-//! Layout inputs a box hands down to the boxes built inside it.
+//! Входы layout, которые бокс передаёт боксам, строящимся внутри него.
 //!
-//! Blink's `ConstraintSpace` / Servo's `ContainingBlock`: the parent decides
-//! what its children may assume (containing-block width, available sizes) and
-//! passes it with the build call. Here it rides in [`RenderOpts::cx`], which
-//! already reaches every build function and is cloned into deferred build
-//! closures — a closure sees the context of the place that created it.
+//! `ConstraintSpace` в Blink / `ContainingBlock` в Servo: родитель решает, что
+//! потомки вправе предполагать (ширина containing block, доступные размеры), и
+//! передаёт это вместе с вызовом построения. Здесь контекст едет в
+//! [`RenderOpts::cx`], который и так доходит до каждой функции построения и
+//! клонируется в отложенные замыкания построения — замыкание видит контекст места,
+//! которое его создало.
 //!
 //! [`RenderOpts::cx`]: crate::layout::options::RenderOpts::cx
 

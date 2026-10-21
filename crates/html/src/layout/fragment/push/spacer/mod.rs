@@ -21,7 +21,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
     // `lead = prev_mb + row_gap + kmt`), и вставка ряда добавляет ЛИШНИЙ
     // зазор. Ряд flex без переноса: высота ряда — `tallest` по детям, а
     // распорка встала бы соседом БОК О БОК и подняла бы весь ряд. Оба
-    // случая забирает подъём разрыва (Х5-Х8), а не рост.
+    // случая забирает подъём разрыва, а не рост.
     let is_flex = matches!(
         c.style.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
@@ -51,8 +51,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
         // предыдущего соседа несёт `force_next`, и `forced.push(y)`
         // сработает на границе самой распорки: точка не сдвинется, а у
         // коробки исчезнет вовсе — распорка уедет в следующую колонку
-        // вместе с ней. 11 пар из 51 в корзине D держатся только на
-        // `break-after`; их забирает подъём (Х5-Х8).
+        // вместе с ней. Случай `break-after` забирает подъём разрыва, а не рост.
         if !matches!(&c.children[i], Node::Element(k) if edge_break(k, false, vcx)) {
             return false;
         }

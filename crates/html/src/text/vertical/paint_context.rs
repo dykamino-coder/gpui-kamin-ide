@@ -1,4 +1,4 @@
-//! Prepaint projection shared explicitly by the elements of one render tree.
+//! Проекция prepaint, явно разделяемая элементами одного дерева render.
 
 use gpui::{Bounds, Pixels, point};
 use std::cell::Cell;

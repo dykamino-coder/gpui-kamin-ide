@@ -1,4 +1,4 @@
-//! Parsed MATH data is cached by font source; page aliases are reset per document.
+//! Данные MATH кэшируются по источнику шрифта; алиасы страницы сбрасываются на документ.
 
 use crate::document::state::ValueCx;
 #[path = "math_constants.rs"]

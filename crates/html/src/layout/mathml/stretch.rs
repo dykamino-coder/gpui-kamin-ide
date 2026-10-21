@@ -1,4 +1,4 @@
-//! Intrinsic measurement followed by constrained operator construction.
+//! Intrinsic-измерение, затем построение оператора с ограничениями.
 use super::{geometry::Metrics, parameters::Kind};
 use gpui::{AnyElement, App, AvailableSpace, LayoutId, Window, size};
 #[derive(Clone, Copy)]

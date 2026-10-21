@@ -1,4 +1,4 @@
-//! Linear versus curved contours in CSS border-shape values.
+//! Линейные и кривые контуры в значениях CSS border-shape.
 
 /// Контур `border-shape` состоит только из прямых (polygon, `path()`/`shape()`
 /// без кривых)? У таких Blink держит предел митры 1e10 — острые углы уходят

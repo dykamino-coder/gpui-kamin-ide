@@ -1,8 +1,7 @@
-//! The writing-mode properties of a style as the cascade inherits them: `writing-mode`
-//! (with the rotation model's laid-flat mode), `direction` and
-//! `text-orientation`. Used by the cascade merge
-//! (`cascade/inherit/fonts.rs`) and by the logical-property mapping pass
-//! (`document/logical_properties.rs`), so both inherit by the same rule.
+//! Свойства режима письма в стиле так, как их наследует каскад: `writing-mode`
+//! (с уложенным режимом модели поворота), `direction` и `text-orientation`. Используются слиянием
+//! каскада (`cascade/inherit/fonts.rs`) и проходом логических свойств
+//! (`document/logical_properties.rs`), поэтому оба наследуют по одному правилу.
 use super::{TextOrientation, WritingMode, WritingModeKw};
 use crate::style::computed::Computed;
 

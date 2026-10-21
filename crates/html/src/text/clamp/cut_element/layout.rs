@@ -1,4 +1,5 @@
-//! Layout for cut_element; split out to keep the owning module within 250 lines.
+//! Фаза `request_layout` элемента `ClampCut`: абсолютная позиция и размер 100%×100%, чтобы
+//! границы элемента совпадали со всем clamp-контейнером и точка среза мерилась от его верха.
 
 use super::ClampCut;
 use gpui::{App, LayoutId, Window};

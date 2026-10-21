@@ -1,4 +1,5 @@
-//! Sizing keyword retained by calc-size until used-value resolution.
+//! Базис `calc-size()` (css-values-5 §calc-size): ключевое слово размера, которое
+//! вычисленное значение держит до разрешения используемого значения.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CalcSizeBasis {

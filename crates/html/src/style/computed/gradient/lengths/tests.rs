@@ -1,4 +1,4 @@
-//! Computed gradient font lengths retain percentages and inherited bases.
+//! Тесты: вычисленные шрифтовые длины градиента сохраняют проценты и унаследованные базы.
 
 use crate::style::computed::{Computed, GradientShape, RadialSize};
 use crate::style::values::value::Len;

@@ -1,4 +1,6 @@
-//! Spec examples and extended-range WPT representations, independent of layout.
+//! Тесты представлений предопределённых стилей счётчиков без раскладки: примеры
+//! спецификации и расширенный диапазон восточноазиатских стилей
+//! (CSS Counter Styles 3 §7.1.5) по эталонам WPT.
 
 use super::{builtin, builtin_initial, builtin_repr};
 

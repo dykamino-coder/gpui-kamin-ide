@@ -1,4 +1,4 @@
-//! Baseline-aware measured content: MathML rows own their child placement.
+//! Содержимое с учётом baseline: строки MathML сами размещают своих потомков.
 
 use super::geometry::Metrics;
 use super::{arrangement, parameters::Kind};

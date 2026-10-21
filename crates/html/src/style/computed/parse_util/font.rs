@@ -1,4 +1,5 @@
-//! Разбор шрифта: единицы шрифта в длинах, части сокращения font, родовые семейства, font-feature-settings, имена семейств, font-stretch.
+//! Разбор шрифта: единицы шрифта в длинах, части сокращения font, родовые семейства,
+//! font-feature-settings, имена семейств, font-stretch.
 
 use super::*;
 use crate::document::state::ValueCx;

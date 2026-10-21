@@ -1,7 +1,6 @@
 //! Рамка `border-shape` (css-borders-4 §border-shape) растровым слоем.
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;

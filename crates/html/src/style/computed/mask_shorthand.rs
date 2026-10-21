@@ -1,4 +1,8 @@
-//! Expand a single mask layer into the existing mask longhand representation.
+//! Вычисленный стиль: сокращение `mask` из ОДНОГО слоя раскладывается на
+//! отдельные свойства (`mask-image`, `-position`, `-size`, `-repeat`, `-origin`,
+//! `-clip`, `-mode`, `-composite`); опущенные части сбрасываются к начальным
+//! (CSS Masking §7.9), негодная грамматика роняет объявление. Список из
+//! нескольких слоёв идёт прежним многослойным путём (`false`).
 
 use super::{Computed, ImageSource, split_outside_parens};
 use crate::document::state::ValueCx;

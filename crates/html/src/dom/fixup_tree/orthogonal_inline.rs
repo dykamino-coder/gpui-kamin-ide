@@ -1,4 +1,10 @@
-//! An inline box whose writing mode differs from its parent's becomes an inline flow root.
+//! Строчная коробка с письмом, отличным от родительского, — строчный flow root.
+//!
+//! css-writing-modes-4 §2.1: потоковая коробка с `display-inside: flow` и иным
+//! `writing-mode` получает `flow-root`, то есть `display: inline` становится
+//! `inline-block` (Blink `style_adjuster.cc`: kInline → kInlineBlock). Проход
+//! по собранному дереву снимает `inline_display` у таких коробок; флоаты,
+//! абсолютные и дети flex/grid блокифицируются и не трогаются.
 use crate::dom::*;
 use crate::style::computed::{Display, Position};
 

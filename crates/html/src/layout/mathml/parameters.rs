@@ -1,4 +1,4 @@
-//! Resolved MathML length attributes and formatting-context parameters.
+//! Разрешённые атрибуты длины MathML и параметры контекста форматирования.
 use super::{geometry::Metrics, padded};
 use crate::style::cascade::inherit::inherit;
 use crate::style::values::value::px_strict;

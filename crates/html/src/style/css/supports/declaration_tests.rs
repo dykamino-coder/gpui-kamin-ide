@@ -1,4 +1,4 @@
-//! Declaration capability checks for accepted, invalid and unsupported parser outcomes.
+//! Тесты проверок возможностей для объявлений: принятые, недопустимые и неподдерживаемые исходы.
 
 use crate::style::computed::{Computed, ParseResult};
 

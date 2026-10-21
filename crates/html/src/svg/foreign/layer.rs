@@ -1,4 +1,7 @@
-//! Layout, caching and resource substitution for foreign HTML layers.
+//! Слои HTML внутри `<foreignObject>`: содержимое превращается в блочную коробку заданного
+//! размера без эффектов SVG-хоста, раскладывается как корень с плотностью по масштабу, PNG
+//! снимка кэшируется по хэшу поддерева, стиля и размеров, а узел подменяется на `<image>` с
+//! `data:`-ссылкой на снимок.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

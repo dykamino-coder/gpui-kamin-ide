@@ -1,4 +1,4 @@
-//! Typed decoration scenes rasterized by the shared resvg pipeline.
+//! Типизированные сцены декораций, растеризуемые общим конвейером resvg.
 
 mod fingerprint;
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Inputs for early margin length resolution, before child style inheritance.
+//! Входы раннего разрешения длин полей, до наследования стиля потомками.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CollapseInputs {

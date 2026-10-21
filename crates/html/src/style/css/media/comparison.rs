@@ -1,4 +1,4 @@
-//! Range-comparison operators for media features and reversed operands.
+//! Операторы диапазонного сравнения медиа-признаков и обращённые операнды.
 
 /// Сравнение в диапазонной записи медиа-фичи (mediaqueries-5 §3.3).
 #[derive(Clone, Copy, PartialEq)]

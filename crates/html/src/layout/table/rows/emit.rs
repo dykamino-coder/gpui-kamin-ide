@@ -187,7 +187,7 @@ pub(super) fn push_cell_wrapped(
     };
     // Any other row/group transform resolves its origin and
     // percentages against the row/group box: the union of its cells'
-    // boxes, shared by their wrappers (`interact::Transformed::ref_box`;
+    // boxes, shared by their wrappers (`paint::effects::transformed_element::Transformed::ref_box`;
     // `transform-transformed-tr-contains-fixed-position`: `rotate(45deg)`
     // with `transform-origin: left` on the `<tr>`).
     // The wrappers also carry a `preserve-3d` chain through the

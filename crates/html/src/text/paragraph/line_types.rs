@@ -1,4 +1,9 @@
-//! Line types for paragraph; split out to keep the owning module within 250 lines.
+//! Общие типы своей строчной раскладки: правила переноса `Wrap`, собранные из
+//! CSS (`white-space`, `word-break`, `line-break`, `overflow-wrap`,
+//! `direction`, `text-wrap`), выключка `Align`, готовая строка `Line`
+//! (байтовый отрезок, ширина, обрыв, перенос, отступ), отступ первой
+//! строки `Indent` (`text-indent` двумя частями: точки и доля ширины),
+//! мягкий перенос и знак обрыва.
 
 use gpui::Pixels;
 

@@ -1,5 +1,6 @@
-//! CSS Align 3 abspos safety uses the union of the IMCB and original CB.
-//! https://drafts.csswg.org/css-align-3/#auto-safety-position
+//! Арифметика безопасного выравнивания абсолюта (css-align-3 §auto-safety-position):
+//! желаемая позиция зажимается в статическую область (IMCB), при переполнении — в её
+//! объединение с исходным содержащим блоком, иначе коробка уходит к логическому началу.
 
 #[derive(Clone, Copy)]
 pub(super) struct Span {

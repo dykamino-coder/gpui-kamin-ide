@@ -1,4 +1,5 @@
-//! Computed::apply_font, продолжение цепочки: font-synthesis, font-kerning, font-feature-settings, font-variant*. Ветви в исходном порядке; не совпавший ключ уходит в apply_font_metrics.
+//! Computed::apply_font, продолжение цепочки: font-synthesis, font-kerning, font-feature-settings,
+//! font-variant*. Ветви в исходном порядке; не совпавший ключ уходит в apply_font_metrics.
 
 use super::*;
 use crate::document::state::ValueCx;

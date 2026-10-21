@@ -1,4 +1,4 @@
-//! Placement of typed clipping paths through the common mask compositor.
+//! Размещение типизированных путей обрезки через общий композитор масок.
 
 use super::{MaskInput, composite_mask};
 use crate::paint::effects::grouped_element::Grouped;

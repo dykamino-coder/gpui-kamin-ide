@@ -20,14 +20,12 @@ pub(crate) fn orthogonal_limit(
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
-        // ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): переводить сюда и единицы шрифта
-        // (`max-height: 8ch`), чтобы предел ортогонального потока не терялся.
-        // Срез вертикального письма 1086 пар: приобретено 0, потеряно 7 —
-        // `available-size-003…018` (0.05-0.11 -> «красное видно»). Тесты
-        // прямо пишут: «**max**-height does not give the element a definite
-        // block size» (§7.3.1 берёт предел у ОПРЕДЕЛЁННОГО размера, а
-        // `max-height` определённым не делает). Значит и нынешний перевод
-        // `max-height` в точках — тоже неверный источник предела.
+        // Не переводить сюда единицы шрифта (`max-height: 8ch`) ради предела
+        // ортогонального потока: `available-size-003…018` прямо пишут
+        // «**max**-height does not give the element a definite block size»
+        // (§7.3.1 берёт предел у ОПРЕДЕЛЁННОГО размера, а `max-height`
+        // определённым не делает). Значит и нынешний перевод `max-height`
+        // в точках — тоже неверный источник предела.
         let px_of = |l: Option<Len>| match l {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Em(k)) => Some(k * em_base),
@@ -40,7 +38,7 @@ pub(crate) fn orthogonal_limit(
         // (`edges` при `border_box` выше), блочный — нет: эталоны
         // `sizing-orthog-vlr-in-htb-007`, `vrl-in-htb-007/010`
         // (`box-sizing: border-box; height: 400px`, рамка 3) переносили на
-        // 400, тест после вычета рамок в `aaa7d8d` — на 394.
+        // 400, а тест после вычета рамок — на 394.
         let own_edges = if e.style.border_box == Some(true) {
             let b = e.style.borders();
             px_of(b.top).unwrap_or(0.0)
@@ -56,7 +54,7 @@ pub(crate) fn orthogonal_limit(
         let max_h = px_of(e.style.max_height).map(content);
         // Предел, поставленный СВОЕЙ высотой, уже содержимый (content-box
         // по умолчанию, border-box переведён выше) — вычитать из него нечего. Вычет нужен
-        // только УНАСЛЕДОВАННОМУ пределу, см. хунк ниже.
+        // только УНАСЛЕДОВАННОМУ пределу, см. ниже.
         // Доля высоты — от высоты СОДЕРЖАЩЕГО блока, если та определённая
         // (CSS 2.1 §10.5: «calculated with respect to the height of the
         // generated box's containing block»). `px_of` её не понимал, и
@@ -110,7 +108,7 @@ pub(crate) fn orthogonal_limit(
         // Blink делает тот же вычет явно — `space_utils.cc:59-72`
         // `SetOrthogonalFallbackInlineSize`, комментарий «Calculate the
         // content-box size»; он берёт предел у НЕПОСРЕДСТВЕННОГО родителя, а
-        // у нас предел несётся вниз наследуемым полем (`inline.rs:1012`),
+        // у нас предел несётся вниз наследуемым полем `ortho_limit`,
         // поэтому вычет обязан идти на КАЖДОМ уровне.
         // Видно это только у `sideways-lr`: там строка начинается у
         // ПРОТИВОПОЛОЖНОГО края коробки (`VerticalText::ccw`), и лишняя

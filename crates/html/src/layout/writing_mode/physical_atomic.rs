@@ -1,5 +1,7 @@
-//! Measure atomic descendants in physical coordinates and cancel only the enclosing text turn.
-//! Independent native snapshots avoid nested access to the window's borrowed layout engine.
+//! GPUI-элемент `PhysicalAtomic`: атомарный потомок повёрнутого абзаца меряется и
+//! раскладывается в физических координатах (оси меняются местами, базовые линии
+//! переводятся в плоские), а при отрисовке отменяется только поворот охватывающего текста.
+//! Независимые нативные снимки меры исключают вложенный доступ к занятому движку раскладки окна.
 
 use crate::hooks::Wrap;
 use gpui::{

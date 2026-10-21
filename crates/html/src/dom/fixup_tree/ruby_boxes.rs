@@ -1,10 +1,17 @@
-//! Ruby roles, anonymous ruby containers and containing-block classification.
+//! Руби-коробки при сборке дерева: роль и анонимный контейнер (css-ruby-1 §2).
+//!
+//! `ruby_box_role` — роль по `display: ruby*`, иначе по тегу без авторского
+//! `display` (§2.1, A.1; зеркало `text::ruby::ruby_role`). `wrap_misparented_ruby`
+//! (§2.2 п.2): подряд идущие базы, аннотации и их контейнеры вне руби-
+//! контейнера оборачиваются в анонимный `<ruby>`; краевые пробелы остаются
+//! снаружи, строчное содержимое серию обрывает. `own_containing_block` —
+//! задаёт ли элемент отсчёт абсолютным потомкам.
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Position};
 
 /// Руби-роль коробки (css-ruby-1 §2.1): своё `display: ruby*`, иначе тег
-/// без авторского `display` (A.1). Зеркало `render::ruby_role`.
+/// без авторского `display` (A.1). Зеркало `text::ruby::ruby_role`.
 pub(crate) fn ruby_box_role(
     tag: &str,
     style: &Computed,

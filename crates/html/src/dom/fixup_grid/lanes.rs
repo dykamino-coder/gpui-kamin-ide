@@ -1,4 +1,11 @@
-//! Lanes for fixup_grid; split out to keep the owning module within 250 lines.
+//! Контейнер лунок (css-grid-3) на путь обычной сетки.
+//!
+//! `lanes_as_grid` переводит `display: grid-lanes` в `grid`/`inline-grid` с
+//! пометкой `lanes_taffy`: по оси решётки доступна «the full power of grid
+//! layout» (css-grid-3 §grid-lanes-track-templates), и шаблоны, зазоры,
+//! выравнивание, подсетки и дети идут тем же кодом, что у сетки-эталона,
+//! а лунками раскладывает taffy. `lanes_row_dir` — ось лунок: явное
+//! `grid-lanes-direction`, иначе та ось, по которой объявлены дорожки.
 
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
@@ -33,9 +40,9 @@ pub(crate) fn lanes_row_dir(s: &Computed) -> bool {
 /// разметка на `inline-grid`), а не рукописной оценкой `render::lanes`.
 ///
 /// Все контейнеры лунок идут сюда: вертикальное письмо — осями из
-/// `apply.rs` (`grid_style`, `placement_flip`), `rtl` — как у сетки-эталона
+/// `paint/apply/grid.rs` (`grid_style`, `placement_flip`), `rtl` — как у сетки-эталона
 /// (зеркала строчной оси у сетки taffy нет, и эталоны `inline-grid` с `rtl`
-/// рисуются тем же путём; ★ ЗАМЕРЕНО: 57 пар лунок с `rtl` +3/−0). Подсетки среди
+/// рисуются тем же путём). Подсетки среди
 /// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
 /// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
 /// taffy (css-grid-3 §7.2.1).

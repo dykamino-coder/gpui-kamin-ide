@@ -1,4 +1,6 @@
-//! CSS mask painting extents and reference-box offsets from the border box.
+//! Геометрия маски (CSS Masking 1 §7.5): `mask-clip: no-clip` расширяет область покраски за
+//! коробку, а опорные коробки `mask-origin`/`mask-clip` дают отступы от border-box —
+//! `fill-box` у CSS-коробки берётся как content-box, `stroke-box` и `view-box` как border-box.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;

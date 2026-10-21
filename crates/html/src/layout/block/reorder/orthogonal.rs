@@ -46,7 +46,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // Корень с vertical-rl прижат к ПРАВОМУ краю окна (§8.2 principal
         // flow). Прижим самим стилем корня (align-self) — контейнеры-колонки
         // его уважают; для корня с ФОНОМ-КАРТИНКОЙ якорь ранее гасил
-        // canvas-слой — тем страницам якорь не ставится (замерено).
+        // canvas-слой — тем страницам якорь не ставится.
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.wm().block_rl()
             && ch.style.align_self.is_none()
@@ -88,7 +88,7 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // (`sizing-orthogonal-percentage-margin-001/002`: эталон с `height:
         // 100px` после сужения вето переносит по 100, тест — по 200).
         // Свой `ortho_limit` перебивает унаследованный при слиянии
-        // (`inline.rs`: `own.ortho_limit.or(parent.ortho_limit)`); рамки и
+        // (`style::cascade::inherit`: `own.ortho_limit.or(parent.ortho_limit)`); рамки и
         // отбивки ребёнка из него вычтет `element()`. Только блочный
         // контейнер (у сетки/гибкого содержащий блок другой) и только при
         // ненулевых полях — без них предел равен унаследованному.

@@ -1,4 +1,8 @@
-//! Опорная коробка SVG для CSS clip-path.
+//! Опорные коробки SVG-фигур в их пользовательских точках: fill-box (SVG 2 §8.10 «object
+//! bounding box») и stroke-box, раздвинутый на полтолщины обводки, для `clip-path`
+//! (css-masking-1) и `transform-box` (css-transforms-1 §transform-box); `rect`/`image`/
+//! `circle`/`ellipse` по атрибутам, группы — объединением детей, `translate()` как единственный
+//! переносимый трансформ ребёнка. Остальное — `None`, без синтеза обрезки.
 
 use crate::dom::{Element, Node};
 

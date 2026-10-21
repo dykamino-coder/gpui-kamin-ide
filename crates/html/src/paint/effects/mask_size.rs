@@ -1,4 +1,7 @@
-//! Resolve mask image sizes with the CSS background image sizing algorithm.
+//! Размер и укладка плитки `mask-image` по алгоритму фоновой картинки (css-masking-1 §7.6–7.8
+//! через CSS Backgrounds 3 §3.4, §3.9): `mask-size` с `contain`/`cover`, `round` с сохранением
+//! соотношения по авто-оси, `space` с распределением зазоров и привязка обоих краёв плитки к
+//! сетке устройства, как Blink `background_image_geometry.cc:115-122`.
 
 use crate::document::state::ValueCx;
 use crate::paint::background::{Intrinsic, tile_size};

@@ -1,4 +1,8 @@
-//! Retain extended RGB coordinates for CIE/OK gradient stop interpolation.
+//! Цветовые пространства: цвета стопов градиента с расширенными координатами
+//! RGB (вне [0, 1]) для интерполяции в CIE/OK-пространствах. `lab()`/`lch()`/
+//! `oklab()`/`oklch()` и `color-mix()` разбираются без gamut mapping — иначе
+//! менялись бы координаты стопа и следующая интерполяция (CSS Color 4 §12,
+//! CSS Color 5 §color-mix); отображается только итоговая точка (`colour_at`).
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::Color;

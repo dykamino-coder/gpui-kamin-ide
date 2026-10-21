@@ -1,4 +1,7 @@
-//! Stacks for container; split out to keep the owning module within 250 lines.
+//! Стопки колонки руби в контейнере: над базой — сетка 1×1, где база и обёртка уровней делят
+//! одну ячейку (базовая линия сетки — у базы, css-grid-2 §10.7), обёртка уровней нулевой
+//! главной высоты (аннотации не входят в высоту строки, css-ruby-1 §3.4) и перевод
+//! `ruby-align` в выключку единиц (§4.3).
 
 use gpui::{AnyElement, ParentElement, Styled, div};
 
@@ -35,12 +38,8 @@ pub(super) fn over_stack(base: AnyElement) -> gpui::Div {
 // колонки (`:2152`) содержит `total_offset_main`, который в
 // `column-reverse` равен ВЫСОТЕ аннотаций. Пока уровни лежали в
 // самой колонке, атом отдавал строке базовую линию на H(ann)
-// ниже: замерено `target/ruby-probe/probe-c.html` (Ahem 64px) —
-// 88 dev вместо 104/144/184 при `line-height` 1/2/3, и
-// `probe-d.html` — 128 вместо 144 при `rt { font-size: 64px }`,
-// 56 вместо 72 при `rb { font-size: 32px }`. На живой паре
-// `text-box-trim-ruby-start-001` (Ahem 40px, H(ann) = 25 dev) это
-// давало строку на 15 dev ниже эталона и базу на 25 dev ниже.
+// ниже (`text-box-trim-ruby-start-001`: строка и база уезжали вниз
+// на высоту аннотации).
 pub(super) fn level_wrap(under: bool) -> gpui::Div {
     let w = div().flex().flex_col().flex_shrink_0().h_0().min_h_0();
     if under {

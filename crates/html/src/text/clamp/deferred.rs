@@ -1,4 +1,4 @@
-//! Clamp input retained by deferred children and forked for each measurement.
+//! Вход clamp, сохраняемый отложенными детьми и форкаемый для каждого измерения.
 
 use super::ClampBuild;
 use crate::layout::cx::LayoutCx;

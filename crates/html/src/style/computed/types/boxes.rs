@@ -1,4 +1,5 @@
-//! Типы коробки: логические свойства и стороны, outline, position, anchor, overflow, порядок сторон, text-box-edge, border-shape.
+//! Типы коробки: логические свойства и стороны, outline, position, anchor, overflow, порядок
+//! сторон, text-box-edge, border-shape.
 
 use super::*;
 

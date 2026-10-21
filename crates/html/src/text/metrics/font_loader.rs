@@ -1,4 +1,4 @@
-//! Native font installation identity, scoped to one platform loader/backend.
+//! Идентичность установки нативного шрифта в границах одного платформенного загрузчика.
 
 use crate::text::fonts::Loader;
 use std::{cell::RefCell, collections::HashMap};

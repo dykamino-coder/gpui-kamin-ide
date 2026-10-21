@@ -1,4 +1,8 @@
-//! Compose mask images at source resolution before sampling the final mask.
+//! Сложение слоёв `mask-image` в одно альфа-полотно (css-masking-1 §7.10.2, `mask-composite`):
+//! слои компонуются с нижнего операторами add/subtract/intersect/exclude с мощением, `space`,
+//! привязкой плиток к сетке устройства и `mask-mode: luminance`. Операторы работают в
+//! разрешении исходных растров, и только готовая маска один раз сэмплируется на сетку
+//! устройства, иначе дробное покрытие на краях SVG и картинок терялось бы.
 
 use gpui::RenderImage;
 use std::sync::Arc;

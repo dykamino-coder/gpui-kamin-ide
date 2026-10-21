@@ -1,4 +1,8 @@
-//! Computed::apply_one: border*, corner*, radius, outline*, border-spacing/collapse, border-image, border-shape.
+//! Группа свойств `Computed::apply_one`: `border*`, `corner*`, радиусы,
+//! `outline*`, `border-spacing`/`border-collapse`, `empty-cells`,
+//! `border-image`, `border-shape`. Здесь — сокращения по сторонам
+//! (`border-width`/`border-color` от одного до четырёх значений, §8.5) и
+//! пометки `inherit` по частям; углы, картинка рамки и контур — в подмодулях.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

@@ -1,4 +1,7 @@
-//! Parse direction independently of the non-inherited Unicode bidi modes.
+//! Вычисленный стиль: разбор `direction` и `unicode-bidi` в поля `Computed`.
+//! `direction` наследуется (`inherit` сбрасывает в `None`, родителя подставит
+//! наследование), режимы `unicode-bidi` — нет; `inherit` заменяет каждую часть
+//! значения (CSS Cascade 4 §7.3.2), поэтому оба свойства разбираются независимо.
 
 use super::Computed;
 
@@ -8,7 +11,7 @@ pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
             style.accept_declaration();
         }
         // CSS Cascade 4 section 7.3.2: inherit replaces the earlier value.
-        // The parent direction is resolved by inline::inherit from None.
+        // The parent direction is resolved by style::cascade::inherit from None.
         style.rtl = match value.to_ascii_lowercase().as_str() {
             "inherit" => None,
             "rtl" => Some(true),

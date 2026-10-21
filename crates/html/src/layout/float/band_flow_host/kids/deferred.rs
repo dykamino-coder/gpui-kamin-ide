@@ -1,4 +1,4 @@
-//! Stable explicit clamp identity for children rebuilt during band measurement.
+//! Стабильная явная идентичность clamp для потомков, перестраиваемых при измерении band.
 
 use crate::layout::float::band_flow::{Build, Shapes};
 use crate::render::RenderOpts;

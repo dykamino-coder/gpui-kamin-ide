@@ -1,4 +1,4 @@
-//! Dimensional arithmetic shared by CSS math parsing and computed expression evaluation.
+//! Размерная арифметика, общая для разбора CSS-математики и вычисления выражений.
 
 use super::Sum;
 use super::calc::Val;

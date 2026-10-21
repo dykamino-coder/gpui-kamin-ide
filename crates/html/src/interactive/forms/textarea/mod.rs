@@ -1,4 +1,7 @@
-//! Textarea natural rows/columns geometry, separate from its painted editor.
+//! Геометрия `<textarea>`: natural-размер из `rows`/`cols` (whatwg rendering), запас под
+//! полосы прокрутки и intrinsic-измерение содержимого. Отделена от покраски редактора:
+//! редактор сам владеет состоянием прокрутки и остаётся flex-элементом хоста, без
+//! анонимного вьюпорта, который потерял бы его рост, basis и intrinsic-ограничения.
 
 use super::{Muted, field_box};
 use crate::document::state::ValueCx;

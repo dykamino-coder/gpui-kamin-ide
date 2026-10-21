@@ -1,4 +1,5 @@
-//! Стиль и сокращения рамки: set_border_style, set_visible, apply_border_shorthand (`border: 1px solid red` и стороны).
+//! Стиль и сокращения рамки: set_border_style, set_visible, apply_border_shorthand (`border: 1px
+//! solid red` и стороны).
 
 use super::*;
 use crate::document::state::ValueCx;

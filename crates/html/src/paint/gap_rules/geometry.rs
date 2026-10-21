@@ -43,8 +43,6 @@ mod tracks;
 pub(super) use tracks::GridTracks;
 pub(super) use tracks::uncollapsed;
 
-// owner: A
-
 use gpui::{Bounds, Pixels};
 
 pub(super) use crate::tolerance::GAP_RULE_EPS;

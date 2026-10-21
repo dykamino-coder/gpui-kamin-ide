@@ -1,5 +1,8 @@
-//! Source consumers for the layout flow part of the field audit: grid, block,
-//! fragmentation, multicol, floats, positioned, replaced, table and box painting.
+//! Потребители разрешённого стиля для аудита полей, часть «поток раскладки»:
+//! сетка, блок, фрагментация, многоколоночник, флоаты, позиционирование,
+//! замещаемые, атомы, руби-контейнер, таблица, порядок наложения, декорации,
+//! маски и трансформации. Тексты включаются `include_str!` и склеиваются в
+//! `sources::CONSUMERS`.
 
 pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/grid.rs"),

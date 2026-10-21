@@ -1,4 +1,4 @@
-//! Read measured break geometry before a temporary layout engine is dropped.
+//! Чтение измеренной геометрии разрывов до того, как временный движок layout будет освобождён.
 
 use super::FlowGeometry;
 use crate::layout::fragment::types::StackAxis;

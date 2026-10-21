@@ -1,4 +1,6 @@
-//! Move an outer annotation beyond descendant ruby containers, CSS Ruby 1 §3.2.1.
+//! Сдвиг внешней аннотации за аннотации вложенных контейнеров руби (css-ruby-1 §3.2.1):
+//! элемент-обёртка, который в prepaint смещает стопку уровня на высоту слоёв той же стороны,
+//! уже занятых потомками (`Layers`), вверх для `over` и вниз для `under`.
 
 use crate::hooks::{IntoHooked, Wrap};
 use crate::text::ruby::layers::Layers;

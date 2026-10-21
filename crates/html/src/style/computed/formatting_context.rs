@@ -1,4 +1,4 @@
-//! Formatting-context boundaries determined entirely by computed values.
+//! Границы контекстов форматирования, целиком определяемые вычисленными значениями.
 
 use crate::style::computed::{Computed, Display};
 

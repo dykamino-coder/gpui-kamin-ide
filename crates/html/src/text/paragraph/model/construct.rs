@@ -1,4 +1,7 @@
-//! Paragraph construction and explicit document measurement and ruby inputs.
+//! Создание `Paragraph`: `new` со значениями по умолчанию для всех полей, привязка к
+//! документу (`measure_context`: общая память замера, ряды строк для `ClampCut`, контекст
+//! вертикальной отрисовки), контекст руби (`ruby_context`: приёмник ширины базы и слои руби)
+//! и пустой абзац-заглушка на время отрисовки в повёрнутой системе координат.
 
 use super::Paragraph;
 use super::{Align, Indent, Wrap};

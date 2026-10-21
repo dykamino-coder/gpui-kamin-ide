@@ -1,4 +1,7 @@
-//! Source consumers for the dom text part of the field audit.
+//! Потребители разрешённого стиля для аудита полей, часть «DOM и текст»:
+//! `style/apply`, `style/cascade/inherit`, `render` верхнего уровня,
+//! `text/inline`, формы, фон и `border-image`, `svg`, `document` и `dom`.
+//! Тексты включаются `include_str!` и склеиваются в `sources::CONSUMERS`.
 
 pub(super) const SOURCES: &[&str] = &[
     include_str!("../../style/computed/image_source.rs"),

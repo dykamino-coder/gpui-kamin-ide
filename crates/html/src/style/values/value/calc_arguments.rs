@@ -1,4 +1,4 @@
-//! Streaming homogeneous arguments for comparison and variadic math functions.
+//! Потоковые однородные аргументы функций сравнения и вариадических математических функций.
 
 use super::calc::Val;
 use super::calc_math::{key, rebuild};

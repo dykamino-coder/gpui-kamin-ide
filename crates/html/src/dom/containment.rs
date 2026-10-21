@@ -1,4 +1,11 @@
-//! Containment eligibility is determined by the principal box after blockification.
+//! Применимость `contain`/`content-visibility` по главной коробке элемента.
+//!
+//! Вход — стиль после блокификации, тег и признак внепоточности; выход — тот
+//! же стиль, где снятые виды обособления сброшены в `None`. css-contain-2
+//! §§3.1–3.4: у `display: contents`/`none` коробки нет; неатомарная строчная,
+//! внутренняя руби и внутренние табличные коробки не обособляются по размеру,
+//! ячейка — может по раскладке и краске; §4: `content-visibility` не прячет
+//! содержимое у коробки без обособления. Зовётся из `finish_inline_display`.
 
 use crate::style::computed::{Computed, Display, RubyRole};
 

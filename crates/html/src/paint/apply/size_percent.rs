@@ -1,5 +1,8 @@
-//! Minimum calc sizes retain their length term when percentages are cyclic.
-//! CSS Sizing 3 §5.2.1 resolves cyclic percentages in minimum contributions to zero.
+//! Применение к GPUI: процентные размеры по блочной оси при неопределённой
+//! высоте содержащего блока. `height`/`max-height` становятся `auto`, а
+//! `min-height` в `calc()` сохраняет точечное слагаемое вместо отброса всего
+//! выражения: циклический процент в минимальном вкладе разрешается в ноль
+//! (CSS Sizing 3 §5.2.1). Нулевой процент разрешается всегда.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};

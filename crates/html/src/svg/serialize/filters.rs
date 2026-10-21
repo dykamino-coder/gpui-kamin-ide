@@ -2,12 +2,12 @@
 
 use crate::dom::{Element, Node};
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (04.09): дописывать в `<defs>` недостающие
-/// `<filter>` из соседних `<svg>` документа (реестр `render::mask_def`,
-/// ключ `filter:<id>`) перед `</svg>` — срез filter-effects 184 -> 184,
-/// `svg-filter-primitive-units-user-space` и родня не сдвинулись:
-/// одной подстановки определения мало, единицы фильтра считаются от
-/// чужого вьюпорта. Разбор: target/scout-masking-filters-2026-09.md, F5.
+/// Есть ли в поддереве элемент с тегом `tag`.
+///
+/// Проверено: дописывать в `<defs>` недостающие `<filter>` из соседних
+/// `<svg>` документа (реестр `render::mask_def`, ключ `filter:<id>`) перед
+/// `</svg>` ничего не меняет — одной подстановки определения мало, единицы
+/// фильтра считаются от чужого вьюпорта (`svg-filter-primitive-units-user-space`).
 pub(super) fn subtree_has(e: &Element, tag: &str) -> bool {
     e.tag.eq_ignore_ascii_case(tag)
         || e.children.iter().any(|n| match n {

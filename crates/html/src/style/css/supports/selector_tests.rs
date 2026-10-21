@@ -1,4 +1,4 @@
-//! Selector capability queries follow the parser used by the actual stylesheet cascade.
+//! Тесты: запросы возможностей селекторов идут тем же парсером, что и каскад таблиц.
 
 use super::supports;
 

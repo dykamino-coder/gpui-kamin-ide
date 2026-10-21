@@ -1,5 +1,6 @@
-//! Элемент стопки колонок `ColumnStack`.
-// owner: A
+//! Стопка колонок `ColumnStack` — GPUI-элемент многоколоночного контейнера: геометрия детей
+//! (`StackChild`), колонки, зазор, ось, ряды, линейка и буферы плана после укладки; сама
+//! укладка — в подмодулях `balance`, `fill`, `avoid`, `paginate`, `element`.
 
 use crate::layout::fragment::types::{
     Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild,
@@ -79,7 +80,7 @@ impl ColumnStack {
         paint: std::rc::Rc<crate::paint::context::PaintCx>,
     ) -> Self {
         // Без рядов копий ровно столько, сколько колонок (как прежде); с
-        // рядами — сколько построил `render.rs`: ребёнок может занять
+        // рядами — сколько построил `render::generic_box::multicol`: ребёнок может занять
         // больше колонок, чем `column-count`.
         let copies = match rows {
             Some(_) => children
@@ -88,7 +89,7 @@ impl ColumnStack {
                 .max()
                 .unwrap_or(1),
             // Переполняющие колонки (css-multicol-1 §8.2) при `column-fill: auto`
-            // с заданной высотой: копий столько, сколько построил `render.rs`
+            // с заданной высотой: копий столько, сколько построил `render::generic_box::multicol`
             // (лишние он строит только ребёнку с абсолютным потомком). Без
             // такого ребёнка у всех детей ровно `count` копий, и значение
             // тождественно прежнему. Балансировку это не трогает: без
@@ -153,7 +154,7 @@ impl ColumnStack {
             Default::default(),
         );
         probe.row_phase = 0.0;
-        // Копий — как у `render.rs` для стопки с рядами: сколько колонок
+        // Копий — как у `render::generic_box::multicol` для стопки с рядами: сколько колонок
         // ребёнок может занять, с запасом на поля и срезы.
         let per = rows.h.unwrap_or(f32::MAX).max(1.0);
         let span = kids

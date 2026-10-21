@@ -1,4 +1,5 @@
-//! Computed::apply_font, хвост цепочки: font-size-adjust, font-stretch, caret-color. Ветви в исходном порядке после font-size..font-variant.
+//! Computed::apply_font, хвост цепочки: font-size-adjust, font-stretch, caret-color. Ветви в
+//! исходном порядке после font-size..font-variant.
 
 use super::*;
 use crate::document::state::ValueCx;

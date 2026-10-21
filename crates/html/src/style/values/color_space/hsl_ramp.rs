@@ -1,4 +1,9 @@
-//! Prepare HSL gradient coefficients in the global stop coordinate.
+//! Цветовые пространства: градиент `in hsl` как набор линейных отрезков в
+//! глобальной координате стопа — коэффициенты `factor·t + bias` считаются один
+//! раз на отрезок (как Skia `SkGradientBaseShader::init_stop_pos`), поэтому
+//! вставка коллинеарного стопа не копит ошибку округления локального `k`.
+//! Дуга тона — по `hue` (shorter/longer/increasing/decreasing); переменная
+//! прозрачность уходит на общий премультиплицированный путь.
 
 use super::{hsl_to_rgb, rgb_to_hsl};
 use crate::style::{computed::GradSpace, values::value::Color};

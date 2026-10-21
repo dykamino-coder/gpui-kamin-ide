@@ -1,4 +1,4 @@
-//! Exact coverage of border contour expansion and contraction.
+//! Тесты: точное покрытие расширения и сжатия контура границы.
 use super::*;
 
 #[test]

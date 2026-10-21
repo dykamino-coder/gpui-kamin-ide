@@ -1,5 +1,9 @@
-//! CSS Counter Styles 3: shared representations for counters and list markers.
-//! CJK styles implement the extended range of section 7.1.5.
+//! Порождённое содержимое: представление значения счётчика знаками стиля
+//! (CSS Counter Styles 3) — общая точка для `counter()` и маркеров списка.
+//! Предопределённые стили (`repr`), суффикс маркера (`suffix`) и готовая
+//! строка маркера (`marker_repr`); правила `@counter-style` документа
+//! проверяются первыми, незнакомое имя и выход из диапазона падают на
+//! десятичный. Восточноазиатские стили — расширенный диапазон §7.1.5.
 
 use crate::document::state::ValueCx;
 mod additive_tables;

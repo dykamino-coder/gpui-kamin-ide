@@ -39,7 +39,7 @@ pub(crate) fn zero_at(
 /// property takes the same computed value as the property for the element's
 /// parent»). Схлопывание же переписывает поле родителя (обнуляет ушедшее
 /// наружу, пишет остаток струны) РАНЬШЕ, чем до ребёнка доходит наследование
-/// (`inline::inherit` живёт ниже по пути), — и ребёнок наследовал used-ноль
+/// (`style::cascade::inherit` живёт ниже по пути), — и ребёнок наследовал used-ноль
 /// вместо написанного: `margin-bottom-113` (низ `#wrapper` ушёл в `body`),
 /// `margin-top-113` (остаток 80 вместо 96), `margin-em-inherit-001` (верх
 /// `#parent` съеден цепочкой `#grand-parent`). Поэтому до перезаписи
@@ -106,7 +106,7 @@ pub(crate) fn margin_px(
         Len::Em(k) => Some(k * base),
         // Единицы шрифта, считающиеся по МЕТРИКЕ гарнитуры: сюда они доезжают
         // неразрешёнными, потому что `resolve_em` живёт в наследовании
-        // (`inline::inherit`), а схлопывание идёт раньше. Прежде `-6ex`
+        // (`style::cascade::inherit`), а схлопывание идёт раньше. Прежде `-6ex`
         // отдавало `None`, поле пропадало целиком (`positioning/top-091`).
         l @ (Len::Ch(_) | Len::Ex(_)) => Some(crate::text::metrics::spacing_px(
             Some(l),

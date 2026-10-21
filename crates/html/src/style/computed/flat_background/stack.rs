@@ -1,8 +1,11 @@
-//! Composite constant background layers in isolation, retaining text/border clips.
+//! Свёртка стопки одноцветных слоёв фона в изоляции с сохранением обрезок `text` и
+//! `border-area`: для каждой области обрезки стопка сводится к одному цвету, который затем
+//! красят глифы или рамка, а слои-картинки из стиля убираются.
 //!
-//! CSS Compositing 1 §3.4.3 blends with lower background layers and the
-//! background color, never with the page behind the element. Evaluating a
-//! constant stack for each clip region avoids a rectangular image over glyphs.
+//! CSS Compositing 1 §3.4.3 смешивает слой с нижними слоями фона и цветом фона, но не со
+//! страницей за элементом. Вычисление постоянной стопки по областям обрезки избавляет от
+//! прямоугольной картинки поверх глифов; картинка, которую нельзя показать, считается `none`
+//! (CSS Backgrounds 3 §2.3) и даёт прозрачный чёрный. Частичная альфа свёртке не подлежит.
 
 use super::{BackgroundImageValues, flat_fill, over};
 use crate::document::state::ValueCx;

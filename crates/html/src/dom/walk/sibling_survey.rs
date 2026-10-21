@@ -1,4 +1,9 @@
-//! Survey sibling positions and walk children with their ancestor stack.
+//! Обход детей узла с переписью братьев: вход в рекурсию `walk`.
+//!
+//! `walk_children` снимает перепись всех детей целиком до обхода
+//! (`census_of`): `:nth-last-child(… of S)` смотрит и на последующих, поэтому
+//! паспорта детей-элементов собираются заранее, а каждый узел получает своё
+//! место (`Spot`) и список братьев (`Sibs`) при входе в `walk`.
 
 use super::build_dom_node;
 use crate::dom::tree_index::TreeIndex;

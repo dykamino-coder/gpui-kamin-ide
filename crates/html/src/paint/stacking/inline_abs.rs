@@ -1,5 +1,5 @@
-//! Step-8 wrapper of an inline absolute box: the layout order decision picks
-//! the box, this adapter wraps it in `PaintLast` with the next paint key.
+//! Обёртка шага 8 для строчного абсолютного бокса: решение порядка раскладки выбирает
+//! бокс, а этот адаптер оборачивает его в `PaintLast` со следующим ключом отрисовки.
 
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;

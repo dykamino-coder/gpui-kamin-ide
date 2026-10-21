@@ -1,5 +1,8 @@
-//! Orthogonal inline sizes distinguish percentage basis from shrink-to-fit space.
-//! CSS Writing Modes 4 §7.3.1–2: intrinsic minimums can exceed fallback space.
+//! Вычисленный стиль: строчный размер ортогонального потока (CSS Writing
+//! Modes 4 §7.3.1–7.3.2). `AxisSizes` и `InlineConstraint` разделяют базу
+//! процентов и запасное место shrink-to-fit: доступное место — минимум из
+//! предела родителя, ближайшего scrollport и ICB, а используемый размер
+//! зажимается своими min/max; внутренний минимум может превысить запасное место.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct AxisSizes {

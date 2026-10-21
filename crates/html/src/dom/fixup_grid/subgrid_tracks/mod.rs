@@ -1,4 +1,11 @@
-//! Subgrid tracks for fixup_grid; split out to keep the owning module within 250 lines.
+//! Дорожки родительской сетки — вниз, в подсетку (css-grid-2 §subgrids).
+//!
+//! Обход сверху вниз по собранному дереву: у сетки с точечными дорожками (доли
+//! заранее переведены `fr_tracks_to_px`) каждому подсеточному ребёнку
+//! вырезается кусок по его пролёту (явное размещение или курсор
+//! авто-размещения §8.5, который двигают все дети). Запрещённая подсетка
+//! получает `none` (§subgrid-listing); срез кладётся только в связанную ось
+//! (`subgrid_axes::linked`), доработка краёв, зазоров и растяжки — `finish_slice`.
 
 mod fraction_tracks;
 mod slice_finish;
@@ -29,18 +36,14 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                 let fr_px = fr_tracks_to_px(&el.style, &raw, row_dir);
                 let from_fr = fr_px.is_some();
                 let tracks = fr_px.unwrap_or(raw);
-                // ★ ЗАМЕРЕНО И ОТКАЧЕНО (06.09, v125/v126,
-                // `scout-subgrid-2026-09.md` шаг 1): расширить гейт с «все
-                // дорожки `Px`» до «все нарезаемы» (симметрично здесь и в
-                // `render.rs`). Срез css-grid+css-gaps+css-contain 2123 общих:
-                // +11/−8 с `fr` и +9/−7 без `fr`, причём потери грубые
-                // (`subgrid-gap-decorations-003` 0.00 → 99.00 с `fr`,
-                // `auto-track-sizing-001` → 12.78,
-                // `row-subgrid-orthogonal-writing-mode-002` → 11.38). Сначала
-                // нужен шаг 2 отчёта — снять фазовый разрыв между лунками и
-                // обычной сеткой: в `grid-subgridded-to-grid-lanes/**` тест и
-                // эталон отличаются одним словом разметки и идут разными
-                // путями, поэтому односторонняя правка разводит пару.
+                // Гейт не расширять с «все дорожки `Px`» до «все нарезаемы»
+                // (симметрично здесь и в `render::generic_box`): грубо ломаются
+                // `subgrid-gap-decorations-003`, `auto-track-sizing-001`,
+                // `row-subgrid-orthogonal-writing-mode-002`. Сначала нужно
+                // снять фазовый разрыв между лунками и обычной сеткой: в
+                // `grid-subgridded-to-grid-lanes/**` тест и эталон отличаются
+                // одним словом разметки и идут разными путями, поэтому
+                // односторонняя правка разводит пару.
                 if tracks.is_empty()
                     || !tracks.iter().all(|t| {
                         matches!(
@@ -103,7 +106,7 @@ pub(crate) fn subgrid_takes_parent_tracks(nodes: &mut [Node]) {
                     // Переведённые доли режутся только в ПАРАЛЛЕЛЬНУЮ ось, где
                     // написано `subgrid`: своя ось подсетки остаётся своей
                     // (`subgrid-gap-decorations-003`: ряды `subgrid`, колонки
-                    // `repeat(2, 1fr)` — прежний откат с сырой долей давал 99.00).
+                    // `repeat(2, 1fr)` — сырая доля в своей оси ломает пару).
                     let parallel = child.style.wm().vertical() == el.style.wm().vertical();
                     if !subgrid_axes::linked(&el.style, &child.style, row_dir)
                         || (from_fr && !parallel)

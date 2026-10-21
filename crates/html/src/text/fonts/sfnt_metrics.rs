@@ -1,4 +1,6 @@
-//! Sfnt metrics for fonts; split out to keep the owning module within 250 lines.
+//! Чтение таблиц sfnt из байтов файла шрифта: базовая линия `romn` горизонтальной оси таблицы
+//! `BASE` в долях em и имя семейства из таблицы `name` (nameID 16, затем 1). Байты есть только
+//! при первой загрузке, поэтому эти значения читаются здесь и запоминаются загрузкой.
 
 /// Координата базовой линии `romn` горизонтальной оси таблицы `BASE`
 /// (OpenType BASE: Axis → BaseTagList/BaseScriptList → BaseValues →

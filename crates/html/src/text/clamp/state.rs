@@ -1,4 +1,4 @@
-//! Clamp probe buffers and previous-frame cut results owned by one document.
+//! Буферы опросов clamp и результаты обрезки прошлого кадра, принадлежащие одному документу.
 
 use super::ClampLines;
 

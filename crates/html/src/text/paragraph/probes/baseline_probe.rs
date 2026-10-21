@@ -1,4 +1,8 @@
-//! Baseline probe for probes; split out to keep the owning module within 250 lines.
+//! Служебные элементы раскладки атома в строке: щуп базовой линии
+//! (`BaselineProbe` — пустой лист с базовой на своём верху, в ряду
+//! `align-items: baseline` его положение и есть базовая атома, §10.8.1) и
+//! обёртка `LayoutTap`, запоминающая узел раскладки ребёнка для ТОЧНОГО,
+//! не округлённого к точке устройства, размера атома (`Window::layout_exact`).
 
 use crate::hooks::{Hooks, Wrap};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px, size};

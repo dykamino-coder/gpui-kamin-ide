@@ -1,4 +1,4 @@
-//! Dispatch measured child boxes to the appropriate MathML Core algorithm.
+//! Передаёт измеренные дочерние боксы подходящему алгоритму MathML Core.
 use super::{
     fraction,
     geometry::{Metrics, row},

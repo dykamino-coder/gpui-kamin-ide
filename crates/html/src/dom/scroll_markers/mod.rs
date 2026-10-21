@@ -1,4 +1,11 @@
-//! ::scroll-marker и ::scroll-marker-group.
+//! Псевдокоробки скроллера вне его коробки (css-overflow-5): группа
+//! `::scroll-marker-group` и кнопки `::scroll-button()`.
+//! `scroll_marker_pass` при обходе элемента: кнопки строятся по `content` с
+//! переводом логической стороны в физическую по письму; скроллер (или корень)
+//! со `scroll-marker-group` вынимает `::scroll-marker` потомков
+//! (`marker_collect`) в группу `before`/`after`, блокифицированную и с
+//! `contain: layout` (+ `size` в потоке); без свойства маркеры гасятся.
+//! Порядок коробок в дереве — Blink `kBoxTreeOrder`, вставляет `finish_element`.
 
 use crate::document::state::ValueCx;
 mod marker_collect;

@@ -1,4 +1,5 @@
-//! Pure system arithmetic and descriptor ordering at full counter width.
+//! Тесты порождения значений `@counter-style`: арифметика систем (`cyclic`,
+//! `fixed`, …) на всей ширине `i64` и порядок дескрипторов, без раскладки.
 
 use super::*;
 use crate::document::state::ValueCx;

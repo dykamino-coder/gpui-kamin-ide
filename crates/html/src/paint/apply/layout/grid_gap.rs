@@ -1,4 +1,5 @@
-//! apply_layout, этап сетки и промежутков: baseline на инлайн-оси сетки, justify-self, проекция выравнивания, aspect-ratio, gap.
+//! apply_layout, этап сетки и промежутков: baseline на инлайн-оси сетки, justify-self, проекция
+//! выравнивания, aspect-ratio, gap.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -1,7 +1,6 @@
 //! Охватчики колонок `column-span` и контейнер колонок.
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow, real_inline};
@@ -83,7 +82,7 @@ pub(crate) fn parallel_items_inside(c: &Element, depth: u8, vcx: ValueCx<'_>) ->
 
 /// Есть ли в поддереве (вместе с самой коробкой) многоколоночник. Свою
 /// балансировку он ведёт сам, внешними колонками не фрагментируется, и копия
-/// стопки рисует его плоско (`flow.rs` `StackChild::nested_cols`).
+/// стопки рисует его плоско (`StackChild::nested_cols`).
 pub(super) fn multicol_inside(c: &Element, depth: u8) -> bool {
     multicol_container(&c.style)
         || (depth > 0
@@ -108,7 +107,7 @@ enum SpanPart {
 /// внутрипоточным блочным элементам (css-multicol-1 §column-span,
 /// «Applies to: in-flow block-level elements»; Blink
 /// `LayoutBox::IsSelfValidColumnSpanner`). Блочный УРОВЕНЬ — по `display`,
-/// а не по тегу (`Element::inline` теговый, `dom.rs:2892`):
+/// а не по тегу:
 /// `<div style="display: inline-block">` спаннером не бывает
 /// (`inline-block-and-column-span-all`: флоаты вставали рядом во всю ширину
 /// коробки, 200×50 вместо 100×100), `<span style="display: block">` —

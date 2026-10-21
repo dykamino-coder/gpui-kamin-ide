@@ -1,12 +1,11 @@
-//! Internal layout marks of an element: protocol between layout passes.
+//! Внутренние метки элемента для layout: протокол между проходами layout.
 //!
-//! Layout rewrites the tree it renders (float rows and band hosts, multicol
-//! stack children, spanner hoisting, anonymous table cells) and has to tell a
-//! later pass how a node was produced. These marks live in a typed field of
-//! [`super::Element`], never in `Element::attrs` or in the tag name: author
-//! markup (`dom/walk`) fills only the attributes and the tag, so a document
-//! cannot forge a mark, and a mark never leaks into attribute selectors or SVG
-//! serialization.
+//! Layout переписывает отрисовываемое дерево (строки float и band-хосты, дочерние
+//! элементы multicol-стека, подъём spanner-ов, анонимные ячейки таблиц) и должен
+//! сообщить следующему проходу, как получен узел. Эти метки лежат в типизированном
+//! поле [`super::Element`], а не в `Element::attrs` и не в имени тега: авторская
+//! разметка (`dom/walk`) заполняет только атрибуты и тег, поэтому документ не может
+//! подделать метку, а метка не попадает в селекторы атрибутов и сериализацию SVG.
 
 /// Typed internal flags set by layout on the boxes it synthesizes or rewrites.
 ///

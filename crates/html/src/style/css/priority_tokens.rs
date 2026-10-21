@@ -1,4 +1,6 @@
-//! Declaration priority reads delimiter tokens, preserving CDO as a single token.
+//! Разбор CSS: поиск `!` приоритета объявления на верхнем уровне значения —
+//! вне строк, `url()`, скобок и экранов; `<!--` (CDO) — один токен
+//! (CSS Syntax 3 §4.3.1), его восклицательный знак приоритетом не считается.
 
 use super::{at_url, skip_string, skip_url};
 

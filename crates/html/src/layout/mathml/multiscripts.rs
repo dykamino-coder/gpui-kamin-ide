@@ -1,4 +1,4 @@
-//! MathML Core multiscripts: shared shifts and paired pre/post columns.
+//! Multiscripts MathML Core: общие сдвиги и парные колонки пре-/постскриптов.
 use super::{
     geometry::Metrics,
     parameters::ScriptKind,

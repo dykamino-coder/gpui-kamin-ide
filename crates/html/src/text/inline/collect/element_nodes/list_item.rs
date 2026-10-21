@@ -1,4 +1,6 @@
-//! Inline list markers participate in the item's normal text flow.
+//! Дети строчного элемента при сборе кусков: у строчного `display: list-item` маркер
+//! (css-lists-3: `outside` вычисляется в `inside`) встаёт первым узлом и идёт обычным
+//! текстовым потоком пункта.
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::text::inline::Piece;

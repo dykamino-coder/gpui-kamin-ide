@@ -1,4 +1,4 @@
-//! Empty multicolumn boxes must not acquire intrinsic fallback grid gaps.
+//! Тесты: пустые многоколоночные боксы не получают запасных внутренних промежутков сетки.
 
 use super::*;
 use crate::layout::fragment::types::StackAxis;

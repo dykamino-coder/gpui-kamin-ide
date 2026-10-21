@@ -1,4 +1,7 @@
-//! Special nodes for element_nodes; split out to keep the owning module within 250 lines.
+//! Элементы без собственной строчной коробки при сборе кусков: `<br>` — принудительный перевод
+//! строки (подавляется в колонках руби, как Blink `inline_items_builder.cc`), `<wbr>` — нулевой
+//! пробел как точка переноса (HTML §4.5.28), `display: contents` — только дети с наследованием
+//! (css-display-3 §2.5; на `<br>`/`<wbr>` — как `none`, §B). Возвращает, обработан ли узел.
 
 use super::collect_with_empty_metrics;
 use crate::dom::Element;
@@ -57,8 +60,8 @@ pub(super) fn special_node(
     // not generate any boxes, but its children … still generate
     // boxes and text runs as normal»): ни рамки, ни полей, ни
     // отступов, ни знаков направления — детям уходят только
-    // текстовые свойства наследованием. Блочный путь это знает
-    // (`render.rs:4358`), а строчный сбор вёл такой элемент обычным
+    // текстовые свойства наследованием. Блочный путь это знает,
+    // а строчный сбор вёл такой элемент обычным
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
     if e.style.display == Some(crate::style::computed::Display::Contents) {

@@ -1,12 +1,9 @@
-//! Language-sensitive case mapping for `text-transform`.
-//!
-//! css-text-3 §2.1.1: «the UA must use the full case mappings for Unicode
-//! characters, including any conditional casing rules, as defined in the
-//! Unicode Standard» and «must also account for language-specific mappings
-//! (SpecialCasing.txt)»; Greek uppercasing and the Dutch `IJ` digraph are
-//! named there as tailorings UAs are expected to apply. Rust's
-//! `to_uppercase`/`to_lowercase` implement only the language-independent
-//! mappings, so the tailored languages are handled here.
+//! Языковые поправки регистра для `text-transform` (css-text-3 §2.1.1: UA обязан применять
+//! полные отображения регистра Юникода с условными правилами и языковые отображения
+//! SpecialCasing.txt; греческий прописной и голландский диграф `IJ` названы там явно).
+//! `to_uppercase`/`to_lowercase` Rust дают только языконезависимые отображения, поэтому
+//! турецкий/азербайджанский, литовский, греческий и голландский обрабатываются здесь;
+//! поправка выбирается по первичному субтегу `lang` и его письменности.
 
 mod greek;
 #[cfg(test)]

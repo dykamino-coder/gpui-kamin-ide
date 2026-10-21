@@ -1,4 +1,7 @@
-//! Rasterize axis-preserving SVG backgrounds in their final orientation.
+//! SVG-фон под поворотом на 90°/180°/отражением растрируется сразу в конечной ориентации:
+//! CSS Transforms 1 §3 трансформирует сам фон, SVG 2 §8.1 кладёт векторы в конечный вьюпорт до
+//! выборки покрытия, а поворот уже готового растра сохранял бы покрытие и прозрачный RGB
+//! прежней ориентации. Масштаб, скос, произвольные углы и SVG-фильтры остаются на пути картинки.
 
 use crate::document::state::ValueCx;
 use gpui::{Bounds, Corners, Pixels, TransformationMatrix, Window, point, px, size};

@@ -1,14 +1,13 @@
-//! css-gaps-1 §visibility-items for the grid-axis (main) gaps of grid lanes.
+//! css-gaps-1 §visibility-items для главных (по оси сетки) промежутков лент, блокировка
+//! главного промежутка элементом в несколько лент и окно поперечного промежутка перед записью.
 //!
-//! A main gap between lanes `k` and `k + 1` is cut into segments at every
-//! cross gap of either lane (Blink `GridLanesMainGapSegmentWalker::Next`:
-//! segment ends are the cross-gap centres of both adjacent lanes). A side of
-//! a segment is occupied when an item placed in that lane (a spanner counts
-//! in every lane it covers) overlaps the segment along the stacking axis; a
-//! lane that ends early leaves the segments past its last item empty
-//! (`column-gap-decorations-rule-visibility-items-between-005`). Stacking
-//! (cross) gaps are never filtered: the property only applies to grid-axis
-//! rules in grid lanes.
+//! Главный промежуток между лентами `k` и `k + 1` режется на отрезки в каждом поперечном
+//! промежутке любой из лент (Blink `GridLanesMainGapSegmentWalker::Next`: концы отрезков —
+//! центры поперечных промежутков обеих соседних лент). Сторона отрезка занята, когда элемент
+//! этой ленты (элемент в несколько лент считается в каждой) перекрывает отрезок по оси укладки;
+//! лента, кончившаяся раньше, оставляет отрезки за последним элементом пустыми
+//! (`column-gap-decorations-rule-visibility-items-between-005`). Поперечные промежутки не
+//! фильтруются: свойство действует только на линейки по оси сетки в лентах.
 
 use super::{GAP_RULE_EPS, GapItem};
 

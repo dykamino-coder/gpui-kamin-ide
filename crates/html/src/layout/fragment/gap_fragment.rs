@@ -1,4 +1,7 @@
-//! Share fragment boundaries with gap painters before resolving decoration insets.
+//! Границы текущего фрагмента для художников зазоров (`paint::gap_rules`): thread-local
+//! `Scope` с маской фрагмента, маской родителя и начальной, срезанной и конечной координатой,
+//! который стопка колонок ставит на время краски ребёнка — украшения зазоров режутся по
+//! фрагменту до разрешения своих отступов.
 
 use crate::paint::context::PaintCx;
 use gpui::{ContentMask, Pixels};

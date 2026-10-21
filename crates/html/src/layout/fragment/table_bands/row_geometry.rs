@@ -1,8 +1,9 @@
-//! Shared row/cell geometry for table measurement and continuation probes.
-//! Following CSS Tables 3 fragmentation, a spanning cell can expand its row
-//! when row and span sizes match. Blink applies this encompassing check in
-//! table_row_layout_algorithm.cc:112-118; spans over other non-empty
-//! rows keep their independently sized row tracks.
+//! Общая геометрия рядов и ячеек для меры таблицы и щупов продолжения (`row_geometry`):
+//! высота ряда — наибольшая мера его ячеек без охвата, `rowspan` разрешается в пределах
+//! группы рядов (HTML table model: `0` — до конца группы). По css-tables-3 §fragmentation
+//! ячейка с охватом растит свой ряд, только когда высоты ряда и охвата совпадают — Blink
+//! делает ту же проверку в `table_row_layout_algorithm.cc`; охват через непустые
+//! ряды сохраняет их независимые дорожки, а нераспределимая высота охвата даёт `None`.
 
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;

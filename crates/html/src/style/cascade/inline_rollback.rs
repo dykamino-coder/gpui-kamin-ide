@@ -1,4 +1,7 @@
-//! Cascade rollback for element-attached declarations, before applying values.
+//! Каскад: откат `revert`/`revert-layer` в объявлениях `style=""` до применения
+//! значений. У встроенного стиля свой ранг в сравнении слоёв (CSS Cascade 5
+//! §6.4): `revert-layer` снимает этот ранг, `revert` — ещё и авторские таблицы.
+//! Возвращает копии правил и встроенных объявлений с удалёнными объявлениями.
 
 use super::revert::{is_important, strip_important};
 use crate::style::css::{DECL_SEP, Decls, Rule};

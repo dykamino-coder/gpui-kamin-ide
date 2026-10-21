@@ -1,7 +1,7 @@
-//! Initial SVG views are resolved once, before intrinsic sizing and rasterization.
-//!
-//! SVG 2 §16.3.2 and Blink SVGViewSpec keep unspecified root parameters and
-//! override only the values supplied by a valid fragment or a <view> element.
+//! Начальный вид SVG по фрагменту адреса (`svgView(...)`, `xywh=`, `<view id>`) решается один
+//! раз, до вычисления собственного размера и растра: правки `viewBox`, `preserveAspectRatio` и
+//! `transform` корня. SVG 2 §16.3.2 и Blink `SVGViewSpec` сохраняют незаданные параметры корня
+//! и переопределяют только значения из валидного фрагмента или элемента `<view>`.
 
 use super::{opening_end, xml_text};
 use std::ops::Range;

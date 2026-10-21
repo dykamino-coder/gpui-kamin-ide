@@ -1,4 +1,4 @@
-//! Document-owned paragraph measurements and measure-to-paint text-fit results.
+//! Измерения абзацев, принадлежащие документу, и результаты text-fit от измерения к отрисовке.
 
 mod cache_keys;
 mod flow_cut;

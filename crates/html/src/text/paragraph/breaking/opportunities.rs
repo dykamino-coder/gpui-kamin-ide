@@ -1,4 +1,9 @@
-//! Opportunities for breaking; split out to keep the owning module within 250 lines.
+//! Итоговый список точек разрыва абзаца (`opportunities`): обязательные
+//! разрывы по `\n`, мягкие точки из `soft_opportunities`, затем фильтры —
+//! мягкие переносы `auto-phrase` только как запасной вариант, `nowrap`/`pre`
+//! по общему предку двух знаков (css-text-3 §5.1), границы гроздей знаков с
+//! учётом `line-break: anywhere`, запреты после знака-приставки перед числом
+//! (кроме широких префиксов при `line-break: loose` в ja/zh, css-text-3 §5.2).
 
 use super::{cluster_edge_at, no_break_after, wide_prefix};
 use crate::text::paragraph::*;

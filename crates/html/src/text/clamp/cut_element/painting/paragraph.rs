@@ -1,4 +1,4 @@
-//! Select the last paragraph and its fitting line budget for automatic clamping.
+//! Выбор последнего абзаца и подходящего бюджета строк для автоматического clamp.
 
 use super::ClampEntry;
 

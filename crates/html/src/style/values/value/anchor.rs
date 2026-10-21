@@ -1,4 +1,5 @@
-//! Функции anchor()/anchor-size() в длинах: стороны, размеры, пул выражений и их разбор (в том числе внутри min/max/calc).
+//! Функции anchor()/anchor-size() в длинах: стороны, размеры, пул выражений и их разбор (в том
+//! числе внутри min/max/calc).
 
 use super::*;
 use crate::document::state::ValueCx;

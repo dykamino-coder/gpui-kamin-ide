@@ -1,4 +1,4 @@
-//! Constant background colors and clip fills computed from CSS values and image facts.
+//! Постоянные цвета фона и заливки клипа, вычисленные из CSS-значений и фактов об изображении.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{BgRepeat, Computed, Tiling};
@@ -69,7 +69,7 @@ pub(crate) fn flat_fill(
 /// Заливка `background-clip: text`, которую несёт цвет глифов.
 ///
 /// Только НЕПРОЗРАЧНАЯ: тогда «цвет поверх заливки» тоже непрозрачен, и
-/// повторное слияние стилей (`inline::inherit` зовётся цепочкой) даёт тот же
+/// повторное слияние стилей (`style::cascade::inherit` зовётся цепочкой) даёт тот же
 /// цвет — смешение не копится.
 pub(crate) fn text_clip_fill(
     c: &Computed,

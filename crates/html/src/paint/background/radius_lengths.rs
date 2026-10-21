@@ -1,4 +1,6 @@
-//! Carry calculated length-percentage radii to the border-box rasterizer.
+//! Передача радиусов `<length-percentage>` с `calc()` в растеризатор border-box: внутренний
+//! токен `px:pct` держит слагаемые раздельно, пока не известна база процентов по оси, затем
+//! решается в точки с ограничением результата снизу нулём (CSS Values 4 §10.12).
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::{Len, calc_get};

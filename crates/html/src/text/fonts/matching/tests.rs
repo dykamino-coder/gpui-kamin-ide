@@ -1,4 +1,6 @@
-//! CSS matching priority and directional search examples from Fonts 4 §5.2.
+//! Тесты подбора лица по css-fonts-4 §5.2: приоритет ширины над наклоном и весом, направление
+//! поиска веса 400–500, запасные варианты italic/oblique и равенство возможностей при синтезе
+//! веса.
 use super::*;
 
 fn face(name: &str, width: f32, weight: f32, slope: u8, angle: f32) -> Face {

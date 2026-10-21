@@ -1,4 +1,4 @@
-//! Computed gradient directions and radial ending shapes; image size stays unresolved.
+//! Вычисленные направления градиентов и конечные формы радиальных; размер не разрешается.
 
 use super::{BgPos, Len, parse_pos_words};
 use crate::document::state::ValueCx;

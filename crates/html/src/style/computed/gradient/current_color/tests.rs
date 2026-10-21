@@ -1,4 +1,4 @@
-//! Inherited gradient operands, current colors and computed font positions.
+//! Тесты: унаследованные операнды градиента, currentColor и вычисленные позиции от шрифта.
 
 use super::*;
 use crate::style::computed::GradSpace;

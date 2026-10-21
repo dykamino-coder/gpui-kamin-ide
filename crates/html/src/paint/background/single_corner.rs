@@ -1,7 +1,9 @@
-//! Paint an oversized circular corner without the quad's half-side radius clamp.
-//! CSS Backgrounds 3 sections 4.5 and 4.3 constrain adjacent sums, then inset
-//! the same curve for padding/content clips. A clipped larger circle retains
-//! the native quad coverage used by ordinary circular backgrounds.
+//! Слой фона и рамки коробки с одним круглым углом, радиус которого больше половины стороны:
+//! нативный квад зажимает радиус половиной стороны, поэтому угол красится обрезанным большим
+//! кругом с тем же нативным покрытием, что у обычных круглых фонов. CSS Backgrounds 3 §4.5 и
+//! §4.3 ограничивают суммы соседних радиусов, затем та же кривая вдвигается для обрезок
+//! `padding-box`/`content-box`; кольцо рамки рисуется одним квадом, чтобы сглаженный край
+//! не оставлял тёмного покрытия под светлой рамкой.
 
 mod geometry;
 use crate::hooks::IntoHooked;

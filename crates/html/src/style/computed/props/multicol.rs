@@ -1,4 +1,8 @@
-//! Computed::apply_one: column*, break-*, *-rule*, margin-trim, page, orphans/widows.
+//! Группа свойств `Computed::apply_one`: многоколоночность и фрагментация —
+//! `column-*` (css-multicol-1/2), `break-*`/`page-break-*` и
+//! `box-decoration-break` (css-break-3/4), `orphans`/`widows`, `page`,
+//! `scroll-marker-group`/`scroll-target-group`; линейки `*-rule*`, щели и
+//! `margin-trim` — в подмодулях `gap_rules`, `rule_props`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
@@ -115,14 +119,6 @@ impl Computed {
             // запрещают разрыв ВНУТРИ коробки; `auto` разрешает.
             // `page-break-inside` — устаревшее написание того же (css-break-3
             // §6.4 требует считать их одним свойством).
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (07.09, v153, `scout-boxdeco-2026-09.md`):
-            // `box-decoration-break: clone` — украшение на каждом фрагменте
-            // (21 хунк: разбор, `Kid::clone_dec`, ветка в `fill_at`, `frags_of`,
-            // `clone_fragment`). Срез `L-brk` 2874: +2/−2 при ожидании +6…+19 —
-            // `clone-004`, `-012` взяты, но `clone-005.tentative` 0.00 → 99.00 и
-            // `clone-007` 0.00 → 2.08. Ветка `clone` в `fill_at` ломает уже
-            // работавший `slice` у вложенных случаев; нужен отдельный проход
-            // планирования фрагментов, а не правка общей укладки.
             "break-inside" | "page-break-inside" => {
                 self.break_inside_avoid = accept_parsed!(self, v.trim().starts_with("avoid"))
             }
@@ -141,7 +137,7 @@ impl Computed {
                 // (`starts_with("avoid")`). Blink здесь строже
                 // (`fragmentation_utils.cc:108-121 IsAvoidBreakValue`:
                 // `avoid-page` в колонках не действует); упрощение осознанное
-                // и безопасное, пока страницы вне зоны патча (§2 отчёта).
+                // и безопасное, пока страницы не раскладываются.
                 self.break_before_avoid = v.trim().starts_with("avoid");
                 self.accept_declaration();
             }

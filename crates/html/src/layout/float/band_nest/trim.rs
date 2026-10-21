@@ -1,4 +1,4 @@
-//! Trim ownership of anonymous paragraphs in the shared BFC sequence.
+//! Владение trim анонимных абзацев в общей последовательности BFC.
 
 use crate::dom::{Element, Node};
 use crate::render::{holds_line_box, is_blank, out_of_flow};

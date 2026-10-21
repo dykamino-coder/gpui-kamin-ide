@@ -1,4 +1,8 @@
-//! Computed::apply_one: font*, font-variant/feature/synthesis/size-adjust/stretch/kerning.
+//! Группа свойств `Computed::apply_one`: `font*` — `font-size` (слова кеглей
+//! CSS 2.1 §15.7 и шаг `larger`/`smaller`), `font-weight`, `font-style` с углом
+//! наклона, `font-family`; `font-variant-*`, `font-feature-settings`,
+//! `font-synthesis`, `font-size-adjust`, `font-stretch`, `font-kerning` — в
+//! подмодулях `features`, `metrics`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
@@ -74,7 +78,7 @@ impl Computed {
                     // will make … 'large'»), а не множат: шесть шагов вверх от
                     // `xx-small` (9 → 26.9) не сходились с шестью вниз от
                     // `xx-large` (32 → 10.7) (`font-size-121`). Кегль родителя
-                    // известен в `inline::inherit`; `Len::Em` — запас вне таблицы.
+                    // известен в `style::cascade::inherit`; `Len::Em` — запас вне таблицы.
                     self.font_size_step = match lower.as_str() {
                         "larger" => 1,
                         "smaller" => -1,

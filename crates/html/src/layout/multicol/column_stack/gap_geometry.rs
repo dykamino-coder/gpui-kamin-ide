@@ -1,4 +1,6 @@
-//! Collect column rows and spanners independently of item probes.
+//! Сбор геометрии промежутков стопки для `GapRulePainter` (css-gaps-1 §gap-multicol):
+//! коробки колонок, линии с числом занятых колонок и спаннеры во всю ширину. Берётся из
+//! готового плана укладки, независимо от щупов отдельных элементов.
 use super::ColumnStack;
 use crate::layout::fragment::types::{Frag, axis_box};
 use crate::paint::gap_rules::MulticolGaps;

@@ -29,7 +29,7 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
             // уходит на прежний путь (`text-box-trim-float-clear-br-003`).
             // Срез по краю `text` (у Ahem он нулевой) хост держит верно:
             // гейт на любой `clear` отправлял и его на прежний путь, и
-            // `text-box-trim-float-clear-br-001` терял 0.00 → 16.21.
+            // `text-box-trim-float-clear-br-001` ломался.
             if trimmed_clear(c, k) {
                 return false;
             }

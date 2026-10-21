@@ -1,6 +1,6 @@
-//! The `shape-outside` line exclusion of a measured float (css-shapes-1 §2,
-//! §3): the shape's reference box comes from the float's laid-out border box,
-//! its own borders and paddings, and the margins the host resolved.
+//! Исключение линий `shape-outside` для измеренного float (css-shapes-1 §2, §3):
+//! reference box фигуры берётся из рассчитанного border box float, его собственных
+//! границ и padding и полей, разрешённых хостом.
 
 use crate::dom::Element;
 use crate::layout::float::shapes::{FloatShape, float_shape_of};

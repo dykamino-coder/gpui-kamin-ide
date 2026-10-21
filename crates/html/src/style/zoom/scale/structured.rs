@@ -1,4 +1,7 @@
-//! Zoom absolute lengths nested inside compound computed values.
+//! Масштаб `zoom`: абсолютные длины внутри составных вычисленных значений —
+//! эллиптические радиусы, ширина и вынос `border-image`, радиус размытия
+//! фильтра, дорожки сетки (`minmax`, авто-повтор, списки `grid-auto-*`);
+//! доли и `fr` остаются как есть.
 
 use crate::style::computed::{BorderImageWidth, Computed, Track, TrackSize};
 use crate::style::values::value::Len;

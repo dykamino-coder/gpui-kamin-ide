@@ -1,4 +1,4 @@
-//! Declaration parser outcomes for capability queries, independent of computed defaults.
+//! Исходы разбора объявлений для запросов возможностей, независимо от вычисленных умолчаний.
 
 use super::Computed;
 use crate::document::state::ValueCx;

@@ -1,4 +1,7 @@
-//! Containment contexts keep positioned descendant paint within their own box.
+//! Атомарная покраска контекста наложения от `contain: layout|paint`, `will-change` и
+//! `transform-style: preserve-3d` (CSS Containment 2 §3.2/3.3, CSS Will Change §2.1, CSS 2
+//! Приложение E): дети оборачиваются парой `PaintCollect`, чтобы отложенные позиционированные
+//! потомки сбрасывались под обрезкой владельца, а не уходили в сборщик документа.
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, PaintCollect};
 

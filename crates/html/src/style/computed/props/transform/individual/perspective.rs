@@ -1,4 +1,5 @@
-//! Computed::apply_transform_individual, хвост цепочки: backface-visibility, perspective, perspective-origin, transform-style, transform-box, vector-effect. Ветви в исходном порядке.
+//! Computed::apply_transform_individual, хвост цепочки: backface-visibility, perspective,
+//! perspective-origin, transform-style, transform-box, vector-effect. Ветви в исходном порядке.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -80,7 +81,7 @@ impl Computed {
             // `preserve-3d` держит детей в одном объёмном контексте с собой.
             // Ячейка заводится здесь, при разборе, — тогда у `e.style`
             // владельца, у его `merged` и у `inherited` детей один и тот же
-            // `Rc`, а `inline::inherit` начинает с `own.clone()`, поэтому
+            // `Rc`, а `style::cascade::inherit` начинает с `own.clone()`, поэтому
             // внукам ячейка не достаётся: плоский ребёнок обрывает контекст
             // (css-transforms-2 §3d-rendering-context, лист контекста).
             "transform-style" => {

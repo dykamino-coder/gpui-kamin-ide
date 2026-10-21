@@ -47,7 +47,7 @@ pub(crate) fn prepare_children(
     // Барьер `fixed` — не только СВОЙ трансформ родителя, но и его
     // `contain: layout|paint` (css-contain-2 §3.2 п.5, §3.3: «establishes …
     // a fixed positioning containing block»). `transform_ancestor` родителя
-    // несёт лишь ЕГО предков (`inline::inherit`), поэтому прямой ребёнок
+    // несёт лишь ЕГО предков (`style::cascade::inherit`), поэтому прямой ребёнок
     // обособленной коробки уходил в слой окна и садился в угол экрана
     // (`contain-layout-007`, `contain-paint-010`), а внук — нет
     // (`contain-*-containing-block-fixed-001` = 0.00). Список совпадает с
@@ -89,16 +89,14 @@ pub(crate) fn prepare_children(
             inherited.wm().rtl(),
         )
     };
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-flex-2026-09e.md` патч №1):
-    // снятие АВТОРСКОГО `align-self` у блока в обычном потоке здесь, в начале
-    // `blocks()` — «до внутренних постановщиков». Полный свод против v35:
-    // +3 (`align-self-013`, `flexbox-align-self-vert-001`, `-horiz-002`) /
-    // −5 (`absolute-replaced-width-020` 0.00 → 3.84, `left-offset-003`
-    // 0.00 → 0.96, `left-offset-percentage-001` 0.00 → 1.05,
-    // `anchor-position-inline-005/-006`). Первая тройка — ровно та, что
-    // названа в записи `inline.rs:1001`: место в конвейере не спасло,
-    // замещаемому абсолюту `align_self` нужен ещё ДО `blocks()`. Возвращать
-    // только с явным признаком «значение авторское» в `Computed`.
+    // Не снимать АВТОРСКИЙ `align-self` у блока в обычном потоке здесь, в
+    // начале `blocks()` («до внутренних постановщиков»): замещаемому
+    // абсолюту `align_self` нужен ещё ДО `blocks()`
+    // (`absolute-replaced-width-020`, `left-offset-003`,
+    // `left-offset-percentage-001`, `anchor-position-inline-005/-006`), хотя
+    // `align-self-013`, `flexbox-align-self-vert-001`, `-horiz-002` этого
+    // ждут. Вернуть можно только с явным признаком «значение авторское»
+    // в `Computed`.
     // §10.3.3: у блока в потоке с `width: auto` боковое `auto`-поле
     // используется НУЛЁМ, а коробка занимает всю ширину. У нас блок — гибкая
     // колонка, и любое auto-поле на поперечной оси отменяет растяжение до
@@ -189,7 +187,7 @@ pub(crate) fn prepare_children(
         // разрешённым значениям). Известна только заданная в точках.
         let cb_w = px_strict(inherited.width);
         // Определённость высоты блока для ДОЛЕЙ высоты детей — тем же
-        // предикатом, что у слитого стиля (`inline::inherit`): он зависит
+        // предикатом, что у слитого стиля (`style::cascade::inherit`): он зависит
         // только от родителя, а сырой стиль ребёнка признака ещё не несёт.
         let cb_h_def = inherit(inherited, &Computed::default(), vcx).cb_height_def;
         let vcx = vcx.with_collapse(CollapseInputs {

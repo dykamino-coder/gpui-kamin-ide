@@ -37,9 +37,6 @@ pub(super) fn fill_pieces(
         // content box extends to fill any remaining fragmentainer
         // extent (leaving room for any margins/borders/padding applied
         // by clone)»), последний — по остатку. Монолит сюда не заходит.
-        // ★ Откат 07.09 (v153) был НЕ из-за этой ветки: план верен,
-        // красное ушло из 14 пар; остатки и потери дала сборка копии
-        // (`target/scout-bdb-2026-09-30.md` §3).
         match fill_clone_dec(
             limit, col, y, not_top, placed, shortage, out, float_hold, kid, k, &mut cur, &mut from,
             &mut copy, target, room,

@@ -1,4 +1,4 @@
-//! Hard breaks separate completed lines from the line preceding a float.
+//! Жёсткие разрывы отделяют завершённые строки от строки, предшествующей float.
 
 use crate::dom::Node;
 use crate::render::{atomic_inline, inline_level, out_of_flow, replaced_tag};

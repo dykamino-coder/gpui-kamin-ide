@@ -1,4 +1,5 @@
-//! Разборщики значений: выравнивание, шрифт, url, пробелы, тени, border-shape, слои фона, calc-size.
+//! Разборщики значений: выравнивание, шрифт, url, пробелы, тени, border-shape, слои фона,
+//! calc-size.
 
 use crate::style::computed::*;
 use crate::style::values::value::{Color, Len};

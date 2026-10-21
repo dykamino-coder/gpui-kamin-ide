@@ -1,4 +1,4 @@
-//! Orthogonal float roots retain native layout ownership in measured hosts.
+//! Тесты: ортогональные корни float сохраняют нативное владение layout в измеряемых хостах.
 
 use super::construction_tests::{default_host, find};
 use super::*;

@@ -1,4 +1,7 @@
-//! Reset all border color longhands when a single-value shorthand wins the cascade.
+//! Вычисленный стиль: `border-color` с одним значением сбрасывает все четыре
+//! стороны, включая заданные ранее сокращением `border` или боковым
+//! (CSS Backgrounds 3 §4.1); `currentcolor` помечается отдельно, чтобы цвет
+//! текста подставился после наследования.
 
 use super::Computed;
 use crate::document::state::ValueCx;

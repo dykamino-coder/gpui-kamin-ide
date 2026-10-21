@@ -1,4 +1,7 @@
-//! Form fragment-local gap segments while retaining their stitched list indices.
+//! Линейки промежутков внутри одного фрагмента (CSS Gaps 1 §fragmentation): промежуток на
+//! разрыве исчезает вместе со своей линейкой, пересекающая линейка обрезается границами
+//! фрагмента без выдуманных концов, а индексы в сшитом списке значений сохраняются. Как Blink
+//! `gap_decorations_painter.cc:380-403`, пересечения считаются на фрагмент, потом inset'ы.
 
 use crate::layout::fragment::gap_fragment::Scope;
 use crate::paint::gap_rules::geometry::GapRun;

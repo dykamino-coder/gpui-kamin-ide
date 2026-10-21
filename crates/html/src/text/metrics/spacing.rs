@@ -1,8 +1,7 @@
-//! Resolve font-relative spacing and tab lengths using the same measured glyph metrics.
-//!
-//! `ic` uses the advance of 水, rather than `em` or the width of an ASCII
-//! space. Returning zero caused a valid `tab-size: 1ic` to use the fallback
-//! eight-space tab interval instead (CSS Values 4 §6.1.4, CSS Text 3 §tab-size).
+//! Межбуквенный, межсловный интервал и длины табуляции в точках по тем же замеренным метрикам
+//! глифов: `em`/проценты от кегля, `ch`, `ex` и `ic` — продвижение `水`, а не `em` или ширина
+//! пробела ASCII (css-values-4 §6.1.4, css-text-3 §tab-size: ноль вместо `1ic` ронял
+//! `tab-size: 1ic` в запасные восемь пробелов).
 
 use super::{ch_ex_px, ic_px};
 

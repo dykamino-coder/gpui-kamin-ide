@@ -1,4 +1,11 @@
-//! Use grid content edges for static positions and grid lines only for its own CB.
+//! Статическая позиция абсолюта в сетке: от края содержимого, линии — только у
+//! своего содержащего блока.
+//!
+//! Проход по собранному дереву (css-grid-2 §abspos-items, §static-position):
+//! у сетки, не являющейся содержащим блоком, линии `grid-row`/`grid-column`
+//! абсолютного ребёнка снимаются; у ребёнка на статической позиции (`auto` с
+//! обеих сторон оси) к полям добавляются отступы сетки. Гибкий контейнер не
+//! трогается: taffy сам отсчитывает от `content_box_inset`.
 use super::Node;
 use crate::style::computed::{Display, Position};
 use crate::style::values::value::Len;
@@ -25,7 +32,7 @@ fn walk(nodes: &mut [Node], containing_grid: bool) {
         // статическую позицию от `content_box_inset` (css-flexbox-1 §4.1), и
         // добавочное поле удваивало отбивку контейнера
         // (`flex-abspos-staticpos-margin-001`: коробка на отбивку правее и
-        // ниже). Правка ec58c6f потерялась при переносе прохода в модуль.
+        // ниже).
         if !grid {
             continue;
         }

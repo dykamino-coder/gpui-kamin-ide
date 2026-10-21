@@ -1,4 +1,10 @@
-//! Paragraph measurement under inline constraints, including line growth and break geometry.
+//! Замер абзаца внутри callback раскладки (`measured_layout`): подгонка
+//! атомов под содержащий блок, предел переноса по оси строки, подбор кегля
+//! под заданный размер (css-text-5 text-fit), разбиение на строки и размер
+//! коробки — ширина по самой длинной строке с отступом, fit-content для
+//! абзаца с атомами (CSS 2.1 §10.3.5, css-sizing-3 §5.1), высота как сумма
+//! шагов строк с надбавками (CSS 2.1 §10.8) — плюс первая, последняя и
+//! построчные базовые линии; вертикальный абзац уходит в свою ветку.
 
 use crate::text::paragraph::*;
 use gpui::{App, Pixels, Window, px, size};

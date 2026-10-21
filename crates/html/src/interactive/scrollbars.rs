@@ -1,5 +1,7 @@
-//! Classic HTML scrollbars: CSS Overflow 3 §5 and CSS Scrollbars 1 §2–3.
-//! GPUI provides scrolling but deliberately leaves scrollbar painting to clients.
+//! Покраска полос прокрутки HTML (CSS Overflow 3 §5, CSS Scrollbars 1 §2–3): классические
+//! полосы с дорожкой, кнопками и ползунком в цветах `scrollbar-color` или Windows по умолчанию,
+//! либо современные накладные полосы без заданных цветов. GPUI даёт прокрутку, но покраску
+//! полос намеренно оставляет клиенту.
 mod buttons;
 pub(crate) mod interaction;
 mod modern;

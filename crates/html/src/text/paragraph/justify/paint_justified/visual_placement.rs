@@ -1,4 +1,8 @@
-//! Visual placement for paint_justified; split out to keep the owning module within 250 lines.
+//! Видимые куски строки слева направо (`place_visual`): каждый прогон
+//! уровня в порядке UAX #9 L2, разрезанный по распоркам краёв и краям
+//! содержимого коробок; коробка, разбитая перестановкой, держит левый край
+//! на самом левом фрагменте и правый — на самом правом (CSS 2.1 §8.6, Blink
+//! `UpdateFragmentEdges`), внешняя распорка (поле) уходит дальше всех.
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, px};

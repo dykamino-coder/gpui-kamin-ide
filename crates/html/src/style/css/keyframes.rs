@@ -1,4 +1,8 @@
-//! @keyframes: разбор кадров и условных групп.
+//! Разбор CSS: `@keyframes` — наборы кадров таблицы (`Keyframes`: доля времени
+//! и объявления). Разбираются отдельно от правил, поскольку тело состоит из
+//! вложенных блоков; объявления с `!important` в кадре отбрасываются
+//! (css-animations-1 §3), а наборы внутри ложной группы `@media`/`@supports`
+//! не берутся (css-conditional-3 §2, `in_false_group`).
 
 use crate::document::state::ValueCx;
 use crate::style::css::*;

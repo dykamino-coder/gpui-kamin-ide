@@ -1,4 +1,6 @@
-//! Tab intervals belong to inline styles, but their positions share a line origin.
+//! Позиции табуляции (`tab-size`, css-text-3 §4.2): шаг задаётся стилем
+//! куска (общий и по диапазонам байт), но все позиции считаются от одного
+//! начала строки; позиция ближе `0.5ch` пропускается в пользу следующей.
 
 use std::{
     hash::{Hash, Hasher},

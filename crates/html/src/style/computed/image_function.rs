@@ -1,4 +1,6 @@
-//! CSS image() URL and color arguments; fallback is resolved by the image loader.
+//! Вычисленный стиль: разбор аргументов `image()` (css-images-4 §2.2) — адрес
+//! (строка или `url()`) и/или цвет. Здесь только синтаксис: какой аргумент
+//! действует (запасной цвет при незагрузившемся адресе), решает загрузчик образа.
 
 use crate::document::state::ValueCx;
 use crate::style::{css, values::value::Color};

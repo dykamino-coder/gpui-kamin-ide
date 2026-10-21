@@ -1,4 +1,7 @@
-//! Native vertical paragraphs retain orthogonal flow, absolute and table-track sizing contracts.
+//! Ограничение строчной оси нативного вертикального абзаца (`InlineConstraint`): сводит
+//! в один ответ ключевые слова `height`, заданный размер, ортогональный поток, абсолют,
+//! признак `hug_inline` и параллельную дорожку таблицы, сохраняя договор каждого пути;
+//! здесь же заявка строчного размера у флоата, потерявшего флаг после размещения.
 
 use crate::style::computed::Computed;
 use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};

@@ -1,4 +1,5 @@
-//! Computed::apply_display_flex, продолжение цепочки: flex-wrap, flex-*, flex-basis, align-self/align-items. Ветви в исходном порядке; не совпавший ключ уходит в apply_gap_place.
+//! Computed::apply_display_flex, продолжение цепочки: flex-wrap, flex-*, flex-basis,
+//! align-self/align-items. Ветви в исходном порядке; не совпавший ключ уходит в apply_gap_place.
 
 use super::*;
 use crate::document::state::ValueCx;

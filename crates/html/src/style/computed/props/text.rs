@@ -1,4 +1,9 @@
-//! Computed::apply_one: color, line-height, text-align/indent/transform/wrap, white-space, word-*, hyphens, vertical-align, line-clamp, text-box*, writing modes.
+//! Группа свойств `Computed::apply_one`: текст — `color`, `line-height`
+//! (число множителем, доля в точках по §10.8.1, `normal` меткой `Len::Auto`),
+//! `text-justify`, `text-align`/`-all`/`-last` с `match-parent`,
+//! `letter-spacing`; `text-indent`/`-transform`/`-wrap`, `white-space`,
+//! `word-*`, `hyphens`, `vertical-align`, `line-clamp`, `text-box*` и режимы
+//! письма — в подмодулях.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
@@ -41,8 +46,8 @@ impl Computed {
                 // уезжал вниз на полулидинг (`rlh-unit-001`: зелёный квадрат
                 // ниже эталона на 30 точек). Меткой служит `Len::Auto`: у всех
                 // потребителей высоты строки уже есть для неё запасная ветка
-                // «по метрикам шрифта» (`inline.rs:719`, `:1529`, `:2445`), а
-                // `apply.rs:1618` на `Len::Auto` явно ничего не задаёт.
+                // «по метрикам шрифта», а применение к GPUI на
+                // `Len::Auto` явно ничего не задаёт.
                 if v.eq_ignore_ascii_case("normal") {
                     self.line_height = accept_parsed!(self, Some(Len::Auto));
                     return;

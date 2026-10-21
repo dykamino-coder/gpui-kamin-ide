@@ -2,14 +2,14 @@
 
 use crate::style::computed::Tiling;
 
+/// Full destination tile and the visible region; clipping must not resize it.
+pub(super) type Cell = ((f32, f32, f32, f32), (f32, f32, f32, f32));
+
 /// На какие прямоугольники распадается один кусок рамки.
 ///
 /// Растянутый кусок — это один прямоугольник во всю полосу. Мостящийся (`repeat`,
 /// `round`, `space`) режется на копии своего размера: вдоль полосы их столько,
 /// сколько влезает, поперёк кусок всё равно растягивается.
-/// Full destination tile and the visible region; clipping must not resize it.
-pub(super) type Cell = ((f32, f32, f32, f32), (f32, f32, f32, f32));
-
 pub(super) fn pieces(
     mode: (Tiling, Tiling),
     dest: (f32, f32, f32, f32),

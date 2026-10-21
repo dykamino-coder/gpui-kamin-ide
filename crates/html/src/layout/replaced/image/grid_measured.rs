@@ -1,5 +1,7 @@
-//! Replaced flex/grid items retain intrinsic measurement until their used size is known.
-//! CSS Flexbox 1 §9.2/§9.8 and Grid 2 #algo-overview supply definite dimensions.
+//! Замещаемая картинка элементом flex/grid: сохраняет внутреннюю меру (природный размер и
+//! пропорцию) до тех пор, пока раскладка не даст используемый размер. CSS Flexbox 1
+//! §9.2/§9.8 и Grid 2 #algo-overview поставляют определённые размеры. Простая коробка
+//! отдаётся как `MeasuredReplaced`; сюда же — перенос осей и выравнивания с держателя.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

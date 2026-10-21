@@ -41,7 +41,7 @@ pub(super) fn pushed_cell_at(
     };
     let top = px_of(&c.style.padding.top)? + px_of(&c.style.borders().top)?;
     let (spacing, cell_cx) = cell_settings(c, ShapeCx::COLUMNS)?;
-    // Щуп разреза ходит по ТОМУ ЖЕ дереву, что мера (Х2) и рисование: иначе
+    // Щуп разреза ходит по ТОМУ ЖЕ дереву, что мера и рисование: иначе
     // `table_shape` посчитает точки по анонимным рядам, а `pushed_cell_at` на
     // тех же детях вернёт `None`, и распорка роста (`grow_pushed`) не найдёт
     // коробку, которую надо дотянуть до низа колонки.

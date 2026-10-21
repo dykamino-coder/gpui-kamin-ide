@@ -1,4 +1,5 @@
-//! Тесты разбора border-image в Computed.
+//! Тесты разбора `border-image` и его отдельных свойств в `Computed`
+//! (css-backgrounds-3 §6): сокращение, сложение longhand, `filter()` источником.
 
 use super::*;
 

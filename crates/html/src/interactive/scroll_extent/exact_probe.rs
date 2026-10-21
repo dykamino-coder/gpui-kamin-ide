@@ -1,5 +1,7 @@
-//! Scrollbar decisions use layout geometry before device snapping (CSS Overflow 3 §2.2).
-//! Independent rounding of a 10px child and a 25px scrollport can fabricate overflow.
+//! Щуп неокруглённой геометрии для решений о полосах (CSS Overflow 3 §2.2): коробки берутся
+//! до привязки к пикселям устройства, иначе раздельное округление ребёнка 10px и scrollport
+//! 25px выдумывает переполнение. Здесь же сдвиги липких коробок и обращённой проекции
+//! прокрутки, которые щупы вычитают.
 
 use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, px};

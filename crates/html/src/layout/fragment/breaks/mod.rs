@@ -1,7 +1,10 @@
-//! Принудительные разрывы и запреты.
+//! Принудительные разрывы и запреты разрыва при фрагментации: `break-before/after` и
+//! `avoid` на краях коробки (`edges`), монолиты стопки страниц (`page_monolith`, css-break-4
+//! §4.1; Blink `IsMonolithic`) и досягаемость внепоточного корня стопки страниц
+//! (`oof_reach`): до какой глубины абсолют с `top`/`bottom` в `vh` и его переполнение
+//! требуют листов (Blink `BlockBreakToken::monolithic_overflow_`, crbug 1402540).
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};

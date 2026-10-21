@@ -1,4 +1,6 @@
-//! Resolve kerning independently of variant declarations and inheritance.
+//! Вычисленный стиль: `font-kerning` отдельным полем, независимым от
+//! `font-variant-*` и наследования; `none`/`normal` дают признак `kern` в
+//! используемых шрифтовых фичах, `auto` оставляет решение шрифтовой системе.
 
 use super::Computed;
 

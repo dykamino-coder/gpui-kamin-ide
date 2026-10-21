@@ -64,7 +64,7 @@ pub(crate) fn generic_children(
                 // Независимый контекст форматирования (overflow не
                 // `visible`, флоат, `display: flow-root`, `contain`) не
                 // схлопывает своё поле с детьми (CSS2 §8.3.1, css-writing-
-                // modes-4 §7.4).
+                // modes-4 §7.4): `margin-collapse-vlr-017`/`vrl-016` (`overflow: hidden`).
                 let sealed = makes_bfc
                     || margin_px(border, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0
                     || margin_px(pad, &e.style, opts.cx.vcx()).unwrap_or(0.0) > 0.0;

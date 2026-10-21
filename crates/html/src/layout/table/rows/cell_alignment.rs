@@ -1,4 +1,7 @@
-//! CSS Align 3 block content alignment for the single table-cell alignment subject.
+//! Выравнивание содержимого ячейки таблицы по CSS Align 3 (`align-content`) для одного
+//! субъекта выравнивания: `normal` оставляет `vertical-align`, распределяющие значения
+//! берут запасное, позиция переполнения по умолчанию безопасная; содержимое оборачивается
+//! в субъект по оси письма ячейки.
 use crate::style::computed::{Computed, Justify};
 use gpui::{Div, Styled};
 

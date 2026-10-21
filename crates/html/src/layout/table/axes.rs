@@ -1,5 +1,6 @@
-//! Table grid indices are logical; borders and layout boxes remain physical.
-//! Follow Blink TableBorders::MergeBorders, which converts with the table's writing direction.
+//! Оси таблицы: индексы сетки логические, а рамки и коробки раскладки физические.
+//! `Axes` переводит стороны между ними по режиму письма и направлению таблицы, как Blink
+//! `TableBorders::MergeBorders`; `inherited` доводит письмо родителя до стиля таблицы.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

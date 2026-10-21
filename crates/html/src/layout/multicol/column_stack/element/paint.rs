@@ -49,10 +49,10 @@ impl ColumnStack {
             // (`relative-child-overflowing-column-gap`) и всё содержимое при стопке
             // шириной 0 (`relative-child-overflowing-container`, колонка 1px). Вылет —
             // на ширину окна (у стопки нулевой ширины своей ширины нет); дальше режет
-            // маска предка. Заменяет P10 `scout-grid-frag-2026-09-30.md` §5.10.
+            // маска предка.
             // Кроме ребёнка с вложенным многоколоночником (`StackChild::nested_cols`):
             // его ширина за колонкой — артефакт плоской копии, а не переполнение
-            // (`scout-mcnested-2026-09b.md` §5.3: красный потомок `margin-left:100%`
+            // (красный потомок `margin-left:100%`
             // в `multicol-fill-balance-nested-000` прячет только маска колонки).
             let win_w = window.viewport_size().width;
             let spill = if self.children[f.kid].nested_cols {

@@ -1,8 +1,10 @@
-//! Прокручиваемые коробки.
+//! Обёртки интерактивности на этапе сборки элемента: `scrollable` заворачивает коробку с
+//! `overflow: auto | scroll` (и `hidden` при scroll-snap) в `ScrollArea`, решая размеры ленты,
+//! доли высоты от содержащего блока (CSS 2.1 §10.5), наружные поля и сжатие flex-элемента;
+//! `resizable` заворачивает коробку с `resize` в `Resizable`, где размер мыши побеждает
+//! разметку. На вход — DOM-элемент и унаследованный стиль, на выход — готовый `AnyElement`.
 mod hoisting;
 use hoisting::hoist_from_scroll;
-
-// owner: A
 
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
@@ -11,6 +13,10 @@ use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
+/// Обернуть элемент лентой прокрутки, если `overflow` её просит.
+///
+/// `auto` и `scroll` в CSS означают именно ленту; обрезка без прокрутки —
+/// это `hidden`, и подменять одно другим значило терять содержимое.
 pub(crate) fn scrollable(
     e: &Element,
     inherited: &Computed,
@@ -174,8 +180,7 @@ pub(crate) fn scrollable(
                     // (начальное 1, css-flexbox-1 Overview.bs:2586-2588; автоминимум
                     // ленты прокрутки — ноль, :1301): `width: 200px; min-width: 0`
                     // в контейнере 100 обязан ужаться до 100. Безусловный ноль
-                    // выпускал ленту за контейнер (`grid-baseline-003-ref`,
-                    // 0.00 → 0.72).
+                    // выпускал ленту за контейнер (`grid-baseline-003-ref`).
                     let flex_item = matches!(
                         inherited.display,
                         Some(Display::Flex) | Some(Display::InlineFlex)

@@ -1,4 +1,4 @@
-//! Parsed image operands survive cascade without CSS replay.
+//! Тесты: разобранные операнды изображений проходят каскад без повторного разбора CSS.
 
 use super::*;
 use crate::style::{

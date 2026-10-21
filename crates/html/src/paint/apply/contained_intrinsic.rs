@@ -1,4 +1,8 @@
-//! Empty containment sizes retain the box geometry while excluding descendant contributions.
+//! Применение к GPUI: внутренний размер коробки с `contain: size`
+//! (css-contain-2 §3.1). Коробка меряется «as if it had no contents»: вклад
+//! потомков исключается, а собственная геометрия — явные дорожки сетки со
+//! щелями и «число × ширина колонки + щели» многоколонника — сохраняется.
+//! Авто-ширина блока по-прежнему заполняет определённое место.
 
 use crate::style::computed::{Computed, Display, Track, TrackSize};
 use crate::style::values::value::{Len, px_lossy_zero};
@@ -18,7 +22,7 @@ use gpui::{Div, Styled};
 pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
     let px_of = px_lossy_zero;
     // `gap` хранит пару (ряды, колонки); `column-gap` пишет и пару, и своё
-    // поле (`computed.rs`, ветки `"gap"`/`"column-gap"`).
+    // поле (`style::computed`, ветки `"gap"`/`"column-gap"`).
     let gap = if inline {
         c.gap.and_then(|g| g.1).or(c.column_gap)
     } else {

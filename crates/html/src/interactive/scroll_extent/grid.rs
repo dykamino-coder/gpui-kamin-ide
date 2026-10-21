@@ -1,4 +1,5 @@
-//! Measured grid track bounds contribute to scrollable overflow (CSS Grid §5.3).
+//! Щуп сеточных дорожек: измеренные границы колонок и рядов сеточного контейнера входят в
+//! прокручиваемое переполнение (CSS Grid §5.3), даже когда элементы сетки их не заполняют.
 
 use super::{
     Frame,

@@ -1,4 +1,12 @@
-//! §8.2 principal writing mode: the root box takes the body's writing mode (used value only), and the vertical root fills the viewport along its inline axis.
+//! Главное письмо страницы: распространение `writing-mode`/`direction` с `<body>`
+//! на корневую коробку (css-writing-modes-4 §8.2).
+//! Вход — дерево с `<html>` и `<body>`; выход — то же дерево, где корень несёт
+//! используемое письмо тела, а вычисленные значения не меняются ни у кого:
+//! псевдодетям корня заранее прикалывается его собственное письмо. Обособление
+//! на корне или теле (css-contain-2) гасит распространение и помечает тело
+//! `wm_contained`. Вертикальному корню ставится минимальная высота в окно
+//! (`fill_inline`: `100vh` минус его поля, рамки, отступы), `vertical-rl` —
+//! прижим вправо.
 
 use super::any_containment;
 use crate::document::state::ValueCx;

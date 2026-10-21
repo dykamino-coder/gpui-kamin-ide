@@ -1,4 +1,8 @@
-//! Marker for paint; split out to keep the owning module within 250 lines.
+//! Стиль и набор знака обрыва: прогон строкового маркера и `block-ellipsis`
+//! получает шрифт, кегль и цвет БЛОКА без рамки и фона куска у среза
+//! (css-overflow-3 §4.1, css-overflow-4 §5.3); набор куска со знаком в
+//! начале (префикс рисуется отдельно, чтобы не менять кернинг) или в конце;
+//! пустая строка обрыва, у которой остался только знак.
 
 use crate::text::paragraph::*;
 use gpui::{TextRun, Window, px};

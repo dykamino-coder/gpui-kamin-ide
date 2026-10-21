@@ -1,4 +1,7 @@
-//! Paged counters persist across pages and are obscured by margin-local counters.
+//! Страничные счётчики (css-page-3 §page-based-counters): `page` и прочие счётчики
+//! контекста `@page` переносятся между листами, `pages` не изменяется, сброс на листе
+//! действует только на нём (как Blink `ObscurePageCounterIfNeeded`), а директивы
+//! марджин-бокса заслоняют значения локально и не влияют на соседей и следующий лист.
 
 use crate::style::computed::Computed;
 use crate::style::generated::counters::Counters;

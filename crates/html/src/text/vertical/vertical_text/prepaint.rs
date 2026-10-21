@@ -1,4 +1,9 @@
-//! Resolved vertical text measurement and rotated prepaint geometry.
+//! Фаза `prepaint` элемента `VerticalText`: решённая раскладкой высота коробки становится
+//! длиной строки содержимого (перенос вертикального текста), высота содержимого при ней
+//! запоминается в состоянии документа для следующего кадра (`vertical_measures`), а на время
+//! подготовки потомков выставляется рамка поворота (`TurnFrame`: сторона и фаза); рамка
+//! привязана к неокруглённому block-end краю (css-writing-modes-4 §7.1; Blink
+//! `WritingModeConverter::SlowConvert`).
 
 use super::VerticalText;
 use crate::text::vertical::TurnFrame;
@@ -16,11 +21,10 @@ impl VerticalText {
         // переставлены: то, что для родителя высота, для повёрнутого
         // содержимого — длина строки. Без этого шага вертикальный текст
         // мерился «по максимуму содержимого» и не переносился никогда.
-        // ПРОБОВАЛИ И ОТКАТИЛИ: ограничивать длину строки высотой области
-        // просмотра, когда родитель своей не задал (так велит CSS для
-        // ортогональных потоков). Замерено: writing-modes 195 → 194,
-        // `available-size-020/021` не чинятся, а `slr-alongside-vlr-floats`
-        // ломается. Значит предел приходит откуда-то ещё.
+        // Не ограничивать длину строки высотой области просмотра, когда
+        // родитель своей не задал (как велит CSS для ортогональных потоков):
+        // `available-size-020/021` это не чинит, а `slr-alongside-vlr-floats`
+        // ломает — предел приходит из другого места.
         let along = bounds.size.height;
         let child = &mut self.child;
         if along > gpui::px(0.) {
@@ -39,7 +43,8 @@ impl VerticalText {
             }
         }
         // Щупу статической позиции нужна и СТОРОНА поворота: отображение
-        // до-поворотной точки в экранную у `sideways-lr` зеркально (см. `vt_map`).
+        // до-поворотной точки в экранную у `sideways-lr` зеркально (см.
+        // `VerticalPaint::map`).
         let (frame, phase) = self.turn_frame(bounds, window);
         let previous = self.paint_context.replace(Some(TurnFrame {
             bounds: frame,

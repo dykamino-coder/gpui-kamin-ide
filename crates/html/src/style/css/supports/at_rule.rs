@@ -1,4 +1,7 @@
-//! CSS Conditional 5 at-rule(): one at-keyword naming a supported rule in any context.
+//! `@supports at-rule(@name)` (CSS Conditional 5): один at-keyword, называющий
+//! поддерживаемое at-правило в любом контексте. Перечень держится в согласии с
+//! разборщиком таблицы, `@keyframes`, `@font-face` и `@font-feature-values`;
+//! `@charset` — объявление кодировки, а не at-правило.
 
 use super::*;
 

@@ -1,4 +1,8 @@
-//! Continuous rounded-box exclusions for CSS Shapes line bands.
+//! Непрерывная форма скруглённой коробки для вырезов обтекания (`FloatShape::RoundedBox`):
+//! прямоугольник с радиусами углов, уменьшенными общим коэффициентом при перекрытии
+//! (CSS Backgrounds 3 §Overlapping Curves), и экстент на полосе строки по CSS Shapes 1
+//! §Shapes from Box Values — как Blink `BoxShape::GetExcludedInterval`
+//! (`box_shape.cc:53-106`): оба края полосы и прямой участок между дугами.
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct RoundedBox {

@@ -1,4 +1,4 @@
-//! Color-mix operands, percentages and interpolation method retained as numbers.
+//! Операнды color-mix, проценты и метод интерполяции, сохранённые как числа.
 
 use super::{Color, ColorExpression, mix};
 use crate::document::state::ValueCx;

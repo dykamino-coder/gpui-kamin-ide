@@ -2,7 +2,6 @@
 //! container into the shared measured band host.
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::dom::Node;
 use crate::layout::float::FloatCb;

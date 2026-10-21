@@ -1,4 +1,4 @@
-//! Mask sources preserve the element orientation when looking up cached images.
+//! Источники маски сохраняют ориентацию элемента при поиске кэшированных изображений.
 
 use super::Grouped;
 use crate::style::computed::ImageSource;

@@ -1,4 +1,7 @@
-//! Spacer exclusion and adjacent tracking for decoration intervals.
+//! `text-decoration-skip-spaces` (css-text-decor-4 §4.2): исключение
+//! пробелов (Zs, кроме U+202F) из оформленных отрезков — `start`/`end` на
+//! краях строки, `all` везде — и хвостового трекинга на конце строки или
+//! рядом с пропущенным пробелом.
 
 use super::*;
 use gpui::{Pixels, px};

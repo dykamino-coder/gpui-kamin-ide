@@ -1,8 +1,9 @@
-//! Break opportunities exported by measured formatting contexts.
+//! Возможности разрыва, экспортируемые измеренными контекстами форматирования.
 //!
-//! Coordinates use the owner's logical block axis. Parallel flows contribute
-//! opportunities together; a cut may not cross any measured line or monolithic
-//! box (CSS Break 3 sections 4.1 and 4.3). Layout trees remain temporary.
+//! Координаты — в логической блочной оси владельца. Параллельные потоки дают
+//! возможности вместе; разрез не может пересекать ни одну измеренную строку или
+//! монолитный бокс (CSS Break 3, разделы 4.1 и 4.3). Деревья layout остаются
+//! временными.
 
 mod measurements;
 mod stack;

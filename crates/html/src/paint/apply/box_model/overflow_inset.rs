@@ -1,4 +1,5 @@
-//! apply_box, хвостовые этапы: обрезка overflow, полосы прокрутки, ранний выход для непозиционированных; края inset, избыточные края и translate.
+//! apply_box, хвостовые этапы: обрезка overflow, полосы прокрутки, ранний выход для
+//! непозиционированных; края inset, избыточные края и translate.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -111,7 +112,7 @@ pub(super) fn box_overflow(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // собирается вызывающим (см. доку, раздел «Прокрутка»).
     // Обрезка с ПОЛЕМ снимается с коробки: раскладка режет ровно по её краю,
     // а поле требует резать дальше наружу. Маску ставит свой слой
-    // (`interact::ClipMargin`), его заводит сборщик дерева.
+    // (`paint::effects::corner_clip`), его заводит сборщик дерева.
     // `border-shape`: переполнение режет ВНУТРЕННИЙ контур фигуры
     // (css-borders-4 §border-shape-overflow-interaction) — маска группы
     // (`render::grouped`), а не прямоугольник padding-box: тот срезал бы и

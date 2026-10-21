@@ -1,4 +1,4 @@
-//! Font metrics and measurement callbacks belonging to one document.
+//! Метрики шрифтов и колбэки измерения, принадлежащие одному документу.
 
 use super::{Probe, VProbe};
 use std::{cell::RefCell, collections::HashMap};

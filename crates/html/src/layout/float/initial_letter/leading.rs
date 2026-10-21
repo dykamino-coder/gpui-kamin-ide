@@ -19,12 +19,12 @@ use crate::text::text_box::blank_text;
 /// встаёт от содержательного края строчной коробки — в `float-in-inline-001`
 /// это ровно 30 + 30 + 40 = 100 точек вправо и вниз.
 ///
-/// Возвращается сам флоат; строчная обёртка выбрасывается. Терять с ней
+/// Возвращается флоат и обёртка без него (см. `wrap_floats`). Терять с ней
 /// нечего: своего содержимого у неё нет, а рамку и отбивку строчной коробки
 /// БЕЗ фона мы и так не рисуем (корень `INLINE-BOX-PAINT`) — поэтому гейт
 /// требует отсутствия фона.
 ///
-/// Проба (`target/scout-floatline-2026-09.md` §5.4): дерево ПОСЛЕ снятия
+/// Проба: дерево ПОСЛЕ снятия
 /// обёртки сходится с настоящими эталонами `ref-filled-green-200px-square` и
 /// `ref-filled-green-100px-square` в 0.00 на всех трёх парах подкорня.
 ///
@@ -34,11 +34,6 @@ use crate::text::text_box::blank_text;
 /// `:hover`/`::first-letter`/`::first-line`, а внутри неё — только пустой
 /// текст и РОВНО ОДИН элемент: флоат либо такая же обёртка
 /// (`float-in-inline-002`: `<span><span><span style="float:left">`).
-/// Leading float of an inline wrapper (see `wrap_floats`): the wrapper (or a
-/// chain of such wrappers) must be a genuine, non-positioned inline that
-/// forms no group (opacity, filter, transform, … act on the float through
-/// it), and the float must be its first in-flow content — only blank text
-/// before it. Returns the float and the wrapper without it.
 pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
     let genuine_inline =
         (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);
@@ -88,7 +83,7 @@ pub(crate) fn split_leading_float(e: &Element) -> Option<(Element, Element)> {
 }
 
 /// Inherited values a hoisted float takes from the inline wrapper it left
-/// (only those the wrapper sets itself; `inline::inherit` would also resolve
+/// (only those the wrapper sets itself; `style::cascade::inherit` would also resolve
 /// font-relative units against the bare wrapper style).
 pub(super) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
     own.color = own.color.or(wrapper.color);
@@ -101,7 +96,7 @@ pub(super) fn carry_inherited(wrapper: &Computed, own: &mut Computed) {
 
 pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
     // `display: inline` после каскада — это `InlineBlock` с пометкой
-    // `inline_display` (`computed.rs`), поэтому одного взгляда на `display`
+    // `inline_display` (`dom::display_inheritance`), поэтому одного взгляда на `display`
     // мало; тег без своего `display` даёт строчность через `e.inline`.
     let genuine_inline =
         (e.inline && e.style.display.is_none()) || e.style.inline_display == Some(true);

@@ -1,10 +1,11 @@
-//! `appearance` / `-webkit-appearance` (css-ui-4 §7.2, css-forms-1 §appearance).
+//! Вычисленное значение `appearance` / `-webkit-appearance` (css-ui-4 §7.2,
+//! css-forms-1 §appearance).
 //!
-//! Only the effective widget look matters to rendering: `none` turns a form
-//! control into a primitive box painted purely from CSS, `base` selects the
-//! interoperable base look, everything else (`auto` and the compat keywords)
-//! keeps the native look. Blink folds the compat keywords the same way
-//! (`StyleAdjuster::AdjustStyleForHTMLElement`, `LayoutTheme::AdjustAppearance`).
+//! Отрисовке важен только итоговый вид виджета: `none` превращает элемент формы
+//! в простую коробку, рисуемую одним CSS, `base` выбирает интероперабельный
+//! базовый вид, всё прочее (`auto` и compat-слова) сохраняет родной вид. Blink
+//! сворачивает compat-слова так же (`StyleAdjuster::AdjustStyleForHTMLElement`,
+//! `LayoutTheme::AdjustAppearance`).
 
 /// Computed `appearance`. The initial value `auto` is the field's `None`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

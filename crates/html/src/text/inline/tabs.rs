@@ -1,4 +1,7 @@
-//! Resolve each inline tab-size against the block container's font and spacing.
+//! Позиции табуляции абзаца (`tab-size`, css-text-3 §4.2): шаг по умолчанию от шрифта,
+//! `letter-spacing` и `word-spacing` блочного контейнера (ширина пробела струта, не куска),
+//! свой шаг для кусков с табуляцией по их `tab-size`, минимальный зазор `0.5ch`.
+//! На выходе `TabStops` для раскладки строк.
 
 use super::Piece;
 use crate::style::computed::Computed;

@@ -83,7 +83,7 @@ fn matches_ancestor_compound(sel: &Selector, node: &Ancestor) -> bool {
     // нажатия нет (selectors-4 §user-action: «matches while the user
     // designates an element»), а пропуск делал предка всегда наведённым —
     // правило красило всех потомков. Слой наведения строится только для
-    // предметного `:hover` (`dom.rs`, `pseudo == "hover"`).
+    // предметного `:hover` (`dom`, `pseudo == "hover"`).
     let user_action = |p: &str| matches!(p, "hover" | "active");
     if sel.pseudo.as_deref().is_some_and(user_action) || sel.also.iter().any(|p| user_action(p)) {
         return false;

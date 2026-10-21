@@ -1,5 +1,6 @@
-//! Declared cell block sizes are row minima, independent of the table's inline tracks.
-//! CSS Tables 3 computing-row-measures; Blink table_layout_utils.cc uses logical cell block size.
+//! Заявленный блочный размер ячейки в вертикальной таблице — минимум ряда, независимый от
+//! строчных дорожек: `width` переезжает в `min-width`. CSS Tables 3
+//! §computing-row-measures; Blink `table_layout_utils.cc` берёт логический блочный размер ячейки.
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 

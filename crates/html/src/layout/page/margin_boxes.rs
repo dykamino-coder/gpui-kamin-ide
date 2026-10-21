@@ -1,4 +1,7 @@
-//! Resolve page margin box geometry before constructing its painted element.
+//! Раскладка марджин-боксов листа: по описаниям `MarginBox` и геометрии листа решает
+//! прямоугольник border box каждой угловой и краевой коробки (css-page-3
+//! §margin-dimension, Blink `LayoutAllMarginBoxes`) и лишь затем строит её элемент
+//! на готовый размер; порядок результата — порядок краски Blink.
 
 use crate::layout::page::margin_box_size;
 use crate::layout::page::page_stack::{MarginBox, PageGeom};

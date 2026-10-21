@@ -1,4 +1,5 @@
-//! Verify CSS values reach real GPUI styles, including projected grid axes.
+//! Тесты применения вычисленного стиля к настоящему `Div` GPUI: значения CSS
+//! читаются обратно из `Style`, включая проекцию осей сетки на физические.
 
 use super::*;
 use crate::document::state::ValueCx;

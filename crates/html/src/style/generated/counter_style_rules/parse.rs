@@ -1,4 +1,5 @@
-//! Разбор дескрипторов @counter-style (system, symbols, additive-symbols, range, pad) и регистрация правила.
+//! Разбор дескрипторов @counter-style (system, symbols, additive-symbols, range, pad) и регистрация
+//! правила.
 
 use super::*;
 

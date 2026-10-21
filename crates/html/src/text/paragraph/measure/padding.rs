@@ -1,4 +1,9 @@
-//! Line-box extents, vertical alignment and strut-relative inline geometry.
+//! Надбавки строк сверху и снизу (`line_padding`, CSS 2.1 §10.8–§10.8.1):
+//! строчная коробка растёт от сдвинутых кусков, своей `line-height` кусков,
+//! атомов, знаков акцента и кусков у края `top`/`bottom`, с учётом среза
+//! `text-box-trim` (css-inline-3) и руби (css-ruby-1 §3.4). Здесь же отступ
+//! конкретной строки в точках (`text-indent`, доля от ширины строки) и
+//! свисающая пунктуация в начале и в конце строки (css-text-3 §9.2).
 
 use crate::text::paragraph::*;
 use gpui::{Pixels, px};

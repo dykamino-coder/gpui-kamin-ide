@@ -1,4 +1,4 @@
-//! Stretch-fit dimensions for automatic sizes constrained by anchor inset pairs.
+//! Растяжение (stretch-fit) автоматических размеров, ограниченных парами inset-ов якоря.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};

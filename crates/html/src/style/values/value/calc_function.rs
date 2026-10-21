@@ -1,4 +1,4 @@
-//! Shared argument reduction for parsed and computed CSS math functions.
+//! Общее сведение аргументов для разобранных и вычисленных CSS-математических функций.
 
 use super::calc::Val;
 use super::calc_arguments::{Comparison, Homogeneous};

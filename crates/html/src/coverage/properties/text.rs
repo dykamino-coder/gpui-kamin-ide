@@ -1,4 +1,7 @@
-//! CSS property coverage for text: kept in registry order.
+//! Реестр покрытия CSS, раздел «текст»: цвет, шрифт, интерлиньяж, разрядка,
+//! выравнивание, декорации, переносы, `vertical-align`, `-webkit-line-clamp`,
+//! `list-style*`. Порядок записей — порядок реестра и документации; фрагменты
+//! склеивает `properties::PROPERTIES`.
 
 use super::{imp, m};
 use crate::coverage::Prop;

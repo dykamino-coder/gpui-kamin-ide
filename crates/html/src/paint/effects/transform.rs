@@ -1,5 +1,8 @@
-//! Трансформы.
-// owner: A
+//! Обёртка `Transformed` по вычисленному стилю: `transform` с отдельными `rotate`/`scale`
+//! (css-transforms-2 §ctm), `transform-origin`, `perspective` родителя и своя, ячейки объёмного
+//! контекста `preserve-3d` и `backface-visibility`; групповые свойства сплющивают контекст
+//! (§grouping-property-values), `inherit` решается от того же родителя с учётом `zoom`,
+//! чистый px-сдвиг уже учтён раскладкой. На вход — собранный элемент, свой и родительский стиль.
 
 use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
@@ -39,7 +42,7 @@ pub(crate) fn transformed(
     transformed_with(el, c, parent, None, vcx)
 }
 
-/// `transformed` with a shared reference box (`interact::Transformed::ref_box`):
+/// `transformed` with a shared reference box (`transformed_element::Transformed::ref_box`):
 /// a table row or row group transform spread over its cells.
 pub(crate) fn transformed_with(
     el: AnyElement,
@@ -50,9 +53,9 @@ pub(crate) fn transformed_with(
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4
     // §inherit: «the property's specified and computed values are the
-    // inherited value»). Разбор ставит только бит (computed.rs:6535), а
-    // значение родителя кладёт `inline::inherit` (inline.rs:897) в СЛИТЫЙ
-    // стиль. Блочный путь строит обёртку по `&e.style` (render.rs:4663), и
+    // inherited value»). Разбор ставит только бит, а значение родителя
+    // кладёт `cascade::inherit` в СЛИТЫЙ стиль. Блочный путь строит
+    // обёртку по `&e.style`, и
     // унаследованное значение терялось (`transform-inherit-001/002`,
     // `-origin-001/002`, `css-transform-inherit-scale`). Бит решается здесь,
     // от того же родителя; у формы (`&merged`) результат тот же.
@@ -115,12 +118,12 @@ pub(crate) fn transformed_with(
     // достаётся: perspective-children-only-*); своя — наполняет ячейку для
     // детей. Элементу с `perspective` без `transform` обёртка тоже нужна —
     // ради ячейки; сам он идёт плоским путём с единичной матрицей.
-    // ★ ЗАМЕРЕНО (06.09, v110, +13/−2): две потери остаются.
-    // `perspective-children-only-inline` — блок внутри `display: inline`
-    // выносится расщеплением строчного (block-in-inline) и становится прямым
-    // ребёнком в дереве отрисовки, поэтому берёт перспективу, хотя по DOM он
-    // внук. `overflow-perspective-001` (0.00 → 2.92) — прокручиваемая коробка:
-    // начало перспективы считается от коробки, а не от области прокрутки.
+    // Известные пробелы: `perspective-children-only-inline` — блок внутри
+    // `display: inline` выносится расщеплением строчного (block-in-inline) и
+    // становится прямым ребёнком в дереве отрисовки, поэтому берёт
+    // перспективу, хотя по DOM он внук; `overflow-perspective-001` —
+    // у прокручиваемой коробки начало перспективы считается от коробки,
+    // а не от области прокрутки.
     wrapper.under_perspective = if c.hoisted_block {
         None
     } else {
@@ -149,10 +152,10 @@ pub(crate) fn transformed_with(
     // style/computed_style.cc:1464-1487). Разбор писал их только в разложение
     // (`rotate_rad`/`scale`), а `Transformed` рисует по `lin`/`tr`/`m4` —
     // до экрана они не доходили вовсе. `translate` здесь не нужен: он уже
-    // сдвинул коробку (`apply.rs`).
+    // сдвинул коробку (`paint/apply/`).
     let mut t = t.after_individual(c.rotate_prop, c.scale_prop);
     // Чистый px-сдвиг уже сдвинул коробку в раскладке
-    // (`Computed::folded_shift`, `apply.rs`) — матрица остаётся единичной.
+    // (`Computed::folded_shift`, `paint/apply/`) — матрица остаётся единичной.
     if c.folded_shift().is_some() {
         t.tr[0][0] = 0.0;
         t.tr[1][0] = 0.0;

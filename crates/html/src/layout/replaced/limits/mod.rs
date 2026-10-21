@@ -1,5 +1,7 @@
-//! Пределы размеров замещаемых элементов.
-// owner: A
+//! Пределы размеров замещаемых элементов и родственные зажимы: перестановка ключевого
+//! слова содержимого из `min/max-width` в `width` (css-sizing-3 §4.1, §5.1), потолок
+//! `line-clamp: auto` (css-overflow-4), флаг `responsive-embedded-sizing` вложенного
+//! документа (css-sizing-4) и зажимы CSS 2.1 §10.4 с базовым кеглем в `font_clamp`.
 
 use crate::dom::Element;
 use crate::layout::box_kind::replaced_tag;

@@ -1,4 +1,5 @@
-//! grid_style, этапы рядов и неявной сетки: repeat() по оси рядов, inline-grid, неявные дорожки grid-auto-*, лунки, grid-auto-flow, subgrid.
+//! grid_style, этапы рядов и неявной сетки: repeat() по оси рядов, inline-grid, неявные дорожки
+//! grid-auto-*, лунки, grid-auto-flow, subgrid.
 
 use super::*;
 use crate::style::values::value::px_lossy_zero;
@@ -40,7 +41,8 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
             && r.track_pct.is_none()
             && !body.is_empty()
             // Только тело с дорожкой ПО СОДЕРЖИМОМУ: точечное тело ведут
-            // ветки выше.
+            // ветки выше (так `row-auto-repeat-014` с телом `[v] 10px [w] 10px
+            // [x] 10px` ломается при отдаче сюда).
             && body.iter().any(|t| {
                 !matches!(
                     t,

@@ -1,13 +1,11 @@
-//! Intrinsic size keywords of an outer `<svg>` (css-sizing-3 §5.1, css-sizing-4 §4).
-//!
-//! The min-content and max-content sizes of a replaced box are both its
-//! automatic size: the natural size, or the size transferred through the
-//! aspect ratio from the definite opposite axis, else the 300x150 default
-//! (CSS 2.1 §10.3.2, §10.6.2). Blink `ComputeReplacedSizeInternal`
-//! (length_utils.cc) resolves `min-content`/`max-content`/`fit-content` of a
-//! replaced box to that same size in both axes. The layout of `<svg>` sizes
-//! the box in pixels, so the keywords become lengths here, as `canvas_size`
-//! does for `<canvas>`.
+//! Ключевые слова внутренних размеров у внешнего `<svg>` (css-sizing-3 §5.1,
+//! css-sizing-4 §4). Размеры min-content и max-content замещаемой коробки — её
+//! автоматический размер: природный, либо переданный через соотношение сторон
+//! от определённой противоположной оси, иначе умолчание 300×150 (CSS 2.1
+//! §10.3.2, §10.6.2). Blink `ComputeReplacedSizeInternal` (length_utils.cc)
+//! разрешает `min-content`/`max-content`/`fit-content` замещаемой коробки в
+//! этот же размер по обеим осям. Раскладка `<svg>` меряет коробку в точках,
+//! поэтому слова становятся длинами здесь, как `canvas_size` для `<canvas>`.
 
 use crate::style::values::value::px_strict;
 use crate::style::{computed::Computed, values::value::Len};

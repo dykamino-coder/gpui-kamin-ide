@@ -1,4 +1,4 @@
-//! SVG presentation attributes whose CSS mappings participate in our cascade.
+//! Презентационные атрибуты SVG, чьи CSS-соответствия участвуют в нашем каскаде.
 
 use super::hint;
 use crate::style::css::Rule;

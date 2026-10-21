@@ -1,5 +1,7 @@
-//! Grid and flex items preserve their own margins on both physical axes.
-//! Horizontal block-margin collapse applies only to ordinary vertical block flow.
+//! Схлопывание горизонтальных полей в вертикальном письме только для обычного блочного
+//! потока: элементы flex и сетки (`grid`, `inline-grid`, `flex`, `inline-flex`, `grid-lanes`)
+//! сохраняют свои поля по обеим физическим осям, остальные дети идут в
+//! `collapse_flow_margins`. Точка входа из `generic_box::children`.
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
 

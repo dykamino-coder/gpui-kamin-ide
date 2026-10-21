@@ -1,4 +1,4 @@
-//! Identify child lists whose layout preparation can use the DOM directly.
+//! Определяет списки детей, раскладку которых можно подготовить прямо по DOM.
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;

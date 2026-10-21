@@ -1,5 +1,7 @@
-//! Предикаты позиционирования.
-// owner: A
+//! Предикаты позиционирования для сборки дерева: несёт ли поддерево абсолют, дотягивающий
+//! меру фрагментации (`carries_abspos`), остаётся ли дальше по разметке позиционированный
+//! сосед, с которым вынос в слой нарушил бы порядок шага 8 CSS 2.1 §9.9 (`positioned_later`,
+//! `stays_positioned`), задан ли край (`edge_set`) и есть ли своя коробка (`has_own_box`).
 
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::block_level_in_flow;
@@ -57,9 +59,8 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
 /// `z-index: auto | 0` сам уходит во второй проход и порядок сохраняет — его
 /// поддерево рисуется вместе с ним. `fixed` отложен и так.
 ///
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО: `PaintLast` без этого гейта — на срезе 890 пар
-/// +2/−20 (все `position-relative-table-*` и `font-029` в «красное видно»);
-/// с гейтом срез 3483 пары: 2757 → 2764, +7/−0.
+/// `PaintLast` без этого гейта ломает все `position-relative-table-*` и
+/// `font-029`.
 pub(crate) fn positioned_later(rest: &[Node]) -> bool {
     fn positioned(e: &Element) -> bool {
         matches!(

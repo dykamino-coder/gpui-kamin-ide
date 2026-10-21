@@ -1,4 +1,6 @@
-//! External instance viewport, cascade isolation and recursive resource contracts.
+//! Тесты `<use href="file.svg#id">` с внешним ресурсом: экземпляр `<symbol>` получает свой
+//! вьюпорт и изолированный каскад внешнего документа, а цикл ссылок во внешнем файле не
+//! ломает остальное содержимое и вложенные относительные `<use>`.
 use super::{doc, pixel};
 use std::path::PathBuf;
 

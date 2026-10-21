@@ -9,7 +9,7 @@ impl ColumnStack {
     /// Раскладка стопки в ВЕРТИКАЛЬНОМ письме: та же укладка (`balance`),
     /// физика — через `axis_box`. Горизонтальная стопка идёт прежним
     /// `prepaint` байт в байт. Повтор шапок таблицы, строки flex (`Par`),
-    /// `clone` и хвост `slack` сюда не приходят: `render.rs` их в вертикали
+    /// `clone` и хвост `slack` сюда не приходят: `render::generic_box::multicol` их в вертикали
     /// не взводит.
     pub(crate) fn prepaint_axis(
         &mut self,

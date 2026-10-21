@@ -1,4 +1,6 @@
-//! Select and inset a single circular CSS corner in its original border box.
+//! Геометрия одиночного круглого угла: отбор подходящих коробок (`eligible` и `uniform`
+//! живут в `style::computed::single_corner`), виртуальный круг и угловой квадрат в исходном
+//! border box, вдвижение прямоугольника на заданную величину.
 
 use gpui::{Bounds, Pixels, px};
 

@@ -1,4 +1,8 @@
-//! Computed::apply_one: transform*, translate/rotate/scale, perspective*, offset-*.
+//! Группа свойств `Computed::apply_one`: преобразования — `transform` (список
+//! функций в матрицу, негодный аргумент роняет объявление, `none` — отсутствие
+//! преобразования), `transform-origin`, `translate`, свойства пути `offset-*`
+//! (motion-1, хранятся сырыми до сэмплера); отдельные `rotate`/`scale`,
+//! `perspective*` и 2D/3D-функции — в подмодулях.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

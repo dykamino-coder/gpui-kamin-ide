@@ -1,6 +1,9 @@
-//! CSS Images 3 gradient lines and radial ending shapes in concrete image coordinates.
-//! Blink CSSRadialGradientValue::CreateGradient uses side distances first, then
-//! expands an ellipse of that aspect ratio through the selected corner.
+//! Геометрия градиентов CSS Images 3 в координатах конкретной картинки: линия линейного
+//! градиента по углу и конечная фигура радиального (центр, радиусы по `closest-*`/`farthest-*`
+//! или явным длинам); для точки отдаётся положение на градиенте (вдоль линии либо в долях
+//! радиусов эллипса). Как Blink
+//! `CSSRadialGradientValue::CreateGradient`, сначала берутся расстояния до сторон, затем эллипс
+//! того же соотношения растягивается через выбранный угол.
 
 use super::len_px;
 use crate::style::computed::{Gradient, GradientShape, RadialExtent, RadialSize};

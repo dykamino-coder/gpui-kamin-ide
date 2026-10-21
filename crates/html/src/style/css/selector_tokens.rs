@@ -1,4 +1,7 @@
-//! Validate selector identifier and string tokens before unescaping their contents.
+//! Разбор селекторов: проверка токенов идентификатора (CSS Syntax §4.3.9) и
+//! строки до раскодирования экранов, разбор атрибутного селектора `[name op
+//! value i]` в `AttrSel` и закрытый перечень атрибутов HTML, чьи значения
+//! сравниваются без учёта регистра и без флага ` i`.
 
 use super::{AttrSel, unescape};
 

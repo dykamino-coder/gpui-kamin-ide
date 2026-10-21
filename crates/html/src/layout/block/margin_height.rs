@@ -1,4 +1,9 @@
-//! Resolve proven block heights and height-constrained margin separation.
+//! Доказуемые высоты блоков при схлопывании полей: когда высота не равна высоте содержимого,
+//! поля ребёнка и родителя не сливаются (CSS 2.2 §10.7, Blink `block_layout_algorithm.cc`).
+//! `lowers` — `max-height` режет единственного определённого ребёнка; `raises` — `min-height`
+//! тянет коробку выше содержимого; `separate` обнуляет нижние поля детей. `zero_float_blocks`
+//! помечает блок из одних флоатов нулевой высотой (CSS 2.1 §10.6.3); `used_style` отдаёт её
+//! только нативной коробке, вычисленная остаётся `auto` ради неопределённой базы долей (§10.5).
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};

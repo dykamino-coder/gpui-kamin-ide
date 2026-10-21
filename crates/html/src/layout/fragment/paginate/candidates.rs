@@ -1,4 +1,4 @@
-//! Candidate traversal for the shared measured fragmentation solver.
+//! Обход кандидатов для общего решателя измеренной фрагментации.
 
 use super::{Cand, avoid_row, column_flex, row_flex, row_gap};
 use crate::document::state::ValueCx;

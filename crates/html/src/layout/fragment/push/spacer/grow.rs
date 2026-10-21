@@ -21,7 +21,7 @@ use crate::style::computed::Display;
 /// `final_block_size = space_left`; css-flexbox-1 §fragmentation: «A forced
 /// break inside a flex item effectively increases the size of its
 /// contents»). Укладка режет ребёнка стопки в НАЧАЛЕ монолитного диапазона
-/// `a` (`flow.rs` `fill_at`: `holds` → `at(a)`): в колонке остаётся
+/// `a` (`layout::fragment::plan` `fill_at`: `holds` → `at(a)`): в колонке остаётся
 /// `a − from` содержимого при остатке `room`, и коробки, где лежит монолит,
 /// обязаны дотянуться до низа, а всё после него — сдвинуться на
 /// `grow = room − (a − from)`. Копия одна на все колонки, и сдвиг в ней
@@ -31,8 +31,7 @@ use crate::style::computed::Display;
 /// колонка 1 — `room`, следующая копия — с `from + room`. План зависит
 /// только от мер (`ColumnStack::growths`), поэтому распорки ставятся ДО
 /// сборки копий, до неподвижной точки (≤ 6 заходов; обычно один). Проба
-/// устройства руками — `target/probe-9d/*.html`: SLC-007/009/010/011 и
-/// `table-cell-expansion-001` 0.00 (`scout-break-2026-09d.md` §3.3).
+/// устройства руками: SLC-007/009/010/011 и `table-cell-expansion-001` 0.00.
 pub(crate) fn grow_pushed(
     mut kids: Vec<(Element, Shape)>,
     count: usize,
@@ -53,11 +52,11 @@ pub(crate) fn grow_pushed(
                 // Тот же предикат, что у `StackChild` в сборке стопки.
                 monolith: solid_box(c),
                 cuts: s.cuts.clone(),
-                // Щуп обязан видеть ровно то же, что стопка (Х6), иначе
+                // Щуп обязан видеть ровно то же, что стопка, иначе
                 // распорки лягут по другому плану, чем укладка.
                 force_before: edge_break(c, false, vcx),
                 force_after: edge_break(c, true, vcx),
-                // Щуп обязан видеть ровно то же, что стопка (Х6): без
+                // Щуп обязан видеть ровно то же, что стопка: без
                 // запретов `growths` считал бы распорки по ДРУГОМУ плану,
                 // чем укладка после отступа.
                 avoid_before: edge_avoid(c, false, vcx),
@@ -71,7 +70,7 @@ pub(crate) fn grow_pushed(
                 // вернуть переполнение в поток. `over == 0.0` при `h >= 0`
                 // выключает поток в `fill_at` тождественно.
                 over: 0.0,
-                // Щуп обязан видеть ровно то же, что стопка (Х6): без
+                // Щуп обязан видеть ровно то же, что стопка: без
                 // `clone` соседи после такой коробки получили бы распорки по
                 // ДРУГОМУ плану.
                 clone_dec: clone_dec(c),
@@ -115,7 +114,7 @@ pub(crate) fn grow_pushed(
             let Some(id) = found else {
                 continue;
             };
-            // Монолит двигает поле, принудительный разрыв — коробка (Х3).
+            // Монолит двигает поле, принудительный разрыв — коробка.
             let moved = if forced {
                 spacer_before(c, id, grow, vcx)
             } else {

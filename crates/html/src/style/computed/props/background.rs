@@ -1,4 +1,9 @@
-//! Computed::apply_one: background*, box-shadow, object-*, image-orientation.
+//! Группа свойств `Computed::apply_one`: `background*`, `box-shadow`,
+//! `object-fit`, `image-orientation`. Здесь `background-image` разбирается в
+//! типизированный `ImageSource` (`ImageSource::parse`): `none` гасит картинку и
+//! градиент, негодная запись (`Invalid`) тоже; `light-dark()` выбирает вариант по
+//! схеме. Сокращение и списки слоёв уходят в подмодули (`shorthand`,
+//! `gradient_layer`, `layer_props`).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

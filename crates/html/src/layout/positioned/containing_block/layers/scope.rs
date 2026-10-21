@@ -1,4 +1,4 @@
-//! Scoped ownership of positioned-paint layers while their children are built.
+//! Областное владение слоями позиционированного paint, пока строятся их потомки.
 
 use super::Positioning;
 use crate::style::computed::Computed;

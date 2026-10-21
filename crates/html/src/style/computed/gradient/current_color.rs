@@ -1,4 +1,8 @@
-//! Resolve gradient stop colors in the element's used currentColor context.
+//! Вычисленный стиль, градиенты: разрешение `currentcolor` и относительных
+//! цветов (`rgb(from currentcolor …)`) в стопах по цвету САМОГО элемента.
+//! Авторское выражение остаётся на стиле: унаследованный `currentcolor` берёт
+//! цвет потомка (CSS Color 4 §6.4). Подставляются только цвета стопов;
+//! направления и позиции не трогаются.
 
 use super::{Color, Computed, Gradient};
 use crate::document::state::ValueCx;

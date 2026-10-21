@@ -1,5 +1,6 @@
-//! Absolute vertical text uses its own definite inline size or intrinsic length.
-//! Keep grid/flex static-position and two-inset stretch contracts separate.
+//! Строчная ось абсолютного вертикального текста: свой заданный размер либо внутренняя
+//! длина в пределах доступного. Статическая позиция в grid/flex и растяжка между двумя
+//! вставками остаются своими договорами и сюда не берутся.
 use crate::style::computed::orthogonal::InlineConstraint;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::Len;

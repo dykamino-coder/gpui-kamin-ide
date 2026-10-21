@@ -1,4 +1,4 @@
-//! Normative MathML Core operator dictionary, sorted UTF-8 keys (generated).
+//! Нормативный словарь операторов MathML Core, ключи UTF-8 отсортированы (сгенерировано).
 use super::Entry;
 pub(super) const ENTRIES: &[Entry] = &[
     ("!", 1, 0, 0, 0),

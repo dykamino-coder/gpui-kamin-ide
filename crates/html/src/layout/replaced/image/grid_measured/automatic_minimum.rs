@@ -1,6 +1,6 @@
-//! Replaced flex items' content-based minimum follows the content-box ratio.
-//! CSS Flexbox 1 §4.5: cross constraints bound the content size suggestion,
-//! which is capped by a specified main size and the definite main maximum.
+//! Автоматический минимум замещаемого элемента flex по пропорции content box.
+//! CSS Flexbox 1 §4.5: поперечные ограничения зажимают предложение размера содержимого,
+//! а его накрывают заданный главный размер и определённый главный максимум.
 
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;

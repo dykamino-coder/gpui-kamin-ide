@@ -138,8 +138,7 @@ pub(super) fn flex_lines_of(
 /// Строки, раскрытые в параллельные потоки (`split_flex_lines`), — отдельные
 /// копии без контейнера, и художник линеек (`GapRulePainter`) их не видит:
 /// линейки пропадали целиком (`flex-gap-decorations-fragmentation-025/028/029/
-/// 030`, v225 0.04…0.28 → v226 0.82…2.07). Такой контейнер идёт прежним путём —
-/// одной копией со своими линейками.
+/// 030`). Такой контейнер идёт прежним путём — одной копией со своими линейками.
 pub(crate) fn flex_gap_rules(s: &Computed) -> bool {
     s.column_rule_visible == Some(true)
         || s.row_rule_visible == Some(true)

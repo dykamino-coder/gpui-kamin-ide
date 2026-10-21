@@ -1,4 +1,4 @@
-//! UA MathML display, visibility and mathematical depth defaults.
+//! UA-умолчания MathML: display, видимость и математическая глубина (math-depth).
 use super::mathml::is_mathml;
 use crate::style::css::{Rule, Selector, parse_decls};
 use markup5ever_rcdom::{Handle, NodeData};

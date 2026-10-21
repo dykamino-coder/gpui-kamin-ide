@@ -1,4 +1,7 @@
-//! Shape text-overflow strings as bidi isolates at the paragraph's direction.
+//! Набор и отрисовка знака обрыва (`text-overflow: <string>`,
+//! `block-ellipsis`) как bidi-изолята с направлением абзаца (css-overflow-4):
+//! первый сильный знак строки направление не выбирает, видимые прогоны
+//! набираются по отдельности и ставятся подряд на базовую линию строки.
 
 use super::{Paragraph, controlled_shape, slice_runs};
 use gpui::{App, Pixels, Point, ShapedLine, SharedString, Window, point};

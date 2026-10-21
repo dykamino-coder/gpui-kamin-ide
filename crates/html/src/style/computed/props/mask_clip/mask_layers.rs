@@ -1,4 +1,5 @@
-//! Computed::apply_mask_clip, продолжение цепочки: mask-origin/clip, mask-repeat, mask-position, clip-path/mask. Ветви в исходном порядке.
+//! Computed::apply_mask_clip, продолжение цепочки: mask-origin/clip, mask-repeat, mask-position,
+//! clip-path/mask. Ветви в исходном порядке.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -118,7 +119,7 @@ impl Computed {
                     // ОДИНОЧНОЕ слово осевое (css-backgrounds-3 §3.6):
                     // `top` — это `center top`, а не `top center`. Прежде оно
                     // уходило в ось X, и плитка вставала в (0, середина)
-                    // вместо (середина, 0) — проба `target/probe/pmask-axis.html`
+                    // вместо (середина, 0) — проба
                     // против эталона корпуса даёт 1.71 против 0.03 у `center top`.
                     let (x, y) = match (toks.len(), toks.get(1).and_then(|t| word(t))) {
                         (_, Some(second)) => (first, second),

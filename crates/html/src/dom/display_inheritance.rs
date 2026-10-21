@@ -1,4 +1,11 @@
-//! Resolve display inheritance before box fixup, including implicit HTML display values.
+//! `display: inherit` по DOM-родителю — первым проходом после обхода, до
+//! табличной починки и подъёмов, которые читают `display`.
+//!
+//! CSS 2.1 §6.2.1 наследует вычисленное значение, а неявный `display` HTML у
+//! нас живёт в теге и признаке `inline`, поэтому `display_of` восстанавливает
+//! его из них (таблица, ряд, ячейка, группа рядов, колонка, `li`, блок) и
+//! переносит вместе с метками ролей (`inline_display`, `row_group_kind`,
+//! `col_role`, `is_caption`).
 
 use super::{Element, Node};
 use crate::style::computed::Display;
@@ -14,7 +21,7 @@ type DisplayOf = (
 
 /// `display: inherit` — вычисленное значение ДОМ-родителя (CSS 2.1 §6.2.1).
 ///
-/// Прежде бит `inh::DISPLAY` решался при сборке (`inline::inherit`) от
+/// Прежде бит `inh::DISPLAY` решался при сборке (`style::cascade::inherit`) от
 /// РЕНДЕР-родителя, а табличная починка (`fixup_row_children`,
 /// `wrap_anon_tables`) смотрит `e.style.display` раньше и видела `None`:
 /// `#test {display: inherit}` в `.tr {display: table-row}` становился блоком

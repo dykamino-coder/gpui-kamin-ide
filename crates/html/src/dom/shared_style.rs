@@ -1,4 +1,4 @@
-//! Share pseudo styles between DOM copies, isolating later used-value edits.
+//! Разделяет псевдо-стили между копиями DOM, изолируя последующие правки used-значений.
 
 use crate::style::computed::Computed;
 use std::ops::{Deref, DerefMut};

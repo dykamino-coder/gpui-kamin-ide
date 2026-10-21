@@ -1,4 +1,6 @@
-//! Author scrollbar colors and independent host capture inputs.
+//! Тесты тематизации полос прокрутки: авторские `scrollbar-color`/`scrollbar-width`
+//! переключают современный вид (`uses_modern`) и толщину (`scroll.thickness`), а контекст
+//! раскладки сохраняет режим заморозки полос (`freeze_scrollbars`) при клонировании.
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,8 @@
-//! Parse list shorthand components before mutating the cascaded style.
-//! CSS Lists 3 §3.6: none fills unset image/type components, not every type.
+//! Вычисленный стиль: `list-style` и `list-style-type`. Составляющие
+//! сокращения (тип, позиция, образ, `none`) разбираются целиком до записи в
+//! стиль, чтобы негодная запись сохранила прежние значения. CSS Lists 3 §3.6:
+//! `none` заполняет незаданные образ/тип, лишний `none` делает объявление
+//! негодным; негодный `symbols()` — тоже (css-counter-styles-3 §symbols-function).
 use super::{Computed, list_style_string, split_outside_parens};
 
 pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {

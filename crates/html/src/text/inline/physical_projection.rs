@@ -1,4 +1,6 @@
-//! Project physical edges into the text plane before its quarter-turn paint transform.
+//! Проекция физических сторон `[top, right, bottom, left]` в плоскость набора текста до его
+//! поворота на четверть при отрисовке: перестановка индексов по направлению поворота,
+//! обратимая противоположным поворотом; без поворота стороны остаются как есть.
 pub(super) fn project<T: Copy>(rotated: bool, counter_clockwise: bool, sides: [T; 4]) -> [T; 4] {
     let [top, right, bottom, left] = sides;
     if !rotated {

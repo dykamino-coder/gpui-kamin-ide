@@ -1,4 +1,6 @@
-//! Shadow colors resolve at the affected fragment, after inheritance.
+//! Тесты `text-shadow`: `currentColor` тени решается цветом затронутого фрагмента после
+//! наследования (css-text-decor-3 §4), `none` и вложенные цвета дают независимые группы, маска
+//! тени сохраняет записи декораций и исходный цвет текста.
 
 use super::*;
 use crate::style::values::value::Color;

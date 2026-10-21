@@ -1,5 +1,5 @@
-//! Load named ICC resources (`@color-profile`) into the document's
-//! registry (`document::state`) against the effective document base URL.
+//! Загрузка именованных ICC-ресурсов (`@color-profile`) в реестр документа
+//! (`document::state`) относительно действующего базового URL документа.
 
 use crate::document::state::ValueCx;
 #[cfg(test)]

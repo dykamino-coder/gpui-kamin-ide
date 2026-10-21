@@ -1,4 +1,6 @@
-//! Identify font shorthand members whose declarations share source order.
+//! Вычисленный стиль: какие свойства входят в сокращение `font` (CSS Fonts 4
+//! #font-prop — longhand и сбрасываемые подсвойства) и потому делят с ним
+//! порядок объявлений в каскаде; независимые `font-*` сюда не входят.
 
 pub(crate) fn contains(property: &str) -> bool {
     // CSS Fonts 4 #font-prop: longhands and reset-only subproperties

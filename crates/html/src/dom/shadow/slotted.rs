@@ -1,4 +1,11 @@
-//! ::slotted aliases assigned elements; the slot prefix and argument use different trees.
+//! `::slotted()`: правила тени для распределённых элементов.
+//!
+//! Префикс селектора сопоставляется со слотом в его дереве (область тени,
+//! `SlotContext`), аргумент — с каждым плоским распределённым элементом в
+//! светлом дереве; у аргумента нет предков, братьев и псевдоэлементов.
+//! `register_all` проходит по слотам из `TreeIndex::slots` и кладёт совпавшие
+//! правила в `TreeIndex::slotted` по ключу узла, откуда их читает каскад
+//! (`slotted_rules_of`); fallback-дети слота своим `::slotted` не выбираются.
 
 use super::{Ancestor, FlatCtx, Scope};
 use crate::dom::tree_index::{NodeKey, TreeIndex};

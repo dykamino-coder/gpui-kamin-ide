@@ -1,4 +1,5 @@
-//! Computed::apply_effects, продолжение цепочки: animation*, transition*, resize, filter, contain. Ветви в исходном порядке; не совпавший ключ уходит в apply_effects_containment.
+//! Computed::apply_effects, продолжение цепочки: animation*, transition*, resize, filter, contain.
+//! Ветви в исходном порядке; не совпавший ключ уходит в apply_effects_containment.
 
 use super::*;
 use crate::document::state::ValueCx;

@@ -1,4 +1,7 @@
-//! Paint native vertical text about the matching physical edge for both sideways directions.
+//! Геометрия поворота вертикального абзаца: протяжённость строк по блочной
+//! оси, коробка отрисовки с опорой на нужный физический край (при
+//! `vertical-lr` по часовой — на левый, по округлённым абсолютным краям
+//! устройства) и матрица поворота на ±90° для обоих направлений sideways.
 
 use super::*;
 use gpui::{Bounds, Pixels, Point, point, px};

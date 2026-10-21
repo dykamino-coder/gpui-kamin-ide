@@ -1,5 +1,7 @@
-//! A sideways line inherits the actual baseline of its formatted descendants.
-//! Font metrics remain the fallback when the subtree has no baseline set.
+//! Базовая линия повёрнутой строки по оси x (`baseline_x_hint`): настоящая базовая линия
+//! отформатированных потомков, спроецированная по стороне поворота и порядку колонок;
+//! запасной вариант без базовой в поддереве — метрики шрифта первой строки, для центральной
+//! доминантной базовой — середина строки.
 use gpui::{AnyElement, App, AvailableSpace, Font, Pixels, Size, Style, Window, size};
 
 fn project(height: Pixels, baseline: Pixels, ccw: bool, lr: bool) -> (f32, bool) {

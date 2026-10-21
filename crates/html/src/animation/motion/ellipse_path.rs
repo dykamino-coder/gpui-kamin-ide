@@ -1,4 +1,11 @@
-//! Continuous circle/ellipse motion paths, including their true tangents.
+//! `offset-path: circle()`/`ellipse()`: точка и настоящая касательная без ломаной.
+//!
+//! Вход — стиль элемента, текст фигуры и опорная коробка; выход — строка
+//! `transform` для offset-трансформа. Длина дуги эллипса считается интегралом
+//! Симпсона с уточнением, угол по расстоянию — обращением интеграла; поэтому
+//! `offset-rotate: auto` берёт производную кривой, а не хорду ломаной
+//! (motion-1 §2.5 и §3; Blink `computed_style.cc` запрашивает точку и
+//! касательную пути). Отсчёт — по часовой от самой правой точки.
 
 use super::{origin_shift, rotation};
 use crate::document::state::ValueCx;

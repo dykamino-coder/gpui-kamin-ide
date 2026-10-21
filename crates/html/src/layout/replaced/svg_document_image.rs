@@ -1,12 +1,12 @@
-//! An SVG image whose content needs the HTML engine (`<foreignObject>`).
+//! SVG-картинка, чьё содержимое требует HTML-движка (`<foreignObject>`).
 //!
-//! An `<img>` pointing at an SVG file is an independent document in the
-//! secure static mode (SVG 2 §conform-referencing-modes, HTML §4.8.4.3): no
-//! script runs, but `<foreignObject>` still renders its HTML. resvg skips
-//! `<foreignObject>` entirely, so such a file is laid out the way a
-//! standalone `.svg` document is (an SVG root in an embedded document with
-//! the image's natural size, like Blink's `SVGImage` page) instead of being
-//! rasterized. Images without `<foreignObject>` keep the raster path.
+//! `<img>`, указывающий на SVG-файл, — независимый документ в безопасном статическом
+//! режиме (SVG 2 §conform-referencing-modes, HTML §4.8.4.3): скрипты не выполняются, но
+//! `<foreignObject>` всё равно рисует свой HTML. resvg пропускает `<foreignObject>`
+//! целиком, поэтому такой файл раскладывается как самостоятельный документ `.svg`
+//! (корень SVG во вложенном документе с природным размером картинки, как страница
+//! `SVGImage` в Blink), а не растрируется. Картинки без `<foreignObject>` остаются
+//! на растровом пути.
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;

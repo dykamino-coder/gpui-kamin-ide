@@ -1,4 +1,4 @@
-//! Creation of anonymous boxes without authored node identity or pseudo styles.
+//! Создание анонимных боксов без авторской идентичности узла и без псевдо-стилей.
 
 use super::{Element, Marks, Node};
 use crate::style::computed::Computed;

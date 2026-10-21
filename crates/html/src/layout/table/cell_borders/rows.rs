@@ -1,5 +1,7 @@
-//! Row border candidates meet a spanning cell at its logical grid endpoints.
-//! CSS 2.1 §17.6.2.1; Blink TableBorders::ComputeTableBorders marks each row separately.
+//! Кандидаты кромок ряда в сросшейся модели: рамки ряда (и последнего ряда охвата)
+//! встречают охватывающую ячейку на её логических концах сетки и уходят пробами в слой
+//! кромок. CSS 2.1 §17.6.2.1; Blink `TableBorders::ComputeTableBorders` помечает каждый
+//! ряд отдельно.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

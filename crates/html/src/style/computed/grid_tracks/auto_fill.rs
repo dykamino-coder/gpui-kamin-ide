@@ -1,4 +1,5 @@
-//! repeat(auto-fill | auto-fit, …): тело повтора, пределы дорожек, число повторов от размера контейнера.
+//! repeat(auto-fill | auto-fit, …): тело повтора, пределы дорожек, число повторов от размера
+//! контейнера.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -54,10 +55,6 @@ pub(in crate::style::computed) fn auto_fill_max(v: &str) -> (bool, Option<f32>) 
     (false, fr)
 }
 
-/// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
-///
-/// Берётся либо нижняя граница `minmax(N, …)`, либо сама дорожка, если она
-/// задана точкой: `repeat(auto-fill, 100px)` — три колонки в трёхстах точках.
 /// Все дорожки тела повтора `repeat(auto-fill | auto-fit, …)` в точках.
 ///
 /// Тело бывает из нескольких дорожек — `repeat(auto-fill, 50px 50px)`
@@ -106,6 +103,10 @@ pub(in crate::style::computed) fn auto_fill_tracks(v: &str, vcx: ValueCx<'_>) ->
     out
 }
 
+/// Размер повторяемой дорожки в `repeat(auto-fill | auto-fit, …)`.
+///
+/// Берётся либо нижняя граница `minmax(N, …)`, либо сама дорожка, если она
+/// задана точкой: `repeat(auto-fill, 100px)` — три колонки в трёхстах точках.
 pub(in crate::style::computed) fn auto_fill_min(v: &str, vcx: ValueCx<'_>) -> Option<f32> {
     let px_of = |t: &str| match Len::parse(t.trim(), vcx) {
         Some(Len::Px(px)) => Some(px),

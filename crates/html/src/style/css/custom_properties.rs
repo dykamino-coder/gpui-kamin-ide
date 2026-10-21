@@ -1,4 +1,9 @@
-//! Cascade custom-property metadata before exposing values to var() substitution.
+//! Каскад пользовательских свойств (`--*`) до подстановки `var()`: выбор
+//! выигравшего объявления по происхождению, слою, специфичности, порядку и
+//! `!important` (важное UA старше встроенного авторского, CSS Cascade §6.2),
+//! обработка общих CSS-слов как команд каскада (CSS Variables §2), а для
+//! зарегистрированных `@property` — проверка синтаксиса и запасное
+//! начальное/унаследованное значение.
 
 use super::{Decls, Registered, Rule};
 use std::collections::HashMap;

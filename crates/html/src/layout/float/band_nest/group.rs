@@ -1,6 +1,6 @@
-//! Paint groups among the nested flow blocks of the shared band plan: the
-//! block's effects wrap it with all its descendants, while the descendants'
-//! floats stay in the host's exclusions.
+//! Группы paint среди вложенных блоков потока общего плана band: эффекты блока
+//! охватывают его со всеми потомками, а float-ы потомков остаются в exclusions
+//! хоста.
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Computed;

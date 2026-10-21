@@ -1,7 +1,6 @@
 //! Каскад: разрешение, применение объявлений, слои.
 
 use crate::document::state::ValueCx;
-// owner: B
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
@@ -115,7 +114,7 @@ impl Computed {
         }
 
         // Окраска фильтром здесь НЕ делается: результат оседал в
-        // долгоживущем стиле узла, и покадровая окраска в `inline::inherit`
+        // долгоживущем стиле узла, и покадровая окраска в `style::cascade::inherit`
         // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
         // точка окраски — слияние при отрисовке.
         c

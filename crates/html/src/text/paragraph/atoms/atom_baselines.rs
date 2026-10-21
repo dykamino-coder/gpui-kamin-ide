@@ -1,4 +1,7 @@
-//! Atom baselines for atoms; split out to keep the owning module within 250 lines.
+//! Базовые линии атомов и строк (CSS 2.1 §10.8.1): регистрация атомов абзаца
+//! в обёртке со щупом базовой линии (`BaselineProbe`), верх атома от базовой
+//! по `vertical-align`, протяжённость строки над и под базовой по строчным
+//! коробкам, базовая струта, подъём/спуск прогонов и базовая линия отрезка.
 
 use crate::hooks::IntoHooked;
 use crate::text::paragraph::*;

@@ -1,4 +1,5 @@
-//! Parsing and computed-value invariants for text-decoration-inset.
+//! Тесты разбора и вычисленного значения `text-decoration-inset`
+//! (CSS Text Decoration 4 §4.1): негодная запись роняет объявление целиком.
 
 use super::*;
 

@@ -109,7 +109,7 @@ fn paint_rule(
         let third = (w / 3.0).round();
         if (kind == 3 || rule.double) && third >= 1.0 {
             // Two lines across the rule's width, each a third of it
-            // (rounded like the `double` border in `render.rs`).
+            // (rounded like the `double` border in `paint::decorations::borders`).
             let (a0, a1) = (c - w / 2.0, c + w / 2.0);
             for (p0, p1) in [(a0, a0 + third), (a1 - third, a1)] {
                 let (q0, q1) = (edge(gpui::px(p0)), edge(gpui::px(p1)));

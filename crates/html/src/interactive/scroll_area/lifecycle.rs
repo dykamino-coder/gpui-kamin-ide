@@ -1,4 +1,4 @@
-//! Native scroll-area lifecycle retains the extent owner across layout and paint.
+//! Жизненный цикл нативной области прокрутки: владелец extent сохраняется между layout и paint.
 use super::*;
 use gpui::{
     App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels,

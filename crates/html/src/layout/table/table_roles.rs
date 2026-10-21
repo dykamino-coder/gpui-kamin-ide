@@ -1,5 +1,6 @@
-//! Authored display overrides the default table-cell role of td and th.
-//! Inline runs become anonymous cells before their whitespace is discarded.
+//! Роль ячейки таблицы: авторский `display` сильнее умолчания `td`/`th`; строчные прогоны
+//! в ряду становятся анонимными ячейками до отбрасывания пробелов (CSS 2 §17.2.1
+//! удаляет только анонимную строчную коробку из одних пробелов).
 use crate::dom::Node;
 #[cfg(test)]
 use crate::style::computed::Display;

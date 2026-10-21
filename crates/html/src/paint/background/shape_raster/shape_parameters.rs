@@ -1,4 +1,6 @@
-//! Параметры растеризации CSS basic shapes.
+//! Разбор `circle()` и `ellipse()` (css-shapes-1 §3.1.1.3) в параметры растра: центр из
+//! `at` в одно-, двух- и четырёхзначной записи с `calc()`, радиусы из длин, долей и ключевых
+//! слов `closest-/farthest-side|corner`; хвост с опорной коробкой отбрасывается.
 
 use crate::document::state::ValueCx;
 use crate::paint::background::*;

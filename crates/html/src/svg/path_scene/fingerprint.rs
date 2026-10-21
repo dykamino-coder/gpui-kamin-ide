@@ -1,4 +1,4 @@
-//! Content identity for cached path scenes, including masks and filter geometry.
+//! Идентичность содержимого кэшированных сцен путей, включая маски и геометрию фильтров.
 
 use super::*;
 use std::collections::hash_map::DefaultHasher;

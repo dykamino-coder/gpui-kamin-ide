@@ -1,5 +1,8 @@
-//! Definite content widths passed through the HTML flow adapters.
-//! CSS 2 sections 10.2-10.4 use the containing block to resolve and clamp percentages.
+//! Определённая ширина содержимого блока, передаваемая вниз по потоку (`LayoutCx::avail_w`).
+//! Вход: стиль блока и ширина внешнего содержащего блока; выход — ширина содержимого в точках
+//! или `None`, когда она зависит от раскладки (флоат, абсолют, колонки, вертикальное письмо).
+//! По CSS 2 §10.2–10.4 доли ширины, полей и отступов разрешаются от содержащего блока, а
+//! `min-width`/`max-width` ограничивают каждую пробную ширину, включая заполнение `auto`.
 
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

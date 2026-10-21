@@ -1,5 +1,4 @@
 //! Клонирование коробок по фрагментам (`box-decoration-break`).
-// owner: A
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -116,15 +115,12 @@ pub(crate) fn monolith_box(k: &Element) -> bool {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
     // `contain: size` — монолит и у страниц, и в колонках (`size_monolith`).
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): то же БЕЗ роста коробки от
-    // вытолкнутого монолита (`705fd58`) и без правил параллельного потока
-    // в `shape_full` (диапазоны за заданной высотой; `max-height` у
-    // обрезающей коробки). Срез css-break + css-multicol 1495 пар:
-    // 472 -> 467, потеряно 5 (`single-line-{column,row}-flex-fragmentation-
-    // 010/011/051/063`, `overflow-clip-012` 0.00 -> 0.52): монолит в
-    // переполняющем ребёнке выталкивал коробку с ЗАДАННОЙ высотой целиком,
-    // а лишняя мера обрезающей коробки рожала колонку. С тремя правилами
-    // вместе — замер `scout-break-2026-09e.md` §6.
+    // Не вводить его БЕЗ роста коробки от вытолкнутого монолита и без правил
+    // параллельного потока в `shape_full` (диапазоны за заданной высотой;
+    // `max-height` у обрезающей коробки): иначе монолит в переполняющем
+    // ребёнке выталкивает коробку с ЗАДАННОЙ высотой целиком, а лишняя мера
+    // обрезающей коробки рожает колонку (`single-line-{column,row}-flex-
+    // fragmentation-010/011/051/063`, `overflow-clip-012`).
     size_monolith(k)
         || k.style.break_inside_avoid
         || scrolls(k.style.overflow_x)

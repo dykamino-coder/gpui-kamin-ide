@@ -1,4 +1,5 @@
-//! apply_layout, этапы display и гибких осей: вид коробки, направление, перенос, margin-trim, имена линий и размещение в сетке, flex-grow/shrink.
+//! apply_layout, этапы display и гибких осей: вид коробки, направление, перенос, margin-trim, имена
+//! линий и размещение в сетке, flex-grow/shrink.
 
 use super::*;
 
@@ -155,7 +156,8 @@ pub(super) fn layout_display(mut d: Div, c: &Computed) -> Div {
             // Элемент гибкого контейнера и сетки блокифицирован (css-display-3
             // §2.7): его базовая — первая, как у блока.
             // Руби и строчная коробка, сыгранная `inline-block`
-            // (`inline_display`), — не атомы: их базовая — базовая основы.
+            // (`inline_display`), — не атомы: их базовая — базовая основы
+            // (`initial-letter-block-position-raise-over/under-ruby`).
             // Keep the inline-block boundary flag for non-visible overflow too:
             // native output adaptation then suppresses its content baseline.
             if !c.parent_flex_grid && c.ruby_role.is_none() && c.inline_display != Some(true) {

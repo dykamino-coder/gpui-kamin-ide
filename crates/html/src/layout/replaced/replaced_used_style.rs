@@ -1,5 +1,8 @@
-//! Resolve replaced content's sizing behavior before constructing its inner image.
-//! CSS Sizing 3's “behaves as auto” also applies to intrinsic ratio transfer.
+//! Используемый стиль замещаемого до сборки его внутренней картинки: ключевые слова
+//! содержимого и неопределённые доли высоты ведут себя как `auto` (css-sizing-3), и это
+//! распространяется на перенос природной пропорции (css-sizing-4 #aspect-ratio: авторская
+//! пропорция переносит коробку `box-sizing`, природная — всегда content box); процентная
+//! ширина строчной замещаемой — от содержащего блока до построения ряда строки (CSS 2 §10.3.2).
 
 use crate::dom::Element;
 use crate::style::computed::Position;

@@ -1,25 +1,23 @@
-//! Wrapped atomic and text rows preserve inline ordering and static-position probes.
+//! Запасная ветка абзаца — гибкий ряд из отдельных слов и атомов с переносом, когда единым
+//! текстовым блоком его не собрать (не-текстовый кусок в строке). Куски режутся на слова,
+//! склеенные с атомом группы идут одним ребёнком, `<br>` и сохранённый перевод строки —
+//! распоркой во всю ширину, `text-align` — выключкой ряда, `text-indent` — пустой коробкой,
+//! внепоточные куски — нулевой распоркой статической позиции (`overlay_in_row`), ряд из
+//! одних атомов при `rtl` разворачивается (css-writing-modes-4 §2.4, UAX #9 L2).
 
 use super::glue_atoms;
 use crate::style::computed::Computed;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v158, `scout-wm-2026-09f.md` K1): переворот
-/// гибкого ряда из атомов при `direction: rtl` (`flex_row_reverse` + зеркало
-/// `justify_start/end`, гейт «только атомы, без знаков и `<br>`»). Обещание
-/// +24/−0 на `abs-pos-non-replaced-vrl-*`. Полный свод против v35: +0/−4
-/// (`abs-pos-non-replaced-icb-vlr-005/-013`, `-vrl-004/-012` 0.00 → 1.16),
-/// рядом `ruby-bidi-002` 0.16 → 0.72.
-/// Причина отката — ПРИЖИМ, а не разворот: `justify_start()` это
-/// `JustifyContent::Start`, а taffy считает `Start` от ФИЗИЧЕСКОГО начала и
-/// `row-reverse` его не разворачивает (`taffy/.../alignment.rs:50-67`, учёт
-/// разворота есть только у `FlexStart`/`FlexEnd`). Развёрнутый ряд
-/// прижимался к ЛЕВОМУ краю: однокартинная строка `icb-*` уезжала на 530
-/// влево (ровно 1.16 — текст подписи в двух местах), квадрат эталона
-/// `vrl-006-ref` — за левый край окна (3.55 → 2.49). Разворот ниже прижимает
-/// `FlexStart`/`FlexEnd`. Разбор: `target/scout-abspos-vert-2026-09-30.md` §2.
 /// Запасная ветка: гибкая строка из отдельных СЛОВ.
+///
+/// Не зеркалить прижим развёрнутого ряда при `direction: rtl` (`Right` →
+/// `justify_start()`): `justify_start()` это `JustifyContent::Start`, а taffy
+/// считает `Start` от ФИЗИЧЕСКОГО начала и `row-reverse` его не разворачивает
+/// (`taffy/.../alignment.rs`, разворот учтён только у `FlexStart`/`FlexEnd`) —
+/// развёрнутый ряд прижимался к ЛЕВОМУ краю (`abs-pos-non-replaced-icb-vlr-
+/// 005/-013`, `-vrl-004/-012`, `ruby-bidi-002`). Прижим ниже — физический.
 ///
 /// Сюда абзац попадает, когда единым текстовым блоком его не собрать: разные
 /// кегли в строке или не-текстовый кусок посреди неё. Кусок целиком гибкая
@@ -41,8 +39,8 @@ pub fn as_wrapped_row(
     render_text: &mut dyn FnMut(String, &Computed) -> AnyElement,
     // Ряд прозрачен для долей высоты (см. `percent_basis_from_parent` ниже):
     // только в горизонтальной строке. Повёрнутый абзац (`VerticalText`)
-    // меряется отдельным корнем, и его «родитель» — не блок строки:
-    // замерено, `horizontal-rule-vlr-003` 0.08 → 1.22.
+    // меряется отдельным корнем, и его «родитель» — не блок строки
+    // (`horizontal-rule-vlr-003`).
     pct_from_parent: bool,
     // Block flow of a turned vertical line (`Some(vertical-rl)`): an
     // out-of-flow box's static position hangs from the block-start side.
@@ -55,10 +53,10 @@ pub fn as_wrapped_row(
     // `vertical-align` в строке: умолчание — базовая линия, но `middle`,
     // `top` и `bottom` встречаются и раньше не доезжали никуда, кроме
     // ячейки таблицы.
-    // ПРОБОВАЛИ И ОТКАТИЛИ: минимум высоты ряда в струт строки (§10.8), чтобы
-    // ряд из одних картинок не садился на их высоту. Замерено: приобретено 3,
-    // потеряно 37 — ряд переносится, и минимум ложится на ВСЮ пачку строк, а
-    // не на каждую. Возвращать вместе с настоящей строчной раскладкой атомов.
+    // Не класть минимум высоты ряда в струт строки (§10.8), чтобы ряд из одних
+    // картинок не садился на их высоту: ряд переносится, и минимум ложится на
+    // ВСЮ пачку строк, а не на каждую. Вернуть можно только вместе с настоящей
+    // строчной раскладкой атомов.
     // `white-space: nowrap` — строка НЕ переносится (css-text-3 §3): ряд
     // остаётся один и вылезает за край. До ряда значение не доходило вовсе,
     // оно доезжало только до текстового стиля, и раскладка переносила атомы.
@@ -93,7 +91,7 @@ pub fn as_wrapped_row(
     // Ряд строки — не коробка CSS: доли высоты атомов считаются от блока,
     // которому принадлежит строка (CSS 2.1 §10.1 п.2; `vendor/taffy`
     // `percent_basis_from_parent`). Доля доходит сюда, только если блок
-    // определён (`cb_height_def`, гейт `apply.rs`), — иначе она уже `auto`.
+    // определён (`cb_height_def`, гейт `paint/apply`), — иначе она уже `auto`.
     if pct_from_parent {
         row.style().percent_basis_from_parent = Some(true);
     }
@@ -118,20 +116,20 @@ pub fn as_wrapped_row(
     // `inline-block` оставался слева при `text-align: right`.
     //
     // Прижим ФИЗИЧЕСКИЙ и у развёрнутого ряда: `Start`/`End` taffy считает от
-    // физического начала (`taffy/src/compute/common/alignment.rs:50-66`), и
+    // физического начала (`taffy/src/compute/common/alignment.rs`), и
     // `End` кладёт развёрнутую строку к правому краю ровно так же, как
-    // `FlexStart` (первым идёт физически левый ребёнок, `flexbox.rs:2499`,
-    // смещение `free_space` у обоих). Откат K1 (08.09) падал на ЗЕРКАЛЕ
-    // (`Right` → `justify_start()`), а не на физическом прижиме.
+    // `FlexStart` (первым идёт физически левый ребёнок, `flexbox.rs`,
+    // смещение `free_space` у обоих). Ломает не физический прижим, а ЗЕРКАЛО
+    // (`Right` → `justify_start()`), см. доку функции.
     // `FlexStart`/`FlexEnd` здесь нельзя: абсолют-ребёнок ряда (держатель
     // замещаемого с долей ширины, `atom_element`) ставится taffy по
-    // `justify_content` БЕЗ учёта разворота (`flexbox.rs:2782-2799`: пара
+    // `justify_content` БЕЗ учёта разворота (`flexbox.rs`: пара
     // `(FlexStart, false)` → начало), и rtl-статика уезжала к ЛЕВОМУ краю
-    // (`absolute-replaced-width-020`: 3.84 — синий 96×96 слева). Blink
-    // разворот учитывает (`flex_layout_algorithm.cc:457-478`
+    // (`absolute-replaced-width-020`: синий квадрат слева). Blink
+    // разворот учитывает (`flex_layout_algorithm.cc`
     // `MainAxisStaticPositionEdge`), css-flexbox-1 §4.1 — «as if it were the
     // sole flex item». Без значения taffy сам берёт `FlexStart`
-    // (`flexbox.rs:1923`), то есть правый край — начало rtl-строки.
+    // (`flexbox.rs`), то есть правый край — начало rtl-строки.
     row = match text_align {
         Some(TextAlign::Center) => row.justify_center(),
         Some(TextAlign::Right) => row.justify_end(),
@@ -155,10 +153,10 @@ pub fn as_wrapped_row(
     let mut line_empty = true;
     // strut пустой строки — только у ПЕРВОЙ строки с ненулевым отступом
     // (`text-indent-on-blank-line-rtl-left-align`). CSS 2.1 §9.4.2
-    // (css2/Overview.bs:6776) даёт strut и прочим строкам `<br>`, но тогда его
+    // (css2/Overview.bs) даёт strut и прочим строкам `<br>`, но тогда его
     // обязана получить и строка из одного атома (Blink ставит
-    // `should_create_line_box` обоим: line_breaker.cc:2906 и :3158), а у ряда
-    // атомов strut откачен (+3/−37, см. выше). Пустой `<br>` со strut при
+    // `should_create_line_box` обоим: `line_breaker.cc`), а у ряда
+    // атомов strut сознательно нет. Пустой `<br>` со strut при
     // атоме без него разводил пару `<svg height=0>` ↔ `<br>`: эталон
     // `mask-image-3-ref` уезжал на 19.2px, `mask-image-3a…3e, 3h` — 0.61.
     let mut indent_line = indent != 0.0;

@@ -1,4 +1,5 @@
-//! Сокращение background и background-color: inherit, валидность записи, список слоёв, цвет/картинка/положение/размер верхнего слоя. Тело ветви из Computed::apply_background.
+//! Сокращение background и background-color: inherit, валидность записи, список слоёв,
+//! цвет/картинка/положение/размер верхнего слоя. Тело ветви из Computed::apply_background.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -24,8 +25,7 @@ impl Computed {
         // background: bottom fixed` оставляет фон ПРОЗРАЧНЫМ.
         // Сбрасывается только ЦВЕТ: остальные части разбор ниже берёт
         // из записи не полностью, и полный сброс терял то, чего он не
-        // умеет прочесть обратно (замерено: девять пар
-        // `textarea-pre-wrap-*` уходили 0.00 → 0.76).
+        // умеет прочесть обратно (`textarea-pre-wrap-*`).
         // Негодное объявление не сбрасывает ничего (§4.1.7).
         if key == "background" && background_shorthand_valid(v, vcx) {
             self.accept_declaration();

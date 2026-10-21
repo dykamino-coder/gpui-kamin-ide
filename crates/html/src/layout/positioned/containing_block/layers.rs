@@ -1,14 +1,14 @@
-//! Containing-block layers of one build pass: where out-of-flow boxes wait
-//! until the box that contains them takes them as its last children.
+//! Слои containing block одного прохода построения: где ждут вынесенные из потока
+//! боксы, пока содержащий их бокс не заберёт их последними потомками.
 //!
-//! Our layout under the hood resolves an absolute box against its DIRECT
-//! parent; CSS 2.1 §10.1 wants the nearest positioned ancestor (or, for
-//! `fixed`, the nearest ancestor that contains fixed boxes; with none, the
-//! initial containing block). So the box is built in place and handed to the
-//! layer of its containing block. Servo's `PositioningContext` does the same:
-//! the containing block opens it, descendants hoist into it, the containing
-//! block collects. One instance per build pass (`render`, a nested document)
-//! travels in `LayoutCx`, so a nested document never sees an outer layer.
+//! Наш layout «под капотом» разрешает absolute-бокс относительно его ПРЯМОГО
+//! родителя; CSS 2.1 §10.1 требует ближайшего позиционированного предка (для
+//! `fixed` — ближайшего предка, содержащего fixed-боксы; при его отсутствии —
+//! начальный containing block). Поэтому бокс строится на месте и передаётся слою
+//! своего containing block. Так же делает `PositioningContext` в Servo: containing
+//! block открывает его, потомки поднимаются в него, containing block собирает.
+//! Один экземпляр на проход построения (`render`, вложенный документ) едет в
+//! `LayoutCx`, поэтому вложенный документ никогда не видит внешний слой.
 
 use super::SpotCell;
 use super::late::{LatePlace, spot_place};

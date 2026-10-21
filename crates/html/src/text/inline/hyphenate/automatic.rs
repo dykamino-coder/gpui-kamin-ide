@@ -1,4 +1,8 @@
-//! Dictionary hyphenation over whole inline words.
+//! Словарный перенос `hyphens: auto` по целым словам абзаца: слово собирается из текста всех
+//! кусков (разметка режет слова где угодно, кусок вне потока слова не рвёт, атом рвёт), точки
+//! слогораздела по образцам Лианга (`hypher`, язык из `lang`) с ограничениями
+//! `hyphenate-limit-chars` раскладываются обратно в куски мягкими переносами U+00AD; слово с
+//! ручными переносами не трогается.
 
 use super::{Computed, Piece};
 use unicode_properties::{GeneralCategory, GeneralCategoryGroup, UnicodeGeneralCategory};

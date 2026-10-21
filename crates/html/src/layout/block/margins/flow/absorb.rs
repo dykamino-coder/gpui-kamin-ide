@@ -94,14 +94,13 @@ pub(crate) fn absorb_margin(
 // `prev` кладётся поле контейнера, и ребёнку остаётся разница.
 // `body { margin: 8px }` + `p { margin-block: 1em }` при `html
 // { writing-mode: vertical-lr }` дают 16 от края окна, а не 24 — ровно
-// на эти 8 CSS px уезжала ВСЯ страница (`abs-pos-non-replaced-vlr-007`
-// 1.09, `text-indent-vlr-011` 1.09, `clip-rect-vlr-011` 1.00: снимок
-// сдвинут на 10 px при масштабе 1.25, эталон `…-vlr-007-ref` считает
+// на эти 8 CSS px уезжала ВСЯ страница (`abs-pos-non-replaced-vlr-007`,
+// `text-indent-vlr-011`, `clip-rect-vlr-011`: эталон `…-vlr-007-ref` считает
 // «80px + p's margin-left (1em)» от `margin-left: 0.5em` + `body` 8).
 // Отрицательное поле контейнера в схлопывание не вступает (иначе
 // `kept` росло бы на его модуль).
-// Прежний замер «available-size-022/023 0.00 -> 2.66» относился к детям
-// КОРНЯ — у `html` поля не схлопываются, вызов передаёт `None`.
+// `available-size-022/023` — дети КОРНЯ: у `html` поля не схлопываются,
+// вызов передаёт `None`.
 // Пустой блок, сквозь который смыкаются его собственные поля вдоль оси
 // потока (CSS 2.1 §8.3.1: «does not establish a new block formatting
 // context … zero computed 'min-height', zero or 'auto' computed 'height',

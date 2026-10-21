@@ -1,4 +1,7 @@
-//! First line for inline.
+//! `::first-line` поверх собранных кусков абзаца: первые `at` байт (длину первой строки даёт
+//! замер) одеваются в стиль псевдоэлемента — шрифт, возможности, цвет (свой цвет элемента
+//! побеждает, css-pseudo-4 §first-line-inheritance), интерлиньяж и подложка; знаки
+//! управления направлением не считаются и не делятся.
 
 use super::Piece;
 use super::first_line_background;
@@ -59,13 +62,11 @@ pub fn style_first_line(
                     c.inline_bg =
                         first_line_background::paint_color(base.inline_bg, style.background);
                     c.line_height = style.line_height.or(base.line_height);
-                    // ПРОБОВАЛИ И ОТКАТИЛИ: переносить сюда и сдвиг по
-                    // вертикали (§5.12.1 относит `vertical-align` к свойствам
-                    // `::first-line`). Проба по 372 парам семей `first-line-*`
-                    // и `first-letter-*`: `first-line-pseudo-012` 4.66 -> 4.94,
-                    // флипов ноль. Краска поднимается, а коробка нет: высоту
-                    // абзаца заявляет `float::FirstLine` (`measure_first_line`),
-                    // и подъёма она не знает. Возвращаться вместе с ней.
+                    // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
+                    // `vertical-align` к свойствам `::first-line`): краска
+                    // поднимается, а коробка нет — высоту абзаца заявляет
+                    // `float::FirstLine` (`measure_first_line`), и подъёма она
+                    // не знает (`first-line-pseudo-012`). Возвращать вместе с ней.
                     c
                 };
                 let len = text.len();

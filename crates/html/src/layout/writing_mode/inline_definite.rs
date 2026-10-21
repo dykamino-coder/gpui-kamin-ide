@@ -1,13 +1,14 @@
-//! Percentages in a vertical containing block refer to its INLINE size, its physical height.
+//! Проценты в вертикальном containing block относятся к его INLINE-размеру, физической высоте.
 //!
-//! CSS 2.1 §8.3/§8.4 and css-box-4: percentage margins and padding refer to the inline size of
-//! the containing block; css-writing-modes-4 §7.1 maps a percentage `height` of a box in vertical
-//! flow onto that same inline axis. Like a horizontal block's width, a vertical block's height is
-//! definite when it fills its parent's inline axis (CSS 2.1 §10.3.3 in logical terms), all the way
-//! up to the initial containing block (Blink `ComputeInlineSizeForFragment` / fill-available;
-//! Servo `containing_block.size.inline`). taffy resolves these percentages against the PHYSICAL
-//! width and treats a stretched height as indefinite, so they are resolved here, once the parent's
-//! content inline size is known.
+//! CSS 2.1 §8.3/§8.4 и css-box-4: процентные margin и padding относятся к inline-размеру
+//! containing block; css-writing-modes-4 §7.1 отображает процентную `height` бокса в
+//! вертикальном потоке на ту же inline-ось. Как ширина горизонтального блока, высота
+//! вертикального блока определённа, когда он заполняет inline-ось родителя (CSS 2.1
+//! §10.3.3 в логических терминах), вплоть до начального containing block (Blink
+//! `ComputeInlineSizeForFragment` / fill-available; Servo `containing_block.size.inline`).
+//! taffy разрешает эти проценты относительно ФИЗИЧЕСКОЙ ширины и считает растянутую высоту
+//! неопределённой, поэтому они разрешаются здесь, когда известен inline-размер содержимого
+//! родителя.
 use crate::style::computed::{Computed, Display, Overflow, Position, Sides};
 use crate::style::values::value::Len;
 

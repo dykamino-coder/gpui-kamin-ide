@@ -1,4 +1,5 @@
-//! Computed::apply_text_decor, хвост цепочки: text-emphasis*, ruby-*, text-shadow. Ветви в исходном порядке после text-decoration*.
+//! Computed::apply_text_decor, хвост цепочки: text-emphasis*, ruby-*, text-shadow. Ветви в исходном
+//! порядке после text-decoration*.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -158,7 +159,7 @@ impl Computed {
             // Тень в единицах шрифта — строкой до своего кегля (`resolve_em`):
             // `parse_shadows` такую тень пропускает, и `1em 0em purple` у
             // эталона `box-shadow-multiple-001-ref` пропадала, пока тест после
-            // `shadow_raw` уже рисовал свою `box-shadow` в `em` (0.08 → 6.25).
+            // `shadow_raw` уже рисовал свою `box-shadow` в `em`.
             "text-shadow" if has_font_units(v) => {
                 self.text_shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }

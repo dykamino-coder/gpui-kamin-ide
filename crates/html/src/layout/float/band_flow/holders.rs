@@ -1,5 +1,5 @@
-//! Holders of the host's children at their planned places, in CSS 2.1
-//! Appendix E order. A paint group holds its own box and descendants.
+//! Держатели потомков хоста на их запланированных местах в порядке CSS 2.1
+//! Appendix E. Группа paint держит свой бокс и потомков.
 
 use super::kid::{Kid, Kind};
 use super::{Layer, Slot, flatten, frame};

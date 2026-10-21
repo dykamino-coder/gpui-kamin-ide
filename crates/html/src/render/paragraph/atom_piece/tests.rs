@@ -1,4 +1,4 @@
-//! Static-position routing respects the paragraph's coordinate frame.
+//! Тесты: маршрутизация статической позиции учитывает систему координат абзаца.
 
 use super::*;
 use crate::style::computed::Position;

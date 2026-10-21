@@ -1,4 +1,9 @@
-//! Computed::apply_one: display, flex*, align-*/justify-*/place-*, gap, order.
+//! Группа свойств `Computed::apply_one`: `display`, `flex*`,
+//! `align-*`/`justify-*`/`place-*`, `gap`, `order`. Здесь — разбор `display`
+//! во все виды коробок (флекс, сетка, лунки, табличные роли, руби, `run-in`,
+//! `flow-root`, `contents`, двухсловные записи CSS Display 3) с сопутствующими
+//! метками (`inline_display`, `ruby_role`, `col_role`…) и `flex-direction`;
+//! элементы флекса, щели и `place-*` — в подмодулях.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;

@@ -1,6 +1,8 @@
-//! Clip solid border-area image layers by the same outer-minus-inner geometry.
-//! CSS Backgrounds 4 #background-clip; Blink box_painter_base.cc:1695-1715
-//! clips area-filling border styles directly, ignoring border-color alpha.
+//! Обрезка слоёв фоновой картинки при `background-clip: border-area` (CSS Backgrounds 4
+//! #background-clip): четыре прямоугольника «внешняя коробка минус внутренняя» на привязанной
+//! к пикселям сетке покраски; скругления, `border-image` и не сплошные стили рамки уходят на
+//! обычную заливку. Как Blink `box_painter_base.cc:1695-1715`, сплошные стили рамки режутся
+//! напрямую, без учёта альфы `border-color`.
 
 use crate::style::computed::{BgClip, Computed};
 use crate::style::values::value::Len;

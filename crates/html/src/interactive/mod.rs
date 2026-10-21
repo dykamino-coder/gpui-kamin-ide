@@ -1,5 +1,4 @@
 //! Интерактивные элементы: прокрутка, изменение размера, липкие коробки.
-// owner: coordinator
 
 pub(crate) mod forms;
 pub mod frame;

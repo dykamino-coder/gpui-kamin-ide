@@ -1,4 +1,5 @@
-//! Рамка-картинка: разбор пяти свойств border-image* в одну запись BorderImage (Computed::set_border_image).
+//! Рамка-картинка: разбор пяти свойств border-image* в одну запись BorderImage
+//! (Computed::set_border_image).
 
 use super::*;
 use crate::document::state::ValueCx;

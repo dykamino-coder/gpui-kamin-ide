@@ -1,12 +1,11 @@
-//! Image layers of the document canvas on every sheet (css-page-3 §painting).
+//! Слои изображений канваса документа на каждом листе (css-page-3 §painting).
 //!
-//! The root/body background propagates to the canvas (CSS 2.1 §14.2), and in
-//! paged media the canvas of each page is painted over the page box's border
-//! box, above the `@page` background (css-page-3 §page-backgrounds-and-painting-order,
-//! layer 2). The colour is a plain quad (`PageGeom::canvas`); gradients and images
-//! are a real box of that size so the regular background painter positions,
-//! tiles and clips them. Blink paints the same layer in `ViewPainter`
-//! (`PaintRootElementGroup`) per page.
+//! Фон корня/`body` переносится на канвас (CSS 2.1 §14.2), и в страничных носителях
+//! канвас каждой страницы красится по border box коробки страницы поверх фона `@page`
+//! (css-page-3 §page-backgrounds-and-painting-order, слой 2). Цвет — простой квад
+//! (`PageGeom::canvas`); градиенты и картинки — настоящая коробка того же размера, чтобы
+//! обычный художник фона сам их позиционировал, замостил и обрезал. Blink красит тот же
+//! слой в `ViewPainter` (`PaintRootElementGroup`) на каждой странице.
 
 use super::{PageGeom, PageStack};
 use crate::dom::{Element, Node};

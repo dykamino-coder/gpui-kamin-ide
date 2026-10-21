@@ -1,4 +1,4 @@
-//! Source-over composition of straight-alpha CSS colors.
+//! Композиция source-over CSS-цветов с прямой (straight) альфой.
 
 /// Краска `top` поверх `base` (source-over), цвета без премультипликации.
 pub(crate) fn over(

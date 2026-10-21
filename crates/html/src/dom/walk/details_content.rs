@@ -1,14 +1,11 @@
-//! HTML §15.5.4 (the details and summary elements): the `::details-content`
-//! slot box of `<details>`.
-//!
-//! The spec's shadow tree is `<slot summary>` then `<slot ::details-content>`;
-//! Blink (`HTMLDetailsElement::DidAddUserAgentShadowRoot`) and Gecko both
-//! build that UA shadow tree, Servo hides closed content with `display: none`
-//! on the pseudo. Here the slot is a synthetic `::details-content` child box:
-//! the first `summary` child comes first, every other child (except the
-//! host's own `::before`/`::after` boxes) goes into the slot. Its UA style is
-//! `display: block` and, while closed, `content-visibility: hidden`; author
-//! `details::details-content` rules cascade over that.
+//! HTML §15.5.4 (the details and summary elements): коробка-слот
+//! `::details-content` у `<details>`. Теневое дерево спеки — `<slot summary>`,
+//! затем `<slot ::details-content>`; Blink (`HTMLDetailsElement::
+//! DidAddUserAgentShadowRoot`) и Gecko строят это UA-дерево, Servo прячет закрытое
+//! содержимое через `display: none` на псевдо. Здесь слот — синтетический дочерний
+//! `::details-content`: первым идёт первый `summary`, все прочие дети (кроме
+//! `::before`/`::after` хозяина) — в слот. UA-стиль слота `display: block`,
+//! закрытого — `content-visibility: hidden`; авторские правила каскадируют поверх.
 
 use crate::document::state::ValueCx;
 use crate::dom::*;

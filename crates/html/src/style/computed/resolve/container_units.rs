@@ -1,4 +1,5 @@
-//! База единиц контейнера `cq*` для потомков: содержимое контейнера запросов размера (css-conditional-5 §container-lengths).
+//! База единиц контейнера `cq*` для потомков: содержимое контейнера запросов размера
+//! (css-conditional-5 §container-lengths).
 
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};

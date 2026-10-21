@@ -1,4 +1,6 @@
-//! Separable CSS blend functions followed by source-over compositing.
+//! Сепарабельные режимы `background-blend-mode` (CSS Compositing 1 §9) для одного цвета:
+//! функция смешения по каналам с учётом альфы подложки и последующее source-over.
+//! Несепарабельные режимы возвращают `None` и остаются на пути картинок и групп.
 
 use crate::style::computed::BlendMode;
 use crate::style::values::value::Color;

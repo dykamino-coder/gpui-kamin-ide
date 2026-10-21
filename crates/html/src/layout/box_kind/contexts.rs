@@ -4,15 +4,6 @@ use crate::dom::Element;
 use crate::layout::multicol::spanner::multicol_container;
 pub(crate) use crate::style::computed::formatting_context::own_context_style;
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (09.09, v168, `scout-clamp-2026-09g.md` CLAMP-BFC,
-/// 1 хунк): контейнер `line-clamp` заводит свой контекст форматирования
-/// (css-overflow-4 §5.3). Обещание +7. Замер срезом 113 пар вместе с
-/// MC-OOF-COPIES: снятие обоих убрало −5 (`flex-container-fragmentation-010/011`,
-/// `single-line-column-flex-fragmentation-029`, `grid-item-oof-009/010` →
-/// «красное видно») при −2 плюсах. Обособление контекста у клэмпа рушит
-/// фрагментацию гибкого контейнера: у копии фрагмента появляется свой
-/// контекст, и внепоточные теряют содержащий блок. Возвращать вместе с
-/// FRAG-OOF (внепоточные при фрагментации).
 /// Заводит ли коробка СВОЙ блочный контекст форматирования: через её край
 /// поля не схлопываются ни с детьми, ни насквозь (CSS 2.1 §8.3.1).
 pub(crate) fn own_context(e: &Element) -> bool {

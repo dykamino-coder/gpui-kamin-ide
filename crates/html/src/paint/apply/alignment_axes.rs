@@ -1,6 +1,9 @@
-//! Project grid alignment values and safety together onto physical Taffy axes.
-//! A vertical container exchanges items/content; a vertical parent exchanges
-//! the child's self alignment independently of the child's own writing mode.
+//! Применение к GPUI: проекция значений выравнивания сетки и их признака
+//! `safe` на физические оси Taffy. Вертикальный контейнер меняет местами
+//! items/content, вертикальный родитель — self-выравнивание ребёнка независимо
+//! от письма самого ребёнка. Здесь же `normal` у абсолютно позиционированных
+//! (css-align-3 §align-abspos: начало при статической позиции) и позиционные
+//! значения `left`/`right` в сетке — по line-left/line-right, не по `direction`.
 
 pub(super) fn abspos_normal(
     style: &mut gpui::StyleRefinement,

@@ -1,11 +1,11 @@
-//! Luminance mask values quantized like an 8-bit compositor.
+//! Значения маски по светимости, квантованные как в 8-битном композиторе: перевод картинки
+//! слоя маски в альфа-маску с её светимостью, чтобы композитор сэмплировал обычную альфу.
 //!
-//! CSS Masking 1 §7.10.1 ("Calculating mask values") applies the SVG 1.1
-//! `luminanceToAlpha` coefficients (0.2125, 0.7154, 0.0721) to the colour and
-//! multiplies by alpha. Gecko evaluates this on premultiplied 8-bit pixels
-//! with integer weights 55/183/18 (sum 256) and `>> 8`
-//! (SVGMaskFrame `ComputesRGBLuminanceMask`); the WPT mask-mode references
-//! encode exactly those 8-bit results, e.g. blue -> 17/255.
+//! CSS Masking 1 §7.10.1 («Calculating mask values») применяет к цвету коэффициенты
+//! `luminanceToAlpha` из SVG 1.1 (0.2125, 0.7154, 0.0721) и умножает на альфу. Gecko считает
+//! это на премультиплицированных 8-битных точках целыми весами 55/183/18 (сумма 256) и `>> 8`
+//! (SVGMaskFrame `ComputesRGBLuminanceMask`); эталоны WPT mask-mode закодированы ровно этими
+//! 8-битными результатами, например синий -> 17/255.
 
 use gpui::RenderImage;
 use std::sync::Arc;

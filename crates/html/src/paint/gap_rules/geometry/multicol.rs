@@ -1,5 +1,8 @@
-//! Multicol gap geometry follows column boxes, not flex item boundaries.
-//! Blink ColumnGapAccumulator keeps spanner boundaries separate from row gaps.
+//! Пробеги линеек многоколонника из плана фрагментов: `column-rule` по коробкам колонок с
+//! блокировкой под spanner'ами, `row-rule` по промежуткам между рядами колонок без spanner'а,
+//! видимость по занятым колонкам соседних рядов. Геометрия идёт по коробкам колонок, а не по
+//! границам элементов, как в гибком контейнере; Blink `ColumnGapAccumulator` так же держит
+//! границы spanner'ов отдельно от промежутков рядов.
 mod visibility;
 use visibility::row_visible;
 

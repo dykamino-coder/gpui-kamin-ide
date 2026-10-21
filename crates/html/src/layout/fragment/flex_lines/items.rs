@@ -42,7 +42,7 @@ pub(super) fn row_item_width(ks: &Computed, main: f32) -> Option<f32> {
 
 /// Коробка, дающая точку разрыва класса A (css-break-4 §possible-breaks):
 /// блочная, в потоке, не плавающая. `Element.inline` ставится по ТЕГУ
-/// (`dom.rs` `INLINE_TAGS`), поэтому `<img style="display: block; page: b">`
+/// (`dom` `INLINE_TAGS`), поэтому `<img style="display: block; page: b">`
 /// блочным тут признаётся по `display` (`page-name-img-004`: иначе картинка
 /// шла анонимным блоком с именем корня и рвала страницу).
 pub(crate) fn class_a_box(e: &Element) -> bool {

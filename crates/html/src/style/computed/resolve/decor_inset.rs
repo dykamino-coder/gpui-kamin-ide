@@ -1,4 +1,7 @@
-//! Computed lengths for text-decoration-inset (CSS Text Decoration 4 §4.1).
+//! Разрешение длин `text-decoration-inset` (CSS Text Decoration 4 §4.1):
+//! шрифтовые единицы и `lh` — по шрифту и высоте строки элемента после
+//! наследования, единицы окна — отдельным проходом при сборке строки, у которой
+//! общего прохода разрешения окна нет. Смесь доли и точек остаётся `DecorLen::Mix`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, DecorLen};

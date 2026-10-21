@@ -1,11 +1,12 @@
-//! Block axis of the page stack: pagination of a vertical root along x.
+//! Блочная ось стопки страниц: разбиение вертикального корня на страницы вдоль x.
 //!
-//! css-page-3 §page-model: the page area is the fragmentainer, and content is
-//! fragmented along the block axis of the root's writing mode (css-break-3 §2,
-//! css-writing-modes-4 §3.1). The stack arithmetic (`ColumnStack::fill_at`, the
-//! plan) stays logical — "height" is the block size — as in the vertical
-//! multicol path (`column_stack/axis.rs`); this module converts to physical
-//! boxes with `axis_box` (Blink `WritingModeConverter::ToPhysical`).
+//! css-page-3 §page-model: page area — фрагментаинер, и содержимое режется по блочной оси
+//! режима письма корня (css-break-3 §2, css-writing-modes-4 §3.1). Арифметика стопки
+//! (`ColumnStack::fill_at`, план) остаётся логической — «высота» есть блочный размер —
+//! как в вертикальном пути многоколоночника (`column_stack/axis.rs`); этот модуль
+//! переводит её в физические коробки через `axis_box` (Blink
+//! `WritingModeConverter::ToPhysical`), а также продолжает видимое переполнение
+//! коробки на следующие листы и считает протяжённость маски фрагмента.
 
 use super::{PageGeom, PageStack};
 use crate::layout::fragment::types::Frag;

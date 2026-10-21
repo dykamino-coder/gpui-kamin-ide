@@ -1,4 +1,4 @@
-//! Font descriptors and source lists use the shared CSS rule and value tokenizers.
+//! Дескрипторы шрифта и списки источников используют общие токенизаторы CSS-правил и значений.
 
 use crate::document::state::ValueCx;
 use crate::style::css;

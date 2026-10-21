@@ -1,4 +1,4 @@
-//! Parse Blink's experimental nonnegative CSS length mapping of SVG pathLength.
+//! Разбор экспериментального неотрицательного CSS-отображения длины SVG pathLength (Blink).
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::{Len, calc_get};

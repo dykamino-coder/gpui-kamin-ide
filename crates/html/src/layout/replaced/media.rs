@@ -1,4 +1,7 @@
-//! Sizing of replaced media without available natural dimensions.
+//! Размер замещаемых медиа без доступного природного размера (`video` без постера,
+//! пустые `embed`/`object`, `audio` с обособлением): запасные 300×150 по HTML 15.4.1 и
+//! CSS Images 3 §default-sizing отдельно от пропорции `aspect-ratio` или атрибутов,
+//! с пределами CSS 2.1 §10.4 и исчезновением под `contain: size`.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

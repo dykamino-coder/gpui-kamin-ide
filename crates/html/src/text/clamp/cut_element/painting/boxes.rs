@@ -1,4 +1,4 @@
-//! Probed clamp boxes and the collapsed end edges of their ancestor chains.
+//! Опрошенные боксы clamp и схлопнутые концевые края цепочек их предков.
 
 /// A probed block box inside the clamp container, in box-tree preorder.
 #[derive(Debug)]

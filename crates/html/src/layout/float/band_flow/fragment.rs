@@ -1,4 +1,4 @@
-//! Break geometry of the measured band plan, before temporary trees expire.
+//! Геометрия разрывов измеренного плана band до того, как временные деревья истекут.
 
 use super::{Kid, Plan, Slot};
 use crate::layout::fragment::flow::{FloatGeometry, FlowGeometry, FlowMeasurements, FlowNode};

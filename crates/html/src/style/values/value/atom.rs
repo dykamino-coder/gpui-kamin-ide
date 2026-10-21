@@ -1,4 +1,4 @@
-//! Numeric length atoms shared by Len storage and arena-free calc evaluation.
+//! Числовые атомы длины, общие для хранилища Len и вычисления calc без арены.
 
 use super::{
     Len, Sum, calc_store, css_number, root_font_px, root_font_unit, root_font_view, root_line_px,

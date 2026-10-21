@@ -1,4 +1,6 @@
-//! Resolve clearance when the block-start margin adjoins preceding floats.
+//! Верх коробки с `clear` в плане измеряемого хоста, когда её верхнее поле примыкает к
+//! предшествующим флоатам (CSS 2.1 §9.5.2): гипотетическое место при `clear: none` против
+//! низа флоатов названной стороны; клиренс может выйти отрицательным.
 
 use crate::layout::float::bands::FloatBands;
 

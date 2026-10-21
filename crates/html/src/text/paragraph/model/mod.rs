@@ -1,4 +1,4 @@
-//! Paragraph content, inline spans, and state shared with its layout probe.
+//! Модель абзаца `Paragraph`: поля строчной раскладки и состояние документа, общее с зондом.
 use crate::text::paragraph::{atom_fit, decor, tabs};
 mod configuration;
 mod construct;

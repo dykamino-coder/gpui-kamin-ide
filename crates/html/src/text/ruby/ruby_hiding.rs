@@ -1,5 +1,6 @@
-//! Ruby annotation hiding after pairing, CSS Ruby 1 §hiding.
-//! Compare textContent before whitespace collapsing and text transformation.
+//! Сокрытие аннотации руби после спаривания (css-ruby-1 §hiding): аннотация прячется, когда её
+//! textContent до схлопывания пробелов и преобразования регистра совпадает с базой или она
+//! свёрнута `visibility: collapse`; явный `ruby-merge: merge` сокрытие отключает.
 
 use crate::dom::Node;
 use crate::style::computed::Computed;

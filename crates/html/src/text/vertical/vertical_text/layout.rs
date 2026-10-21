@@ -1,4 +1,8 @@
-//! Vertical text measurement and physical layout claims.
+//! Фаза `request_layout` элемента `VerticalText`: содержимое меряется собственным корнем
+//! (по максимальному или минимальному содержимому, либо ортогональной мерой), ширина
+//! заявляется высотой содержимого (факт прошлого кадра сильнее свободного замера), высота —
+//! длиной строки при потолке/пределе, базовая по оси x — через `vertical_line_baseline`;
+//! длина самой длинной строки отдаётся в `InlineMeasure`.
 
 use super::VerticalText;
 use crate::layout::writing_mode::orthogonal_measure;
@@ -7,9 +11,25 @@ use gpui::{App, LayoutId, Window};
 
 impl VerticalText {
     pub(crate) fn request_layout_impl(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        // The atomic subtree is built once and keeps LayoutIds in this engine.
-        // A parent measure callback cannot move it to a nested engine: cached
-        // child LayoutIds would refer to the original tree. See measurements.
+        // Собственный корень раскладки: размер текста нужен ЗДЕСЬ, чтобы
+        // отдать его родителю перевёрнутым. Атомарное поддерево строится один
+        // раз и держит `LayoutId` этого движка; замер по запросу родителя
+        // (`request_measured_layout`) не годится: повёрнутый блок сам живёт
+        // внутри чужого замера, движок там недоступен, а перенос поддерева во
+        // вложенный движок оставил бы в детях `LayoutId` исходного дерева
+        // (см. `measurements`). Ограничение доводится на подготовке.
+        //
+        // Ячейка вертикальной таблицы меряется по МИНИМАЛЬНОМУ содержимому
+        // вдоль строки: её вклад в дорожку колонки — это min-content
+        // («the outer min-content width of each cell that spans the column»,
+        // css-tables-3 §computing-column-measures), а не длина всей строки.
+        // Обёртка до поворота стоит при этом БЕЗ жёсткой ширины
+        // (`col_min` в `render/paragraph/vertical.rs`), поэтому запрос
+        // доходит до самого абзаца: `Paragraph` на
+        // `AvailableSpace::MinContent` отвечает `probe.min_content(window)`.
+        // Дальше `natural.width` — инлайн-мера колонки (её заявит высотой
+        // `fit_within`), а `natural.height` — число строк при этой мере, то
+        // есть блочная толщина ряда.
         let space = gpui::size(
             if self.col_min {
                 gpui::AvailableSpace::MinContent
@@ -85,17 +105,13 @@ impl VerticalText {
                 gpui::AbsoluteLength::Pixels(cap),
             ));
         } else if let Some(limit) = self.fit_limit
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (02.10): допуск +1 на привязку к пикселю
-            // (`natural.width <= limit + 1`, заявка `min(natural, limit)`).
-            // Обёртка до поворота стоит ЖЁСТКОЙ шириной в предел, и при пределе
-            // 394 (рамка 3) замер возвращает 394.4 — строгое `<=` заявку
-            // отклоняет, коробка схлопывается в рамку. С допуском:
-            // `sizing-orthog-v{lr,rl}-in-htb-007/010/019/022` 0.68-0.83 → 0.00
-            // (+8), но `-008/009/011/020/021/023/024` (обе стороны) 0.00-0.20 →
-            // 0.55-0.75 (−14): у них эталон — абсолютная вертикальная коробка с
-            // `height: auto`, и она схлопывается так же; короткой строке нужна
-            // её длина, а жёсткая ширина даёт всегда предел. Возвращать только
-            // вместе с замером длины строки и правкой абсолютного эталона.
+            // Без допуска +1 на привязку к пикселю (`natural.width <= limit + 1`
+            // с заявкой `min(natural, limit)`): обёртка до поворота стоит
+            // ЖЁСТКОЙ шириной в предел, и короткой строке нужна её длина, а не
+            // предел — `sizing-orthog-v{lr,rl}-in-htb-008/009/011/020/021/023/024`
+            // (эталон — абсолютная вертикальная коробка с `height: auto`,
+            // схлопывается так же) ломаются. Вернуть можно только вместе с
+            // замером длины строки и правкой абсолютного эталона.
             && self.natural.width <= limit
         {
             style.size.height = gpui::Length::Definite(gpui::DefiniteLength::Absolute(

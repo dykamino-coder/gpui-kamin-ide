@@ -1,17 +1,15 @@
-//! Subgrid geometry for fixup_grid; split out to keep the owning module within 250 lines.
+//! Геометрия среза подсетки в дорожках родителя (css-grid-2 §subgrids).
+//! `subgrid_slot` — начало и длина пролёта по явному размещению (линия как
+//! край сетки из N+1 линий); `subgrid_span` — пролёт без начальной линии
+//! (`span k`, авто-размещение считает раскладка); `subgrid_gap_slice` —
+//! поправка крайних дорожек среза на половину разницы зазоров, в том числе
+//! отрицательную; `subgrid_inhibited` — когда подсеточность запрещена
+//! независимым контекстом (§subgrid-listing: обособление раскладки/краски,
+//! контейнер запросов размера, внепоточность; список как у Blink `grid_item.cc`).
 
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, px_lossy_zero};
 
-/// Ребёнок гибкого контейнера или сетки не плавает и не очищает.
-///
-/// css-flexbox-1 §4: «`float` and `clear` do not create floating or clearance
-/// for flex item», то же в css-grid-2 §6 для элемента сетки — обе величины
-/// вычисляются в `none` у элемента В ПОТОКЕ (абсолютный ребёнок элементом
-/// контейнера не является и правило его не касается).
-///
-/// Без этого правило §10.6.3 «блок из одних флоатов высотой ноль» считало
-/// гибкий контейнер пустым и обнуляло его высоту (`flex-box-wrap` и родня).
 /// Начало и длина пролёта подсетки в дорожках родителя.
 ///
 /// Только явные формы: у подсетки без размещения среза нет, и трогать её
@@ -106,16 +104,6 @@ pub(super) fn subgrid_gap_slice(
     }
 }
 
-/// ★ ЗАМЕРЕНО И ОТКАЧЕНО (08.09, v164/v165, `scout-grid-2026-09g.md`, 6 хунков):
-/// поосевые признаки `subgrid_rows`/`subgrid_cols` в `Computed`/`dom.rs`/
-/// `render.rs` + мост `TaffyLayoutEngine::grid_track_sizes` (KaminIDE patch).
-/// Обещание +2…+4. Срез из 63 пар (v165, только этот патч и `<canvas>`):
-/// +2 (`column-line-names-014`, `row-line-names-014`) / −3
-/// (`column-auto-placed-subgrid-inherited-tracks-001` и
-/// `-nested-subgrid-inherited-tracks-001` → «красное видно»,
-/// `-inherited-tracks-003` 0.00 → 2.08). Поосевой признак без второго прохода
-/// по разрешённым дорожкам ломает наследование дорожек у авто-размещённой
-/// подсетки. Возвращать только вместе со вторым проходом (GRID-SUBGRID-TRACKS).
 /// Дорожки родительской сетки — вниз, в ПОДСЕТКУ (css-grid-2 §subgrids).
 ///
 /// Своих дорожек в подсеточной оси у подсетки нет: она берёт СРЕЗ
@@ -138,7 +126,7 @@ pub(super) fn subgrid_gap_slice(
 /// renderer/core/layout/grid/grid_item.cc:189-191`): обособление РАСКЛАДКИ,
 /// обособление ОТРИСОВКИ и контейнер запросов размера — плюс внепоточность.
 /// `contain: strict` и `contain: content` сюда попадают сами: разбор
-/// `computed.rs` раскрывает их в `layout`+`paint`.
+/// `style::computed` раскрывает их в `layout`+`paint`.
 ///
 /// Чего в списке НЕТ и быть не должно:
 /// * `overflow: hidden|scroll` — css-grid-2 §subgrid-overflow прямо разрешает
@@ -148,6 +136,12 @@ pub(super) fn subgrid_gap_slice(
 ///   `independent-formatting-context.html` требуют, чтобы подсетка ОСТАЛАСЬ;
 /// * `<fieldset>` и `<button>` — `independent-formatting-context-fieldset`
 ///   (0.00) проверяет, что они ГОДНЫЕ подсетки.
+///
+/// Не переводить срез на поосевые признаки `subgrid_rows`/`subgrid_cols` в
+/// `Computed`/`dom`/`render` без второго прохода по разрешённым
+/// дорожкам: без него ломается наследование дорожек у авто-размещённой
+/// подсетки (`column-auto-placed-subgrid-inherited-tracks-001`,
+/// `-nested-subgrid-inherited-tracks-001`, `-inherited-tracks-003`).
 pub(crate) fn subgrid_inhibited(style: &Computed) -> bool {
     style.contain_layout == Some(true)
         || style.contain_paint == Some(true)

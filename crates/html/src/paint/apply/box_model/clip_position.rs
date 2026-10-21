@@ -1,4 +1,5 @@
-//! apply_box, этап после полей и рамок: обрезка по clip-path circle(), contain: layout/paint, вид позиционирования (sticky выходит сразу); дальше — box_overflow.
+//! apply_box, этап после полей и рамок: обрезка по clip-path circle(), contain: layout/paint, вид
+//! позиционирования (sticky выходит сразу); дальше — box_overflow.
 
 use super::*;
 use crate::document::state::ValueCx;

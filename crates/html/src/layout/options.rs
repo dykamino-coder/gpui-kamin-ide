@@ -1,9 +1,9 @@
-//! Application render options: the build contract every box receives.
+//! Параметры отрисовки приложения: контракт построения, который получает каждый бокс.
 //!
-//! `RenderOpts` carries what the host sets (base text style, viewport,
-//! `line-height: normal` factor) plus the layout and fragmentation contexts a
-//! box hands to the boxes inside it. The render entrypoints consume it; the
-//! layout, text and paint domains read it without depending on render.
+//! `RenderOpts` несёт то, что задаёт хост (базовый текстовый стиль, viewport,
+//! коэффициент `line-height: normal`), плюс контексты layout и фрагментации,
+//! которые бокс передаёт боксам внутри себя. Точки входа render потребляют его;
+//! домены layout, text и paint читают его, не завися от render.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

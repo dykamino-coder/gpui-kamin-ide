@@ -1,4 +1,4 @@
-//! Native control metrics, independent of the embedding application's UI.
+//! Метрики нативных элементов управления, независимые от UI встраивающего приложения.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;

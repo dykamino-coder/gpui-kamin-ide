@@ -1,4 +1,8 @@
-//! Transfer definite aspect-ratio limits without overriding destination sizes.
+//! Применение к GPUI: перенос определённых ограничений `min-*`/`max-*` через
+//! `aspect-ratio` на другую ось (CSS Sizing 4, size transfers). Заданные автором
+//! ограничения и предпочтительный размер оси-получателя старше перенесённых;
+//! при автоматическом минимуме по содержимому жёсткий перенесённый максимум не
+//! вставляется (CSS Sizing 4 §5.2). Возвращает копию стиля только при изменении.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;

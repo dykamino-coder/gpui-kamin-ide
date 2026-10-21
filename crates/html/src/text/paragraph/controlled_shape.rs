@@ -1,5 +1,7 @@
-//! Resolved visual runs must not undergo a second Unicode bidi analysis in the shaper.
-//! CSS Writing Modes 4 §2.4 and UAX #9 L4: mirror once at the resolved run level.
+//! Текст для набора ГОТОВОГО видимого прогона: обёртка в явное
+//! переопределение направления (LRO/RLO + PDF), чтобы платформенный набор
+//! не разбирал уровни bidi второй раз. CSS Writing Modes 4 §2.4 и UAX #9 L4:
+//! зеркалить парную пунктуацию ровно один раз, на уровне готового прогона.
 use gpui::{SharedString, TextRun};
 
 pub(super) fn text(body: &str, runs: &mut [TextRun], rtl: bool) -> SharedString {

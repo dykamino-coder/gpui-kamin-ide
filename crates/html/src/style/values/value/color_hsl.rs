@@ -1,4 +1,4 @@
-//! HSL colors: distinct legacy comma and modern space/slash grammars.
+//! HSL-цвета: раздельные грамматики legacy (через запятую) и современная (пробел/слэш).
 
 use super::{Color, css_number, fold_simple_calc};
 

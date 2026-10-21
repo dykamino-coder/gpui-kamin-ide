@@ -1,4 +1,5 @@
-//! The shape-estimate record of a stack child, restored when pagination fails.
+//! Запись ребёнка стопки по оценке формы (элемент, копии, высоты, точки разреза, признаки
+//! монолита), снимаемая перед разметкой по сетке и восстанавливаемая, если разметка не удалась.
 
 /// The stack record of a child before pagination (`paginate_one`).
 pub(super) struct Saved {

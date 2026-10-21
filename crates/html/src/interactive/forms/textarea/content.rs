@@ -1,4 +1,6 @@
-//! Measure intrinsic keyword axes using the same paragraph as the editor paint.
+//! Измерение осей `<textarea>`, заданных intrinsic-ключевыми словами (`min-content`,
+//! `max-content`, `fit-content`): тем же параграфом, которым красится редактор, с добавкой
+//! gutter полос прокрутки; остальные оси берут natural-размер из `rows`/`cols`.
 use crate::style::values::value::Len;
 use crate::{dom::Node, layout::options::RenderOpts, style::computed::Computed};
 use gpui::{AvailableSpace, px, size};

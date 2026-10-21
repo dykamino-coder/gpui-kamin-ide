@@ -1,4 +1,6 @@
-//! Keep empty inline metrics in a paragraph that already generates a line.
+//! Метрики пустой строчной коробки (CSS 2.1 §10.8) учитываются только в абзаце, который уже
+//! порождает строку: есть ли среди детей значащий текст в потоке и отличаются ли метрики
+//! строки коробки (интерлиньяж, кегль, семейство) от родительских.
 
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display, Position};

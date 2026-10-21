@@ -1,4 +1,6 @@
-//! Per-line root inline strut; CSS Pseudo 4 §first-line-styling.
+//! Струт корневой строчной коробки ПЕРВОЙ строки (`::first-line`, CSS Pseudo 4
+//! §first-line-styling): свой шрифт, кегль и высота строки с метриками,
+//! замеряемыми при раскладке; остальные строки берут струт абзаца.
 
 use super::Paragraph;
 use gpui::{Font, Pixels, Window};
