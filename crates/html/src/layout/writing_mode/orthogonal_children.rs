@@ -1,6 +1,6 @@
 //! Orthogonal horizontal children keep percentages and native intrinsic sizing.
 use crate::dom::Node;
-use crate::render::in_flow;
+use crate::layout::box_kind::in_flow;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 

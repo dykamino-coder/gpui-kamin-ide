@@ -3,12 +3,11 @@
 use super::place_element;
 use crate::animation::animation_live::animated;
 use crate::interactive::sticky::sticky_wrap;
+use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
-use crate::paint::effects::grouped::grouped;
-use crate::paint::stacking::{blends_inside, stacking_context};
 use crate::render::blocks::flow::BelowRun;
-use crate::render::*;
+use crate::render::blocks::inset_holder_box;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -89,33 +88,10 @@ pub(crate) fn position_element(
         .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
     let outer_opts = opts;
     let opts = sticky_opts.as_deref().unwrap_or(opts);
-    // Mask image lengths and colors use the same inherited computed values as
-    // the element, while the wrapper retains its own positioning and clipping.
-    let mask_style = e.style.mask_image.as_ref().map(|_| {
-        let computed = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
-        let mut style = (*e.style).clone();
-        style.mask_image = computed.mask_image;
-        style
-    });
-    let group_style = mask_style.as_ref().unwrap_or(&e.style);
     let built = if let Some(block_axis) = holder_axis {
         inset_holder_box(e, block_axis, inherited, opts, &kw_len)
-    } else if stacking_context(&e.style)
-        && e.style.isolate != Some(true)
-        && blends_inside(&e.children, 0)
-    {
-        // css-compositing-1 §mix-blend-mode: смешиваемый потомок
-        // смешивается только с содержимым СВОЕГО контекста наложения.
-        // Контекст обязан сложиться отдельной группой, иначе подложкой
-        // становится весь кадр: белая страница вокруг родителя давала
-        // красное кольцо (`-blended-element-with-transparent-pixels`),
-        // lime вместо fuchsia (`-blended-with-3D-transform`). Blink —
-        // `PaintLayer::HasNonIsolatedDescendantWithBlendMode`.
-        let mut iso = group_style.clone();
-        iso.isolate = Some(true);
-        grouped(animated(e, inherited, opts), &iso, vcx)
     } else {
-        grouped(animated(e, inherited, opts), group_style, vcx)
+        crate::paint::effects::grouped::block_group(animated(e, inherited, opts), e, inherited, vcx)
     };
     let built = match root_box {
         Some(area) if e.style.root_box && e.style.canvas_bg => {

@@ -83,15 +83,17 @@ impl Layers {
 /// Options for a ruby base column: nested ruby annotations inside stack on
 /// `layers` (`LayoutCx::ruby_layers`).
 pub(crate) fn based(
-    opts: &crate::render::RenderOpts,
+    opts: &crate::layout::options::RenderOpts,
     layers: Rc<Layers>,
-) -> Box<crate::render::RenderOpts> {
+) -> Box<crate::layout::options::RenderOpts> {
     opts.inner(|cx| cx.ruby_layers = Some(layers))
 }
 
 /// Options for an independent inline context inside a ruby (an annotation,
 /// an atomic inline): no base layers and no base-width sink.
-pub(crate) fn independent(opts: &crate::render::RenderOpts) -> Box<crate::render::RenderOpts> {
+pub(crate) fn independent(
+    opts: &crate::layout::options::RenderOpts,
+) -> Box<crate::layout::options::RenderOpts> {
     opts.inner(|cx| {
         cx.ruby_layers = None;
         cx.ruby_base = None;

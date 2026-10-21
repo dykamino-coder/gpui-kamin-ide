@@ -2,11 +2,11 @@
 
 use super::{TableBands, row_geometry};
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::table::is_cell;
-use crate::render::is_blank;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table_row_cuts(

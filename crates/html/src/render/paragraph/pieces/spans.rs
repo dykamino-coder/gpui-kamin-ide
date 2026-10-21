@@ -1,7 +1,8 @@
 //! Направление и интервалы текста при настройке абзаца.
 
+use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
-use crate::render::*;
+use crate::render::paragraph::edges::in_edge;
 use crate::style::computed::Computed;
 use crate::text::inline;
 use gpui::px;

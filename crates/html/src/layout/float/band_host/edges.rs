@@ -35,11 +35,16 @@ pub(crate) fn band_margins(
     c: &Computed,
     em: f32,
 ) -> Option<[crate::layout::float::band_flow::Edge; 4]> {
-    let em = band_em(c, em)?;
+    // The box's font size matters only to an `em` margin.
+    let em = band_em(c, em);
+    let edge = |l: &Option<Len>| match l {
+        Some(Len::Em(_)) => band_edge(l, em?),
+        _ => band_edge(l, 0.0),
+    };
     Some([
-        band_edge(&c.margin.top, em)?,
-        band_edge(&c.margin.right, em)?,
-        band_edge(&c.margin.bottom, em)?,
-        band_edge(&c.margin.left, em)?,
+        edge(&c.margin.top)?,
+        edge(&c.margin.right)?,
+        edge(&c.margin.bottom)?,
+        edge(&c.margin.left)?,
     ])
 }

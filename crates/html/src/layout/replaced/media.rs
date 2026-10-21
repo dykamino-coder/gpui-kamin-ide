@@ -2,8 +2,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::{image, limits::css2_replaced_limits, replaced_used_style};
-use crate::render::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;

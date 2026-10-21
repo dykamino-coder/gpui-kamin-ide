@@ -1,5 +1,7 @@
 //! Цикл по детям блока: строчные прогоны, блочные дети, позиционированные (blocks_flow).
 
+use crate::layout::options::RenderOpts;
+use crate::render::paragraph_route::paint_inline_step7;
 mod inline_node;
 pub(super) use inline_node::inline_node;
 
@@ -9,7 +11,6 @@ pub(super) use element::paint_element;
 
 use crate::dom::Node;
 use crate::paint::effects::containment_paint;
-use crate::render::*;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -131,7 +132,6 @@ pub(super) fn blocks_flow(
                 ordered_context,
                 under_tf,
                 &frame,
-                &mut letter_scope,
                 &mut out,
                 &mut below,
             );

@@ -1,10 +1,11 @@
 //! Клоны коробки по фрагментам: декорация клона (clone_dec) и сборка фрагмента (clone_fragment).
 
 use super::solid_box;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::multicol::spanner::multicol_container;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

@@ -24,6 +24,7 @@ pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod stretch;
+pub(crate) mod style_font;
 #[cfg(test)]
 mod tests {
     //! Tests for fonts.

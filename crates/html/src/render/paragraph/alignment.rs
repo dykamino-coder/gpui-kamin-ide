@@ -1,8 +1,9 @@
 //! Выравнивание атомарных inline-коробок относительно строки.
 
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
+use crate::layout::options::own_size;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

@@ -166,14 +166,11 @@ pub(super) fn band_host_m(
     band_host_m_tail(nodes, j, em, lead, floaters, rest, probes, cb, vcx)
 }
 
-/// The synthetic node of a measured float host: `shape_flow` hands it to
+/// The synthetic node of a measured float host: the element dispatcher hands it to
 /// `band_flow_host`, which lays its children out with `band_flow::BandFlow`.
 fn measured_host(flow: crate::dom::ShapeFlow, children: Vec<Node>) -> Element {
     let marks = crate::dom::Marks {
-        shape_flow: Some(crate::dom::ShapeFlow {
-            bands: Some(crate::dom::BandPath::Measured),
-            ..flow
-        }),
+        shape_flow: Some(flow),
         ..Default::default()
     };
     Element::synthetic("shape-flow", Default::default(), marks, children)

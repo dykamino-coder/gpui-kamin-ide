@@ -1,7 +1,7 @@
 //! Шрифт и ключевые слова размеров замещаемых элементов: наследуемый шрифт атома, пределы CSS2 и canvas.
 
 use crate::dom::Element;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 

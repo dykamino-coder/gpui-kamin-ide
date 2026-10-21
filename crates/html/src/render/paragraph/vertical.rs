@@ -1,5 +1,10 @@
 //! Выбор физического маршрута вертикального абзаца.
 
+use crate::dom::text_content::gather_text;
+use crate::layout::options::RenderOpts;
+use crate::render::native_paragraph_route;
+use crate::text::fonts::style_font::measure_font;
+use crate::text::paragraph::text_id::text_id;
 mod upright;
 mod upright_central;
 pub(super) use upright::upright_paragraph;
@@ -8,7 +13,6 @@ use super::{paragraph, paragraph_routed};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::native_vertical;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};

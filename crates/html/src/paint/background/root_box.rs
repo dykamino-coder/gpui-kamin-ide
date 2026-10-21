@@ -86,6 +86,8 @@ impl Hooks for RootBox {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.child.paint(window, cx);
+        // Measuring the root box does not create a stacking context (CSS2
+        // Appendix E.2). Keep its inline foreground in the enclosing phases.
+        gpui::paint_reopen(|| self.child.paint(window, cx));
     }
 }

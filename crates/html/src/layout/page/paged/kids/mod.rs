@@ -2,11 +2,12 @@
 
 use super::PAGE_COPIES;
 use crate::dom::Node;
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::oof_reach;
 use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
-use crate::render::{RenderOpts, blocks, out_of_flow};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
@@ -99,7 +100,7 @@ pub(super) fn page_kids_from_groups(
             };
             let source = if band { band_group.as_slice() } else { group };
             let el = wrap
-                .children(blocks(source, root, &opts))
+                .children(opts.cx.build.blocks(source, root, &opts))
                 .into_any_element();
             slot.extend(layer(icb_layer.finish()));
             fixed_slot.extend(layer(opts.take_paged_fixed()));

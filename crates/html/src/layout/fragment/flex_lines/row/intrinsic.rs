@@ -2,8 +2,9 @@
 
 use super::super::items::row_item_width;
 use super::geometry::row_container;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
-use crate::render::{is_blank, out_of_flow};
+use crate::layout::box_kind::out_of_flow;
 use crate::style::values::value::{Len, px_auto_zero};
 
 pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, f32)> {

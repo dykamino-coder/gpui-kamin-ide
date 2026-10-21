@@ -3,7 +3,7 @@
 use crate::dom::Element;
 use crate::layout::positioned::relative::relative_shift;
 use crate::layout::table::anon::html_cell;
-use crate::render::styled_div_with;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};

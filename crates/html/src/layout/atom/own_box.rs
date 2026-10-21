@@ -1,9 +1,11 @@
 //! Строчный кусок со своей коробкой (фон, рамка, отступы) или своим письмом.
 // owner: A
 
+use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
+use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::grouped::grouped;
-use crate::render::{RenderOpts, blocks, pseudo_line_layers, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -153,7 +155,7 @@ pub(super) fn own_box_atom(
     });
     let mut kids =
         crate::layout::multicol::gap_rules::decorated_children(e, &merged, opts, |opts| {
-            blocks(&e.children, &merged, opts)
+            opts.cx.build.blocks(&e.children, &merged, opts)
         });
     if let Some(layer) = cb_layer {
         kids.extend(layer.finish());

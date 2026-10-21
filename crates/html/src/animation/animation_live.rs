@@ -4,8 +4,8 @@ use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::options::RenderOpts;
 use crate::paint::effects::transform::transformed;
-use crate::render::{RenderOpts, element};
 use crate::style::computed::{AnimSpec, Computed};
 use gpui::{AnyElement, IntoElement};
 
@@ -25,7 +25,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 
 fn painted(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     transformed(
-        element(e, inherited, opts),
+        opts.cx.build.element(e, inherited, opts),
         &e.style,
         inherited,
         opts.cx.vcx(),

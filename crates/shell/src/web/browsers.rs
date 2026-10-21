@@ -212,10 +212,6 @@ pub(crate) fn opened_ago(id: &str) -> Option<std::time::Duration> {
     OPENED_AT.lock().ok()?.get(id).map(|t| t.elapsed())
 }
 
-/// Показать в вью нашу страницу (HTML из стора моста).
-///
-/// HTML отдаём `data:`-ссылкой: свой обработчик схемы — отдельная работа, а
-/// страницы моста весят десятки килобайт и в ссылку помещаются.
 /// Выполнить JS в странице вью (расширение → страница).
 pub(crate) fn execute_script(id: &str, js: &str) {
     let js = js.to_string();
@@ -305,6 +301,7 @@ pub(crate) fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
     if let Ok(mut map) = OPENED_AT.lock() {
         map.insert(id.to_string(), std::time::Instant::now());
     }
+    let accelerated = super::profile::record(id);
 
     let mut client = ViewClient::new(
         ViewRender::new(id.to_string()),
@@ -317,11 +314,9 @@ pub(crate) fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
     let window_info = WindowInfo {
         windowless_rendering_enabled: 1,
         // В software-режиме (RDP) общие текстуры выключены: с ними CEF без
-        // GPU-композитинга не шлёт кадры вовсе (см. `web::sw_mode`).
-        // Кадр — готовой текстурой D3D11, без копий в оперативке
-        // (`plan/101-cef.md`, шаг B). Тогда вместо `on_paint` зовётся
-        // `on_accelerated_paint`.
-        shared_texture_enabled: if super::sw_mode() { 0 } else { 1 },
+        // GPU-композитинга не шлёт кадры вовсе (см. `web::sw_mode`). Иначе
+        // кадр — готовой текстурой D3D11 (`on_accelerated_paint`).
+        shared_texture_enabled: accelerated.into(),
         // Кадр рисует САМ Chromium — по факту изменений на странице.
         //
         // Пробовал «кадр только по нашему запросу»: запрос уходил из
@@ -364,6 +359,7 @@ pub(crate) fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
         if let Ok(mut set) = STARTING.lock() {
             set.remove(id);
         }
+        super::profile::forget(id);
     }
 }
 
@@ -427,6 +423,7 @@ pub(crate) fn close(id: &str) {
     if let Ok(mut m) = OPENED_AT.lock() {
         m.remove(id);
     }
+    super::profile::forget(id);
     let Some(browser) = browser else { return };
     // Методы браузера живут на потоке CEF; force=1 — без beforeunload-диалогов.
     super::input::run_on_cef(move || {

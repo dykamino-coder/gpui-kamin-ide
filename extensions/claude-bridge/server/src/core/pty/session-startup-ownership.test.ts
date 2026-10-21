@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 const h = vi.hoisted(() => ({
+  deleteData: vi.fn(),
   wss: null as any,
   root: '',
   reattach: vi.fn((session: any, ws: any) => (session.ws = ws)),
@@ -61,7 +62,7 @@ vi.mock('./session-manager', () => ({
   restartWithEffort: h.restartEffort,
   restartWithModel: h.restartModel,
   getSessionTree: () => [],
-  deleteSessionByConversationId: vi.fn(),
+  deleteSessionByConversationId: h.deleteData,
 }))
 // Inert boundaries for the opt-in real PTY test. No user settings/provider.
 vi.mock('./session-settings', () => ({
@@ -135,6 +136,7 @@ let socket: Socket
 let sockets: Socket[] = []
 beforeEach(() => {
   vi.useFakeTimers()
+  h.deleteData.mockReset()
   h.create.mockReset()
   h.resolve.mockReset().mockResolvedValue({ userName: 'tester', tokenId: 'token' })
   h.detach.mockReset()
@@ -435,4 +437,17 @@ describe('INC-2026-0013 actual WebSocket startup ownership', () => {
     },
     15_000,
   )
+})
+
+describe('AB-01 delete-data authentication', () => {
+  it('refuses deletion before authentication', async () => {
+    await socket.message({ type: 'session:delete-data', conversationId: '11111111-2222-3333-4444-555555555555' })
+    expect(h.deleteData).not.toHaveBeenCalled()
+  })
+  it('passes the authenticated token namespace for legitimate deletion', async () => {
+    h.create.mockImplementation(async (ws) => makeSession('delete-owner', ws))
+    await socket.message({ type: 'session:create', token: 'synthetic' })
+    await socket.message({ type: 'session:delete-data', conversationId: '11111111-2222-3333-4444-555555555555' })
+    expect(h.deleteData).toHaveBeenCalledWith('11111111-2222-3333-4444-555555555555', 'tester', 'token')
+  })
 })

@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::line_shape::{items_kind, line_content_w};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use std::rc::Rc;

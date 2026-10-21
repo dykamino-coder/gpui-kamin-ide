@@ -8,7 +8,10 @@ use crate::style::computed::Display;
 /// box. Leading spaces next to inline content belong to that same box.
 pub(super) fn flush_inline(cells: &mut Vec<Node>, run: &mut Vec<Node>) {
     let inline = std::mem::take(run);
-    if inline.iter().any(|node| !crate::render::is_blank(node)) {
+    if inline
+        .iter()
+        .any(|node| !crate::dom::whitespace::is_blank(node))
+    {
         cells.push(Node::Element(crate::layout::table::anon::anon_element(
             "td", inline,
         )));

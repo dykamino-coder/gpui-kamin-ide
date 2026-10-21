@@ -3,11 +3,12 @@
 use crate::document::state::ValueCx;
 // owner: A
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::flex_lines::{class_a_box, item_container};
 use crate::layout::fragment::probe::forced_opaque;
 use crate::layout::fragment::table_bands::table_box;
-use crate::render::{is_blank, out_of_flow};
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
 

@@ -1,9 +1,9 @@
 //! Хост полос обтекания с ИЗМЕРЕННЫМИ размерами (шаги F2, F3, F5 плана
 //! `target/scout-float-bands-design.md`).
 //!
-//! Статический бандовый хост (`render.rs`, `shape_flow` с `bands=1`) знает
-//! только литералы стиля: ширину содержащего блока точками и размеры каждого
-//! флоата и куска хвоста точками. Здесь всё это берётся из раскладки:
+//! The one float placement of the engine: every float run of a block
+//! container is planned here (`wrap_floats`). Sizes the style does not give
+//! come from layout:
 //!
 //! * ширина контекста — из замера (`known`/`available`) и из `bounds` в
 //!   `prepaint`, а не из `style.width` (F2: `<td>` без ширины в стиле, тело
@@ -30,7 +30,7 @@ mod kid;
 mod piece;
 use crate::layout::float::shapes::FloatShape;
 use gpui::{AnyElement, App, IntoElement, LayoutId, Window, div, prelude::*, px};
-pub use kid::{Kid, Kind, Nest, ShapeOf};
+pub use kid::{GroupWrap, Kid, Kind, Nest, ShapeOf};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -42,6 +42,7 @@ use float_kid::{place_float, place_nest};
 use flow_kid::place_flow;
 mod element;
 mod fragment;
+mod holders;
 pub use element::BandFlow;
 mod tap;
 use tap::Tap;
@@ -153,11 +154,18 @@ fn frame(
     } else {
         div().flex().flex_col().w(px(avail.max(0.0)))
     };
-    let col = if matches!(kind, Kind::Float { .. }) {
+    let mut col = if matches!(kind, Kind::Float { .. }) {
         col.items_start()
     } else {
         col
     };
+    // CSS 2.1 Appendix E.2 step 5: a float is painted atomically, as if it
+    // created a stacking context, whatever box it is (scroller, table,
+    // replaced); its positioned descendants still belong to the enclosing
+    // context, which the atomic paint passes them to.
+    if matches!(kind, Kind::Float { .. }) {
+        col.style().paint_atomic = Some(true);
+    }
     let el = if matches!(kind, Kind::Float { .. }) {
         crate::paint::decorations::outline_phase::scope(el, Some(paint))
     } else {
@@ -189,24 +197,31 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
 /// Painting layer of a host child (CSS 2.1 Appendix E): in-flow block-level
 /// boxes paint their backgrounds (step 4) below floats (step 5), and inline
 /// content (step 7) above them. An anonymous inline run has no box of its
-/// own, so it is painted entirely in the inline layer.
+/// own, so it is painted entirely in the inline layer. A paint group
+/// (`Nest::group`) is painted atomically with all its descendants on the
+/// level of positioned boxes (step 8; CSS Color 4 §opacity).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Layer {
     Block,
     Float,
     Inline,
+    Group,
 }
 
 fn layer(kid: &Kid) -> Layer {
     match kid.kind {
         Kind::Float { .. } => Layer::Float,
         _ if kid.anon => Layer::Inline,
+        _ if kid.nest.as_ref().is_some_and(|n| n.group.is_some()) => Layer::Group,
         _ => Layer::Block,
     }
 }
 
 /// Дети слоя `layer` и их места плоским списком в порядке краски, на любой
-/// глубине (коробка `Kind::Nest` раньше своих детей).
+/// глубине (коробка `Kind::Nest` раньше своих детей). The descendants of a
+/// paint group belong to the group's own holder, not to the host's layers
+/// (Blink `BoxFragmentPainter::PaintFloatingChildren` skips self-painting
+/// layers).
 fn flatten<'a>(
     kids: &'a [Kid],
     slots: &'a [Slot],
@@ -214,8 +229,12 @@ fn flatten<'a>(
     out: &mut Vec<(&'a Kid, &'a Slot)>,
 ) {
     for (kid, s) in kids.iter().zip(slots.iter()) {
-        if layer(kid) == which {
+        let own = layer(kid);
+        if own == which {
             out.push((kid, s));
+        }
+        if own == Layer::Group {
+            continue;
         }
         if let Some(nest) = kid.nest.as_ref() {
             flatten(&nest.kids, &s.kids, which, out);

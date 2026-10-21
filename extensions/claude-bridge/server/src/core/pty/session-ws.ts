@@ -812,11 +812,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         }
 
         case 'session:delete-data': {
-          // Delete session data (settingsDir) for a given conversationId
+          if (!authenticatedUser || !authenticatedTokenId) {
+            warnLog('Session data deletion refused: unauthenticated connection')
+            sendError(ws, 'Authentication required to delete session data')
+            break
+          }
           const convId = msg.conversationId
           if (convId) {
             try {
-              await deleteSessionByConversationId(convId, authenticatedUser || 'unknown')
+              await deleteSessionByConversationId(convId, authenticatedUser, authenticatedTokenId)
               debugLog('Session data deleted', { conversationId: convId })
             } catch (err) {
               warnLog('Failed to delete session data', { conversationId: convId, error: String(err) })

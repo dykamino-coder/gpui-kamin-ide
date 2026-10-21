@@ -1,7 +1,7 @@
 //! Основа flex и ratio/растяжение заменяемых элементов сетки.
 
 use crate::dom::Node;
-use crate::render::*;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::{Align, Computed, Display, FlexDir};
 use crate::style::values::value::{Len, px_lossy_zero};
 

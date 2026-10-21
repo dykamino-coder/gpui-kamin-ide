@@ -1,4 +1,10 @@
 //! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
+use crate::layout::box_kind::inline_level;
+use crate::layout::box_kind::out_of_flow;
+use crate::layout::box_kind::replaced_tag;
+use crate::layout::options::RenderOpts;
+use crate::paint::box_tree::styled::styled_div_with;
+use crate::render::blocks::blocks;
 mod static_overlay;
 #[cfg(test)]
 mod tests;
@@ -15,7 +21,6 @@ use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::layout::writing_mode::rotated_atom;
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

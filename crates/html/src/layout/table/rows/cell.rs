@@ -6,7 +6,7 @@ use super::emit::emit_cell;
 use super::row_setup::hides_empty_cell;
 use super::row_setup::{cell_cascaded_style, cell_spans};
 use crate::dom::Element;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;

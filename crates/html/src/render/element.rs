@@ -1,6 +1,10 @@
 //! Узел-элемент в элемент GPUI: element().
 
+use crate::dom::pseudo_line_layers;
+use crate::dom::text_content::gather_text;
+use crate::layout::options::RenderOpts;
 mod orthogonal;
+mod quirks;
 pub(super) use orthogonal::orthogonal_limit;
 
 mod dispatch;
@@ -12,7 +16,6 @@ use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
 use crate::paint::effects::transform::transformed;
-use crate::render::*;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
@@ -30,9 +33,6 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
-    if e.marks.outside_block {
-        return crate::layout::float::outside_block::render(e, inherited, opts);
-    }
     let svg_sized = svg_percentage_size::resolve(e, inherited);
     let e = svg_sized.as_ref().unwrap_or(e);
     let media_sized =
@@ -90,6 +90,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
         }
     }
     merged.resolve_viewport(opts.viewport, vcx);
+    quirks::fill(e, &mut merged, inherited, opts);
     crate::animation::motion::apply_icb(&mut merged, opts.viewport, vcx);
     let gutters = crate::interactive::scroll_extent::classic::model(
         opts.cx.scroll_frame.as_ref(),

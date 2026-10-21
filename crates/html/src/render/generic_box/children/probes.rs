@@ -1,8 +1,9 @@
 //! Пробы границ детей для gap rules и line clamp.
 
 use crate::dom::Element;
+use crate::dom::whitespace::is_blank;
+use crate::layout::options::RenderOpts;
 use crate::layout::table::anon::has_box_style_probe;
-use crate::render::*;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::AnyElement;

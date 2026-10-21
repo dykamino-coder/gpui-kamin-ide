@@ -4,9 +4,10 @@ use crate::document::state::ValueCx;
 // owner: A
 
 use crate::dom::Node;
-use crate::render::{
-    RenderOpts, breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline,
+use crate::layout::box_kind::{
+    breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline,
 };
+use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};

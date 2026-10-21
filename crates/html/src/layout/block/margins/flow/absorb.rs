@@ -1,8 +1,8 @@
 //! Поглощение полей потомка и сквозное схлопывание пустой коробки.
 
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::margin_px;
-use crate::render::is_blank;
 use crate::style::values::value::Len;
 
 // Поле контейнера схлопывается С КРАЙНИМ flow-ребёнком через пустую

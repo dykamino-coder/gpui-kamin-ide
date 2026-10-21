@@ -84,6 +84,7 @@ macro_rules! properties {
 }
 
 properties! {
+    PathLength: "path-length" => [svg_path_length];
     ColumnWidth: "column-width" => [column_width];
     ColumnCount: "column-count" => [column_count];
     ColumnRuleWidth: "column-rule-width" => [column_rule_width, column_rule_widths];

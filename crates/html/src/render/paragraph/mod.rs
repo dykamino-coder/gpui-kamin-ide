@@ -1,26 +1,23 @@
 //! Абзац: строчные куски узла в элемент Paragraph, выравнивание атомов по строке.
 
+use crate::layout::options::RenderOpts;
+use crate::render::first_line_text;
+use crate::render::native_paragraph_route;
+use crate::render::paragraph::pieces::paragraph_pieces_routed;
+use crate::text::shadow_text::normalize_for_shadow;
 mod vertical;
 pub(super) use vertical::vertical_paragraph;
 
 mod alignment;
-pub(super) use alignment::atom_line_align;
 
 mod first_line_box;
 mod metrics;
-pub(super) use metrics::atoms_fit_line;
-pub(super) use metrics::flow_metrics;
-pub(super) use metrics::line_box_spans;
 
 mod edges;
-pub(super) use edges::edge_pieces;
-pub(super) use edges::has_flow_text;
-pub(super) use edges::in_edge;
 pub(super) use edges::own_size;
 
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
-use crate::render::*;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::normal_fraction;
@@ -28,12 +25,6 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(crate) mod atom_piece;
 pub(super) mod pieces;
-
-/// Абзац: одна строка текста с прогонами либо гибкая строка из кусков.
-/// Абзац для тех, кто собирает текст сам — содержимое поля ввода.
-pub fn paragraph_public(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
-    paragraph(nodes, inherited, opts)
-}
 
 pub(crate) fn paragraph(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     paragraph_routed(nodes, inherited, opts, None)

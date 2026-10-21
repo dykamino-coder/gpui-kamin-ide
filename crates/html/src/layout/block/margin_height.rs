@@ -3,7 +3,9 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
-use crate::render::{in_flow, inline_level_box, out_of_flow, own_context, replaced_inline};
+use crate::layout::box_kind::{
+    in_flow, inline_level_box, out_of_flow, own_context, replaced_inline,
+};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

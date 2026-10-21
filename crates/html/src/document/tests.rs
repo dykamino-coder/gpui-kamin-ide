@@ -50,16 +50,22 @@ fn theme_change_also_triggers_a_reparse() {
 }
 
 #[test]
-fn document_wrappers_are_unwrapped() {
+fn standards_document_wrappers_are_unwrapped() {
     // Парсер всегда добавляет <html><body>; для виртуализации нужны
     // настоящие блоки документа, а не одна обёртка.
-    let doc = Document::new("<div>раз</div><div>два</div>", "");
+    let doc = Document::new("<!DOCTYPE html><div>раз</div><div>два</div>", "");
     assert_eq!(
         doc.top_level_blocks(),
         2,
         "получено {}",
         doc.top_level_blocks()
     );
+}
+
+#[test]
+fn quirks_document_wrappers_retain_their_fill_boxes() {
+    let doc = Document::new("<div>раз</div><div>два</div>", "");
+    assert_eq!(doc.top_level_blocks(), 1);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 use super::{geometry::Metrics, padded};
 use crate::style::cascade::inherit::inherit;
 use crate::style::values::value::px_strict;
-use crate::{dom::Element, render::RenderOpts, style::computed::Computed};
+use crate::{dom::Element, layout::options::RenderOpts, style::computed::Computed};
 
 #[derive(Clone, Copy)]
 pub(super) enum Kind {

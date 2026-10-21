@@ -2,12 +2,13 @@
 
 use crate::dom::Element;
 use crate::layout::multicol::spanner::multicol_container;
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::image::{image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
-use crate::render::{RenderOpts, element, styled_div_with};
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -20,7 +21,7 @@ pub(super) fn container_atom(
 ) -> Option<Option<AnyElement>> {
     let vcx = opts.cx.vcx();
     if e.style.display == Some(Display::GridLanes) {
-        return Some(Some(element(e, inherited, opts)));
+        return Some(Some(opts.cx.build.element(e, inherited, opts)));
     }
     if multicol_container(&e.style) {
         let merged = inherit(inherited, &e.style, vcx);
@@ -40,7 +41,7 @@ pub(super) fn container_atom(
             if copy.style.width.is_none() {
                 copy.style.width = shrink_to_fit.map(Len::Px);
             }
-            return Some(Some(element(&copy, inherited, opts)));
+            return Some(Some(opts.cx.build.element(&copy, inherited, opts)));
         }
     }
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:

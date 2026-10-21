@@ -1,10 +1,11 @@
 //! Диспетчер специальных тегов; сохраняет порядок ветвей element.
 
 use super::element;
-use crate::dom::{BandPath, Element, Node};
+use crate::dom::{Element, Node};
+use crate::layout::box_kind::inline_level;
 use crate::layout::float::band_flow_host::band_flow_host;
-use crate::layout::float::shape_flow::shape_flow;
 use crate::layout::list::{self, list_item};
+use crate::layout::options::RenderOpts;
 use crate::layout::replaced::iframe::object_is_document;
 use crate::layout::replaced::image::{image, image_with, pct_height_to_px};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
@@ -12,7 +13,9 @@ use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::anon::anon_element;
 use crate::layout::table::table;
-use crate::render::*;
+use crate::paint::box_tree::styled::styled_div;
+use crate::paint::box_tree::styled::styled_div_with;
+use crate::render::generic_box::generic_box;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
@@ -178,11 +181,8 @@ pub(crate) fn dispatch_element(
                 d.w_full().into_any_element()
             }
         }
-        // Синтетический узел обтекания формой (см. wrap_floats).
-        _ if e.marks.shape_flow.is_some() => match e.marks.shape_flow.and_then(|h| h.bands) {
-            Some(BandPath::Measured) => band_flow_host(e, &merged, opts),
-            None => shape_flow(e, &merged, opts),
-        },
+        // Синтетический хост полос обтекания (см. wrap_floats).
+        _ if e.marks.shape_flow.is_some() => band_flow_host(e, &merged, opts),
         // Табличная раскладка включается и стилем: `display: table` на
         // контейнере значит ровно то же, что тег.
         // Лунки идут путём сетки taffy (`dom::lanes_as_grid`); сюда доходит

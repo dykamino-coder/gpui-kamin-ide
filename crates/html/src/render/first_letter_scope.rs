@@ -1,7 +1,9 @@
 //! Keep first-letter selection within the container's first formatted line.
 
-use super::{RenderOpts, block_level_in_flow, out_of_flow, paragraph_probed};
 use crate::dom::Node;
+use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
+use crate::layout::options::RenderOpts;
+use crate::render::paragraph_route::paragraph_probed;
 use crate::style::computed::{Computed, Display};
 use crate::text::text_box::blank_text;
 use gpui::AnyElement;
@@ -33,15 +35,7 @@ impl Scope {
         style: &Computed,
         opts: &RenderOpts,
     ) -> AnyElement {
-        self.flow(nodes, style, |style| paragraph_probed(nodes, style, opts))
-    }
-
-    pub(super) fn flow(
-        &mut self,
-        nodes: &[Node],
-        style: &Computed,
-        build: impl FnOnce(&Computed) -> AnyElement,
-    ) -> AnyElement {
+        let build = |style: &Computed| paragraph_probed(nodes, style, opts);
         let first = self.first;
         if nodes.iter().any(|n| {
             in_flow(

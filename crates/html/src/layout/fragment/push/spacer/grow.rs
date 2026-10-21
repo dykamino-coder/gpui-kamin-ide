@@ -4,6 +4,7 @@ use super::super::cell::grow_before;
 use super::super::pushed_box_at;
 use super::spacer_before;
 use crate::document::state::ValueCx;
+use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::{clone_dec, solid_box};
@@ -13,7 +14,6 @@ use crate::layout::fragment::probe::size_monolith;
 use crate::layout::fragment::table_bands::repeat_leads;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::multicol::spanner::parallel_items_inside;
-use crate::render::is_blank;
 use crate::style::computed::Display;
 
 /// Рост коробки от вытолкнутого монолита (Blink `FinishFragmentation`,

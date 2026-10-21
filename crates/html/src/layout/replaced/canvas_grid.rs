@@ -3,7 +3,7 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
-use crate::render::styled_div_with;
+use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::{computed::Computed, values::value::Len};
 use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
 

@@ -4,7 +4,7 @@ use super::super::{SpanPart, has_deep_spanner, passes_spanner, spanner_box, spli
 use super::{spanner_frag_visible, spanner_fragment, spanner_height_share};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
-use crate::render::split_block_in_inline;
+use crate::layout::block::inline_splits::split_block_in_inline;
 use crate::style::values::value::Len;
 
 /// Разложить содержимое предка на чередование «кусок обычного потока» —

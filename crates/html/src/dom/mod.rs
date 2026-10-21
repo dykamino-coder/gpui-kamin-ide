@@ -19,6 +19,7 @@ mod mathml_routing;
 mod nth_child_tests;
 mod page_scheme;
 mod parse_document;
+pub(crate) mod pseudo_line_layers;
 pub(crate) mod style_sources;
 pub(crate) mod text_content;
 pub(crate) mod tree_index;
@@ -84,7 +85,7 @@ use crate::dom::scroll_markers::*;
 mod marks;
 pub(super) mod pseudo;
 pub use crate::dom::marks::Marks;
-pub(crate) use crate::dom::marks::{BandPath, LeadProbe, ShapeFlow};
+pub(crate) use crate::dom::marks::{LeadProbe, ShapeFlow};
 pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.

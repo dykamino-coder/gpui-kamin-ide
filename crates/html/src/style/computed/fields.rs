@@ -1597,4 +1597,6 @@ pub struct Computed {
     pub calc_size_basis: [Option<CalcSizeBasis>; 6],
     /// calc-size calculations for max-width and max-height.
     pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
+    /// Experimental CSS path-length; Auto represents none. Not inherited.
+    pub(crate) svg_path_length: Option<Len>,
 }

@@ -2,7 +2,9 @@
 // owner: A
 
 use crate::dom::{Element, Node};
-use crate::render::{holds_line_box, in_flow, inline_level_box, own_context, replaced_inline};
+use crate::layout::box_kind::{
+    holds_line_box, in_flow, inline_level_box, own_context, replaced_inline,
+};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
