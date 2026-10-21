@@ -4,6 +4,7 @@ use super::push_col_bands;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Color;
+use std::rc::Rc;
 
 fn col(node_id: u64) -> Element {
     Element {
@@ -44,10 +45,10 @@ fn one_buffer_per_col_element_and_per_build() {
         rects.into_iter().map(Option::unwrap).collect::<Vec<_>>()
     };
     let first = build();
-    assert!(std::rc::Rc::ptr_eq(&first[0], &first[1]));
-    assert!(!std::rc::Rc::ptr_eq(&first[0], &first[2]));
+    assert!(Rc::ptr_eq(&first[0], &first[1]));
+    assert!(!Rc::ptr_eq(&first[0], &first[2]));
     // A rebuilt table (next frame, another document with the same node ids)
     // never sees the previous build's probes.
     let second = build();
-    assert!(!std::rc::Rc::ptr_eq(&first[0], &second[0]));
+    assert!(!Rc::ptr_eq(&first[0], &second[0]));
 }

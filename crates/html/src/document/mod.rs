@@ -11,6 +11,8 @@
 //! проверяется по хэшу, а не по строке целиком.
 
 mod base_url;
+mod builder;
+pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
 mod logical_properties;
@@ -63,49 +65,40 @@ pub struct Document {
 
 impl Document {
     pub fn new(html: &str, theme_css: &str) -> Self {
-        Self::new_media(html, theme_css, false)
+        Self::builder(html, theme_css).build()
     }
 
-    /// Parse a document for the screen (`print == false`) or the print
-    /// medium (`@media print` matches, viewport = the 5in x 3in page box).
-    /// The medium belongs to the view showing the document (Blink
-    /// `LocalFrameView::MediaType`), so the host passes it here.
+    /// Настроить источник и носитель до единственного разбора документа.
+    pub fn builder<'a>(html: &'a str, theme_css: &'a str) -> DocumentBuilder<'a> {
+        DocumentBuilder::new(html, theme_css)
+    }
+
+    /// Совместимый вход для выбора экранного или печатного носителя.
     pub fn new_media(html: &str, theme_css: &str, print: bool) -> Self {
-        Self::build(html, theme_css, None, false, Media::for_medium(print))
+        Self::builder(html, theme_css).print(print).build()
     }
 
-    /// Parse a document with the URL used to resolve its external resources.
+    /// Совместимый вход для документа с базовым URL внешних ресурсов.
     pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
-        Self::build(
-            html,
-            theme_css,
-            url::Url::parse(base_uri).ok(),
-            false,
-            Media::default(),
-        )
+        Self::builder(html, theme_css).base_uri(base_uri).build()
     }
 
-    /// Parse a local document, resolving relative resources against its source file.
-    /// A `.svg` file is `image/svg+xml` (the file URL's type comes from its
-    /// extension) and is parsed as an XML document.
+    /// Совместимый вход для локального файла; расширение SVG выбирает XML.
     pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
-        Self::new_with_path_media(html, theme_css, path, false)
+        Self::builder(html, theme_css).path(path).build()
     }
 
-    /// `new_with_path` for the screen or the print medium (`new_media`).
+    /// Совместимый вход для локального файла с выбранным носителем.
     pub fn new_with_path_media(
         html: &str,
         theme_css: &str,
         path: &std::path::Path,
         print: bool,
     ) -> Self {
-        let base = std::path::absolute(path)
-            .ok()
-            .and_then(|p| url::Url::from_file_path(p).ok());
-        let xml = path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
-        Self::build(html, theme_css, base, xml, Media::for_medium(print))
+        Self::builder(html, theme_css)
+            .path(path)
+            .print(print)
+            .build()
     }
 
     fn build(

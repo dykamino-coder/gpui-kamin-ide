@@ -10,6 +10,8 @@ use crate::paint::effects::transform::{transformed, transformed_with};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 // Emitting a cell threads its element and row/column placement records together.
@@ -24,9 +26,9 @@ pub(super) fn emit_cell(
     cells: &mut Vec<AnyElement>,
     collapse_cells: bool,
     paint_layers: bool,
-    cell_bgs: &std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
+    cell_bgs: &Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: &Vec<&Element>,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     col_rects: &[Option<crate::layout::table::paint::RowRects>],
     col_els: &Vec<Option<&Element>>,
     grp_rects: &[Option<crate::layout::table::paint::RowRects>],

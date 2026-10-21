@@ -8,6 +8,8 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
+use std::cell::RefCell;
+use std::rc::Rc;
 mod row_setup;
 use row_setup::{push_empty_row_track, row_band_probes};
 mod cell;
@@ -53,9 +55,9 @@ pub(super) fn table_rows(
     table_font: f32,
     table_family: &str,
     paint_layers: bool,
-    cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
+    cell_bgs: Rc<RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
     row_elements: Vec<&Element>,
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     col_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
     col_els: Vec<Option<&Element>>,
     grp_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
