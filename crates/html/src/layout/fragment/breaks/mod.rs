@@ -27,7 +27,7 @@ pub(crate) fn oof_reach(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> f32 {
     // `vh`/`vw` — от page area; `bottom: -200vh` тянет низ коробки на две
     // area ниже листа (эталоны `fixedpos-001..009`: копии `bottom: -N00vh` и
     // `top: N00vh` — досягаемость была нулевой, лист один).
-    let lens = crate::style::computed::LenCx::viewport(cx.viewport);
+    let lens = crate::style::computed::LenCx::box_viewport(cx.viewport, &e.style);
     let len = |l: &Option<Len>| lens.px_strict(*l, vcx);
     let top = len(&e.style.inset.top).unwrap_or(0.0);
     let from_bottom = len(&e.style.inset.bottom)

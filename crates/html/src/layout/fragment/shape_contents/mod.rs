@@ -53,7 +53,7 @@ pub(super) fn shape_contents(
     let vcx = vcx.with_lines(lines.as_ref().or(vcx.lines));
     // Нет значения — ноль; нерешённое: `strict` (высота) — непроходимо,
     // иначе (поля, отступы, рамки) ничего не добавляет.
-    let lens = LenCx::viewport(cx.viewport);
+    let lens = LenCx::box_viewport(cx.viewport, &c.style);
     let px_or = |l: &Option<Len>, strict: bool| {
         if strict {
             lens.px_missing_zero(*l, vcx)

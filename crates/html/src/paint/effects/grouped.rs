@@ -56,12 +56,13 @@ pub(super) fn grouped_with(
         _ => 16.0,
     };
     let poly_family = c.font_family.clone().unwrap_or_default();
-    let poly_vp = crate::style::computed::ViewportCx::plain(vcx.viewport);
+    let poly_vp = crate::style::computed::ViewportCx::for_box(vcx.viewport, c);
     let poly_unit = |l: Len| -> Len {
         match l {
             Len::Px(_) | Len::Pct(_) => l,
-            Len::Vw(_) | Len::Vh(_) => l.fold_viewport(poly_vp, vcx),
-            other => other.font_units_to_px(FontCx::new(&poly_family, poly_font), vcx),
+            other => other
+                .fold_viewport(poly_vp, vcx)
+                .font_units_to_px(FontCx::new(&poly_family, poly_font), vcx),
         }
     };
     let polygon_px: Vec<(Len, Len)> = c
