@@ -83,7 +83,14 @@ impl Computed {
                     self.font_stretch = accept_parsed!(self, Some(pct));
                 }
             }
-            "caret-color" => self.caret_color = record_parsed!(self, Color::parse(v, vcx)),
+            "caret-color" => {
+                self.caret_color = parsed_value!(
+                    self,
+                    Color::parse(v, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "auto").then_some(None))
+                )
+            }
             _ => *hit = false,
         }
     }

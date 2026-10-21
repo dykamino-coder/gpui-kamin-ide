@@ -5,7 +5,7 @@ use crate::document::state::ValueCx;
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
 use crate::style::computed::{
-    BgListProp, Computed, background_layers, font_members, top_level_comma,
+    BgListProp, Computed, ParseResult, background_layers, font_members, top_level_comma,
 };
 use crate::style::css::{Decls, Rule};
 use crate::style::values::value::Color;
@@ -125,7 +125,6 @@ impl Computed {
     pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
         self.decl_seq += 1;
         let v = val.trim();
-        inherit::note_flow_align(self, key, v);
         if color_initial::apply(self, key, v, vcx) {
             return;
         }
@@ -163,6 +162,7 @@ impl Computed {
             return self.apply_one(key, start, vcx);
         }
         if inherited_value::note(self, key, v, vcx) {
+            inherit::note_flow_align(self, key, v);
             return;
         }
         // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
@@ -170,29 +170,40 @@ impl Computed {
         // поля стиля несут верхний слой, а список целиком хранится сырым —
         // по нему рисуются все слои (`Computed::bg_layers`). Запись без
         // запятой список своего свойства снимает; сокращение — все.
-        if let Some(prop) = BgListProp::from_key(key) {
-            if prop == BgListProp::BlendMode && !crate::style::computed::background_blend_valid(v) {
-                return;
-            }
-            if prop == BgListProp::Shorthand {
-                // background-blend-mode is not a background shorthand member.
-                self.bg_lists.retain(|k| k == BgListProp::BlendMode);
-            } else {
-                self.bg_lists.remove(prop);
-            }
-            if top_level_comma(v).is_some() {
-                if prop != BgListProp::Shorthand {
-                    // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
-                    // вложенный вызов того же свойства его бы снял.
-                    let first = background_layers(v)[0].to_string();
-                    self.apply_one(key, &first, vcx);
-                    self.bg_lists.set(prop, v.to_string(), vcx);
-                    return;
+        let prop = BgListProp::from_key(key);
+        if prop.is_some_and(|p| !Self::background_list_valid(p, v, vcx)) {
+            return;
+        }
+        let observer = self.declaration_parse;
+        self.declaration_parse = ParseResult::Invalid;
+        let list = prop.is_some() && top_level_comma(v).is_some();
+        let parsed = if list && prop != Some(BgListProp::Shorthand) {
+            background_layers(v)[0]
+        } else {
+            v
+        };
+        self.apply_property(key, parsed, vcx);
+        let accepted = self.declaration_parse == ParseResult::Accepted || v == "inherit";
+        self.declaration_parse = if observer == ParseResult::Inactive {
+            observer
+        } else if accepted {
+            ParseResult::Accepted
+        } else {
+            observer
+        };
+        if accepted {
+            inherit::note_flow_align(self, key, v);
+            if let Some(prop) = prop {
+                if prop == BgListProp::Shorthand {
+                    self.bg_lists.retain(|k| k == BgListProp::BlendMode);
+                } else {
+                    self.bg_lists.remove(prop);
                 }
-                self.bg_lists.set(prop, v.to_string(), vcx);
+                if list {
+                    self.bg_lists.set(prop, v.to_string(), vcx);
+                }
             }
         }
-        self.apply_property(key, v, vcx);
     }
 
     /// Query the actual property dispatcher, including delegated property groups.

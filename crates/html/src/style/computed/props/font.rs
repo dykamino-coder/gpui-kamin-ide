@@ -36,7 +36,6 @@ impl Computed {
                     self.font_size = None;
                     return;
                 }
-                self.math_font_size = false;
                 // Отрицательный кегль и неразборная запись делают объявление
                 // НЕВАЛИДНЫМ (§4.2, §15.7): прежнее значение остаётся, а не
                 // стирается в `None` (`c526-font-sz-003`: `-0.5in`).
@@ -71,6 +70,7 @@ impl Computed {
                     _ => None,
                 };
                 if let Some(l) = word {
+                    self.math_font_size = false;
                     self.accept_declaration();
                     self.font_size = Some(l);
                     // `larger`/`smaller` шагают по ТАБЛИЦЕ (§15.7: «if the
@@ -89,8 +89,10 @@ impl Computed {
                 self.font_size = match Len::parse(v, vcx) {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
+                        let parsed = apply_parsed!(self, other);
                         self.font_size_step = 0;
-                        record_parsed!(self, other)
+                        self.math_font_size = false;
+                        parsed
                     }
                 };
             }

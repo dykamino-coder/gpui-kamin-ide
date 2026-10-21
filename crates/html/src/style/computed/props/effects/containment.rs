@@ -99,54 +99,36 @@ impl Computed {
                     self.skip_content = Some(true);
                 }
             }
-            "contain-intrinsic-size" => {
-                // Одно или два значения; `auto <длина>` — длина как запас.
-                let nums: Vec<f32> = v
-                    .split_whitespace()
-                    .filter(|w| *w != "auto")
-                    .filter_map(|w| match Len::parse(w, vcx) {
-                        Some(Len::Px(px)) => Some(px),
-                        _ => None,
-                    })
-                    .collect();
-                self.contain_intrinsic = match nums.as_slice() {
-                    [one] => (Some(*one), Some(*one)),
-                    [w, h, ..] => (Some(*w), Some(*h)),
-                    _ => (None, None),
+            "contain-intrinsic-size"
+            | "contain-intrinsic-width"
+            | "contain-intrinsic-height"
+            | "contain-intrinsic-block-size"
+            | "contain-intrinsic-inline-size" => {
+                let Some(values) = intrinsic_sizes(v, vcx) else {
+                    return;
                 };
-                if !nums.is_empty() || matches!(v.trim(), "none" | "auto none") {
-                    self.accept_declaration();
+                if key != "contain-intrinsic-size" && values.len() != 1 {
+                    return;
                 }
-            }
-            "contain-intrinsic-width" => {
-                if matches!(v, "none" | "auto none") {
-                    self.accept_declaration();
-                }
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
-                    self.contain_intrinsic.0 = accept_parsed!(self, Some(w));
-                }
-            }
-            "contain-intrinsic-height" => {
-                if matches!(v, "none" | "auto none") {
-                    self.accept_declaration();
-                }
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
-                    self.contain_intrinsic.1 = accept_parsed!(self, Some(h));
-                }
-            }
-            "contain-intrinsic-block-size" => {
-                if let Some(Len::Px(h)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
-                    self.accept_declaration();
-                    self.logical().ci_block = Some(h);
-                }
-            }
-            "contain-intrinsic-inline-size" => {
-                if let Some(Len::Px(w)) = Len::parse(v.trim_start_matches("auto").trim(), vcx) {
-                    self.accept_declaration();
-                    self.logical().ci_inline = Some(w);
+                self.accept_declaration();
+                match key {
+                    "contain-intrinsic-size" => {
+                        self.contain_intrinsic = (values[0], *values.get(1).unwrap_or(&values[0]))
+                    }
+                    "contain-intrinsic-width" => self.contain_intrinsic.0 = values[0],
+                    "contain-intrinsic-height" => self.contain_intrinsic.1 = values[0],
+                    "contain-intrinsic-block-size" => self.logical().ci_block = values[0],
+                    _ => self.logical().ci_inline = values[0],
                 }
             }
             "mix-blend-mode" => {
+                if v != "plus-lighter"
+                    && BlendMode::parse(v)
+                        .filter(|mode| *mode != BlendMode::Inherit)
+                        .is_none()
+                {
+                    return;
+                }
                 // Номера совпадают с формулами в шейдере: смешивание считается
                 // при сборке буфера группы, поэтому доступны все режимы CSS,
                 // включая те, где цвет берётся целиком (тон, насыщенность).
@@ -174,11 +156,40 @@ impl Computed {
                     _ => self.image_pixelated,
                 }
             }
-            "isolation" => self.isolate = accept_parsed!(self, Some(v == "isolate")),
+            "isolation" => {
+                self.isolate = apply_parsed!(
+                    self,
+                    matches!(v, "auto" | "isolate").then_some(v == "isolate")
+                )
+            }
             "user-select" | "-webkit-user-select" => {
+                if !matches!(v, "auto" | "text" | "none" | "all" | "contain") {
+                    return;
+                }
                 self.no_select = accept_parsed!(self, Some(matches!(v, "none")))
             }
             _ => *hit = false,
         }
     }
+}
+
+fn intrinsic_sizes(v: &str, vcx: ValueCx<'_>) -> Option<Vec<Option<f32>>> {
+    let words = split_outside_parens(v);
+    let mut words = words.iter();
+    let mut result = Vec::new();
+    while let Some(mut word) = words.next() {
+        if word == "auto" {
+            word = words.next()?;
+        }
+        let size = if word == "none" {
+            None
+        } else {
+            match Len::parse(word, vcx)? {
+                Len::Px(n) if n >= 0.0 => Some(n),
+                _ => return None,
+            }
+        };
+        result.push(size);
+    }
+    (1..=2).contains(&result.len()).then_some(result)
 }

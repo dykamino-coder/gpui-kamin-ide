@@ -32,7 +32,12 @@ impl Computed {
                     }
                 }
                 wrap |= modes > 0 || balance > 0;
-                if valid && modes <= 1 && balance <= 1 && (!nowrap || (modes == 0 && balance == 0))
+                if !v.is_empty()
+                    && v.split_whitespace().filter(|w| *w == "nowrap").count() <= 1
+                    && valid
+                    && modes <= 1
+                    && balance <= 1
+                    && (!nowrap || (modes == 0 && balance == 0))
                 {
                     self.flex_wrap = accept_parsed!(self, Some(wrap));
                     // Обратный перенос кладёт строки с другого края: одна строка
@@ -68,91 +73,13 @@ impl Computed {
             // `flex: <рост> <сжатие> <основа>` со всеми сокращёнными формами.
             // Раньше бралось только первое число, и `flex: 0 0 200px` терял
             // фиксированную основу — блок начинал растягиваться.
-            "flex" => match v {
-                "auto" => {
-                    self.flex_grow = Some(1.0);
-                    self.flex_shrink = Some(1.0);
-                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
-                }
-                "none" => {
-                    self.flex_grow = Some(0.0);
-                    self.flex_shrink = Some(0.0);
-                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
-                }
-                "initial" => {
-                    self.flex_grow = Some(0.0);
-                    self.flex_shrink = Some(1.0);
-                    self.flex_basis = accept_parsed!(self, Some(Len::Auto));
-                }
-                _ => {
-                    // Опущенные части сокращения берут НЕ начальные значения
-                    // свойств: рост и сжатие становятся 1, а основа — 0%, а не
-                    // `auto`. Отсюда весь смысл записи `flex: 1`: элемент
-                    // делит место поровну, забыв свою ширину. Раньше основа при
-                    // двух числах оставалась `auto`, и `flex: 0 1` держал
-                    // ширину элемента вместо нуля.
-                    let parts: Vec<&str> = v.split_whitespace().collect();
-                    let number = |t: &str| flex_factor(t, vcx);
-                    match parts.as_slice() {
-                        [one] => match number(one) {
-                            Some(g) => {
-                                self.flex_grow = Some(g);
-                                self.flex_shrink = Some(1.0);
-                                self.flex_basis = Some(Len::Pct(0.0));
-                            }
-                            None => {
-                                self.flex_grow = Some(1.0);
-                                self.flex_shrink = Some(1.0);
-                                self.flex_basis = Len::parse(one, vcx);
-                            }
-                        },
-                        [a, b] => {
-                            self.flex_grow = number(a);
-                            match number(b) {
-                                Some(shrink) => {
-                                    self.flex_shrink = Some(shrink);
-                                    self.flex_basis = Some(Len::Pct(0.0));
-                                }
-                                None => {
-                                    self.flex_shrink = Some(1.0);
-                                    self.flex_basis = Len::parse(b, vcx);
-                                }
-                            }
-                        }
-                        [a, b, c] => {
-                            // Безразмерная основа кроме нуля делает ВСЁ
-                            // объявление невалидным (`flex: 0 0 4` не
-                            // применяется вовсе, flexbox_flex-*-unitless-basis).
-                            if crate::style::values::value::number(c, vcx).is_some_and(|n| n != 0.0)
-                            {
-                                return;
-                            }
-                            self.flex_grow = number(a);
-                            self.flex_shrink = number(b);
-                            // `content` — ключевое слово основы (css-flexbox-1 §7.2),
-                            // а не длина: `Len::parse` его не знает, и `flex: 0 0
-                            // content` падал в `auto` с заданной шириной
-                            // (`flexbox-flex-basis-content-001b/002b`,
-                            // `percentage-heights-016`). Смысл тот же, что у длинной
-                            // формы `flex-basis: content` ниже.
-                            if c.eq_ignore_ascii_case("content") {
-                                self.flex_basis = Some(Len::Auto);
-                                self.basis_content = Some(true);
-                            } else {
-                                self.flex_basis = Len::parse(c, vcx);
-                            }
-                        }
-                        _ => {}
-                    }
-                    if (1..=3).contains(&parts.len())
-                        && self.flex_grow.is_some()
-                        && self.flex_shrink.is_some()
-                        && self.flex_basis.is_some()
-                    {
-                        self.accept_declaration();
-                    }
-                }
-            },
+            "flex" => {
+                let (grow, shrink, basis, content) = parsed_value!(self, flex_value(v, vcx));
+                self.flex_grow = Some(grow);
+                self.flex_shrink = Some(shrink);
+                self.flex_basis = Some(basis);
+                self.basis_content = Some(content);
+            }
             "flex-basis" if v == "content" => {
                 self.flex_basis = accept_parsed!(self, Some(Len::Auto));
                 self.basis_content = Some(true);
@@ -162,6 +89,7 @@ impl Computed {
                     && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
                 {
                     self.flex_basis = accept_parsed!(self, Some(l));
+                    self.basis_content = Some(false);
                 }
             }
             "align-self" if v.trim() == "inherit" => {
@@ -201,8 +129,8 @@ impl Computed {
                 }
             }
             "align-items" => {
-                self.align_inherit &= !ainh::ALIGN_ITEMS;
                 if let Ok(a) = align_keyword(v) {
+                    self.align_inherit &= !ainh::ALIGN_ITEMS;
                     self.align_items = accept_parsed!(self, a);
                     self.align_items_safe = is_safe(v);
                     self.align_items_last = v.split_whitespace().any(|w| w == "last");
@@ -212,8 +140,14 @@ impl Computed {
             // промежутков — сведение их в одно значение расходилось с
             // браузером на 27 точек (поймано сравнением).
             "justify-content" => {
+                let parsed = parsed_value!(
+                    self,
+                    parse_justify(v)
+                        .map(Some)
+                        .or_else(|| (v == "normal").then_some(None))
+                );
                 self.align_inherit &= !ainh::JUSTIFY_CONTENT;
-                self.justify_content = record_parsed!(self, parse_justify(v));
+                self.justify_content = parsed;
                 if v == "normal" {
                     self.accept_declaration();
                 }
@@ -222,4 +156,37 @@ impl Computed {
             _ => self.apply_gap_place(key, v, hit, vcx),
         }
     }
+}
+
+fn flex_value(v: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, Len, bool)> {
+    let basis = |v: &str| {
+        if v == "content" {
+            Some((Len::Auto, true))
+        } else {
+            if crate::style::values::value::number(v, vcx).is_some_and(|n| n != 0.0) {
+                return None;
+            }
+            size_range::parse_nonnegative_size(v, vcx).map(|len| (len, false))
+        }
+    };
+    let tokens = split_outside_parens(v);
+    let (g, s, (b, content)) = match tokens.as_slice() {
+        [one] if one == "auto" => (1.0, 1.0, (Len::Auto, false)),
+        [one] if one == "initial" => (0.0, 1.0, (Len::Auto, false)),
+        [one] if one == "none" => (0.0, 0.0, (Len::Auto, false)),
+        [one] => match flex_factor(one, vcx) {
+            Some(g) => (g, 1.0, (Len::Pct(0.0), false)),
+            None => (1.0, 1.0, basis(one)?),
+        },
+        [a, b] => {
+            let g = flex_factor(a, vcx)?;
+            match flex_factor(b, vcx) {
+                Some(s) => (g, s, (Len::Pct(0.0), false)),
+                None => (g, 1.0, basis(b)?),
+            }
+        }
+        [a, b, c] => (flex_factor(a, vcx)?, flex_factor(b, vcx)?, basis(c)?),
+        _ => return None,
+    };
+    Some((g, s, b, content))
 }

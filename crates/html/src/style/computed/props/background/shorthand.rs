@@ -27,6 +27,16 @@ impl Computed {
         // из записи не полностью, и полный сброс терял то, чего он не
         // умеет прочесть обратно (`textarea-pre-wrap-*`).
         // Негодное объявление не сбрасывает ничего (§4.1.7).
+        if key == "background" && !background_shorthand_valid(v, vcx) {
+            return;
+        }
+        if key == "background-color"
+            && v != "currentcolor"
+            && Color::parse(v, vcx).is_none()
+            && crate::style::values::color_space::ColorExpression::parse(v, vcx).is_none()
+        {
+            return;
+        }
         if key == "background" && background_shorthand_valid(v, vcx) {
             self.accept_declaration();
             self.background = None;

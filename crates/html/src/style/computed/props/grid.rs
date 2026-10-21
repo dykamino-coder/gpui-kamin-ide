@@ -13,6 +13,13 @@ mod templates;
 
 impl Computed {
     pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
+        if matches!(key, "grid-template-columns" | "grid-template-rows")
+            && (v.contains("auto-fill") || v.contains("auto-fit"))
+            && !v.trim_start().starts_with("subgrid")
+            && (auto_repeat_outside_intrinsic(v) || parse_tracks(v, vcx).is_none())
+        {
+            return;
+        }
         match key {
             // `repeat(auto-fill | auto-fit, minmax(N, 1fr))` — «сколько
             // влезет»: число колонок известно только раскладке. Раньше запись
@@ -32,13 +39,13 @@ impl Computed {
             // `-max-content-001/002`). Отсюда условие `l.len() > 1` ниже —
             // оно не заплатка, а граница между двумя путями счёта повторов.
             "grid-template-columns" if v.contains("auto-fill") || v.contains("auto-fit") => {
+                self.grid_col_line_names = parse_line_names(v);
                 // `subgrid [a] repeat(auto-fill, [b])` — повтор СПИСКА ИМЁН
                 // подсетки (css-grid-2 §subgrid-listing, `<line-name-list>`),
                 // а не дорожек: такой элемент — подсетка, и дорожки ей выдаёт
                 // родитель (`taffy::compute::grid::subgrid`). Прежде запись
                 // уходила в разбор авто-повтора, и элемент подсеткой не был
                 // (`subgrid/repeat-auto-fill-005`).
-                self.grid_col_line_names = parse_line_names(v);
                 if v.trim_start().starts_with("subgrid") {
                     self.accept_declaration();
                     self.subgrid_cols = true;
@@ -96,8 +103,8 @@ impl Computed {
             // То же по РЯДАМ: у раскладки лунками дорожки задают ряды, когда
             // `grid-lanes-direction: row` (`row-auto-repeat-001`).
             "grid-template-rows" if v.contains("auto-fill") || v.contains("auto-fit") => {
-                // Подсетка со списком имён в повторе — см. колонки выше.
                 self.grid_row_line_names = parse_line_names(v);
+                // Подсетка со списком имён в повторе — см. колонки выше.
                 if v.trim_start().starts_with("subgrid") {
                     self.accept_declaration();
                     self.subgrid_rows = true;

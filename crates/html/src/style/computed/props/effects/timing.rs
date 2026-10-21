@@ -34,26 +34,17 @@ impl Computed {
             "transition" | "transition-duration" => {
                 // Из записи перехода нужна только длительность: какие свойства
                 // меняются, видно по разнице стилей.
-                self.transition = record_parsed!(
-                    self,
-                    v.split_whitespace().find_map(|t| {
-                        t.strip_suffix("ms")
-                            .and_then(|n| n.parse::<f32>().ok())
-                            .map(|ms| ms / 1000.0)
-                            .or_else(|| t.strip_suffix('s').and_then(|n| n.parse::<f32>().ok()))
-                    })
-                );
-                if v == "none" {
-                    self.accept_declaration();
-                }
+                self.transition =
+                    parsed_value!(self, transition_value(v, key == "transition-duration"));
             }
             "resize" => {
-                self.resize = record_parsed!(
+                self.resize = parsed_value!(
                     self,
                     match v {
-                        "both" => Some((true, true)),
-                        "horizontal" => Some((true, false)),
-                        "vertical" => Some((false, true)),
+                        "both" => Some(Some((true, true))),
+                        "horizontal" => Some(Some((true, false))),
+                        "vertical" => Some(Some((false, true))),
+                        "none" => Some(None),
                         _ => None,
                     }
                 );
@@ -63,13 +54,34 @@ impl Computed {
             }
             "filter" => {
                 self.parse_filter(v, vcx);
-                self.accept_declaration();
             }
             "contain" => {
                 // Разбор по словам: подстрочный поиск ловил «size» в
                 // «inline-size» и не видел paint внутри `content`
                 // (css-contain-1 §3.1: strict = size layout paint style,
                 // content = layout paint style).
+                let words: Vec<_> = v.split_whitespace().collect();
+                if words.is_empty()
+                    || !words.iter().all(|w| {
+                        matches!(
+                            *w,
+                            "none"
+                                | "strict"
+                                | "content"
+                                | "size"
+                                | "inline-size"
+                                | "layout"
+                                | "paint"
+                                | "style"
+                        )
+                    })
+                    || (words.len() > 1
+                        && words
+                            .iter()
+                            .any(|w| matches!(*w, "none" | "strict" | "content")))
+                {
+                    return;
+                }
                 let mut bits = (false, false, false, false);
                 let mut inline_only = false;
                 for w in v.split_whitespace() {
@@ -102,4 +114,61 @@ impl Computed {
             _ => self.apply_effects_containment(key, v, hit, vcx),
         }
     }
+}
+
+fn transition_value(v: &str, duration: bool) -> Option<Option<f32>> {
+    if v.is_empty() {
+        return None;
+    }
+    if !duration && v == "none" {
+        return Some(None);
+    }
+    let mut first = None;
+    for item in crate::style::css::split_args(v) {
+        let (mut times, mut property, mut easing, mut behavior) = (0, false, false, false);
+        let words = split_outside_parens(item);
+        if words.is_empty() {
+            return None;
+        }
+        for token in words {
+            if let Some(n) = time_value(&token) {
+                if times >= if duration { 1 } else { 2 } || (times == 0 && n < 0.0) {
+                    return None;
+                }
+                if first.is_none() {
+                    first = Some(n);
+                }
+                times += 1;
+            } else if duration {
+                return None;
+            } else if crate::animation::easing::Easing::parse(&token).is_some() {
+                if easing {
+                    return None;
+                }
+                easing = true;
+            } else if matches!(token.as_str(), "normal" | "allow-discrete") {
+                if behavior {
+                    return None;
+                }
+                behavior = true;
+            } else if token != "none" && crate::style::css::selector_tokens::ident(&token) {
+                if property {
+                    return None;
+                }
+                property = true;
+            } else {
+                return None;
+            }
+        }
+    }
+    Some(Some(first.unwrap_or(0.0)))
+}
+
+pub(super) fn time_value(v: &str) -> Option<f32> {
+    let n = if let Some(ms) = v.strip_suffix("ms") {
+        ms.parse::<f32>().ok()? / 1000.0
+    } else {
+        v.strip_suffix('s')?.parse::<f32>().ok()?
+    };
+    n.is_finite().then_some(n)
 }

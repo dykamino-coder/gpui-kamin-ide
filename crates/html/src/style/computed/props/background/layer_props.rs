@@ -36,8 +36,11 @@ impl Computed {
                     "repeat" => Some(Tiling::Repeat),
                     _ => None,
                 };
+                if v.split_whitespace().count() > 2 {
+                    return;
+                }
                 let mut it = v.split_whitespace();
-                self.bg_repeat = record_parsed!(
+                self.bg_repeat = apply_parsed!(
                     self,
                     match (it.next(), it.next()) {
                         (Some("repeat-x"), None) => Some(BgRepeat::RepeatX),
@@ -66,11 +69,12 @@ impl Computed {
                 self.inherit_bits |= inh::BG_SIZE;
             }
             "background-origin" => {
-                self.bg_origin = record_parsed!(
+                self.bg_origin = parsed_value!(
                     self,
                     match v.trim() {
-                        "border-box" => Some(BgClip::BorderBox),
-                        "content-box" => Some(BgClip::ContentBox),
+                        "border-box" => Some(Some(BgClip::BorderBox)),
+                        "content-box" => Some(Some(BgClip::ContentBox)),
+                        "padding-box" => Some(None),
                         _ => None,
                     }
                 );
@@ -79,13 +83,14 @@ impl Computed {
                 }
             }
             "background-clip" | "-webkit-background-clip" => {
-                self.bg_clip = record_parsed!(
+                self.bg_clip = parsed_value!(
                     self,
                     match v.trim() {
-                        "padding-box" => Some(BgClip::PaddingBox),
-                        "content-box" => Some(BgClip::ContentBox),
-                        "text" => Some(BgClip::Text),
-                        "border-area" => Some(BgClip::BorderArea),
+                        "padding-box" => Some(Some(BgClip::PaddingBox)),
+                        "content-box" => Some(Some(BgClip::ContentBox)),
+                        "text" => Some(Some(BgClip::Text)),
+                        "border-area" => Some(Some(BgClip::BorderArea)),
+                        "border-box" => Some(None),
                         _ => None,
                     }
                 );
@@ -106,16 +111,27 @@ impl Computed {
                         // `background::len_px` в растре складывает доли с
                         // точками сам (css-values-4 §10.9).
                         let words = split_outside_parens(v);
-                        let mut it = words.iter().map(String::as_str);
-                        let w = it.next().and_then(|s| Len::parse_mixed(s, vcx));
-                        let h = it.next().and_then(|s| Len::parse_mixed(s, vcx));
+                        if !(1..=2).contains(&words.len()) {
+                            return;
+                        }
+                        let sizes = words
+                            .iter()
+                            .map(|w| {
+                                size_range::parse_nonnegative_size(w, vcx).filter(|l| {
+                                    !matches!(
+                                        l,
+                                        Len::MinContent | Len::MaxContent | Len::FitContent
+                                    )
+                                })
+                            })
+                            .collect::<Option<Vec<_>>>();
+                        let sizes = parsed_value!(self, sizes);
+                        let w = Some(sizes[0]);
+                        let h = sizes.get(1).copied();
                         if neg(&w) || neg(&h) {
                             return;
                         }
-                        if w.is_some() || h.is_some() || v == "auto" {
-                            self.accept_declaration();
-                        }
-                        if w.is_none() && h.is_none() {
+                        if v == "auto" {
                             BgSize::Auto
                         } else {
                             BgSize::Fixed(w, h)
@@ -128,17 +144,28 @@ impl Computed {
                     self.inherit_bits |= inh::BG_POS;
                     return;
                 }
+                if !position_valid(v, vcx) {
+                    return;
+                }
                 self.set_background_position(v, vcx);
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
             "object-view-box" => {
-                self.object_view_box = record_parsed!(self, parse_view_box(v, vcx));
+                self.object_view_box = parsed_value!(
+                    self,
+                    parse_view_box(v, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "none").then_some(None))
+                );
                 if v == "none" {
                     self.accept_declaration();
                 }
             }
             "object-position" => {
+                if !position_valid(v, vcx) {
+                    return;
+                }
                 self.object_position = accept_parsed!(self, Some(parse_pos_words(v, vcx)));
             }
             // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
@@ -150,6 +177,9 @@ impl Computed {
                     "right" | "bottom" => Some(Len::Pct(1.0)),
                     other => Len::parse(other, vcx),
                 };
+                if val.is_none() {
+                    return;
+                }
                 self.note_parsed(&val);
                 self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val, vcx);
             }
@@ -157,9 +187,31 @@ impl Computed {
                 // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается
                 // она от окна, а красится всё равно только внутри коробки
                 // (css-backgrounds-3 §3.10).
-                self.bg_fixed = accept_parsed!(self, Some(v.eq_ignore_ascii_case("fixed")));
+                self.bg_fixed = apply_parsed!(
+                    self,
+                    matches!(v, "fixed" | "scroll" | "local").then_some(v == "fixed")
+                );
             }
             _ => *hit = false,
         }
     }
+}
+
+pub(in crate::style::computed::props) fn position_valid(v: &str, vcx: ValueCx<'_>) -> bool {
+    let words = split_outside_parens(v);
+    (1..=4).contains(&words.len())
+        && words.iter().all(|w| {
+            matches!(w.as_str(), "left" | "right" | "top" | "bottom" | "center")
+                || (Computed::background_position_length(w, vcx)
+                    && !matches!(
+                        w.as_str(),
+                        "auto" | "min-content" | "max-content" | "fit-content"
+                    ))
+                || Len::parse_mixed(w, vcx).is_some_and(|l| {
+                    !matches!(
+                        l,
+                        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
+                    )
+                })
+        })
 }

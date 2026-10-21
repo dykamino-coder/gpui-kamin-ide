@@ -14,56 +14,60 @@ impl Computed {
                 // индексом (`parse_mixed`): зазор разрешает её от своей стороны
                 // контент-бокса в `paint/apply/` (css-gaps-1 §gap-percent).
                 let tokens = split_outside_parens(v);
-                let parts: Vec<Option<Len>> =
-                    tokens.iter().map(|t| Len::parse_mixed(t, vcx)).collect();
-                if (1..=2).contains(&parts.len()) && parts.iter().all(Option::is_some) {
-                    self.accept_declaration();
+                if !(1..=2).contains(&tokens.len()) {
+                    return;
                 }
-                self.gap = match parts.len() {
-                    1 => Some((parts[0], parts[0])),
-                    2 => Some((parts[0], parts[1])),
-                    _ => self.gap,
+                let (row, col) = parsed_value!(
+                    self,
+                    gap_value(&tokens[0], vcx).zip(gap_value(&tokens[tokens.len() - 1], vcx))
+                );
+                self.gap = Some((row, col));
+                self.column_gap = if tokens[tokens.len() - 1] == "normal" {
+                    None
+                } else {
+                    Len::parse(&tokens[tokens.len() - 1], vcx)
                 };
-                // Короткая форма задаёт и `column-gap` многоколоночника
-                // (css-align-3 §8.3: `gap` = `row-gap` + `column-gap`).
-                // Колонки читают только `column_gap` (`render::generic_box::columns` `used_gap`,
-                // `column_flow`), и `gap: 20px 0` прежде оставлял кегль —
-                // `column-wrap-no-constraints-001`, красная полоса между
-                // колонками.
-                // Многоколоночнику — прежний разбор без смеси: его зазор долю
-                // с точками не читает.
-                if parts.len() == 1 || parts.len() == 2 {
-                    self.column_gap = Len::parse(&tokens[tokens.len() - 1], vcx);
-                }
             }
             "row-gap" => {
-                self.gap = Some((
-                    record_parsed!(self, Len::parse(v, vcx)),
-                    self.gap.and_then(|g| g.1),
-                ))
+                let parsed = parsed_value!(self, gap_value(v, vcx));
+                self.gap = Some((parsed, self.gap.and_then(|g| g.1)));
             }
-            // Одно свойство служит двум раскладкам: в сетке и гибкой строке
-            // это зазор между ячейками, в многоколоночном потоке — между
-            // колонками. Пишем в оба поля, читает нужное та раскладка, которая
-            // включена.
             "column-gap" => {
-                self.gap = Some((self.gap.and_then(|g| g.0), Len::parse(v, vcx)));
-                self.column_gap = record_parsed!(self, Len::parse(v, vcx));
+                let parsed = parsed_value!(self, gap_value(v, vcx));
+                self.gap = Some((self.gap.and_then(|g| g.0), parsed));
+                self.column_gap = parsed;
             }
-            "order" => self.order = record_parsed!(self, v.parse().ok()),
+            "order" => self.order = apply_parsed!(self, v.parse().ok()),
             "flex-flow" => {
+                let (mut direction, mut wrap) = (None, None);
                 for token in v.split_whitespace() {
-                    let prop = if token.starts_with("wrap") || token == "nowrap" {
-                        "flex-wrap"
+                    if matches!(token, "row" | "row-reverse" | "column" | "column-reverse") {
+                        if direction.replace(token).is_some() {
+                            return;
+                        }
+                    } else if matches!(token, "wrap" | "wrap-reverse" | "nowrap" | "balance") {
+                        if wrap.replace(token).is_some() {
+                            return;
+                        }
                     } else {
-                        "flex-direction"
-                    };
-                    self.apply_one(prop, token, vcx);
+                        return;
+                    }
                 }
+                if direction.is_none() && wrap.is_none() {
+                    return;
+                }
+                self.apply_one("flex-direction", direction.unwrap_or("row"), vcx);
+                self.apply_one("flex-wrap", wrap.unwrap_or("nowrap"), vcx);
             }
             "align-content" => {
+                let parsed = parsed_value!(
+                    self,
+                    parse_justify(v).map(Some).or_else(|| (v == "normal"
+                        || parse_align(v) == Some(Align::Baseline))
+                    .then_some(None))
+                );
                 self.align_inherit &= !ainh::ALIGN_CONTENT;
-                self.align_content = record_parsed!(self, parse_justify(v));
+                self.align_content = parsed;
                 self.align_content_baseline = (parse_align(v) == Some(Align::Baseline))
                     .then(|| v.split_whitespace().any(|word| word == "last"));
                 self.align_content_safe = is_safe(v);
@@ -84,8 +88,14 @@ impl Computed {
                 }
             }
             "justify-items" => {
+                let parsed = parsed_value!(
+                    self,
+                    parse_align(v)
+                        .map(Some)
+                        .or_else(|| (matches!(v, "normal" | "legacy")).then_some(None))
+                );
                 self.align_inherit &= !ainh::JUSTIFY_ITEMS;
-                self.justify_items = record_parsed!(self, parse_align(v));
+                self.justify_items = parsed;
                 if matches!(v, "normal" | "legacy") {
                     self.accept_declaration();
                 }
@@ -93,8 +103,14 @@ impl Computed {
                 self.justify_items_last = v.split_whitespace().any(|w| w == "last");
             }
             "justify-self" => {
+                let parsed = parsed_value!(
+                    self,
+                    parse_align(v)
+                        .map(Some)
+                        .or_else(|| (matches!(v, "auto" | "normal")).then_some(None))
+                );
                 self.align_inherit &= !ainh::JUSTIFY_SELF;
-                self.justify_self = record_parsed!(self, parse_align(v));
+                self.justify_self = parsed;
                 if matches!(v, "auto" | "normal") {
                     self.accept_declaration();
                 }
@@ -113,19 +129,55 @@ impl Computed {
             }
             // `place-*` — сокращения «поперёк / вдоль»; одно значение задаёт обе оси.
             "place-items" | "place-content" | "place-self" => {
-                let (a, b) = match v.split_once(char::is_whitespace) {
-                    Some((a, b)) => (a.trim(), b.trim()),
-                    None => (v, v),
-                };
                 let (cross, main) = match key {
                     "place-items" => ("align-items", "justify-items"),
                     "place-content" => ("align-content", "justify-content"),
                     _ => ("align-self", "justify-self"),
+                };
+                let pair = if key == "place-content" && parse_align(v) == Some(Align::Baseline) {
+                    Some((v, "start"))
+                } else if alignment_value(cross, v) && alignment_value(main, v) {
+                    Some((v, v))
+                } else {
+                    v.char_indices()
+                        .filter(|(_, c)| c.is_whitespace())
+                        .find_map(|(i, _)| {
+                            let (a, b) = (v[..i].trim(), v[i..].trim());
+                            (alignment_value(cross, a) && alignment_value(main, b))
+                                .then_some((a, b))
+                        })
+                };
+                let Some((a, b)) = pair else {
+                    return;
                 };
                 self.apply_one(cross, a, vcx);
                 self.apply_one(main, b, vcx);
             }
             _ => *hit = false,
         }
+    }
+}
+
+fn gap_value(v: &str, vcx: ValueCx<'_>) -> Option<Option<Len>> {
+    if v == "normal" {
+        return Some(None);
+    }
+    size_range::parse_nonnegative_size(v, vcx)
+        .filter(|l| {
+            !matches!(
+                l,
+                Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
+            )
+        })
+        .map(Some)
+}
+
+fn alignment_value(key: &str, v: &str) -> bool {
+    if key.ends_with("content") {
+        parse_justify(v).is_some()
+            || v == "normal"
+            || (key == "align-content" && parse_align(v) == Some(Align::Baseline))
+    } else {
+        align_keyword(v).is_ok() || (key == "justify-items" && v == "legacy")
     }
 }
