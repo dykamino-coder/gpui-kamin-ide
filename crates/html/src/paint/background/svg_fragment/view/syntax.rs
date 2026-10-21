@@ -1,4 +1,6 @@
-//! SVG number and transform syntax shared with the vendored SVG renderer.
+//! Проверка синтаксиса `viewBox` и `transform` из спецификации вида теми же разборщиками
+//! `svgtypes`, что у встроенного SVG-рендерера; висячие разделители отвергаются, так как вид
+//! обязан быть валиден целиком (SVG 2 §16.3.2).
 
 use std::str::FromStr;
 

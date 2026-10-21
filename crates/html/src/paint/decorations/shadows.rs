@@ -1,7 +1,6 @@
 //! Внешние и внутренние резкие тени коробки (css-backgrounds-3 §7.1).
 
 use crate::document::state::ValueCx;
-// owner: A
 
 use crate::hooks::IntoHooked;
 use crate::paint::decorations::rect_minus::paint_rect_minus;

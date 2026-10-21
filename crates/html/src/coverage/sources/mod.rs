@@ -1,4 +1,9 @@
-//! Source lists joined in their original order for computed-field coverage.
+//! Список исходников, читающих разрешённый стиль, для аудита полей `Computed`.
+//!
+//! Три части (`dom_text`, `layout_paint`, `layout_flow`) склеиваются
+//! `const fn`-конкатенацией в `CONSUMERS` без изменения порядка. Тест
+//! `coverage::tests` требует, чтобы каждое поле стиля читалось хотя бы в одном
+//! из них: иначе свойство числится поддержанным, а на картинке его нет.
 
 mod dom_text;
 mod layout_flow;

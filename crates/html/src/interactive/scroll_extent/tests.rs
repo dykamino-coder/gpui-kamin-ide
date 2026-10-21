@@ -1,4 +1,4 @@
-//! Extent callbacks retain their own scrollport even when another tree begins a phase.
+//! Тесты: колбэки extent сохраняют свой scrollport, даже когда другое дерево начинает фазу.
 use super::*;
 use crate::layout::table::anon::anon_element;
 use gpui::point;

@@ -1,4 +1,4 @@
-//! Resolved CSS path commands shared by SVG serialization and tiny-skia geometry.
+//! Разрешённые CSS-команды пути, общие для SVG-сериализации и геометрии tiny-skia.
 
 mod geometry;
 pub(crate) use geometry::Geometry;

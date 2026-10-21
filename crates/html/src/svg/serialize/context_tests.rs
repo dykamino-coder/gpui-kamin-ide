@@ -1,4 +1,4 @@
-//! Serialization isolates document state and restores the enclosing viewport.
+//! Тесты: сериализация изолирует состояние документа и восстанавливает окружающий viewport.
 
 use super::{serialize, serialize_sized, write_element};
 use crate::document::state::DocState;

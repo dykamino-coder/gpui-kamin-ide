@@ -1,4 +1,4 @@
-//! Differential coverage for resolved SVG command arithmetic.
+//! Тесты: дифференциальное покрытие арифметики разрешённых SVG-команд.
 use super::{Command::*, Geometry, Sink};
 
 #[test]

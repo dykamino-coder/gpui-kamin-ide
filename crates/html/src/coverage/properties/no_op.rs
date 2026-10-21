@@ -1,4 +1,7 @@
-//! CSS property coverage for no op: kept in registry order.
+//! Реестр покрытия CSS, раздел «разбирается и ничего не делает»: подсказки
+//! движку (`will-change`, `contain`, `container-type`, `appearance`,
+//! `font-smooth`, прокрутка и касания) и `unicode-bidi`. Порядок записей —
+//! порядок реестра и документации; фрагменты склеивает `properties::PROPERTIES`.
 
 use super::{imp, m, no, part};
 use crate::coverage::Prop;

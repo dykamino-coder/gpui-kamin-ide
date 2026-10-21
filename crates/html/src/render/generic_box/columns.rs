@@ -35,8 +35,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // проходил гейт `Len::Px`, `count_from_width` был `None`,
     // `width_driven` — ложью, и многоколоночник не включался вовсе:
     // `multicol-width-001` рисовался одним абзацем в 30 знаков
-    // вместо пяти колонок по шесть (снимок обеих сторон в
-    // `target/scout-mctextflow-2026-09.md` §3.4). Blink
+    // вместо пяти колонок по шесть. Blink
     // абсолютизирует 'column-width' в `float` ещё на вычисленном
     // значении (`css_properties.json5:7513`
     // `ConvertComputedLength<float>`) и в `length_utils.cc:1311`
@@ -92,8 +91,7 @@ pub(crate) fn column_plan(e: &Element, merged: &Computed, opts: &RenderOpts) -> 
     // строки), рамка предка режется по фрагментам
     // (`multicol-span-all-children-height-008`). Только при спаннере:
     // без него одна колонка по-прежнему рисуется обычным блоком
-    // (переполнения одной колонки вбок здесь нет —
-    // `scout-multicol-2026-09.md` §10). Элемент списка — мимо:
+    // (переполнения одной колонки вбок здесь нет). Элемент списка — мимо:
     // сегментный путь маркер не рисует
     // (`multicol-span-all-list-item-001/002`).
     let lone_span = used_count == Some(1)

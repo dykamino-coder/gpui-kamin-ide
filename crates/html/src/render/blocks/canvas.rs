@@ -1,7 +1,6 @@
 //! Слой фона холста у корня (группа корня, css-compositing-1 §pagebackdrop).
 use crate::layout::options::RenderOpts;
 use gpui::IntoElement;
-// owner: A
 
 use crate::dom::Element;
 use crate::paint::effects::grouped::grouped;
@@ -22,7 +21,7 @@ pub(crate) fn canvas_layer(
     // Фон холста — часть ГРУППЫ КОРНЯ (css-compositing-1
     // §pagebackdrop): фильтр корня красит и его. Слой лежит
     // СОСЕДОМ коробки корня, поэтому единственная точка окраски
-    // фильтром (`inline::inherit`) до него не доходит — красим
+    // фильтром (`style::cascade::inherit`) до него не доходит — красим
     // здесь, от СОБСТВЕННОГО фильтра корня.
     let root_filter = e.style.filter;
     let mut layer = div().absolute().top_0().left_0().right_0().bottom_0();
@@ -65,7 +64,7 @@ pub(crate) fn canvas_layer(
     // (§14.2 «sized and positioned relative to the root element's
     // box»), а красит она весь холст. Донор-тело сюда не входит:
     // его слой лежит в детях корня, и отсчёт от padding-box корня
-    // получается сам (см. записи о двух откатах ниже).
+    // получается сам (см. ниже).
     if e.tag == "html"
         && (e.style.bg_image.is_some() || canvas_layers.is_some())
         && let Some(tiles) = {
@@ -144,20 +143,15 @@ pub(crate) fn canvas_layer(
         // ширина + горизонтальные отступы; полоса прижата по
         // письму с учётом поля и рамки с той стороны.
         //
-        // ЗАМЕРЕНО ВТОРОЙ РАЗ (перенос фона тела на корень по §14.2
-        // ВМЕСТЕ с `RootArea` + `canvas_layer`): приобретено 1,
-        // потеряно 2 — `background-position-001` 0.36 -> 2.39 и
-        // `background-root-024` 0.17 -> 5.74. Перенос сам по себе
-        // даёт 0 и −2. Значит дело не в кегле тела: расходится
-        // геометрия коробки корня, и её надо чинить первой.
-        //
-        // ЗАМЕРЕНО: считать область от коробки корня целиком
-        // (`RootArea` + `canvas_layer`, плитка красит весь холст)
-        // — CSS2 +2 в `background-root-001/002`, но -3 в
-        // `margin-collapse-020/021` и `block-formatting-contexts-003`:
-        // слой на весь холст перекрывает то, что рисуется выше по
-        // потоку. Возвращаться вместе с переносом фона тела на
-        // корень, когда кегль тела будет разрешаться до переноса.
+        // Не считать область от коробки корня целиком (`RootArea` +
+        // `canvas_layer`, плитка красит весь холст): слой на весь холст
+        // перекрывает то, что рисуется выше по потоку
+        // (`margin-collapse-020/021`, `block-formatting-contexts-003`).
+        // Перенос фона тела на корень по §14.2 — ни сам по себе, ни вместе
+        // с этим — не спасает: расходится геометрия коробки корня
+        // (`background-position-001`, `background-root-024`), её надо
+        // чинить первой; возвращаться можно, когда кегль тела будет
+        // разрешаться до переноса.
         let side = px_lossy_zero;
         let b = e.style.borders();
         let mut band = div().absolute().top_0().bottom_0();

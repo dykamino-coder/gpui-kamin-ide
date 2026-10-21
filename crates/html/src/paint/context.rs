@@ -1,4 +1,4 @@
-//! Paint traversal state shared only by elements of one render tree.
+//! Состояние обхода paint, общее только для элементов одного дерева отрисовки.
 
 use std::cell::RefCell;
 

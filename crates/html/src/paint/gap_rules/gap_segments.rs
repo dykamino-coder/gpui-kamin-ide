@@ -1,4 +1,7 @@
-//! Form ordered CSS gap decoration segments before extending their endpoints.
+//! Отрезки линейки промежутка (CSS Gaps 1 §3.1.2, §3.3): из пробега вычитаются скрытые и
+//! заблокированные участки и пересечения по `rule-break`, пары начало–конец проверяются до
+//! применения `*-rule-inset`, `overlap-join` доходит до дальнего края пересекающей линейки,
+//! а в RTL физическое начало — логический конец (§3.3.1).
 
 use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::{GapRun, subtract};

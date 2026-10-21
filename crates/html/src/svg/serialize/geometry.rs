@@ -1,11 +1,11 @@
-//! SVG 2 geometry properties from the CSS cascade: `cx`, `cy`, `r`, `rx`, `ry`, `d`, experimental `path-length`.
+//! Геометрические свойства SVG 2 из CSS-каскада: `cx`, `cy`, `r`, `rx`, `ry`, `d`,
+//! экспериментальное `path-length`.
 //!
-//! The rasterizer sees only serialized markup, so a cascaded geometry property is
-//! written as the attribute of the same name and REPLACES the element's own
-//! attribute: the attribute is only a presentation hint, any author rule wins
-//! (SVG 2 §9.1–9.4, Paths §9.3 `d`; Blink maps the attributes to
-//! `CSSPropertyID::kCx`… in svg_circle_element.cc, svg_ellipse_element.cc,
-//! svg_rect_element.cc:63-69, svg_path_element.cc and reads ComputedStyle).
+//! Растеризатор видит только сериализованную разметку, поэтому каскадное геометрическое свойство
+//! записывается атрибутом с тем же именем и ЗАМЕНЯЕТ собственный атрибут элемента: атрибут —
+//! лишь презентационная подсказка, любое авторское правило выигрывает (SVG 2 §9.1–9.4,
+//! Paths §9.3 `d`; Blink сопоставляет атрибуты `CSSPropertyID::kCx`… в svg_circle_element.cc,
+//! svg_ellipse_element.cc, svg_rect_element.cc:63-69, svg_path_element.cc и читает ComputedStyle).
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

@@ -1,13 +1,13 @@
-//! The engine's one `gpui::Element` adapter: wrappers and probes implement [`Hooks`] (typed
-//! lifecycle state) or [`Wrap`] (one child, forwarding defaults) and become elements through
-//! [`Hooked`].
+//! Единственный адаптер движка к `gpui::Element`: обёртки и пробы реализуют [`Hooks`]
+//! (типизированное состояние жизненного цикла) или [`Wrap`] (один потомок, методы
+//! пересылки по умолчанию) и становятся элементами через [`Hooked`].
 //!
-//! gpui's `Element` asks every implementor for an id, a source location, two ignored id
-//! parameters per phase and an `IntoElement` impl. Engine wrappers never carry an id, so that
-//! frame lives here once. Elements that keep gpui element state across frames (keyed by the
-//! `GlobalElementId`) — `Transition`, `Selectable`, `Resizable`, `ScrollArea`, `Paragraph` —
-//! and `FilteredImage` (delegates to gpui `Img` with its ids) implement `gpui::Element`
-//! directly.
+//! `Element` в gpui требует от каждого реализатора id, место в исходниках, два
+//! игнорируемых id-параметра на фазу и `IntoElement`. Обёртки движка id не носят,
+//! поэтому эта рамка живёт здесь один раз. Элементы, хранящие состояние gpui между
+//! кадрами (по `GlobalElementId`) — `Transition`, `Selectable`, `Resizable`,
+//! `ScrollArea`, `Paragraph` — и `FilteredImage` (делегирует gpui `Img` с его id)
+//! реализуют `gpui::Element` напрямую.
 
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,

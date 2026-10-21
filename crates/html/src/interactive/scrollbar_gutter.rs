@@ -1,5 +1,8 @@
-//! Physical classic gutters (CSS Overflow 3 §4.2), including stable and both-edges.
-//! Grid axis reversal is not the Windows scrollbar-side policy.
+//! Физические gutter классических полос (CSS Overflow 3 §4.2), включая `scrollbar-gutter:
+//! stable` и `both-edges`: модель занятых сторон против уже зарезервированных Taffy, перенос
+//! разницы в padding, размеры content-box и сдвиг обрезки переполнения. Обращение осей сетки
+//! не совпадает с политикой стороны полосы на Windows (Blink
+//! `ShouldPlaceBlockDirectionScrollbarOnLogicalLeft`), поэтому обе учитываются раздельно.
 
 use crate::document::state::ValueCx;
 pub(crate) mod positioned;

@@ -49,7 +49,7 @@ pub(crate) fn position_element(
     // тот же держатель: css-sizing-3 §fit-content в блочной оси даёт
     // высоту содержимого, и used = min(растяжение краями, содержимое)
     // (`position-absolute-fit-content`: `top: 0; bottom: 0;
-    // max-height: fit-content` — 100, а не 200). `apply.rs` такой
+    // max-height: fit-content` — 100, а не 200). `paint/apply/` такой
     // предел умеет только при `height` в точках и иначе пропускает.
     // Содержимое выше растяжения держатель не зажмёт — приближение.
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
@@ -62,7 +62,7 @@ pub(crate) fn position_element(
     {
         Some(true)
     } else if positioned_out
-        // Письмо коробки держателю не мешает: после `280d0d4` размеры
+        // Письмо коробки держателю не мешает: размеры
         // ортогонального узла ложатся по СВОЕМУ письму, и у
         // `vertical-rl` `block-size: min-content` — физическая ширина
         // (css-writing-modes-4, Abstract-Physical Mapping). Гейт
@@ -153,8 +153,8 @@ pub(crate) fn position_element(
     //
     // Предок считается ВКЛЮЧАЯ непосредственного родителя:
     // `inherited.cb_ancestor` отвечает за предков строго выше него.
-    // ЗАМЕРЕНО без этого слагаемого: CSS2 4636 -> 4626, все двенадцать
-    // потерь — абсолют внутри `position: relative`-РОДИТЕЛЯ.
+    // Без этого слагаемого абсолют внутри `position: relative`-РОДИТЕЛЯ
+    // уходил к вьюпорту.
     //
     // Пока только при заданных обеих осях: при пустой оси элемент
     // стоит на статической позиции, а её знает лишь раскладка.

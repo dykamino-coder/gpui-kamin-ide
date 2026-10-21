@@ -1,4 +1,6 @@
-//! Root inline metrics of the first formatted line (CSS Pseudo 4 §2.1.2).
+//! Сборка абзаца: метрики корневой строчной коробки первой форматированной
+//! строки при `::first-line` (CSS Pseudo 4 §2.1.2). Из слоя псевдоэлемента
+//! берутся шрифт стойки, кегль и высота строки; их получает `Paragraph`.
 
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;

@@ -1,4 +1,6 @@
-//! CSS Scroll Snap 1 §5.2.1: a chosen alignment must leave its snap area visible.
+//! Выбор пары позиций snap по осям (CSS Scroll Snap 1 §5.2.1): выбранное выравнивание обязано
+//! оставить свою область видимой в snapport; при несовместимых обязательных выравниваниях
+//! сохраняется одна верная ось, а не привязка обеих к пустой части канвы.
 use super::Rect;
 
 #[derive(Clone, Copy)]

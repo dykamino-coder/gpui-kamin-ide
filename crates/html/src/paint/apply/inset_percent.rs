@@ -1,7 +1,7 @@
-//! Percentage insets retain their basis through calc() until layout.
-//!
-//! CSS Values 4 §10.9 preserves mixed lengths; CSS 2 §9.3.2 makes vertical
-//! relative percentage insets auto when the containing height is indefinite.
+//! Применение к GPUI: процентные вставки `top`/`bottom` у `position: relative`
+//! при неопределённой высоте содержащего блока считаются `auto` (CSS 2 §9.3.2).
+//! Доля внутри `calc()` сохраняет свою базу до раскладки (CSS Values 4 §10.9),
+//! поэтому предикат смотрит и на процентную часть смешанной длины.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};

@@ -1,4 +1,8 @@
-//! Item-facing grid metadata also belongs on an anonymous sizing wrapper.
+//! Применение к GPUI: метаданные элемента сетки/флекса, которые обязаны
+//! переехать на анонимную обёртку размера по содержимому (`render::content_sized`)
+//! — ведь в контейнере родителя стоит она. Это флаги ориентации базовой линии
+//! (`baseline_x_flags`), `align-self`/`justify-self` с признаком `safe`,
+//! проекция на оси вертикального родителя и baseline содержимого сетки.
 use crate::style::computed::Computed;
 
 fn grid_mode(c: &Computed) -> u8 {

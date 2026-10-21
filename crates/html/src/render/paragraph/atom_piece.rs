@@ -1,4 +1,5 @@
-//! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из `paragraph_pieces_routed`.
+//! Строчный атом абзаца в кусок (`Piece::Atom`): тело замыкания `atom` из
+//! `paragraph_pieces_routed`.
 use crate::layout::box_kind::inline_level;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::box_kind::replaced_tag;
@@ -12,8 +13,6 @@ pub(super) use static_overlay::static_overlay;
 mod decoration;
 pub(super) use decoration::decorate_atom;
 mod atom_cx;
-pub(crate) use atom_cx::AtomRuby;
-// owner: A
 use crate::animation::frames::bake_frozen;
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
@@ -27,6 +26,7 @@ use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::ruby::ruby_transform;
 use crate::text::vertical::combined_text;
+pub(crate) use atom_cx::AtomRuby;
 use gpui::{IntoElement, ParentElement};
 
 pub(crate) fn atom_piece(
@@ -91,15 +91,31 @@ fn atom_piece_in(
     // Абсолютный элемент на статической позиции ВНУТРИ строки — кусок вне
     // потока: место в строке он не занимает, поэтому абзац остаётся
     // текстовым и не теряет пробелы (`line-breaking-018`).
-    // Static overlays use the vertical paragraph path only when its
-    // containing block supplies the turned coordinate frame. A shared-band
-    // block retains its hypothetical static point even without flow text.
-    // Inline-CB offers handle horizontal frames; turned paragraphs must
-    // position overlays before the containing block rotates their coordinates.
+    // Вертикальное письмо сюда не пускается: там строчная ось вертикальна,
+    // `point_of` отдаёт ДО-поворотные координаты, и класс берётся отдельно.
+    // Горизонтальный rtl идёт текстовым путём только в абзаце, чей содержащий
+    // блок пишет вертикально (признак — `ortho_limit`, он ставится только
+    // внутри вертикального содержащего блока): иначе ломались бы
+    // `htb-rtl-ltr.tentative` и `htb-rtl-rtl`, а выигрыш даёт лишь вертикаль
+    // (`abs-pos-non-replaced-v{lr,rl}-*`). Блок общей полосы (`band_kid`)
+    // без потокового текста сохраняет гипотетическую статическую точку.
+    // Предложения строчного содержащего блока обслуживают горизонтальные
+    // рамки; повёрнутые абзацы ставят наложения до поворота координат.
     let plain_flow = !inherited.wm().vertical()
         && (!inherited.wm().rtl()
             || (flow_text && inherited.ortho_limit.is_some())
             || (inherited.band_kid && !flow_text));
+    // Статическая позиция считается для ГИПОТЕТИЧЕСКОГО статического
+    // элемента (§10.3.7: «if position had been static») — блокификация
+    // `display: inline` под absolute на неё не влияет, метка
+    // inline_display возвращает такой элемент в строчный путь.
+    // БЛОЧНЫЙ абсолют в ПОВЁРНУТОМ абзаце вертикального письма — тоже
+    // кусок вне потока, но с местом в начале СЛЕДУЮЩЕЙ строки
+    // (`next_line_point`): атомом со щупом `Spot` он вывел бы абзац из
+    // текстового пути, а щуп мерил бы до-поворотные координаты
+    // (`css-position/static-position/v{lr,rl}-*`). В повёрнутом абзаце
+    // коробка поворачивается вместе со строками, и её до-поворотное место —
+    // ровно гипотетическая коробка §10.6.4.
     let rot_block =
         inherited.wm().turned() && !inline_level(e) && e.style.inline_display != Some(true);
     if plain_flow
@@ -112,19 +128,14 @@ fn atom_piece_in(
     {
         return static_overlay(e, inherited, opts, rot_block);
     }
-    // ★ ЗАМЕРЕНО И ОТКАЧЕНО: контр-поворот физических четвёрок краёв
-    // (`margin`/`padding`/`border-width` и четвёрки цвета, стиля,
-    // видимости) у КАЖДОГО куска повёрнутого абзаца — поворот уносит их
-    // с собой, а стороны письмом не переставляются (§3.2). Направление
-    // проверено обоими: по часовой (верх←право, право←низ, низ←лево,
-    // лево←верх) заметно лучше обратного — девять пар `grid-self-
-    // baseline-*` шли 8.38/5.83/16.62/21.74/5.13/3.98/1.52/4.22/6.88, по
-    // часовой стало 7.98/5.83/13.78/12.65/5.02/4.39/1.52/6.11/6.88,
-    // против часовой 8.31/5.83/16.61/12.99/5.26/6.09/1.52/7.81/6.88.
-    // Зелёной не стала НИ ОДНА: их держит отсутствие физической высоты
-    // (см. откат про `max_w` выше), а `wm-propagation-body-049` ушла
-    // 0.00 → 2.24. Итог на срезе 571 пары: 423 → 422.
-    // Возвращать вместе с высотой повёрнутого блока по содержимому.
+    // Не контр-поворачивать физические четвёрки краёв (`margin`/`padding`/
+    // `border-width` и четвёрки цвета, стиля, видимости) у КАЖДОГО куска
+    // повёрнутого абзаца, хотя поворот уносит их с собой, а стороны письмом
+    // не переставляются (§3.2): `grid-self-baseline-*` держит отсутствие
+    // физической высоты повёрнутого блока, а `wm-propagation-body-049`
+    // ломается. Вернуть можно только вместе с высотой повёрнутого блока
+    // по содержимому (верное направление — по часовой: верх←право,
+    // право←низ, низ←лево, лево←верх).
     // Стоячая коробка в повёрнутом абзаце: `inline-block` с явным
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).

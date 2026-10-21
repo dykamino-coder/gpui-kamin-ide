@@ -1,4 +1,6 @@
-//! CSS Overflow 3 §2.2: descendant overflow is intersected with ancestor clips.
+//! Геометрия прокручиваемого переполнения (CSS Overflow 3 §2.2): объединение прямоугольников
+//! и пересечение переполнения потомка с обрезкой предка — `overflow: clip`/containment
+//! с `overflow-clip-margin` и его опорной коробкой, `hidden`/`scroll` по padding box.
 use crate::style::computed::{Computed, Overflow, Sides};
 use crate::style::values::value::Len;
 

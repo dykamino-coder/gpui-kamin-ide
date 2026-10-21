@@ -1,5 +1,7 @@
-//! CSS Overflow 3 §2.3: project negative-origin scrolling onto GPUI's negative offsets.
-//! Reverse axes move content toward the physical end; preserve normal overflow geometry.
+//! Проекция прокрутки с началом у дальнего края (CSS Overflow 3 §2.3: `rtl`, `vertical-rl`)
+//! на отрицательные смещения GPUI: по обращённой оси содержимое сдвигается к физическому
+//! концу, а геометрия обычного переполнения сохраняется. Не применяется к `fixed` без
+//! трансформированного предка и к абсолютам с другим содержащим блоком.
 
 use super::{
     Frame,

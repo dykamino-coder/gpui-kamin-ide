@@ -1,5 +1,7 @@
-//! HTML scrollable-overflow owner; GPUI measures only immediate child bounds.
-//! A transparent extent proxy projects CSS Overflow 3 §2.2 into that native range.
+//! Владелец прокручиваемого переполнения HTML (CSS Overflow 3 §2.2): GPUI измеряет только
+//! коробки непосредственных детей, поэтому `Frame` собирает за кадр коробки потомков, текста,
+//! сеточных дорожек и областей snap, а прозрачный прокси переполнения проецирует их объединение
+//! в нативный диапазон прокрутки. Здесь же решения о полосах, их gutter и обрезке декораций.
 pub(crate) mod classic;
 mod exact_probe;
 pub(crate) use exact_probe::{ShiftLink, StickyShift};

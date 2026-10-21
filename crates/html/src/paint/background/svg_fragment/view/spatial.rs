@@ -1,6 +1,7 @@
-//! Media Fragments §6.1.2: spatial clipping establishes the SVG initial viewBox.
-//! Percent coordinates use CSS Images' concrete size with the 300×150 default;
-//! pixel clips are bounded only when the document supplies a natural size.
+//! Пространственный фрагмент `xywh=` (Media Fragments §6.1.2) задаёт начальный `viewBox` SVG:
+//! последняя синтаксически верная запись побеждает (§6.3). Проценты считаются от конкретного
+//! размера CSS Images с умолчанием 300×150; пиксельная обрезка ограничивается только при
+//! наличии у документа собственного размера.
 
 use crate::paint::background::{default_size, image_decode::svg_size};
 

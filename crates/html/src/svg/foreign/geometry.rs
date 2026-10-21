@@ -1,4 +1,7 @@
-//! Keep the HTML viewport separate from its visible ink and backdrop blending.
+//! Геометрия слоя `foreignObject`: увеличение по трансформам (наибольшее сингулярное число
+//! матрицы), область снимка с запасом под `overflow: visible` отдельно от вьюпорта HTML,
+//! раскрытие `<image>` во вложенный `<svg>` с `overflow="visible"` для вылезшей краски и выбор
+//! единственного вклада `mix-blend-mode`, который может смешиваться с подложкой хоста.
 use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Overflow};
 use gpui::{Pixels, Point, Size, point, px, size};

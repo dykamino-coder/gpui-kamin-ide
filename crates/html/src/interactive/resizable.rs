@@ -1,5 +1,7 @@
-//! Элемент `Resizable`.
-// owner: A
+//! GPUI-элемент `Resizable` для CSS `resize`: хранит между кадрами заданный мышью размер и
+//! состояние перетаскивания, ловит нажатия только в угловой ручке и перестраивает содержимое
+//! с новыми `width`/`height`. Отдельный элемент нужен потому, что память между кадрами в
+//! GPUI есть только у собственного `Element`.
 
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,

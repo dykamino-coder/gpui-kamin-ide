@@ -1,12 +1,12 @@
-//! Route `::first-line` styling into the first in-flow block descendant.
+//! Сборка дерева: перенос слоя `::first-line` в первый блочный потомок в потоке.
 //!
 //! CSS 2 §5.12.1: «The "first formatted line" of an element may occur inside
 //! a block-level descendant in the same flow (i.e., a block-level descendant
-//! that is not out-of-flow due to floating or positioning)»; the fictitious
-//! `::first-line` tag sequence is placed inside that descendant
-//! (css-pseudo-4 §first-line-inheritance). Only the declarations of the
-//! pseudo-element travel: everything it does not set stays with the text's
-//! own style, as for `first_letter_descendants`.
+//! that is not out-of-flow due to floating or positioning)»; фиктивная
+//! последовательность тегов `::first-line` ставится внутрь этого потомка
+//! (css-pseudo-4 §first-line-inheritance). Переезжают только объявления
+//! псевдоэлемента: всё, чего он не задаёт, остаётся собственным стилем текста,
+//! как и в `first_letter_descendants`.
 
 use crate::dom::Node;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};

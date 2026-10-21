@@ -1,5 +1,5 @@
-//! Group effects of a block box: the style its wrapper reads and the
-//! isolation its blending descendants require.
+//! Групповые эффекты блочного бокса: стиль, который читает его обёртка, и
+//! изоляция, нужная его blending-потомкам.
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;

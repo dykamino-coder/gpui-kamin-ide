@@ -1,4 +1,6 @@
-//! Fragment-local shadow lists retain currentColor until the fragment is known.
+//! Наборы теней по строчным фрагментам: список `text-shadow` наследуется или сбрасывается
+//! `none` на каждом `<span>`, а `currentColor` остаётся неразрешённым до фрагмента и берёт его
+//! цвет; группы собираются в порядке текста без повторов.
 
 use super::atomic;
 use crate::dom::{Element, Node};

@@ -1,4 +1,4 @@
-//! Document identity, snapshot retention and deferred mask geometry.
+//! Тесты: идентичность документа, удержание снимка и отложенная геометрия маски.
 
 use super::*;
 

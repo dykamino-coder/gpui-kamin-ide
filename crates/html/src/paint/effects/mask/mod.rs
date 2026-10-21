@@ -1,4 +1,8 @@
-//! Document-owned SVG mask resources and filter primitives.
+//! SVG-ресурсы масок документа: определения `<mask id>`, `<clipPath id>` и `<filter id>` для
+//! ссылок `url(#id)` из `mask-image`/`clip-path`/`filter`. Реестр (`MaskResources`) принадлежит
+//! документу и пересобирается до построения дерева (ссылка может стоять раньше определения);
+//! отложенные группы держат неизменяемый снимок, а не общий реестр. Здесь же матрица 4×5
+//! из SVG-фильтра для `backdrop-filter: url(#id)`.
 
 mod context;
 pub mod element;

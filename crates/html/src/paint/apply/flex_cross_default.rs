@@ -1,4 +1,7 @@
-//! Preserve the legacy vertical row cross-end only on its physical X axis.
+//! Применение к GPUI: умолчание поперечной оси флекса в `vertical-rl`.
+//! Прежний физический прижим к концу поперечной оси сохраняется только для
+//! рядов, чья поперечная ось — физическая X (колонки по физике), без
+//! собственного `align-items`; логическим вертикальным колонкам он не даётся.
 use crate::style::computed::{Computed, Display, FlexDir};
 pub(super) fn ends_on_x(c: &Computed, physical: Option<FlexDir>) -> bool {
     c.wm().block_rl()

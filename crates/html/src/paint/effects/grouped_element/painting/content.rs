@@ -1,4 +1,7 @@
-//! Composite own decorations separately from the shaped overflow clip.
+//! Покраска содержимого группы в буфер: при `corner_clip` собственные декорации коробки
+//! компонуются отдельно от фигурной обрезки переполнения вложенной группой, иначе одна группа
+//! с полигоном и маской; ребёнок красится в своей фазе контуров, кольцо `corner-shape`
+//! замещаемого элемента — поверх содержимого в пределах content-box.
 use crate::paint::effects::grouped_element::Grouped;
 use gpui::{App, Bounds, Corners, Pixels, Point, RenderImage, Window, px};
 use std::sync::Arc;

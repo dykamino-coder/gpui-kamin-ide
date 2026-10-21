@@ -1,4 +1,4 @@
-//! Independent formatting contexts shared by margin collapse and line-clamp traversal.
+//! Независимые контексты форматирования, общие для схлопывания полей и обхода line-clamp.
 
 use crate::layout::multicol::spanner::multicol_container;
 use crate::style::computed::{Computed, Display, Overflow, Position};

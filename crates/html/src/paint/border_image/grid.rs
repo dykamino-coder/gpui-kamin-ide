@@ -1,6 +1,7 @@
-//! Resolve independent source cuts and a shared nine-piece destination grid.
-//! CSS Backgrounds 3 §6.2/6.3/6.6; Blink nine_piece_image_grid.cc keeps right
-//! and bottom cuts anchored to their own edges even when opposite cuts overlap.
+//! Сетка девяти кусков `border-image`: независимые срезы источника по `border-image-slice` и
+//! общая сетка назначения по `border-image-width` с пропорциональным ужатием в область
+//! (CSS Backgrounds 3 §6.2/6.3/6.6). Как Blink `nine_piece_image_grid.cc`, правый и нижний
+//! срезы остаются привязанными к своим краям, даже когда противоположные срезы перекрываются.
 
 use crate::paint::background::{Source, default_size};
 use crate::style::computed::{BorderImage, BorderImageWidth};

@@ -1,4 +1,9 @@
-//! Preserve tile pixel boundaries and paint supported gradients analytically.
+//! Покраска одной плитки фона: выбор пути (однотонный SVG, аналитический градиент шейдером,
+//! SVG в конечной ориентации, растр) и режима выборки — без интерполяции для немасштабированного
+//! растра, `pixelated` ближайшей точкой, иначе линейно с совместной привязкой обоих краёв
+//! (CSS Backgrounds 3 §3.8; Blink `background_image_geometry.cc:756`) и пересэмплированием в
+//! премультиплицированной альфе. Градиенты с расширенными стопами, радиальные, повторяющиеся и
+//! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
 
 use crate::document::state::ValueCx;
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
@@ -57,7 +62,7 @@ pub(super) fn paint_tile(
     // An interpolated tile snaps both final edges together as well (CSS
     // Backgrounds 3 section 3.8; Blink background_image_geometry.cc:756),
     // instead of flooring the origin and independently expanding the size.
-    // Ported from fix-near b6801d1; the Nearest path above stays as is.
+    // The Nearest path above stays as is.
     let sampling = if sampling == ImageSampling::Linear
         && window.current_transformation().rotation_scale == [[1.0, 0.0], [0.0, 1.0]]
     {
@@ -179,7 +184,7 @@ pub(super) fn snapped_clip(bounds: Bounds<Pixels>, window: &Window) -> Bounds<Pi
     }
     // CSS Backgrounds 3 section 3.7 clips to the painted box. Snap the clip
     // like the box edges: a fractional clip can otherwise discard its last
-    // painted device column (fix-near b6801d1).
+    // painted device column.
     let scale = window.scale_factor();
     let edge = |v: Pixels| gpui::px((f32::from(v) * scale).round() / scale);
     Bounds::from_corners(

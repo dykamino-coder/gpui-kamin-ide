@@ -1,10 +1,11 @@
-//! `filter(<image>, <filter-value-list>)` over raster images.
+//! `filter(<image>, <filter-value-list>)` над растровыми картинками: применение уже
+//! разобранного списка фильтров к straight-BGRA растру.
 //!
-//! Filter Effects 1 §13 ("Filter CSS <image> values"): the filter list runs
-//! on the input image and the result keeps the input's dimensions and origin,
-//! so `drop-shadow()` pixels beyond the image are clipped. Filter regions are
-//! sized by the image's concrete size; callers resolve and scale the input
-//! before applying the list here.
+//! Filter Effects 1 §13 («Filter CSS <image> values»): список фильтров выполняется над входной
+//! картинкой, результат сохраняет её размеры и начало, поэтому точки `drop-shadow()` за
+//! пределами картинки обрезаются. Область фильтра задаётся конкретным размером картинки:
+//! вызывающий решает и масштабирует вход до применения списка здесь. Размытие и тень,
+//! смешанная с другими функциями, не поддерживаются и дают `None`.
 
 use gpui::RenderImage;
 use std::sync::Arc;

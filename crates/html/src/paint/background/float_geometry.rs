@@ -1,4 +1,6 @@
-//! Preserve continuous geometry for rounded shape-outside boxes.
+//! Геометрия `shape-outside` для флоатов: `inset()`/`rect()`/`xywh()` с `round` и
+//! слова-коробки (css-shapes-1 §3.1) переводятся в прямоугольник с радиусами относительно
+//! опорной коробки, из которого раскладка флоатов строит непрерывный `RoundedBox`.
 
 use super::ShapeBox;
 use crate::document::state::ValueCx;

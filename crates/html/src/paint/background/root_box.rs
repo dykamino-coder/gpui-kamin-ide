@@ -1,4 +1,7 @@
-//! Measured root padding box for canvas background positioning (CSS Backgrounds 3).
+//! Измерение padding box корневого элемента для позиционирования фона канваса
+//! (CSS Backgrounds 3 §2.11.2): обёртка снимает неокруглённую коробку ребёнка на prepaint и
+//! отдаёт её слою канваса через заранее выданную ячейку. Ребёнок остаётся узлом раскладки,
+//! поэтому измерение не меняет схлопывание полей и размеры.
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;

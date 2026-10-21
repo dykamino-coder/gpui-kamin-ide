@@ -1,4 +1,6 @@
-//! CSS property coverage for misc: kept in registry order.
+//! Реестр покрытия CSS, раздел «прочее»: `cursor`, `object-fit`, `pointer-events`,
+//! `table-layout`. Порядок записей — порядок реестра и документации; фрагменты
+//! склеивает `properties::PROPERTIES`.
 
 use super::{m, part};
 use crate::coverage::Prop;

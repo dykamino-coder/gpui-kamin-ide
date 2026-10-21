@@ -1,4 +1,6 @@
-//! CSS property coverage for paint: kept in registry order.
+//! Реестр покрытия CSS, раздел «фон, рамки, тени»: `background*`, `border*`,
+//! радиусы, `outline*`, `box-shadow`, `backdrop-filter`. Порядок записей —
+//! порядок реестра и документации; фрагменты склеивает `properties::PROPERTIES`.
 
 use super::{m, part};
 use crate::coverage::Prop;

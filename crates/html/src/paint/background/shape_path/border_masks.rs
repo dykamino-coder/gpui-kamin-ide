@@ -1,4 +1,8 @@
-//! Typed coverage masks and colored rings of border-shape contours.
+//! Сцены `border-shape` (css-borders-4) из типизированных контуров: маска покрытия буфера
+//! группы — контур, расширенный на половину обводки толщиной рамки (Blink
+//! `BorderShapePainter::OuterPath`), либо при отрицательной обводке суженный внутренний
+//! контур для обрезки переполнения (`InnerPath`) — и цветное кольцо рамки: обводка по
+//! центру одной фигуры либо разность внешней и внутренней по яркостной маске.
 
 use super::border_scene::Contour;
 use crate::document::state::ValueCx;

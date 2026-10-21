@@ -1,4 +1,6 @@
-//! CSS scrollport borders do not belong to its scrolling content (Overflow 3 §2).
+//! Неподвижная обёртка внутри scrollport: компенсирует смещение прокрутки и красит ребёнка в
+//! обрезке декораций, потому что рамки scrollport не принадлежат его прокручиваемому
+//! содержимому (CSS Overflow 3 §2).
 
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AnyElement, App, Bounds, ContentMask, Pixels, ScrollHandle, Window};

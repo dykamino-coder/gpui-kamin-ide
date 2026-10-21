@@ -1,4 +1,6 @@
-//! Row-gap visibility uses the occupied columns in both adjacent rows.
+//! Видимость `row-rule` многоколонника по колонке (css-gaps-1 §visibility-items): `around` —
+//! колонка занята хотя бы в одном из соседних рядов, `between` — в обоих, `normal` в
+//! многоколоннике ведёт себя как `all`.
 
 pub(super) fn row_visible(before: usize, after: usize, column: usize, visibility: u8) -> bool {
     match visibility {

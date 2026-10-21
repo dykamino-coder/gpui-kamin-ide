@@ -1,4 +1,8 @@
-//! Outline rings outside the border box, without changing layout.
+//! Слой `outline` (css-ui-4 §outline): кольцо снаружи border-box без влияния на раскладку —
+//! абсолютный ребёнок с отрицательным отступом на толщину, сдвиг и рамку. Решает `medium` по
+//! умолчанию, цвет из `outline-color`/`accent-color`/цвета текста, зажим отрицательного
+//! `outline-offset` (Blink `AdjustedOutlineOffset`), угол контура от угла коробки, `double`
+//! двумя кольцами и узоры `dotted`/`dashed`; слой уходит в отложенную фазу контуров.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, OUTLINE_DOUBLE};

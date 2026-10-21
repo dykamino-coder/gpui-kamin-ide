@@ -68,7 +68,7 @@ pub(super) fn user_to_css(e: &Element, w: f32, h: f32) -> Option<(f32, f32, f32)
 /// css-masking-1 §7 применяется и к SVG-элементам, но usvg маску из CSS не
 /// знает (`write_element` её не мостит): слой маскированного ребёнка
 /// режется отдельным растром и оборачивается `render::grouped` с ЕГО
-/// `Computed` — тем же путём, что HTML-коробка (scout-masking A2).
+/// `Computed` — тем же путём, что HTML-коробка.
 pub(super) fn masked_units(e: &Element, w: f32, h: f32) -> Option<Vec<MaskedUnit>> {
     let (s, ox, oy) = user_to_css(e, w, h)?;
     let mut out = Vec::new();

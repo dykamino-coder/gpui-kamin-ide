@@ -1,4 +1,7 @@
-//! Collect border boxes and trailing margins for gap geometry.
+//! Проба элемента сетки/гибкого контейнера для геометрии промежутков: абсолютный элемент во
+//! весь padding box записывает в буфер border-box элемента (расширенный на толщину рамки, так
+//! как промежуток идёт между рамочными краями, css-gaps-1 §gap-grid/§gap-flex) без округления
+//! к точкам устройства и его хвостовые поля.
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::paint::gap_rules::GapItems;

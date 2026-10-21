@@ -1,12 +1,12 @@
-//! Position a box's background layer from its unrounded layout box.
-//!
-//! CSS 2.1 section 14.2 and css-backgrounds-3 section 3.6 position a background
-//! in the box's positioning area; Blink resolves `background-position` against
-//! the unsnapped area (background_image_geometry.cc: "Unsnapped positioning
-//! area is used to derive quantities ... such as phase and position") and
-//! snaps only the destination. The layer canvas received the device-snapped
-//! box, so a centred tile moved by up to half a device pixel against the same
-//! tile in a box of equal exact geometry (background-root-013a/b).
+//! Слой фона, позиционируемый от неокруглённой коробки раскладки: элемент `ExactLayer`
+//! запоминает привязанные и точные границы, а `positioning` отдаёт точные для расчёта фазы
+//! плиток. CSS 2.1 §14.2 и css-backgrounds-3 §3.6 кладут фон в область позиционирования
+//! коробки; Blink решает `background-position` от непривязанной области
+//! (`background_image_geometry.cc`: «Unsnapped positioning area is used to derive quantities
+//! ... such as phase and position») и привязывает только назначение. Канвас слоя получал
+//! привязанную к пикселям коробку, и центрированная плитка уезжала до половины пикселя
+//! устройства относительно той же плитки в коробке равной точной геометрии
+//! (background-root-013a/b).
 
 use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled as _, Window, px};

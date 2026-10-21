@@ -1,10 +1,12 @@
-//! Repeat offsets retain the source phase across fractional clipping bounds.
+//! Координаты копий плитки вдоль оси по `background-repeat` (`repeat`, `round`, `space`,
+//! `no-repeat`) с сохранением фазы источника при дробных границах обрезки.
 //!
-//! CSS Backgrounds 3 §3.4 preserves the positioning area's tile grid. Keep
-//! clipping offsets in f64 until they cancel when forming absolute coordinates:
-//! an f32 round trip through the device-snapped clip perturbs exact texel ties.
-//! Blink background_image_geometry.cc:179-191 likewise keeps repeat phase
-//! unsnapped, independently of the paint rectangle.
+//! CSS Backgrounds 3 §3.4 сохраняет сетку плиток области позиционирования. Смещения обрезки
+//! держатся в f64, пока не сократятся при образовании абсолютных координат: проход через f32 и
+//! привязанную к устройству обрезку сбивает точные совпадения с границами текселей. Blink
+//! `background_image_geometry.cc:179-191` так же держит фазу повтора непривязанной, независимо
+//! от прямоугольника покраски. `space` при менее чем двух целых плитках откатывается к
+//! `no-repeat`, а за областью позиционирования продолжает тот же шаг.
 
 use super::MAX_TILES;
 use crate::style::computed::Tiling;

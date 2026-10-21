@@ -1,4 +1,9 @@
-//! Preserve intrinsic size keywords through the GPUI/native layout boundary.
+//! Применение к GPUI: ключевые слова внутреннего размера (`min-content`,
+//! `max-content`, `fit-content`, `fit-content(N)`, `stretch`) доносятся до родной
+//! раскладки как `CssSizingKeyword`, а не теряются на границе. Здесь же
+//! решается, нужен ли коробке родной контракт content-box: доля и функциональный
+//! `fit-content` прибавляют разрешённые края к используемому размеру
+//! (CSS 2.1 §10.2, §10.5). При `contain: size` ключевые слова содержимое не меряют.
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::CssSizingKeyword;

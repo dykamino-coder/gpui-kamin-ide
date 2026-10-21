@@ -23,7 +23,7 @@ pub struct RootArea {
     /// Read the measured left edge of the root's padding box (`DocState::root_left`):
     /// корень `vertical-rl` без заданной ширины — по содержимому и прижат
     /// вправо, его край известен только после раскладки. Читается при
-    /// ОТРИСОВКЕ: подготовка тела (`interact::RecordRootLeft`) идёт раньше
+    /// ОТРИСОВКЕ: подготовка тела (`text::vertical::root_left::RecordRootLeft`) идёт раньше
     /// отрисовки холста в том же кадре.
     pub measured_left: bool,
 }

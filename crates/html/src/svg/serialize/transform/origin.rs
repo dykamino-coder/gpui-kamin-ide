@@ -1,4 +1,7 @@
-//! Parse SVG presentation transform-origin against the used reference box.
+//! Разбор презентационного `transform-origin` SVG-элемента относительно используемой опорной
+//! коробки (css-transforms-1 §transform-origin): ключевые слова осей в любом порядке, проценты
+//! от коробки, абсолютные единицы в px; длины отсчитываются от рамки фигуры только при
+//! `transform-box: fill-box`, по умолчанию — от вьюпорта.
 
 pub(super) fn parse(
     raw: &str,

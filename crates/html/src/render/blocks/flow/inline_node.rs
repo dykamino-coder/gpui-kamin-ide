@@ -132,35 +132,23 @@ pub(crate) fn inline_node(
             // children are inline-level boxes and text runs of THIS
             // container (css-display-3 §2.5 «as if they replaced the
             // element»), so they join the surrounding inline run — the
-            // inline collector dissolves the element (`inline.rs`,
+            // inline collector dissolves the element (`text::inline::collect`,
             // `Display::Contents`). Flushing the run here split one line
             // `<div contents>abc</div><br>` into an anonymous block plus a
             // run starting with `<br>` — an extra empty line
             // (`text-autospace-elements-002`).
             Some(Display::Contents) => !ordered_context && !contains_block(&e.children),
-            // Прежний откат этой строки СНЯТ (03.09). Он мерился, когда
-            // строчный атом строил лунки голым `blocks()` и терял их
-            // целиком — оттого вся восьмёрка `flow-tolerance-*` и уходила
-            // в красное (0.00 -> 5.66 и родня). Теперь `atom_element`
-            // отдаёт лунки блочному пути (`element()`), и обе правки
-            // вместе дают по всему CSS3 2420 -> 2442: приобретено 27,
-            // потеряно 5 (`row-line-names-007/008/010/012`,
-            // `row-subgrid-abs-pos-002` — рядные лунки, они ждут обтяжку
-            // по РЯДАМ, корень R4 из `target/scout-subgrid-orthogonal-
-            // 2026-09.md`).
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО (05.09): строчный путь для абсолюта
-            // с объявленным `display: inline` на статической позиции
-            // (css-position-3 §staticpos-rect). Срез 12086 пар вместе с
-            // патчем барьера `contain`: 9343 -> 9346 (+9/-6), причём вся
-            // шестёрка потерь — этого рукава:
-            // `inline-level-absolute-in-block-level-context-002`
-            // (0.26->0.52), `-007` (0.00->0.54), `-010` (0.00->1.04),
-            // `position-absolute-dynamic-static-position-inline`
-            // (0.00->2.10), `abs-pos-border-offset-003` (0.46->1.75),
-            // `css-flexbox-height-animation-stretch` (0.10->1.90), против
-            // всего двух приобретений (`-009`, `-012`). Строчная ветка
-            // теряет полосу обтекания и рамочные смещения — рукав нужен
-            // не здесь, а в `atom_element`.
+            // Эта строка держится на том, что `atom_element` отдаёт лунки
+            // блочному пути (`element()`): пока строчный атом строил их
+            // голым `blocks()`, они терялись целиком (`flow-tolerance-*`).
+            // Известный пробел: `row-line-names-007/008/010/012`,
+            // `row-subgrid-abs-pos-002` — рядные лунки ждут обтяжку по РЯДАМ.
+            // Строчный путь для абсолюта с объявленным `display: inline` на
+            // статической позиции (css-position-3 §staticpos-rect) сюда не
+            // ставить: строчная ветка теряет полосу обтекания и рамочные
+            // смещения (`inline-level-absolute-in-block-level-context-002/
+            // 007/010`, `position-absolute-dynamic-static-position-inline`,
+            // `abs-pos-border-offset-003`) — рукав нужен в `atom_element`.
             Some(_) => false,
             // Дети гибкого контейнера и сетки блокируются по CSS: каждый
             // сам себе элемент раскладки. Без оговорки `<span>` без

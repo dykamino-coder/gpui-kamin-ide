@@ -1,4 +1,7 @@
-//! Select computed image operands and decode resource URLs with shared caching.
+//! Выбор источника картинки: из строки (`url()` с SVG-фрагментом `<view>`, внутренний
+//! `shape:`) и из вычисленных операндов (`image()` с запасным цветом, `filter()`, градиенты);
+//! разобранное кэшируется по строке. Ключ кэша учитывает `image-orientation` (css-images-3
+//! §5.4): приставка `exif-none|` отделяет сырой растр от развёрнутого.
 
 use super::{CACHE, CACHE_CAP, Source, decode, read_bytes, svg_fragment};
 use crate::document::state::ValueCx;

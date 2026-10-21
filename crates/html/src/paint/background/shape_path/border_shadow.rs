@@ -1,4 +1,4 @@
-//! Border-shape shadows composed from typed paths, luminance masks and blur.
+//! Тени border-shape, собираемые из типизированных путей, luminance-масок и размытия.
 
 use super::border_scene::Contour;
 use crate::document::state::ValueCx;

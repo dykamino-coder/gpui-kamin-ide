@@ -1,4 +1,7 @@
-//! SVG foreignObject embeds an independent HTML formatting context in paint order.
+//! `<svg>` с `<foreignObject>`: внутри — независимый контекст форматирования HTML в порядке
+//! покраски SVG. Каждый `foreignObject` раскладывается и снимается в PNG отдельным слоем, слой
+//! подставляется в дерево как `<image>`, и весь рисунок растрируется как обычный `<svg>`;
+//! единственный вклад с `mix-blend-mode` смешивается с подложкой хоста.
 mod geometry;
 mod layer;
 use crate::dom::{Element, Node};

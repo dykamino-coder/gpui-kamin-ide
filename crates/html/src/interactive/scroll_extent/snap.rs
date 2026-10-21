@@ -1,6 +1,8 @@
-//! Initial snapping after measured layout (CSS Scroll Snap 1 §4.1.3, §6.2).
-//! Like Blink FragmentBuilder::ResolveSnapArea, the nearest scroll container
-//! owns descendant snap areas and resolves their logical alignment axes.
+//! Начальная привязка прокрутки после измеренной раскладки (CSS Scroll Snap 1 §4.1.3, §6.2):
+//! из областей snap с их полями и выравниванием строятся кандидаты по осям, `proximity`
+//! отсекает дальние, выбранная позиция записывается в ручку прокрутки. Как в Blink
+//! `FragmentBuilder::ResolveSnapArea`, областями потомков владеет ближайший контейнер
+//! прокрутки и он же решает их логические оси выравнивания.
 
 use super::geometry::{Rect, sides};
 use crate::document::state::ValueCx;

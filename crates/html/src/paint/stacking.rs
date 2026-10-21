@@ -1,9 +1,11 @@
-//! Контексты наложения и слои покраски.
+//! Контексты наложения и порядок покраски (CSS 2 Приложение E): какие стили образуют контекст,
+//! вложен ли ребёнок в некорневой контекст, действует ли `z-index` на коробку (CSS 2.1 §9.9.1,
+//! элементы flex/grid по css-flexbox-1 §5.4), какие коробки служат содержащим блоком для
+//! `fixed`, и обёртка `layered`: положительный `z-index`, `fixed` и `sticky` выражаются
+//! отложенной отрисовкой GPUI с приоритетом, отрицательный — подложкой.
 pub(crate) mod inline_abs;
 mod ordering;
 pub(crate) use ordering::by_layer;
-
-// owner: A
 
 use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
@@ -62,7 +64,7 @@ pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
 }
 
 /// Коробка — содержащий блок и для `position: fixed`: тот же список, что
-/// барьер `under_tf` (`inline::inherit`, `transform_ancestor`).
+/// барьер `under_tf` (`style::cascade::inherit`, `transform_ancestor`).
 pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
     // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
     // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
@@ -124,7 +126,7 @@ pub(crate) fn layered(
     }
     match c.z_index {
         // Отложенный слой рисуется вне масок дерева — маску обрезающего
-        // предка ему передаёт пара обёрток (`interact::MaskKeep/MaskUse`).
+        // предка ему передаёт пара обёрток (`paint::effects::mask::element::MaskKeep/MaskUse`).
         // Гейт `z_index_applies` — CSS 2.1 §9.9.1 «Applies to: positioned
         // elements» (плюс элементы flex/grid по css-flexbox-1 §5.4).
         Some(z) if z > 0 && z_index_applies(c, parent) => {
@@ -142,12 +144,11 @@ pub(crate) fn layered(
             };
             crate::hooks::IntoHooked::hooked(keep)
         }
-        // ПРОБОВАЛИ И ОТКАТИЛИ: откладывать ЛЮБОЙ абсолютный элемент, чтобы
-        // он рисовался поверх соседей (CSS 2.1 §9.9, шаг 8). На пробе помогло
-        // — блок стал виден, — но на наборе обрушило всё: css-position 31 → 0,
-        // css-text 967 → 428. Вложенная отложенная отрисовка в GPUI запрещена,
-        // а абсолютные элементы вложены сплошь и рядом. Делать только с
-        // проверкой глубины и по одному месту, а не общим правилом.
+        // Не откладывать ЛЮБОЙ абсолютный элемент ради покраски поверх соседей
+        // (CSS 2.1 §9.9, шаг 8): вложенная отложенная отрисовка в GPUI
+        // запрещена, а абсолютные элементы вложены сплошь и рядом — общее
+        // правило рушит css-position и css-text целиком. Только с проверкой
+        // глубины и по одному месту.
         _ => el,
     }
 }

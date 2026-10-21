@@ -1,4 +1,4 @@
-//! Render implementation of the layout child-build contract.
+//! Реализация в render контракта раскладки по сборке дочерних элементов.
 
 use crate::layout::build_contracts::ChildBuild;
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};

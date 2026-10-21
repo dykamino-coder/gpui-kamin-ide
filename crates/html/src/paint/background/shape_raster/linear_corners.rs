@@ -1,6 +1,9 @@
-//! Linear corner contours use the same coverage path as polygon clipping.
-//! CSS Borders 4 §corner-shape-rendering offsets the contour itself: a
-//! concave notch grows into the inset rectangle, including its inner edges.
+//! Маски `rrect` с прямолинейными углами (`corner-shape: bevel`-плоские и `notch`): контур
+//! строится многоугольником и идёт тем же путём покрытия, что обрезка `clip-path: polygon()`
+//! — до восьми вершин бинарным покрытием на сетке устройства, иначе через SVG и свёртку маски.
+//! CSS Borders 4 §corner-shape-rendering смещает сам контур: вогнутая выемка растёт во
+//! вдвинутый прямоугольник вместе с внутренними краями. Кольцо рамки — дополнение внутренней
+//! маски цветом рамки в straight BGRA.
 
 use super::{CORNER_K_FLAT, Rrect};
 use crate::document::state::ValueCx;

@@ -1,4 +1,4 @@
-//! Border-shape outline bands built from ordered luminance coverage paths.
+//! Полосы контура border-shape из упорядоченных luminance-путей покрытия.
 
 use super::border_scene::Contour;
 use crate::document::state::ValueCx;

@@ -1,4 +1,7 @@
-//! Exact CSS matrix origins and the existing quarter-turn classification.
+//! Точные начала матрицы трансформа до привязки к устройству (CSS Transforms 1 §3): поправка
+//! матрицы заливки коробки на разницу привязанного и точного начала, выбор неокруглённого
+//! начала для диагонального масштаба и классификация линейной части как поворота на кратное 90°
+//! или отражения, у которых свой путь привязки краёв.
 
 use crate::paint::effects::transformed_element::Transformed;
 use gpui::{Pixels, Point};

@@ -1,4 +1,7 @@
-//! HTML-only scrollbar hover fading and thumb dragging; state survives document repaint.
+//! Интерактивность современных полос прокрутки HTML: плавное изменение прозрачности ползунка
+//! при наведении (0.45 → 0.7, при перетаскивании 1.0, переход 120 мс) и перетаскивание ползунка
+//! мышью с записью в ручку прокрутки. Состояние живёт в `ScrollArea` и переживает перерисовку
+//! документа; в режиме статичного снимка интерактивность выключена.
 use super::modern::Bar;
 use gpui::{
     Hitbox, HitboxBehavior, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,

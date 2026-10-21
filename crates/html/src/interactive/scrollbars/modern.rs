@@ -1,5 +1,7 @@
-//! Default HTML scrollbar appearance; classic gutter sizing stays in scrollbar_gutter.
-//! CSS Scrollbars 1 leaves platform appearance to the UA; author colors keep their theme.
+//! Внешний вид полос прокрутки HTML по умолчанию: геометрия дорожки и скруглённого ползунка
+//! по текущему смещению и диапазону, покраска с учётом `opacity` и фильтров. CSS Scrollbars 1
+//! оставляет платформенный вид за UA; авторские `scrollbar-color` уводят на классическую тему.
+//! Размеры классического gutter остаются в `scrollbar_gutter`.
 use crate::style::computed::Computed;
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
 

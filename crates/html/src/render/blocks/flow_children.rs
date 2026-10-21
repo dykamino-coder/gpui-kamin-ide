@@ -53,8 +53,7 @@ pub(crate) fn flow_children(
                         && e.style.align_self.is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
                         // `span { display: block; width: … }` в rtl-блоке —
-                        // тоже блок (замер 1393 пар с rtl/картинками: +0/−0,
-                        // `block-in-inline-margins-002a/b` 0.12 -> 0.00).
+                        // тоже блок (`block-in-inline-margins-002a/b`).
                         // Эталон `flexbox-writing-mode-013-ref` держит
                         // слева другое (не этот путь).
                         && (!e.inline

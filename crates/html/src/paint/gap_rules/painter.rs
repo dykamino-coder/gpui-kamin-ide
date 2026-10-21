@@ -1,5 +1,7 @@
-//! Элемент покраски правил промежутков.
-// owner: A
+//! GPUI-элемент `GapRulePainter` — слой линеек промежутков контейнера: в `paint`, когда
+//! prepaint всех детей уже прошёл, забирает буфер проб, строит геометрию промежутков и красит
+//! отрезки линеек (css-gaps-1 §geometry, §break, §inset, §visibility-items, §lists).
+//! Параметры — буфер проб и `GapRuleSpec`; жизненный цикл — в `lifecycle`.
 
 mod lifecycle;
 mod painting;

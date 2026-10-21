@@ -1,4 +1,4 @@
-//! Byte-for-byte comparisons of typed scenes and equivalent parsed SVG.
+//! Тесты: побайтовое сравнение типизированных сцен с эквивалентным разобранным SVG.
 use super::*;
 use crate::svg::path_commands::{Geometry, Sink};
 

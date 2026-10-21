@@ -1,4 +1,6 @@
-//! Classic scrollbar arrow buttons; disabled state follows the current scroll range.
+//! Кнопки-стрелки классической полосы прокрутки на обоих концах дорожки: треугольник в
+//! центре кнопки, отключённое состояние по текущему положению в диапазоне прокрутки,
+//! авторский цвет ползунка с приглушённой альфой для отключённой стрелки.
 use gpui::{Bounds, Hsla, PathBuilder, Pixels, Window, point, px};
 
 pub(super) fn paint(

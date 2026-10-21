@@ -1,4 +1,7 @@
-//! Resolve polygon coordinates and route axis-aligned rectangles through a device clip.
+//! Вершины `clip-path: polygon()` в точках от опорной коробки группы (CSS Shapes 1 §3.1):
+//! четыре чередующихся осевых отрезка равнозначны `inset()` и уходят на прямоугольную обрезку с
+//! привязкой краёв к устройству, прямолинейный контур привязывается по вершинам, остальные идут
+//! через SDF-сглаживание шейдера; здесь же пересечение областей маски и обрезки.
 use crate::paint::effects::grouped_element::Grouped;
 use crate::paint::effects::legacy_clip;
 use crate::style::values::value::Len;

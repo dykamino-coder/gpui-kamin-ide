@@ -1,12 +1,12 @@
-//! Exact projection of a 3D plane: raster affine + residual homography.
+//! Точная проекция плоскости объёмного контекста: аффинная карта растра плюс остаточная
+//! гомография для `Window::paint_plane`.
 //!
-//! css-transforms-2 §3d-transform-rendering: a plane of a 3D rendering
-//! context (or a box under perspective) is drawn flat and mapped by its
-//! accumulated 4×4. gpui paints affinely, so the content is painted under the
-//! tangent affine map `A` of the plane (exact whenever the map is affine —
-//! 2D-equivalent planes stay pixel-identical) and the buffer is composited
-//! through the residual homography `H·A⁻¹` (`Window::paint_plane`), the way
-//! viz draws a layer texture with its full matrix (draw_polygon.cc).
+//! css-transforms-2 §3d-transform-rendering: плоскость объёмного контекста (или коробка под
+//! перспективой) рисуется плоско и отображается своей накопленной 4×4. gpui красит аффинно,
+//! поэтому содержимое рисуется под касательной аффинной картой `A` плоскости (точной, когда
+//! карта аффинна — 2D-эквивалентные плоскости остаются попиксельно теми же), а буфер
+//! компонуется через остаточную гомографию `H·A⁻¹`, как viz рисует текстуру слоя полной
+//! матрицей (`draw_polygon.cc`). Шум `f32` в карте растра снимается до сетки пикселей.
 
 use gpui::{PlaneSpec, TransformationMatrix};
 

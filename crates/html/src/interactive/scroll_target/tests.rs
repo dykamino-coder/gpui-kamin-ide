@@ -1,4 +1,4 @@
-//! Native scroll targets preserve CSS sizing and explicit owner isolation.
+//! Тесты: нативные цели прокрутки сохраняют CSS-размеры и явную изоляцию владельцев.
 use super::*;
 use crate::style::values::value::Len;
 use gpui::{CssSizingKeyword, Overflow, div, px};

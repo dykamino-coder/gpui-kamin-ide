@@ -96,16 +96,22 @@ pub(crate) fn dispatch_element(
         // который не прочитался, в картинку не превращается — падает в общий
         // рукав и показывает запасное содержимое (HTML §4.8.7).
         "iframe" | "object" if built_iframe.is_some() => built_iframe.take().unwrap(),
-        // A float establishes a BFC but remains replaced content (CSS 2.1
-        // §§10.3.2, 10.6.2): an empty browsing context keeps its default size.
+        // Плавающий кадр без адреса — замещаемая коробка в своём BFC: пустой
+        // контекст просмотра держит размер по умолчанию (CSS 2.1 §§10.3.2,
+        // 10.6.2).
         "iframe"
             if e.style.floated_box
                 && crate::layout::replaced::replaced_content::default_iframe(e) =>
         {
             crate::layout::replaced::replaced_content::empty_iframe(e, inherited, opts)
         }
-        // Ordinary block browsing contexts use the default replaced size.
-        // Legacy float wrappers retain their own percentage-size basis.
+        // Кадр в обычном блочном потоке — тоже замещаемая коробка: по умолчанию
+        // 300×150 (CSS 2.1 §10.3.2, §10.6.2; HTML §15.4.4 — атрибуты
+        // `width/height`). Общим рукавом он шёл пустым блоком: ширина
+        // растягивалась на содержащий блок, высота была нулевой
+        // (`block-replaced-height-004/005/007`). Строчный кадр сюда не идёт
+        // (рукав `"iframe"` в `atom_element`), у обёрток флоатов свой путь
+        // размеров с процентной базой (`float-replaced-height-005/007`).
         "iframe"
             if e.style.float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
@@ -143,12 +149,6 @@ pub(crate) fn dispatch_element(
         _ if crate::layout::replaced::media::empty(e) => {
             crate::layout::replaced::media::render(e, opts)
         }
-        // ЗАМЕРЕНО И ОТКАЧЕНО: давать рамке БЕЗ адреса резервную ширину 300
-        // точек при `display: block` (§10.3.4 -> §10.3.2). Замерено по срезу
-        // из 416 пар семей *image*/*replaced*: приобретено 0, потеряно 1 —
-        // `float-replaced-height-004` 0.00 -> «красное видно». Это второй
-        // заход на резервный размер бесадресной рамки; первый (коробка
-        // 300×150 целиком) стоил 13 пар, запись выше.
         // Рисунок не разобрался — показываем запасной текст, а не пустоту.
         "svg" => {
             // Тот же stretch-fit, что у строчного атома (`atom_element`).

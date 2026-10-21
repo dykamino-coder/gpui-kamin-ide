@@ -47,12 +47,11 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
             _ => None,
         }
     });
-    // ПРОБОВАЛИ И ОТКАТИЛИ: `grid-template-columns: subgrid` разворачивать в
-    // столько СВОИХ дорожек, сколько линий родителя элемент перекрывает.
-    // Семейству subgrid-gap +10, но −17 по subgrid-auto-fill и базовым линиям:
-    // прежде зелёные пары совпадали с эталоном ИМЕННО одноколоночным
-    // поведением, а свои дорожки без настоящих ширин родителя их разломали.
-    // Возвращаться только с настоящей передачей дорожек родителя вниз.
+    // `grid-template-columns: subgrid` не разворачивать в столько СВОИХ
+    // дорожек, сколько линий родителя элемент перекрывает: пары
+    // `subgrid-auto-fill-*` и базовых линий совпадают с эталоном ИМЕННО
+    // одноколоночным поведением, а свои дорожки без настоящих ширин родителя
+    // их ломают. Годится только настоящая передача дорожек родителя вниз.
     // Явная сетка — не меньше `grid-template-areas`: «The size of the explicit
     // grid is determined by the larger of the number of rows/columns defined
     // by 'grid-template-areas' and the number of rows/columns sized by
@@ -92,16 +91,16 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         // хранит `Vec` (`grid-auto-repeat-multiple-values-*` рисовались одной
         // плитой во всю ширину).
         // Поток ЛУНОК разворачивает повтор своим кодом (`render::lanes`), и
-        // список дорожек ему только мешает: `column-auto-repeat-013`
-        // уходил 0.00 → 10.92. Признак — `lanes_row`/`lanes_inline` и родня,
-        // они выставлены только у лунок.
+        // список дорожек ему только мешает (`column-auto-repeat-013`).
+        // Признак — `lanes_row`/`lanes_inline` и родня, они выставлены только
+        // у лунок.
         (None, _, None)
             if !flip
                 && c.grid_auto_fill_tracks.len() > 1
                 // Поток ЛУНОК доходит сюда уже с `display: grid` (печать
                 // `KAMIN_REPEAT_DIAG` показала `Some(Grid)`), поэтому вид его
-                // не отсекает: `column-auto-repeat-013` (лунки, черновик)
-                // уходит 0.00 → 10.92 — это записанная цена жилы.
+                // не отсекает: `column-auto-repeat-013` (лунки) с этой
+                // ветвью ломается — известная цена.
                 && !matches!(c.display, Some(crate::style::computed::Display::GridLanes)) =>
         {
             d = along_line(

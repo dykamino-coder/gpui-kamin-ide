@@ -1,10 +1,12 @@
-//! Filter region of a `<filter>` referenced by an HTML box (`filter: url(#id)`).
+//! Область `<filter>`, на который ссылается HTML-коробка (`filter: url(#id)`): разбор
+//! `x`/`y`/`width`/`height` из открывающего тега в точки от угла коробки и замена `calc()` в
+//! них числами, которые понимает usvg.
 //!
-//! Units follow SVG 2 §8.11 / Filter Effects 1 §5: with `userSpaceOnUse` the
-//! user space is the box (origin at its corner, percentages of its size); with
-//! `objectBoundingBox` (default) a number or percentage is a fraction of the box
-//! and a length with units (`1em`, `0.25px`) is first taken in user units and
-//! then read as a fraction too (usvg `units::convert_length` does the same).
+//! Единицы — по SVG 2 §8.11 / Filter Effects 1 §5: при `userSpaceOnUse` пользовательское
+//! пространство — коробка (начало в её углу, проценты от её размера); при `objectBoundingBox`
+//! (по умолчанию) число или процент — доля коробки, а длина с единицей (`1em`, `0.25px`)
+//! сначала берётся в пользовательских единицах и тоже читается как доля (так же делает usvg
+//! `units::convert_length`).
 
 use std::borrow::Cow;
 

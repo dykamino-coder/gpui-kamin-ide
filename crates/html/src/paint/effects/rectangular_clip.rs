@@ -1,4 +1,7 @@
-//! Resolve basic rectangular clips before snapping their absolute device edges.
+//! Прямоугольные обрезки группы — `clip-path: inset()/rect()/xywh()`, `clip: rect()` и
+//! область `mask-clip` — решаются от неокруглённой опорной коробки (CSS Shapes 1 §3.1; Blink
+//! `clip_path_clipper.cc:383`), сдвигаются трансформом элемента и привязываются к пикселям
+//! устройства по абсолютным краям, как коробки `background-clip` (CSS Masking 1 §7.5).
 use crate::paint::effects::grouped_element::Grouped;
 use crate::paint::effects::{legacy_clip, polygon_clip};
 use gpui::{Bounds, LayoutId, Pixels, Window};

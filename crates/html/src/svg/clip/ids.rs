@@ -1,11 +1,11 @@
-//! Collision-free ids for `<clipPath>` definitions synthesized while an SVG
-//! subtree is serialized for the rasterizer.
+//! Идентификаторы без коллизий для определений `<clipPath>`, синтезируемых при сериализации
+//! SVG-поддерева для растеризатора.
 //!
-//! A synthesized id must not equal, and no author reference may point to, any
-//! id the author wrote. The prefix is chosen once per serialized document and
-//! passed down the serializer: the base prefix grows until no attribute value
-//! or text in the document contains it, so no author id or `url(#…)`/`href`
-//! reference can name a synthesized definition.
+//! Синтезированный id не должен совпадать ни с одним id автора, и ни одна авторская ссылка не
+//! должна на него указывать. Префикс выбирается один раз на сериализуемый документ и передаётся
+//! вниз по сериализатору: базовый префикс растёт, пока ни одно значение атрибута или текст
+//! документа его не содержит, так что ни авторский id, ни ссылка `url(#…)`/`href` не способны
+//! назвать синтезированное определение.
 
 use crate::dom::{Element, Node};
 

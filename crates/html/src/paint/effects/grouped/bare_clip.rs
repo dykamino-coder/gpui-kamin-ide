@@ -1,4 +1,6 @@
-//! Клип по голой опорной коробке и её радиусам.
+//! `clip-path: <geometry-box>` без фигуры (css-masking-1 §5.1): края margin-/border-/
+//! padding-/content-box от border-box как inset группы и радиус коробки, сдвинутый на ту же
+//! толщину (css-backgrounds-3 §5.2); пока только равные круглые углы и равные стороны сдвига.
 
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};

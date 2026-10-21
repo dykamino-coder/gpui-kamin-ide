@@ -1,10 +1,12 @@
-//! Upright text of mixed sizes aligned on the central baseline.
+//! Сборка абзаца: вертикальный прямостоящий текст разных кеглей, выровненный
+//! по центральной базовой линии.
 //!
-//! css-writing-modes-4 §4.2: with `text-orientation: upright` the dominant
-//! baseline is `central`; each inline box centres its own line-height on its
-//! central baseline (css-inline-3 §4.2, Blink `inline_box_state.cc` uses the
-//! central baseline for the strut and for every box). Each upright glyph
-//! advances by its own em (§7.4), not by the container's.
+//! css-writing-modes-4 §4.2: при `text-orientation: upright` доминирующая
+//! базовая — `central`; каждая строчная коробка центрирует свою высоту строки
+//! на своей центральной базовой (css-inline-3 §4.2; Blink `inline_box_state.cc`
+//! берёт центральную базовую для стойки и для каждой коробки). Каждый
+//! прямостоящий глиф продвигается на свой em (§7.4), а не на em контейнера.
+//! Возвращает `None`, когда простая стопка уже точна или содержимое не текст.
 
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;

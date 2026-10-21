@@ -1,4 +1,4 @@
-//! Resolved border contours and their ordered luminance coverage paths.
+//! Разрешённые контуры границ и их упорядоченные luminance-пути покрытия.
 
 use super::border_geometry::{border_commands, miter_limit};
 use crate::document::state::ValueCx;

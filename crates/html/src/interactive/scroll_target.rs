@@ -1,4 +1,7 @@
-//! Scroll target: scroll the CSS box itself so an anonymous viewport cannot replace its sizing.
+//! Цель прокрутки: ручка прокрутки навешивается на саму CSS-коробку, а не на анонимный
+//! вьюпорт, который потерял бы её проценты, intrinsic-размеры, baseline и flex/grid-ограничения.
+//! Здесь же неподвижные слои scrollport — рамки и канва вьюпорта (CSS Backgrounds 3 §2.11),
+//! которые не едут вместе с содержимым.
 
 mod stationary;
 use crate::dom::Element;

@@ -1,4 +1,7 @@
-//! Keep first-letter selection within the container's first formatted line.
+//! Сборка дерева: область действия `::first-letter` — только первая
+//! форматированная строка контейнера. `Scope` следит за первым содержимым в
+//! потоке: если его даёт блочный потомок, слой маршрутизируется отдельно, а
+//! поздние анонимные абзацы собираются уже без `first_letter`.
 
 use crate::dom::Node;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};

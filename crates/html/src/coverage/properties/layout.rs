@@ -1,4 +1,7 @@
-//! CSS property coverage for layout: kept in registry order.
+//! Реестр покрытия CSS, раздел «раскладка»: `display`, flex, grid, выравнивание,
+//! зазоры, позиционирование, `z-index`, `overflow`, `visibility`, `opacity`.
+//! Порядок записей — порядок реестра и документации; фрагменты склеивает
+//! `properties::PROPERTIES`.
 
 use super::{m, part};
 use crate::coverage::Prop;

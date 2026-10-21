@@ -63,7 +63,7 @@ pub(crate) fn multicol_box(
     // многоколоночник идёт единой стопкой, спаннер — её ребёнком
     // (`StackChild::span`). Внутри копии другой стопки — по-прежнему
     // сегментами: перенос ряда во внешнюю колонку не написан
-    // (`column-height-029`, scout-columnwrap-2026-09b.md §2.3).
+    // (`column-height-029`).
     // Спаннер бывает НЕ прямым ребёнком: css-multicol-1
     // §column-span (`Overview.bs:1497-1499`) — «A spanning element
     // may be lower than the first level of descendants as long as
@@ -165,8 +165,7 @@ pub(crate) fn multicol_box(
         }
     } else {
         // Блочные дети с ИЗВЕСТНЫМИ высотами — честная укладка по
-        // колонкам с балансом и монолитами (css-break, фаза 1;
-        // план target/scout-multicol.md / scout-fragmentation.md).
+        // колонкам с балансом и монолитами (css-break, фаза 1).
         // Коробка ребёнка и его вертикальные поля отдельно:
         // поля схлопываются между соседями и на границах колонок.
         // Флоаты в поддереве ломают известность высоты.
@@ -181,8 +180,7 @@ pub(crate) fn multicol_box(
         // положен: нулевая запись в стопке меняет `kids.len()`, с
         // ним `balance_last` и весь план `fill_avoiding`
         // (`multicol-fill-balance-038` — монолитный флоат с
-        // полями 40/70 при `margin-bottom: -30px` у соседа:
-        // 0.32 -> «красное видно», замерено на v206). Blink
+        // полями 40/70 при `margin-bottom: -30px` у соседа). Blink
         // перебирает в `LayoutFragmentainerDescendants` только
         // `oof_positioned_candidates`; флоат идёт обычной
         // укладкой (`PositionFloat`).

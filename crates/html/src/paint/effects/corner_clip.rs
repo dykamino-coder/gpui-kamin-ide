@@ -1,6 +1,8 @@
-//! Separate border decoration and overflow contours (CSS Borders 4 corner-shape-rendering).
-//! Blink adjusts its inner contour by reference-box offsets and overflow-clip-margin;
-//! keeping decorations separate also preserves their paint outside an inset overflow clip.
+//! Раздельные контуры декораций рамки и обрезки переполнения у коробки с `corner-shape` и
+//! `overflow: clip` (CSS Borders 4 §corner-shape-rendering): декорации красятся своей группой по
+//! маске `rrect`, а содержимое режется контуром, сдвинутым на опорную коробку и
+//! `overflow-clip-margin`, как внутренний контур в Blink. Так декорации остаются видимыми
+//! снаружи вдвинутой обрезки переполнения.
 
 use crate::document::state::ValueCx;
 use crate::hooks::IntoHooked;

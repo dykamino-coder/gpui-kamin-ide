@@ -27,7 +27,7 @@ pub(crate) fn paint_3d(
     // sf, 1): столбец сдвига строк 0..2 умножается на sf, строка w
     // столбцов 0..2 делится на sf, m44 НЕ трогается. (В шаге 1 цикл `0..4`
     // домножал и m44 — `flatten_plane` делила на него всю матрицу, и
-    // каждый объёмный элемент сжимался в 1/sf; scout-3d-2026-09b.md §1.)
+    // каждый объёмный элемент сжимался в 1/sf.)
     let mut own = group.m4;
     for (i, row) in own.iter_mut().enumerate() {
         for (j, v) in row.iter_mut().enumerate() {
@@ -72,7 +72,7 @@ pub(crate) fn paint_3d(
     // §accumulated-3d-transformation-matrix): A(родителя) · P(его
     // перспектива — домножена выше) · C(своя). Обе уже в точках
     // устройства, второй свёртки `S·M·S⁻¹` не возникает — ровно из-за
-    // неё «3D full» терял −60 (computed.rs:691).
+    // неё «3D full» терял −60.
     let under = group.under_3d.as_ref().and_then(|f| f.get());
     let full = match under {
         Some((a, _)) => mul4(a, own),

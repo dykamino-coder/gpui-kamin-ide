@@ -1,4 +1,4 @@
-//! SVG resources belong to a document; deferred groups retain immutable definitions.
+//! SVG-ресурсы принадлежат документу; отложенные группы хранят неизменяемые определения.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;

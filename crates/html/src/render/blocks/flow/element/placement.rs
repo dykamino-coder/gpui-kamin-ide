@@ -94,11 +94,8 @@ pub(crate) fn place_element(
             // позиционированные красятся в порядке разметки (шаг 8):
             // ключ ставит коробку слоя среди них. `fixed` в слое ICB —
             // тоже: без ключа он красился раньше собирателя, и
-            // поднятый в собиратель предок ложился поверх.
-            // ★ ЗАМЕРЕНО И ОТКАЧЕНО: `fixed` без ключа — кусок 1704
-            // пары +4/−2 (`static-fixed-inside-abspos`,
-            // `position-fixed-001`: 0.00 -> «красное видно»); с
-            // ключом +4/−0.
+            // поднятый в собиратель предок ложился поверх
+            // (`static-fixed-inside-abspos`, `position-fixed-001`).
             // A positive `z-index` orders the box above the layer's
             // auto/0 boxes (CSS 2.1 §9.9 steps 8–9): the deferral the
             // in-place path gets from `layered` below

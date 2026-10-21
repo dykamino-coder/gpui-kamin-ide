@@ -1,7 +1,7 @@
 //! Сборка дерева узлов в элементы GPUI.
 //!
 //! Блочные узлы становятся `div` со своим стилем; подряд идущие инлайн-узлы
-//! собираются в один абзац (`inline.rs`). Списки, таблицы и картинки имеют
+//! собираются в один абзац (`paragraph`). Списки, таблицы и картинки имеют
 //! свои правила — они и описаны в доке отдельными разделами.
 
 mod paragraph_route;
@@ -40,6 +40,12 @@ pub(crate) use crate::paint::box_tree::styled::styled_div_with;
 pub(crate) use blocks::blocks;
 pub(crate) use element::element;
 
+/// Отрисовать корневые узлы документа.
+///
+/// Годится для короткого документа — виджета, ответа модели. Длинный документ
+/// рисуйте по блокам (`render_block`): раскладка в GPUI считается заново
+/// каждый кадр, поэтому стоимость кадра обязана зависеть от видимой части, а
+/// не от размера документа.
 pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;

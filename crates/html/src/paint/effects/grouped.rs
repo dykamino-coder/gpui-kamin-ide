@@ -165,7 +165,7 @@ pub(super) fn grouped_with(
     // `clip: rect()` действует только на абсолютный элемент (CSS 2.1).
     // ПАРК: буфер группы создаёт stacking context, которого у `clip` нет —
     // z-переплетение детей с внешними соседями рвётся
-    // (clip-no-stacking-context, 1 пара).
+    // (`clip-no-stacking-context`).
     // Единицы шрифта в `clip: rect(...)` меряются ЗДЕСЬ: на разборе кегль ещё
     // неизвестен, а к отрисовке он уже слит. Прежде ненулевые `em`/`ex`
     // читались как `auto`, и обрезки не было вовсе (`visufx/clip-079` и родня).
@@ -215,7 +215,7 @@ pub(super) fn grouped_with(
     }
     // Чистая изоляция — буфер без собственного эффекта: ни размытия, ни
     // смешивания, ни маски, ни обрезки. Такой буфер коробкой не режется
-    // (`interact::Grouped::spill`).
+    // (`paint::effects::grouped_element::Grouped::spill`).
     grouped_wrapper(
         blur, blend, polygon, mask, clip_rect, clip_inset, c, el, bare_round, ring_over, vcx,
     )

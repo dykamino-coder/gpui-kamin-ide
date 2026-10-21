@@ -1,4 +1,4 @@
-//! Stateful SVG command resolution into tiny-skia paths.
+//! Разрешение SVG-команд с состоянием в пути tiny-skia.
 
 use super::{Command, Sink};
 use gpui::path_scene::tiny_skia_path::{Path, PathBuilder};

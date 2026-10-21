@@ -1,4 +1,4 @@
-//! Quirks Mode §§3.6–3.7: minimum used block sizes of the document root and body.
+//! Quirks Mode §§3.6–3.7: минимальные используемые блочные размеры корня документа и body.
 
 use crate::dom::Element;
 use crate::render::RenderOpts;

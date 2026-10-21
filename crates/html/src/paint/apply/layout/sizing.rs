@@ -1,4 +1,5 @@
-//! apply_layout, этап размеров: природный размер холста, абсолютные, гибкие элементы, width/height/min/max с учётом border-box, aspect-ratio как автоминимум.
+//! apply_layout, этап размеров: природный размер холста, абсолютные, гибкие элементы,
+//! width/height/min/max с учётом border-box, aspect-ratio как автоминимум.
 
 use super::*;
 use crate::document::state::ValueCx;

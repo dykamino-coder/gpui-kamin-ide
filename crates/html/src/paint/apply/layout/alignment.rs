@@ -16,7 +16,8 @@ pub(super) fn layout_alignment(
         Some(Align::End) => d = d.items_end(),
         // `last baseline` — своя группа с прижимом к концу (css-align-3 §9.3).
         // Не у лунок: их дорожки — гибкие ряды движка, и прижим к концу уводил
-        // лунки целиком.
+        // лунки целиком (`row-grid-lanes-item-baseline-001/003`,
+        // `column-fill-reverse-justify-items-002`).
         Some(Align::Baseline)
             if c.align_items_last && c.display != Some(Display::GridLanes) && !c.parent_lanes =>
         {
@@ -30,7 +31,8 @@ pub(super) fn layout_alignment(
     // выравнивание падает к началу, иначе содержимое уезжает за край и
     // становится недоступным. Раскладка читает это из стиля
     // (`flexbox-safe-overflow-position-*`).
-    // Лунки решают `safe` сами: раздача не ставится, когда лунка переполнена.
+    // Лунки решают `safe` сами: раздача не ставится, когда лунка переполнена
+    // (`grid-lanes-justify-content-001`).
     if c.display != Some(Display::GridLanes)
         && (c.align_items_safe
             || c.align_self_safe
@@ -63,7 +65,8 @@ pub(super) fn layout_alignment(
         // parallel with the inline axis, this value behaves as start» —
         // в КОЛОНКЕ это `flex-start` (`flexbox_justifycontent-right-002`).
         // Только горизонтальное письмо: в вертикальном оси уже переставлены
-        // поворотом, и `left/right` там держит прежний путь.
+        // поворотом, и `left/right` там держит прежний путь (без этой
+        // отсечки ломается `flexbox-justify-content-wmvert-001`).
         let main_vertical = c.writing_mode.is_none()
             && matches!(dir, Some(FlexDir::Col) | Some(FlexDir::ColReverse));
         let j = match j {
