@@ -20,6 +20,7 @@ pub(super) struct Resolved {
 }
 
 pub(super) fn builtin_resolved(name: &str) -> Resolved {
+    // decimal входит в is_predefined; builtin возвращает Some для каждого такого имени.
     let b = builtin(name)
         .or_else(|| builtin("decimal"))
         .expect("decimal");

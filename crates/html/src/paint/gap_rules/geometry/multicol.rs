@@ -59,10 +59,10 @@ pub(crate) fn multicol_runs(data: &MulticolGaps, spec: &GapRuleSpec) -> (Vec<Gap
         .iter()
         .map(|b| GapItem::from_bounds(b, on_x))
         .collect();
-    let Some((first, _)) = rows.first() else {
+    let (Some((first, _)), Some((last, _))) = (rows.first(), rows.last()) else {
         return (vec![], vec![]);
     };
-    let last = rows.last().unwrap().0;
+    let last = *last;
     let mut gaps = vec![];
     for pair in rows.windows(2) {
         let (lo, hi) = (pair[0].0.b1, pair[1].0.b0);

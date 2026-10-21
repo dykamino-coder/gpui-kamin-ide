@@ -123,13 +123,12 @@ pub(super) fn draw_cands(
                 .iter()
                 .filter(|c| c.a - 0.25 <= mid && mid <= c.b + 0.25)
                 .collect();
-            if covering.is_empty() || covering.iter().any(|c| c.style == 1) {
+            if covering.iter().any(|c| c.style == 1) {
                 continue;
             }
-            let win = covering
-                .iter()
-                .max_by(|p, q| key_order(&p.key(), &q.key()))
-                .unwrap();
+            let Some(win) = covering.iter().max_by(|p, q| key_order(&p.key(), &q.key())) else {
+                continue;
+            };
             if win.w <= 0.0 || win.colour.a == 0.0 {
                 continue;
             }

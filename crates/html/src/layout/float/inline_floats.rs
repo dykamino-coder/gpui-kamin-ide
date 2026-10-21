@@ -133,6 +133,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
                 output.push(fragment(std::mem::take(&mut pending)));
             }
             let Node::Element(mut float) = child else {
+                // floated возвращает true только для Node::Element.
                 unreachable!()
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing

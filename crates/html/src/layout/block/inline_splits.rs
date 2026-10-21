@@ -96,6 +96,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // вынесенный блок (§9.2.1.1: разрыв не отменяет смещения).
                 let mut block = match child {
                     Node::Element(c) => c.clone(),
+                    // breaks_inline возвращает false для Node::Text.
                     Node::Text(_) => unreachable!("блоком бывает только элемент"),
                 };
                 // Метка выноса: объёмный контекст и перспектива деда на блок

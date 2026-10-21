@@ -212,8 +212,10 @@ fn page_margin_boxes(
                 .cx
                 .build
                 .blocks(&[Node::Element(outer)], &ctx_style, &opts);
-            if els.len() == 1 {
-                els.pop().unwrap()
+            if els.len() == 1
+                && let Some(element) = els.pop()
+            {
+                element
             } else {
                 div().children(els).into_any_element()
             }

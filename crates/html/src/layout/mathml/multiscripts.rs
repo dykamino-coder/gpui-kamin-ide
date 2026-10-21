@@ -21,6 +21,7 @@ pub(super) fn layout(
         return scripts::scripts(base, sub, sup, p, rtl);
     }
     let ScriptKind::Multi(marker) = kind else {
+        // Все остальные ScriptKind завершили функцию в предыдущем if.
         unreachable!()
     };
     let marker = marker.unwrap_or(children.len());

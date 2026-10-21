@@ -27,7 +27,12 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
     };
     let color = crate::style::cascade::inherit::inherit_unpainted(&parent, &body.style, vcx)
         .color
-        .unwrap_or_else(|| Color::parse("black", vcx).unwrap());
+        .unwrap_or(Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        });
     apply(nodes, color);
 }
 

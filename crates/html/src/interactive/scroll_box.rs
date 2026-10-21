@@ -125,7 +125,7 @@ pub(crate) fn scrollable(
             }
             use gpui::{InteractiveElement, StatefulInteractiveElement};
             let mut d = crate::paint::apply::margins(div(), &outer_margin, vcx)
-                .id(gpui::ElementId::Integer(node.node_id + 1))
+                .id(node.state_id("html-scroll-content"))
                 .track_scroll(handle)
                 .child(built);
             // Элемент потока родителя — ЭТА обёртка, а не внутренний узел: ей и
@@ -195,7 +195,7 @@ pub(crate) fn scrollable(
     );
     Some(crate::interactive::scroll_extent::project(
         crate::interactive::scroll_area::ScrollArea::new(
-            gpui::ElementId::Integer(e.node_id),
+            e.state_id("html-scroll-area"),
             horizontal,
             vertical,
             build,
@@ -240,11 +240,7 @@ pub(crate) fn resizable(
         opts.cx.build.element(&mixed, &inherited, &opts)
     });
     Some(
-        crate::interactive::resizable::Resizable::new(
-            gpui::ElementId::Integer(e.node_id),
-            axis,
-            build,
-        )
-        .into_any_element(),
+        crate::interactive::resizable::Resizable::new(e.state_id("html-resize"), axis, build)
+            .into_any_element(),
     )
 }
