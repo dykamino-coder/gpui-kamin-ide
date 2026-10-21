@@ -6,15 +6,11 @@ use crate::document::state::ValueCx;
 mod all_reset;
 
 impl Computed {
+    /// Один блок объявлений без словаря переменных — тем же путём, что и
+    /// каскад правил ([`Self::apply_decls_with_vars`]): обычные, затем
+    /// `!important`, порядок ключей детерминирован (`apply_pass`).
     pub fn apply_decls(&mut self, d: &Decls, vcx: ValueCx<'_>) {
-        for (k, v) in d {
-            if k.starts_with(crate::style::css::CUSTOM_IMPORTANT) {
-                continue;
-            }
-            for part in v.split(crate::style::css::DECL_SEP) {
-                self.apply_one(k, part, vcx);
-            }
-        }
+        self.apply_decls_with_vars(d, &Decls::default(), vcx);
     }
 
     /// То же, но со словарём переменных: `var(--x)` подставляется значением.
