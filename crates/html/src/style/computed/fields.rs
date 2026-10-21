@@ -173,12 +173,12 @@ pub struct Computed {
     pub implicit_anchor: Option<u64>,
     /// `position-area` (§position-area): два слова области, разбор и смысл —
     /// `anchor::parse_area`. `none`/не задано — `None`.
-    pub position_area: Option<crate::layout::positioned::anchor::parse::PositionArea>,
+    pub position_area: Option<crate::style::values::position_area::PositionArea>,
     /// `position-try-fallbacks` (§position-try-fallbacks): варианты позиции —
     /// имя `@position-try`-правила и/или тактика, либо `<position-area>`.
     /// Перебор — `anchor::AnchorPlace` на подготовке кадра, выбранный
     /// вариант накладывается на стиль следующей сборки (`anchor::apply_chosen`).
-    pub position_try_fallbacks: Vec<crate::layout::positioned::anchor::parse::TryFallback>,
+    pub position_try_fallbacks: Vec<crate::style::values::position_area::TryFallback>,
     /// `position-try-order` (§position-try-order-property): 0 normal,
     /// 1 most-width, 2 most-height, 3 most-block-size, 4 most-inline-size.
     pub position_try_order: u8,
@@ -1376,8 +1376,8 @@ pub struct Computed {
     /// справа от верха первого абзаца (заполняет сборка shape-flow).
     pub flow_shapes: Option<
         std::sync::Arc<(
-            Vec<crate::layout::float::shapes::FloatShape>,
-            Vec<crate::layout::float::shapes::FloatShape>,
+            Vec<crate::style::values::float_shape::FloatShape>,
+            Vec<crate::style::values::float_shape::FloatShape>,
         )>,
     >,
     /// `mask-position`: смещение плитки; доля — от свободного места
