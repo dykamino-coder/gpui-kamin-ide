@@ -18,12 +18,24 @@ pub(super) fn ellipsis_value(v: &str) -> Option<Option<String>> {
     }
 }
 
+/// css-overflow-4 §line-clamp (WPT `line-clamp-valid`, Blink `AlternativeLineClampShorthand`):
+/// `none | [<integer [1,∞]> || auto || [ellipsis | no-ellipsis | <string>]] -webkit-legacy?`.
 pub(super) fn clamp_value(v: &str) -> Option<Clamp> {
     if v == "none" {
         return Some((None, None, None));
     }
     let v = v.strip_suffix("-webkit-legacy").map_or(v, str::trim);
-    let words = super::split_outside_parens(v);
+    // Строка — один токен даже с пробелами внутри (`2 " CUSTOM"`).
+    let words = crate::style::css::split_top_level(v, ' ')
+        .into_iter()
+        .flat_map(|w| {
+            if w.starts_with(['"', '\'']) {
+                vec![w]
+            } else {
+                w.split_whitespace().collect()
+            }
+        })
+        .filter(|w| !w.is_empty());
     let (mut lines, mut auto, mut mark) = (None, None, None);
     let mut ellipsis = false;
     for word in words {
@@ -31,16 +43,23 @@ pub(super) fn clamp_value(v: &str) -> Option<Clamp> {
             if n == 0 || lines.replace(n).is_some() {
                 return None;
             }
+        } else if word == "auto" {
+            if auto.replace(true).is_some() {
+                return None;
+            }
         } else {
             if ellipsis {
                 return None;
             }
-            mark = ellipsis_value(&word)?;
-            auto = (word == "auto").then_some(true);
+            mark = match word {
+                "ellipsis" => None,
+                "auto" => return None,
+                _ => ellipsis_value(word)?,
+            };
             ellipsis = true;
         }
     }
-    if lines.is_none() && !ellipsis {
+    if lines.is_none() && auto.is_none() && !ellipsis {
         return None;
     }
     if ellipsis && lines.is_none() {

@@ -30,3 +30,5 @@ mod transform;
 
 #[cfg(test)]
 mod invalid_tests;
+#[cfg(test)]
+mod valid_tests;

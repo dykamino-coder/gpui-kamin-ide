@@ -1,6 +1,7 @@
-//! Разбор `<angle-percentage>` конического градиента в долях оборота до раскладки стопов:
-//! `deg`/`grad`/`rad`/`turn`/`%` и их `calc()`/`min()`/`max()` (CSS Values 4: 100% — один
-//! оборот) через общий разборщик математики с единой размерностью.
+//! Разбор `<angle>` и `<angle-percentage>` в долях оборота: `deg`/`grad`/`rad`/`turn`/`%` и
+//! их `calc()`/`min()`/`max()` (CSS Values 4: 100% — один оборот) через общий разборщик
+//! математики с единой размерностью. Конические градиенты берут долю, трансформации и
+//! motion — градусы чистого `<angle>`.
 
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
@@ -53,9 +54,52 @@ pub(crate) fn fraction(token: &str, vcx: ValueCx<'_>) -> Option<f32> {
     (token == "0").then_some(0.0)
 }
 
+/// Чистый `<angle>` в градусах (CSS Values 4 §angles): проценты не допускаются,
+/// безразмерный ноль — только где грамматика добавляет `<zero>` (функции
+/// css-transforms-1 §transform-functions), но не в `rotate`/`offset-rotate`.
+pub(crate) fn degrees(token: &str, vcx: ValueCx<'_>, unitless_zero: bool) -> Option<f32> {
+    let token = token.trim().to_ascii_lowercase();
+    if token.contains('%') {
+        return None;
+    }
+    if token.parse::<f32>().is_ok() {
+        return (unitless_zero && token.parse::<f32>() == Ok(0.0)).then_some(0.0);
+    }
+    let math = token.starts_with("calc(") || token.starts_with("min(") || token.starts_with("max(");
+    if !math
+        && !["deg", "grad", "rad", "turn"].iter().any(|unit| {
+            token
+                .strip_suffix(unit)
+                .is_some_and(|n| n.parse::<f32>().is_ok())
+        })
+    {
+        return None;
+    }
+    fraction(&token, vcx)
+        .map(|turns| turns * 360.0)
+        .filter(|d| d.is_finite())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::fraction;
+    use super::{degrees, fraction};
+
+    #[test]
+    fn plain_angles_cover_every_unit_and_range() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        assert_eq!(degrees("180deg", vcx, false), Some(180.0));
+        assert_eq!(degrees("400grad", vcx, false), Some(360.0));
+        assert_eq!(degrees("-0.5turn", vcx, false), Some(-180.0));
+        assert_eq!(degrees("135DEG", vcx, false), Some(135.0));
+        assert!(degrees("3.14159rad", vcx, false).is_some_and(|d| (d - 180.0).abs() < 0.01));
+        assert_eq!(degrees("calc(90deg * 2)", vcx, false), Some(180.0));
+        assert_eq!(degrees("0", vcx, true), Some(0.0));
+        assert_eq!(degrees("0", vcx, false), None);
+        assert_eq!(degrees("45", vcx, true), None);
+        assert_eq!(degrees("50%", vcx, true), None);
+        assert_eq!(degrees("10px", vcx, true), None);
+    }
 
     #[test]
     fn angles_and_percentages_share_a_turn_basis() {

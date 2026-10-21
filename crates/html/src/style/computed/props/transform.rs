@@ -61,13 +61,22 @@ impl Computed {
                 self.offset_distance = apply_parsed!(self, Len::parse_mixed(v.trim(), vcx))
             }
             "offset-rotate" => {
+                // motion-1 §offset-rotate: `[auto | reverse] || <angle>`.
                 let words = split_outside_parens(v);
-                if words.is_empty()
-                    || words.len() > 2
-                    || words.iter().any(|w| {
-                        !matches!(w.as_str(), "auto" | "reverse")
-                            && crate::text::fonts::matching::angle(w).is_none()
+                let keywords = words
+                    .iter()
+                    .filter(|w| matches!(w.as_str(), "auto" | "reverse"))
+                    .count();
+                let angles = words
+                    .iter()
+                    .filter(|w| {
+                        crate::style::values::value::angle::degrees(w, vcx, false).is_some()
                     })
+                    .count();
+                if words.is_empty()
+                    || keywords > 1
+                    || angles > 1
+                    || keywords + angles != words.len()
                 {
                     return;
                 }
