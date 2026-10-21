@@ -134,7 +134,13 @@ impl Computed {
                     "place-content" => ("align-content", "justify-content"),
                     _ => ("align-self", "justify-self"),
                 };
-                let pair = if key == "place-content" && parse_align(v) == Some(Align::Baseline) {
+                // CSS Cascade 5 §7.3: общее слово сокращения переходит в каждый лонгхенд.
+                let wide = ["inherit", "initial", "unset", "revert", "revert-layer"]
+                    .iter()
+                    .any(|k| v.eq_ignore_ascii_case(k));
+                let pair = if wide {
+                    Some((v, v))
+                } else if key == "place-content" && parse_align(v) == Some(Align::Baseline) {
                     Some((v, "start"))
                 } else if alignment_value(cross, v) && alignment_value(main, v) {
                     Some((v, v))

@@ -25,24 +25,25 @@ impl Computed {
             // состояние анимации, и без запекания рукав рисует начальное.
             "rotate" => {
                 let raw = v.trim();
-                let angle = parsed_value!(
+                let (angle, flat) = parsed_value!(
                     self,
                     if raw == "none" {
-                        Some(0.0)
+                        Some((0.0, false))
                     } else {
-                        crate::text::fonts::matching::angle(raw)
+                        super::values::rotate_value(raw, vcx)
                     }
                 );
                 let mut t = self.transform.unwrap_or_default();
-                t.rotate_rad = angle.to_radians();
+                t.rotate_rad = if flat { angle.to_radians() } else { 0.0 };
                 self.transform = Some(t);
                 // Угол вокруг оси z — ещё и отдельным полем: в матрицу
                 // отрисовки его приставляет `transformed()` СЛЕВА от списка
                 // `transform` (css-transforms-2 §ctm п.4). Рукав держится на
                 // запекании остановленных кадров (заметка выше); оставшиеся
                 // красные пары семьи — скриптовые, вне цели.
-                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима.
-                self.rotate_prop = (raw != "none").then_some(t.rotate_rad);
+                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима;
+                // ось z (`z 45deg`, `0 0 1 45deg`) — тот же плоский поворот.
+                self.rotate_prop = flat.then_some(t.rotate_rad);
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();

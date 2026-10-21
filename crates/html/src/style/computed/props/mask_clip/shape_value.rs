@@ -13,16 +13,31 @@ pub(in crate::style::computed::props) fn shape_valid(v: &str) -> bool {
                 | "view-box"
         )
     };
-    let Some(open) = v.find('(') else {
-        return boxes(v) || v == "none";
+    let shape = |w: &str| {
+        let Some(open) = w.find('(') else {
+            return false;
+        };
+        crate::style::css::block_end(w, open, '(') == Some(w.len() - 1)
+            && matches!(
+                w[..open].trim(),
+                "circle"
+                    | "ellipse"
+                    | "polygon"
+                    | "inset"
+                    | "rect"
+                    | "xywh"
+                    | "path"
+                    | "shape"
+                    | "url"
+            )
     };
-    let Some(end) = crate::style::css::block_end(v, open, '(') else {
-        return false;
-    };
-    matches!(
-        v[..open].trim(),
-        "circle" | "ellipse" | "polygon" | "inset" | "rect" | "xywh" | "path" | "shape" | "url"
-    ) && (v[end + 1..].trim().is_empty() || boxes(v[end + 1..].trim()))
+    // css-shapes-1 §shape-outside, css-masking-1 §clip-path:
+    // `<basic-shape> || <shape-box>` — функция и коробка в любом порядке.
+    match crate::style::computed::split_outside_parens(v).as_slice() {
+        [one] => one == "none" || boxes(one) || shape(one),
+        [a, b] => (shape(a) && boxes(b)) || (boxes(a) && shape(b)),
+        _ => false,
+    }
 }
 
 /// CSS 2.1 §11.1.2: четыре auto/length; проценты и смешанные разделители запрещены.

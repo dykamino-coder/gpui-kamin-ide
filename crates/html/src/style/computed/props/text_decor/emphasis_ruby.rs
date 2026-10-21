@@ -60,7 +60,9 @@ impl Computed {
                                 | "triangle"
                                 | "sesame"
                                 | "currentcolor"
-                        ) || (key == "text-emphasis" && Color::parse(w, vcx).is_some())
+                        ) || (key == "text-emphasis"
+                            && (w.eq_ignore_ascii_case("currentcolor")
+                                || Color::parse(w, vcx).is_some()))
                     })
                 {
                     return;
