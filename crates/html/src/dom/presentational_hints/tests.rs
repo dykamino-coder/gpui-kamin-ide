@@ -92,7 +92,8 @@ fn author_resets_and_nearest_table_control_cell_hints() {
     let spacing = find(&nodes, "table").unwrap().style.border_spacing;
     assert_eq!(spacing, Computed::default().border_spacing);
     let padding = find(&nodes, "td").unwrap().style.padding;
-    assert_eq!(padding.top, Computed::default().padding.top);
+    // css-box-4 §4.1: the initial value of a padding side is 0.
+    assert_eq!(padding.top, Some(Len::Px(0.0)));
     assert_eq!(padding.bottom, Some(Len::Px(10.0)));
 
     let nodes = crate::dom::parse(

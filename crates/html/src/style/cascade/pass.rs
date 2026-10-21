@@ -1,13 +1,15 @@
 //! Computed::apply_map: применение победителей карты каскада ([`CascadeMap`])
 //! с подстановкой var()/attr(), `all` и порядком сокращений и их длинных
-//! свойств внутри одного блока.
+//! свойств внутри одного блока. Длинные свойства реестра приходят
+//! проверенными разбором; их значение с подстановкой разбирается здесь.
 
 use super::map::{CascadeMap, Pick, Picks};
 use super::*;
 use crate::document::state::ValueCx;
 use crate::style::computed::ParseResult;
-use crate::style::css::{DeclBlock, Origin, VarMap};
+use crate::style::css::{CssWide, DeclBlock, LonghandId, Origin, Specified, VarMap};
 mod all_reset;
+mod longhand;
 
 impl Computed {
     /// Один блок объявлений без словаря переменных — тем же каскадом, что и
@@ -38,6 +40,9 @@ impl Computed {
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) {
+        // Каждое применение карты — новый проход каскада по стилю: слой
+        // (`:hover`, кадр анимации) ложится поверх уже применённого.
+        self.decl_order.pass += 1;
         // `all: initial | unset` (§3.2) задаёт и свойства, которых не назвало
         // ни одно объявление: сброс идёт ДО победителей — их выбор уже учёл
         // `all` кандидатом каждого имени.
@@ -96,6 +101,9 @@ impl Computed {
         for (k, first, rest) in winners {
             self.apply_winner(k, first, rest, vars, cx, vcx);
         }
+        // Прямая запись после карты — позже любого её объявления.
+        self.decl_order.pass += 1;
+        self.decl_order.key = Default::default();
     }
 
     fn apply_winner(
@@ -109,8 +117,9 @@ impl Computed {
     ) {
         let mut pick = first;
         loop {
-            let value = match pick {
-                Pick::Value(_, v) => v,
+            self.decl_order.key = pick.key();
+            let (cand, value) = match pick {
+                Pick::Value(c, v) => (c, v),
                 // Откат к агенту, у которого правила для имени нет: значение
                 // агента — умолчание стиля. Часть умолчаний агента у нас не
                 // правила листа, а неявное значение по тегу (`div` блочный,
@@ -118,12 +127,16 @@ impl Computed {
                 // (`revert-val-001`, `appearance-revert-001`).
                 Pick::Unset(_) => return,
             };
+            // Длинное свойство реестра проверено разбором: негодное значение
+            // в каскад не попало, и запасной кандидат не нужен.
+            if let Some(id) = LonghandId::from_name(k) {
+                return self.apply_longhand(id, cand, value, vars, cx, vcx);
+            }
             // Значение с `var()` годно при разборе (CSS Variables §3):
             // негодная подстановка — `unset`, а не прежний кандидат.
-            let pending = crate::style::css::variable_values::has_var(value)
-                || value.contains("attr(")
-                || value.contains("sibling-");
-            let fallback = !pending && !is_wide(value) && rest.clone().next().is_some();
+            let pending = matches!(cand.decl.specified, Specified::Pending(_));
+            let wide = matches!(cand.decl.specified, Specified::Wide(_));
+            let fallback = !pending && !wide && rest.clone().next().is_some();
             if fallback {
                 self.declaration_parse = ParseResult::Invalid;
             }
@@ -169,10 +182,7 @@ impl Computed {
 }
 
 fn is_wide(v: &str) -> bool {
-    matches!(
-        v.trim().to_ascii_lowercase().as_str(),
-        "inherit" | "initial" | "unset" | "revert" | "revert-layer"
-    )
+    CssWide::parse(v).is_some()
 }
 
 /// Семья имени внутри блока: НАСТОЯЩЕЕ сокращение со своими длинными

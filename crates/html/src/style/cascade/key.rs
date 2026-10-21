@@ -9,7 +9,8 @@
 use crate::style::css::Origin;
 
 /// Сравнимый ключ каскада. Порядок полей — порядок критериев §6.2.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Умолчание — слабейший ключ.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CascadeKey {
     /// Происхождение; у важных — `origin ^ 0xF` (переходы не переворачиваются).
     origin_imp: u8,

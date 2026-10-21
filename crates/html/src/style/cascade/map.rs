@@ -6,11 +6,13 @@
 //! (css-cascade-5 §3.2) участвует кандидатом в каждом имени, кроме
 //! `direction`, `unicode-bidi` и пользовательских свойств.
 //!
-//! Пока сокращения раскрываются при применении, ключ карты — имя свойства
-//! как записано (сокращение и его длинные свойства — разные имена).
+//! Ключ карты — имя свойства как записано. Сокращения реестра раскрыты
+//! разбором и приходят длинными свойствами; остальные сокращения пока
+//! раскрываются при применении (сокращение и его длинные свойства — разные
+//! имена).
 
 use super::key::{CascadeKey, KeySource};
-use crate::style::css::{DeclBlock, Declaration, Origin, Rule};
+use crate::style::css::{DeclBlock, Declaration, Origin, Rule, Specified};
 use std::collections::HashMap;
 
 mod picks;
@@ -112,10 +114,7 @@ impl<'a> CascadeMap<'a> {
             if decl.name == "all" {
                 // `all` принимает только общие слова (§3.2); иное значение
                 // делает объявление недействительным.
-                if matches!(
-                    cand.value().to_ascii_lowercase().as_str(),
-                    "initial" | "inherit" | "unset" | "revert" | "revert-layer"
-                ) {
+                if matches!(decl.specified, Specified::Wide(_)) {
                     self.all.push(cand);
                 }
                 continue;
@@ -155,19 +154,31 @@ impl<'a> CascadeMap<'a> {
     /// то, что сильнее происхождения анимаций (css-cascade-5 §6.2): кадр
     /// анимации их не перебивает (`important-prop`).
     pub fn important_block(&self) -> DeclBlock {
-        let mut wins: Vec<(CascadeKey, &str, &str)> = self
+        let mut wins: Vec<(CascadeKey, &str, Candidate<'a>, &str)> = self
             .names
             .iter()
             .filter(|k| !k.starts_with("--"))
             .filter_map(|&k| match self.picks(k).next()? {
-                Pick::Value(c, v) if c.key.important() => Some((c.key, k, v)),
+                Pick::Value(c, v) if c.key.important() => Some((c.key, k, c, v)),
                 _ => None,
             })
             .collect();
         wins.sort_by_key(|w| w.0);
         let mut block = DeclBlock::new();
-        for (_, k, v) in wins {
-            block.push(k, v, false);
+        for (_, k, c, v) in wins {
+            let pos = block.next_pos();
+            // Значение с подстановкой у длинного свойства сокращения — текст
+            // сокращения: объявление переносится с его видом значения.
+            let decl = if c.decl.name == k {
+                Declaration {
+                    important: false,
+                    pos,
+                    ..c.decl.clone()
+                }
+            } else {
+                Declaration::new(k, v, false, pos)
+            };
+            block.push_decl(decl);
         }
         block
     }

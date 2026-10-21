@@ -3,7 +3,7 @@
 //! агента, негодный победитель уступает прежнему кандидату.
 
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, Origin, Rule, Selector, parse_decls};
+use crate::style::css::{DeclBlock, Origin, Rule, Selector, parse_decls, parse_decls_in};
 use crate::style::values::value::{Color, Len};
 
 fn rule(css: &str, origin: Origin, layer: Vec<u32>, order: usize) -> Rule {
@@ -32,13 +32,60 @@ fn repeated_property_wins_at_its_own_position() {
 fn invalid_winner_yields_to_the_previous_candidate() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
+    // Свойство вне реестра проверяется применением: негодный победитель
+    // уступает прежнему кандидату.
     let mut c = Computed::default();
-    c.apply_decls(&parse_decls("width: 10px; width: bogus"), vcx);
-    assert_eq!(c.width, Some(Len::Px(10.0)));
-    let a = rule("width: 20px", Origin::Author, vec![u32::MAX], 0);
-    let b = rule("width: 1foo", Origin::Author, vec![u32::MAX], 1);
+    c.apply_decls(&parse_decls("opacity: 0.5; opacity: bogus"), vcx);
+    assert_eq!(c.opacity, Some(0.5));
+    let a = rule("opacity: 0.25", Origin::Author, vec![u32::MAX], 0);
+    let b = rule("opacity: 1foo", Origin::Author, vec![u32::MAX], 1);
     let c = Computed::resolve(&[&a, &b], &DeclBlock::new(), vcx);
-    assert_eq!(c.width, Some(Len::Px(20.0)));
+    assert_eq!(c.opacity, Some(0.25));
+}
+
+#[test]
+fn invalid_registry_value_never_becomes_a_declaration() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    let mut c = Computed::default();
+    c.apply_decls(&parse_decls_in("width: 10px; width: bogus", vcx), vcx);
+    assert_eq!(c.width, Some(Len::Px(10.0)));
+    // `f04-invalid-padding`: the invalid shorthand leaves every side alone.
+    let mut c = Computed::default();
+    c.apply_decls(&parse_decls_in("padding: 10px; padding: garbage", vcx), vcx);
+    assert_eq!(c.padding.top, Some(Len::Px(10.0)));
+    assert_eq!(c.padding.left, Some(Len::Px(10.0)));
+    let a = Rule {
+        decls: parse_decls_in("margin-top: 20px", vcx),
+        ..rule("", Origin::Author, vec![u32::MAX], 0)
+    };
+    let b = Rule {
+        decls: parse_decls_in("margin-top: 1foo; margin: 1px 2px 3px 4px 5px", vcx),
+        ..rule("", Origin::Author, vec![u32::MAX], 1)
+    };
+    let c = Computed::resolve(&[&a, &b], &DeclBlock::new(), vcx);
+    assert_eq!(c.margin.top, Some(Len::Px(20.0)));
+}
+
+#[test]
+fn shorthand_and_longhand_follow_the_order_of_appearance() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let vcx = doc.values();
+    // M02: the shorthand is expanded at parse, so its longhands compete with
+    // the earlier longhand by position.
+    let mut c = Computed::default();
+    c.apply_decls(&parse_decls_in("margin-left: 1px; margin: 2px", vcx), vcx);
+    assert_eq!(c.margin.left, Some(Len::Px(2.0)));
+    let mut c = Computed::default();
+    c.apply_decls(&parse_decls_in("margin: 2px; margin-left: 1px", vcx), vcx);
+    assert_eq!(c.margin.left, Some(Len::Px(1.0)));
+    assert_eq!(c.margin.right, Some(Len::Px(2.0)));
+    let mut c = Computed::default();
+    c.apply_decls(&parse_decls_in("inset: 1px; top: 5px", vcx), vcx);
+    assert_eq!(
+        (c.inset.top, c.inset.left),
+        (Some(Len::Px(5.0)), Some(Len::Px(1.0)))
+    );
 }
 
 #[test]

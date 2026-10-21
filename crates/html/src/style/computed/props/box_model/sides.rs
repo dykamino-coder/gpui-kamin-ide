@@ -1,7 +1,14 @@
-//! Физические padding и margin: значения сторон, наследование и порядок деклараций.
+//! Стороны коробки по реестру длинных свойств: физические поля, отступы и
+//! вставки (`margin-top`, `padding-left`, `top`) и логические стороны и
+//! размеры (`margin-inline-start`, `inset-block-end`, `inline-size`). Значение
+//! пишется целиком или никак; `inherit` — признаком наследования стороны.
+//! Логические значения ждут письма в `Logical` с местом объявления в каскаде:
+//! спор с физической стороной решает `resolve_logical` по этому месту.
 
+use super::values::side_len;
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::css::{BoxGroup, Grammar, LonghandId, Slot};
 
 impl Computed {
     pub(super) fn apply_box_model_sides(
@@ -11,116 +18,118 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
-        match key {
-            "padding-top" | "padding-right" | "padding-bottom" | "padding-left" => {
-                self.apply_padding_side(key, v, vcx);
-            }
-            // Физическая запись ГАСИТ логический слот той же стороны: разбор
-            // идёт в порядке каскада, и авторский `margin: 0` обязан бить
-            // более ранний `margin-block` таблицы агента — а разрешение
-            // логических идёт после каскада и иначе перекрывало бы всё.
-            // Соответствие сторон берётся горизонтальное: письмо на разборе
-            // ещё неизвестно, а гасят почти всегда сбросом всех сторон.
-            "margin" => {
-                if v == "inherit" {
-                    self.margin_inherit = [true; 4];
-                    return;
-                }
-                self.margin = Sides::shorthand(v, vcx);
-                if self.margin.top.is_some()
-                    && self.margin.right.is_some()
-                    && self.margin.bottom.is_some()
-                    && self.margin.left.is_some()
-                {
-                    self.accept_declaration();
-                }
-                self.side_seq.margin = [self.decl_seq; 4];
-            }
-            "margin-top" => {
-                if v == "inherit" {
-                    self.margin_inherit[0] = true;
-                    return;
-                }
-                self.margin.top = record_parsed!(self, Len::parse(v, vcx));
-                self.side_seq.margin[0] = self.decl_seq;
-            }
-            "margin-right" => {
-                if v == "inherit" {
-                    self.margin_inherit[1] = true;
-                    return;
-                }
-                // Смесь «доля ± точки» доживает индексом: раскладка складывает
-                // её сама (css-values-4 §10.9), а вклад решает долю от нуля
-                // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
-                // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right = record_parsed!(
-                    self,
-                    crate::style::values::value::fold_zero_percentage(
-                        Len::parse_mixed(v, vcx),
-                        vcx
-                    )
-                );
-                self.side_seq.margin[1] = self.decl_seq;
-            }
-            "margin-bottom" => {
-                if v == "inherit" {
-                    self.margin_inherit[2] = true;
-                    return;
-                }
-                self.margin.bottom = record_parsed!(self, Len::parse(v, vcx));
-                self.side_seq.margin[2] = self.decl_seq;
-            }
-            "margin-left" => {
-                if v == "inherit" {
-                    self.margin_inherit[3] = true;
-                    return;
-                }
-                // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left = record_parsed!(
-                    self,
-                    crate::style::values::value::fold_zero_percentage(
-                        Len::parse_mixed(v, vcx),
-                        vcx
-                    )
-                );
-                self.side_seq.margin[3] = self.decl_seq;
-            }
-
-            _ => self.apply_box_model_logical(key, v, hit, vcx),
+        let Some(id) = LonghandId::from_name(key) else {
+            return self.apply_box_model_aspect(key, v, hit);
+        };
+        match id.slot() {
+            Slot::Physical(BoxGroup::Size, _) => *hit = false,
+            Slot::Physical(group, side) => self.apply_side(id.grammar(), group, side, v, vcx),
+            Slot::Logical(group, i) => self.apply_logical(id.grammar(), group, i, v, vcx),
         }
     }
 
-    fn apply_padding_side(&mut self, key: &str, value: &str, vcx: ValueCx<'_>) {
-        let index = match key {
-            "padding-top" => 0,
-            "padding-right" => 1,
-            "padding-bottom" => 2,
-            "padding-left" => 3,
-            _ => return,
+    /// Физическая сторона `side` (top, right, bottom, left) группы.
+    fn apply_side(
+        &mut self,
+        grammar: Grammar,
+        group: BoxGroup,
+        side: usize,
+        v: &str,
+        vcx: ValueCx<'_>,
+    ) {
+        // CSS 2.1 §6.2.1: `inherit` берёт вычисленную сторону родителя.
+        let inherit = v == "inherit";
+        let len = side_len(grammar, v, vcx);
+        if !inherit && len.is_none() {
+            return;
+        }
+        let order = self.decl_order;
+        let (sides, flags, orders) = match group {
+            BoxGroup::Margin => (
+                &mut self.margin,
+                &mut self.margin_inherit,
+                &mut self.side_order.margin,
+            ),
+            BoxGroup::Padding => (
+                &mut self.padding,
+                &mut self.padding_inherit_side,
+                &mut self.side_order.padding,
+            ),
+            _ => (
+                &mut self.inset,
+                &mut self.inset_inherit,
+                &mut self.side_order.inset,
+            ),
         };
-        // CSS 2.1 §6.2.1: inherit copies the parent's computed side.
-        if value == "inherit" {
-            self.padding_inherit_side[index] = true;
+        flags[side] = inherit;
+        orders[side] = order;
+        if let Some(len) = len {
+            *side_slot(sides, side) = Some(len);
+        }
+    }
+
+    /// Логическая сторона или размер: значение ждёт письма в `Logical`.
+    fn apply_logical(
+        &mut self,
+        grammar: Grammar,
+        group: BoxGroup,
+        i: usize,
+        v: &str,
+        vcx: ValueCx<'_>,
+    ) {
+        let inherit = v == "inherit";
+        let order = self.decl_order;
+        if group == BoxGroup::Size {
+            let mut parsed = None;
+            assign_size(&mut parsed, v, vcx);
+            let none = v.trim().eq_ignore_ascii_case("none");
+            if !inherit && parsed.is_none() && !none {
+                return;
+            }
+            let logical = self.logical();
+            logical.size_order[i] = Some(order);
+            logical.size_inherit[i] = inherit;
+            if !inherit {
+                *logical_size_slot(logical, i) = parsed;
+            }
             return;
         }
-        // CSS 2.1 §8.4: a negative padding leaves the previous slot intact.
-        if matches!(
-            Len::parse(value, vcx),
-            Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-        ) {
+        let len = side_len(grammar, v, vcx);
+        if !inherit && len.is_none() {
             return;
         }
-        let parsed = record_parsed!(
-            self,
-            crate::style::values::value::fold_zero_percentage(Len::parse(value, vcx), vcx)
-        );
-        match index {
-            0 => self.padding.top = parsed,
-            1 => self.padding.right = parsed,
-            2 => self.padding.bottom = parsed,
-            _ => self.padding.left = parsed,
-        }
-        self.side_seq.padding[index] = self.decl_seq;
+        let logical = self.logical();
+        let target = match group {
+            BoxGroup::Margin => &mut logical.margin,
+            BoxGroup::Padding => &mut logical.padding,
+            _ => &mut logical.inset,
+        };
+        target.order[i] = Some(order);
+        target.inherit[i] = inherit;
+        *target.slot(i) = len;
+    }
+}
+
+/// Поле стороны (top, right, bottom, left).
+pub(in crate::style::computed) fn side_slot(sides: &mut Sides, side: usize) -> &mut Option<Len> {
+    match side {
+        0 => &mut sides.top,
+        1 => &mut sides.right,
+        2 => &mut sides.bottom,
+        _ => &mut sides.left,
+    }
+}
+
+/// Поле логического размера (inline, block, min-inline, min-block,
+/// max-inline, max-block).
+fn logical_size_slot(logical: &mut Logical, i: usize) -> &mut Option<Len> {
+    match i {
+        0 => &mut logical.inline_size,
+        1 => &mut logical.block_size,
+        2 => &mut logical.min_inline,
+        3 => &mut logical.min_block,
+        4 => &mut logical.max_inline,
+        _ => &mut logical.max_block,
     }
 }
 

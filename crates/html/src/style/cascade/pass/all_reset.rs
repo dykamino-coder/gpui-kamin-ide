@@ -1,5 +1,5 @@
 //! `all: initial | unset` (css-cascade-4 §3.2): сброс стиля к начальному с сохранением направления
-//! письма и счётчика объявлений, начальные значения наследуемых свойств.
+//! письма и места каскада, начальные значения наследуемых свойств.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -13,7 +13,7 @@ impl Computed {
             self.bidi_plaintext,
             self.bidi_embed,
             self.bidi_inherit,
-            self.decl_seq,
+            self.decl_order,
         );
         *self = Computed::default();
         (
@@ -23,7 +23,7 @@ impl Computed {
             self.bidi_plaintext,
             self.bidi_embed,
             self.bidi_inherit,
-            self.decl_seq,
+            self.decl_order,
         ) = keep;
         self.apply_one("display", "inline", vcx);
         if initial {

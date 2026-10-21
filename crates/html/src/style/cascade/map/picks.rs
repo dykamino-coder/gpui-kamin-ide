@@ -6,7 +6,7 @@
 
 use super::Candidate;
 use crate::style::cascade::key::{CascadeKey, LayerLevel};
-use crate::style::css::Origin;
+use crate::style::css::{CssWide, Origin, Specified};
 
 /// Значение, выбранное каскадом для имени.
 #[derive(Clone, Copy, Debug)]
@@ -25,12 +25,6 @@ impl<'a> Pick<'a> {
             Pick::Unset(k) => *k,
         }
     }
-}
-
-fn wide(value: &str) -> Option<&'static str> {
-    ["revert", "revert-layer"]
-        .into_iter()
-        .find(|w| value.eq_ignore_ascii_case(w))
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -93,16 +87,18 @@ impl<'a> Iterator for Picks<'_, 'a> {
             if !self.fits(&c) {
                 continue;
             }
-            match wide(c.value()) {
-                Some("revert") => match c.key.origin().revert_target() {
+            match c.decl.specified {
+                Specified::Wide(CssWide::Revert) => match c.key.origin().revert_target() {
                     Some(target) => self.crit = Crit::OriginAtMost(target),
                     None => {
                         self.done = true;
                         return Some(Pick::Unset(c.key));
                     }
                 },
-                Some(_) => self.crit = Crit::LayerBelow(c.key.layer_level()),
-                None => return Some(Pick::Value(c, c.value())),
+                Specified::Wide(CssWide::RevertLayer) => {
+                    self.crit = Crit::LayerBelow(c.key.layer_level())
+                }
+                _ => return Some(Pick::Value(c, c.value())),
             }
             self.revert_key.get_or_insert(c.key);
         }

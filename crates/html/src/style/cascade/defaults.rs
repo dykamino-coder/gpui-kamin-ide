@@ -57,13 +57,9 @@ pub(super) fn inherited_property(key: &str) -> bool {
 /// Значения взяты из спецификаций; свойства, начальное значение которых у нас
 /// и так «поле не задано», сюда не входят — им сброс не нужен.
 pub(super) fn initial_value(key: &str) -> Option<&'static str> {
+    // Свойства реестра (`style::css::property`) берут начальное значение
+    // оттуда и сюда не доходят.
     Some(match key {
-        // css-position-3 §insets: начальное значение вставок — `auto`
-        // (`left: unset` в `@position-try` снимает вставку базы).
-        "top" | "right" | "bottom" | "left" | "inset" | "inset-block" | "inset-inline"
-        | "inset-block-start" | "inset-block-end" | "inset-inline-start" | "inset-inline-end" => {
-            "auto"
-        }
         "scroll-snap-type" | "scroll-snap-align" | "path-length" => "none",
         "scroll-padding"
         | "scroll-padding-top"
@@ -81,8 +77,6 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "corner-shape" => "round",
         "border-shape" => "none",
         "color" => "black",
-        "margin" => "0",
-        "padding" => "0",
         "direction" => "ltr",
         "font-family" => "serif",
         "font-size" => "medium",

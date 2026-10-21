@@ -141,7 +141,7 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx, vcx: ValueCx<'_>) 
         // годный `<declaration-value>`). Оракул «дельта на чистом стиле» его
         // не видит: `--foo` не пишет ни в одно поле (`at-supports-044`).
         if colons[0].trim().to_ascii_lowercase().starts_with("--") {
-            return if parse_decls(inner).is_empty() {
+            return if parse_decls_in(inner, vcx).is_empty() {
                 SupTri::False
             } else {
                 SupTri::True
@@ -169,13 +169,13 @@ pub(super) fn supports_eval_term(term: &str, cx: &SelectorCx, vcx: ValueCx<'_>) 
         // переменной объявление не пишет ни в одно поле (`at-supports-044`,
         // `(color: var(--anything) invalid-value)`).
         if colons[1].to_ascii_lowercase().contains("var(") {
-            return if parse_decls(inner).is_empty() {
+            return if parse_decls_in(inner, vcx).is_empty() {
                 SupTri::False
             } else {
                 SupTri::True
             };
         }
-        let decls = parse_decls(inner);
+        let decls = parse_decls_in(inner, vcx);
         if decls.is_empty() {
             // Синтаксис объявления сломан (`!bogus`, `!important !important`,
             // `!important green`) — `<general-enclosed>`, то есть ЛОЖЬ

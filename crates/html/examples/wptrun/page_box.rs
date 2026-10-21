@@ -102,6 +102,11 @@ pub(super) fn page_box(
                 auto_m[i] = v.trim() == "auto";
                 if auto_m[i] {
                     margin[i] = 0.0;
+                } else if v.trim() == "inherit" {
+                    // `page-margin-006`: `margin: 13px; margin: inherit` → поля
+                    // корневого элемента (0.5in), не 13px; сокращение приходит
+                    // длинными свойствами.
+                    margin[i] = root_margin[i];
                 } else if let Some(px) = px_of(v, i % 2 == 0) {
                     margin[i] = px;
                 }

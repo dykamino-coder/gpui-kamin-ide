@@ -210,7 +210,7 @@ fn line_width(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
 }
 
 /// Пара значений «вдоль оси»: одно значение — обе грани, два — по порядку.
-pub(crate) fn axis_pair(v: &str, vcx: ValueCx<'_>) -> (Option<Len>, Option<Len>) {
+pub(super) fn axis_pair(v: &str, vcx: ValueCx<'_>) -> (Option<Len>, Option<Len>) {
     let mut it = v.split_whitespace();
     let a = it.next().and_then(|s| Len::parse(s, vcx));
     let b = it.next().and_then(|s| Len::parse(s, vcx)).or(a);

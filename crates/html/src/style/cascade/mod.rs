@@ -7,7 +7,7 @@ use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, res
 use crate::style::computed::{
     BgListProp, Computed, background_layers, font_members, top_level_comma,
 };
-use crate::style::css::{DeclBlock, Rule, VarMap};
+use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 use crate::style::values::value::Color;
 
 mod color_initial;
@@ -79,8 +79,21 @@ impl Computed {
     // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
     // разборщиком — отдельного конвейера под offset-трансформ нет.
     pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
-        self.decl_seq += 1;
         let v = val.trim();
+        // Сокращение реестра вне разбора блока (прямой вызов, слово `all`
+        // не в счёт: оно длинные свойства называет сами) раскрывается тем же
+        // разбором, что и в блоке.
+        if let Some(shorthand) = ShorthandId::from_name(key) {
+            for (id, _, text) in shorthand.expand(v, Some(vcx)).unwrap_or_default() {
+                self.apply_one(id.name(), &text, vcx);
+            }
+            return;
+        }
+        if let Some(id) = LonghandId::from_name(key)
+            && let Some(wide) = CssWide::parse(v)
+        {
+            return self.apply_wide(id, wide, vcx);
+        }
         inherit::note_flow_align(self, key, v);
         if color_initial::apply(self, key, v, vcx) {
             return;
@@ -151,9 +164,29 @@ impl Computed {
         self.apply_property(key, v, vcx);
     }
 
+    /// Общее слово у длинного свойства реестра (css-cascade-5 §7.3):
+    /// `initial` — начальное значение реестра, `inherit` — наследование
+    /// обработчиком, `unset` — по наследуемости свойства. `revert` и
+    /// `revert-layer` каскад разрешает сам; вне каскада откатывать некуда,
+    /// и они значат `unset` (§7.3.4).
+    fn apply_wide(&mut self, id: LonghandId, wide: CssWide, vcx: ValueCx<'_>) {
+        let inherit = match wide {
+            CssWide::Inherit => true,
+            CssWide::Initial => false,
+            CssWide::Unset | CssWide::Revert | CssWide::RevertLayer => id.inherited(),
+        };
+        if inherit {
+            self.apply_property(id.name(), "inherit", vcx);
+        } else {
+            self.apply_one(id.name(), id.initial(), vcx);
+        }
+    }
+
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
-        Self::default().apply_property(key, "", vcx)
+        ShorthandId::from_name(key).is_some()
+            || LonghandId::from_name(key).is_some()
+            || Self::default().apply_property(key, "", vcx)
     }
 
     // The temporary cascade callback borrows the current property and variable state.

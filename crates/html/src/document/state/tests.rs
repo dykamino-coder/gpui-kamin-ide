@@ -14,7 +14,7 @@ const B: &str = "<!doctype html><style>html { font-size: 10px }
 
 fn margin(doc: &Document) -> Option<String> {
     page_decls_in(&doc.page_rules(), 0, "", false)
-        .last("margin")
+        .last("margin-top")
         .map(str::to_string)
 }
 

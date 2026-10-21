@@ -72,7 +72,6 @@ pub(crate) use crate::style::computed::gradient::*;
 pub(crate) use gradient::stops::place_stops;
 pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
-pub(crate) use crate::style::computed::props::border::*;
 pub(super) mod types;
 pub use crate::style::computed::types::*;
 pub(super) mod parse_util;

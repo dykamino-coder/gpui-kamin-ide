@@ -1,34 +1,35 @@
 //! Группа свойств `Computed::apply_one`: `width`/`height`, `min-*`/`max-*`,
-//! логические размеры, `padding*`, `margin*`, `aspect-ratio`, `box-sizing`.
-//! Здесь — размеры с `calc-size()`, ключевыми словами `stretch`/`fit-content(N)`
-//! и пометками `inherit`, а также `padding` (отрицательное роняет объявление);
-//! стороны и логические свойства — в подмодулях `sides`, `logical_layout`.
+//! `box-sizing`; стороны (`margin-*`, `padding-*`, вставки) и логические
+//! стороны и размеры — в `sides`, `aspect-ratio`/`frame-sizing` — в `aspect`.
+//! Сокращения сторон сюда не доходят: они раскрыты разбором (реестр
+//! `style::css::property`). Значения размеров приходят проверенными
+//! (`values`); здесь — `calc-size()`, ключевые слова `stretch`/`fit-content(N)`
+//! и пометки `inherit`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::Len;
 
-mod logical_layout;
+mod aspect;
 mod sides;
+mod values;
+pub(in crate::style::computed) use sides::side_slot;
 
 impl Computed {
     pub(crate) fn apply_box_model(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
-        if self.declaration_parse != ParseResult::Inactive
-            && matches!(
-                key,
-                "width" | "height" | "min-width" | "min-height" | "max-width" | "max-height"
-            )
+        // Место физического размера в каскаде: спор с логическим размером
+        // решает `resolve_logical` (css-logical-1 §4).
+        if let Some(i) = [
+            "width",
+            "height",
+            "min-width",
+            "min-height",
+            "max-width",
+            "max-height",
+        ]
+        .iter()
+        .position(|k| *k == key)
         {
-            let mut parsed = None;
-            assign_size(&mut parsed, v, vcx);
-            if parsed.is_some()
-                || calc_size_arg(v).is_some()
-                || stretch_keyword(v)
-                || fit_content_arg(v, vcx).is_some()
-                || v == "none"
-            {
-                self.accept_declaration();
-            }
+            self.side_order.size[i] = self.decl_order;
         }
         if super::calc_size::apply(self, key, v, vcx) {
             return;
@@ -79,32 +80,6 @@ impl Computed {
                 self.minmax_inherit[3] = v == "inherit";
                 self.stretch_size[5] = stretch_keyword(v);
                 assign_size(&mut self.max_height, v, vcx);
-            }
-
-            "padding" => {
-                if v == "inherit" {
-                    self.padding_inherit = true;
-                    return;
-                }
-                let parsed = Sides::shorthand(v, vcx);
-                let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if *n < 0.0);
-                if neg(&parsed.top)
-                    || neg(&parsed.right)
-                    || neg(&parsed.bottom)
-                    || neg(&parsed.left)
-                {
-                    return;
-                }
-                self.padding = parsed;
-                if self.padding.top.is_some()
-                    && self.padding.right.is_some()
-                    && self.padding.bottom.is_some()
-                    && self.padding.left.is_some()
-                {
-                    self.accept_declaration();
-                }
-                // Спор с логическими сторонами решает порядок объявлений.
-                self.side_seq.padding = [self.decl_seq; 4];
             }
             _ => self.apply_box_model_sides(key, v, hit, vcx),
         }

@@ -95,7 +95,7 @@ pub fn parse_keyframes_in(
             // (css-animations-1 §3: «declarations in a keyframe rule that are
             // qualified with !important are ignored»); обычное одноимённое
             // того же кадра остаётся (`important-prop`).
-            let mut decls = parse_decls(&inner[b + 1..b + c]);
+            let mut decls = parse_decls_in(&inner[b + 1..b + c], vcx);
             decls.retain(|d| !d.important);
             inner = &inner[b + c + 1..];
             for stop in stops.split(',') {
