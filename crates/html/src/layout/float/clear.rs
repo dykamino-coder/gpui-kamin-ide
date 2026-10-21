@@ -4,7 +4,7 @@
 //! §9.5 последний абзац).
 
 use crate::dom::{Element, Node};
-use crate::render::{in_flow, inline_marked_block, own_context};
+use crate::layout::box_kind::{in_flow, inline_marked_block, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
 

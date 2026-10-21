@@ -5,7 +5,7 @@
 //! разрешают `band_margins`, `band_edge`, `band_em` (подмодуль `edges`).
 
 use crate::dom::Node;
-use crate::render::{inline_level, is_blank, own_context};
+use crate::layout::box_kind::{inline_level, is_blank, own_context};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_missing_zero};
 mod edges;

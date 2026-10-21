@@ -6,7 +6,7 @@
 //! в `letter`, ведущий флоат строки — в `leading`.
 
 use crate::dom::{Element, Node};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::{blank_text, normal_fraction};

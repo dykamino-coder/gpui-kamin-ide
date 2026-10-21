@@ -2,8 +2,10 @@
 
 use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::{
+    block_level_in_flow, inline_level, is_blank, out_of_flow, own_context,
+};
 use crate::layout::float::band_measured::{band_nest_ok, band_piece_m};
-use crate::render::{block_level_in_flow, inline_level, is_blank, out_of_flow, own_context};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::Len;

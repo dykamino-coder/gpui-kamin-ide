@@ -4,11 +4,11 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
+use crate::layout::box_kind::{inline_level, is_blank, out_of_flow, phantom_inline};
 use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
-use crate::render::{inline_level, is_blank, out_of_flow, phantom_inline};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 

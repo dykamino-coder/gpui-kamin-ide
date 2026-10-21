@@ -3,10 +3,10 @@
 use super::{band_piece_m, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
+use crate::layout::box_kind::is_blank;
 use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::band_flow_rest_lift;
-use crate::render::is_blank;
 
 /// Хвост `band_host_m`: хост из собранных флоатов, хвоста и щупов.
 #[allow(clippy::too_many_arguments)]
