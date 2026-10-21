@@ -33,6 +33,8 @@ pub(super) use multicol::multicol_runs;
 mod flex_lines;
 mod lane_visibility;
 mod lines;
+#[cfg(test)]
+mod nan_order_tests;
 pub(super) use lines::line_runs;
 
 mod grid;
@@ -170,7 +172,7 @@ impl GapRun {
 }
 
 pub(super) fn uniq_sorted(mut v: Vec<f32>) -> Vec<f32> {
-    v.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(f32::total_cmp);
     v.dedup_by(|x, y| (*x - *y).abs() <= GAP_RULE_EPS);
     v
 }

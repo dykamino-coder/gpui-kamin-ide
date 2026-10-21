@@ -161,7 +161,7 @@ pub(crate) fn grid_row_forced(c: &Element, vcx: ValueCx<'_>) -> (Vec<f32>, Vec<(
             mono.push(bands[r]);
         }
     }
-    out.sort_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal));
+    out.sort_by(f32::total_cmp);
     out.dedup_by(|a, b| (*a - *b).abs() < 0.01);
     (out, mono)
 }

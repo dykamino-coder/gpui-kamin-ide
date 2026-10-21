@@ -8,7 +8,7 @@ use crate::paint::gap_rules::geometry::tracks::template_tracks;
 use crate::paint::gap_rules::geometry::tracks::tracks_a;
 
 pub(super) fn merge(mut v: Vec<(f32, f32)>) -> Vec<(f32, f32)> {
-    v.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut out: Vec<(f32, f32)> = vec![];
     for (lo, hi) in v {
         match out.last_mut() {

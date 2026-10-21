@@ -78,11 +78,10 @@ impl Paragraph {
             return;
         };
         let lines = self.split(Some(limit), window);
-        let Some(widest_line) = lines.iter().max_by(|a, b| {
-            a.width
-                .partial_cmp(&b.width)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }) else {
+        let Some(widest_line) = lines
+            .iter()
+            .max_by(|a, b| f32::from(a.width).total_cmp(&f32::from(b.width)))
+        else {
             return;
         };
         let widest = widest_line.width;
