@@ -121,3 +121,39 @@ fn font_shorthand_takes_size_with_line_height_and_family() {
     );
     assert_eq!(c.font_family.as_deref(), Some("Ahem"));
 }
+
+/// `apply_decls` — тот же проход, что и каскад правил: исход не зависит от
+/// обхода хеш-таблицы (каждый новый `HashMap` получает свой `RandomState`).
+#[test]
+fn apply_decls_is_deterministic_and_takes_the_cascade_order() {
+    use crate::style::values::value::Len;
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..64 {
+        let mut c = crate::style::computed::Computed::default();
+        c.apply_decls(
+            &crate::style::css::parse_decls("inset: 1px; top: 5px"),
+            doc.values(),
+        );
+        seen.insert(format!("{:?}", c.inset.top));
+    }
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(
+        seen.contains(&format!("{:?}", Some(Len::Px(5.0)))),
+        "{seen:?}"
+    );
+}
+
+/// `!important` внутри блока побеждает обычное объявление того же свойства
+/// и в `apply_decls` (второй проход), а не по случайному порядку частей.
+#[test]
+fn apply_decls_applies_important_after_normal() {
+    use crate::style::values::value::Len;
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let mut c = crate::style::computed::Computed::default();
+    c.apply_decls(
+        &crate::style::css::parse_decls("top: 3px !important; top: 1px"),
+        doc.values(),
+    );
+    assert_eq!(c.inset.top, Some(Len::Px(3.0)));
+}
