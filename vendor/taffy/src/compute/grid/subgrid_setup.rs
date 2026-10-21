@@ -13,6 +13,7 @@ use crate::style::SUBGRID_ROWS;
 use crate::tree::NodeId;
 use crate::util::sys::Vec;
 
+/// KaminIDE patch: Prepare inherited subgrid tracks and line names.
 pub(in super::super) fn tracks<S: crate::CheapCloneStr>(
     linked: u8,
     area: (Line<OriginZeroLine>, Line<OriginZeroLine>),
@@ -54,6 +55,7 @@ pub(in super::super) fn tracks<S: crate::CheapCloneStr>(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// KaminIDE patch: Record the subgrid's edge contributions for inherited tracks.
 pub(in super::super) fn record_edges(
     linked: u8,
     area: (Line<OriginZeroLine>, Line<OriginZeroLine>),

@@ -3,6 +3,7 @@
 use super::*;
 use crate::CompactLength;
 
+/// KaminIDE patch: Measure a block width requested by an intrinsic sizing keyword.
 pub(super) fn measure(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,
@@ -41,6 +42,7 @@ pub(super) fn measure(
     argument.max(minimum).min(maximum)
 }
 
+/// KaminIDE patch: Run an intrinsic width probe with the requested available space.
 fn probe(
     tree: &mut impl LayoutPartialTree,
     node: NodeId,

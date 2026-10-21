@@ -2,6 +2,7 @@
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
+/// KaminIDE patch: Commit lane item positions and final child layouts.
 pub(super) fn position(
     tree: &mut impl LayoutGridContainer,
     placed: &mut [Placed],

@@ -8,12 +8,16 @@ use crate::tree::{LayoutFlexboxContainer, LayoutPartialTreeExt, SizingMode};
 use crate::util::MaybeMath;
 use crate::CompactLength;
 
+/// KaminIDE patch: Resolved intrinsic flex-basis input.
 pub(super) enum Basis {
+    /// KaminIDE patch: Definite basis and whether it originated from a sizing keyword.
     Size(f32, bool),
+    /// KaminIDE patch: Available-space constraint for intrinsic measurement.
     Space(Option<AvailableSpace>),
 }
 
 #[allow(clippy::too_many_arguments)]
+/// KaminIDE patch: Resolve a flex main-size keyword into a basis or measurement constraint.
 pub(super) fn resolve(
     tree: &mut impl LayoutFlexboxContainer,
     child: &FlexItem,

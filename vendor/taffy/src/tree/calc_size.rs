@@ -9,6 +9,7 @@ impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
 where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
+    /// KaminIDE patch: Resolve calc-size expressions using intrinsic measurement when required.
     pub(super) fn resolve_calc_size(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
         let style = &self.taffy.nodes[node.into()].style;
         let [w, h, min_w, min_h] = style.calc_size;
@@ -106,6 +107,7 @@ where
         resolved
     }
 
+    /// KaminIDE patch: Measure the intrinsic basis of a calc-size expression.
     fn calc_basis(
         &mut self,
         node: NodeId,
@@ -165,6 +167,7 @@ where
         }
     }
 
+    /// KaminIDE patch: Run a layout probe to resolve a calc-size basis.
     fn calc_probe(
         &mut self,
         node: NodeId,

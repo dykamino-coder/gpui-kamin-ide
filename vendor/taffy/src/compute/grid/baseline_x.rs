@@ -9,6 +9,7 @@ use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt, SizingMode};
 use crate::util::sys::Vec;
 use crate::util::ResolveOrZero;
 
+/// KaminIDE patch: Resolve physical x baselines and shims for grid items.
 pub(super) fn resolve_item_baselines_x(
     tree: &mut impl LayoutPartialTree,
     items: &mut [GridItem],
@@ -17,6 +18,7 @@ pub(super) fn resolve_item_baselines_x(
     resolve_x_groups(tree, items, inner_node_size, false);
     resolve_x_groups(tree, items, inner_node_size, true);
 }
+/// KaminIDE patch: Resolve shared first and last x-baseline groups.
 fn resolve_x_groups(
     tree: &mut impl LayoutPartialTree,
     items: &mut [GridItem],
@@ -41,7 +43,8 @@ fn resolve_x_groups(
     items.sort_by_key(|item| group_of(item));
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
-        let current_column = group_of(&remaining_items[0]);
+        // KaminIDE patch: remaining_items already contains item references.
+        let current_column = group_of(remaining_items[0]);
         let next_column_first_item = remaining_items
             .iter()
             .position(|item| group_of(item) != current_column);

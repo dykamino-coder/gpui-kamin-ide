@@ -43,6 +43,7 @@ pub(super) fn container_space(
     }
 }
 
+/// KaminIDE patch: Measure the preferred stacking-axis width.
 pub(super) fn width(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,
@@ -68,6 +69,7 @@ pub(super) fn min_width(
     measure(tree, node, height, parent, area, AvailableSpace::MinContent)
 }
 
+/// KaminIDE patch: Probe the item under the requested stacking constraint.
 fn measure(
     tree: &mut impl LayoutGridContainer,
     node: NodeId,

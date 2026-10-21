@@ -1,6 +1,6 @@
 //! Computes the CSS block layout algorithm in the case that the block container being laid out contains only block-level boxes
-#[path = "content_size_limits.rs"]
-mod content_size_limits;
+// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
+use super::content_size_limits;
 #[path = "block_keyword_width.rs"]
 mod keyword_width;
 pub use super::block_flow::compute_block_layout;
@@ -1074,6 +1074,12 @@ fn determine_content_based_container_width(
     max_child_width
 }
 
+/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
+type BlockItemLayout = (
+    Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet,
+    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
+);
+
 /// Compute each child's final size and position
 #[inline]
 #[allow(clippy::too_many_arguments)]
@@ -1092,19 +1098,7 @@ fn perform_final_layout_on_in_flow_children(
     own_margins_collapse_with_children: Line<bool>,
     #[cfg(feature = "content_size")] is_scroll_container: bool,
     block_ctx: &mut BlockContext<'_>,
-) -> (
-    Rect<f32>,
-    f32,
-    CollapsibleMarginSet,
-    CollapsibleMarginSet,
-    (
-        Option<f32>,
-        Option<f32>,
-        Option<f32>,
-        Option<f32>,
-        Option<f32>,
-    ),
-) {
+) -> BlockItemLayout {
     // Resolve container_inner_width for sizing child nodes using initial content_box_inset
     let container_inner_width = (container_outer_width - resolved_content_box_inset.horizontal_axis_sum()).max(0.0);
     let container_percentage_resolution_height =

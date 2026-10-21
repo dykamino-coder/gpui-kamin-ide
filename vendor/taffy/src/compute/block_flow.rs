@@ -22,6 +22,7 @@ pub fn compute_block_layout(
     }
 }
 
+/// KaminIDE patch: Compute block layout through a logical-axis tree adapter.
 pub(super) fn compute(
     tree: &mut impl LayoutBlockContainer,
     node: NodeId,

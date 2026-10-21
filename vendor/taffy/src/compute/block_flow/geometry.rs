@@ -5,6 +5,7 @@ use crate::{
 };
 
 impl BlockFlow {
+    /// KaminIDE patch: Swap physical width and height for a vertical block flow.
     pub(super) fn size<T>(self, value: Size<T>) -> Size<T> {
         if self.vertical {
             Size {
@@ -16,6 +17,7 @@ impl BlockFlow {
         }
     }
 
+    /// KaminIDE patch: Project a point between physical and logical axes.
     pub(super) fn point<T>(self, value: Point<T>) -> Point<T> {
         if self.vertical {
             Point {
@@ -27,6 +29,7 @@ impl BlockFlow {
         }
     }
 
+    /// KaminIDE patch: Project physical edges into logical block-flow edges.
     pub(super) fn logical_edges<T>(self, v: Rect<T>) -> Rect<T> {
         if !self.vertical {
             return v;
@@ -48,6 +51,7 @@ impl BlockFlow {
         }
     }
 
+    /// KaminIDE patch: Project logical block-flow edges into physical edges.
     pub(super) fn physical_edges<T>(self, v: Rect<T>) -> Rect<T> {
         if !self.vertical {
             return v;
@@ -69,6 +73,7 @@ impl BlockFlow {
         }
     }
 
+    /// KaminIDE patch: Project layout inputs into the logical block coordinate system.
     pub(super) fn input(self, mut value: LayoutInput) -> LayoutInput {
         if !self.vertical {
             return value;
@@ -85,6 +90,7 @@ impl BlockFlow {
         value
     }
 
+    /// KaminIDE patch: Project logical layout output back into physical coordinates.
     pub(super) fn output(self, mut value: LayoutOutput) -> LayoutOutput {
         if !self.vertical {
             return value;
@@ -117,6 +123,7 @@ impl BlockFlow {
         value
     }
 
+    /// KaminIDE patch: Project physical child output into logical coordinates.
     pub(super) fn logical_output(self, mut value: LayoutOutput) -> LayoutOutput {
         if !self.vertical {
             return value;
@@ -146,6 +153,7 @@ impl BlockFlow {
         value
     }
 
+    /// KaminIDE patch: Project the final child layout into physical container coordinates.
     pub(super) fn layout(self, mut value: Layout, container: Size<f32>) -> Layout {
         if !self.vertical {
             return value;
@@ -209,6 +217,7 @@ fn mirror(value: AxisStaticPosition, extent: f32) -> AxisStaticPosition {
     out
 }
 
+/// KaminIDE patch: Reflect baseline distances when the corresponding axis is reversed.
 fn reflect(value: Baselines, extent: f32, reverse: bool) -> Baselines {
     if reverse {
         Baselines {
@@ -221,6 +230,7 @@ fn reflect(value: Baselines, extent: f32, reverse: bool) -> Baselines {
 }
 
 #[cfg(feature = "content_size")]
+/// KaminIDE patch: Exchange horizontal and vertical rectangle coordinates.
 fn transpose_rect(v: Rect<f32>) -> Rect<f32> {
     Rect {
         left: v.top,

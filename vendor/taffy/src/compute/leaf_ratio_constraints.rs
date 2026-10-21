@@ -1,18 +1,17 @@
 //! Resolve authored leaf sizes before ratio transfer without overriding definite axes.
 use crate::{CoreStyle, MaybeMath, MaybeResolve, Size};
 
+/// KaminIDE patch: resolved size, minimum, maximum, and preferred aspect ratio.
+type ResolvedConstraints = (Size<Option<f32>>, Size<Option<f32>>, Size<Option<f32>>, Option<f32>);
+
+/// KaminIDE patch: Resolve leaf sizes and transfer min/max constraints through the aspect ratio.
 pub(super) fn resolve(
     style: &impl CoreStyle,
     parent: Size<Option<f32>>,
     known: Size<Option<f32>>,
     box_adjustment: Size<f32>,
     calc: &impl Fn(*const (), f32) -> f32,
-) -> (
-    Size<Option<f32>>,
-    Size<Option<f32>>,
-    Size<Option<f32>>,
-    Option<f32>,
-) {
+) -> ResolvedConstraints {
     let ratio = style.aspect_ratio();
     let authored = style.size().maybe_resolve(parent, calc);
     let (minimum, maximum) = crate::compute::common::aspect_ratio_constraints::transfer(

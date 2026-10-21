@@ -22,6 +22,9 @@
 //! | [`print_tree`](crate::print_tree) | [`PrintTree`](crate::PrintTree)                                                                                                                                                                    | Print a debug representation of a node tree and it's computed layout |
 //!
 pub(crate) mod common;
+// KaminIDE patch: all three container algorithms use the same measurement limits.
+#[cfg(any(feature = "block_layout", feature = "flexbox", feature = "grid"))]
+mod content_size_limits;
 pub(crate) mod leaf;
 pub(crate) mod oof;
 

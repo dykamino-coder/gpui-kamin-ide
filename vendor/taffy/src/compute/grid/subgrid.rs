@@ -50,6 +50,7 @@ pub(super) struct PlacedGrid<S: crate::CheapCloneStr> {
     pub row_counts: TrackCounts,
     /// Native auto-repeat counts used by track initialization and detailed names.
     pub col_auto_repetition_count: u16,
+    /// KaminIDE patch: Resolved number of automatic row repetitions.
     pub row_auto_repetition_count: u16,
 }
 

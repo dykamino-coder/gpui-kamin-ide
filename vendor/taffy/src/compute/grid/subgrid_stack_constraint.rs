@@ -6,6 +6,7 @@ use crate::tree::LayoutPartialTreeExt;
 use crate::util::{MaybeResolve, ResolveOrZero};
 use crate::{CoreStyle, LayoutGridContainer, SUBGRID_ROWS};
 
+/// KaminIDE patch: Resolve the subgrid root's stacking-axis content constraint.
 pub(super) fn root_content(
     tree: &mut impl LayoutGridContainer,
     item: &GridItem,

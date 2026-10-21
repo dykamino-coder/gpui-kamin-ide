@@ -1,6 +1,7 @@
 //! Align physical baseline groups within each lane track.
 use super::*;
 
+/// KaminIDE patch: Align lane items within their shared baseline groups.
 pub(super) fn align(placed: &mut [Placed], n: usize, rows: bool) {
     if rows {
         for t in 0..n {

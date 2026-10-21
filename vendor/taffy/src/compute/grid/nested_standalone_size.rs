@@ -7,6 +7,7 @@ use crate::util::sys::Vec;
 use crate::util::ResolveOrZero;
 use crate::{LayoutGridContainer, SUBGRID_COLUMNS, SUBGRID_ROWS};
 
+/// KaminIDE patch: Resolve a nested grid's standalone content size.
 pub(super) fn content(
     tree: &mut impl LayoutGridContainer,
     item: &GridItem,
@@ -35,6 +36,7 @@ pub(super) fn content(
     }
 }
 
+/// KaminIDE patch: Sum inherited track sizes for the requested cross-axis span.
 pub(super) fn cross(own: &Option<(Vec<f32>, f32)>, line: Line<OriginZeroLine>) -> Option<f32> {
     let (sizes, gap) = own.as_ref()?;
     let (s, e) = (line.start.0, line.end.0);

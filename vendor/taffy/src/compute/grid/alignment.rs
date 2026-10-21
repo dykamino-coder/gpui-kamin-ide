@@ -82,6 +82,9 @@ pub(super) fn align_tracks(
     }
 }
 
+/// KaminIDE patch: overflow contribution, y offset, height, two y baselines, and x baselines.
+type PositionedItem = (Rect<f32>, f32, f32, Option<f32>, Option<f32>, Line<Option<f32>>);
+
 /// Align and size a grid item into it's final position
 #[allow(clippy::too_many_arguments)]
 pub(super) fn align_and_position_item(
@@ -106,14 +109,7 @@ pub(super) fn align_and_position_item(
     container_border: Rect<f32>,
     #[cfg(feature = "content_size")] container_is_scroll_container: bool,
     bubbled_candidates: &mut OofCandidates,
-) -> (
-    Rect<f32>,
-    f32,
-    f32,
-    Option<f32>,
-    Option<f32>,
-    Line<Option<f32>>,
-) {
+) -> PositionedItem {
     let grid_area_size = Size {
         width: grid_area.right - grid_area.left,
         height: grid_area.bottom - grid_area.top,

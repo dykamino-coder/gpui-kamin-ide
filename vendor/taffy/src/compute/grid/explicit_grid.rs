@@ -381,14 +381,15 @@ pub(super) fn initialize_grid_tracks(
     if tracks.iter().any(|t| t.is_collapsed) {
         let mut seen_live = false;
         let mut pending: Option<usize> = None;
-        for i in 0..tracks.len() {
+        // KaminIDE patch: enumerate the same tracks without repeated indexing.
+        for (i, track) in tracks.iter_mut().enumerate() {
             if i % 2 == 0 {
                 if seen_live && pending.is_none() {
                     pending = Some(i);
                 } else {
-                    tracks[i].collapse();
+                    track.collapse();
                 }
-            } else if !tracks[i].is_collapsed {
+            } else if !track.is_collapsed {
                 seen_live = true;
                 pending = None;
             }

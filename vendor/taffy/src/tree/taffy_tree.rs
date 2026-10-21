@@ -669,6 +669,7 @@ where
 #[allow(clippy::iter_cloned_collect)] // due to no-std support, we need to use `iter_cloned` instead of `collect`
 impl<NodeContext> TaffyTree<NodeContext> {
     #[cfg(feature = "flexbox")]
+    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
     fn row_uses_pct_height(&self, node: NodeId) -> bool {
         use crate::style::{ExpandedDimension, ExpandedLengthPercentageAuto};
         let preferred = |value: crate::style::Dimension| match value.expand() {

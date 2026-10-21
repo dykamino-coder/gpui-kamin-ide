@@ -5,6 +5,7 @@ use super::types::OriginZeroLine;
 use crate::geometry::{Line, Rect, Size};
 use crate::{CoreStyle, SubgridAxisTracks};
 
+/// KaminIDE patch: Determine the subgrid's physical axis reversals.
 pub(super) fn axes(style: &impl CoreStyle) -> Size<bool> {
     style.grid_axis_reversed().unwrap_or(Size {
         width: style.direction().is_rtl(),
@@ -12,6 +13,7 @@ pub(super) fn axes(style: &impl CoreStyle) -> Size<bool> {
     })
 }
 
+/// KaminIDE patch: Project a subgrid area into the requested coordinate system.
 pub(super) fn area(
     columns: &[GridTrack],
     rows: &[GridTrack],
@@ -39,6 +41,7 @@ pub(super) fn area(
     }
 }
 
+/// KaminIDE patch: Project inherited tracks into the child's axis order.
 pub(super) fn project(
     line: Line<OriginZeroLine>,
     area: Line<OriginZeroLine>,
@@ -56,6 +59,7 @@ pub(super) fn project(
     }
 }
 
+/// KaminIDE patch: Reverse inherited track data when the subgrid axis is reversed.
 pub(super) fn inherit(mut tracks: SubgridAxisTracks, reversed: bool) -> SubgridAxisTracks {
     if reversed {
         if let Some(sizes) = tracks.sizes.as_mut() {
@@ -66,6 +70,7 @@ pub(super) fn inherit(mut tracks: SubgridAxisTracks, reversed: bool) -> SubgridA
     tracks
 }
 
+/// KaminIDE patch: Project physical edges along the subgrid's reversed axes.
 pub(super) fn logical_edges(edges: Rect<f32>, reversed: Size<bool>) -> Rect<f32> {
     Rect {
         left: if reversed.width {
@@ -91,6 +96,7 @@ pub(super) fn logical_edges(edges: Rect<f32>, reversed: Size<bool>) -> Rect<f32>
     }
 }
 
+/// KaminIDE patch: Resolve the subgrid's inner edge adjustments.
 pub(super) fn inner_edges(
     extra: &mut Rect<f32>,
     line: Line<OriginZeroLine>,

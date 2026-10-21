@@ -17,12 +17,15 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "std")]
 #[derive(Debug, Default)]
 pub(crate) struct CalcRegistry {
+    /// KaminIDE patch: Registered pixel and percentage coefficient pairs.
     pairs: std::vec::Vec<(f32, f32)>,
+    /// KaminIDE patch: Deduplicated handles indexed by coefficient bit patterns.
     index: std::collections::HashMap<(u32, u32), usize>,
 }
 
 #[cfg(feature = "std")]
 impl CalcRegistry {
+    /// KaminIDE patch: Intern a coefficient pair and return its opaque handle.
     fn handle(&mut self, px: f32, fraction: f32) -> *const () {
         let pairs = &mut self.pairs;
         let at = *self
@@ -35,6 +38,7 @@ impl CalcRegistry {
         at.checked_mul(8).expect("calc handle registry overflow") as *const ()
     }
 
+    /// KaminIDE patch: Read coefficients associated with an opaque calc handle.
     fn pair(&self, handle: *const ()) -> Option<(f32, f32)> {
         let address = handle as usize;
         if address == 0 || address & 7 != 0 {
@@ -43,6 +47,7 @@ impl CalcRegistry {
         self.pairs.get((address >> 3) - 1).copied()
     }
 
+    /// KaminIDE patch: Remove all registered coefficients and handles.
     pub(crate) fn clear(&mut self) {
         self.pairs.clear();
         self.index.clear();
@@ -62,11 +67,14 @@ std::thread_local! {
 /// Guard of `TaffyTree::calc_scope`: the tree's registry is current until drop.
 #[cfg(feature = "std")]
 pub struct CalcScope {
+    /// KaminIDE patch: Registry stack depth after entering this scope.
     depth: usize,
+    /// KaminIDE patch: Keep registry scopes on the thread that entered them.
     _not_send: core::marker::PhantomData<*const ()>,
 }
 
 #[cfg(feature = "std")]
+/// KaminIDE patch: Make a registry current until the returned scope is dropped.
 pub(crate) fn enter(registry: &SharedRegistry) -> CalcScope {
     let depth = CURRENT.with(|c| {
         let mut c = c.borrow_mut();
@@ -87,6 +95,7 @@ impl Drop for CalcScope {
 }
 
 #[cfg(feature = "std")]
+/// KaminIDE patch: Access the current registry when a scope is active.
 fn with_current<R>(f: impl FnOnce(&mut CalcRegistry) -> R) -> Option<R> {
     let registry = CURRENT.with(|c| c.borrow().last().cloned())?;
     let mut guard = registry.lock().unwrap_or_else(|error| error.into_inner());
@@ -108,6 +117,7 @@ pub fn calc_handle(px: f32, fraction: f32) -> *const () {
 }
 
 #[cfg(feature = "std")]
+/// KaminIDE patch: Read coefficients associated with an opaque calc handle.
 fn pair(handle: *const ()) -> (f32, f32) {
     let found = with_current(|r| r.pair(handle)).flatten();
     debug_assert!(

@@ -544,7 +544,8 @@ fn resolve_item_baseline_groups(
     let mut remaining_items = &mut items[0..];
     while !remaining_items.is_empty() {
         // Get the row index of the current row
-        let current_row = group_of(&remaining_items[0]);
+        // KaminIDE patch: remaining_items already contains item references.
+        let current_row = group_of(remaining_items[0]);
 
         // Find the item index of the first item that is in a different row (or None if we've reached the end of the list)
         let next_row_first_item = remaining_items

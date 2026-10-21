@@ -2436,20 +2436,21 @@ mod tests {
         assert_type_size::<GridTemplateComponent<String>>(56);
         assert_type_size::<GridPlacement<String>>(32);
         assert_type_size::<Line<GridPlacement<String>>>(64);
-        // The local payloads retain inline calc (80 B), two subgrid name groups
-        // (144 B), lanes (20 B), x-baseline hint (8 B), and 12 B of flags.
-        // Keep exact assertions (KaminIDE fields + upstream main 2d936b7 fields: compressible-replaced flag, non-Option alignment).
+        // KaminIDE patch: account for the fork's calc-size basis/max payloads,
+        // containment, subgrid names, lanes, and writing-mode/baseline hints.
+        // These fields extend upstream Style; keep the footprint assertions exact.
+        // See https://drafts.csswg.org/css-values-5/#calc-size for the basis payload.
         assert_type_size::<[Option<(f32, f32, f32, f32)>; 4]>(80);
         assert_type_size::<Option<SubgridLineNames<String>>>(72);
         assert_type_size::<Option<GridLanes>>(20);
         assert_type_size::<Option<(f32, bool)>>(8);
         assert_type_size::<Size<Option<f32>>>(16);
-        assert_type_size::<Style<String>>(880);
+        assert_type_size::<Style<String>>(1016);
 
         // String-type dependent (Arc<str>)
         assert_type_size::<GridTemplateComponent<Arc<str>>>(56);
         assert_type_size::<GridPlacement<Arc<str>>>(24);
         assert_type_size::<Line<GridPlacement<Arc<str>>>>(48);
-        assert_type_size::<Style<Arc<str>>>(848);
+        assert_type_size::<Style<Arc<str>>>(984);
     }
 }

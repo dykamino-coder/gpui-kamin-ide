@@ -12,12 +12,12 @@
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
 diff --git a/vendor/taffy/src/compute/block.rs b/vendor/taffy/src/compute/block.rs
-index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d269ce210
+index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..5dd3c9e05383c95784588e6028b5183632b3604c
 --- a/vendor/taffy/src/compute/block.rs
 +++ b/vendor/taffy/src/compute/block.rs
 @@ -1,0 +2,5 @@
-+#[path = "content_size_limits.rs"]
-+mod content_size_limits;
++// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
++use super::content_size_limits;
 +#[path = "block_keyword_width.rs"]
 +mod keyword_width;
 +pub use super::block_flow::compute_block_layout;
@@ -106,39 +106,34 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| {
 +                    tree.calc(val, basis)
 +                }) {
-@@ -1060 +1095,13 @@
+@@ -1040,0 +1076,6 @@
++
++/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
++type BlockItemLayout = (
++    Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet,
++    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
++);
+@@ -1060 +1101 @@
 -) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
-+) -> (
-+    Rect<f32>,
-+    f32,
-+    CollapsibleMarginSet,
-+    CollapsibleMarginSet,
-+    (
-+        Option<f32>,
-+        Option<f32>,
-+        Option<f32>,
-+        Option<f32>,
-+        Option<f32>,
-+    ),
-+) {
-@@ -1098,0 +1146,4 @@
++) -> BlockItemLayout {
+@@ -1098,0 +1140,4 @@
 +    let mut last_baseline: Option<f32> = None;
 +    let mut first_baseline_x: Option<f32> = None;
 +    let mut last_baseline_x: Option<f32> = None;
 +    let mut inline_block_last: Option<f32> = None;
-@@ -1117,3 +1168,3 @@
+@@ -1117,3 +1162,3 @@
 -            let item_margin = item
 -                .margin
 -                .map(|margin| margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)));
 +            let item_margin = item.margin.map(|margin| {
 +                margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1143 +1194,3 @@
+@@ -1143 +1188,3 @@
 -                    Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
 +                    Some(SizingKeywordResolution::Exact(width)) => {
 +                        (Some(width), AvailableSpace::Definite(width))
 +                    }
-@@ -1280,2 +1333,10 @@
+@@ -1280,2 +1327,10 @@
 -                            let slot = block_ctx.find_bfc_slot(min_y, x_margins, direction, item.clear, slot_segment);
 -                            let Some(segment_id) = slot.segment_id else { break slot };
 +                            let slot = block_ctx.find_bfc_slot(
@@ -151,7 +146,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +                            let Some(segment_id) = slot.segment_id else {
 +                                break slot;
 +                            };
-@@ -1355,3 +1416,5 @@
+@@ -1355,3 +1410,5 @@
 -                .map(|resolution| match resolution {
 -                    SizingKeywordResolution::Exact(width) => width,
 -                    SizingKeywordResolution::Measure(item_available_width) => tree.measure_child_size(
@@ -160,7 +155,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +                        // min-/max-content probes (see `keyword_width`).
 +                        keyword_width::measure(
 +                            tree,
-@@ -1359,5 +1422,3 @@
+@@ -1359,5 +1416,3 @@
 -                        Size::NONE,
 -                        parent_size,
 -                        Size { width: item_available_width, height: AvailableSpace::MaxContent },
@@ -169,10 +164,10 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +                            width_style,
 +                            resolution,
 +                            parent_size,
-@@ -1366 +1427 @@
+@@ -1366 +1421 @@
 -                    ),
 +                        )
-@@ -1471,5 +1532,7 @@
+@@ -1471,5 +1526,7 @@
 -            let inset_percentage_basis =
 -                Size { width: Some(container_inner_width), height: container_percentage_resolution_height };
 -            let inset = item
@@ -185,29 +180,29 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +            let inset = item.inset.zip_size(inset_percentage_basis, |p, s| {
 +                p.maybe_resolve(s, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1542 +1605,5 @@
+@@ -1542 +1599,5 @@
 -                        Direction::Rtl => container_outer_width - resolved_content_box_inset.right - final_size.width,
 +                        Direction::Rtl => {
 +                            container_outer_width
 +                                - resolved_content_box_inset.right
 +                                - final_size.width
 +                        }
-@@ -1551 +1618,3 @@
+@@ -1551 +1612,3 @@
 -                        Direction::Rtl => float_avoiding_position.x + float_avoiding_width - final_size.width,
 +                        Direction::Rtl => {
 +                            float_avoiding_position.x + float_avoiding_width - final_size.width
 +                        }
-@@ -1559 +1628,3 @@
+@@ -1559 +1622,3 @@
 -                        Direction::Ltr => resolved_content_box_inset.left + inset_offset.x + resolved_margin.left,
 +                        Direction::Ltr => {
 +                            resolved_content_box_inset.left + inset_offset.x + resolved_margin.left
 +                        }
-@@ -1589 +1660,3 @@
+@@ -1589 +1654,3 @@
 -                        Direction::Ltr => float_avoiding_position.x + extra_margin_left + inset_offset.x,
 +                        Direction::Ltr => {
 +                            float_avoiding_position.x + extra_margin_left + inset_offset.x
 +                        }
-@@ -1683,0 +1757,32 @@
+@@ -1683,0 +1751,32 @@
 +            let child_last_y = exposed_baseline(
 +                item_layout.last_or_first_y(),
 +                item_layout.size.height,
@@ -240,7 +235,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +            ) {
 +                last_baseline_x = Some(location.x + baseline);
 +            }
-@@ -1805 +1910,13 @@
+@@ -1805 +1904,13 @@
 -    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
 +    (
 +        inflow_overflow_rect,
@@ -255,7 +250,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +            inline_block_last,
 +        ),
 +    )
-@@ -1806,0 +1924,23 @@
+@@ -1806,0 +1918,23 @@
 +
 +/// Keep native scroll-container synthesis/clamping; other boxes expose only actual baselines.
 +fn exposed_baseline(own: Option<f32>, size: f32, scroll_container: bool) -> Option<f32> {
@@ -281,10 +276,10 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..3ef4096479796336938093db4d9c997d
 +}
 diff --git a/vendor/taffy/src/compute/block_flow.rs b/vendor/taffy/src/compute/block_flow.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..44abb10bb4950c62b78eab45331cc2a40964709a
+index 0000000000000000000000000000000000000000..f3719e83c9f0fe341158a39e5b34cf0e0806764e
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow.rs
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,42 @@
 +//! Normalize native block layout into logical axes without replacing its BFC, float or margin rules.
 +mod geometry;
 +mod style;
@@ -309,6 +304,7 @@ index 0000000000000000000000000000000000000000..44abb10bb4950c62b78eab45331cc2a4
 +    }
 +}
 +
++/// KaminIDE patch: Compute block layout through a logical-axis tree adapter.
 +pub(super) fn compute(
 +    tree: &mut impl LayoutBlockContainer,
 +    node: NodeId,
@@ -328,10 +324,10 @@ index 0000000000000000000000000000000000000000..44abb10bb4950c62b78eab45331cc2a4
 +}
 diff --git a/vendor/taffy/src/compute/block_flow/geometry.rs b/vendor/taffy/src/compute/block_flow/geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a3fa6ec9f
+index 0000000000000000000000000000000000000000..5a9daf1972ccbe582f3747ec9284399ce610bea2
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow/geometry.rs
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,241 @@
 +//! Reversible physical/logical conversion for native block constraints and results.
 +use crate::tree::{AxisStaticEdge, AxisStaticPosition, OofCandidates, OofPositioningArea};
 +use crate::{
@@ -339,6 +335,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +};
 +
 +impl BlockFlow {
++    /// KaminIDE patch: Swap physical width and height for a vertical block flow.
 +    pub(super) fn size<T>(self, value: Size<T>) -> Size<T> {
 +        if self.vertical {
 +            Size {
@@ -350,6 +347,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        }
 +    }
 +
++    /// KaminIDE patch: Project a point between physical and logical axes.
 +    pub(super) fn point<T>(self, value: Point<T>) -> Point<T> {
 +        if self.vertical {
 +            Point {
@@ -361,6 +359,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        }
 +    }
 +
++    /// KaminIDE patch: Project physical edges into logical block-flow edges.
 +    pub(super) fn logical_edges<T>(self, v: Rect<T>) -> Rect<T> {
 +        if !self.vertical {
 +            return v;
@@ -382,6 +381,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        }
 +    }
 +
++    /// KaminIDE patch: Project logical block-flow edges into physical edges.
 +    pub(super) fn physical_edges<T>(self, v: Rect<T>) -> Rect<T> {
 +        if !self.vertical {
 +            return v;
@@ -403,6 +403,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        }
 +    }
 +
++    /// KaminIDE patch: Project layout inputs into the logical block coordinate system.
 +    pub(super) fn input(self, mut value: LayoutInput) -> LayoutInput {
 +        if !self.vertical {
 +            return value;
@@ -419,6 +420,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        value
 +    }
 +
++    /// KaminIDE patch: Project logical layout output back into physical coordinates.
 +    pub(super) fn output(self, mut value: LayoutOutput) -> LayoutOutput {
 +        if !self.vertical {
 +            return value;
@@ -451,6 +453,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        value
 +    }
 +
++    /// KaminIDE patch: Project physical child output into logical coordinates.
 +    pub(super) fn logical_output(self, mut value: LayoutOutput) -> LayoutOutput {
 +        if !self.vertical {
 +            return value;
@@ -480,6 +483,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +        value
 +    }
 +
++    /// KaminIDE patch: Project the final child layout into physical container coordinates.
 +    pub(super) fn layout(self, mut value: Layout, container: Size<f32>) -> Layout {
 +        if !self.vertical {
 +            return value;
@@ -543,6 +547,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +    out
 +}
 +
++/// KaminIDE patch: Reflect baseline distances when the corresponding axis is reversed.
 +fn reflect(value: Baselines, extent: f32, reverse: bool) -> Baselines {
 +    if reverse {
 +        Baselines {
@@ -555,6 +560,7 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +}
 +
 +#[cfg(feature = "content_size")]
++/// KaminIDE patch: Exchange horizontal and vertical rectangle coordinates.
 +fn transpose_rect(v: Rect<f32>) -> Rect<f32> {
 +    Rect {
 +        left: v.top,
@@ -565,19 +571,23 @@ index 0000000000000000000000000000000000000000..ad4f0e7c1b99e274a1cc7fd4b1cb265a
 +}
 diff --git a/vendor/taffy/src/compute/block_flow/style.rs b/vendor/taffy/src/compute/block_flow/style.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..18142ac5abe923c323a4521b883403d2360e2563
+index 0000000000000000000000000000000000000000..f2913032e609b849506b384bb126ef6297fa22f5
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow/style.rs
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,136 @@
 +//! Project block styles into a logical coordinate frame while retaining native sizing contracts.
 +use crate::style::*;
 +use crate::{Point, Rect, Size};
 +
++/// KaminIDE patch: Wrap a style with the block-flow projection used by the algorithm.
 +pub(super) struct Logical<S> {
++    /// KaminIDE patch: Underlying physical style.
 +    pub style: S,
++    /// KaminIDE patch: Writing-mode axis projection.
 +    pub flow: BlockFlow,
 +}
 +
++/// KaminIDE patch: Forward style properties that do not need axis projection.
 +macro_rules! forward {
 +    ($($name:ident -> $result:ty),* $(,)?) => { $(
 +        fn $name(&self) -> $result { self.style.$name() }
@@ -703,10 +713,10 @@ index 0000000000000000000000000000000000000000..18142ac5abe923c323a4521b883403d2
 +}
 diff --git a/vendor/taffy/src/compute/block_flow/tree.rs b/vendor/taffy/src/compute/block_flow/tree.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..94924fa98ca2c7863dd961b03a7dba0c79e0030f
+index 0000000000000000000000000000000000000000..f841b65b24163f93027ca2421eb28aae50733a83
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_flow/tree.rs
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,129 @@
 +//! Adapt immediate-child layout requests and defer coordinate projection until block size is known.
 +use super::style::Logical;
 +use crate::util::sys::Vec;
@@ -715,13 +725,18 @@ index 0000000000000000000000000000000000000000..94924fa98ca2c7863dd961b03a7dba0c
 +    LayoutPartialTree, NodeId, Size, TraversePartialTree,
 +};
 +
++/// KaminIDE patch: Adapt tree access to the block algorithm's logical coordinate system.
 +pub(super) struct FlowTree<'a, T> {
++    /// KaminIDE patch: Underlying physical layout tree.
 +    tree: &'a mut T,
++    /// KaminIDE patch: Writing-mode axis projection.
 +    flow: BlockFlow,
++    /// KaminIDE patch: Layouts awaiting the final container size for physical projection.
 +    pending: Vec<(NodeId, Layout)>,
 +}
 +
 +impl<'a, T: LayoutBlockContainer> FlowTree<'a, T> {
++    /// KaminIDE patch: Create a logical view of the physical layout tree.
 +    pub(super) fn new(tree: &'a mut T, flow: BlockFlow) -> Self {
 +        Self {
 +            tree,
@@ -730,6 +745,7 @@ index 0000000000000000000000000000000000000000..94924fa98ca2c7863dd961b03a7dba0c
 +        }
 +    }
 +
++    /// KaminIDE patch: Commit pending layouts using the final container size.
 +    pub(super) fn finish(&mut self, size: Size<f32>) {
 +        for (node, layout) in self.pending.drain(..) {
 +            self.tree
@@ -737,6 +753,7 @@ index 0000000000000000000000000000000000000000..94924fa98ca2c7863dd961b03a7dba0c
 +        }
 +    }
 +
++    /// KaminIDE patch: Whether the child uses axes parallel to this block flow.
 +    fn parallel(&self, node: NodeId) -> bool {
 +        self.tree
 +            .get_core_container_style(node)
@@ -831,15 +848,16 @@ index 0000000000000000000000000000000000000000..94924fa98ca2c7863dd961b03a7dba0c
 +}
 diff --git a/vendor/taffy/src/compute/block_keyword_width.rs b/vendor/taffy/src/compute/block_keyword_width.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8ef1950cddbf66da9b47b5e8cd3171c23e9e6bba
+index 0000000000000000000000000000000000000000..1a6e03e6a0e38548e7f5810e8fbf50c403d73ab6
 --- /dev/null
 +++ b/vendor/taffy/src/compute/block_keyword_width.rs
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,65 @@
 +//! Fit-content clamps the requested width between independent intrinsic probes.
 +//! A definite available width can produce overflowing inline content below its minimum.
 +use super::*;
 +use crate::CompactLength;
 +
++/// KaminIDE patch: Measure a block width requested by an intrinsic sizing keyword.
 +pub(super) fn measure(
 +    tree: &mut impl LayoutPartialTree,
 +    node: NodeId,
@@ -878,6 +896,7 @@ index 0000000000000000000000000000000000000000..8ef1950cddbf66da9b47b5e8cd3171c2
 +    argument.max(minimum).min(maximum)
 +}
 +
++/// KaminIDE patch: Run an intrinsic width probe with the requested available space.
 +fn probe(
 +    tree: &mut impl LayoutPartialTree,
 +    node: NodeId,
@@ -1156,13 +1175,14 @@ index 86f630aa35a4a256fb22eaf2b0dce4b3dec55d3a..f16dd288029b682a6e37f2a0f8558fee
 +        )
 diff --git a/vendor/taffy/src/compute/content_size_limits.rs b/vendor/taffy/src/compute/content_size_limits.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e63e7acb7128cc3e2fd24ebf67e4f92be5acab7a
+index 0000000000000000000000000000000000000000..4779577149eaa5f75f9466bf60f95a824c7598f2
 --- /dev/null
 +++ b/vendor/taffy/src/compute/content_size_limits.rs
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,18 @@
 +//! Intrinsic probes ignore the measured axis's own min/max size constraints.
 +use crate::{LayoutInput, RequestedAxis, Size, SizingMode};
 +
++/// KaminIDE patch: Resolve content-box min/max limits for an intrinsic measurement.
 +pub(super) fn for_measurement(
 +    mut limits: Size<Option<f32>>,
 +    inputs: LayoutInput,
@@ -1179,14 +1199,15 @@ index 0000000000000000000000000000000000000000..e63e7acb7128cc3e2fd24ebf67e4f92b
 +}
 diff --git a/vendor/taffy/src/compute/flex_baseline_x.rs b/vendor/taffy/src/compute/flex_baseline_x.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..66f4217813e6cfb5623695398c13dc0be5b0c5e3
+index 0000000000000000000000000000000000000000..dd45fc1511e3a4dc95e388697131a4b469736017
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_baseline_x.rs
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,132 @@
 +//! Physical x baselines for column flex lines, including intrinsic cross size.
 +//! CSS Align 3 §9.2: opposite flow with opposite preference shares the same side.
 +use super::*;
 +
++/// KaminIDE patch: Determine the physical side of the child's column baseline group.
 +fn side(child: &FlexItem, constants: &AlgoConstants) -> Option<bool> {
 +    let last = child.participates_in_last_baseline_alignment(constants.dir);
 +    if !last && !child.participates_in_baseline_alignment(constants.dir) {
@@ -1195,6 +1216,7 @@ index 0000000000000000000000000000000000000000..66f4217813e6cfb5623695398c13dc0b
 +    Some((child.baseline_x_flags & 1 != 0) != last)
 +}
 +
++/// KaminIDE patch: Measure column-flex baselines for participating items.
 +pub(super) fn measure(
 +    tree: &mut impl LayoutFlexboxContainer,
 +    node_size: Size<Option<f32>>,
@@ -1269,6 +1291,7 @@ index 0000000000000000000000000000000000000000..66f4217813e6cfb5623695398c13dc0b
 +    }
 +}
 +
++/// KaminIDE patch: Find the maximum baseline distance on each physical side.
 +pub(super) fn maxima(items: &[FlexItem]) -> [f32; 2] {
 +    let mut max = [f32::NEG_INFINITY; 2];
 +    for child in items {
@@ -1279,6 +1302,7 @@ index 0000000000000000000000000000000000000000..66f4217813e6cfb5623695398c13dc0b
 +    max
 +}
 +
++/// KaminIDE patch: Compute the cross size required by column baseline groups.
 +pub(super) fn cross_size(items: &[FlexItem], constants: &AlgoConstants) -> f32 {
 +    let max = maxima(items);
 +    items
@@ -1293,6 +1317,7 @@ index 0000000000000000000000000000000000000000..66f4217813e6cfb5623695398c13dc0b
 +        .fold(0.0, f32::max)
 +}
 +
++/// KaminIDE patch: Compute an item's offset within its column baseline group.
 +pub(super) fn offset(
 +    child: &FlexItem,
 +    max: [f32; 2],
@@ -1438,16 +1463,17 @@ index 0000000000000000000000000000000000000000..adad9d80062bf90d4be5ee434211cb60
 +}
 diff --git a/vendor/taffy/src/compute/flex_containment.rs b/vendor/taffy/src/compute/flex_containment.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..905c13ad978220ef083e7453f06c6753b937a97d
+index 0000000000000000000000000000000000000000..0998ebfdf6c70b14369baa8169bc24fc21547b91
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_containment.rs
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,33 @@
 +//! Containment excludes descendant intrinsic widths, including HTML block boxes routed through flex.
 +
 +use crate::style::{AvailableSpace, Contain};
 +use crate::tree::{Baselines, LayoutOutput};
 +use crate::util::MaybeMath;
 +
++/// KaminIDE patch: Resolve the intrinsic width imposed by size containment.
 +pub(super) fn intrinsic_width(
 +    known: Option<f32>,
 +    empty: Option<f32>,
@@ -1467,6 +1493,7 @@ index 0000000000000000000000000000000000000000..905c13ad978220ef083e7453f06c6753
 +    })
 +}
 +
++/// KaminIDE patch: Remove baselines suppressed by layout containment.
 +pub(super) fn suppress_baselines(output: &mut LayoutOutput, contain: Contain) {
 +    if contain.suppresses_baseline() {
 +        output.baselines = Baselines::NONE;
@@ -1475,10 +1502,10 @@ index 0000000000000000000000000000000000000000..905c13ad978220ef083e7453f06c6753
 +}
 diff --git a/vendor/taffy/src/compute/flex_cross_keyword.rs b/vendor/taffy/src/compute/flex_cross_keyword.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8a63dcfb86d4db2a107a28ea791afaf9cc8e6215
+index 0000000000000000000000000000000000000000..487b3be1ce665eec3e31d55667e4c0bbaca09ff0
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_cross_keyword.rs
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,112 @@
 +//! Cross keywords constrain both flex-basis and hypothetical-cross probes.
 +use super::{item_known_dimension_definiteness, AlgoConstants, FlexItem};
 +use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
@@ -1489,6 +1516,7 @@ index 0000000000000000000000000000000000000000..8a63dcfb86d4db2a107a28ea791afaf9
 +use crate::util::MaybeMath;
 +use crate::{BoxSizing, CompactLength};
 +
++/// KaminIDE patch: Resolve cross-axis space for an intrinsic sizing keyword.
 +pub(super) fn available(
 +    tree: &mut impl LayoutFlexboxContainer,
 +    child: &FlexItem,
@@ -1556,6 +1584,7 @@ index 0000000000000000000000000000000000000000..8a63dcfb86d4db2a107a28ea791afaf9
 +    ).then(|| space.into_option()).flatten()
 +}
 +
++/// KaminIDE patch: Whether the cross-size keyword permits alignment stretching.
 +pub(super) fn allows_alignment_stretch(child: &FlexItem, constants: &AlgoConstants) -> bool {
 +    let style = child.size_style.cross(constants.dir);
 +    // An unresolved percentage retains its automatic-size behavior; intrinsic
@@ -1565,6 +1594,7 @@ index 0000000000000000000000000000000000000000..8a63dcfb86d4db2a107a28ea791afaf9
 +        || (!style.is_sizing_keyword() && style.into_raw().uses_percentage())
 +}
 +
++/// KaminIDE patch: Measure the cross-axis contribution under the requested constraint.
 +fn probe(
 +    tree: &mut impl LayoutFlexboxContainer,
 +    child: &FlexItem,
@@ -1590,13 +1620,14 @@ index 0000000000000000000000000000000000000000..8a63dcfb86d4db2a107a28ea791afaf9
 +}
 diff --git a/vendor/taffy/src/compute/flex_intrinsic_floor.rs b/vendor/taffy/src/compute/flex_intrinsic_floor.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ba5a81d266381fa08ab74d62323d3b81ea0dbd9f
+index 0000000000000000000000000000000000000000..52d10e94b650da93a43684af0b3361238352f6dc
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_intrinsic_floor.rs
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,42 @@
 +//! Wrapped intrinsic maximum retains the individual minimum despite negative margins.
 +use super::{sum_axis_gaps, AlgoConstants, FlexItem, FlexLine};
 +use crate::util::MaybeMath;
++/// KaminIDE patch: Compute an item's minimum intrinsic main-axis contribution.
 +fn contribution(child: &FlexItem, constants: &AlgoConstants) -> f32 {
 +    let padding_border = (child.padding + child.border).main_axis_sum(constants.dir);
 +    let size = if child.flex_grow == 0.0 && child.flex_shrink == 0.0 {
@@ -1608,6 +1639,7 @@ index 0000000000000000000000000000000000000000..ba5a81d266381fa08ab74d62323d3b81
 +    };
 +    (size + child.margin.main_axis_sum(constants.dir)).max(padding_border)
 +}
++/// KaminIDE patch: Find the minimum main-axis contribution of complete flex lines.
 +pub(super) fn line_minimum(lines: &[FlexLine<'_>], constants: &AlgoConstants) -> f32 {
 +    // Preserve the previous min-content line sum and gaps exactly.
 +    lines
@@ -1622,6 +1654,7 @@ index 0000000000000000000000000000000000000000..ba5a81d266381fa08ab74d62323d3b81
 +        .max_by(|a, b| a.total_cmp(b))
 +        .unwrap_or(0.0)
 +}
++/// KaminIDE patch: Find the largest individual item's minimum main-axis contribution.
 +pub(super) fn item_minimum(lines: &[FlexLine<'_>], constants: &AlgoConstants) -> f32 {
 +    lines
 +        .iter()
@@ -1635,10 +1668,10 @@ index 0000000000000000000000000000000000000000..ba5a81d266381fa08ab74d62323d3b81
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flex_intrinsic_limits.rs b/vendor/taffy/src/compute/flex_intrinsic_limits.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b51685526a78ef8bc7150f0814feac6a22c58f3
+index 0000000000000000000000000000000000000000..c4db44f3a90c2f006b33b38113cebcf38fa97989
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_intrinsic_limits.rs
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,106 @@
 +//! Explicit intrinsic flex limits are measured independently of the flex basis.
 +use super::{AlgoConstants, FlexItem};
 +use crate::geometry::{AbsoluteAxis, Line, Size};
@@ -1647,6 +1680,7 @@ index 0000000000000000000000000000000000000000..1b51685526a78ef8bc7150f0814feac6
 +use crate::util::MaybeMath;
 +use crate::FlexboxItemStyle;
 +
++/// KaminIDE patch: Resolve intrinsic flex-item min/max constraints.
 +pub(super) fn resolve(
 +    tree: &mut impl LayoutFlexboxContainer,
 +    constants: &AlgoConstants,
@@ -1746,10 +1780,10 @@ index 0000000000000000000000000000000000000000..1b51685526a78ef8bc7150f0814feac6
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flex_main_keyword.rs b/vendor/taffy/src/compute/flex_main_keyword.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..37f2f5e097c2c392f8985b1784f91e80d0528b84
+index 0000000000000000000000000000000000000000..a4e022902e6087ae2d05432cebc4bc61e2aa68a4
 --- /dev/null
 +++ b/vendor/taffy/src/compute/flex_main_keyword.rs
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,95 @@
 +//! Main-axis fit sizes clamp independent intrinsic probes before flexing.
 +use super::{AlgoConstants, FlexItem};
 +use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
@@ -1760,12 +1794,16 @@ index 0000000000000000000000000000000000000000..37f2f5e097c2c392f8985b1784f91e80
 +use crate::util::MaybeMath;
 +use crate::CompactLength;
 +
++/// KaminIDE patch: Resolved intrinsic flex-basis input.
 +pub(super) enum Basis {
++    /// KaminIDE patch: Definite basis and whether it originated from a sizing keyword.
 +    Size(f32, bool),
++    /// KaminIDE patch: Available-space constraint for intrinsic measurement.
 +    Space(Option<AvailableSpace>),
 +}
 +
 +#[allow(clippy::too_many_arguments)]
++/// KaminIDE patch: Resolve a flex main-size keyword into a basis or measurement constraint.
 +pub(super) fn resolve(
 +    tree: &mut impl LayoutFlexboxContainer,
 +    child: &FlexItem,
@@ -1842,12 +1880,12 @@ index 0000000000000000000000000000000000000000..37f2f5e097c2c392f8985b1784f91e80
 +#[path = "../tree/flex_main_fit_tests.rs"]
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flexbox.rs b/vendor/taffy/src/compute/flexbox.rs
-index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9de416d267
+index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..c2ce7250b9baba15484cc8cbe29010835599e650
 --- a/vendor/taffy/src/compute/flexbox.rs
 +++ b/vendor/taffy/src/compute/flexbox.rs
 @@ -1,0 +2,3 @@
-+#[path = "content_size_limits.rs"]
-+mod content_size_limits;
++// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
++use super::content_size_limits;
 +
 @@ -2,0 +6,14 @@
 +#[path = "flex_baseline_x.rs"]
@@ -1866,13 +1904,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +mod row_baselines;
 @@ -24 +40,0 @@
 -use super::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
-@@ -100,0 +117,22 @@
+@@ -100,0 +117,25 @@
 +    /// Last y baseline measured from cross-end margin edge during grouping.
 +    last_baseline_from_end: f32,
 +    /// Last y baseline after final physical placement, from container top.
 +    last_baseline_pos: f32,
 +    /// KaminIDE patch: the item's own layout exported a first / last y baseline (not synthesized).
 +    has_first_baseline: bool,
++    /// KaminIDE patch: Whether the measured item exposes a last baseline.
 +    has_last_baseline: bool,
 +    /// KaminIDE patch: the item exports no baseline to an enclosing `inline-block`
 +    /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
@@ -1885,11 +1924,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    inline_block_last_pos: Option<f32>,
 +    /// First x baseline after final physical placement, from container left.
 +    baseline_x_pos: Option<f32>,
++    /// KaminIDE patch: Writing-mode and baseline-side flags for column baseline alignment.
 +    baseline_x_flags: u8,
++    /// KaminIDE patch: Column baseline group side and measured distance.
 +    column_baseline: Option<(bool, f32)>,
 +    /// Independent last x channel; final placement must populate this too.
 +    last_baseline_x_pos: Option<f32>,
-@@ -128 +166,9 @@
+@@ -128 +169,9 @@
 -        self.align_self == AlignSelf::BASELINE
 +        self.align_self.keyword == AlignItemsKeyword::Baseline
 +            && !self.margin_is_auto.cross_start(dir)
@@ -1900,19 +1941,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    /// while remaining a different baseline group.
 +    fn participates_in_last_baseline_alignment(&self, dir: FlexDirection) -> bool {
 +        self.align_self.keyword == AlignItemsKeyword::LastBaseline
-@@ -155,0 +202,2 @@
+@@ -155,0 +205,2 @@
 +    /// KaminIDE patch: block-container baselines (`Style::block_baselines`), column containers only
 +    block_baselines: bool,
-@@ -157,0 +206,2 @@
+@@ -157,0 +209,2 @@
 +    /// Physical sides trimmed before flexible lengths are resolved.
 +    margin_trim: u8,
-@@ -192,0 +243,5 @@
+@@ -192,0 +246,5 @@
 +    /// Ratio transfer is definite for percentages, but may grow with content.
 +    ratio_preferred_inner_size: Size<Option<f32>>,
 +    /// Transparent anonymous row's containing-block height; Some(None) must
 +    /// remain distinct from no override, otherwise percentages become cyclic.
 +    pct_height_from_parent: Option<Option<f32>>,
-@@ -232,0 +288,52 @@
+@@ -232,0 +291,53 @@
 +/// Anonymous rows are transparent only when descendants actually depend on
 +/// a percentage height. Native sizing keywords are not percentages.
 +fn row_children_use_pct_height(tree: &impl LayoutFlexboxContainer, node: NodeId) -> bool {
@@ -1945,6 +1986,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    }
 +}
 +
++/// KaminIDE patch: Whether a dimension derives from a calc-size expression.
 +fn calc_size_derived(
 +    size: Size<Option<f32>>,
 +    cs: [Option<(f32, f32, f32, f32)>; 4],
@@ -1965,20 +2007,20 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    }
 +}
 +
-@@ -243,0 +351 @@
+@@ -243,0 +355 @@
 +    let contained_width = style.contained_intrinsic_size().width;
-@@ -251 +359 @@
+@@ -251 +363 @@
 -    let min_size = style
 +    let min_size = content_size_limits::for_measurement(style
-@@ -255,2 +363,2 @@
+@@ -255,2 +367,2 @@
 -        .maybe_add(box_sizing_adjustment);
 -    let max_size = style
 +        .maybe_add(box_sizing_adjustment), inputs);
 +    let max_size = content_size_limits::for_measurement(style
-@@ -260 +368 @@
+@@ -260 +372 @@
 -        .maybe_add(box_sizing_adjustment);
 +        .maybe_add(box_sizing_adjustment), inputs);
-@@ -279,2 +387,13 @@
+@@ -279,2 +391,13 @@
 -    let styled_based_known_dimensions =
 -        known_dimensions.or(min_max_definite_size.or(clamped_style_size).maybe_max(padding_border_sum));
 +    // Known sizes, including zero-height stretch, cannot shrink the border box
@@ -1994,7 +2036,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        min_size.width,
 +        max_size.width,
 +    );
-@@ -296,0 +416,44 @@
+@@ -296,0 +420,44 @@
 +    debug_log!("FLEX:", dbg:style.flex_direction());
 +    let height_is_auto = style.size().height.is_auto();
 +    let scroll =
@@ -2039,14 +2081,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        }
 +    }
 +
-@@ -305,3 +467,0 @@
+@@ -305,3 +471,0 @@
 -    debug_log!("FLEX:", dbg:style.flex_direction());
 -    drop(style);
 -
-@@ -310 +470 @@
+@@ -310 +474 @@
 -    let known_dimensions_are_definite = inputs
 +    let mut known_dimensions_are_definite = inputs
-@@ -312 +472,67 @@
+@@ -312 +476,67 @@
 -        .zip_map(known_dimensions, |is_definite, known_dimension| is_definite || known_dimension.is_none());
 +        .zip_map(known_dimensions, |is_definite, known_dimension| {
 +            is_definite || known_dimension.is_none()
@@ -2115,13 +2157,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            known_dimensions_are_definite.height = ratio_is_definite;
 +        }
 +    }
-@@ -320,4 +546 @@
+@@ -320,4 +550 @@
 -    // Layout containment suppresses the box's baseline for baseline-alignment purposes
 -    if contain.suppresses_baseline() {
 -        output.baselines = Baselines::NONE;
 -    }
 +    containment::suppress_baselines(&mut output, contain);
-@@ -340,0 +564,8 @@
+@@ -340,0 +568,8 @@
 +    constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
 +    constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
 +
@@ -2130,7 +2172,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    if constants.pct_height_from_parent.is_some() && !row_children_use_pct_height(tree, node) {
 +        constants.pct_height_from_parent = None;
 +    }
-@@ -348,0 +580,34 @@
+@@ -348,0 +584,34 @@
 +
 +    // KaminIDE patch: a table item of a COLUMN container takes its width on the
 +    // cross axis, and that width is floored by the table's min-content width
@@ -2165,13 +2207,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    }
 +
 +    intrinsic_limits::resolve(tree, &constants, &mut flex_items);
-@@ -383,0 +649,5 @@
+@@ -383,0 +653,5 @@
 +
 +    // Trimming happens after line collection, before both intrinsic container
 +    // sizing and flex length resolution. Line collection itself still needs
 +    // the trim-aware wrapping port in the residual map.
 +    trim_flex_margins(&mut flex_lines, &constants);
-@@ -541,0 +812,9 @@
+@@ -541,0 +816,9 @@
 +        if constants.block_baselines {
 +            // CSS 2.1 10.8.1 / css-align-3 9.1: a block container's first baseline is that
 +            // of its first in-flow child that has one; children without one are skipped.
@@ -2181,7 +2223,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                .find(|child| child.has_first_baseline)
 +                .map(|child| child.baseline);
 +        }
-@@ -556 +835,50 @@
+@@ -556 +839,50 @@
 -    let mut output = LayoutOutput::from_sizes_and_baselines(
 +    // Last y baseline uses the endmost visual line and its separate last
 +    // baseline group. First-group fallback is already in container coordinates
@@ -2233,7 +2275,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        .rev()
 +        .find_map(|child| child.last_baseline_x_pos.or(child.baseline_x_pos));
 +    let mut output = LayoutOutput::from_sizes_and_all_baselines(
-@@ -559 +887,8 @@
+@@ -559 +891,8 @@
 -        Baselines::from_first(first_vertical_baseline),
 +        Baselines {
 +            first: first_vertical_baseline,
@@ -2243,7 +2285,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            first: first_x,
 +            last: last_x,
 +        },
-@@ -560,0 +896,20 @@
+@@ -560,0 +900,20 @@
 +    // An anonymous flex wrapper whose every item is a table (wrapper) box hides
 +    // the table baseline from an enclosing inline-block as the table itself does.
 +    // Likewise a float (CSS 2.1 §10.8.1: only in-flow line boxes give an
@@ -2264,39 +2306,39 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            flex_lines.iter().rev().find_map(shown)
 +        });
 +    }
-@@ -592 +947 @@
+@@ -592 +951 @@
 -    let is_wrap_reverse = flex_wrap.is_reverse();
 +    let authored_wrap_reverse = flex_wrap.is_reverse();
-@@ -619,0 +975,6 @@
+@@ -619,0 +979,6 @@
 +    // The current HTML adapter projects RTL into physical flex-direction and
 +    // keeps Direction::Ltr. Its no-wrap column cross reversal is still needed.
 +    // Native RTL callers already project that cross axis and must not flip twice.
 +    let cross_reverse_only =
 +        !is_wrap && style.flex_cross_reverse() && layout_direction == Direction::Ltr;
 +    let is_wrap_reverse = authored_wrap_reverse || cross_reverse_only;
-@@ -640,0 +1002,3 @@
+@@ -640,0 +1006,3 @@
 +    let ratio_preferred_inner_size = style
 +        .aspect_ratio_preferred_size()
 +        .maybe_sub(content_box_inset.sum_axes());
-@@ -642,0 +1007,2 @@
+@@ -642,0 +1011,2 @@
 +    let pct_height_from_parent =
 +        (is_row && style.percent_basis_from_parent()).then_some(parent_size.height);
-@@ -648 +1014,5 @@
+@@ -648 +1018,5 @@
 -    let gap = style.gap().resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| tree.calc(val, basis));
 +    let gap = style
 +        .gap()
 +        .resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -658,0 +1029 @@
+@@ -658,0 +1033 @@
 +        block_baselines: is_column && style.block_baselines(),
-@@ -659,0 +1031 @@
+@@ -659,0 +1035 @@
 +        margin_trim: style.margin_trim(),
-@@ -669 +1041,2 @@
+@@ -669 +1045,2 @@
 -        max_size: style
 +        max_size: {
 +            let max_size = style
-@@ -673 +1046,21 @@
+@@ -673 +1050,21 @@
 -            .maybe_add(box_sizing_adjustment),
 +                .maybe_add(box_sizing_adjustment);
 +            // KaminIDE patch: a table box is never narrower than its grid
@@ -2319,27 +2361,27 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                max_size
 +            }
 +        },
-@@ -684,0 +1078,2 @@
+@@ -684,0 +1082,2 @@
 +        ratio_preferred_inner_size,
 +        pct_height_from_parent,
-@@ -730,5 +1125 @@
+@@ -730,5 +1129 @@
 -    let percent_resolution_size = if constants.known_main_size_is_definite {
 -        constants.node_inner_size
 -    } else {
 -        constants.node_inner_size.with_main(constants.dir, None)
 -    };
 +    let percent_resolution_size = constants.pct_basis();
-@@ -745 +1136,3 @@
+@@ -745 +1140,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -748 +1141,3 @@
+@@ -748 +1145,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -751,0 +1147,16 @@
+@@ -751,0 +1151,16 @@
 +            // Transfer constraints only into an auto or cyclic-percentage
 +            // receiving axis. Native non-auto sizing keywords retain their
 +            // separate measurement path; a sentinel prevents auto transfer.
@@ -2356,16 +2398,16 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis)),
 +                aspect_ratio,
 +            );
-@@ -755 +1166,2 @@
+@@ -755 +1170,2 @@
 -                size: child_style
 +                size: calc_size_derived(
 +                    child_style
-@@ -759,0 +1172,4 @@
+@@ -759,0 +1176,4 @@
 +                    child_style.calc_size(),
 +                    child_style.calc_size_basis(),
 +                    if child_style.calc_size_content_box() { pb_sum } else { Size::ZERO },
 +                ),
-@@ -761,8 +1177,2 @@
+@@ -761,8 +1181,2 @@
 -                min_size: child_style
 -                    .min_size()
 -                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
@@ -2376,17 +2418,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -                    .maybe_add(box_sizing_adjustment),
 +                min_size: min_transferred.maybe_add(box_sizing_adjustment),
 +                max_size: max_transferred.maybe_add(box_sizing_adjustment),
-@@ -781 +1191,3 @@
+@@ -781 +1195,3 @@
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
 +                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                        tree.calc(val, basis)
 +                    }),
-@@ -785 +1197,3 @@
+@@ -785 +1201,3 @@
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
 +                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                        tree.calc(val, basis)
 +                    }),
-@@ -788,3 +1202,11 @@
+@@ -788,3 +1206,11 @@
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
 -                align_self: resolve_normal_alignment(child_style.align_self().unwrap_or(constants.align_items))
 -                    .resolve_self_relative(child_style.direction(), constants.layout_direction, constants.is_column),
@@ -2401,7 +2443,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                    constants.layout_direction,
 +                    constants.is_column,
 +                ),
-@@ -809,0 +1232,11 @@
+@@ -809,0 +1236,11 @@
 +                last_baseline_from_end: 0.0,
 +                last_baseline_pos: 0.0,
 +                has_first_baseline: false,
@@ -2413,21 +2455,21 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                baseline_x_flags: child_style.baseline_x_flags(),
 +                column_baseline: None,
 +                last_baseline_x_pos: None,
-@@ -841,3 +1274,3 @@
+@@ -841,3 +1278,3 @@
 -        Some(node_width) => {
 -            AvailableSpace::Definite((node_width - constants.content_box_inset.horizontal_axis_sum()).max(0.0))
 -        }
 +        Some(node_width) => AvailableSpace::Definite(
 +            (node_width - constants.content_box_inset.horizontal_axis_sum()).max(0.0),
 +        ),
-@@ -848,3 +1281,3 @@
+@@ -848,3 +1285,3 @@
 -        Some(node_height) => {
 -            AvailableSpace::Definite((node_height - constants.content_box_inset.vertical_axis_sum()).max(0.0))
 -        }
 +        Some(node_height) => AvailableSpace::Definite(
 +            (node_height - constants.content_box_inset.vertical_axis_sum()).max(0.0),
 +        ),
-@@ -854,0 +1288,59 @@
+@@ -854,0 +1292,59 @@
 +}
 +
 +/// KaminIDE patch: перенос min/max через соотношение сторон (css-sizing-4
@@ -2487,10 +2529,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            height: max_h,
 +        },
 +    )
-@@ -894,2 +1385,0 @@
+@@ -894,2 +1389,0 @@
 -        let child_style = tree.get_flexbox_child_style(child.node);
 -
-@@ -898 +1388,11 @@
+@@ -898 +1392,11 @@
 -        let child_parent_size = Size::from_cross(dir, cross_axis_parent_size);
 +        // Anonymous row children in a column need the real containing-block
 +        // height even during main-basis measurement; other children remain
@@ -2503,12 +2545,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        } else {
 +            Size::from_cross(dir, constants.pct_basis().cross(dir))
 +        };
-@@ -903,2 +1403,2 @@
+@@ -903,2 +1407,2 @@
 -        let transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 -        let transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 +        let transferred_min_size = child.min_size;
 +        let transferred_max_size = child.max_size;
-@@ -925,0 +1426,9 @@
+@@ -925,0 +1430,9 @@
 +        let cross_axis_available_space = cross_keyword::available(
 +            tree,
 +            child,
@@ -2518,19 +2560,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        );
 +        let child_style = tree.get_flexbox_child_style(child.node);
 +
-@@ -929,0 +1439,3 @@
+@@ -929,0 +1443,3 @@
 +            if ckd.cross(dir).is_none() {
 +                ckd.set_cross(dir, cross_keyword::fit_content_size(child, constants, cross_axis_available_space));
 +            }
-@@ -937 +1449,2 @@
+@@ -937 +1453,2 @@
 -            if child.align_self == AlignSelf::STRETCH
 +            if child.align_self.keyword == AlignItemsKeyword::Stretch
 +                && cross_keyword::allows_alignment_stretch(child, constants)
-@@ -965,2 +1478 @@
+@@ -965,2 +1482 @@
 -        let percent_resolution_main_size =
 -            if constants.known_main_size_is_definite { constants.node_inner_size.main(dir) } else { None };
 +        let percent_resolution_main_size = constants.pct_basis().main(dir);
-@@ -969 +1481,11 @@
+@@ -969 +1485,11 @@
 -            .maybe_resolve(percent_resolution_main_size, |val, basis| tree.calc(val, basis))
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
@@ -2543,7 +2585,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -982,16 +1504,6 @@
+@@ -982,16 +1508,6 @@
 -            let main_size = child.size.main(dir);
 -            let main_stretch_size =
 -                percent_resolution_main_size.maybe_sub(child.margin.main_axis_sum(dir)).maybe_max(0.0);
@@ -2566,7 +2608,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                tree,
 +                child,
 +                constants,
-@@ -999,3 +1511,5 @@
+@@ -999,3 +1515,5 @@
 -                    main_stretch_size,
 -                    percent_resolution_main_size,
 -                    |val, basis| tree.calc(val, basis),
@@ -2575,12 +2617,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                child_parent_size,
 +                cross_axis_available_space,
 +                box_sizing_adjustment,
-@@ -1003,2 +1517,2 @@
+@@ -1003,2 +1521,2 @@
 -                    Some(SizingKeywordResolution::Exact(size)) => {
 -                        child.flex_basis_is_definite = true;
 +                main_keyword::Basis::Size(size, definite) => {
 +                    child.flex_basis_is_definite = definite;
-@@ -1007,28 +1521 @@
+@@ -1007,28 +1525 @@
 -                    Some(SizingKeywordResolution::Measure(available)) => Some(available),
 -                    None => None,
 -                }
@@ -2610,7 +2652,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -                    None
 -                }
 +                main_keyword::Basis::Space(space) => space,
-@@ -1069,0 +1557,51 @@
+@@ -1069,0 +1561,51 @@
 +
 +            // A stretched cross suggestion still supplies the ratio-derived
 +            // basis when its input is indefinite, but must NOT mark that basis
@@ -2662,7 +2704,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                    }
 +                }
 +            }
-@@ -1091 +1629,11 @@
+@@ -1091 +1633,11 @@
 -                SizingMode::ContentSize,
 +                // A block-axis or wrapped probe still needs its own limits
 +                // for line formation and aspect-ratio transfers. Restrict the
@@ -2675,10 +2717,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                } else {
 +                    SizingMode::ContentSize
 +                },
-@@ -1131 +1679 @@
+@@ -1131 +1683 @@
 -                    child_known_dimensions,
 +                    child_known_dimensions.with_main(dir, None),
-@@ -1139,0 +1688,24 @@
+@@ -1139,0 +1692,24 @@
 +            let ratio_cross = child.size.cross(dir).or_else(|| {
 +                if child.align_self.keyword == AlignItemsKeyword::Stretch
 +                    && !child.margin_is_auto.cross_start(dir)
@@ -2703,13 +2745,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            });
 +            let min_content_main_size = min_content_main_size.maybe_max(transferred_main);
 +
-@@ -1142,2 +1714,3 @@
+@@ -1142,2 +1718,3 @@
 -            let clamped_min_content_size =
 -                min_content_main_size.maybe_min(child.size.main(dir)).maybe_min(transferred_max_size.main(dir));
 +            let clamped_min_content_size = min_content_main_size
 +                .maybe_min(specified_main_size)
 +                .maybe_min(transferred_max_size.main(dir));
-@@ -1145,0 +1719,61 @@
+@@ -1145,0 +1723,61 @@
 +
 +        // KaminIDE patch: `min-width/min-height: calc-size(auto, …)` по главной
 +        // оси — выражение над АВТОМИНИМУМОМ (css-values-5 §calc-size: основа
@@ -2771,7 +2813,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            let table_floor = content_floor + padding_border_axes_sums.main(dir).unwrap_or(0.0);
 +            child.resolved_minimum_main_size = child.resolved_minimum_main_size.max(table_floor);
 +        }
-@@ -1186,4 +1820,10 @@
+@@ -1186,4 +1824,10 @@
 -    // Wrapping into multiple lines requires a definite main size. If the container's known main size
 -    // is derived from its own content (and is thus indefinite) then all items are collected into a
 -    // single flex line, matching how the container was sized under a min/max-content constraint.
@@ -2786,22 +2828,22 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                .main(constants.dir)
 +                .is_none())
 +    {
-@@ -1193,0 +1834,6 @@
+@@ -1193,0 +1838,6 @@
 +        let available_space =
 +            if let Some(preferred) = constants.ratio_preferred_inner_size.main(constants.dir) {
 +                available_space.with_main(constants.dir, AvailableSpace::Definite(preferred))
 +            } else {
 +                available_space
 +            };
-@@ -1204,0 +1851,2 @@
+@@ -1204,0 +1855,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1206,0 +1855,4 @@
+@@ -1206,0 +1859,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1251 +1903,6 @@
+@@ -1251 +1907,6 @@
 -                            line_length > main_axis_available_space && idx != 0
 +                            if idx == 0 {
 +                                line_length -= trimmed_main(child, constants, true);
@@ -2809,15 +2851,18 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                            line_length - trimmed_main(child, constants, false)
 +                                > main_axis_available_space
 +                                && idx != 0
-@@ -1266,4 +1923,118 @@
+@@ -1266,4 +1927,121 @@
 -/// Collect flex items into balanced flex lines (`flex-wrap: balance`), such that the largest
 -/// line is as small as possible.
 -///
 -/// See <https://drafts.csswg.org/css-flexbox-2/#balance-values>
 +/// Physical margin-trim bits.
 +const MT_TOP: u8 = 1;
++/// KaminIDE patch: Bit selecting right-margin trimming.
 +const MT_RIGHT: u8 = 2;
++/// KaminIDE patch: Bit selecting bottom-margin trimming.
 +const MT_BOTTOM: u8 = 4;
++/// KaminIDE patch: Bit selecting left-margin trimming.
 +const MT_LEFT: u8 = 8;
 +
 +/// Физические края, к которым примыкают первый и последний элемент строки:
@@ -2932,7 +2977,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +}
 +
 +/// Native balanced line collection; local DP is superseded.
-@@ -1283 +2054,7 @@
+@@ -1283 +2061,7 @@
 -    let main_axis_available_space = if constants.known_main_size_is_definite {
 +    let preferred = constants.ratio_preferred_inner_size.main(constants.dir);
 +    let available_space = match preferred {
@@ -2941,19 +2986,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    };
 +    let main_axis_available_space = if constants.known_main_size_is_definite || preferred.is_some()
 +    {
-@@ -1294,0 +2072,2 @@
+@@ -1294,0 +2079,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1296,0 +2076,4 @@
+@@ -1296,0 +2083,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1360 +2143,2 @@
+@@ -1360 +2150,2 @@
 -        && (cross_size.is_stretch() || (item.align_self == AlignSelf::STRETCH && cross_size.is_auto()));
 +        && (cross_size.is_stretch()
 +            || (item.align_self.keyword == AlignItemsKeyword::Stretch && cross_size.is_auto()));
-@@ -1384,3 +2168,8 @@
+@@ -1384,3 +2175,8 @@
 -                    (child.flex_basis.maybe_max(child.min_size.main(constants.dir))
 -                        + child.margin.main_axis_sum(constants.dir))
 -                    .max(padding_border_sum)
@@ -2965,7 +3010,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                                .maybe_max(child.min_size.main(constants.dir))
 +                        };
 +                        (size + child.margin.main_axis_sum(constants.dir)).max(padding_border_sum)
-@@ -1441,19 +2230 @@
+@@ -1441,19 +2237 @@
 -                let longest_line_length: f32 = lines
 -                    .iter()
 -                    .map(|line| {
@@ -2986,43 +3031,43 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -                    .unwrap_or(0.0);
 -                longest_line_length + main_content_box_inset
 +                    intrinsic_floor::line_minimum(lines, constants) + main_content_box_inset
-@@ -1482 +2252,0 @@
+@@ -1482 +2259,0 @@
 -                        // Gentest: blockflex_min_content_ignores_own_height_as_percentage_basis.html
-@@ -1484 +2254,2 @@
+@@ -1484 +2261,2 @@
 -                            Some(item.flex_basis).maybe_max(style_preferred)
 +                                Some(item.hypothetical_inner_size.main(constants.dir))
 +                                    .maybe_max(style_preferred.maybe_min(style_max))
-@@ -1486 +2257,2 @@
+@@ -1486 +2264,2 @@
 -                            Some(item.flex_basis)
 +                                // Gentest: blockflex_min_content_ignores_own_height_as_percentage_basis.html
 +                                Some(item.hypothetical_inner_size.main(constants.dir))
-@@ -1505 +2277,3 @@
+@@ -1505 +2284,3 @@
 -                            (min, _, max) if max <= min => min + item.margin.main_axis_sum(constants.dir),
 +                                    (min, _, max) if max <= min => {
 +                                        min + item.margin.main_axis_sum(constants.dir)
 +                                    }
-@@ -1523,0 +2298,2 @@
+@@ -1523,0 +2305,2 @@
 +                                            .min(max_main_size + item.margin.main_axis_sum(dir))
 +                                            .max(min_main_size + item.margin.main_axis_sum(dir))
-@@ -1540,2 +2316,3 @@
+@@ -1540,2 +2323,3 @@
 -                                        (constants.divided_cross_space(cross_axis_parent_size.unwrap_or(val))
 -                                            - item.margin.cross_axis_sum(dir))
 +                                                    (constants.divided_cross_space(
 +                                                        cross_axis_parent_size.unwrap_or(val),
 +                                                    ) - item.margin.cross_axis_sum(dir))
-@@ -1554,4 +2331,2 @@
+@@ -1554,4 +2338,2 @@
 -                                    let transferred_min_size =
 -                                        item.min_size.maybe_apply_aspect_ratio(item.aspect_ratio);
 -                                    let transferred_max_size =
 -                                        item.max_size.maybe_apply_aspect_ratio(item.aspect_ratio);
 +                                            // (KaminIDE patch: `item.min_size`/`max_size` already carry the
 +                                            // aspect-ratio transfer, see `aspect_ratio_constraints`.)
-@@ -1561,2 +2336,2 @@
+@@ -1561,2 +2343,2 @@
 -                                            transferred_min_size.cross(dir),
 -                                            transferred_max_size.cross(dir),
 +                                                    item.min_size.cross(dir),
 +                                                    item.max_size.cross(dir),
-@@ -1565,2 +2340,7 @@
+@@ -1565,2 +2347,7 @@
 -                                    if item.align_self == AlignSelf::STRETCH && ckd.cross(dir).is_none() {
 -                                        ckd.set_cross(dir, cross_axis_available_space.into_option());
 +                                            if item.align_self.keyword == AlignItemsKeyword::Stretch
@@ -3032,10 +3077,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                                                    dir,
 +                                                    cross_axis_available_space.into_option(),
 +                                                );
-@@ -1577 +2357 @@
+@@ -1577 +2364 @@
 -                                    constants.node_inner_size,
 +                                            constants.pct_basis(),
-@@ -1589 +2369,7 @@
+@@ -1589 +2376,7 @@
 -                                    .map(|(ratio, cross)| if constants.is_row { cross * ratio } else { cross / ratio });
 +                                            .map(|(ratio, cross)| {
 +                                                if constants.is_row {
@@ -3044,18 +3089,18 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                                                    cross / ratio
 +                                                }
 +                                            });
-@@ -1607,0 +2394,2 @@
+@@ -1607,0 +2401,2 @@
 +                                            .min(max_main_size + item.margin.main_axis_sum(dir))
 +                                            .max(min_main_size + item.margin.main_axis_sum(dir))
-@@ -1619 +2407,2 @@
+@@ -1619 +2414,2 @@
 -                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
 +                                    let scaled_shrink_factor =
 +                                        f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
-@@ -1655 +2444,2 @@
+@@ -1655 +2451,2 @@
 -                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
 +                                    let scaled_shrink_factor =
 +                                        f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
-@@ -1675 +2465,6 @@
+@@ -1675 +2472,6 @@
 -                main_size + main_content_box_inset
 +                    let minimum = if constants.is_wrap {
 +                        intrinsic_floor::item_minimum(lines, constants)
@@ -3063,7 +3108,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                        0.0
 +                    };
 +                    main_size.max(minimum) + main_content_box_inset
-@@ -1907,8 +2702,27 @@
+@@ -1907,8 +2709,27 @@
 -        let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -        let transferred_max_cross = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -
@@ -3099,7 +3144,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +        } else {
 +            child.size.cross(constants.dir)
 +        });
-@@ -1924,19 +2738,12 @@
+@@ -1924,19 +2745,12 @@
 -        // A cross size that is a sizing keyword (min-content, max-content, fit-content,
 -        // fit-content(...)) determines the available space constraint the item is measured under.
 -        // The `stretch` keyword is not resolved here: it stretches to the flex line, which is
@@ -3131,18 +3176,18 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            .or_else(|| cross_keyword::fit_content_size(child, constants, child_available_cross))
 +            .maybe_clamp(transferred_min_cross, transferred_max_cross)
 +            .maybe_max(padding_border_sum);
-@@ -1945 +2752,2 @@
+@@ -1945 +2759,2 @@
 -            tree.compute_child_layout(
 +            let measured = tree
 +                .compute_child_layout(
-@@ -1955,2 +2763,4 @@
+@@ -1955,2 +2770,4 @@
 -                    known_dimensions_are_definite: item_known_dimension_definiteness(constants, child),
 -                    parent_size: constants.node_inner_size,
 +                        known_dimensions_are_definite: item_known_dimension_definiteness(
 +                            constants, child,
 +                        ),
 +                        parent_size: constants.pct_basis(),
-@@ -1965 +2775,47 @@
+@@ -1965 +2782,47 @@
 -            .get_abs(constants.dir.cross_axis())
 +                .get_abs(constants.dir.cross_axis());
 +            // Definite-width fit-content in a non-stretched column must not
@@ -3191,15 +3236,16 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            };
 +            measured
 +                .max(ratio_cross.unwrap_or(0.0))
-@@ -1976,2 +2831,0 @@
+@@ -1976,2 +2839 @@
 -/// Calculate the base lines of the children.
 -#[inline]
-@@ -1981,2 +2835,2 @@
++/// KaminIDE patch: Measure and collect the flex children's alignment baselines.
+@@ -1981,2 +2843,2 @@
 -    available_space: Size<AvailableSpace>,
 -    flex_lines: &mut [FlexLine],
 +    available: Size<AvailableSpace>,
 +    lines: &mut [FlexLine],
-@@ -1985,30 +2839,2 @@
+@@ -1985,30 +2847,2 @@
 -    // Only compute baselines for flex rows because we only support baseline alignment in the cross axis
 -    // where that axis is also the inline axis
 -    // TODO: this may need revisiting if/when we support vertical writing modes
@@ -3232,7 +3278,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -                            child.target_size.width.into()
 +    if constants.is_row {
 +        row_baselines::calculate_children_base_lines(tree, node_size, available, lines, constants);
-@@ -2016,43 +2842 @@
+@@ -2016,43 +2850 @@
 -                            child.hypothetical_inner_size.width.into()
 -                        },
 -                        height: if constants.is_row {
@@ -3277,7 +3323,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -            child.baseline = baseline + child.margin.top;
 -        }
 +        column_baselines::measure(tree, node_size, available, lines, constants);
-@@ -2096 +2880,15 @@
+@@ -2096 +2888,15 @@
 -            let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +            if constants.is_column {
 +                line.cross_size = column_baselines::cross_size(line.items, constants);
@@ -3294,14 +3340,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                .filter(|child| child.participates_in_last_baseline_alignment(constants.dir))
 +                .map(|child| child.last_baseline_from_end)
 +                .fold(0.0, f32::max);
-@@ -2102,0 +2901,6 @@
+@@ -2102,0 +2909,6 @@
 +                    } else if constants.is_row
 +                        && child.participates_in_last_baseline_alignment(constants.dir)
 +                    {
 +                        child.hypothetical_outer_size.cross(constants.dir)
 +                            - child.last_baseline_from_end
 +                            + max_last_from_end
-@@ -2132,2 +2936,6 @@
+@@ -2132,2 +2944,6 @@
 -fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
 -    if constants.align_content == AlignContent::STRETCH {
 +fn handle_align_content_stretch(
@@ -3310,25 +3356,25 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    constants: &AlgoConstants,
 +) {
 +    if constants.align_content.keyword() == AlignContentKeyword::Stretch {
-@@ -2186 +2994 @@
+@@ -2186 +3002 @@
 -                        || (child.align_self == AlignSelf::STRETCH
 +                        || (child.align_self.keyword == AlignItemsKeyword::Stretch
-@@ -2196 +3004,3 @@
+@@ -2196 +3012,3 @@
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                            tree.calc(val, basis)
 +                        });
-@@ -2199 +3009,3 @@
+@@ -2199 +3017,3 @@
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                            tree.calc(val, basis)
 +                        });
-@@ -2206 +3018,3 @@
+@@ -2206 +3026,3 @@
 -                        .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
 +                        .maybe_resolve(constants.node_inner_size, |val, basis| {
 +                            tree.calc(val, basis)
 +                        })
-@@ -2312 +3126,6 @@
+@@ -2312 +3134,6 @@
 -        let max_baseline: f32 = line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +        let column_groups = column_baselines::maxima(line.items);
 +        let max_baseline: f32 = line
@@ -3336,7 +3382,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            .iter_mut()
 +            .map(|child| child.baseline)
 +            .fold(0.0, |acc, x| acc.max(x));
-@@ -2319,0 +3139,14 @@
+@@ -2319,0 +3147,14 @@
 +        let max_last_from_end: f32 = line
 +            .items
 +            .iter()
@@ -3351,7 +3397,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end
 +            })
 +            .fold(0.0, f32::max);
-@@ -2323 +3156,24 @@
+@@ -2323 +3164,24 @@
 -            if child.margin_is_auto.cross_start(constants.dir) && child.margin_is_auto.cross_end(constants.dir) {
 +            // Auto margins absorb positive space. During overflow the logical
 +            // start margin becomes zero and the logical end receives the deficit.
@@ -3377,17 +3423,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                        if reverse { fill } else { free_space },
 +                    )
 +                };
-@@ -2325,2 +3181,2 @@
+@@ -2325,2 +3189,2 @@
 -                    child.margin.top = free_space / 2.0;
 -                    child.margin.bottom = free_space / 2.0;
 +                    child.margin.top = physical_start;
 +                    child.margin.bottom = physical_end;
-@@ -2328,2 +3184,2 @@
+@@ -2328,2 +3192,2 @@
 -                    child.margin.left = free_space / 2.0;
 -                    child.margin.right = free_space / 2.0;
 +                    child.margin.left = physical_start;
 +                    child.margin.right = physical_end;
-@@ -2331,3 +3187,11 @@
+@@ -2331,3 +3195,11 @@
 -            } else if child.margin_is_auto.cross_start(constants.dir) {
 -                if constants.is_row {
 -                    child.margin.top = free_space;
@@ -3402,7 +3448,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                    let from_start =
 +                        child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end;
 +                    max_last_from_start - from_start
-@@ -2335,8 +3199,2 @@
+@@ -2335,8 +3207,2 @@
 -                    child.margin.left = free_space;
 -                }
 -            } else if child.margin_is_auto.cross_end(constants.dir) {
@@ -3413,13 +3459,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 -                }
 +                    free_space - (max_last_from_end - child.last_baseline_from_end)
 +                };
-@@ -2377,0 +3236,5 @@
+@@ -2377,0 +3244,5 @@
 +        // HTML projects a no-wrap column's logical cross start through this
 +        // legacy reversal. Authored wrap-reverse does not reverse logical start.
 +        if !constants.is_wrap && constants.is_wrap_reverse {
 +            return free_space;
 +        }
-@@ -2433,0 +3297,20 @@
+@@ -2433,0 +3305,20 @@
 +        AlignItemsKeyword::LastBaseline => {
 +            if constants.is_row {
 +                // Group alignment is handled before this fallback. A lone
@@ -3440,15 +3486,15 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                }
 +            }
 +        }
-@@ -2443 +3326,3 @@
+@@ -2443 +3334,3 @@
 -        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
 +        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => {
 +            unreachable!()
 +        }
-@@ -2522 +3407 @@
+@@ -2522 +3415 @@
 -    let node_inner_size = constants.node_inner_size;
 +    let node_inner_size = constants.pct_basis();
-@@ -2590,0 +3476,50 @@
+@@ -2590,0 +3484,50 @@
 +    // Keep first/last y in the same normal-flow coordinate system as native
 +    // first baselines (relative-position insets do not move the baseline set).
 +    let baseline_origin_y = if direction.is_row() {
@@ -3499,7 +3545,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +    };
 +    item.baseline_x_pos = layout_output.baselines_x.first.map(baseline_x);
 +    item.last_baseline_x_pos = layout_output.last_or_first_x().map(baseline_x);
-@@ -2824,2 +3759,8 @@
+@@ -2824,2 +3767,8 @@
 -        let align_self = resolve_normal_alignment(child_style.align_self().unwrap_or(constants.align_items))
 -            .resolve_self_relative(child_style.direction(), constants.layout_direction, constants.is_column);
 +        // KaminIDE patch: `baseline`/`last baseline` fall back to safe self-start/self-end
@@ -3510,7 +3556,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +            constants.layout_direction,
 +            constants.is_column,
 +        );
-@@ -2899 +3840,8 @@
+@@ -2899 +3848,8 @@
 -                (AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd, _) => {
 +                // `last baseline` is mapped to safe self-end by `absolute_cross_alignment`.
 +                (
@@ -3520,7 +3566,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..ffeac2df4401084a718b00de120bdf9d
 +                    | AlignItemsKeyword::LastBaseline,
 +                    _,
 +                ) => {
-@@ -3460,0 +4409,171 @@
+@@ -3460,0 +4417,171 @@
 +
 +#[cfg(test)]
 +#[path = "../tree/ratio_intrinsic_min_tests.rs"]
@@ -3735,41 +3781,38 @@ index 5a5fdf51d6ae312eb20489f83a9af8d830820b03..09efb727916d0ff0f85e8218ca818f52
 +                self.contribution.min(available_width).max(self.widest)
 +            }
 diff --git a/vendor/taffy/src/compute/grid/alignment.rs b/vendor/taffy/src/compute/grid/alignment.rs
-index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245593d8121
+index 5906a43ca85f08a3da44f9cb015df06053fa1691..28fa125a69ac335d0fb78bfda5f61b47490fa2ef
 --- a/vendor/taffy/src/compute/grid/alignment.rs
 +++ b/vendor/taffy/src/compute/grid/alignment.rs
-@@ -94,0 +95 @@
+@@ -84,0 +85,3 @@
++/// KaminIDE patch: overflow contribution, y offset, height, two y baselines, and x baselines.
++type PositionedItem = (Rect<f32>, f32, f32, Option<f32>, Option<f32>, Line<Option<f32>>);
++
+@@ -94,0 +98 @@
 +    table_cell_axis: Option<crate::geometry::AbstractAxis>,
-@@ -96 +97,3 @@
+@@ -96 +100,3 @@
 -    baseline_shim: f32,
 +    shims: Rect<f32>,
 +    x_end: bool,
 +    margin_trim: u8,
-@@ -97,0 +101,4 @@
+@@ -97,0 +104,4 @@
 +    // KaminIDE patch: the vertical counterpart of `direction`. Grid lanes with a reversed
 +    // stacking (or grid) axis place static-position abspos children from the physical bottom
 +    // (css-grid-3 §grid-lanes: the static position is reversed with the content).
 +    y_direction: Direction,
-@@ -102,2 +109,12 @@
+@@ -102,2 +112,5 @@
 -) -> (Rect<f32>, f32, f32) {
 -    let grid_area_size = Size { width: grid_area.right - grid_area.left, height: grid_area.bottom - grid_area.top };
-+) -> (
-+    Rect<f32>,
-+    f32,
-+    f32,
-+    Option<f32>,
-+    Option<f32>,
-+    Line<Option<f32>>,
-+) {
++) -> PositionedItem {
 +    let grid_area_size = Size {
 +        width: grid_area.right - grid_area.left,
 +        height: grid_area.bottom - grid_area.top,
 +    };
-@@ -112,0 +130,3 @@
+@@ -112,0 +126,3 @@
 +    // KaminIDE patch: the item's own writing mode is vertical (`baseline_x_flags` bit 4), so its
 +    // inline axis is physical y.
 +    let inline_is_y = style.baseline_x_flags() & 4 != 0;
-@@ -130,14 +150,20 @@
+@@ -130,14 +146,20 @@
 -    let inset_horizontal = style
 -        .inset()
 -        .horizontal_components()
@@ -3804,7 +3847,7 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +            tree.calc(val, basis)
 +        })
 +    });
-@@ -149 +175,42 @@
+@@ -149 +171,42 @@
 -    let size_style = style.size();
 +    // Linked axes ignore all authored size constraints, including native sizing keywords.
 +    let subgridded = if !position.is_out_of_flow() && style.grid_lanes().is_none() {
@@ -3848,7 +3891,7 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +        aspect_ratio
 +    };
 +
-@@ -166,0 +234,35 @@
+@@ -166,0 +230,35 @@
 +    // KaminIDE patch: css-grid-2 §subgrid-box-alignment — «The subgrid is
 +    // always stretched in its subgridded dimension(s): the
 +    // align-self/justify-self properties on it are ignored, as are any
@@ -3884,17 +3927,17 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +        min_size.set(axis, Some(0.0));
 +        max_size.set(axis, None);
 +    }
-@@ -172 +274 @@
+@@ -172 +270 @@
 -    let alignment_styles = InBothAbsAxis {
 +    let mut alignment_styles = InBothAbsAxis {
-@@ -175 +277,5 @@
+@@ -175 +273,5 @@
 -                if inherent_size.width.is_some() || size_style.width.is_sizing_keyword() || is_replaced {
 +                if inherent_size.width.is_some()
 +                    || size_style.width.is_sizing_keyword()
 +                    || (aspect_ratio.is_some() && stretched_h)
 +                    || is_replaced
 +                {
-@@ -201,3 +307,33 @@
+@@ -201,3 +303,33 @@
 -    let margin = style
 -        .margin()
 -        .map(|margin| margin.resolve_to_option(containing_block_size.width, |val, basis| tree.calc(val, basis)));
@@ -3931,7 +3974,7 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +    if margin_trim & 8 != 0 {
 +        margin.left = Some(0.0);
 +    }
-@@ -206,0 +343,9 @@
+@@ -206,0 +339,9 @@
 +    // Upstream #1234: the border-box space handed to the child as its available space.
 +    let available_border_box = Size {
 +        width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right).max(0.0),
@@ -3941,7 +3984,7 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +            .maybe_sub(margin.bottom)
 +            .max(0.0),
 +    };
-@@ -208,2 +353,14 @@
+@@ -208,2 +349,14 @@
 -        width: grid_area_size.width.maybe_sub(margin.left).maybe_sub(margin.right).max(0.0),
 -        height: (grid_area_size.height.maybe_sub(margin.top).maybe_sub(margin.bottom) - baseline_shim).max(0.0),
 +        width: (grid_area_size
@@ -3958,18 +4001,18 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +            - shims.top
 +            - shims.bottom)
 +            .max(0.0),
-@@ -264 +421,2 @@
+@@ -264 +417,2 @@
 -                SizingKeywordResolution::Measure(available_width) => keyword_measured_size.width.unwrap_or_else(|| {
 +                SizingKeywordResolution::Measure(available_width) => {
 +                    keyword_measured_size.width.unwrap_or_else(|| {
-@@ -271 +429 @@
+@@ -271 +425 @@
 -                            height: AvailableSpace::Definite(grid_area_minus_item_margins_size.height),
 +                                height: AvailableSpace::Definite(available_border_box.height),
-@@ -277 +435,2 @@
+@@ -277 +431,2 @@
 -                }),
 +                    })
 +                }
-@@ -346,0 +506,89 @@
+@@ -346,0 +502,89 @@
 +    // CSS Grid §6.2 and CSS Position §4.1 use fit-content for auto widths. A definite
 +    // available-space probe is not this clamp: intrinsic grid/flex children can
 +    // still return max-content. Resolve both bounds and the actual grid area.
@@ -4059,16 +4102,16 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +        height
 +    };
 +
-@@ -356 +604 @@
+@@ -356 +600 @@
 -            grid_area_minus_item_margins_size.map(AvailableSpace::Definite),
 +            available_border_box.map(AvailableSpace::Definite),
-@@ -369 +617,4 @@
+@@ -369 +613,4 @@
 -        grid_area_minus_item_margins_size.map(AvailableSpace::Definite),
 +        // Upstream #1234: a definite available space is the child's border-box space (the
 +        // parent subtracts the item's resolved, possibly trimmed, margins; auto = 0). Baseline
 +        // shims are not subtracted here (KaminIDE behaviour before the upgrade).
 +        available_border_box.map(AvailableSpace::Definite),
-@@ -376,0 +628,21 @@
+@@ -376,0 +624,21 @@
 +    // Baseline x groups are physical: writing-mode projection supplies x_end.
 +    // Ordinary positional keywords still use native inline Direction.
 +    let x_alignment = alignment_styles.horizontal;
@@ -4090,7 +4133,7 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +    let x_alignment = abspos_baseline(x_alignment);
 +    let x_alignment =
 +        super::baseline_orientation::projected_x_alignment(x_alignment, x_end, direction);
-@@ -378,2 +650,5 @@
+@@ -378,2 +646,5 @@
 -        Line { start: grid_area.left, end: grid_area.right },
 -        alignment_styles.horizontal,
 +        Line {
@@ -4098,11 +4141,11 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +            end: grid_area.right,
 +        },
 +        x_alignment,
-@@ -384 +659,2 @@
+@@ -384 +655,2 @@
 -        0.0,
 +        shims.left,
 +        shims.right,
-@@ -388,2 +664,5 @@
+@@ -388,2 +660,5 @@
 -        Line { start: grid_area.top, end: grid_area.bottom },
 -        alignment_styles.vertical,
 +        Line {
@@ -4110,13 +4153,13 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +            end: grid_area.bottom,
 +        },
 +        abspos_baseline(alignment_styles.vertical),
-@@ -394,2 +673,3 @@
+@@ -394,2 +669,3 @@
 -        baseline_shim,
 -        Direction::Ltr,
 +        shims.top,
 +        shims.bottom,
 +        y_direction,
-@@ -449 +729,16 @@
+@@ -449 +725,16 @@
 -    (contribution, y, height)
 +    (
 +        contribution,
@@ -4134,15 +4177,15 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +                .map(|b| x + b),
 +        },
 +    )
-@@ -461,0 +757 @@
+@@ -461,0 +753 @@
 +    baseline_shim_end: f32,
-@@ -465 +761,4 @@
+@@ -465 +757,4 @@
 -    let non_auto_margin = Line { start: margin.start.unwrap_or(0.0) + baseline_shim, end: margin.end.unwrap_or(0.0) };
 +    let non_auto_margin = Line {
 +        start: margin.start.unwrap_or(0.0) + baseline_shim,
 +        end: margin.end.unwrap_or(0.0) + baseline_shim_end,
 +    };
-@@ -471 +770,7 @@
+@@ -471 +766,7 @@
 -    let auto_margin_size = if auto_margin_count > 0 { free_space / auto_margin_count as f32 } else { 0.0 };
 +    // Static-position abspos auto margins do not displace the alignment subject.
 +    let static_abs = position.is_out_of_flow() && inset.start.is_none() && inset.end.is_none();
@@ -4151,18 +4194,18 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +    } else {
 +        0.0
 +    };
-@@ -474 +779 @@
+@@ -474 +775 @@
 -        end: margin.end.unwrap_or(auto_margin_size),
 +        end: margin.end.unwrap_or(auto_margin_size) + baseline_shim_end,
-@@ -492,0 +798,2 @@
+@@ -492,0 +794,2 @@
 +        // Local last-baseline shims name physical end edges after writing-mode projection.
 +        AlignItemsKeyword::LastBaseline => grid_area_size - resolved_size - resolved_margin.end,
-@@ -505 +812,3 @@
+@@ -505 +808,3 @@
 -        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
 +        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => {
 +            unreachable!()
 +        }
-@@ -536,0 +846,145 @@
+@@ -536,0 +842,145 @@
 +
 +#[cfg(test)]
 +mod kamin_tests {
@@ -4310,13 +4353,14 @@ index 5906a43ca85f08a3da44f9cb015df06053fa1691..7de1c3ebdccc8b592e9d24bee7c88245
 +}
 diff --git a/vendor/taffy/src/compute/grid/baseline_orientation.rs b/vendor/taffy/src/compute/grid/baseline_orientation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce06b7e0d0e0a578912003b7d6686ec18d7c7b4d
+index 0000000000000000000000000000000000000000..d2933483a0f74f855182ebd6599cf438dfa76597
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/baseline_orientation.rs
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,23 @@
 +//! Project first and last x-baseline fallback edges from the item's writing mode.
 +use crate::{AlignItems, AlignItemsKeyword, Direction};
 +
++/// KaminIDE patch: Resolve physical x-baseline alignment from the item's writing mode.
 +pub(super) fn projected_x_alignment(
 +    alignment: AlignItems,
 +    first_from_end: bool,
@@ -4338,10 +4382,10 @@ index 0000000000000000000000000000000000000000..ce06b7e0d0e0a578912003b7d6686ec1
 +}
 diff --git a/vendor/taffy/src/compute/grid/baseline_x.rs b/vendor/taffy/src/compute/grid/baseline_x.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a390831cea4ae6372eec250dfb4539732025d2d4
+index 0000000000000000000000000000000000000000..de7f2a9d59e361addc2d7a59d22cad3b602dfbb2
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/baseline_x.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,142 @@
 +//! First/last vertical baseline groups share their start/end grid column edges.
 +//! Last groups use the final exported baseline and the opposite physical edge.
 +use super::track_sizing::baseline_coordinate;
@@ -4353,6 +4397,7 @@ index 0000000000000000000000000000000000000000..a390831cea4ae6372eec250dfb453973
 +use crate::util::sys::Vec;
 +use crate::util::ResolveOrZero;
 +
++/// KaminIDE patch: Resolve physical x baselines and shims for grid items.
 +pub(super) fn resolve_item_baselines_x(
 +    tree: &mut impl LayoutPartialTree,
 +    items: &mut [GridItem],
@@ -4361,6 +4406,7 @@ index 0000000000000000000000000000000000000000..a390831cea4ae6372eec250dfb453973
 +    resolve_x_groups(tree, items, inner_node_size, false);
 +    resolve_x_groups(tree, items, inner_node_size, true);
 +}
++/// KaminIDE patch: Resolve shared first and last x-baseline groups.
 +fn resolve_x_groups(
 +    tree: &mut impl LayoutPartialTree,
 +    items: &mut [GridItem],
@@ -4385,7 +4431,8 @@ index 0000000000000000000000000000000000000000..a390831cea4ae6372eec250dfb453973
 +    items.sort_by_key(|item| group_of(item));
 +    let mut remaining_items = &mut items[0..];
 +    while !remaining_items.is_empty() {
-+        let current_column = group_of(&remaining_items[0]);
++        // KaminIDE patch: remaining_items already contains item references.
++        let current_column = group_of(remaining_items[0]);
 +        let next_column_first_item = remaining_items
 +            .iter()
 +            .position(|item| group_of(item) != current_column);
@@ -4580,16 +4627,17 @@ index 0000000000000000000000000000000000000000..3080dc19a6767d03c5e6424cdaf8bbe9
 +}
 diff --git a/vendor/taffy/src/compute/grid/container_baselines.rs b/vendor/taffy/src/compute/grid/container_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9ed87f1f9db7f010b281a8ebf5858124fc424c6b
+index 0000000000000000000000000000000000000000..f8e8123fb875f4133d64b622c4b7cf898413b346
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/container_baselines.rs
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,118 @@
 +//! Export grid baselines from final child layouts, never track-sizing shims.
 +//! CSS Grid 2 grid-baselines: sharing preference, available child set, synthesis.
 +
 +use super::types::GridItem;
 +use crate::{AlignItemsKeyword, Baselines};
 +
++/// KaminIDE patch: Select the grid container's first and last exported baselines.
 +pub(super) fn compute(items: &[GridItem]) -> Baselines {
 +    Baselines {
 +        first: baseline(items, false),
@@ -4597,6 +4645,7 @@ index 0000000000000000000000000000000000000000..9ed87f1f9db7f010b281a8ebf5858124
 +    }
 +}
 +
++/// KaminIDE patch: Select items on the requested outer grid edge.
 +fn select(
 +    items: &[GridItem],
 +    accepts: impl Fn(&GridItem) -> bool,
@@ -4610,6 +4659,7 @@ index 0000000000000000000000000000000000000000..9ed87f1f9db7f010b281a8ebf5858124
 +    }
 +}
 +
++/// KaminIDE patch: Return the item's requested measured baseline.
 +fn measured(item: &GridItem, last: bool) -> Option<f32> {
 +    if last {
 +        item.last_baseline.or(item.first_baseline)
@@ -4618,6 +4668,7 @@ index 0000000000000000000000000000000000000000..9ed87f1f9db7f010b281a8ebf5858124
 +    }
 +}
 +
++/// KaminIDE patch: Convert an item baseline into container coordinates.
 +fn coordinate(item: &GridItem, last: bool) -> f32 {
 +    let baseline = measured(item, last).unwrap_or(item.height);
 +    let baseline = if item.overflow.y.is_scroll_container() {
@@ -4628,6 +4679,7 @@ index 0000000000000000000000000000000000000000..9ed87f1f9db7f010b281a8ebf5858124
 +    item.y_position + baseline
 +}
 +
++/// KaminIDE patch: Select the shared or synthesized baseline for an outer grid edge.
 +fn baseline(items: &[GridItem], last: bool) -> Option<f32> {
 +    let edge = if last {
 +        items.iter().map(|item| item.row.end.0).max()?
@@ -4841,7 +4893,7 @@ index 0000000000000000000000000000000000000000..c440580a08832198c8f425502e3f28a3
 +    );
 +}
 diff --git a/vendor/taffy/src/compute/grid/explicit_grid.rs b/vendor/taffy/src/compute/grid/explicit_grid.rs
-index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..9cf81e71132e612f605338ec30fd8d984a8d693c
+index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..69a39120bd8db740d6dd0788299fa433de8640e1
 --- a/vendor/taffy/src/compute/grid/explicit_grid.rs
 +++ b/vendor/taffy/src/compute/grid/explicit_grid.rs
 @@ -15,0 +16 @@
@@ -4862,7 +4914,7 @@ index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..9cf81e71132e612f605338ec30fd8d98
 +                .map(|sizing_function| {
 +                    track_definite_value(sizing_function, parent_size, &resolve_calc_value)
 +                })
-@@ -362 +367,32 @@
+@@ -362 +367,33 @@
 -        create_implicit_tracks(tracks, counts.positive_implicit + grid_area_tracks, iter, gap)
 +        create_implicit_tracks(
 +            tracks,
@@ -4881,14 +4933,15 @@ index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..9cf81e71132e612f605338ec30fd8d98
 +    if tracks.iter().any(|t| t.is_collapsed) {
 +        let mut seen_live = false;
 +        let mut pending: Option<usize> = None;
-+        for i in 0..tracks.len() {
++        // KaminIDE patch: enumerate the same tracks without repeated indexing.
++        for (i, track) in tracks.iter_mut().enumerate() {
 +            if i % 2 == 0 {
 +                if seen_live && pending.is_none() {
 +                    pending = Some(i);
 +                } else {
-+                    tracks[i].collapse();
++                    track.collapse();
 +                }
-+            } else if !tracks[i].is_collapsed {
++            } else if !track.is_collapsed {
 +                seen_live = true;
 +                pending = None;
 +            }
@@ -4896,7 +4949,7 @@ index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..9cf81e71132e612f605338ec30fd8d98
 +        if let Some(i) = pending {
 +            tracks[i].collapse();
 +        }
-@@ -832,0 +869,73 @@
+@@ -832,0 +870,73 @@
 +
 +    #[test]
 +    fn zero_sized_auto_repeat_uses_native_bounded_track_count() {
@@ -4972,10 +5025,10 @@ index 44de4b45da0ec55ea4907e02c8b3ee279da44e11..9cf81e71132e612f605338ec30fd8d98
 +    }
 diff --git a/vendor/taffy/src/compute/grid/fixed_standalone_tracks.rs b/vendor/taffy/src/compute/grid/fixed_standalone_tracks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a40c22445b4994779acc3d1bcbeef4c41294044c
+index 0000000000000000000000000000000000000000..205611669378fa03cbcc3bde2626262801cb10bc
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/fixed_standalone_tracks.rs
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,181 @@
 +//! Fixed standalone tracks constrain flattened subgrid items even when container size is auto.
 +use super::*;
 +
@@ -4989,6 +5042,7 @@ index 0000000000000000000000000000000000000000..a40c22445b4994779acc3d1bcbeef4c4
 +    standalone_tracks_with_known(tree, style, columns, basis, Size::NONE)
 +}
 +
++/// KaminIDE patch: Size non-subgridded tracks using the known container dimensions.
 +pub(super) fn standalone_tracks_with_known<Tree: crate::LayoutPartialTree>(
 +    tree: &Tree,
 +    style: &impl crate::GridContainerStyle,
@@ -5232,10 +5286,10 @@ index 0000000000000000000000000000000000000000..a8194968b193a91178d9c0c47ba8d232
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes.rs b/vendor/taffy/src/compute/grid/lanes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853dbd6003b87
+index 0000000000000000000000000000000000000000..53d6e32328ea40c70aa80fba7875e663e6083d4b
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes.rs
-@@ -0,0 +1,2279 @@
+@@ -0,0 +1,2317 @@
 +//! KaminIDE patch: раскладка ЛУНКАМИ (`display: grid-lanes`, css-grid-3).
 +//!
 +//! Спека — `refs/csswg-drafts/css-grid-3/Overview.bs`; референс — Blink
@@ -5310,12 +5364,17 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +
 +/// Размещённый элемент.
 +struct Placed {
++    /// KaminIDE patch: Measured first physical x baseline.
 +    baseline_x: Option<f32>,
++    /// KaminIDE patch: Measured last physical x baseline.
 +    last_baseline_x: Option<f32>,
++    /// KaminIDE patch: Writing-mode and baseline-side flags.
 +    baseline_x_flags: u8,
++    /// KaminIDE patch: Layout tree node for this item.
 +    node: NodeId,
 +    /// Дорожки по оси решётки.
 +    start: usize,
++    /// KaminIDE patch: Exclusive end of the occupied lane range.
 +    end: usize,
 +    /// Смещение коробки (border-box) по оси решётки от начала контейнера.
 +    grid_pos: f32,
@@ -5331,14 +5390,21 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +    stack_relative: f32,
 +    /// Внешний размер по оси укладки (без зазора).
 +    outer_stack: f32,
++    /// KaminIDE patch: Resolved item padding.
 +    padding: Rect<f32>,
++    /// KaminIDE patch: Resolved item border widths.
 +    border: Rect<f32>,
++    /// KaminIDE patch: Space reserved for item scrollbars.
 +    scrollbar_size: Size<f32>,
 +    #[cfg_attr(not(feature = "content_size"), allow(dead_code))]
++    /// KaminIDE patch: Scrollable overflow in item coordinates.
 +    scrollable_overflow_rect: Rect<f32>,
++    /// KaminIDE patch: Item containment flags.
 +    contain: Contain,
 +    #[cfg_attr(not(feature = "content_size"), allow(dead_code))]
++    /// KaminIDE patch: Item overflow modes on each physical axis.
 +    overflow: Point<Overflow>,
++    /// KaminIDE patch: Measured first physical y baseline.
 +    baseline: Option<f32>,
 +    /// Выравнивание по оси укладки (css-grid-3 §stacking-self-alignment).
 +    stack_align: Option<AlignSelf>,
@@ -5354,6 +5420,7 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +    /// KaminIDE patch: последняя базовая (от верха рамки) и участие в
 +    /// группе `last baseline` по оси решётки.
 +    last_baseline: Option<f32>,
++    /// KaminIDE patch: Whether last-baseline alignment participates on the grid axis.
 +    grid_last_baseline: bool,
 +}
 +
@@ -5361,7 +5428,9 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +/// `grid_lanes_running_positions.cc:167-227`).
 +#[derive(Clone, Copy)]
 +struct Opening {
++    /// KaminIDE patch: Beginning of the available stacking interval.
 +    start: f32,
++    /// KaminIDE patch: End of the available stacking interval.
 +    end: f32,
 +    /// Элемент НАД проёмом (его выравнивание этот проём и раздаёт).
 +    candidate: Option<usize>,
@@ -5369,25 +5438,43 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +
 +/// Результат раскладки одного элемента.
 +struct ItemBox {
++    /// KaminIDE patch: Measured first physical x baseline.
 +    baseline_x: Option<f32>,
++    /// KaminIDE patch: Measured last physical x baseline.
 +    last_baseline_x: Option<f32>,
++    /// KaminIDE patch: Writing-mode and baseline-side flags.
 +    baseline_x_flags: u8,
++    /// KaminIDE patch: Measured physical border-box size.
 +    size: Size<f32>,
++    /// KaminIDE patch: Resolved physical margins.
 +    margin: Rect<f32>,
 +    /// Смещение border-box внутри области по оси решётки.
 +    grid_offset: f32,
++    /// KaminIDE patch: Relative-position offset on the stacking axis.
 +    stack_relative: f32,
++    /// KaminIDE patch: Resolved item padding.
 +    padding: Rect<f32>,
++    /// KaminIDE patch: Resolved item border widths.
 +    border: Rect<f32>,
++    /// KaminIDE patch: Space reserved for item scrollbars.
 +    scrollbar_size: Size<f32>,
++    /// KaminIDE patch: Scrollable overflow in item coordinates.
 +    scrollable_overflow_rect: Rect<f32>,
++    /// KaminIDE patch: Item containment flags.
 +    contain: Contain,
++    /// KaminIDE patch: Item overflow modes on each physical axis.
 +    overflow: Point<Overflow>,
++    /// KaminIDE patch: Measured first physical y baseline.
 +    baseline: Option<f32>,
++    /// KaminIDE patch: Self-alignment on the stacking axis.
 +    stack_align: Option<AlignSelf>,
++    /// KaminIDE patch: Whether the stacking-axis size is definite.
 +    stack_size_fixed: bool,
++    /// KaminIDE patch: Whether first-baseline alignment participates on the grid axis.
 +    grid_baseline: bool,
++    /// KaminIDE patch: Measured last physical y baseline.
 +    last_baseline: Option<f32>,
++    /// KaminIDE patch: Whether last-baseline alignment participates on the grid axis.
 +    grid_last_baseline: bool,
 +}
 +
@@ -6570,11 +6657,12 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +                last.end = effective_stack;
 +            }
 +        }
-+        for index in 0..placed.len() {
-+            let Some(alignment) = placed[index].stack_align else {
++        // KaminIDE patch: keep the same item order and candidate indices.
++        for (index, placed_item) in placed.iter_mut().enumerate() {
++            let Some(alignment) = placed_item.stack_align else {
 +                continue;
 +            };
-+            let (s, e) = (placed[index].start, placed[index].end);
++            let (s, e) = (placed_item.start, placed_item.end);
 +            let mut space = f32::INFINITY;
 +            for track in openings.iter().take(e).skip(s) {
 +                match track.iter().find(|o| o.candidate == Some(index)) {
@@ -6590,26 +6678,26 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +            }
 +            match alignment.keyword {
 +                AlignItemsKeyword::Stretch => {
-+                    if placed[index].stack_size_fixed {
++                    if placed_item.stack_size_fixed {
 +                        continue;
 +                    }
 +                    let grown = (if rows {
-+                        placed[index].size.width
++                        placed_item.size.width
 +                    } else {
-+                        placed[index].size.height
++                        placed_item.size.height
 +                    }) + space;
 +                    let item = layout_lanes_item(
 +                        tree,
-+                        placed[index].node,
++                        placed_item.node,
 +                        rows,
 +                        lanes.stack_block,
-+                        placed[index].area,
++                        placed_item.area,
 +                        stack_avail,
 +                        Some(grown),
-+                        placed[index].stack_fit,
++                        placed_item.stack_fit,
 +                        container_align,
 +                    );
-+                    let p = &mut placed[index];
++                    let p = &mut *placed_item;
 +                    p.size = item.size;
 +                    p.scrollable_overflow_rect = item.scrollable_overflow_rect;
 +                    p.contain = item.contain;
@@ -6622,17 +6710,17 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +                    }
 +                }
 +                AlignItemsKeyword::Center => {
-+                    placed[index].stack_pos += if lanes.fill_reverse {
++                    placed_item.stack_pos += if lanes.fill_reverse {
 +                        -space / 2.0
 +                    } else {
 +                        space / 2.0
 +                    }
 +                }
 +                AlignItemsKeyword::End | AlignItemsKeyword::FlexEnd if !lanes.fill_reverse => {
-+                    placed[index].stack_pos += space
++                    placed_item.stack_pos += space
 +                }
 +                AlignItemsKeyword::Start | AlignItemsKeyword::FlexStart if lanes.fill_reverse => {
-+                    placed[index].stack_pos -= space
++                    placed_item.stack_pos -= space
 +                }
 +                _ => {}
 +            }
@@ -6782,7 +6870,7 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +    {
 +        let lane_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
 +            counts,
-+            grid_tracks.iter().cloned().collect(),
++            grid_tracks.to_vec(),
 +            Default::default(),
 +        );
 +        let stack_info = super::DetailedGridTracksInfo::from_grid_tracks_and_track_count(
@@ -6823,11 +6911,15 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +/// шаблоне ровно один `repeat(auto-*)` и в нём есть дорожка без
 +/// фиксированной грани (иначе счёт общий, `compute_explicit_grid_size_in_axis`).
 +enum OwnedComponent {
++    /// KaminIDE patch: One non-repeating track definition.
 +    Single(TrackSizingFunction),
++    /// KaminIDE patch: A fixed repeat count and its owned track definitions.
 +    Count(u16, Vec<TrackSizingFunction>),
++    /// KaminIDE patch: Track definitions in an automatic repetition.
 +    Auto(Vec<TrackSizingFunction>),
 +}
 +
++/// KaminIDE patch: Copy borrowed track definitions into owned lane template entries.
 +fn owned_template(
 +    style: &impl GridContainerStyle,
 +    axis: AbsoluteAxis,
@@ -7517,13 +7609,14 @@ index 0000000000000000000000000000000000000000..52ce70b41a1d0fd9ae36cbd91c6853db
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_baseline.rs b/vendor/taffy/src/compute/grid/lanes_baseline.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bd82d1e421d98671230eec7554b578730109e0cd
+index 0000000000000000000000000000000000000000..71596244456dc315a8667e3e576f9d69e0815a77
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_baseline.rs
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,118 @@
 +//! Align physical baseline groups within each lane track.
 +use super::*;
 +
++/// KaminIDE patch: Align lane items within their shared baseline groups.
 +pub(super) fn align(placed: &mut [Placed], n: usize, rows: bool) {
 +    if rows {
 +        for t in 0..n {
@@ -7640,10 +7733,10 @@ index 0000000000000000000000000000000000000000..bd82d1e421d98671230eec7554b57873
 +mod tests;
 diff --git a/vendor/taffy/src/compute/grid/lanes_container_baselines.rs b/vendor/taffy/src/compute/grid/lanes_container_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9e40ea4b84ef46f03a0f612fe5b667d232b925e5
+index 0000000000000000000000000000000000000000..91b46125d84408cd173e11f7d943d652a8f57b9b
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_container_baselines.rs
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,175 @@
 +//! CSS Grid 3 stacking baselines come from the first/last usable item in each track.
 +//! Placement order is independent of relative positioning and final alignment offsets.
 +
@@ -7652,6 +7745,7 @@ index 0000000000000000000000000000000000000000..9e40ea4b84ef46f03a0f612fe5b667d2
 +#[path = "lanes_row_baselines.rs"]
 +mod row_baselines;
 +
++/// KaminIDE patch: Export container baselines for either lane orientation.
 +pub(super) fn compute(
 +    placed: &[super::Placed],
 +    first_in_track: &[Option<usize>],
@@ -7677,14 +7771,21 @@ index 0000000000000000000000000000000000000000..9e40ea4b84ef46f03a0f612fe5b667d2
 +    columns(&candidates, first_in_track.len())
 +}
 +
++/// KaminIDE patch: Lane placement and measured baselines used for edge selection.
 +struct Candidate {
++    /// KaminIDE patch: First occupied lane.
 +    start: usize,
++    /// KaminIDE patch: Exclusive end of the occupied lane range.
 +    end: usize,
++    /// KaminIDE patch: Item origin along the baseline axis.
 +    placement: f32,
++    /// KaminIDE patch: Measured first baseline.
 +    first: Option<f32>,
++    /// KaminIDE patch: Measured last baseline.
 +    last: Option<f32>,
 +}
 +
++/// KaminIDE patch: Select first and last baselines at the outer column edges.
 +fn columns(items: &[Candidate], tracks: usize) -> Baselines {
 +    let mut output = Baselines::NONE;
 +    for track in 0..tracks {
@@ -7813,14 +7914,15 @@ index 0000000000000000000000000000000000000000..9e40ea4b84ef46f03a0f612fe5b667d2
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_final_placement.rs b/vendor/taffy/src/compute/grid/lanes_final_placement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1b6cd43e7ed641577345c783341526cc0620d1f
+index 0000000000000000000000000000000000000000..1d6b4597a367b886299e85f645be35cd7c9fda75
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_final_placement.rs
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,78 @@
 +//! Project completed lane stacks onto physical axes and publish child geometry/overflow.
 +use super::*;
 +
 +#[allow(clippy::too_many_arguments)]
++/// KaminIDE patch: Commit lane item positions and final child layouts.
 +pub(super) fn position(
 +    tree: &mut impl LayoutGridContainer,
 +    placed: &mut [Placed],
@@ -7896,10 +7998,10 @@ index 0000000000000000000000000000000000000000..b1b6cd43e7ed641577345c783341526c
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_geometry.rs b/vendor/taffy/src/compute/grid/lanes_geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..98669e2b469fb60f3c076590b9bf757f143922ac
+index 0000000000000000000000000000000000000000..cd9405028d468a68865e73151e01affde150d088
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_geometry.rs
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,100 @@
 +//! Grid-lanes alignment uses real track edges and clamps safe overflow before reversal.
 +use super::types::GridTrack;
 +use crate::{AlignContent, AlignContentKeyword, AlignmentSafety, Line};
@@ -7957,6 +8059,7 @@ index 0000000000000000000000000000000000000000..98669e2b469fb60f3c076590b9bf757f
 +    }
 +}
 +
++/// KaminIDE patch: Compute the physical area covered by a lane range.
 +pub(super) fn track_area(
 +    tracks: &[GridTrack],
 +    start: usize,
@@ -8001,15 +8104,16 @@ index 0000000000000000000000000000000000000000..98669e2b469fb60f3c076590b9bf757f
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_row_baselines.rs b/vendor/taffy/src/compute/grid/lanes_row_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3ab2082a8
+index 0000000000000000000000000000000000000000..017c7defaabdbe6b6cf1c6b1ca289f802c0185d0
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_row_baselines.rs
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,207 @@
 +//! Row grid-lanes export grid-axis baselines using CSS Grid's occupied-edge rule.
 +//! Sharing groups precede available child baselines and border-box synthesis.
 +
 +use crate::Baselines;
 +
++/// KaminIDE patch: Export first and last baselines from row-oriented lanes.
 +pub(super) fn compute(placed: &[super::super::Placed]) -> Baselines {
 +    let items: crate::util::sys::Vec<_> = placed
 +        .iter()
@@ -8028,19 +8132,30 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +    baselines(&items)
 +}
 +
++/// KaminIDE patch: Placed item data needed for container baseline selection.
 +struct Candidate {
++    /// KaminIDE patch: First occupied lane.
 +    start: usize,
++    /// KaminIDE patch: Exclusive end of the occupied lane range.
 +    end: usize,
++    /// KaminIDE patch: Item origin in the container.
 +    placement: f32,
++    /// KaminIDE patch: Baseline-axis alignment offset.
 +    offset: f32,
++    /// KaminIDE patch: Item extent along the baseline axis.
 +    height: f32,
++    /// KaminIDE patch: Measured first baseline.
 +    first: Option<f32>,
++    /// KaminIDE patch: Measured last baseline.
 +    last: Option<f32>,
++    /// KaminIDE patch: Whether the first baseline participates in a shared group.
 +    first_shared: bool,
++    /// KaminIDE patch: Whether the last baseline participates in a shared group.
 +    last_shared: bool,
 +}
 +
 +impl Candidate {
++    /// KaminIDE patch: Return the requested measured baseline.
 +    fn measured(&self, last: bool) -> Option<f32> {
 +        if last {
 +            self.last.or(self.first)
@@ -8049,10 +8164,12 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +        }
 +    }
 +
++    /// KaminIDE patch: Convert the requested baseline into container coordinates.
 +    fn coordinate(&self, last: bool) -> f32 {
 +        self.offset + self.measured(last).unwrap_or(self.height)
 +    }
 +
++    /// KaminIDE patch: Whether the requested baseline is shared with its group.
 +    fn shared(&self, last: bool) -> bool {
 +        if last {
 +            self.last_shared
@@ -8062,6 +8179,7 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +    }
 +}
 +
++/// KaminIDE patch: Select candidates at the requested outer lane edge.
 +fn select(
 +    items: &[Candidate],
 +    accepts: impl Fn(&Candidate) -> bool,
@@ -8084,6 +8202,7 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +    selected
 +}
 +
++/// KaminIDE patch: Select a shared or synthesized baseline from the candidates.
 +fn baseline(items: &[Candidate], last: bool) -> Option<f32> {
 +    let edge = if last {
 +        items.iter().map(|item| item.end).max()?
@@ -8124,6 +8243,7 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +    select(items, |_| true, last).map(|item| item.offset + item.height)
 +}
 +
++/// KaminIDE patch: Compute both exported baselines from the candidates.
 +fn baselines(items: &[Candidate]) -> Baselines {
 +    Baselines {
 +        first: baseline(items, false),
@@ -8197,10 +8317,10 @@ index 0000000000000000000000000000000000000000..bd8648e0c27f2adf87e7debb55ccf9a3
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_sizing.rs b/vendor/taffy/src/compute/grid/lanes_sizing.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..488d4dea66b2b4dc9ff86aeece9730061c53fbd7
+index 0000000000000000000000000000000000000000..ae64a734aa8737063776bb9fa0f387be8eb472ec
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_sizing.rs
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,224 @@
 +//! Resolve authored lane-item sizing keywords through native Taffy measurement.
 +//! Linked subgrid axes must be masked to auto by the caller before entry.
 +use crate::compute::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
@@ -8211,6 +8331,7 @@ index 0000000000000000000000000000000000000000..488d4dea66b2b4dc9ff86aeece973006
 +    SizingMode,
 +};
 +
++/// KaminIDE patch: Resolve intrinsic lane sizing keywords against available space.
 +pub(super) fn resolve_lane_sizing_keywords(
 +    tree: &mut impl LayoutPartialTree,
 +    node: NodeId,
@@ -8426,10 +8547,10 @@ index 0000000000000000000000000000000000000000..488d4dea66b2b4dc9ff86aeece973006
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_stack_measure.rs b/vendor/taffy/src/compute/grid/lanes_stack_measure.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c235fdab3384f9ea09a04583063b3d93b7ab99d8
+index 0000000000000000000000000000000000000000..5bf4648458bccec41d6617b931298a06b8c71ea3
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_stack_measure.rs
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,107 @@
 +//! Resolve a row lane's stacking width using its final physical inline track.
 +use crate::geometry::{Line, Size};
 +use crate::style::AvailableSpace;
@@ -8475,6 +8596,7 @@ index 0000000000000000000000000000000000000000..c235fdab3384f9ea09a04583063b3d93
 +    }
 +}
 +
++/// KaminIDE patch: Measure the preferred stacking-axis width.
 +pub(super) fn width(
 +    tree: &mut impl LayoutGridContainer,
 +    node: NodeId,
@@ -8500,6 +8622,7 @@ index 0000000000000000000000000000000000000000..c235fdab3384f9ea09a04583063b3d93
 +    measure(tree, node, height, parent, area, AvailableSpace::MinContent)
 +}
 +
++/// KaminIDE patch: Probe the item under the requested stacking constraint.
 +fn measure(
 +    tree: &mut impl LayoutGridContainer,
 +    node: NodeId,
@@ -8536,12 +8659,12 @@ index 0000000000000000000000000000000000000000..c235fdab3384f9ea09a04583063b3d93
 +#[path = "block_intrinsic_keyword_tests.rs"]
 +mod block_intrinsic_keyword_tests;
 diff --git a/vendor/taffy/src/compute/grid/mod.rs b/vendor/taffy/src/compute/grid/mod.rs
-index 4d1884612348ff58e5133cd5785dbc7f24917037..87454bcdeaa5fd8f83e2e94208c8b02806f41228
+index 4d1884612348ff58e5133cd5785dbc7f24917037..4e6a0b0f0cca304189a82e9763051b393dc80a6e
 --- a/vendor/taffy/src/compute/grid/mod.rs
 +++ b/vendor/taffy/src/compute/grid/mod.rs
 @@ -2,0 +3,3 @@
-+#[path = "../content_size_limits.rs"]
-+mod content_size_limits;
++// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
++use super::content_size_limits;
 +
 @@ -5 +8,4 @@
 -use crate::style::{AlignContent, AlignItems, AvailableSpace, Contain, ContainingBlockClaims, Overflow};
@@ -9319,10 +9442,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..87454bcdeaa5fd8f83e2e94208c8b028
 +mod baseline_orientation;
 diff --git a/vendor/taffy/src/compute/grid/nested_standalone_size.rs b/vendor/taffy/src/compute/grid/nested_standalone_size.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3ae589effc0cbf7b2d87c30dce34ca60719ca7db
+index 0000000000000000000000000000000000000000..f42035d62515f7f6a714ac694ba503b0bc249bda
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/nested_standalone_size.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,51 @@
 +//! Definite nested standalone content sizes use the ordinary grid-item sizing rules.
 +use super::super::types::GridItem;
 +use super::super::OriginZeroLine;
@@ -9332,6 +9455,7 @@ index 0000000000000000000000000000000000000000..3ae589effc0cbf7b2d87c30dce34ca60
 +use crate::util::ResolveOrZero;
 +use crate::{LayoutGridContainer, SUBGRID_COLUMNS, SUBGRID_ROWS};
 +
++/// KaminIDE patch: Resolve a nested grid's standalone content size.
 +pub(super) fn content(
 +    tree: &mut impl LayoutGridContainer,
 +    item: &GridItem,
@@ -9360,6 +9484,7 @@ index 0000000000000000000000000000000000000000..3ae589effc0cbf7b2d87c30dce34ca60
 +    }
 +}
 +
++/// KaminIDE patch: Sum inherited track sizes for the requested cross-axis span.
 +pub(super) fn cross(own: &Option<(Vec<f32>, f32)>, line: Line<OriginZeroLine>) -> Option<f32> {
 +    let (sizes, gap) = own.as_ref()?;
 +    let (s, e) = (line.start.0, line.end.0);
@@ -9489,16 +9614,17 @@ index 7759a2a4e8fb33b2c10c9191809d00c950a90904..f8ef378c4b0ccfc54a9019cfa8ea3bf3
 -        use crate::compute::grid::CellOccupancyMatrix;
 diff --git a/vendor/taffy/src/compute/grid/preferred_contribution.rs b/vendor/taffy/src/compute/grid/preferred_contribution.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..90104e282d3c13a73781216fabbbab7d351c9ae0
+index 0000000000000000000000000000000000000000..c5fc6e98e285db1fa8c72e12b3c541a2cba7a24d
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/preferred_contribution.rs
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,33 @@
 +//! Bound a preferred grid contribution before transferring it through its ratio.
 +//! A capped percentage width must not leave an auto row sized for the uncapped width.
 +use super::types::GridItem;
 +use crate::tree::{LayoutPartialTree, LayoutPartialTreeExt};
 +use crate::{MaybeMath, MaybeResolve, Size};
 +
++/// KaminIDE patch: Resolve the item's preferred size contribution to grid tracks.
 +pub(super) fn resolve(
 +    item: &GridItem,
 +    tree: &impl LayoutPartialTree,
@@ -9527,10 +9653,10 @@ index 0000000000000000000000000000000000000000..90104e282d3c13a73781216fabbbab7d
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid.rs b/vendor/taffy/src/compute/grid/subgrid.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc8a23b9664586fc4ee2d59f39717830060793a1
+index 0000000000000000000000000000000000000000..2ae537956a2d748f46d69611c7b3c089fcfc4aa1
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid.rs
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,139 @@
 +//! KaminIDE patch: ПОДСЕТКА (css-grid-2 §9 `#subgrids`) на общем пути сетки.
 +//!
 +//! Спека — `refs/csswg-drafts/css-grid-2/Overview.bs:3555-3925`; референс —
@@ -9583,6 +9709,7 @@ index 0000000000000000000000000000000000000000..fc8a23b9664586fc4ee2d59f39717830
 +    pub row_counts: TrackCounts,
 +    /// Native auto-repeat counts used by track initialization and detailed names.
 +    pub col_auto_repetition_count: u16,
++    /// KaminIDE patch: Resolved number of automatic row repetitions.
 +    pub row_auto_repetition_count: u16,
 +}
 +
@@ -9671,10 +9798,10 @@ index 0000000000000000000000000000000000000000..fc8a23b9664586fc4ee2d59f39717830
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_cross_constraints.rs b/vendor/taffy/src/compute/grid/subgrid_cross_constraints.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..231aa7db86cd2b0b5b637589922fe371a8491fc6
+index 0000000000000000000000000000000000000000..016ceb6aaed0bc1b12d05eb4f03c32736ec4b791
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_cross_constraints.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,50 @@
 +//! Resolve a definite standalone track before flattened item contribution probes.
 +use super::super::types::GridItem;
 +use super::standalone_tracks_with_known;
@@ -9683,6 +9810,7 @@ index 0000000000000000000000000000000000000000..231aa7db86cd2b0b5b637589922fe371
 +use crate::util::{sys::Vec, ResolveOrZero};
 +use crate::GridContainerStyle;
 +
++/// KaminIDE patch: Resolve constraints from the subgrid's standalone cross-axis tracks.
 +pub(super) fn own_tracks(
 +    tree: &impl LayoutPartialTree,
 +    style: &impl GridContainerStyle,
@@ -10241,10 +10369,10 @@ index 0000000000000000000000000000000000000000..a8b8cbb9a98e2f38b88830396b1b961f
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_flow.rs b/vendor/taffy/src/compute/grid/subgrid_flow.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b228c1a61
+index 0000000000000000000000000000000000000000..430270cc050ee6405b0994302f01532e8d438552
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_flow.rs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,125 @@
 +//! Map inherited grid lines and track order across different physical flow directions.
 +//! CSS Grid 2 subgrids inherit the parent's tracks, with their own writing-mode ordering.
 +use super::types::GridTrack;
@@ -10252,6 +10380,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +use crate::geometry::{Line, Rect, Size};
 +use crate::{CoreStyle, SubgridAxisTracks};
 +
++/// KaminIDE patch: Determine the subgrid's physical axis reversals.
 +pub(super) fn axes(style: &impl CoreStyle) -> Size<bool> {
 +    style.grid_axis_reversed().unwrap_or(Size {
 +        width: style.direction().is_rtl(),
@@ -10259,6 +10388,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +    })
 +}
 +
++/// KaminIDE patch: Project a subgrid area into the requested coordinate system.
 +pub(super) fn area(
 +    columns: &[GridTrack],
 +    rows: &[GridTrack],
@@ -10286,6 +10416,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +    }
 +}
 +
++/// KaminIDE patch: Project inherited tracks into the child's axis order.
 +pub(super) fn project(
 +    line: Line<OriginZeroLine>,
 +    area: Line<OriginZeroLine>,
@@ -10303,6 +10434,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +    }
 +}
 +
++/// KaminIDE patch: Reverse inherited track data when the subgrid axis is reversed.
 +pub(super) fn inherit(mut tracks: SubgridAxisTracks, reversed: bool) -> SubgridAxisTracks {
 +    if reversed {
 +        if let Some(sizes) = tracks.sizes.as_mut() {
@@ -10313,6 +10445,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +    tracks
 +}
 +
++/// KaminIDE patch: Project physical edges along the subgrid's reversed axes.
 +pub(super) fn logical_edges(edges: Rect<f32>, reversed: Size<bool>) -> Rect<f32> {
 +    Rect {
 +        left: if reversed.width {
@@ -10338,6 +10471,7 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +    }
 +}
 +
++/// KaminIDE patch: Resolve the subgrid's inner edge adjustments.
 +pub(super) fn inner_edges(
 +    extra: &mut Rect<f32>,
 +    line: Line<OriginZeroLine>,
@@ -10366,10 +10500,10 @@ index 0000000000000000000000000000000000000000..466967ee7d9f706f40176ac843b6fb0b
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_item_edges.rs b/vendor/taffy/src/compute/grid/subgrid_item_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a8d9490834d73227e8675ee6c94fc8e0d79fbea8
+index 0000000000000000000000000000000000000000..e0c6397362575047d57cd3f35bdc9eabfd152741
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_item_edges.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,50 @@
 +//! Logical edge and gap contributions inherited through a subgrid item.
 +use super::super::types::GridItem;
 +use super::super::OriginZeroLine;
@@ -10377,6 +10511,7 @@ index 0000000000000000000000000000000000000000..a8d9490834d73227e8675ee6c94fc8e0
 +use crate::{SUBGRID_COLUMNS, SUBGRID_ROWS};
 +
 +#[allow(clippy::too_many_arguments)]
++/// KaminIDE patch: Resolve subgrid item margins, padding, and borders.
 +pub(super) fn resolve(
 +    ext: Rect<f32>,
 +    edges: Rect<f32>,
@@ -10819,10 +10954,10 @@ index 0000000000000000000000000000000000000000..a0743ed657aae851a2e316632aacbb7c
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_setup.rs b/vendor/taffy/src/compute/grid/subgrid_setup.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..df2b7c78cfaa46a314acc1d0352a9eca261a8463
+index 0000000000000000000000000000000000000000..f74c7dfa4d21cf4f2f1bff654a443f7119b3032d
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_setup.rs
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,92 @@
 +//! Subgrid setup phase. CSS Grid 2 §9.
 +
 +use super::super::types::NamedLineResolver;
@@ -10838,6 +10973,7 @@ index 0000000000000000000000000000000000000000..df2b7c78cfaa46a314acc1d0352a9eca
 +use crate::tree::NodeId;
 +use crate::util::sys::Vec;
 +
++/// KaminIDE patch: Prepare inherited subgrid tracks and line names.
 +pub(in super::super) fn tracks<S: crate::CheapCloneStr>(
 +    linked: u8,
 +    area: (Line<OriginZeroLine>, Line<OriginZeroLine>),
@@ -10879,6 +11015,7 @@ index 0000000000000000000000000000000000000000..df2b7c78cfaa46a314acc1d0352a9eca
 +}
 +
 +#[allow(clippy::too_many_arguments)]
++/// KaminIDE patch: Record the subgrid's edge contributions for inherited tracks.
 +pub(in super::super) fn record_edges(
 +    linked: u8,
 +    area: (Line<OriginZeroLine>, Line<OriginZeroLine>),
@@ -10915,10 +11052,10 @@ index 0000000000000000000000000000000000000000..df2b7c78cfaa46a314acc1d0352a9eca
 +}
 diff --git a/vendor/taffy/src/compute/grid/subgrid_stack_constraint.rs b/vendor/taffy/src/compute/grid/subgrid_stack_constraint.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa872a87ca32b97b9a51d0f80d21ed58f251cbce
+index 0000000000000000000000000000000000000000..d2de4e2140dcd57daeccf15beb00759ac3e168da
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/subgrid_stack_constraint.rs
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,58 @@
 +//! Preserve row-lanes fit-content width before standalone tracks contribute.
 +use super::super::lanes_stack_measure;
 +use super::super::types::GridItem;
@@ -10927,6 +11064,7 @@ index 0000000000000000000000000000000000000000..fa872a87ca32b97b9a51d0f80d21ed58
 +use crate::util::{MaybeResolve, ResolveOrZero};
 +use crate::{CoreStyle, LayoutGridContainer, SUBGRID_ROWS};
 +
++/// KaminIDE patch: Resolve the subgrid root's stacking-axis content constraint.
 +pub(super) fn root_content(
 +    tree: &mut impl LayoutGridContainer,
 +    item: &GridItem,
@@ -11291,13 +11429,14 @@ index 0000000000000000000000000000000000000000..4f534b0e2f076d7278b572eb4884f5ea
 +}
 diff --git a/vendor/taffy/src/compute/grid/table_collapse.rs b/vendor/taffy/src/compute/grid/table_collapse.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e6a6d4985ae8130f4f3e190bad09c4adb39697dd
+index 0000000000000000000000000000000000000000..376b4a7bf5397f0222e28db60941c4e81b5e32f6
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/table_collapse.rs
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,71 @@
 +//! CSS Tables 3 visibility collapse: size the full grid, then remove collapsed tracks.
 +use super::types::GridTrack;
 +
++/// KaminIDE patch: Whether a table row is collapsed.
 +fn removed(index: usize, rows: &[u16]) -> bool {
 +    if index % 2 == 1 {
 +        rows.contains(&((index / 2) as u16))
@@ -11309,6 +11448,7 @@ index 0000000000000000000000000000000000000000..e6a6d4985ae8130f4f3e190bad09c4ad
 +    }
 +}
 +
++/// KaminIDE patch: Sum track sizes after excluding collapsed table rows.
 +pub(super) fn visible_sum(
 +    tracks: &[GridTrack],
 +    collapse: Option<&(bool, Vec<u16>)>,
@@ -11324,6 +11464,7 @@ index 0000000000000000000000000000000000000000..e6a6d4985ae8130f4f3e190bad09c4ad
 +        .sum::<f64>() as f32
 +}
 +
++/// KaminIDE patch: Apply collapsed table-row adjustments to grid geometry.
 +pub(super) fn apply(
 +    tracks: &mut [GridTrack],
 +    collapse: Option<&(bool, Vec<u16>)>,
@@ -11364,7 +11505,7 @@ index 0000000000000000000000000000000000000000..e6a6d4985ae8130f4f3e190bad09c4ad
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/grid/track_sizing.rs b/vendor/taffy/src/compute/grid/track_sizing.rs
-index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34eec084ee8
+index a450531d2315775956a504cae71a667890b2f10e..6442336af4c899a0a4122fcf4a555d3159d35afa
 --- a/vendor/taffy/src/compute/grid/track_sizing.rs
 +++ b/vendor/taffy/src/compute/grid/track_sizing.rs
 @@ -3 +3,2 @@
@@ -11480,16 +11621,17 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 @@ -462 +541 @@
 -    items.sort_by_key(|item| item.placement(other_axis).start);
 +    items.sort_by_key(|item| group_of(item));
-@@ -468 +547 @@
+@@ -468 +547,2 @@
 -        let current_row = remaining_items[0].placement(other_axis).start;
-+        let current_row = group_of(&remaining_items[0]);
-@@ -471,2 +550,3 @@
++        // KaminIDE patch: remaining_items already contains item references.
++        let current_row = group_of(remaining_items[0]);
+@@ -471,2 +551,3 @@
 -        let next_row_first_item =
 -            remaining_items.iter().position(|item| item.placement(other_axis).start != current_row);
 +        let next_row_first_item = remaining_items
 +            .iter()
 +            .position(|item| group_of(item) != current_row);
-@@ -491,2 +571,13 @@
+@@ -491,2 +572,13 @@
 -        let row_baseline_item_count = row_items.iter().filter(|item| item.participates_in_baseline_alignment()).count();
 -        if row_baseline_item_count <= 1 {
 +        let row_baseline_item_count = row_items
@@ -11505,17 +11647,17 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +            || (row_baseline_item_count == 1
 +                && !row_items.iter().any(|item| item.table_cell_baseline))
 +        {
-@@ -496 +587,5 @@
+@@ -496 +588,5 @@
 -        // Compute the baselines of all items in the row participating in baseline alignment
 +        // Compute the baselines of all items in the row
 +        // KaminIDE patch: только УЧАСТНИКИ выравнивания (css-align-3 §9.1:
 +        // группа — коробки, выравниваемые по базовой линии). Прежде мерились и
 +        // сдвигались все элементы ряда, и `start`/`stretch`-соседи получали
 +        // лишнее верхнее поле.
-@@ -498 +593 @@
+@@ -498 +594 @@
 -            if !item.participates_in_baseline_alignment() {
 +            if item.align_self.keyword != wanted || !item.participates_in_baseline_alignment() {
-@@ -501 +596,34 @@
+@@ -501 +597,34 @@
 -
 +            // KaminIDE patch: мерить в ширине СВОИХ колонок (Blink решает
 +            // базовые линии рядов после размеров колонок): иначе `width: 100%`
@@ -11551,7 +11693,7 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                    },
 +                )
 +                .width;
-@@ -504,3 +632,12 @@
+@@ -504,3 +633,12 @@
 -                Size::NONE,
 -                inner_node_size,
 -                Size::MIN_CONTENT,
@@ -11567,7 +11709,7 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                    width: AvailableSpace::Definite((column_width - inline_margins).max(0.0)),
 +                    height: AvailableSpace::MinContent,
 +                },
-@@ -514,7 +651,40 @@
+@@ -514,7 +652,40 @@
 -            // Scroll containers' baselines are determined from their content as if scrolled to the
 -            // initial position, but are additionally clamped to their border box.
 -            // See https://github.com/w3c/csswg-drafts/issues/7660
@@ -11615,27 +11757,27 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                    Some(height - pad - bord)
 +                }
 +                own => own,
-@@ -524 +694,5 @@
+@@ -524 +695,5 @@
 -                baseline + item.margin.top.resolve_or_zero(inner_node_size.width, |val, basis| tree.calc(val, basis)),
 +                baseline_coordinate(baseline, height, item.overflow.y.is_scroll_container())
 +                    + item
 +                        .margin
 +                        .top
 +                        .resolve_or_zero(Some(column_width), |val, basis| tree.calc(val, basis)),
-@@ -528 +702 @@
+@@ -528 +703 @@
 -        // Compute the max baseline of all items in the row participating in baseline alignment
 +        // Compute the max baseline of all items in the row
-@@ -531 +705,3 @@
+@@ -531 +706,3 @@
 -            .filter(|item| item.participates_in_baseline_alignment())
 +            .filter(|item| {
 +                item.align_self.keyword == wanted && item.participates_in_baseline_alignment()
 +            })
-@@ -536 +712,3 @@
+@@ -536 +713,3 @@
 -        // Compute the baseline shim for each item in the row participating in baseline alignment
 +        // Compute the baseline shim for each item in the row
 +        // KaminIDE patch: каждая сторона пишет только СВОЮ прокладку — иначе
 +        // второй проход (последние базовые) обнулял бы первую.
-@@ -538,2 +716,10 @@
+@@ -538,2 +717,10 @@
 -            if item.participates_in_baseline_alignment() {
 -                item.baseline_shim = row_max_baseline - item.baseline.unwrap_or(0.0);
 +            if item.align_self.keyword != wanted || !item.participates_in_baseline_alignment() {
@@ -11648,9 +11790,9 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                item.baseline_shim = shim;
 +            }
 +            // Upstream #1226: the shims feed the item's known dimensions, so drop the cached entry.
-@@ -541 +726,0 @@
+@@ -541 +727,0 @@
 -            }
-@@ -614,6 +799,8 @@
+@@ -614,6 +800,8 @@
 -                    CompactLength::MIN_CONTENT_TAG => {
 -                        f32_max(track.base_size, item_sizer.min_content_contribution(item, axis_tracks))
 -                    }
@@ -11665,12 +11807,12 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                        track.base_size,
 +                        item_sizer.max_content_contribution(item, axis_tracks),
 +                    ),
-@@ -639 +826,3 @@
+@@ -639 +827,3 @@
 -                                    .definite_limit(axis_inner_node_size, |val, basis| item_sizer.calc(val, basis));
 +                                    .definite_limit(axis_inner_node_size, |val, basis| {
 +                                        item_sizer.calc(val, basis)
 +                                    });
-@@ -733,3 +922,6 @@
+@@ -733,3 +923,6 @@
 -                    let limit = item.spanned_track_limit(axis, axis_tracks, axis_inner_node_size, &|val, basis| {
 -                        item_sizer.calc(val, basis)
 -                    });
@@ -11680,12 +11822,12 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                        axis_inner_node_size,
 +                        &|val, basis| item_sizer.calc(val, basis),
 +                    );
-@@ -767 +959,3 @@
+@@ -767 +960,3 @@
 -                        .definite_value(axis_inner_node_size, |val, basis| item_sizer.calc(val, basis))
 +                        .definite_value(axis_inner_node_size, |val, basis| {
 +                            item_sizer.calc(val, basis)
 +                        })
-@@ -866,3 +1060,6 @@
+@@ -866,3 +1061,6 @@
 -                let limit = item.spanned_track_limit(axis, axis_tracks, axis_inner_node_size, &|val, basis| {
 -                    item_sizer.calc(val, basis)
 -                });
@@ -11695,7 +11837,7 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                    axis_inner_node_size,
 +                    &|val, basis| item_sizer.calc(val, basis),
 +                );
-@@ -956,2 +1153,5 @@
+@@ -956,2 +1154,5 @@
 -            let has_intrinsic_max_track_sizing_function =
 -                move |track: &GridTrack| !track.max_track_sizing_function.has_definite_value(axis_inner_node_size);
 +            let has_intrinsic_max_track_sizing_function = move |track: &GridTrack| {
@@ -11703,7 +11845,7 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                    .max_track_sizing_function
 +                    .has_definite_value(axis_inner_node_size)
 +            };
-@@ -1171 +1371,7 @@
+@@ -1171 +1372,7 @@
 -        .map(|track| if track.growth_limit == f32::INFINITY { track.base_size } else { track.growth_limit })
 +        .map(|track| {
 +            if track.growth_limit == f32::INFINITY {
@@ -11712,7 +11854,7 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +                track.growth_limit
 +            }
 +        })
-@@ -1180,2 +1386,7 @@
+@@ -1180,2 +1387,7 @@
 -    let growth_limit_or_base_size =
 -        |track: &GridTrack| if track.growth_limit == f32::INFINITY { track.base_size } else { track.growth_limit };
 +    let growth_limit_or_base_size = |track: &GridTrack| {
@@ -11722,23 +11864,23 @@ index a450531d2315775956a504cae71a667890b2f10e..db2759a02945ec5a5f851200b58ad34e
 +            track.growth_limit
 +        }
 +    };
-@@ -1185 +1396,4 @@
+@@ -1185 +1397,4 @@
 -        |track| track_is_affected(track) && (track.infinitely_growable || track.growth_limit == f32::INFINITY),
 +        |track| {
 +            track_is_affected(track)
 +                && (track.infinitely_growable || track.growth_limit == f32::INFINITY)
 +        },
-@@ -1471 +1685,3 @@
+@@ -1471 +1686,3 @@
 -            .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
 +            .filter(|track| {
 +                track_affected_property(track) + track.item_incurred_increase < track_limit(track)
 +            })
-@@ -1483 +1699,3 @@
+@@ -1483 +1700,3 @@
 -            .filter(|track| track_affected_property(track) + track.item_incurred_increase < track_limit(track))
 +            .filter(|track| {
 +                track_affected_property(track) + track.item_incurred_increase < track_limit(track)
 +            })
-@@ -1507,0 +1726,23 @@
+@@ -1507,0 +1727,23 @@
 +
 +#[cfg(test)]
 +mod kamin_baseline_tests {
@@ -11800,7 +11942,7 @@ index b6739de103d9a7c0757cfb98314abcae8c4ef5b4..e83d1ad03a1402f5eea438b780105a18
 @@ -373 +379,0 @@
 -            // Index out of bounds: no tracks to search
 diff --git a/vendor/taffy/src/compute/grid/types/grid_item.rs b/vendor/taffy/src/compute/grid/types/grid_item.rs
-index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e03fc6026
+index e72c88736b08fa02f2e80d06a9ec81632cf8898d..defe0745a8d48a8e7a0ccf57ba4d2fd754c215bb
 --- a/vendor/taffy/src/compute/grid/types/grid_item.rs
 +++ b/vendor/taffy/src/compute/grid/types/grid_item.rs
 @@ -24 +24 @@
@@ -11808,7 +11950,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +#[derive(Debug, Clone)]
 @@ -69 +68,0 @@
 -    /// TODO: Support last baseline and vertical text baselines
-@@ -70,0 +70,23 @@
+@@ -70,0 +70,25 @@
 +    /// KaminIDE patch: прокладка `last baseline` — лишнее НИЖНЕЕ поле: группа
 +    /// последних базовых ряда прижимается к его концу (css-align-3 §9.3;
 +    /// Blink grid_layout_algorithm.cc `CalculateBaselineShim` с
@@ -11818,6 +11960,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +    /// верха рамки) — для последней базовой контейнера (css-grid-2 §10.8).
 +    /// First baseline from final child layout, excluding margins and shims.
 +    pub first_baseline: Option<f32>,
++    /// KaminIDE patch: Measured last block-axis baseline.
 +    pub last_baseline: Option<f32>,
 +    /// KaminIDE patch: биты выравнивания по базовой по оси x (стиль
 +    /// `baseline_x_flags`: 1 — группа у правого края, 2 — центральный синтез,
@@ -11831,8 +11974,9 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +    /// сетке и `align-self: baseline` в вертикальной (оси переставлены
 +    /// движком), css-align-3 §9.3.
 +    pub baseline_shim_x: f32,
++    /// KaminIDE patch: Physical x-end shim for shared baseline alignment.
 +    pub baseline_shim_x_end: f32,
-@@ -104,0 +127,40 @@
+@@ -104,0 +129,40 @@
 +    /// KaminIDE patch: обрезанные `margin-trim` стороны элемента (биты
 +    /// физических сторон контейнера) — для финального выравнивания.
 +    pub margin_trim: u8,
@@ -11873,7 +12017,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +    /// §17.5.3). Sized as an `align-self: baseline` item (its shim grows the
 +    /// row), placed as `stretch`; the shim moves only its content.
 +    pub table_cell_baseline: bool,
-@@ -137 +199,11 @@
+@@ -137 +201,11 @@
 -            align_self: style.align_self().unwrap_or(parent_align_items),
 +            align_self: if style.table_cell_baseline() {
 +                AlignItems::BASELINE
@@ -11886,7 +12030,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            // grid_item.cc DetermineBaselineWritingMode: a parallel item's column
 +            // baseline uses the orthogonal writing mode; SetAlignmentFallback keeps
 +            // it participating). An explicit self value always wins.
-@@ -140,0 +213,7 @@
+@@ -140,0 +215,7 @@
 +            baseline_shim_end: 0.0,
 +            first_baseline: None,
 +            last_baseline: None,
@@ -11894,7 +12038,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            baseline_x: None,
 +            baseline_shim_x: 0.0,
 +            baseline_shim_x_end: 0.0,
-@@ -153,0 +233,10 @@
+@@ -153,0 +235,10 @@
 +            margin_trim: 0,
 +            sizing_axes: 3,
 +            flattened: false,
@@ -11905,7 +12049,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                height: false,
 +            },
 +            subgrid_root: None,
-@@ -155,0 +245,35 @@
+@@ -155,0 +247,35 @@
 +    }
 +
 +    /// KaminIDE patch: create an item with a known placement (grid lanes, subgrid flattening, tests).
@@ -11941,19 +12085,19 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            AbstractAxis::Block => 2,
 +        };
 +        self.sizing_axes & bit != 0
-@@ -173,2 +297,2 @@
+@@ -173,2 +299,2 @@
 -    /// Returns true if the item participates in baseline alignment: it has `align-self: baseline`
 -    /// and neither of its block-axis margins are `auto`.
 +    /// Returns true for first/last baseline participation; callers must keep their groups separate.
 +    /// Auto block margins and cyclic block sizes exclude either group.
-@@ -178,2 +302,4 @@
+@@ -178,2 +304,4 @@
 -        self.align_self.keyword == AlignItemsKeyword::Baseline
 -            && !self.has_auto_block_margin()
 +        matches!(
 +            self.align_self.keyword,
 +            AlignItemsKeyword::Baseline | AlignItemsKeyword::LastBaseline
 +        ) && !self.has_auto_block_margin()
-@@ -180,0 +307,26 @@
+@@ -180,0 +309,26 @@
 +    }
 +
 +    /// Whether an inline-axis auto margin suppresses x-baseline participation.
@@ -11980,10 +12124,10 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            AlignItemsKeyword::Baseline | AlignItemsKeyword::LastBaseline
 +        ) && !self.has_auto_inline_margin()
 +            && !self.has_cyclic_inline_size_dependency()
-@@ -326 +478 @@
+@@ -326 +480 @@
 -    fn known_dimensions(
 +    pub(in super::super) fn known_dimensions(
-@@ -391,0 +544,20 @@
+@@ -391,0 +546,20 @@
 +                // A flattened item's standalone auto track cannot be narrower
 +                // than min-content. The containing block is its grid area, not
 +                // the outer grid container (the native 0.14 percentage basis).
@@ -12004,14 +12148,14 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                        .width
 +                        .map(|width| width.max(floor));
 +                }
-@@ -479,0 +652,6 @@
+@@ -479,0 +654,6 @@
 +        // Replace only the standalone cross-axis estimate. Keep the native
 +        // current-axis fixed-track definiteness and percentage-cycle handling.
 +        if let Some(cross) = self.subgrid_cross.get(axis.other()) {
 +            size.set(axis.other(), Some(cross));
 +            return size;
 +        }
-@@ -527,2 +705,12 @@
+@@ -527,2 +707,12 @@
 -            left: self.margin.left.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
 -            right: self.margin.right.resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis)),
 +            left: self
@@ -12026,7 +12170,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                .resolve_or_zero(Some(0.0), |val, basis| tree.calc(val, basis))
 +                + self.baseline_shim_x_end
 +                + self.extra_margin.right,
-@@ -530,2 +718,8 @@
+@@ -530,2 +720,8 @@
 -                + self.baseline_shim,
 -            bottom: self.margin.bottom.resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis)),
 +                + self.baseline_shim
@@ -12037,7 +12181,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                .resolve_or_zero(inner_node_width, |val, basis| tree.calc(val, basis))
 +                + self.baseline_shim_end
 +                + self.extra_margin.bottom,
-@@ -561 +755,8 @@
+@@ -561 +757,8 @@
 -                self.available_space_minus_margins(grid_area_size, available_space, tree).map(|opt| match opt {
 +                // Upstream #1234: the parent subtracts the item's margins (and baseline shim).
 +                // KaminIDE patch: only the requested contribution axis is min-content. An
@@ -12047,7 +12191,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                        self.available_space_minus_margins(grid_area_size, available_space, tree);
 +                    available_space
 +                        .map(|opt| match opt {
-@@ -563,2 +764,9 @@
+@@ -563,2 +766,9 @@
 -                    None => AvailableSpace::MinContent,
 -                }),
 +                            None => AvailableSpace::MaxContent,
@@ -12059,7 +12203,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                                .map_or(AvailableSpace::MinContent, AvailableSpace::Definite),
 +                        )
 +                },
-@@ -641,3 +849,6 @@
+@@ -641,3 +851,6 @@
 -            height: available_space
 -                .height
 -                .map(|height| f32_max(height - margin.vertical_axis_sum() - self.baseline_shim, 0.0)),
@@ -12069,7 +12213,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                    0.0,
 +                )
 +            }),
-@@ -667,5 +878,6 @@
+@@ -667,5 +880,6 @@
 -            if let Some(SizingKeywordResolution::Measure(available)) =
 -                resolve_sizing_keyword(size_style, stretch_size, grid_area_size.get(axis), |val, basis| {
 -                    tree.calc(val, basis)
@@ -12081,7 +12225,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                grid_area_size.get(axis),
 +                |val, basis| tree.calc(val, basis),
 +            ) {
-@@ -715,4 +927,16 @@
+@@ -715,4 +929,16 @@
 -        self.size
 -            .maybe_resolve(grid_area_size, |val, basis| tree.calc(val, basis))
 -            .maybe_apply_aspect_ratio(self.aspect_ratio)
@@ -12102,30 +12246,30 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            grid_area_size,
 +            box_sizing_adjustment,
 +        )
-@@ -721,2 +944,0 @@
+@@ -721,2 +946,0 @@
 -                // A definite preferred size is clamped by the minimum and maximum sizes. For a compressible replaced
 -                // element, an indefinite percentage maximum size is resolved against zero.
-@@ -733 +955,4 @@
+@@ -733 +957,4 @@
 -                size.maybe_clamp(min_size.maybe_add(adjustment), max_size.maybe_add(adjustment))
 +            size.maybe_clamp(
 +                min_size.maybe_add(adjustment),
 +                max_size.maybe_add(adjustment),
 +            )
-@@ -736,2 +961,2 @@
+@@ -736,2 +963,2 @@
 -                // A preferred size that is a sizing keyword other than `stretch` does not behave as auto,
 -                // so the minimum contribution is the min-content contribution.
 +            // Upstream #1283: a preferred size that is a sizing keyword other than `stretch` does not
 +            // behave as auto, so the minimum contribution is the min-content contribution.
-@@ -739,2 +964,3 @@
+@@ -739,2 +966,3 @@
 -                (size.is_sizing_keyword() && !size.is_stretch())
 -                    .then(|| self.min_content_contribution_cached(axis, tree, grid_area_size, grid_area_size))
 +            (size.is_sizing_keyword() && !size.is_stretch()).then(|| {
 +                self.min_content_contribution_cached(axis, tree, grid_area_size, grid_area_size)
 +            })
-@@ -744 +970 @@
+@@ -744 +972 @@
 -                    .maybe_resolve(grid_area_size.map(|size| size.unwrap_or(0.0)), |val, basis| tree.calc(val, basis))
 +                .maybe_resolve(min_basis, |val, basis| tree.calc(val, basis))
-@@ -760,3 +986,5 @@
+@@ -760,3 +988,5 @@
 -                let spans_auto_min_track = item_axis_tracks
 -                    .iter()
 -                    .any(|track| track.min_track_sizing_function.behaves_as_auto(inner_node_size.get(axis)));
@@ -12134,7 +12278,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                    .min_track_sizing_function
 +                    .behaves_as_auto(inner_node_size.get(axis))
 +            });
-@@ -772,2 +1000,6 @@
+@@ -772,2 +1002,6 @@
 -                    let mut minimum_contribution =
 -                        self.min_content_contribution_cached(axis, tree, grid_area_size, grid_area_size);
 +                let mut minimum_contribution = self.min_content_contribution_cached(
@@ -12143,7 +12287,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                    grid_area_size,
 +                    grid_area_size,
 +                );
-@@ -790,4 +1022,6 @@
+@@ -790,4 +1024,6 @@
 -                    let limit =
 -                        self.spanned_fixed_track_limit(axis, axis_tracks, inner_node_size.get(axis), &|val, basis| {
 -                            tree.resolve_calc_value(val, basis)
@@ -12154,7 +12298,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +                    inner_node_size.get(axis),
 +                    &|val, basis| tree.resolve_calc_value(val, basis),
 +                );
-@@ -817,0 +1052,339 @@
+@@ -817,0 +1054,342 @@
 +
 +#[cfg(all(test, feature = "taffy_tree"))]
 +mod migration_tests {
@@ -12179,7 +12323,7 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +    }
 +
 +    #[test]
-+    fn explicit_self_preserves_safety_before_parallel_fallback() {
++    fn explicit_self_preserves_safety_and_auto_inherits_parallel_baselines() {
 +        let own = AlignItems {
 +            keyword: AlignItemsKeyword::End,
 +            safety: AlignmentSafety::Safe,
@@ -12194,9 +12338,12 @@ index e72c88736b08fa02f2e80d06a9ec81632cf8898d..4525623ccc593de47e61f711b6baee4e
 +            justify_self: None,
 +            ..style
 +        };
++        // KaminIDE patch: auto inherits justify-items, including baseline alignment.
++        // A parallel item synthesizes its column baseline rather than becoming normal.
++        // https://www.w3.org/TR/css-align-3/#synthesize-baseline
 +        assert_eq!(
 +            item(&implicit, AlignItems::BASELINE).justify_self,
-+            AlignItems::NORMAL
++            AlignItems::BASELINE
 +        );
 +        assert_eq!(
 +            item(&implicit, AlignItems::LAST_BASELINE).justify_self,
@@ -13044,15 +13191,16 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +}
 diff --git a/vendor/taffy/src/compute/leaf_baselines.rs b/vendor/taffy/src/compute/leaf_baselines.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c45067a2b92abf70dccf52d70a83f908edbf244b
+index 0000000000000000000000000000000000000000..af06d245d3b10dbc6df2aab3332f988c200f0abe
 --- /dev/null
 +++ b/vendor/taffy/src/compute/leaf_baselines.rs
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,46 @@
 +//! Convert measured content baselines to the border box on either physical axis.
 +//! Keep content order: vertical-rl first/last coordinates can decrease.
 +
 +use crate::{Baselines, CoreStyle, MeasureOutput, Rect};
 +
++/// KaminIDE patch: Resolve first and last physical x baselines from the measured leaf.
 +pub(super) fn physical_x(
 +    style: &impl CoreStyle,
 +    measured: MeasureOutput,
@@ -13077,6 +13225,7 @@ index 0000000000000000000000000000000000000000..c45067a2b92abf70dccf52d70a83f908
 +    )
 +}
 +
++/// KaminIDE patch: Add the content-box inset to a measured baseline.
 +pub(super) fn with_inset(
 +    style: &impl CoreStyle,
 +    first: Option<f32>,
@@ -13094,25 +13243,24 @@ index 0000000000000000000000000000000000000000..c45067a2b92abf70dccf52d70a83f908
 +}
 diff --git a/vendor/taffy/src/compute/leaf_ratio_constraints.rs b/vendor/taffy/src/compute/leaf_ratio_constraints.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3bdbb0df90f548d894dc1ecec418f4c3fc0bf3ff
+index 0000000000000000000000000000000000000000..c35b392cf940058c74da7f3bbde0aa4ce0178a4c
 --- /dev/null
 +++ b/vendor/taffy/src/compute/leaf_ratio_constraints.rs
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,31 @@
 +//! Resolve authored leaf sizes before ratio transfer without overriding definite axes.
 +use crate::{CoreStyle, MaybeMath, MaybeResolve, Size};
 +
++/// KaminIDE patch: resolved size, minimum, maximum, and preferred aspect ratio.
++type ResolvedConstraints = (Size<Option<f32>>, Size<Option<f32>>, Size<Option<f32>>, Option<f32>);
++
++/// KaminIDE patch: Resolve leaf sizes and transfer min/max constraints through the aspect ratio.
 +pub(super) fn resolve(
 +    style: &impl CoreStyle,
 +    parent: Size<Option<f32>>,
 +    known: Size<Option<f32>>,
 +    box_adjustment: Size<f32>,
 +    calc: &impl Fn(*const (), f32) -> f32,
-+) -> (
-+    Size<Option<f32>>,
-+    Size<Option<f32>>,
-+    Size<Option<f32>>,
-+    Option<f32>,
-+) {
++) -> ResolvedConstraints {
 +    let ratio = style.aspect_ratio();
 +    let authored = style.size().maybe_resolve(parent, calc);
 +    let (minimum, maximum) = crate::compute::common::aspect_ratio_constraints::transfer(
@@ -13132,13 +13280,14 @@ index 0000000000000000000000000000000000000000..3bdbb0df90f548d894dc1ecec418f4c3
 +}
 diff --git a/vendor/taffy/src/compute/leaf_ratio_size.rs b/vendor/taffy/src/compute/leaf_ratio_size.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e992ac25b5b7022d150ef9a8b7ed9533c1d46a6c
+index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb2ce66157
 --- /dev/null
 +++ b/vendor/taffy/src/compute/leaf_ratio_size.rs
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,126 @@
 +//! Infer only automatic ratio height, then respect independent min/max bounds.
 +use crate::{MaybeMath, Size};
 +
++/// KaminIDE patch: Apply the preferred aspect ratio to the measured leaf size.
 +pub(super) fn size(
 +    clamped: Size<f32>,
 +    known_height: Option<f32>,
@@ -13262,26 +13411,30 @@ index 0000000000000000000000000000000000000000..e992ac25b5b7022d150ef9a8b7ed9533
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c99682e72224
+index 1366d8349f1668c19f04bd2d85e88422918b6604..d6423d3fb659c68cd71460e016cf0abcdb832af9
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
-@@ -29,0 +30,4 @@
+@@ -24,0 +25,3 @@
++// KaminIDE patch: all three container algorithms use the same measurement limits.
++#[cfg(any(feature = "block_layout", feature = "flexbox", feature = "grid"))]
++mod content_size_limits;
+@@ -29,0 +33,4 @@
 +#[cfg(feature = "block_layout")]
 +mod block_flow;
 +#[cfg(feature = "block_layout")]
 +mod root_block_constraints;
-@@ -56 +60 @@
+@@ -56 +63 @@
 -use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow, Position};
 +use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
-@@ -58,2 +62,2 @@
+@@ -58,2 +65,2 @@
 -    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Layout, LayoutInput, LayoutOutput, LayoutPartialTree,
 -    LayoutPartialTreeExt, NodeId, OofCandidate, OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
 +    Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
 +    OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
-@@ -64 +68 @@
+@@ -64 +71 @@
 -use crate::{CacheTree, MaybeMath, MaybeResolve};
 +use crate::CacheTree;
-@@ -68,9 +72,6 @@
+@@ -68,9 +75,6 @@
 -/// The root's containing block is the initial containing block (ICB), which has the dimensions of the
 -/// viewport (`available_space`) and is anchored at the canvas origin. The root's `position` and `inset`
 -/// styles are resolved against it:
@@ -13297,19 +13450,19 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +83 @@
+@@ -82,5 +86 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
 -    drop(style);
 -
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +84,0 @@
+@@ -88,4 +87,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +91,2 @@
+@@ -98,35 +94,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -13347,7 +13500,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
-@@ -194,10 +153,0 @@
+@@ -194,10 +156,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -13358,7 +13511,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +155,3 @@
+@@ -205,50 +158,3 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -13412,10 +13565,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +    let known_dimensions = root_block_constraints::known(tree, root, available_space);
 +    #[cfg(not(feature = "block_layout"))]
 +    let known_dimensions = Size::NONE;
-@@ -260 +163 @@
+@@ -260 +166 @@
 -        available_space: root_available_space,
 +        available_space,
-@@ -271,6 +174,25 @@
+@@ -271,6 +177,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -13447,7 +13600,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,7 +203,5 @@
+@@ -281,7 +206,5 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -13460,7 +13613,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +        Size {
 +            width: style.direction().is_rtl(),
 +            height: false,
-@@ -289,13 +209,20 @@
+@@ -289,13 +212,20 @@
 -        y: margin.top,
 -    };
 -
@@ -13494,7 +13647,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +                .width
 +                .into_option()
 +                .map_or(0.0, |available_width| available_width - output.size.width)
-@@ -303 +230,10 @@
+@@ -303 +233,10 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
@@ -13506,7 +13659,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..adaf1a7758fdc5c48a01097421a7c996
 +        } else {
 +            0.0
 +        },
-@@ -305,2 +241 @@
+@@ -305,2 +244 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 -    }
 +
@@ -13602,10 +13755,10 @@ index 746c9f387238729971e490debc213c5b8c882735..3ff875174e9d4046c3d8fa0af5d692c3
 +                .maybe_clamp(min_size, max_size);
 diff --git a/vendor/taffy/src/compute/root_block_constraints.rs b/vendor/taffy/src/compute/root_block_constraints.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..388d4072ea94b856eb0c398de7e9769347658645
+index 0000000000000000000000000000000000000000..a645bd748e3759c6fab15156f5395a68731bd91b
 --- /dev/null
 +++ b/vendor/taffy/src/compute/root_block_constraints.rs
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,98 @@
 +//! Root blocks fill their logical inline axis, with physical sizes and ratio constraints preserved.
 +use crate::tree::LayoutPartialTreeExt;
 +use crate::{
@@ -13613,6 +13766,7 @@ index 0000000000000000000000000000000000000000..388d4072ea94b856eb0c398de7e97693
 +    Size,
 +};
 +
++/// KaminIDE patch: Resolve the block root's definite dimensions and constraints.
 +pub(super) fn known(
 +    tree: &impl LayoutPartialTree,
 +    root: NodeId,
@@ -13716,6 +13870,14 @@ index c743dfb7400ff0c3b7adfb69d688bdc8a470dbcd..e18c94dec3813428e2005a95b9c0addc
 +        match axis {
 +            AbsoluteAxis::Horizontal => self.width = value,
 +            AbsoluteAxis::Vertical => self.height = value,
+diff --git a/vendor/taffy/src/lib.rs b/vendor/taffy/src/lib.rs
+index c18fa64440b24a1ebb56c5b7d681c5761c7308db..b2483b4d591f28602d3e54ec822e17d61be42870
+--- a/vendor/taffy/src/lib.rs
++++ b/vendor/taffy/src/lib.rs
+@@ -67,0 +68,3 @@
++// KaminIDE patch: pinned upstream placement.rs uses a negated conjunction.
++// Keep its placement algorithm intact while supporting standalone -D warnings.
++#![allow(clippy::nonminimal_bool)]
 diff --git a/vendor/taffy/src/style/alignment.rs b/vendor/taffy/src/style/alignment.rs
 index a6aa4533772988572848ee819717fab6239565a3..854dd8d1cc20237f7b973ef2a552c5c0199d7be1
 --- a/vendor/taffy/src/style/alignment.rs
@@ -14079,7 +14241,7 @@ index f6ffa8092af88917af985592c77a132b2b3b6921..44c1e9dfa874aceb2f0cc93b74112f45
 +                GenericGridTemplateComponent::Repeat(repetition)
 +            }
 diff --git a/vendor/taffy/src/style/mod.rs b/vendor/taffy/src/style/mod.rs
-index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..cfff938c837fa1c6dc8d6231716317f79a7567de
+index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..aa0ef7f27e325318826d6ad04833c0beeb847abd
 --- a/vendor/taffy/src/style/mod.rs
 +++ b/vendor/taffy/src/style/mod.rs
 @@ -29 +29 @@
@@ -14775,22 +14937,23 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..cfff938c837fa1c6dc8d6231716317f7
 +            contained_intrinsic_size: Size::NONE,
 @@ -1683,0 +2314 @@
 +            aspect_ratio_preferred_size: Size::NONE,
-@@ -1808 +2439,9 @@
+@@ -1808 +2439,10 @@
 -        assert_type_size::<Style<String>>(560);
-+        // The local payloads retain inline calc (80 B), two subgrid name groups
-+        // (144 B), lanes (20 B), x-baseline hint (8 B), and 12 B of flags.
-+        // Keep exact assertions (KaminIDE fields + upstream main 2d936b7 fields: compressible-replaced flag, non-Option alignment).
++        // KaminIDE patch: account for the fork's calc-size basis/max payloads,
++        // containment, subgrid names, lanes, and writing-mode/baseline hints.
++        // These fields extend upstream Style; keep the footprint assertions exact.
++        // See https://drafts.csswg.org/css-values-5/#calc-size for the basis payload.
 +        assert_type_size::<[Option<(f32, f32, f32, f32)>; 4]>(80);
 +        assert_type_size::<Option<SubgridLineNames<String>>>(72);
 +        assert_type_size::<Option<GridLanes>>(20);
 +        assert_type_size::<Option<(f32, bool)>>(8);
 +        assert_type_size::<Size<Option<f32>>>(16);
-+        assert_type_size::<Style<String>>(880);
-@@ -1814,3 +2453,3 @@
++        assert_type_size::<Style<String>>(1016);
+@@ -1814,3 +2454,3 @@
 -        assert_type_size::<Style<Arc<str>>>(528);
 -    }
 -}
-+        assert_type_size::<Style<Arc<str>>>(848);
++        assert_type_size::<Style<Arc<str>>>(984);
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/baseline_orientation_tests.rs b/vendor/taffy/src/tree/baseline_orientation_tests.rs
@@ -15396,10 +15559,10 @@ index 6b6e3e37c87cf1a4c8a53c4dd418294293f8363b..63c071d217873eca60f96a915d3a8417
 +}
 diff --git a/vendor/taffy/src/tree/calc_size.rs b/vendor/taffy/src/tree/calc_size.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8f606c982755078edce88e9135def60fde169657
+index 0000000000000000000000000000000000000000..30b0174246f2f5fd9fc30c3670b3bd36367626a7
 --- /dev/null
 +++ b/vendor/taffy/src/tree/calc_size.rs
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,205 @@
 +//! Resolve calc-size calculations in the native intrinsic constraint space.
 +
 +use super::*;
@@ -15411,6 +15574,7 @@ index 0000000000000000000000000000000000000000..8f606c982755078edce88e9135def60f
 +where
 +    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +{
++    /// KaminIDE patch: Resolve calc-size expressions using intrinsic measurement when required.
 +    pub(super) fn resolve_calc_size(&mut self, node: NodeId, inputs: LayoutInput) -> LayoutInput {
 +        let style = &self.taffy.nodes[node.into()].style;
 +        let [w, h, min_w, min_h] = style.calc_size;
@@ -15508,6 +15672,7 @@ index 0000000000000000000000000000000000000000..8f606c982755078edce88e9135def60f
 +        resolved
 +    }
 +
++    /// KaminIDE patch: Measure the intrinsic basis of a calc-size expression.
 +    fn calc_basis(
 +        &mut self,
 +        node: NodeId,
@@ -15567,6 +15732,7 @@ index 0000000000000000000000000000000000000000..8f606c982755078edce88e9135def60f
 +        }
 +    }
 +
++    /// KaminIDE patch: Run a layout probe to resolve a calc-size basis.
 +    fn calc_probe(
 +        &mut self,
 +        node: NodeId,
@@ -16643,10 +16809,10 @@ index 0000000000000000000000000000000000000000..946d9bbd0c65fba49b07f43f95e2fef0
 +}
 diff --git a/vendor/taffy/src/tree/flex_safe_alignment_tests.rs b/vendor/taffy/src/tree/flex_safe_alignment_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..41184d303ab30d179b29dbe59c9a7626dc51a6ae
+index 0000000000000000000000000000000000000000..f7b19232a4ff40c1f56e3a587536acac52347bfa
 --- /dev/null
 +++ b/vendor/taffy/src/tree/flex_safe_alignment_tests.rs
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,57 @@
 +//! Real flex layouts distinguish a projected logical cross-start from wrap reversal.
 +use crate::style_helpers::TaffyMaxContent;
 +use crate::{
@@ -16693,8 +16859,12 @@ index 0000000000000000000000000000000000000000..41184d303ab30d179b29dbe59c9a7626
 +    assert_eq!(position(false, FlexWrap::NoWrap, Direction::Rtl), -10.0);
 +}
 +#[test]
-+fn wrapping_reversal_does_not_reverse_logical_start() {
-+    assert_eq!(position(false, FlexWrap::WrapReverse, Direction::Ltr), 0.0);
++fn wrapping_reversal_positions_the_overwide_line_from_cross_start() {
++    // KaminIDE patch: safe centers the item within its 40px line (no free space).
++    // The line itself overflows the 30px container at reversed cross-start:
++    // align-content: stretch falls back to flex-start, placing it at 30 - 40.
++    // https://www.w3.org/TR/css-flexbox-1/#align-content-property
++    assert_eq!(position(false, FlexWrap::WrapReverse, Direction::Ltr), -10.0);
 +}
 +#[test]
 +fn ordinary_ltr_overflow_stays_at_logical_start() {
@@ -17911,10 +18081,10 @@ index 0000000000000000000000000000000000000000..bb6bd5241e82e24a076c9802df0ab537
 +}
 diff --git a/vendor/taffy/src/tree/kamin_calc.rs b/vendor/taffy/src/tree/kamin_calc.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d37725805
+index 0000000000000000000000000000000000000000..bbf3bd729fe7a3b1daeb63a223f0fc2f2d9a294a
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_calc.rs
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,217 @@
 +//! KaminIDE patch: registered opaque calc handles owned by a `TaffyTree`; no
 +//! supplied pointer is dereferenced.
 +//!
@@ -17934,12 +18104,15 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +#[cfg(feature = "std")]
 +#[derive(Debug, Default)]
 +pub(crate) struct CalcRegistry {
++    /// KaminIDE patch: Registered pixel and percentage coefficient pairs.
 +    pairs: std::vec::Vec<(f32, f32)>,
++    /// KaminIDE patch: Deduplicated handles indexed by coefficient bit patterns.
 +    index: std::collections::HashMap<(u32, u32), usize>,
 +}
 +
 +#[cfg(feature = "std")]
 +impl CalcRegistry {
++    /// KaminIDE patch: Intern a coefficient pair and return its opaque handle.
 +    fn handle(&mut self, px: f32, fraction: f32) -> *const () {
 +        let pairs = &mut self.pairs;
 +        let at = *self
@@ -17952,6 +18125,7 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +        at.checked_mul(8).expect("calc handle registry overflow") as *const ()
 +    }
 +
++    /// KaminIDE patch: Read coefficients associated with an opaque calc handle.
 +    fn pair(&self, handle: *const ()) -> Option<(f32, f32)> {
 +        let address = handle as usize;
 +        if address == 0 || address & 7 != 0 {
@@ -17960,6 +18134,7 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +        self.pairs.get((address >> 3) - 1).copied()
 +    }
 +
++    /// KaminIDE patch: Remove all registered coefficients and handles.
 +    pub(crate) fn clear(&mut self) {
 +        self.pairs.clear();
 +        self.index.clear();
@@ -17979,11 +18154,14 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +/// Guard of `TaffyTree::calc_scope`: the tree's registry is current until drop.
 +#[cfg(feature = "std")]
 +pub struct CalcScope {
++    /// KaminIDE patch: Registry stack depth after entering this scope.
 +    depth: usize,
++    /// KaminIDE patch: Keep registry scopes on the thread that entered them.
 +    _not_send: core::marker::PhantomData<*const ()>,
 +}
 +
 +#[cfg(feature = "std")]
++/// KaminIDE patch: Make a registry current until the returned scope is dropped.
 +pub(crate) fn enter(registry: &SharedRegistry) -> CalcScope {
 +    let depth = CURRENT.with(|c| {
 +        let mut c = c.borrow_mut();
@@ -18004,6 +18182,7 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +}
 +
 +#[cfg(feature = "std")]
++/// KaminIDE patch: Access the current registry when a scope is active.
 +fn with_current<R>(f: impl FnOnce(&mut CalcRegistry) -> R) -> Option<R> {
 +    let registry = CURRENT.with(|c| c.borrow().last().cloned())?;
 +    let mut guard = registry.lock().unwrap_or_else(|error| error.into_inner());
@@ -18025,6 +18204,7 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +}
 +
 +#[cfg(feature = "std")]
++/// KaminIDE patch: Read coefficients associated with an opaque calc handle.
 +fn pair(handle: *const ()) -> (f32, f32) {
 +    let found = with_current(|r| r.pair(handle)).flatten();
 +    debug_assert!(
@@ -18124,15 +18304,16 @@ index 0000000000000000000000000000000000000000..1619798b3157a1eba72e26965c51d01d
 +}
 diff --git a/vendor/taffy/src/tree/kamin_output.rs b/vendor/taffy/src/tree/kamin_output.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fd08edc2c1c6ea0c95d28d18825d77e54f62ad27
+index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1204990b6
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_output.rs
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,161 @@
 +//! Local baseline contracts expressed on native y and independent x baselines.
 +
 +use crate::style::Style;
 +use crate::tree::{Baselines, LayoutOutput};
 +
++/// KaminIDE patch: Adapt physical layout output to the authored root writing mode.
 +pub(super) fn adapt(mut output: LayoutOutput, style: &Style) -> LayoutOutput {
 +    if let (None, Some((offset, from_right))) = (output.baselines_x.first, style.baseline_x_hint) {
 +        output.baselines_x.first = Some(if from_right {
@@ -20265,10 +20446,10 @@ index 0000000000000000000000000000000000000000..d033e470b3c55f1ef6c562b95b55df5f
 +}
 diff --git a/vendor/taffy/src/tree/ratio_intrinsic_min_tests.rs b/vendor/taffy/src/tree/ratio_intrinsic_min_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..84efd556579a84beb10257161ae062f78a5c0619
+index 0000000000000000000000000000000000000000..9ae00a2c66141de8f3a17f53865798b25c26ac65
 --- /dev/null
 +++ b/vendor/taffy/src/tree/ratio_intrinsic_min_tests.rs
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,208 @@
 +//! Unresolved intrinsic preferred sizes retain aspect-ratio constraint transfers.
 +use crate::prelude::*;
 +
@@ -20397,11 +20578,8 @@ index 0000000000000000000000000000000000000000..84efd556579a84beb10257161ae062f7
 +                    width: length(10.0),
 +                    height: length(10.0),
 +                },
-+                grid_auto_flow: if lanes {
-+                    GridAutoFlow::Row
-+                } else {
-+                    GridAutoFlow::Row
-+                },
++                // KaminIDE patch: both grid modes use row auto-placement.
++                grid_auto_flow: GridAutoFlow::Row,
 +                grid_template_columns: if lanes {
 +                    vec![repeat("auto-fill", vec![auto()])]
 +                } else {
@@ -20909,7 +21087,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129de6c61756
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..ffdaa82c7f6795571e20333b5dcc1d5accc15582
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -21021,8 +21199,9 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129d
 +        }
 +    }
 +
-@@ -586,0 +671,24 @@
+@@ -586,0 +671,25 @@
 +    #[cfg(feature = "flexbox")]
++    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
 +        use crate::style::{ExpandedDimension, ExpandedLengthPercentageAuto};
 +        let preferred = |value: crate::style::Dimension| match value.expand() {
@@ -21046,7 +21225,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129d
 +        })
 +    }
 +
-@@ -606 +714,18 @@
+@@ -606 +715,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -21066,13 +21245,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129d
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -666,0 +792,5 @@
+@@ -666,0 +793,5 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -916,0 +1047,8 @@
+@@ -916,0 +1048,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -21081,7 +21260,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129d
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1115,6 @@
+@@ -977 +1116,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -21089,10 +21268,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..4da6eed4f2fab050551b9be03b2d129d
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -988 +1131 @@
+@@ -988 +1132 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1146,3 @@
+@@ -1003 +1147,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)

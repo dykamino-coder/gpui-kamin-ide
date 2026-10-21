@@ -65,6 +65,9 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::missing_docs_in_private_items)]
+// KaminIDE patch: pinned upstream placement.rs uses a negated conjunction.
+// Keep its placement algorithm intact while supporting standalone -D warnings.
+#![allow(clippy::nonminimal_bool)]
 // Disable "unused_x" warnings when default features aren't enabled.
 #![cfg_attr(not(feature = "default"), allow(dead_code))]
 #![cfg_attr(not(feature = "default"), allow(unused_imports))]

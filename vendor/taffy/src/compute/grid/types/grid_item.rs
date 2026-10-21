@@ -76,6 +76,7 @@ pub(in super::super) struct GridItem {
     /// верха рамки) — для последней базовой контейнера (css-grid-2 §10.8).
     /// First baseline from final child layout, excluding margins and shims.
     pub first_baseline: Option<f32>,
+    /// KaminIDE patch: Measured last block-axis baseline.
     pub last_baseline: Option<f32>,
     /// KaminIDE patch: биты выравнивания по базовой по оси x (стиль
     /// `baseline_x_flags`: 1 — группа у правого края, 2 — центральный синтез,
@@ -89,6 +90,7 @@ pub(in super::super) struct GridItem {
     /// сетке и `align-self: baseline` в вертикальной (оси переставлены
     /// движком), css-align-3 §9.3.
     pub baseline_shim_x: f32,
+    /// KaminIDE patch: Physical x-end shim for shared baseline alignment.
     pub baseline_shim_x_end: f32,
 
     /// The item's definite row-start and row-end (same as `row` field, except in a different coordinate system)
@@ -1073,7 +1075,7 @@ mod migration_tests {
     }
 
     #[test]
-    fn explicit_self_preserves_safety_before_parallel_fallback() {
+    fn explicit_self_preserves_safety_and_auto_inherits_parallel_baselines() {
         let own = AlignItems {
             keyword: AlignItemsKeyword::End,
             safety: AlignmentSafety::Safe,
@@ -1088,9 +1090,12 @@ mod migration_tests {
             justify_self: None,
             ..style
         };
+        // KaminIDE patch: auto inherits justify-items, including baseline alignment.
+        // A parallel item synthesizes its column baseline rather than becoming normal.
+        // https://www.w3.org/TR/css-align-3/#synthesize-baseline
         assert_eq!(
             item(&implicit, AlignItems::BASELINE).justify_self,
-            AlignItems::NORMAL
+            AlignItems::BASELINE
         );
         assert_eq!(
             item(&implicit, AlignItems::LAST_BASELINE).justify_self,

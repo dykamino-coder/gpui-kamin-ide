@@ -1,7 +1,7 @@
 //! This module is a partial implementation of the CSS Grid Level 1 specification
 //! <https://www.w3.org/TR/css-grid-1>
-#[path = "../content_size_limits.rs"]
-mod content_size_limits;
+// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
+use super::content_size_limits;
 
 use crate::geometry::{AbsoluteAxis, AbstractAxis, InBothAbsAxis};
 use crate::geometry::{Line, Point, Rect, Size};

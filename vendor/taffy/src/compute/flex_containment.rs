@@ -4,6 +4,7 @@ use crate::style::{AvailableSpace, Contain};
 use crate::tree::{Baselines, LayoutOutput};
 use crate::util::MaybeMath;
 
+/// KaminIDE patch: Resolve the intrinsic width imposed by size containment.
 pub(super) fn intrinsic_width(
     known: Option<f32>,
     empty: Option<f32>,
@@ -23,6 +24,7 @@ pub(super) fn intrinsic_width(
     })
 }
 
+/// KaminIDE patch: Remove baselines suppressed by layout containment.
 pub(super) fn suppress_baselines(output: &mut LayoutOutput, contain: Contain) {
     if contain.suppresses_baseline() {
         output.baselines = Baselines::NONE;

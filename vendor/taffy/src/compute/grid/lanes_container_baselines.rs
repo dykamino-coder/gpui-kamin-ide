@@ -6,6 +6,7 @@ use crate::Baselines;
 #[path = "lanes_row_baselines.rs"]
 mod row_baselines;
 
+/// KaminIDE patch: Export container baselines for either lane orientation.
 pub(super) fn compute(
     placed: &[super::Placed],
     first_in_track: &[Option<usize>],
@@ -31,14 +32,21 @@ pub(super) fn compute(
     columns(&candidates, first_in_track.len())
 }
 
+/// KaminIDE patch: Lane placement and measured baselines used for edge selection.
 struct Candidate {
+    /// KaminIDE patch: First occupied lane.
     start: usize,
+    /// KaminIDE patch: Exclusive end of the occupied lane range.
     end: usize,
+    /// KaminIDE patch: Item origin along the baseline axis.
     placement: f32,
+    /// KaminIDE patch: Measured first baseline.
     first: Option<f32>,
+    /// KaminIDE patch: Measured last baseline.
     last: Option<f32>,
 }
 
+/// KaminIDE patch: Select first and last baselines at the outer column edges.
 fn columns(items: &[Candidate], tracks: usize) -> Baselines {
     let mut output = Baselines::NONE;
     for track in 0..tracks {

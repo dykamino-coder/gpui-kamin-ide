@@ -6,13 +6,18 @@ use crate::{
     LayoutPartialTree, NodeId, Size, TraversePartialTree,
 };
 
+/// KaminIDE patch: Adapt tree access to the block algorithm's logical coordinate system.
 pub(super) struct FlowTree<'a, T> {
+    /// KaminIDE patch: Underlying physical layout tree.
     tree: &'a mut T,
+    /// KaminIDE patch: Writing-mode axis projection.
     flow: BlockFlow,
+    /// KaminIDE patch: Layouts awaiting the final container size for physical projection.
     pending: Vec<(NodeId, Layout)>,
 }
 
 impl<'a, T: LayoutBlockContainer> FlowTree<'a, T> {
+    /// KaminIDE patch: Create a logical view of the physical layout tree.
     pub(super) fn new(tree: &'a mut T, flow: BlockFlow) -> Self {
         Self {
             tree,
@@ -21,6 +26,7 @@ impl<'a, T: LayoutBlockContainer> FlowTree<'a, T> {
         }
     }
 
+    /// KaminIDE patch: Commit pending layouts using the final container size.
     pub(super) fn finish(&mut self, size: Size<f32>) {
         for (node, layout) in self.pending.drain(..) {
             self.tree
@@ -28,6 +34,7 @@ impl<'a, T: LayoutBlockContainer> FlowTree<'a, T> {
         }
     }
 
+    /// KaminIDE patch: Whether the child uses axes parallel to this block flow.
     fn parallel(&self, node: NodeId) -> bool {
         self.tree
             .get_core_container_style(node)

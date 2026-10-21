@@ -1,6 +1,7 @@
 //! Project first and last x-baseline fallback edges from the item's writing mode.
 use crate::{AlignItems, AlignItemsKeyword, Direction};
 
+/// KaminIDE patch: Resolve physical x-baseline alignment from the item's writing mode.
 pub(super) fn projected_x_alignment(
     alignment: AlignItems,
     first_from_end: bool,

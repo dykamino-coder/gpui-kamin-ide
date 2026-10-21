@@ -6,6 +6,7 @@ use crate::tree::{LayoutFlexboxContainer, LayoutPartialTreeExt, SizingMode};
 use crate::util::MaybeMath;
 use crate::FlexboxItemStyle;
 
+/// KaminIDE patch: Resolve intrinsic flex-item min/max constraints.
 pub(super) fn resolve(
     tree: &mut impl LayoutFlexboxContainer,
     constants: &AlgoConstants,

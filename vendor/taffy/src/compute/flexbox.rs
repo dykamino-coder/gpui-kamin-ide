@@ -1,6 +1,6 @@
 //! Computes the [flexbox](https://css-tricks.com/snippets/css/a-guide-to-flexbox/) layout algorithm on [`TaffyTree`](crate::TaffyTree) according to the [spec](https://www.w3.org/TR/css-flexbox-1/)
-#[path = "content_size_limits.rs"]
-mod content_size_limits;
+// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
+use super::content_size_limits;
 
 use crate::compute::common::alignment::{compute_alignment_offset, resolve_self_alignment_safety};
 #[path = "flex_baseline_x.rs"]
@@ -120,6 +120,7 @@ struct FlexItem {
     last_baseline_pos: f32,
     /// KaminIDE patch: the item's own layout exported a first / last y baseline (not synthesized).
     has_first_baseline: bool,
+    /// KaminIDE patch: Whether the measured item exposes a last baseline.
     has_last_baseline: bool,
     /// KaminIDE patch: the item exports no baseline to an enclosing `inline-block`
     /// (a table or table wrapper; `LayoutOutput::inline_block_last_y`).
@@ -132,7 +133,9 @@ struct FlexItem {
     inline_block_last_pos: Option<f32>,
     /// First x baseline after final physical placement, from container left.
     baseline_x_pos: Option<f32>,
+    /// KaminIDE patch: Writing-mode and baseline-side flags for column baseline alignment.
     baseline_x_flags: u8,
+    /// KaminIDE patch: Column baseline group side and measured distance.
     column_baseline: Option<(bool, f32)>,
     /// Independent last x channel; final placement must populate this too.
     last_baseline_x_pos: Option<f32>,
@@ -317,6 +320,7 @@ impl AlgoConstants {
     }
 }
 
+/// KaminIDE patch: Whether a dimension derives from a calc-size expression.
 fn calc_size_derived(
     size: Size<Option<f32>>,
     cs: [Option<(f32, f32, f32, f32)>; 4],
@@ -1922,8 +1926,11 @@ fn collect_flex_lines<'a>(
 
 /// Physical margin-trim bits.
 const MT_TOP: u8 = 1;
+/// KaminIDE patch: Bit selecting right-margin trimming.
 const MT_RIGHT: u8 = 2;
+/// KaminIDE patch: Bit selecting bottom-margin trimming.
 const MT_BOTTOM: u8 = 4;
+/// KaminIDE patch: Bit selecting left-margin trimming.
 const MT_LEFT: u8 = 8;
 
 /// Физические края, к которым примыкают первый и последний элемент строки:
@@ -2829,6 +2836,7 @@ fn determine_hypothetical_cross_size(
     }
 }
 
+/// KaminIDE patch: Measure and collect the flex children's alignment baselines.
 fn calculate_children_base_lines(
     tree: &mut impl LayoutFlexboxContainer,
     node_size: Size<Option<f32>>,

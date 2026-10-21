@@ -1,6 +1,7 @@
 //! Wrapped intrinsic maximum retains the individual minimum despite negative margins.
 use super::{sum_axis_gaps, AlgoConstants, FlexItem, FlexLine};
 use crate::util::MaybeMath;
+/// KaminIDE patch: Compute an item's minimum intrinsic main-axis contribution.
 fn contribution(child: &FlexItem, constants: &AlgoConstants) -> f32 {
     let padding_border = (child.padding + child.border).main_axis_sum(constants.dir);
     let size = if child.flex_grow == 0.0 && child.flex_shrink == 0.0 {
@@ -12,6 +13,7 @@ fn contribution(child: &FlexItem, constants: &AlgoConstants) -> f32 {
     };
     (size + child.margin.main_axis_sum(constants.dir)).max(padding_border)
 }
+/// KaminIDE patch: Find the minimum main-axis contribution of complete flex lines.
 pub(super) fn line_minimum(lines: &[FlexLine<'_>], constants: &AlgoConstants) -> f32 {
     // Preserve the previous min-content line sum and gaps exactly.
     lines
@@ -26,6 +28,7 @@ pub(super) fn line_minimum(lines: &[FlexLine<'_>], constants: &AlgoConstants) ->
         .max_by(|a, b| a.total_cmp(b))
         .unwrap_or(0.0)
 }
+/// KaminIDE patch: Find the largest individual item's minimum main-axis contribution.
 pub(super) fn item_minimum(lines: &[FlexLine<'_>], constants: &AlgoConstants) -> f32 {
     lines
         .iter()
