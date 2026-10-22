@@ -85,7 +85,7 @@ mod tests {
     }
 
     #[test]
-    fn local_host_input_overrides_only_its_own_clamp_root() {
+    fn local_host_input_isolates_legacy_plans_for_every_clamp_root() {
         let state = ClampState::default();
         state.cuts.borrow_mut().extend([(1, 10.0), (2, 20.0)]);
         let mut cx = LayoutCx {
@@ -103,11 +103,13 @@ mod tests {
         });
         cx.clamp_input = Some(ClampInput::Apply(plan));
         assert_eq!(cx.clamp_plan(1).unwrap().cut, 30.0);
-        assert_eq!(cx.clamp_plan(2).unwrap().cut, 20.0);
+        assert!(cx.clamp_plan(2).is_none());
         assert_eq!(cx.clamp_box_height(9), Some(30.0));
         cx.clamp_input = Some(ClampInput::Measure(ClampMeasure::default()));
         assert!(cx.clamp_plan(1).is_none());
         assert!(cx.clamp_box_height(9).is_none());
+        assert!(cx.clamp_plan(2).is_none());
+        cx.clamp_input = None;
         assert_eq!(cx.clamp_plan(2).unwrap().cut, 20.0);
     }
 }

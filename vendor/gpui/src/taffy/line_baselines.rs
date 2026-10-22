@@ -32,8 +32,24 @@ impl TaffyLayoutEngine {
         style: Style,
         rem_size: Pixels,
         scale_factor: f32,
-        measure: impl FnMut(
+        mut measure: impl FnMut(
             Size<Option<Pixels>>, Size<AvailableSpace>, &mut Window, &mut App,
+        ) -> MeasuredContent + 'static,
+    ) -> LayoutId {
+        self.request_measured_layout_with_box(
+            style, rem_size, scale_factor,
+            move |known, available, _, window, cx| measure(known, available, window, cx),
+        )
+    }
+
+    /// KaminIDE patch: expose the containing block and resolved edges to measured hosts.
+    pub fn request_measured_layout_with_box(
+        &mut self,
+        style: Style,
+        rem_size: Pixels,
+        scale_factor: f32,
+        measure: impl FnMut(
+            Size<Option<Pixels>>, Size<AvailableSpace>, MeasuredBox, &mut Window, &mut App,
         ) -> MeasuredContent + 'static,
     ) -> LayoutId {
         // KaminIDE: `calc()` pairs of this style belong to this tree (`kamin_calc`).
