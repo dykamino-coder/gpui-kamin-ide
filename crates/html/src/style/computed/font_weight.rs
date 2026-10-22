@@ -1,34 +1,9 @@
-//! Вычисленный стиль: `font-weight` — разбор чисел и слов (веса вне [1, 1000]
-//! негодны и сохраняют прежнее объявление, CSS Fonts 4 §2.2) и разрешение
+//! Вычисленный стиль: `font-weight` — разрешение
 //! относительных `bolder`/`lighter` при наследовании по вычисленному числу
 //! родителя, независимо от доступных начертаний (§2.2.1); потомки наследуют
 //! уже разрешённое число, а не ещё один относительный шаг.
 
 use super::Computed;
-
-pub(super) fn apply(style: &mut Computed, value: &str) {
-    let (weight, step) = match value.to_ascii_lowercase().as_str() {
-        "inherit" => (None, 0),
-        "normal" => (Some(400), 0),
-        "bold" => (Some(700), 0),
-        "bolder" => (None, 1),
-        "lighter" => (None, -1),
-        number => {
-            // CSS Fonts 4 section 2.2: weights outside [1, 1000] are invalid.
-            // Ignoring them must preserve the preceding cascaded declaration.
-            let Some(weight) = number
-                .parse::<u16>()
-                .ok()
-                .filter(|w| (1..=1000).contains(w))
-            else {
-                return;
-            };
-            (Some(weight), 0)
-        }
-    };
-    style.font_weight = accept_parsed!(style, weight);
-    style.font_weight_step = step;
-}
 
 pub(crate) fn inherit(result: &mut Computed, parent: &Computed, own: &Computed) {
     // CSS Fonts 4 section 2.2.1: relative weights use the parent's computed

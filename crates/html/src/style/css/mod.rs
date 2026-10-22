@@ -32,7 +32,7 @@ pub use crate::style::css::property::{
     BoxGroup, CssWide, Grammar, LonghandId, ShorthandId, Slot, Specified,
 };
 pub(crate) use crate::style::css::property::{
-    LayerWords, layer_list, layer_tokens, split_position,
+    LayerWords, layer_list, layer_tokens, legacy_name_alias, split_position,
 };
 pub use crate::style::css::visited::LinkMatch;
 pub(super) mod decls;

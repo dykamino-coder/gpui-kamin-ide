@@ -28,27 +28,6 @@ pub(super) fn valid(key: &str, v: &str) -> bool {
         }
         "hyphenate-character" => v == "auto" || quoted(v),
         "text-fit" => fit(&words),
-        "text-wrap-mode" => matches!(v, "wrap" | "nowrap"),
-        "text-wrap-style" => matches!(
-            v,
-            "auto" | "balance" | "stable" | "pretty" | "avoid-orphans"
-        ),
-        "text-wrap" => {
-            let mut mode = false;
-            let mut style = false;
-            !words.is_empty()
-                && words.iter().all(|word| match *word {
-                    "wrap" | "nowrap" if !mode => {
-                        mode = true;
-                        true
-                    }
-                    "auto" | "balance" | "stable" | "pretty" | "avoid-orphans" if !style => {
-                        style = true;
-                        true
-                    }
-                    _ => false,
-                })
-        }
         _ => true,
     }
 }

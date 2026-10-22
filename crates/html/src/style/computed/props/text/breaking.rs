@@ -1,5 +1,5 @@
 //! Computed::apply_text, продолжение цепочки: text-indent, text-box*, hanging-punctuation, разрывы
-//! слов и строк, text-fit, text-wrap. Ветви в исходном порядке; не совпавший ключ уходит в
+//! слов и строк, text-fit. Ветви в исходном порядке; не совпавший ключ уходит в
 //! apply_text_vertical_clamp.
 
 use super::*;
@@ -204,15 +204,6 @@ impl Computed {
                     }
                     f
                 });
-            }
-            "text-wrap" | "text-wrap-mode" | "text-wrap-style" => {
-                self.accept_declaration();
-                if matches!(v, "nowrap" | "wrap") {
-                    self.nowrap = Some(v == "nowrap");
-                }
-                // `balance` выравнивает длины строк абзаца: последняя строка
-                // не должна оставаться коротким огрызком.
-                self.balance_lines = Some(v == "balance");
             }
             _ => self.apply_text_vertical_clamp(key, v, hit, vcx),
         }

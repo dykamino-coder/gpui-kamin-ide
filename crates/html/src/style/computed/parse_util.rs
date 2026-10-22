@@ -21,7 +21,7 @@ pub(super) use border::{
 };
 pub use font::{GENERIC_SANS, generic_family};
 pub(crate) use font::{family_name_ok, feature_list, font_lengths_to_px, is_generic};
-pub(super) use font::{font_size_token, font_slash, has_font_units, split_font, stretch_keyword};
+pub(super) use font::{has_font_units, stretch_keyword};
 pub(super) use shadow::{ShadowValue, box_shadow_valid, parse_shadows, shadow_values};
 pub(super) use sizing::{
     CalcSize, assign_size, calc_size_arg, fit_content_arg, flex_factor, parse_view_box,
@@ -29,5 +29,4 @@ pub(super) use sizing::{
 pub(super) use text::{
     collapse_forced_breaks, collapse_segment_breaks, is_quote, unescape_content,
 };
-pub(super) use tokens::join_slash;
 pub(crate) use tokens::{parse_url, split_outside_parens};

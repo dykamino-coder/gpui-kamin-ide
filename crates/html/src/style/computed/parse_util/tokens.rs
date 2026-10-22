@@ -80,18 +80,3 @@ pub(crate) fn split_outside_parens(v: &str) -> Vec<String> {
     }
     out
 }
-
-/// Голова сокращения `font` и семейство: семейство — хвост после размера.
-/// Убрать пробелы вокруг косой черты: `50px / 1` → `50px/1`.
-pub(in crate::style::computed) fn join_slash(v: &str) -> String {
-    let mut out = String::with_capacity(v.len());
-    for part in v.split('/') {
-        if !out.is_empty() {
-            out.push('/');
-            out.push_str(part.trim_start());
-        } else {
-            out.push_str(part.trim_end());
-        }
-    }
-    out
-}

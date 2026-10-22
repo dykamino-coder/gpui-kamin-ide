@@ -15,9 +15,9 @@
 //!   css-writing-modes-4 §6, css-logical-1 §4; замер `ch`/`ic` в
 //!   вертикальном письме, css-values-4 §6.1.1) и `zoom` (css-viewport-1:
 //!   множитель всех длин).
-//! * [`Phase::Font`] — шрифт: `font`, его длинные и сбрасываемые свойства
-//!   (они делят с сокращением порядок объявлений), `font-size-adjust`
-//!   (метрики `ex`/`ch`), `math-depth`/`math-style` (кегль `math`); цвет:
+//! * [`Phase::Font`] — шрифт: длинные свойства шрифта реестра (кегль,
+//!   семейство, начертание, `line-height`, `font-size-adjust` — метрики
+//!   `ex`/`ch`/`lh`), `math-depth`/`math-style` (кегль `math`); цвет:
 //!   `color-scheme` (`light-dark()`, системные цвета, css-color-adjust-1
 //!   §2) и `color` (`currentcolor`, css-color-4 §6.4). Отсюда — кегль корня
 //!   для `rem`/`rlh` (css-values-4 §6.1.4).
@@ -26,7 +26,7 @@
 //!
 //! [`ComputeCx`]: super::compute_cx::ComputeCx
 
-use crate::style::computed::font_members;
+use crate::style::css::{Grammar, LonghandId};
 
 /// Фаза применения свойства; порядок вариантов — порядок фаз.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,9 +49,10 @@ impl Phase {
     pub fn of(name: &str) -> Phase {
         match name {
             "writing-mode" | "direction" | "text-orientation" | "zoom" => Phase::CascadeAffecting,
-            "font" | "font-size-adjust" | "math-depth" | "math-style" | "color-scheme"
-            | "color" => Phase::Font,
-            _ if font_members::contains(name) => Phase::Font,
+            "math-depth" | "math-style" | "color-scheme" | "color" => Phase::Font,
+            _ if LonghandId::from_name(name).is_some_and(|id| id.grammar() == Grammar::Font) => {
+                Phase::Font
+            }
             _ => Phase::Rest,
         }
     }

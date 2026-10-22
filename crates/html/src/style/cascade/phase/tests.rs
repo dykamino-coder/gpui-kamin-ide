@@ -30,8 +30,9 @@ fn dependencies_come_before_their_consumers() {
         assert_eq!(Phase::of(early), Phase::CascadeAffecting, "{early}");
     }
     for font in [
-        "font",
         "font-size",
+        "font-width",
+        "font-variant-caps",
         "font-family",
         "line-height",
         "font-size-adjust",

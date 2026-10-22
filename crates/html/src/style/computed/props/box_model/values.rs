@@ -22,6 +22,12 @@ impl Computed {
             (Grammar::Background | Grammar::Mask | Grammar::MaskBorder, _) => {
                 crate::style::computed::props::background::values::accepts(id, value, vcx)
             }
+            (Grammar::Font, _) => {
+                crate::style::computed::props::font::values::accepts(id, value, vcx)
+            }
+            (Grammar::Text | Grammar::TextDecor, _) => {
+                crate::style::computed::props::text::values::accepts(id, value, vcx)
+            }
             _ => crate::style::computed::props::border::values::accepts(id, value, vcx),
         }
     }

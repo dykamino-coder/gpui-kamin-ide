@@ -5,6 +5,8 @@
 //! семействам: свойство вне него разбирается и применяется по имени, как
 //! прежде.
 
+mod font_shorthands;
+mod grammar;
 mod layer_shorthands;
 #[cfg(test)]
 mod layer_tests;
@@ -12,14 +14,18 @@ mod layer_words;
 mod line_shorthands;
 mod longhands;
 mod mask_shorthands;
+mod shorthand_ids;
 mod shorthands;
 #[cfg(test)]
 mod tests;
+mod text_shorthands;
+mod variant_shorthands;
 
 use crate::document::state::ValueCx;
+pub use grammar::Grammar;
 pub(crate) use layer_shorthands::split_position;
 pub(crate) use layer_words::{Words as LayerWords, layer_list, layer_tokens};
-pub use longhands::{BoxGroup, Grammar, LonghandId, Slot};
+pub use longhands::{BoxGroup, LonghandId, Slot};
 pub use shorthands::ShorthandId;
 
 /// Общее ключевое слово (css-cascade-5 §7.3, css-values-4 §3.1.1): годится
@@ -108,6 +114,13 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
         "-webkit-mask-position" => "mask-position",
         "-webkit-mask-repeat" => "mask-repeat",
         "-webkit-mask-size" => "mask-size",
+        // css-fonts-4 §font-width-prop: «font-stretch is a legacy name alias».
+        "font-stretch" => "font-width",
+        // css-text-3 §5.5: «word-wrap … legacy name alias of overflow-wrap».
+        "word-wrap" => "overflow-wrap",
+        "-webkit-text-decoration-line" => "text-decoration-line",
+        "-webkit-text-decoration-style" => "text-decoration-style",
+        "-webkit-text-decoration-color" => "text-decoration-color",
         _ => return None,
     })
 }

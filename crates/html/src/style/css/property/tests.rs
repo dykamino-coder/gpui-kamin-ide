@@ -27,7 +27,12 @@ fn every_longhand_round_trips_and_accepts_its_initial_value() {
             id.name(),
             id.initial()
         );
-        assert!(!id.inherited(), "{}", id.name());
+        assert_eq!(
+            id.inherited(),
+            matches!(id.grammar(), Grammar::Font | Grammar::Text),
+            "{}",
+            id.name()
+        );
         assert!(ShorthandId::from_name(id.name()).is_none());
     }
     assert_eq!(LonghandId::from_name("margin"), None);

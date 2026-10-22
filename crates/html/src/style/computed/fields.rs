@@ -1605,4 +1605,15 @@ pub struct Computed {
     pub(crate) mask_border: Option<BorderImage>,
     /// `mask-border-mode: luminance` (§8.7); initial `alpha`. Not inherited.
     pub(crate) mask_border_luminance: bool,
+    /// Группы тегов `font_features`, заданные своими `font-variant-*`
+    /// (разряд — группа `props::font::variants::GROUP_TAGS`): незаданная
+    /// группа наследуется от родителя отдельно от прочих (css-fonts-4 §6).
+    pub(crate) font_variant_set: u8,
+    /// `font-variant-emoji` (css-fonts-4 §6.13): 0 normal, 1 text, 2 emoji,
+    /// 3 unicode; `None` — от родителя. Выбор представления эмодзи шрифтовой
+    /// системой не управляется.
+    pub(crate) font_variant_emoji: Option<u8>,
+    /// `font-synthesis-position` (css-fonts-4 §font-synthesis-position):
+    /// разрешён ли синтез надстрочных/подстрочных; `None` — от родителя.
+    pub(crate) font_synth_position: Option<bool>,
 }
