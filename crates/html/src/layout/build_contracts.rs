@@ -12,7 +12,7 @@
 //! [`LayoutCx::build`]: crate::layout::cx::LayoutCx::build
 
 mod boxes;
-pub(crate) use boxes::{BoxBuild, GridPlacement};
+pub(crate) use boxes::{BoxBuild, GridPlacement, Styling};
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
@@ -147,6 +147,11 @@ impl ChildBuild {
     /// hover layer, scroll target and the decorations `gpui::Style` lacks.
     pub(crate) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
         self.boxes.styled_box(e, style, cx)
+    }
+
+    /// A div without an element, styled with the computed values `styling`.
+    pub(crate) fn styled_div(&self, styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
+        self.boxes.styled_div(styling, cx)
     }
 
     /// `el` sized by its content (`width`/`height: min-content | max-content

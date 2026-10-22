@@ -1,8 +1,9 @@
 //! Внешняя коробка таблицы: клон-обёртка для рамки сросшейся модели и итоговая обёртка.
 
 use super::wrap_with_captions;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::build_contracts::Styling;
+use crate::layout::cx::LayoutCx;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -97,7 +98,7 @@ pub(super) fn finish_table_outer(
     outer: gpui::Div,
     shrink_wrap: bool,
     mark: &dyn Fn(TablePart, AnyElement) -> AnyElement,
-    vcx: ValueCx<'_>,
+    cx: &LayoutCx,
 ) -> AnyElement {
     let mut outer = outer;
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
@@ -121,7 +122,9 @@ pub(super) fn finish_table_outer(
             z_index: e.style.z_index,
             ..Default::default()
         };
-        let mut wrap = crate::paint::apply::apply(div(), &wrap, vcx)
+        let mut wrap = cx
+            .build
+            .styled_div(Styling::Box(&wrap), cx)
             .flex()
             .flex_row();
         wrap.style().no_inline_block_baseline = Some(true);
