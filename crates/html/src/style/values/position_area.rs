@@ -196,16 +196,50 @@ pub const VIS_NO_OVERFLOW: u8 = 4;
 
 /// `position-visibility`: `always | [anchor-valid || anchor-visible ||
 /// no-overflow]`; легаси `anchors-*` — псевдонимы (§position-visibility).
-pub fn parse_visibility(v: &str) -> u8 {
+/// `None` — значение вне грамматики: пусто, повтор слова, `always` не один.
+pub fn parse_visibility(v: &str) -> Option<u8> {
+    let words: Vec<&str> = v.split_whitespace().collect();
+    if let [word] = words.as_slice()
+        && word.eq_ignore_ascii_case("always")
+    {
+        return Some(0);
+    }
+    if words.is_empty() {
+        return None;
+    }
     let mut bits = 0u8;
-    for w in v.split_whitespace() {
-        bits |= match w.to_ascii_lowercase().as_str() {
-            "always" => return 0,
+    for w in words {
+        let bit = match w.to_ascii_lowercase().as_str() {
             "anchor-valid" | "anchors-valid" => VIS_VALID,
             "anchor-visible" | "anchors-visible" => VIS_VISIBLE,
             "no-overflow" => VIS_NO_OVERFLOW,
-            _ => return 0,
+            _ => return None,
         };
+        if bits & bit != 0 {
+            return None;
+        }
+        bits |= bit;
     }
-    bits
+    Some(bits)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visibility_follows_the_grammar() {
+        assert_eq!(parse_visibility("always"), Some(0));
+        assert_eq!(parse_visibility("anchor-valid"), Some(VIS_VALID));
+        assert_eq!(
+            parse_visibility("Anchor-Visible no-overflow"),
+            Some(VIS_VISIBLE | VIS_NO_OVERFLOW)
+        );
+        assert_eq!(parse_visibility("anchors-valid"), Some(VIS_VALID));
+        assert_eq!(parse_visibility(""), None);
+        assert_eq!(parse_visibility("always anchor-valid"), None);
+        assert_eq!(parse_visibility("anchor-valid anchor-valid"), None);
+        assert_eq!(parse_visibility("anchor-valid anchors-valid"), None);
+        assert_eq!(parse_visibility("bogus"), None);
+    }
 }

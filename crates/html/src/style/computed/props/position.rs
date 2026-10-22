@@ -117,15 +117,11 @@ impl Computed {
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                if v != "always"
-                    && (v.is_empty()
-                        || !v.split_whitespace().all(|word| {
-                            matches!(word, "anchors-valid" | "anchors-visible" | "no-overflow")
-                        }))
-                {
+                css_wide_reset!(self, position_visibility);
+                let Some(bits) = parse_visibility(v) else {
                     return;
-                }
-                self.position_visibility = accept_parsed!(self, parse_visibility(v));
+                };
+                self.position_visibility = accept_parsed!(self, bits);
             }
             "top" | "right" | "bottom" | "left" => {
                 let parsed = parsed_value!(
