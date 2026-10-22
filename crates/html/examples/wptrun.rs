@@ -44,6 +44,8 @@ mod html_attrs;
 mod links;
 #[path = "wptrun/page.rs"]
 mod page;
+#[path = "wptrun/page_border.rs"]
+mod page_border;
 #[path = "wptrun/page_box.rs"]
 mod page_box;
 #[path = "wptrun/page_box_values.rs"]
