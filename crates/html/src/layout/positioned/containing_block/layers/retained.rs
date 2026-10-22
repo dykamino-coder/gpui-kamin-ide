@@ -137,10 +137,44 @@ impl Retained {
 pub(crate) struct Escaped(Vec<(super::OofQueue, Destination)>);
 
 impl Escaped {
+    /// Измерительные деревья не публикуют выпавших потомков: только дерево,
+    /// дошедшее до prepaint, присоединяет их к назначениям исходных предков.
+    pub(crate) fn wrap(self, child: gpui::AnyElement) -> gpui::AnyElement {
+        use crate::hooks::IntoHooked;
+        Published {
+            child,
+            escaped: Some(self),
+        }
+        .hooked()
+    }
+
     pub(crate) fn commit(self) {
         for (queue, destination) in self.0 {
             queue.commit_to(&destination);
         }
+    }
+}
+
+struct Published {
+    child: gpui::AnyElement,
+    escaped: Option<Escaped>,
+}
+
+impl crate::hooks::Wrap for Published {
+    fn child(&mut self) -> &mut gpui::AnyElement {
+        &mut self.child
+    }
+
+    fn prepaint(
+        &mut self,
+        _: gpui::Bounds<gpui::Pixels>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) {
+        if let Some(escaped) = self.escaped.take() {
+            escaped.commit();
+        }
+        self.child.prepaint(window, cx);
     }
 }
 

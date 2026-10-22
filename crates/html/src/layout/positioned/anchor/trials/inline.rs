@@ -18,7 +18,7 @@ pub(crate) fn is_root(e: &Element, opts: &RenderOpts) -> bool {
 }
 
 pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    if !super::super::resolve::needs_deferred(&e.style)
+    if !super::super::resolve::needs_host(&e.style, &opts.cx)
         || is_root(e, opts)
         || opts.paged_build().is_some()
     {

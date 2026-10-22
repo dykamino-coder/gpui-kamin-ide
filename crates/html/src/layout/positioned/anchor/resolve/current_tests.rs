@@ -3,7 +3,7 @@
 use super::{SizeInputs, resolve_current};
 use crate::document::state::DocState;
 use crate::layout::positioned::anchor::AnchorRec;
-use crate::style::computed::{Computed, Position};
+use crate::style::computed::{Computed, Position, PositionAnchor};
 use crate::style::values::value::Len;
 use gpui::{Bounds, point, px, size};
 
@@ -41,4 +41,31 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
     c = original;
     resolve_current(&mut c, &Computed::default(), SizeInputs::default(), vcx);
     assert_eq!(c.width, Some(Len::Px(9.)));
+}
+
+#[test]
+fn absent_default_anchor_keeps_explicit_anchor_inset_stretch_sizing() {
+    let doc = DocState::new(Default::default());
+    let vcx = doc.frame_values();
+    for position_anchor in [None, Some(PositionAnchor::Named("--missing".into()))] {
+        let mut c = Computed {
+            position: Some(Position::Absolute),
+            position_anchor,
+            position_area: crate::style::values::position_area::parse_area("span-bottom right"),
+            ..Default::default()
+        };
+        c.inset.top = Len::parse("anchor(--explicit bottom)", vcx);
+        c.inset.bottom = Some(Len::Px(0.));
+        resolve_current(
+            &mut c,
+            &Computed::default(),
+            SizeInputs {
+                area: Some((100., 67.)),
+                cell: None,
+                ..Default::default()
+            },
+            vcx,
+        );
+        assert_eq!(c.height, Some(Len::Px(67.)));
+    }
 }
