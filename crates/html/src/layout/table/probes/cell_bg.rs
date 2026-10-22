@@ -1,8 +1,7 @@
-//! Пробы фона ячеек, рамки сетки и кромок: что красят полосы и художник кромок.
+//! Пробы фона ячеек, рамки сетки и кромок: что красят слой фонов и художник кромок (`paint::table`).
 
 use super::{CellEdges, EdgeCell};
-use crate::hooks::Hooks;
-use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window};
+use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,55 +29,6 @@ pub fn cell_bg_probe(bgs: CellBgs, colour: gpui::Hsla) -> AnyElement {
     .left_0()
     .size_full()
     .into_any_element()
-}
-
-/// Слой фонов ячеек сросшейся таблицы (см. `CellBgs`).
-pub struct CellBgPainter {
-    pub(crate) bgs: CellBgs,
-}
-
-impl CellBgPainter {
-    pub fn new(bgs: CellBgs) -> Self {
-        CellBgPainter { bgs }
-    }
-}
-
-impl Hooks for CellBgPainter {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
-    }
-
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        _cx: &mut App,
-    ) {
-        // Пробы пишут на подготовке, вся подготовка кадра идёт до отрисовки —
-        // здесь прямоугольники ЭТОГО ЖЕ кадра.
-        let bgs = std::mem::take(&mut *self.bgs.borrow_mut());
-        for (bounds, colour) in bgs {
-            window.paint_quad(gpui::fill(bounds, colour));
-        }
-    }
 }
 
 /// Проба кромок: как проба фона, пишет в PREPAINT границы и рамки ячейки.

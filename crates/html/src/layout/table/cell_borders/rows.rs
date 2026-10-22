@@ -21,7 +21,7 @@ pub(crate) fn collapsed_row_edges(
     row_style: &Computed,
     table_style: &Computed,
     last_row: Option<&Element>,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
     vcx: ValueCx<'_>,
@@ -70,7 +70,7 @@ pub(crate) fn collapsed_row_edges(
                 .or(computed.color)
                 .unwrap_or(black)
         });
-        d = d.child(crate::layout::table::paint::edge_probe(
+        d = d.child(crate::layout::table::probes::edge_probe(
             table_edges.clone(),
             widths,
             colors,

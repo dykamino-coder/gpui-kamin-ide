@@ -126,10 +126,7 @@ pub(crate) fn place_element(
                     state.layout_only = true;
                     spot.set(state);
                     let (layout, paint) =
-                        crate::layout::positioned::containing_block::split_source_paint(
-                            spot.clone(),
-                            built,
-                        );
+                        crate::paint::positioned::split_source_paint(spot.clone(), built);
                     source_paint = Some(paint);
                     layout
                 } else {

@@ -1,7 +1,7 @@
 //! Полоса фона ряда/группы, обрезанная прямоугольниками ячеек (CellsClipped).
 
-use super::RowRects;
 use crate::document::state::ValueCx;
+use crate::layout::table::probes::RowRects;
 use gpui::{Bounds, Pixels, Window};
 
 pub struct CellsClipped {

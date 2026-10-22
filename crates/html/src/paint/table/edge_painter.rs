@@ -1,8 +1,8 @@
 //! Художник сросшихся кромок таблицы: отрезки-победители красятся по ключу с привязкой к пикселям.
 
 use super::edge_segments::{Seg, collect_cands, draw_cands};
-use super::{CellEdges, GRID_BOX};
 use crate::hooks::Hooks;
+use crate::layout::table::probes::{CellEdges, GRID_BOX};
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 /// Слой сросшихся кромок: рисует рамки всех ячеек таблицы, центрируя

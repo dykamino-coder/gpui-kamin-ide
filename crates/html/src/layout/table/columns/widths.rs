@@ -21,7 +21,7 @@ pub(in crate::layout::table) fn push_col_bands(
     let mut seen: Vec<u64> = vec![];
     // Один буфер на элемент: `<col span>` красит несколько дорожек одной
     // полосой.
-    let mut by_node: std::collections::HashMap<u64, crate::layout::table::paint::RowRects> =
+    let mut by_node: std::collections::HashMap<u64, crate::layout::table::probes::RowRects> =
         Default::default();
     for (i, layer) in layers.iter_mut().enumerate() {
         let Some(el) = layer.element else { continue };
@@ -46,9 +46,7 @@ pub(in crate::layout::table) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(
-                crate::layout::table::paint::CellsClipped::new(rects, band_style, vcx).hooked(),
-            );
+            cells.push(crate::paint::table::CellsClipped::new(rects, band_style, vcx).hooked());
         }
     }
 }
