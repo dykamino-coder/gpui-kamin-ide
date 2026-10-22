@@ -199,3 +199,9 @@ mod grid_final_baseline_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
 mod block_baseline_relative_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+mod block_float_transfer_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+mod float_context_transfer_tests;

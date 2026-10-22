@@ -72,6 +72,7 @@ FIXES = {
         "Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.",
         "Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.",
         "Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.",
+        "Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.",
         "Packaging: retain the selected source/examples; omit the upstream generated test module.",
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],
