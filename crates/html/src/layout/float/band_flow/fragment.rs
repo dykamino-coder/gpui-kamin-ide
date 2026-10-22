@@ -17,18 +17,34 @@ impl super::BandFlow {
     }
 }
 
+/// Scopes every trial layout of a probe enters: the host's line-clamp
+/// measure and the positioning context whose registrations a trial isolates.
+#[derive(Clone)]
+pub(super) struct ProbeScopes {
+    pub(super) clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
+    pub(super) positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+}
+
+impl super::BandFlow {
+    pub(super) fn probe_scopes(&self) -> ProbeScopes {
+        ProbeScopes {
+            clamp: self.clamp.clone(),
+            positioning: self.positioning.clone(),
+        }
+    }
+}
+
 impl<'a> super::Probe<'a> {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         window: &'a mut gpui::Window,
         cx: &'a mut gpui::App,
         vert: bool,
         fragment: Option<&FragmentFlow>,
         paint: Rc<crate::paint::context::PaintCx>,
-        clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
-        positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+        scopes: ProbeScopes,
         build: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
+        let ProbeScopes { clamp, positioning } = scopes;
         Self {
             paint,
             build,
