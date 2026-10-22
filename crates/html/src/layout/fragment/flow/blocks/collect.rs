@@ -20,7 +20,6 @@ use crate::style::computed::{Display, LenCx};
 /// `blockified` — элемент сетки: его `inline-block` — блок (css-display-3 §2.7).
 pub(in crate::layout::fragment::flow::blocks) fn collect(
     e: &Element,
-    depth: u8,
     blockified: bool,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
@@ -31,20 +30,17 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
     if table_box(e) && !e.style.cascaded().wm().vertical() {
         return BlockBox {
             id: e.node_id,
-            table: (depth > 0).then(|| Box::new(TableBox::collect(e, depth, cx, vcx))),
+            table: Some(Box::new(TableBox::collect(e, cx, vcx))),
             ..Default::default()
         };
     }
     let mut out = frame(e, cx, vcx);
-    if depth == 0 {
-        return out;
-    }
     if grid_container(e) {
-        out.grid = Some(grid::collect_grid(e, depth - 1, cx, vcx));
+        out.grid = Some(grid::collect_grid(e, cx, vcx));
         return out;
     }
     if flex_container(e) {
-        out.flex = Some(flex::collect_flex(e, depth - 1, cx, vcx));
+        out.flex = Some(flex::collect_flex(e, cx, vcx));
         return out;
     }
     let stacks = stacks_blocks(e)
@@ -53,7 +49,7 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         return out;
     }
     let mut adjoins = false;
-    push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
+    push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
     out
 }
 
@@ -97,7 +93,6 @@ pub(super) fn push_kids(
     nodes: &[Node],
     out: &mut Vec<BlockKid>,
     adjoins: &mut bool,
-    depth: u8,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) {
@@ -106,18 +101,10 @@ pub(super) fn push_kids(
             // Внепоточные соседей не двигают (CSS 2.1 §9.3.1) и границу
             // соседей не прерывают.
             Node::Element(k) if out_of_flow(&k.style.computed()) => continue,
-            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
-                continue;
-            }
-            Node::Element(k)
-                if !k.inline && k.style.computed().display != Some(Display::Contents) =>
-            {
-                k
-            }
-            Node::Element(k)
-                if k.inline && k.style.computed().display.is_none() && holds_blocks(k) =>
-            {
-                push_kids(&k.children, out, adjoins, depth, cx, vcx);
+            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => continue,
+            Node::Element(k) if !k.inline && k.style.computed().display != Some(Display::Contents) => k,
+            Node::Element(k) if k.inline && k.style.computed().display.is_none() && holds_blocks(k) => {
+                push_kids(&k.children, out, adjoins, cx, vcx);
                 continue;
             }
             // Строчное содержимое между блоками — анонимный блок строк: его
@@ -138,7 +125,7 @@ pub(super) fn push_kids(
             monolith,
             inner: (!monolith
                 && (stacks_blocks(k) || table_box(k) || grid_container(k) || flex_container(k)))
-            .then(|| collect(k, depth - 1, false, cx, vcx)),
+            .then(|| collect(k, false, cx, vcx)),
             page: (cx.paged && class_a_box(k)).then(|| page_names(k, "")),
         });
         *adjoins = true;

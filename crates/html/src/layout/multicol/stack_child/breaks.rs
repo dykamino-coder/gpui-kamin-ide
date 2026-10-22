@@ -8,9 +8,9 @@
 
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
+use crate::layout::fragment::flow::blocks::plain_tree;
 use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
-use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::fragment::types::{BreaksAt, StackAxis};
 use crate::layout::options::RenderOpts;
 use std::cell::RefCell;
@@ -45,10 +45,10 @@ pub(super) fn recorder(
     // after the stack box is laid out (`BreaksAt::Column`); a table or grid
     // tree only at a width known before (`kid_w`), its rows recorded by the
     // layout.
-    let plain = !own_plan && plain_block_tree(copy, 4);
+    let plain = !own_plan && plain_tree(copy);
     let rows = !own_plan
         && line_col_w.is_some()
-        && (table_tree(copy, 4) || grid_tree(copy, 4) || flex_tree(copy, 4));
+        && (table_tree(copy) || grid_tree(copy) || flex_tree(copy));
     if !(measured || plain || rows) {
         return (Watched::new(&[]), None);
     }

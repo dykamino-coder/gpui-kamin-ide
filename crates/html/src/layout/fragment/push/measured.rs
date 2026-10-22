@@ -14,7 +14,6 @@ use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::flow::blocks::{
     BlockBox, Laid, Pushed, flex_tree, grid_tree, stacked_tree, table_tree,
 };
-use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::options::RenderOpts;
 use gpui::AnyElement;
 
@@ -158,8 +157,5 @@ pub(crate) fn measured_tree(c: &Element) -> bool {
     !c.marks.paginate
         && c.style.computed().column_span != Some(true)
         && clone_dec(c).is_none()
-        && ((plain_block_tree(c, 4) && stacked_tree(c, 4))
-            || table_tree(c, 4)
-            || grid_tree(c, 4)
-            || flex_tree(c, 4))
+        && (stacked_tree(c) || table_tree(c) || grid_tree(c) || flex_tree(c))
 }

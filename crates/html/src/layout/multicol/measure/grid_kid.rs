@@ -18,13 +18,13 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
         && c.style.computed().column_span != Some(true)
         && matches!(c.style.computed().position, None | Some(Position::Relative))
         && c.style.computed().float.unwrap_or(0) == 0
-        && (crate::layout::fragment::flow::blocks::grid_tree(c, 4)
-            || crate::layout::fragment::flow::blocks::flex_tree(c, 4))
+        && (crate::layout::fragment::flow::blocks::grid_tree(c)
+            || crate::layout::fragment::flow::blocks::flex_tree(c))
 }
 
 /// Flex с реальными линиями не передаётся DOM-пагинации: та не сохраняет членство.
 pub(super) fn flex_gate(c: &Element, fits: bool, w: Option<f32>) -> bool {
-    gate(c, fits, w) && crate::layout::fragment::flow::blocks::flex_tree(c, 4)
+    gate(c, fits, w) && crate::layout::fragment::flow::blocks::flex_tree(c)
 }
 
 /// Запись ребёнка, чью высоту меряет раскладка копии; поля не в точках —

@@ -19,22 +19,21 @@ use crate::style::computed::Display;
 /// сдвигает, а без сдвига фрагмент элемента не дотягивается до конца
 /// фрагментаинера (css-break-3 §box-splitting) — это делают края строк и
 /// фрагменты-виды (F1-2, F2).
-pub(crate) fn grid_tree(e: &Element, depth: u8) -> bool {
-    measured_tree(e, depth, false, true) && holds_grid(e, depth)
+pub(crate) fn grid_tree(e: &Element) -> bool {
+    measured_tree(e, false, true) && holds_grid(e)
 }
 
-fn holds_grid(e: &Element, depth: u8) -> bool {
+fn holds_grid(e: &Element) -> bool {
     grid_container(e)
-        || (depth > 0
-            && e.children.iter().any(|n| {
-                matches!(n, Node::Element(k)
-                    if !k.inline && !out_of_flow(&k.style.computed()) && holds_grid(k, depth - 1))
-            }))
+        || e.children.iter().any(|n| {
+            matches!(n, Node::Element(k)
+                    if !k.inline && !out_of_flow(&k.style.computed()) && holds_grid(k))
+        })
 }
 
 /// `item` — элемент сетки: его `inline-block` блокифицирован; `lines` —
 /// строчное содержимое допустимо (вне элементов сетки).
-fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
+fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
     if crate::layout::multicol::spanner::multicol_container(&e.style.computed())
         || e.style.computed().webkit_box == Some(true)
         || crate::layout::fragment::clone::clone_dec(e).is_some()
@@ -45,44 +44,37 @@ fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
     if crate::layout::fragment::table_bands::table_box(e) {
         // Внутри элемента сетки строки таблицы — отдельные параллельные
         // потоки (F2-4/F2-5); вне него таблицу уже читает TableBox.
-        return lines && super::table_tree(e, depth);
+        return lines && super::table_tree(e);
     }
     if grid_container(e) {
-        return depth > 0
-            && e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style.computed()) => false,
-                Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {
-                    true
-                }
-                Node::Element(k) => {
-                    monolith_blockified(k) || measured_tree(k, depth - 1, true, false)
-                }
-                n => is_blank(n),
-            });
+        return e.children.iter().all(|n| match n {
+            Node::Element(k) if out_of_flow(&k.style.computed()) => false,
+            Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => true,
+            Node::Element(k) => monolith_blockified(k) || measured_tree(k, true, false),
+            n => is_blank(n),
+        });
     }
     let block = matches!(
         e.style.computed().display,
         None | Some(Display::Block) | Some(Display::ListItem)
     ) || (item && e.style.computed().display == Some(Display::InlineBlock));
     block
-        && (depth == 0
-            || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style.computed()) => false,
-                Node::Element(_) | Node::Text(_) if !lines && !is_blank(n) && n_inline(n) => false,
-                // Строчная коробка: блоки внутри неё — соседи потока
-                // (CSS 2.1 §9.2.1.1), остальное — строки.
-                Node::Element(k) if k.inline => {
-                    !k.children
-                        .iter()
-                        .any(|x| matches!(x, Node::Element(b) if !b.inline))
-                        || measured_tree(k, depth - 1, false, lines)
-                }
-                Node::Element(k) => {
-                    crate::layout::fragment::clone::monolith_box(k)
-                        || measured_tree(k, depth - 1, false, lines)
-                }
-                _ => true,
-            }))
+        && e.children.iter().all(|n| match n {
+            Node::Element(k) if out_of_flow(&k.style.computed()) => false,
+            Node::Element(_) | Node::Text(_) if !lines && !is_blank(n) && n_inline(n) => false,
+            // Строчная коробка: блоки внутри неё — соседи потока
+            // (CSS 2.1 §9.2.1.1), остальное — строки.
+            Node::Element(k) if k.inline => {
+                !k.children
+                    .iter()
+                    .any(|x| matches!(x, Node::Element(b) if !b.inline))
+                    || measured_tree(k, false, lines)
+            }
+            Node::Element(k) => {
+                crate::layout::fragment::clone::monolith_box(k) || measured_tree(k, false, lines)
+            }
+            _ => true,
+        })
 }
 
 /// Строчный узел: текст или строчный элемент.

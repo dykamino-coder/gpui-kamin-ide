@@ -30,6 +30,11 @@ fn opts() -> RenderOpts {
 
 #[test]
 fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
+    let deep = format!(
+        "{}<div style='height:20px'>text</div>{}",
+        "<div>".repeat(24),
+        "</div>".repeat(24)
+    );
     for rtl in [false, true] {
         for (mode, vertical, rl) in [
             ("horizontal-tb", false, false),
@@ -37,6 +42,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
             ("vertical-rl", true, true),
         ] {
             for body in [
+                deep.as_str(),
                 "<div style='display:flex;flex-direction:row;flex-wrap:wrap'><div style='width:70px;height:50px'>first</div><div style='width:70px;height:50px'>second</div></div>",
                 "<div style='display:flex;flex-direction:row-reverse;flex-wrap:wrap-reverse'><div style='width:70px;height:50px'></div><div style='width:70px;height:50px'></div></div>",
                 "<div style='display:flex;flex-direction:column;flex-wrap:wrap'><div style='width:70px;height:50px'></div><div style='width:70px;height:50px'></div></div>",

@@ -44,7 +44,7 @@ pub(crate) fn kid_layout_w(
     line_col_w: Option<f32>,
     layout_col_w: Option<f32>,
 ) -> Option<f32> {
-    if table_tree(c, 4) {
+    if table_tree(c) {
         line_col_w.or(layout_col_w)
     } else {
         line_col_w
