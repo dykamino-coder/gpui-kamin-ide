@@ -133,7 +133,7 @@ pub(crate) fn slack_fill(c: &Element) -> Option<gpui::Hsla> {
             Some(Len::Px(v)) => *v > 0.0,
             Some(_) => true,
         };
-        if wide && s.border_colors[i].or(s.border_color).or(s.color) != Some(bg) {
+        if wide && s.used_border_color(i) != bg {
             return None;
         }
     }

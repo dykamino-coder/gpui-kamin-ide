@@ -158,13 +158,10 @@ fn column_flow_in(
         if e.style.column_rule_visible == Some(true) {
             Some((
                 rule_px(&e.style.column_rule_width, size),
-                e.style.column_rule_color.or(inherited.color).unwrap_or(
-                    crate::style::values::value::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    },
+                e.style.column_rule_color.resolve(
+                    inherited
+                        .color
+                        .unwrap_or(crate::style::values::value::Color::BLACK),
                 ),
             ))
         } else {

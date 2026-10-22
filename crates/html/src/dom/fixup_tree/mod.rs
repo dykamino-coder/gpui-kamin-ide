@@ -82,10 +82,10 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
 }
 
 pub(super) type RuleColors = (
-    Option<crate::style::values::value::Color>,
-    Option<crate::style::computed::GapList<Option<crate::style::values::value::Color>>>,
-    Option<crate::style::values::value::Color>,
-    Option<crate::style::computed::GapList<Option<crate::style::values::value::Color>>>,
+    crate::style::values::value::StyleColor,
+    Option<crate::style::computed::GapList<crate::style::values::value::StyleColor>>,
+    crate::style::values::value::StyleColor,
+    Option<crate::style::computed::GapList<crate::style::values::value::StyleColor>>,
 );
 
 /// `column-rule-color: inherit` / `row-rule-color: inherit` — ненаследуемое
@@ -100,19 +100,19 @@ pub(super) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors
         let Node::Element(el) = node else { continue };
         let s = &mut el.style;
         if s.inherit_bits & inh::COLUMN_RULE_C != 0 {
-            s.column_rule_color = parent.0;
+            s.column_rule_color = parent.0.clone();
             s.column_rule_colors = parent.1.clone();
             s.inherit_bits &= !inh::COLUMN_RULE_C;
         }
         if s.inherit_bits & inh::ROW_RULE_C != 0 {
-            s.row_rule_color = parent.2;
+            s.row_rule_color = parent.2.clone();
             s.row_rule_colors = parent.3.clone();
             s.inherit_bits &= !inh::ROW_RULE_C;
         }
         let own: RuleColors = (
-            s.column_rule_color,
+            s.column_rule_color.clone(),
             s.column_rule_colors.clone(),
-            s.row_rule_color,
+            s.row_rule_color.clone(),
             s.row_rule_colors.clone(),
         );
         resolve_rule_color_inherit(&mut el.children, &own);

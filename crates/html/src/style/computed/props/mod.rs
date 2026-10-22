@@ -53,7 +53,7 @@ pub(super) mod border;
 pub(super) mod box_model;
 mod calc_size;
 mod display_flex;
-mod effects;
+pub(super) mod effects;
 mod font;
 mod grid;
 mod mask_clip;

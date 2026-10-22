@@ -197,7 +197,7 @@ fn invalid_component_rejects_the_entire_shorthand() {
 
 #[test]
 fn valid_reset_is_distinct_from_invalid_value() {
-    assert!(one("background: currentcolor").background_rcs.is_some());
+    assert!(one("background: currentcolor").background_color.is_some());
     let c = one(
         "margin: 9px; margin: auto; max-width: 20px; max-width: none; text-combine-upright: all; text-combine-upright: none",
     );

@@ -27,7 +27,7 @@ fn shadow_layer(
     let vcx = opts.cx.vcx();
     let copy = if same_paragraph {
         let mut mask = style.clone();
-        mask.text_shadow_ink = Some(shadow.color);
+        mask.text_shadow_ink = Some(shadow.used_color(style.current_color()));
         mask.text_shadow = None;
         mask.text_shadow_rest.clear();
         mask.text_shadow_raw = None;
@@ -37,7 +37,7 @@ fn shadow_layer(
         opts.cx.build.paragraph(nodes, &mask, opts)
     } else {
         div()
-            .text_color(shadow.color.to_hsla())
+            .text_color(shadow.used_color(style.current_color()).to_hsla())
             .child(SharedString::from(text.to_string()))
             .into_any_element()
     };

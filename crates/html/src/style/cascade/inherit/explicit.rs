@@ -1,5 +1,5 @@
 //! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы,
-//! размеры, inset, фон и background_rcs.
+//! размеры, inset, фон (вычисленный `background_color` и его используемый цвет).
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -33,16 +33,15 @@ pub(super) fn inherit_explicit(
         if own.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_C | inh::OUTLINE_S | inh::OUTLINE_O)
             != 0
         {
-            let from = parent.outline.unwrap_or_default();
-            let mut o = c.outline.unwrap_or_default();
+            let from = parent.outline.clone().unwrap_or_default();
+            let mut o = c.outline.clone().unwrap_or_default();
             if on(inh::OUTLINE_W) {
                 o.width = from.width;
             }
             if on(inh::OUTLINE_C) {
-                // `currentColor` вычисляется В СЕБЯ (css-color-4 §resolving):
-                // у родителя он хранится ПУСТЫМ слотом, и наследовать надо
-                // пустоту — цвет возьмётся от СВОЕГО текста, а не от чужого
-                // (`outline-019`: родитель красный, ребёнок зелёный).
+                // `currentColor` вычисляется В СЕБЯ (css-color-4 §resolving)
+                // и наследуется словом: цвет возьмётся от СВОЕГО текста, а не
+                // от чужого (`outline-019`: родитель красный, ребёнок зелёный).
                 o.color = from.color;
             }
             if on(inh::OUTLINE_S) {
@@ -173,8 +172,7 @@ pub(super) fn inherit_explicit(
         }
     }
     if own.background_inherit {
-        c.background = parent.background;
-        c.background_rcs = own.background_rcs.clone().or(parent.background_rcs.clone());
+        c.background_color = parent.background_color.clone();
         if own.background_all_inherit {
             c.bg_lists.retain(|p| p == BgListProp::BlendMode);
             for (prop, layers) in parent
@@ -195,16 +193,15 @@ pub(super) fn inherit_explicit(
             c.gradient_current = parent.gradient_current.clone();
         }
     }
-    // Относительный цвет решается ЗДЕСЬ: только теперь известен цвет самого
-    // элемента. Функция остаётся в поле — её унаследуют дети и решат своим
-    // цветом заново.
-    if let Some(expr) = c.background_rcs.clone() {
-        let current = c.color.unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        c.background = Some(expr.resolve(current));
+    // `currentcolor` фона решается ЗДЕСЬ: только теперь известен цвет самого
+    // элемента. Вычисленное значение остаётся словом — его унаследуют дети
+    // (`background: inherit`) и решат своим цветом заново.
+    if own.background_inherit
+        || c.background_color
+            .as_ref()
+            .is_some_and(|value| value.depends_on_current())
+    {
+        let current = c.current_color();
+        c.derive_background(Some(current));
     }
 }

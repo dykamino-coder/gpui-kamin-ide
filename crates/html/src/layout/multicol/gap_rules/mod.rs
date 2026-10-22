@@ -51,7 +51,7 @@ pub(crate) fn gap_rule_spec(
             (
                 s.column_rule_visible,
                 &s.column_rule_width,
-                s.column_rule_color,
+                &s.column_rule_color,
                 &s.column_rule_widths,
                 &s.column_rule_styles,
                 &s.column_rule_colors,
@@ -63,7 +63,7 @@ pub(crate) fn gap_rule_spec(
             (
                 s.row_rule_visible,
                 &s.row_rule_width,
-                s.row_rule_color,
+                &s.row_rule_color,
                 &s.row_rule_widths,
                 &s.row_rule_styles,
                 &s.row_rule_colors,
@@ -81,8 +81,8 @@ pub(crate) fn gap_rule_spec(
             .unwrap_or_else(|| GapList::single(w.as_ref().map(px).unwrap_or(3.0)));
         let colors = cs
             .as_ref()
-            .map(|l| l.map(|c| c.unwrap_or(fallback)))
-            .unwrap_or_else(|| GapList::single(c.unwrap_or(fallback)));
+            .map(|l| l.map(|c| c.resolve(fallback)))
+            .unwrap_or_else(|| GapList::single(c.resolve(fallback)));
         let inset = inset
             .unwrap_or([GapInset::Len(Len::Px(0.0)); 4])
             .map(|i| match i {

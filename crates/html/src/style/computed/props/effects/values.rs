@@ -6,7 +6,7 @@ pub(super) fn paint_value(v: &str, vcx: ValueCx<'_>) -> Option<String> {
     (matches!(
         v,
         "none" | "context-fill" | "context-stroke" | "currentcolor"
-    ) || Color::parse(v, vcx).is_some()
+    ) || crate::style::values::value::Color::parse(v, vcx).is_some()
         || (v.starts_with("url(") && v.ends_with(')')))
     .then(|| v.to_string())
 }
@@ -154,4 +154,22 @@ pub(super) fn counter_value(v: &str, reversed: bool) -> bool {
         }
     }
     any
+}
+
+/// `auto | <color>` of an inherited property (css-ui-4 accent-color,
+/// caret-color). A CSS-wide keyword outside the cascade tables: `initial`
+/// is `auto`, the others inherit (the empty slot). `None`: invalid.
+pub(in crate::style::computed::props) fn inherited_color_or_auto(
+    c: &Computed,
+    v: &str,
+    vcx: ValueCx<'_>,
+) -> Option<Option<crate::style::values::value::ColorOrAuto>> {
+    use crate::style::values::value::ColorOrAuto;
+    if c.css_wide_value {
+        return Some(
+            v.eq_ignore_ascii_case("initial")
+                .then_some(ColorOrAuto::Auto),
+        );
+    }
+    ColorOrAuto::parse_value(v, vcx).map(Some)
 }

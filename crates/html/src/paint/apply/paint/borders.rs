@@ -53,11 +53,7 @@ pub(crate) fn border_layer(
     ) {
         return None;
     }
-    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
-    if sides.len() > 1 && uniform.is_none() {
-        return None;
-    }
+    let uniform = c.used_uniform_border_color()?;
     let w = c.borders();
     let side_px = px_lossy_zero;
     let widths = [
@@ -69,20 +65,8 @@ pub(crate) fn border_layer(
     if !widths.iter().any(|v| *v > 0.0) {
         return None;
     }
-    // Без цвета — цвет текста, без него чёрный (как у квада).
-    let colour = uniform
-        .copied()
-        .copied()
-        .or(c.border_color)
-        .or(c.color)
-        .unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
     Some((
-        crate::paint::background::border_paint(c, colour, vcx),
+        crate::paint::background::border_paint(c, uniform, vcx),
         widths,
     ))
 }
@@ -129,19 +113,11 @@ pub(crate) fn double_border(
     // one colour (css-backgrounds-3 §4.2; `flex-gap-decorations-004-ref`).
     let mut sides = (0..4)
         .filter(|&i| widths[i] > 0.0)
-        .map(|i| c.border_colors[i].or(c.border_color));
-    let first = sides.next().flatten();
-    if sides.any(|s| s != first) {
+        .map(|i| c.used_border_color(i));
+    let colour = sides.next()?;
+    if sides.any(|s| s != colour) {
         return None;
     }
-    let colour = first
-        .or(c.color)
-        .unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
     Some((
         crate::paint::background::border_paint(c, colour, vcx),
         widths,
@@ -155,32 +131,12 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) ->
     // толщина остаётся держать раскладку, а цвет не красится — иначе рамка
     // проступала из-под картинки (`border-image-00*`: «no red», а красная
     // рамка видна).
-    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-    let uniform = sides.first().filter(|f| sides.iter().all(|s| s == *f));
+    let uniform = c.used_uniform_border_color();
     let border_image_on = c.border_image.as_ref().is_some_and(|bi| bi.src.is_some());
     // При РАЗНЫХ цветах сторон квад не красится вовсе: его рамка рисуется
     // поверх детей, и красная полоса накрывала цветную
     // (clip-path-polygon-007: `border: red` + `border-left: lime`).
-    let mixed = sides.len() > 1 && uniform.is_none();
-    // Цвет не задан вовсе — рамка красится цветом текста, а без него
-    // чёрным: начальное значение `border-color` — `currentColor`, начальное
-    // `color` — чёрный. Прежде такая рамка не красилась ничем и пропадала,
-    // хотя место в раскладке держала (строчный путь это уже делал —
-    // `inline::uniform_border`).
-    let any_border = {
-        let w = c.borders();
-        [w.top, w.right, w.bottom, w.left]
-            .iter()
-            .any(|l| matches!(l, Some(Len::Px(v)) if *v > 0.0))
-    };
-    let current = any_border.then(|| {
-        c.color.unwrap_or(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        })
-    });
+    let mixed = uniform.is_none();
     // Фигурные углы (`corner-shape`): рамку красит кольцевой слой по контуру
     // (`render::decorations`), квад цвета не получает — иначе его прямой
     // внутренний угол проступал бы из-под контура (corner-shape-bevel:
@@ -195,8 +151,7 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) ->
     // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
     // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
-    let strips =
-        !(sides.is_empty() || sides.len() == 4 && uniform.is_some()) && c.border_shape.is_none();
+    let strips = mixed && c.border_shape.is_none();
     if !border_image_on
         && !crate::style::computed::single_corner::eligible(c)
         && !mixed
@@ -205,7 +160,7 @@ pub(super) fn paint_border_colors(mut d: Div, c: &Computed, vcx: ValueCx<'_>) ->
         && c.border_shape.is_none()
         && border_layer(c, vcx).is_none()
         && double_border(c, vcx).is_none()
-        && let Some(bc) = uniform.copied().copied().or(c.border_color).or(current)
+        && let Some(bc) = uniform
     {
         d = d.border_color(crate::paint::background::border_paint(c, bc, vcx).to_hsla());
     }

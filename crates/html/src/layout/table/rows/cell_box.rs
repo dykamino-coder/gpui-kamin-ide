@@ -30,8 +30,7 @@ pub(super) fn prepare_cell_box(
         cell.style.border_width = cm.border_width;
         cell.style.border_visible = cm.border_visible;
         cell.style.border_side_styles = cm.border_side_styles;
-        cell.style.border_colors = cm.border_colors;
-        cell.style.border_color = cm.border_color;
+        cell.style.border_colors = cm.border_colors.clone();
         cell.style.border_dashed = cm.border_dashed;
         cell.style.border_dotted = cm.border_dotted;
     }

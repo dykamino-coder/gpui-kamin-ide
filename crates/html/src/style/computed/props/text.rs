@@ -7,7 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{Len, StyleColor};
 
 mod breaking;
 mod hyphen_limits;
@@ -21,12 +21,30 @@ impl Computed {
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
             // у нас и означает «взять у родителя», поэтому `inherit` его
-            // очищает (`color-174`).
+            // очищает (`color-174`). `currentcolor` в `color` — то же
+            // `inherit` (css-color-4 §6.4), а функция с ним (`color-mix()`,
+            // относительный цвет) вычисляется от цвета РОДИТЕЛЯ при слиянии
+            // (`color_function`) и наследуется уже абсолютным цветом.
             "color" => {
-                self.color = if v == "inherit" {
-                    None
+                let parsed = if v == "inherit" {
+                    Some(StyleColor::Current)
                 } else {
-                    apply_parsed!(self, Color::parse(v, vcx)).or(self.color)
+                    record_parsed!(self, StyleColor::parse_value(v, vcx))
+                };
+                match parsed {
+                    Some(StyleColor::Current) => {
+                        self.color = None;
+                        self.color_function = None;
+                    }
+                    Some(StyleColor::Absolute(color)) => {
+                        self.color = Some(color);
+                        self.color_function = None;
+                    }
+                    Some(function) => {
+                        self.color = None;
+                        self.color_function = Some(function);
+                    }
+                    None => {}
                 }
             }
             "line-height" => {

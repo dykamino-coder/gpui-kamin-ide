@@ -3,7 +3,6 @@
 use crate::document::state::ValueCx;
 use crate::paint::apply::*;
 use crate::style::computed::{Computed, Display, Position};
-use crate::style::values::value::Len;
 use gpui::{Div, Styled, px};
 
 mod borders;

@@ -116,7 +116,14 @@ impl Computed {
         };
         out.background = mix(self.background, hover.background);
         out.color = mix(self.color, hover.color);
-        out.border_color = mix(self.border_color, hover.border_color);
+        if self.border_colors != hover.border_colors {
+            out.border_colors = std::array::from_fn(|i| {
+                let from = self.used_border_color(i);
+                mix(Some(from), Some(hover.used_border_color(i)))
+                    .unwrap_or(from)
+                    .into()
+            });
+        }
         out.opacity = match (self.opacity, hover.opacity) {
             (Some(a), Some(b)) => Some(a + (b - a) * k),
             (a, b) => b.or(a),
@@ -137,13 +144,15 @@ impl Computed {
         c.bg_image = None;
         c.gradient = None;
         c.gradient_raw = None;
-        c.border_color = Some(crate::style::values::value::Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
+        c.border_colors = std::array::from_fn(|_| {
+            crate::style::values::value::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.0,
+            }
+            .into()
         });
-        c.border_colors = [c.border_color; 4];
         c.outline = None;
         c.shadows.clear();
         c.text_shadow = None;

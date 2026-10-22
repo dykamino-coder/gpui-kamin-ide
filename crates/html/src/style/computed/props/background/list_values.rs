@@ -120,8 +120,8 @@ fn shorthand_valid(v: &str, last: bool, vcx: ValueCx<'_>) -> bool {
                     || Len::parse_mixed(w, vcx).is_some()
                     || image_valid(w, vcx)
                     || (last
-                        && (Color::parse(w, vcx).is_some()
-                            || crate::style::values::color_space::ColorExpression::parse(w, vcx)
+                        && (crate::style::values::value::Color::parse(w, vcx).is_some()
+                            || crate::style::values::color_space::StyleColor::parse(w, vcx)
                                 .is_some()))
             })
         })

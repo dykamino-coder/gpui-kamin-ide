@@ -46,7 +46,7 @@ pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element
         style.backdrop_color = frame.backdrop_color;
     }
     if frame.drop_shadow.is_some() {
-        style.drop_shadow = frame.drop_shadow;
+        style.drop_shadow = frame.drop_shadow.clone();
     }
     if transforms {
         if frame.rotate_prop.is_some() {

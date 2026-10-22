@@ -94,8 +94,8 @@ impl Computed {
             if token.contains('(') {
                 continue;
             }
-            if let Some(c) = Color::parse(&token, vcx) {
-                self.background = Some(c);
+            if let Some(c) = StyleColor::parse_value(&token, vcx) {
+                self.set_background_color(Some(c));
             }
         }
     }

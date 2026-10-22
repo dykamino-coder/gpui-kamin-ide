@@ -6,7 +6,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{Len, StyleColor};
 
 mod gap_rules;
 mod rule_props;

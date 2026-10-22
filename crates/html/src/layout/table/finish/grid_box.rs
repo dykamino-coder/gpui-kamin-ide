@@ -123,12 +123,8 @@ pub(super) fn paint_table_border(
             b: 0.0,
             a: 1.0,
         };
-        let side_colour = |i: usize| {
-            e.style.border_colors[i]
-                .or(e.style.border_color)
-                .or(inherited.color)
-                .unwrap_or(black)
-        };
+        let side_colour =
+            |i: usize| e.style.border_colors[i].resolve(inherited.color.unwrap_or(black));
         let colors = [
             side_colour(0),
             side_colour(1),

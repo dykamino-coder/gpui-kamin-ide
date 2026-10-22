@@ -12,7 +12,7 @@ use crate::style::values::value::Color;
 use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
 
 pub(crate) fn uses_modern(c: &Computed) -> bool {
-    c.scroll.colors.flatten().is_none()
+    c.used_scrollbar_colors().is_none()
 }
 
 pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
@@ -65,7 +65,7 @@ pub(crate) fn paint(
         b: b as f32 / 255.0,
         a: 1.0,
     };
-    let (thumb, track) = match c.scroll.colors.flatten() {
+    let (thumb, track) = match c.used_scrollbar_colors() {
         Some([thumb, track]) => (paint_color(thumb), paint_color(track)),
         None => (
             paint_color(color(193, 193, 193)),
@@ -129,7 +129,7 @@ pub(crate) fn paint(
             button,
             start,
             maximum,
-            (arrows, c.scroll.colors.flatten().map(|_| thumb)),
+            (arrows, c.used_scrollbar_colors().map(|_| thumb)),
             window,
         );
         let travel = (length - 2.0 * button).max(0.0);

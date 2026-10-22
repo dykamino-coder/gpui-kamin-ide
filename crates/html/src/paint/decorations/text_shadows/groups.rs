@@ -41,11 +41,9 @@ impl ShadowStyle {
     pub(super) fn resolved(&self) -> Vec<Shadow> {
         self.list
             .iter()
-            .copied()
+            .cloned()
             .map(|mut shadow| {
-                if shadow.color.a < 0.0 {
-                    shadow.color = self.color;
-                }
+                shadow.color = shadow.used_color(self.color).into();
                 shadow
             })
             .collect()
@@ -55,8 +53,9 @@ impl ShadowStyle {
 fn raw_list(style: &Computed) -> Vec<Shadow> {
     style
         .text_shadow
+        .clone()
         .into_iter()
-        .chain(style.text_shadow_rest.iter().copied())
+        .chain(style.text_shadow_rest.iter().cloned())
         .collect()
 }
 

@@ -5,13 +5,12 @@
 //! без рисунка — ноль» — используемое значение (css-backgrounds-3 §4.3), его
 //! решает `Computed::borders`, а вычисленная толщина остаётся заданной.
 
-use super::values::{
-    border_style_rank, line_color, line_width, outline_color, outline_line_style, outline_offset,
-};
+use super::values::{border_style_rank, line_width, outline_line_style, outline_offset};
 use crate::document::state::ValueCx;
 use crate::style::computed::props::box_model::side_slot;
 use crate::style::computed::{Computed, inh};
 use crate::style::css::{BoxGroup, Grammar, LonghandId, Slot};
+use crate::style::values::value::{ColorOrAuto, StyleColor};
 
 impl Computed {
     /// Длинное свойство рамки или контура; `false` — свойство не отсюда.
@@ -70,14 +69,13 @@ impl Computed {
                 }
             }
             _ => {
-                let color = line_color(v, vcx);
+                let color = StyleColor::parse_value(v, vcx);
                 if !inherit && color.is_none() {
                     return;
                 }
                 self.border_inherit_c[side] = inherit;
                 if let Some(color) = color {
                     self.border_colors[side] = color;
-                    self.sync_border_color();
                 }
             }
         }
@@ -116,14 +114,6 @@ impl Computed {
         self.border_dotted = rank.map(|r| r == 7);
     }
 
-    /// Общий цвет рамки — для путей, не знающих о сторонах: заданный цвет,
-    /// если он у всех четырёх сторон один; иначе пусто, и каждая сторона
-    /// берёт свой цвет (пустой — `currentcolor`).
-    fn sync_border_color(&mut self) {
-        let [top, ..] = self.border_colors;
-        self.border_color = top.filter(|_| self.border_colors.iter().all(|c| *c == top));
-    }
-
     /// `outline-width`, `-style`, `-color`, `-offset`: одна часть записи
     /// контура.
     fn apply_outline_longhand(&mut self, id: LonghandId, v: &str, vcx: ValueCx<'_>) {
@@ -137,7 +127,7 @@ impl Computed {
             self.inherit_bits |= bit;
             return;
         }
-        let mut o = self.outline.unwrap_or_default();
+        let mut o = self.outline.clone().unwrap_or_default();
         match id {
             LonghandId::OutlineWidth => match line_width(v, vcx) {
                 Some(w) => o.width = Some(w),
@@ -147,7 +137,7 @@ impl Computed {
                 Some(s) => o.style = Some(s),
                 None => return,
             },
-            LonghandId::OutlineColor => match outline_color(v, vcx) {
+            LonghandId::OutlineColor => match ColorOrAuto::parse_value(v, vcx) {
                 Some(c) => o.color = c,
                 None => return,
             },

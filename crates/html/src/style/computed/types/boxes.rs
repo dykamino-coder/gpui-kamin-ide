@@ -80,10 +80,12 @@ impl LogicalSides {
 }
 
 /// `outline`: рамка ВНЕ коробки, не влияющая на раскладку.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Outline {
     pub width: Option<Len>,
-    pub color: Option<Color>,
+    /// `outline-color` (css-ui-4 §outline-color): `auto` — акцентный цвет при
+    /// `outline-style: auto`, иначе `currentcolor` (`Computed::used_outline_color`).
+    pub color: crate::style::values::value::ColorOrAuto,
     pub offset: Option<Len>,
     /// `outline-offset: inset` (css-ui-4; WPT `outline-offset-inset-*`):
     /// сдвиг равен минус толщине. Толщина известна только к отрисовке,

@@ -82,7 +82,10 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     };
     c.emphasis_under = position.emphasis_under;
     c.emphasis_left = position.emphasis_left;
-    c.emphasis_color = own.emphasis_color.or(parent.emphasis_color);
+    c.emphasis_color = own
+        .emphasis_color
+        .clone()
+        .or_else(|| parent.emphasis_color.clone());
     // css-ruby-1 §4.1/§4.3: оба свойства наследуемые.
     c.ruby_under = own.ruby_under.or(parent.ruby_under);
     c.ruby_align = own.ruby_align.or(parent.ruby_align);
@@ -163,7 +166,9 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     c.text_shadow = if own.text_shadow_none {
         None
     } else {
-        own.text_shadow.or(parent.text_shadow)
+        own.text_shadow
+            .clone()
+            .or_else(|| parent.text_shadow.clone())
     };
     // Хвост списка идёт вместе с первой тенью: своя запись — свой хвост,
     // унаследованная — хвост родителя (css-text-decor-3: `text-shadow`

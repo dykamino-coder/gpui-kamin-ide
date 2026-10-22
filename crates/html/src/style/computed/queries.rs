@@ -24,9 +24,8 @@ impl Computed {
         self.webkit_box != Some(true) || self.webkit_box_vertical == Some(true)
     }
 
-    /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
-    /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
-    /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
+    /// Тени `box-shadow` с используемым цветом: `currentcolor` — цвет текста
+    /// (css-backgrounds-3 §box-shadow). `inset` — внутренние.
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
         let list = if inset {
             &self.inset_shadows
@@ -34,19 +33,7 @@ impl Computed {
             &self.shadows
         };
         list.iter()
-            .map(|sh| {
-                let colour = if sh.color.a < 0.0 {
-                    self.color.unwrap_or(Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    })
-                } else {
-                    sh.color
-                };
-                (*sh, colour)
-            })
+            .map(|sh| (sh.clone(), sh.used_color(self.current_color())))
             .collect()
     }
 

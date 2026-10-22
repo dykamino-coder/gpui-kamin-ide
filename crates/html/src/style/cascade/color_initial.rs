@@ -14,15 +14,17 @@ pub(super) fn apply(c: &mut Computed, key: &str, value: &str, vcx: ValueCx<'_>) 
     if value.eq_ignore_ascii_case("initial") {
         c.color_initial = true;
         c.color = Color::parse("black", vcx);
+        c.color_function = None;
         return true;
     }
     if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("currentcolor") {
         c.accept_declaration();
         c.color_initial = false;
         c.color = None;
+        c.color_function = None;
         return true;
     }
-    if Color::parse(value, vcx).is_some() {
+    if crate::style::values::value::StyleColor::parse_value(value, vcx).is_some() {
         c.color_initial = false;
     }
     false

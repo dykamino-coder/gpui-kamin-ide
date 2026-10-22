@@ -47,5 +47,5 @@ pub(super) fn has_box_style(c: &crate::style::computed::Computed) -> bool {
         || c.background.is_some()
         || c.gradient.is_some()
         || c.bg_image.is_some()
-        || c.background_rcs.is_some()
+        || c.background_color.is_some()
 }

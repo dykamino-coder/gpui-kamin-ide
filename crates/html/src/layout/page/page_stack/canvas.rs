@@ -23,7 +23,7 @@ pub(crate) fn image_layers(s: &Computed) -> Option<Computed> {
         return None;
     }
     Some(Computed {
-        background_rcs: s.background_rcs.clone(),
+        background_color: s.background_color.clone(),
         gradient: s.gradient.clone(),
         gradient_raw: s.gradient_raw.clone(),
         bg_image: s.bg_image.clone(),

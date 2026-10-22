@@ -66,7 +66,7 @@ fn border_shorthand_takes_width_and_color() {
     let vcx = doc.values();
     let c = computed("border: 2px solid #ff0000", vcx);
     assert_eq!(c.border_width.top, Some(Len::Px(2.0)));
-    assert_eq!(c.border_color.map(|c| c.r), Some(1.0));
+    assert_eq!(c.used_uniform_border_color().map(|c| c.r), Some(1.0));
 
     let c = computed("border-left: 3px solid teal", vcx);
     assert_eq!(c.border_width.left, Some(Len::Px(3.0)));
@@ -119,7 +119,7 @@ fn shadows_split_and_skip_inset() {
     assert_eq!(s.len(), 1, "inset-тень отбрасывается, её нечем рисовать");
     assert_eq!(s[0].y, 2.0);
     assert_eq!(s[0].blur, 8.0);
-    assert!((s[0].color.a - 0.4).abs() < 0.01);
+    assert!((s[0].used_color(crate::style::values::value::Color::BLACK).a - 0.4).abs() < 0.01);
 }
 
 #[test]

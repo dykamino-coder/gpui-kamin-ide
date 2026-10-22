@@ -45,7 +45,9 @@ pub use calc_pool::{
 };
 mod scheme;
 pub use crate::document::state::{ValueCx, ValueDoc};
+pub use crate::style::values::color_space::{ColorOrAuto, StyleColor};
 pub use color::Color;
+pub(crate) use color::light_dark_branch;
 use color_names::named;
 pub use len::Len;
 pub(crate) use len::css_number;

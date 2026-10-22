@@ -58,12 +58,8 @@ pub(crate) fn spec(c: &Computed, vcx: ValueCx<'_>) -> Option<(String, Color, [f3
     if !c.corner_shaped() {
         return None;
     }
-    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
-    let uniform = sides
-        .first()
-        .filter(|f| sides.iter().all(|s| s == *f))
-        .map(|f| **f);
-    let mixed = sides.len() > 1 && uniform.is_none();
+    let uniform = c.used_uniform_border_color();
+    let mixed = uniform.is_none();
     let side_px = px_lossy_zero;
     let bw = c.borders();
     let widths = [
@@ -75,15 +71,7 @@ pub(crate) fn spec(c: &Computed, vcx: ValueCx<'_>) -> Option<(String, Color, [f3
     if mixed || widths.iter().all(|w| *w <= 0.0) {
         return None;
     }
-    // Без цвета рамка красится цветом текста, без него — чёрным
-    // (начальное `border-color: currentColor`).
-    let colour = uniform.or(c.border_color).or(c.color).unwrap_or(Color {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 1.0,
-    });
-    let colour = crate::paint::background::border_paint(c, colour, vcx);
+    let colour = crate::paint::background::border_paint(c, uniform?, vcx);
     Some((
         crate::paint::background::rrect_spec(c, Some(widths), vcx),
         colour,

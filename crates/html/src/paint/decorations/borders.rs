@@ -124,7 +124,6 @@ pub(crate) fn box_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: ValueCx<'_>) {
-    let sides: Vec<_> = c.border_colors.iter().flatten().collect();
     // Не снимать полосу, когда все ЗАДАННЫЕ стороны одного цвета (квад и так
     // красит их, `apply::apply_paint` `!mixed`), ради удвоенной альфы
     // односторонней полупрозрачной рамки (`grid-gap-decorations-067…082`):
@@ -132,12 +131,12 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: Val
     // непрозрачные односторонние `border-bottom` эталонов и пунктирные рамки
     // (`grid-gap-decorations-016/019/048…051`), а поверх `border-image-*`
     // полосы ложатся на картинку.
-    let uniform = sides.len() == 4 && sides.iter().all(|s| *s == sides[0]);
+    let uniform = c.used_uniform_border_color().is_some();
     // При `border-shape` рамка — один слой цветом relevant side (спека:
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
     // A one-colour `double` border is painted whole by its rings.
     let rings = crate::paint::apply::double_border(c, vcx).is_some();
-    if !sides.is_empty() && !uniform && !rings && c.border_shape.is_none() {
+    if !uniform && !rings && c.border_shape.is_none() {
         let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (
@@ -146,20 +145,10 @@ pub(crate) fn coloured_borders(c: &Computed, out: &mut Vec<AnyElement>, vcx: Val
             side_px(bw.bottom),
             side_px(bw.left),
         );
-        // Сторона без своего цвета красится общим `border-color`, а без него —
-        // цветом текста (`currentColor`): квад при полосах цвета не получает
-        // (`apply::apply_paint`, `strips`), и такая сторона иначе пропала бы.
-        let fallback = c
-            .border_color
-            .or(c.color)
-            .unwrap_or(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            });
-        for (i, colour) in c.border_colors.iter().enumerate() {
-            let colour = colour.as_ref().unwrap_or(&fallback);
+        // Сторона `currentcolor` красится цветом текста: квад при полосах
+        // цвета не получает (`apply::apply_paint`, `strips`).
+        for i in 0..4 {
+            let colour = c.used_border_color(i);
             let w = [t, r, b, l][i];
             if w <= 0.0 {
                 continue;
