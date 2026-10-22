@@ -40,6 +40,10 @@ pub struct FlexItemLayout {
     pub margin_top: f32,
     /// Resolved physical block-end (bottom) margin.
     pub margin_bottom: f32,
+    /// Resolved physical left margin for vertical block flow.
+    pub margin_left: f32,
+    /// Resolved physical right margin for vertical block flow.
+    pub margin_right: f32,
 }
 
 impl TaffyLayoutEngine {
@@ -103,6 +107,8 @@ impl TaffyLayoutEngine {
                         cross_size: item.cross_size / scale,
                         margin_top: margin.top / scale,
                         margin_bottom: margin.bottom / scale,
+                        margin_left: margin.left / scale,
+                        margin_right: margin.right / scale,
                     }
                 }).collect(),
             }).collect(),

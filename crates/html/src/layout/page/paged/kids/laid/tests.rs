@@ -135,11 +135,13 @@ fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
 }
 
 #[test]
-fn vertical_page_grid_and_table_use_native_recorders_without_an_estimate() {
+fn vertical_page_grid_table_and_flex_use_native_recorders_without_an_estimate() {
     for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
         for body in [
             "<div style='display:grid;grid-template-rows:20px 30px'></div>",
             "<table><tr><td>cell</td></tr></table>",
+            "<div style='display:flex;flex-direction:row;flex-wrap:wrap'><div>first</div><div>second</div></div>",
+            "<div style='display:flex;flex-direction:column-reverse;flex-wrap:wrap-reverse'><div>first</div><div>second</div></div>",
         ] {
             let tree = crate::dom::parse(
                 &format!("<div style='writing-mode:{mode}'>{body}</div>"),
@@ -160,6 +162,11 @@ fn vertical_page_grid_and_table_use_native_recorders_without_an_estimate() {
             let blocks = w.blocks().unwrap();
             if body.starts_with("<table") {
                 assert_eq!(blocks.table_keys().len(), 1);
+            } else if body.contains("display:flex") {
+                let mut flexes = Vec::new();
+                blocks.flexes(&mut flexes);
+                assert_eq!(flexes.len(), 1);
+                assert_eq!(flexes[0].1.len(), 2);
             } else {
                 let mut grids = Vec::new();
                 blocks.grids(&mut grids);

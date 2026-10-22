@@ -95,14 +95,6 @@ impl FlowMeasure {
         }
     }
 
-    pub(crate) fn line_pushes(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> Vec<super::LinePush> {
-        self.line_pushes_axis(origin, Size::default(), StackAxis::Horizontal, window)
-    }
-
     /// Геометрия строк остаётся в области текущего layout-движка.
     pub(crate) fn line_pushes_axis(
         &self,

@@ -10831,10 +10831,10 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +}
 diff --git a/vendor/gpui/src/taffy/flex_layout.rs b/vendor/gpui/src/taffy/flex_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..51905f5435683b369b2bd8f569feb4e76a56249e
+index 0000000000000000000000000000000000000000..8060de45ed77931c75fd68aebdf1bc03d52464b5
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/flex_layout.rs
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,154 @@
 +//! Финальные линии flex и координаты их элементов без округления устройства.
 +use super::{LayoutId, TaffyLayoutEngine};
 +use crate::{Pixels, Point};
@@ -10877,6 +10877,10 @@ index 0000000000000000000000000000000000000000..51905f5435683b369b2bd8f569feb4e7
 +    pub margin_top: f32,
 +    /// Resolved physical block-end (bottom) margin.
 +    pub margin_bottom: f32,
++    /// Resolved physical left margin for vertical block flow.
++    pub margin_left: f32,
++    /// Resolved physical right margin for vertical block flow.
++    pub margin_right: f32,
 +}
 +
 +impl TaffyLayoutEngine {
@@ -10940,6 +10944,8 @@ index 0000000000000000000000000000000000000000..51905f5435683b369b2bd8f569feb4e7
 +                        cross_size: item.cross_size / scale,
 +                        margin_top: margin.top / scale,
 +                        margin_bottom: margin.bottom / scale,
++                        margin_left: margin.left / scale,
++                        margin_right: margin.right / scale,
 +                    }
 +                }).collect(),
 +            }).collect(),
