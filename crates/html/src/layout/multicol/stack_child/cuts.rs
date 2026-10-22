@@ -31,7 +31,7 @@ pub(super) fn copy_cuts_and_height(
     fixed: Option<f32>,
     merged: &Computed,
     copy: &Element,
-) -> (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, f32, f32) {
+) -> (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, f32, f32, bool) {
     let copy_m = if col_vert {
         transpose_tree(copy, col_rl)
     } else {
@@ -40,6 +40,9 @@ pub(super) fn copy_cuts_and_height(
     let (over, cuts, forced, solid, own) = line_cuts(
         h, cuts, forced, solid, opts, line_col_w, fixed, merged, copy, copy_m,
     );
+    // Последнее поле — мера без дотяга внепоточных: высота коробки та же, что
+    // у её раскладки (`Regrow::laid_h`).
+    let reach = own.is_some();
     // Мера с дотягом внепоточных — поток, а не
     // коробка (`Measure::own` меры копии): сосед встаёт
     // под концом коробки, абсолют продолжается в колонках.
@@ -54,7 +57,7 @@ pub(super) fn copy_cuts_and_height(
         }
         _ => (h, over),
     };
-    (cuts, forced, solid, h, over)
+    (cuts, forced, solid, h, over, !reach)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -151,11 +154,14 @@ pub(super) fn stack_child_of(
     monolith: bool,
     span: bool,
     kid_copies: usize,
+    measured_table: Option<(bool, bool)>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
+    let repeat = repeat_bands(copy, fixed, rows, measured_table, vcx);
     crate::layout::fragment::types::StackChild {
         watched: None,
         breaks_w: None,
+        regrow: None,
         measure,
         el: side_margin_wrap(build(true, 0, false), copy, col_vert),
         frags: if span {
@@ -177,6 +183,7 @@ pub(super) fn stack_child_of(
         avoid_after: edge_avoid(copy, true, vcx),
         forced,
         solid,
+        avoid: Vec::new(),
         h,
         mt,
         mb,
@@ -219,7 +226,7 @@ pub(super) fn stack_child_of(
         // Повтор шапки/подвала таблицы — полосы своими
         // копиями (`flow::Repeat`); та же мера, что у
         // щупов (`repeat_leads`).
-        repeat: repeat_bands(copy, fixed, rows, vcx)
+        repeat: repeat
             .filter(|_| !span && !col_vert)
             .map(
                 |(head, foot, geom)| crate::layout::fragment::types::Repeat {

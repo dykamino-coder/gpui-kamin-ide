@@ -73,6 +73,7 @@ fn positioned(
         None,
         planned,
         &[],
+        &|_| false,
         vcx,
     );
     let (mut probe, after) = grown.remove(0);

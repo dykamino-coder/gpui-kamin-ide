@@ -111,6 +111,24 @@ pub(crate) fn solid_box(k: &Element) -> bool {
 /// fragmentable, as Blink fragments the remaining block-size of a block
 /// once its content has ended (`FinishFragmentation`).
 pub(crate) fn monolith_box(k: &Element) -> bool {
+    monolith_blockified(k)
+        // Таблица и ячейка монолитами НЕ являются
+        // (css-break-4 §4.1: монолитен замещаемый,
+        // прокручиваемый и `break-inside: avoid`);
+        // строка таблицы — да, но её не режет и укладка.
+        || matches!(
+            k.style.display,
+            Some(Display::InlineBlock)
+                | Some(Display::InlineFlex)
+                | Some(Display::InlineGrid)
+        )
+}
+
+/// `monolith_box` коробки, чей строчный уровень блокифицирован (элемент
+/// сетки или flex, css-display-3 §2.7: `inline-block` там — блок): атомарной
+/// строчной она не является, монолитом её делают только `contain: size`,
+/// `break-inside: avoid`, прокрутка и замещаемое содержимое.
+pub(crate) fn monolith_blockified(k: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
@@ -128,15 +146,5 @@ pub(crate) fn monolith_box(k: &Element) -> bool {
         || matches!(
             k.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
-        )
-        // Таблица и ячейка монолитами НЕ являются
-        // (css-break-4 §4.1: монолитен замещаемый,
-        // прокручиваемый и `break-inside: avoid`);
-        // строка таблицы — да, но её не режет и укладка.
-        || matches!(
-            k.style.display,
-            Some(Display::InlineBlock)
-                | Some(Display::InlineFlex)
-                | Some(Display::InlineGrid)
         )
 }

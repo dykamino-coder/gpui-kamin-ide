@@ -55,7 +55,7 @@ impl PageStack {
         &mut self,
         window: &mut Window,
         cx: &mut App,
-        aw: f32,
+        (aw, ah): (f32, f32),
     ) -> (Vec<Kid>, usize) {
         let vertical = self.axis.is_vertical();
         let kids: Vec<Kid> = self
@@ -106,7 +106,7 @@ impl PageStack {
                             .map(|g| g.bottom)
                             .fold(h, f32::max);
                     }
-                    match k.watched.as_ref().filter(|w| w.has_blocks()) {
+                    match k.watched.clone().filter(|w| w.has_blocks()) {
                         // Точки разрыва блочной стопки — по раскладке копии, а
                         // не по оценке формы (`flow::blocks`). Мера формы
                         // отсчитывает смещения от border box коробки, копия
@@ -114,8 +114,17 @@ impl PageStack {
                         Some(w) => {
                             let lift = k.inner_top;
                             let origin = point(px(0.0), px(lift));
+                            // Таблица: высота — её разложенная обёртка (ряды,
+                            // подписи, заданная высота), а не оценка.
+                            if let Some(root) = w.blocks().filter(|b| b.table.is_some())
+                                && k.float_id.is_none()
+                                && let Some((_, bottom)) = w.laid(origin, window).at(root.id)
+                            {
+                                h = bottom;
+                            }
                             let m = w.breaks(origin, laid, h + lift, self.axis, window);
                             (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
+                            k.refresh_repeat(m.sections, ah);
                         }
                         None => flow.merge(&mut cuts, &mut solid),
                     }
@@ -136,6 +145,7 @@ impl PageStack {
                     avoid_after: false,
                     forced,
                     solid,
+                    avoid: Vec::new(),
                     span: false,
                     // Страницы параллельный поток пока не берут: у них своё
                     // правило переполнения монолита (`fill_at`, ветка

@@ -5,6 +5,7 @@
 //! отступом и атомами (и общей памятью замера документа), иначе щуп отдаёт
 //! другое число строк, чем отрисовка.
 
+mod clamp;
 mod measured_layout;
 pub(crate) use crate::text::paragraph::element::layout::measured_layout::measured_layout;
 
@@ -85,6 +86,8 @@ impl Paragraph {
         // Обрыв по `line-clamp` обязан доехать и до замера: иначе коробка
         // считается по ПОЛНОМУ числу строк, а рисуются обрезанные, и рамка
         // выходит выше текста (`text-wrap-balance-line-clamp-004`).
+        let clamp_rows = self.clamp_rows.clone();
+        let clamp_tag = self.clamp_tag;
         let clamp = self.clamp;
         let clamp_force = self.clamp_force;
         let fit = self.fit;
@@ -117,6 +120,8 @@ impl Paragraph {
                     align,
                     wrap,
                 );
+                probe.clamp_rows = clamp_rows.clone();
+                probe.clamp_tag = clamp_tag;
                 probe.measures = measures.clone();
                 probe.paint_context = paint_context.clone();
                 probe.inline_measure = inline_measure.clone();
@@ -172,7 +177,7 @@ impl Paragraph {
             },
         );
         if let Some(f) = &self.fragment {
-            f.record(id);
+            f.node.record(id);
         }
         (id, id)
     }

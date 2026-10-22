@@ -36,6 +36,7 @@ pub(super) fn finish_stack_child(
     nest_row: Option<f32>,
     whole: bool,
     build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
+    measured_table: Option<(bool, bool)>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let (scrolls, monolith) = copy_monolith(copy, &cuts, nest_row);
@@ -66,8 +67,28 @@ pub(super) fn finish_stack_child(
     // прежняя (`ColumnStack::new` берёт наибольшее число копий).
     let kid_copies = kid_copy_count(e, rows, copies, fixed, copy, h, over, measure, span);
     let mut child = stack_child_of(
-        ix, mt, mb, kid_par, col_vert, rows, fixed, dec, copy, cuts, forced, solid, h, over, rel,
-        build, measure, monolith, span, kid_copies, vcx,
+        ix,
+        mt,
+        mb,
+        kid_par,
+        col_vert,
+        rows,
+        fixed,
+        dec,
+        copy,
+        cuts,
+        forced,
+        solid,
+        h,
+        over,
+        rel,
+        build,
+        measure,
+        monolith,
+        span,
+        kid_copies,
+        measured_table,
+        vcx,
     );
     child.fit_whole = whole && fixed.is_some() && measure.is_some();
     child
@@ -169,12 +190,22 @@ pub(super) fn kid_copy_count(
                 && per > 0.0
                 && visible_overflow(&e.style)
                 && visible_overflow(&copy.style)
+                && measure.is_none()
                 && matches!(copy.style.display, Some(Display::Grid))
                 && !has_monolith(copy, 4) =>
         {
             ((h.max(over) / per).ceil() as usize + 1)
                 .min(16)
                 .max(copies)
+        }
+        // Сетка с монолитом: его переполнение не занимает места в потоке,
+        // и разложенная высота числа колонок не даёт (как выше).
+        Some(_)
+            if measure.is_some()
+                && matches!(copy.style.display, Some(Display::Grid))
+                && has_monolith(copy, 4) =>
+        {
+            copies
         }
         // Высота неизвестна до раскладки: копий — на
         // переполняющие колонки (css-multicol-1 §8.2).

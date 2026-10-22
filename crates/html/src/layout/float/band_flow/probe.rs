@@ -28,6 +28,9 @@ pub(super) fn probe_of(
     shapes: Option<Shapes>,
     p: &mut Probe,
 ) -> (f32, f32) {
+    let positioning = p.positioning.clone();
+    let _positioning = positioning.as_ref().map(|p| p.isolate());
+    let clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let vert = p.vert;
@@ -50,6 +53,10 @@ pub(super) fn probe_of(
     let (w, h) = unrounded(&tap, p.window);
     p.last_geometry = match (&p.fragment, tap.get()) {
         (Some(f), Some(id)) => f.probes.relative(id, f.node.axis, p.window),
+        _ => Default::default(),
+    };
+    p.last_clamp = match (clamp_scope, tap.get()) {
+        (Some(scope), Some(id)) => scope.finish(id, p.window),
         _ => Default::default(),
     };
     if vert { (h, w) } else { (w, h) }
@@ -75,6 +82,9 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
 
 /// Внутренние ширины того, что строит `build` (ребёнок или голова прогона).
 pub(super) fn intrinsic_of(build: &Build, p: &mut Probe) -> (f32, f32) {
+    let positioning = p.positioning.clone();
+    let _positioning = positioning.as_ref().map(|p| p.isolate());
+    let _clamp_scope = p.clamp.as_ref().map(|(key, m)| m.enter(*key));
     let _flow_scope = p.fragment.as_ref().map(|f| f.probes.enter());
     let tap = Rc::new(Cell::new(None));
     let measure = p.vert.then(crate::text::vertical::InlineMeasure::default);

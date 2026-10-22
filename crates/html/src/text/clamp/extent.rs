@@ -94,8 +94,9 @@ pub fn hide_box_after_point(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::state::DocState;
-    use crate::text::clamp::{clamp_context, clamp_lines_for, clamp_next_seq, open_clamp_span};
+    use crate::text::clamp::{ClampInput, ClampPlan};
+    use crate::text::clamp::{clamp_context, clamp_next_seq, open_clamp_span};
+    use std::rc::Rc;
 
     #[test]
     fn atomic_box_has_no_independent_clamp_span() {
@@ -117,50 +118,23 @@ mod tests {
 
     #[test]
     fn counted_point_hides_later_paragraphs_below_a_tall_float() {
-        let doc = DocState::new(Default::default());
         let key = 1;
-        doc.clamp.cuts.borrow_mut().insert(key, 200.0);
-        doc.clamp.extent.borrow_mut().insert(key, 128.0);
-        doc.clamp.para.borrow_mut().insert(key, (3, 1));
-        let mut cx = LayoutCx {
-            clamp_plans: super::super::ClampPlans::snapshot(&doc.clamp),
-            ..Default::default()
+        let mut cx = LayoutCx::default();
+        cx.clamp_build = cx.clamp_build.container(key);
+        let mut plan = ClampPlan {
+            nodes: vec![],
+            sizes: vec![],
+            para: Some((3, 1)),
+            next: None,
+            extent: Some(128.0),
+            cut: 200.0,
         };
+        cx.clamp_input = Some(ClampInput::Apply(Rc::new(plan.clone())));
         assert!(revealed_extent(key, &cx).is_none());
         assert!(!hidden_after_point(key, 3, &cx));
         assert!(hidden_after_point(key, 4, &cx));
-        doc.clamp.cuts.borrow_mut().insert(key, f32::INFINITY);
-        cx.clamp_plans = super::super::ClampPlans::snapshot(&doc.clamp);
+        plan.cut = f32::INFINITY;
+        cx.clamp_input = Some(ClampInput::Apply(Rc::new(plan)));
         assert!(!hidden_after_point(key, 4, &cx));
-    }
-
-    #[test]
-    fn documents_keep_independent_cut_results_and_probe_buffers() {
-        let a = DocState::new(Default::default());
-        let b = DocState::new(Default::default());
-        let retained = a.frame_values().keep();
-        let av = retained.vcx();
-        let bv = b.frame_values();
-        a.clamp.cuts.borrow_mut().insert(1, 50.0);
-        a.clamp.para.borrow_mut().insert(1, (2, 1));
-        b.clamp.cuts.borrow_mut().insert(1, 100.0);
-        b.clamp.para.borrow_mut().insert(1, (4, 2));
-        let ac = LayoutCx {
-            clamp_plans: super::super::ClampPlans::snapshot(&a.clamp),
-            ..Default::default()
-        };
-        let bc = LayoutCx {
-            clamp_plans: super::super::ClampPlans::snapshot(&b.clamp),
-            ..Default::default()
-        };
-        assert_eq!(ac.clamp_plan(1).map(|p| p.cut), Some(50.0));
-        assert_eq!(bc.clamp_plan(1).map(|p| p.cut), Some(100.0));
-        assert!(hidden_after_point(1, 3, &ac));
-        assert!(!hidden_after_point(1, 3, &bc));
-        assert!(!clamp_lines_for(1, av).same(&clamp_lines_for(1, bv)));
-        assert!(clamp_lines_for(1, av).same(&clamp_lines_for(1, av)));
-        a.clamp.cuts.borrow_mut().clear();
-        assert_eq!(ac.clamp_plan(1).map(|p| p.cut), Some(50.0));
-        assert_eq!(bc.clamp_plan(1).map(|p| p.cut), Some(100.0));
     }
 }

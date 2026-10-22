@@ -22,6 +22,7 @@ mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
 mod paginate;
+mod regrow;
 use frag_div::frag_box_div;
 
 #[allow(clippy::too_many_arguments)]
@@ -43,6 +44,7 @@ pub(super) fn multicol_stack_child(
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
+    kid_w: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
@@ -89,8 +91,10 @@ pub(super) fn multicol_stack_child(
     // (`floats-clear-multicol-*`: `background:
     // red`); флоаты переполняют нулевую коробку, и
     // маска колонки режет их по разрезам меры.
-    if !col_vert && float_only_box(&copy).is_some() && through_strut(&copy, opts.cx.vcx()).is_some()
-    {
+    let float_zero = !col_vert
+        && float_only_box(&copy).is_some()
+        && through_strut(&copy, opts.cx.vcx()).is_some();
+    if float_zero {
         copy.style.height = Some(Len::Px(0.0));
     }
     // Параллельный поток (css-break-3 §3):
@@ -118,7 +122,7 @@ pub(super) fn multicol_stack_child(
     // перепривязка `cx` в `shape_full`). Без него
     // разъезжался ЭТАЛОН четырёх пар
     // `flex-item-content-overflow-*`.
-    let (cuts, forced, solid, h, over) = copy_cuts_and_height(
+    let (cuts, forced, solid, h, over, no_reach) = copy_cuts_and_height(
         ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
         &copy,
     );
@@ -157,32 +161,14 @@ pub(super) fn multicol_stack_child(
     let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
-    // Копии на случай разреза между колонками:
-    // элемент GPUI рисуется один раз, а фрагмент
-    // нужен свой в каждой колонке. Больше, чем
-    // колонок, ребёнок занять не может.
-    // Не строить копию через `element(&copy, &merged,
-    // opts)` ради сетки и гибкого контейнера внутри
-    // стопки (`grid-container-fragmentation-*`): общий
-    // путь элемента кладёт слои и выносит абсолюты
-    // иначе, чем ждёт стопка, — рамки, тени,
-    // `break-between-avoid-*`, `fieldset` ломаются.
-    // Возвращать узкой веткой только для сетки.
-    // Линейки промежутков (css-gaps-1) у копии
-    // фрагмента: слой строится ТОЛЬКО при заданном
-    // стиле линейки (`gap_rule_spec`), как в
-    // `element()`, — ни одна старая пара сюда не
-    // попадает. Буфер проб — СВОЙ на копию: пробы
-    // всех копий одного узла иначе сливаются в один
-    // буфер, первая копия забирает всё (`take`) и
-    // строит дорожки по смеси поднятых на `from`
-    // копий. Отрезки красятся в координатах полной
-    // раскладки копии, маска колонки (`ColumnStack`,
-    // `with_content_mask`) режет их вместе с
-    // содержимым — вид `slice` css-break-3 §4.
+    // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,
+    // а фрагмент нужен свой в каждой колонке. Больше, чем колонок, ребёнок
+    // занять не может.
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let (own, line_w) = (dec.is_some() || whole || nest_row.is_some(), line_col_w);
-    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, line_w, own);
+    let own = dec.is_some() || whole || nest_row.is_some();
+    let own = own || breaks::trims_at_breaks(&copy, &merged);
+    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, kid_w, own);
+    let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
@@ -190,7 +176,7 @@ pub(super) fn multicol_stack_child(
             &opts,
             col_vert,
             col_rl,
-            line_col_w,
+            kid_w,
             &frag_geom,
             dec,
             merged,
@@ -231,11 +217,25 @@ pub(super) fn multicol_stack_child(
         nest_row,
         whole,
         build,
+        measured_table,
         opts.cx.vcx(),
     );
-    child.paginate = paginate;
-    child.watched = Some(watched);
-    child.breaks_w = breaks_w.filter(|_| child.measure.is_none() && !child.span);
+    let measured = regrow::Measured {
+        paginate,
+        watched,
+        breaks_w,
+        own,
+        laid_h: no_reach && !float_zero,
+        push_w: kid_w,
+    };
+    measured.attach(
+        &mut child,
+        opts,
+        (col_vert, col_rl, kid_w),
+        merged,
+        &copy,
+        (h, over),
+    );
     // CSS 2.1 §10.3.3: у переопределённых полей отбрасывается конец по
     // направлению СОДЕРЖАЩЕГО блока, и в ltr-колонке rtl-коробка стоит у
     // левого края (Blink `ComputeMarginsFor` по стилю контейнера).

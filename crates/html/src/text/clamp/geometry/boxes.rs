@@ -49,18 +49,18 @@ impl ClampBox {
 /// overflow-4 §5.3; Blink `LineClampAncestorChain::
 /// InnerFinalLineClampBlockSize`). The clamp container is an independent
 /// BFC, so the margin left over at its end stays inside it.
-pub(in crate::text::clamp::cut_element) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
+pub(in crate::text::clamp::geometry) fn chain_end(point: f32, chain: &[&ClampBox]) -> f32 {
     chain_end_with(point, chain, true)
 }
 
 /// Space the end edges of `chain` take after the point, `min-height` aside
 /// (the line budget of `line-clamp: auto`).
-pub(in crate::text::clamp::cut_element) fn chain_extra(chain: &[&ClampBox]) -> f32 {
+pub(in crate::text::clamp::geometry) fn chain_extra(chain: &[&ClampBox]) -> f32 {
     chain_end_with(0.0, chain, false)
 }
 
 /// Used border-box heights of the boxes of `chain` (see `chain_end`).
-pub(in crate::text::clamp::cut_element) fn chain_sizes(
+pub(in crate::text::clamp::geometry) fn chain_sizes(
     point: f32,
     chain: &[&ClampBox],
 ) -> Vec<(u64, f32)> {

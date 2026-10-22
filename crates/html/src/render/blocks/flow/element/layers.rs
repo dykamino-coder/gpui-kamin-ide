@@ -160,14 +160,18 @@ pub(crate) fn finish_element(
     // свободной осью (`right-offset-003`). `PaintLast` меняет только
     // краску — раскладка и место в потоке те же, поэтому строки он не
     // рвёт (запись про распорку выше): внутри строки элементы идут
-    // через `pending`, а не сюда. Положительный `z-index` и `fixed`
-    // уже отложены `layered`, отрицательный — подложка выше.
-    let step8 = matches!(
+    // через `pending`, а не сюда. Положительный `z-index` и оконный `fixed`
+    // уже отложены `layered`, отрицательный — подложка выше. Под трансформом
+    // `fixed` остаётся в контексте предка и требует того же шага 8, что
+    // абсолют: перестановка детей не поднимает его над отложенными строками.
+    let step8 = (matches!(
         e.style.position,
         Some(crate::style::computed::Position::Relative)
             | Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Sticky)
-    ) && e.style.z_index.unwrap_or(0) == 0
+    ) || (under_tf
+        && e.style.position == Some(crate::style::computed::Position::Fixed)))
+        && e.style.z_index.unwrap_or(0) == 0
         && !matches!(e.tag.as_str(), "html" | "body")
         && paint_last_ok(e, &nodes[idx + 1..], &opts.cx);
     // Непозиционированный элемент с `opacity` < 1 красится на том же слое, что

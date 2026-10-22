@@ -1,45 +1,11 @@
-//! Вспомогательные шаги отрисовки абзаца: публикация рядов строк для
-//! `ClampCut` (`publish_rows` в `ParagraphRows` документа), прогоны с учётом выделения (без
+//! Вспомогательные шаги отрисовки абзаца: прогоны с учётом выделения (без
 //! подчёркиваний GPUI, когда оформление рисует сам абзац), выключенная
 //! строка со знаком обрыва на её базовой линии, и смещение первой строки
 //! при обратном порядке строк (`vertical-lr`) одним сложением от верха
 //! коробки, как у `point_of`.
 
 use crate::text::paragraph::*;
-use gpui::{Bounds, Pixels, point, px};
-
-impl Paragraph {
-    pub(crate) fn publish_rows(
-        &self,
-        bounds: Bounds<Pixels>,
-        count: usize,
-        step: &dyn Fn(usize) -> Pixels,
-    ) {
-        if let Some(tag) = self.clamp_tag
-            && !self.lines_reversed
-        {
-            let mut y0 = f32::from(bounds.origin.y);
-            let rows = match &self.unbalanced_steps {
-                Some(steps) => steps
-                    .iter()
-                    .map(|h| {
-                        let r = (y0, y0 + h);
-                        y0 = r.1;
-                        r
-                    })
-                    .collect(),
-                None => (0..count)
-                    .map(|i| {
-                        let r = (y0, y0 + f32::from(step(i)));
-                        y0 = r.1;
-                        r
-                    })
-                    .collect(),
-            };
-            self.clamp_rows.publish(tag, rows);
-        }
-    }
-}
+use gpui::{Pixels, point, px};
 
 impl Paragraph {
     pub(crate) fn selection_runs(

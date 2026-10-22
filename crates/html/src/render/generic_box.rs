@@ -1,6 +1,7 @@
 //! Общий рукав `element()`: блочная коробка без особого тега.
 use crate::layout::options::RenderOpts;
 use crate::paint::box_tree::styled::styled_div_with;
+mod clamp_host;
 mod columns;
 pub(super) use columns::ColumnPlan;
 pub(super) use columns::column_plan;
@@ -39,6 +40,18 @@ pub(super) fn generic_box(
     {
         merged.baseline_orthogonal = true;
     }
+    let host_opts;
+    let opts = if clamp_host::active(e, &merged)
+        && opts.cx.clamp_frame.is_none_or(|(key, _)| key != e.node_id)
+    {
+        host_opts = opts.inner(|cx| {
+            cx.clamp_build = cx.clamp_build.container(e.node_id);
+            cx.clamp_input = Some(crate::text::clamp::ClampInput::Measure(Default::default()));
+        });
+        &host_opts
+    } else {
+        opts
+    };
     let mut d = styled_div_with(e, &merged, &opts.cx);
     let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.positioning);
     if let Some(plan) = &overflow_plan {
@@ -212,5 +225,13 @@ pub(super) fn generic_box(
     // Вернуть можно только вместе с размещением субсетки НА НАШЕЙ стороне.
     // Имена областей разворачиваются здесь: контейнер и его дети
     // видны одновременно только на этом уровне.
+    if clamp_host::active(e, &merged) {
+        if let Some((key, width)) = opts.cx.clamp_frame.filter(|(key, _)| *key == e.node_id) {
+            let _ = key;
+            clamp_host::frame(&mut d, width);
+        } else {
+            return clamp_host::build(e, merged, inherited, opts, outer_row, d);
+        }
+    }
     generic_children(e, d, merged, inherited, opts, overflow_plan)
 }

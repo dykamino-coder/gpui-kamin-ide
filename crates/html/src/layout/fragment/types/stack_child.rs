@@ -4,6 +4,16 @@ use super::rows::Par;
 use crate::tolerance::COORD_EPS;
 use gpui::AnyElement;
 
+/// Когда главная копия раскладывается ради измеренных точок разрыва.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum BreaksAt {
+    /// До укладки, при известной ширине колонки (`request_column_layout`).
+    Width(f32),
+    /// При укладке, по ширине колонки разложенной коробки стопки
+    /// (`prepaint`): до раскладки её ширину решает родитель.
+    Column,
+}
+
 /// Ребёнок колонок: элемент, высота коробки и вертикальные поля
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
@@ -16,11 +26,13 @@ pub struct StackChild {
     /// `request_column_layout` до укладки. BandFlow добавляет измеренные границы
     /// строк; без них ребёнок режется краем колонки.
     pub measure: Option<f32>,
-    /// Ширина колонки, при которой главная копия раскладывается до укладки,
-    /// чтобы точки разрыва её блочной стопки (`watched`) дала РАСКЛАДКА, а
-    /// не оценка формы: высота остаётся от меры, а `cuts`, `forced` и
-    /// `solid` заменяются измеренными (`flow::blocks`).
-    pub(crate) breaks_w: Option<f32>,
+    /// Раскладка главной копии в колонку, по которой точки разрыва её
+    /// строк и блочной стопки (`watched`) даёт РАСКЛАДКА, а не оценка
+    /// формы: высота остаётся от меры, а `cuts`, `forced` и `solid`
+    /// заменяются измеренными (`flow::blocks`, `Paragraph`).
+    pub(crate) breaks_w: Option<BreaksAt>,
+    /// Распорки роста ставит раскладка копии (`push::Regrow`), а не оценка.
+    pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
     /// Запасные копии ТОГО ЖЕ ребёнка. Разрез между колонками рисует по
     /// копии на фрагмент: элемент GPUI рисуется ровно один раз, и показать
     /// одну коробку в двух колонках иначе нечем. Копий столько же, сколько
@@ -59,6 +71,9 @@ pub struct StackChild {
     /// Диапазоны, внутри которых разрыв запрещён (css-break-4 §4.1 —
     /// монолиты-потомки; рамка и отбивка самой коробки): `[a, b)` от верха.
     pub solid: Vec<(f32, f32)>,
+    /// Диапазоны запрета `break-*: avoid`, достижимые только переносом
+    /// (`MeasuredBreaks::avoid`, `Kid::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
@@ -187,6 +202,35 @@ impl RepeatGeom {
             self.foot
         } else {
             0.0
+        }
+    }
+}
+
+impl StackChild {
+    /// Геометрия ребёнка для укладки (`Kid`).
+    pub(crate) fn kid(&self) -> super::rows::Kid {
+        super::rows::Kid {
+            h: self.h,
+            mt: self.mt,
+            mb: self.mb,
+            monolith: self.monolith,
+            cuts: self.cuts.clone(),
+            force_before: self.force_before,
+            force_after: self.force_after,
+            avoid_before: self.avoid_before,
+            avoid_after: self.avoid_after,
+            forced: self.forced.clone(),
+            solid: self.solid.clone(),
+            avoid: self.avoid.clone(),
+            span: self.span,
+            over: self.over,
+            clone_dec: self.clone_dec,
+            overflow_top: self.overflow_top,
+            repeat: self
+                .repeat
+                .as_ref()
+                .map_or(RepeatGeom::default(), |r| r.geom),
+            par: self.par,
         }
     }
 }

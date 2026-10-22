@@ -41,6 +41,7 @@ pub(super) fn place_oof_statics(
         let probe = crate::layout::fragment::types::StackChild {
             watched: None,
             breaks_w: None,
+            regrow: None,
             measure: None,
             el: crate::layout::positioned::containing_block::spot_probe(
                 oof_spots[i].clone(),
@@ -58,6 +59,7 @@ pub(super) fn place_oof_statics(
             avoid_after: false,
             forced: Vec::new(),
             solid: Vec::new(),
+            avoid: Vec::new(),
             h: 0.0,
             mt: 0.0,
             mb: 0.0,

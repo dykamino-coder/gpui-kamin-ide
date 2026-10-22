@@ -162,6 +162,13 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         !e.marks.inflow_height,
         opts.cx.paint.clone(),
     );
+    let flow = flow.clamp_measure(
+        opts.cx.clamp_measure(),
+        opts.cx
+            .clamp_input
+            .as_ref()
+            .map(|_| opts.cx.positioning.clone()),
+    );
     let flow = match parent {
         Some(parent) => flow.fragment_flow(
             parent,

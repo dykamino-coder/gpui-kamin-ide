@@ -34,8 +34,6 @@ pub use value_cx::{ValueCx, ValueDoc};
 pub struct DocState {
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
     synthetic_id: RefCell<Vec<u8>>,
-    /// Clamp probes and previous-frame cuts belonging to this document.
-    pub(crate) clamp: std::rc::Rc<crate::text::clamp::ClampState>,
     /// Anchor geometry and fallback selection belonging to this document.
     pub(crate) anchor_frame: crate::layout::positioned::anchor::AnchorState,
     /// Font-face descriptors and source caches belonging to this document.
@@ -46,8 +44,6 @@ pub struct DocState {
     pub(crate) metrics: crate::text::metrics::Metrics,
     /// Vertical paragraph measurements and root paint geometry of this document.
     pub(crate) vertical_measures: Rc<crate::text::vertical::VerticalMeasures>,
-    /// Paragraph paint rows consumed by this document's clamp cuts.
-    pub(crate) paragraph_rows: Rc<crate::text::clamp::ParagraphRows>,
     /// CSS font-face metric descriptors, scoped to this document.
     pub(crate) font_metric_faces: RefCell<crate::text::fonts::metric_overrides::MetricFaces>,
     /// Shaped paragraphs and fit results shared only inside this document.

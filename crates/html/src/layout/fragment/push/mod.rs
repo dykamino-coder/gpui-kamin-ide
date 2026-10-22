@@ -23,6 +23,9 @@ use cell::pushed_cell_at;
 mod spacer;
 pub(crate) use spacer::avoid_only_monolith;
 pub(crate) use spacer::grow_pushed;
+mod grid_row;
+mod measured;
+pub(crate) use measured::{Regrow, measured_push};
 
 // Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
 // ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же

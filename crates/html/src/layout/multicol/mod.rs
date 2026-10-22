@@ -6,6 +6,7 @@
 mod column_baselines;
 pub mod column_flow;
 mod column_measure;
+mod column_regrow;
 pub mod column_stack;
 pub mod container;
 pub mod gap_rules;
