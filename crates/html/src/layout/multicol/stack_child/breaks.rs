@@ -2,12 +2,13 @@
 //! раскладка копии, — измеренные строки (`Paragraph`, BandFlow) и блочная стопка
 //! (`flow::blocks`). Это ребёнок,
 //! чью высоту меряет раскладка (`StackChild::measure`), и поддерево обычных блоков
-//! (`plain_block_tree`) или таблица из них (`table_tree`): его границы классa A, поля на
-//! разрыве, запреты и монолиты берутся из разложенных border box и рядов, а не из оценки формы.
+//! (`plain_block_tree`), таблица из них (`table_tree`) или поддерево с сеткой (`grid_tree`):
+//! его границы классa A, поля на разрыве, запреты, монолиты, ряды таблиц и сеток берутся из
+//! разложенных border box и дорожек, а не из оценки формы.
 
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, table_tree};
+use crate::layout::fragment::flow::blocks::{BlockBox, grid_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::fragment::types::BreaksAt;
@@ -34,11 +35,14 @@ pub(super) fn recorder(
         .iter()
         .any(|&(id, _)| id == copy.node_id);
     // A plain block tree is measured also when its column width is known only
-    // after the stack box is laid out (`BreaksAt::Column`); a table tree only
-    // at a width known before (`kid_w`), its rows recorded by the layout.
+    // after the stack box is laid out (`BreaksAt::Column`); a table or grid
+    // tree only at a width known before (`kid_w`), its rows recorded by the
+    // layout.
     let plain = !own_plan && plain_block_tree(copy, 4);
-    let table = !own_plan && line_col_w.is_some() && table_tree(copy, 4);
-    if !(measured || plain || table) {
+    let rows = !own_plan
+        && line_col_w.is_some()
+        && (table_tree(copy, 4) || grid_tree(copy, 4));
+    if !(measured || plain || rows) {
         return (Watched::new(&[]), None);
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());

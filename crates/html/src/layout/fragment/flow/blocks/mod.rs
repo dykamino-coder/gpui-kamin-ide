@@ -28,8 +28,18 @@ use trees::{holds_blocks, stacks_blocks};
 pub(crate) use trees::{stacked_tree, table_tree};
 pub(crate) mod table;
 use table::TableBox;
+mod grid;
+mod grid_breaks;
+pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, grid_tree, item_rows};
+#[cfg(test)]
+mod grid_tests;
 #[cfg(test)]
 mod tests;
+
+/// Номер распорки роста перед коробкой `id` — `id ^ STRUT_ID`
+/// (`push::spacer::spacer_before`): рекордер стопки пишет и её, и её низ —
+/// граница, на которой встаёт разрыв перед коробкой.
+pub(crate) const STRUT_ID: u64 = 0x5350_4143_4552_0001;
 
 /// Глубина спуска — та же, что у меры стопки (`shape_full(c, 4, ..)`) плюс
 /// корень копии.
@@ -53,6 +63,8 @@ pub(crate) struct BlockBox {
     /// Устройство таблицы, если коробка — таблица (её обёртка): дети тогда
     /// пусты, границы дают подписи и ряды (`table`).
     pub(crate) table: Option<Box<TableBox>>,
+    /// Элементы, если контейнер — сетка: детей стопкой она не кладёт.
+    pub(crate) grid: Option<GridBox>,
 }
 
 /// Поточный блочный ребёнок контейнера.
@@ -83,7 +95,7 @@ impl BlockBox {
     /// Стопка копии `e` в условиях меры `cx`: у страниц (`paged`) — имена
     /// страниц, `viewport` решает единицы окна рамок (как у меры формы).
     pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
-        collect(e, DEPTH, cx, vcx)
+        collect(e, DEPTH, false, cx, vcx)
     }
 
     /// Номера узлов корня и всех коробок стопки (их раскладку пишет
@@ -94,7 +106,36 @@ impl BlockBox {
         out
     }
 
+    /// Нет ни блочных детей, ни таблицы, ни элементов сетки: рекордеру
+    /// стопки нечего наблюдать.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.kids.is_empty()
+            && self.table.is_none()
+            && self.grid.as_ref().is_none_or(|g| g.items.is_empty())
+    }
+
+    /// Сетки стопки: номер контейнера и номера его элементов — дорожки рядов
+    /// читаются у разложенного элемента (`parent_grid_tracks`).
+    pub(crate) fn grids(&self, out: &mut Vec<(u64, Vec<u64>)>) {
+        if let Some(g) = &self.grid {
+            out.push((self.id, g.items.iter().map(|i| i.id).collect()));
+            for it in &g.items {
+                if let Some(inner) = &it.inner {
+                    inner.grids(out);
+                }
+            }
+        }
+        for k in &self.kids {
+            if let Some(inner) = &k.inner {
+                inner.grids(out);
+            }
+        }
+    }
+
     fn push_ids(&self, out: &mut Vec<u64>) {
+        if let Some(g) = &self.grid {
+            g.push_ids(out);
+        }
         for k in &self.kids {
             out.push(k.id);
             if let Some(inner) = &k.inner {
@@ -115,6 +156,13 @@ impl BlockBox {
     }
 
     fn push_keys(&self, out: &mut Vec<u64>) {
+        if let Some(g) = &self.grid {
+            for it in &g.items {
+                if let Some(inner) = &it.inner {
+                    inner.push_keys(out);
+                }
+            }
+        }
         for k in &self.kids {
             if let Some(inner) = &k.inner {
                 inner.push_keys(out);
@@ -123,12 +171,6 @@ impl BlockBox {
         if let Some(t) = &self.table {
             t.push_keys(out);
         }
-    }
-
-    /// Стопка без коробок, чьи границы читает раскладка: ни блочных детей,
-    /// ни таблицы.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.kids.is_empty() && self.table.is_none()
     }
 
     /// Стопка блочного контейнера по определению — ячейки или подписи
@@ -144,7 +186,14 @@ impl BlockBox {
     }
 }
 
-fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
+/// `blockified` — элемент сетки: его `inline-block` — блок (css-display-3 §2.7).
+pub(super) fn collect(
+    e: &Element,
+    depth: u8,
+    blockified: bool,
+    cx: ShapeCx,
+    vcx: ValueCx<'_>,
+) -> BlockBox {
     // Таблица горизонтального письма: обёртка без своих рамки и отбивки,
     // её границы — подписи и ряды (`table`). Вертикальную таблицу рекордер
     // не читает (блочные границы — только по горизонтальной оси).
@@ -156,7 +205,15 @@ fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
         };
     }
     let mut out = frame(e, cx, vcx);
-    if depth == 0 || !stacks_blocks(e) {
+    if depth == 0 {
+        return out;
+    }
+    if grid_container(e) {
+        out.grid = Some(grid::collect_grid(e, depth - 1, cx, vcx));
+        return out;
+    }
+    let stacks = stacks_blocks(e) || (blockified && e.style.display == Some(Display::InlineBlock));
+    if !stacks {
         return out;
     }
     let mut adjoins = false;
@@ -174,12 +231,14 @@ fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
         head: px(e.style.padding.top) + px(b.top),
         tail: px(e.style.padding.bottom) + px(b.bottom),
         end_margin: crate::layout::box_kind::bfc_root(e)
+            && !grid_container(e)
             && matches!(
                 e.style.height,
                 None | Some(crate::style::values::value::Len::Auto)
             ),
         kids: Vec::new(),
         table: None,
+        grid: None,
     }
 }
 
@@ -222,8 +281,8 @@ fn push_kids(
             avoid_before: edge_avoid(k, false, vcx),
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
-            inner: (!monolith && (stacks_blocks(k) || table_box(k)))
-                .then(|| collect(k, depth - 1, cx, vcx)),
+            inner: (!monolith && (stacks_blocks(k) || table_box(k) || grid_container(k)))
+                .then(|| collect(k, depth - 1, false, cx, vcx)),
             page: (cx.paged && class_a_box(k)).then(|| page_names(k, "")),
         });
         *adjoins = true;

@@ -13,7 +13,7 @@
 //! Таблица — своими подписями и рядами (`table::geometry`).
 
 use super::table::TableSections;
-use super::{BlockBox, Laid};
+use super::{BlockBox, Laid, Pushed};
 use crate::tolerance::COORD_EPS;
 
 /// Точки разрыва стопки до слияния со строками.
@@ -25,6 +25,8 @@ pub(crate) struct BlockBreaks {
     /// Диапазоны, которым нужны все точки и монолиты (вместе со строками):
     /// в порядке обхода, вложенные раньше объемлющих.
     pub(super) pending: Vec<Pending>,
+    /// Диапазоны запрета, достижимые только переносом (`MeasuredBreaks::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
     /// Секции повтора, если корень стопки — таблица.
     pub(super) sections: Option<TableSections>,
 }
@@ -36,6 +38,10 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Диапазоны под `break-*: avoid`, край фрагментаинера в которых сам
+    /// разрыв не уводит: в начало диапазона уходит лишь разрыв, перенесённый
+    /// к его концу монолитом (`Kid::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
     /// Разложенные секции повтора таблицы-корня (css-tables-3
     /// §repeated-headers).
     pub(crate) sections: Option<TableSections>,
@@ -84,17 +90,21 @@ impl BlockBox {
     /// Самая внешняя коробка стопки, чей разложенный border box начинается
     /// ровно в `a` (`laid` — разложенная копия в координатах потока): перед ней
     /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;
-    /// монолит и коробка без своей стопки спуска не дают.
-    pub(crate) fn pushed_at(&self, a: f32, laid: &Laid) -> Option<u64> {
+    /// монолит и коробка без своей стопки спуска не дают. В сетке — ряд,
+    /// начинающийся в `a` (`GridBox::pushed_at`).
+    pub(crate) fn pushed_at(&self, a: f32, laid: &Laid) -> Option<Pushed> {
         if let Some(t) = &self.table {
             return t.pushed_at(a, laid);
+        }
+        if let Some(g) = &self.grid {
+            return g.pushed_at(self.id, a, laid);
         }
         for k in &self.kids {
             let Some((top, bottom)) = laid.at(k.id) else {
                 continue;
             };
             if (top - a).abs() < COORD_EPS {
-                return Some(k.id);
+                return Some(Pushed::Box(k.id));
             }
             if top < a && a < bottom - COORD_EPS {
                 return k.inner.as_ref()?.pushed_at(a, laid);
@@ -114,6 +124,32 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
         out.solid.push((top, top + b.head));
     }
     let floor = top + b.head;
+    let last = match &b.grid {
+        Some(g) => g.breaks(b.id, floor, laid, out),
+        None => walk_kids(b, floor, laid, out),
+    };
+    if b.end_margin
+        && b.tail <= 0.0
+        && let Some(lb) = last
+        && bottom > lb + COORD_EPS
+    {
+        out.cuts.push((lb, bottom));
+    }
+    if b.tail > 0.0 {
+        let edge = bottom - b.tail;
+        out.pending.push(Pending::Tail {
+            top,
+            edge,
+            from: edge,
+            bottom,
+            gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
+        });
+    }
+}
+
+/// Блочные дети стопки: границы соседей, принудительные разрывы и запреты,
+/// монолиты и вложенные стопки. Возвращает низ последнего ребёнка.
+fn walk_kids(b: &BlockBox, floor: f32, laid: &Laid, out: &mut BlockBreaks) -> Option<f32> {
     let mut prev: Option<(&super::BlockKid, f32, f32)> = None;
     let mut last: Option<f32> = None;
     // Конечное имя страницы последнего именованного соседа.
@@ -131,6 +167,9 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
             page_prev = Some(end);
         }
         if let Some((p, pt, pb)) = prev.filter(|_| k.adjoins) {
+            // Распорка роста перед коробкой (`STRUT_ID`) — содержимое
+            // предыдущего фрагмента: граница встаёт под ней.
+            let pb = laid.at(k.id ^ super::STRUT_ID).map_or(pb, |s| s.1.max(pb));
             out.cuts.push((pb, kt));
             if p.force_after || k.force_before || renamed {
                 out.forced.push(pb);
@@ -151,21 +190,5 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
         prev = Some((k, kt, kb));
         last = Some(kb);
     }
-    if b.end_margin
-        && b.tail <= 0.0
-        && let Some(lb) = last
-        && bottom > lb + COORD_EPS
-    {
-        out.cuts.push((lb, bottom));
-    }
-    if b.tail > 0.0 {
-        let edge = bottom - b.tail;
-        out.pending.push(Pending::Tail {
-            top,
-            edge,
-            from: edge,
-            bottom,
-            gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
-        });
-    }
+    last
 }

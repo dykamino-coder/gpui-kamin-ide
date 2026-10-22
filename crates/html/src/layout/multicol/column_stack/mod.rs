@@ -214,6 +214,7 @@ impl ColumnStack {
                 avoid_after: c.avoid_after,
                 forced: c.forced.clone(),
                 solid: c.solid.clone(),
+                avoid: c.avoid.clone(),
                 span: c.span,
                 over: c.over,
                 clone_dec: c.clone_dec,

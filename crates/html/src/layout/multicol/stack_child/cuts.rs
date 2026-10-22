@@ -183,6 +183,7 @@ pub(super) fn stack_child_of(
         avoid_after: edge_avoid(copy, true, vcx),
         forced,
         solid,
+        avoid: Vec::new(),
         h,
         mt,
         mb,

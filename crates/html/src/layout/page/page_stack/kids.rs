@@ -145,6 +145,7 @@ impl PageStack {
                     avoid_after: false,
                     forced,
                     solid,
+                    avoid: Vec::new(),
                     span: false,
                     // Страницы параллельный поток пока не берут: у них своё
                     // правило переполнения монолита (`fill_at`, ветка

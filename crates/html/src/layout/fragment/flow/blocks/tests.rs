@@ -1,7 +1,6 @@
 //! Тесты точек разрыва блочной стопки по заданной геометрии border box.
 
-use super::BlockBox;
-use super::Laid;
+use super::{BlockBox, Laid, Pushed};
 use crate::dom::Node;
 use crate::layout::fragment::flow::FlowGeometry;
 
@@ -166,7 +165,7 @@ fn pushed_box_is_the_outermost_box_starting_at_the_point() {
         (ids[1], 40.0, 100.0),
         (ids[2], 40.0, 100.0),
     ]);
-    assert_eq!(b.pushed_at(40.0, &boxes), Some(ids[1]));
+    assert_eq!(b.pushed_at(40.0, &boxes), Some(Pushed::Box(ids[1])));
 }
 
 #[test]
@@ -180,7 +179,7 @@ fn pushed_box_descends_into_the_box_covering_the_point() {
         (ids[2], 40.0, 100.0),
     ]);
     let found = |a: f32| b.pushed_at(a, &boxes);
-    assert_eq!(found(40.0), Some(ids[2]));
+    assert_eq!(found(40.0), Some(Pushed::Box(ids[2])));
     // No box starts inside the second child: no strut.
     assert_eq!(found(70.0), None);
 }

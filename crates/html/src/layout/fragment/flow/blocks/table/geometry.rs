@@ -15,7 +15,7 @@
 
 use super::TableBox;
 use crate::layout::fragment::flow::blocks::geometry::{Pending, walk};
-use crate::layout::fragment::flow::blocks::{BlockBreaks, BlockKid, Laid, TableFrame};
+use crate::layout::fragment::flow::blocks::{BlockBreaks, BlockKid, Laid, Pushed, TableFrame};
 use crate::tolerance::COORD_EPS;
 
 /// Ребёнок обёртки таблицы: подпись или коробка таблицы.
@@ -192,13 +192,13 @@ impl TableBox {
         &self,
         a: f32,
         laid: &Laid,
-    ) -> Option<u64> {
+    ) -> Option<Pushed> {
         for k in self.caps_top.iter().chain(&self.caps_bot) {
             let Some((top, bottom)) = laid.at(k.id) else {
                 continue;
             };
             if (top - a).abs() < COORD_EPS {
-                return Some(k.id);
+                return Some(Pushed::Box(k.id));
             }
             if top < a && a < bottom - COORD_EPS {
                 return k.inner.as_ref()?.pushed_at(a, laid);

@@ -18,6 +18,7 @@ fn monolith(h: f32, mt: f32) -> Kid {
         avoid_after: false,
         forced: Vec::new(),
         solid: Vec::new(),
+        avoid: Vec::new(),
         span: false,
         over: h,
         clone_dec: None,

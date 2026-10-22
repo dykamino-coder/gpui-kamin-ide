@@ -22,6 +22,7 @@ impl StackChild {
         self.cuts.extend(m.cuts);
         self.forced.extend(m.forced);
         self.solid.extend(m.solid);
+        self.avoid.extend(m.avoid);
         self.cuts
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
         self.forced.sort_by(f32::total_cmp);
@@ -43,6 +44,7 @@ impl StackChild {
         self.cuts = m.cuts;
         self.forced = m.forced;
         self.solid = m.solid;
+        self.avoid = m.avoid;
         m.sections
     }
 

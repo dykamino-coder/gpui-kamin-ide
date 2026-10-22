@@ -83,10 +83,13 @@ impl BlockBreaks {
         for r in g.solid.iter_mut() {
             r.1 = r.1.min(end);
         }
+        let mut avoid = self.avoid;
+        avoid.retain(|&(a, _)| a < end - 0.01);
         MeasuredBreaks {
             cuts: g.cuts,
             forced,
             solid: g.solid,
+            avoid,
             sections: self.sections,
         }
     }

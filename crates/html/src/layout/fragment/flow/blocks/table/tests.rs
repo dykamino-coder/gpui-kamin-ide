@@ -2,7 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::flow::FlowGeometry;
-use crate::layout::fragment::flow::blocks::{BlockBox, Laid, TableFrame};
+use crate::layout::fragment::flow::blocks::{BlockBox, Laid, Pushed, TableFrame};
 use crate::style::computed::Display;
 
 /// Стопка первой таблицы документа (`display: table`) и номера узлов блоков
@@ -144,7 +144,7 @@ fn sections_and_pushed_cell_content_come_from_the_laid_out_rows() {
     assert_eq!((s.box_top, s.box_end), (0.0, 100.0));
     // Коробка в ячейке второго ряда — перед ней встаёт распорка роста; ряд,
     // перенесённый с границы рядов, не растёт.
-    assert_eq!(b.pushed_at(40.0, &laid), Some(ps[0]));
+    assert_eq!(b.pushed_at(40.0, &laid), Some(Pushed::Box(ps[0])));
     assert_eq!(b.pushed_at(32.0, &laid), None);
     assert_eq!(b.pushed_at(12.0, &laid), None);
 }

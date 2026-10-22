@@ -5,8 +5,9 @@
 //! раскладки и отдаёт его как свой — taffy видит то же дерево. Узлы читает `seen`, `reset`
 //! забывает их перед замером. Рекордер блочной стопки (`for_blocks`) наблюдает коробки
 //! `flow::blocks::BlockBox` главной копии ребёнка стопки и после её раскладки отдаёт точки
-//! разрыва по разложенной геометрии (`breaks`); таблицы стопки он записывает кадрами
-//! (`table`: коробка таблицы, сетка и дорожки рядов).
+//! разрыва по разложенной геометрии (`breaks`): border box коробок, дорожки рядов сеток
+//! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
+//! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
@@ -51,7 +52,14 @@ impl Watched {
     /// border boxes of its block stack `blocks`.
     pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
         Rc::new(Watched {
-            ids: Rc::new(blocks.ids().into_iter().collect()),
+            // With the growth struts before them (`STRUT_ID`).
+            ids: Rc::new(
+                blocks
+                    .ids()
+                    .into_iter()
+                    .flat_map(|id| [id, id ^ crate::layout::fragment::flow::blocks::STRUT_ID])
+                    .collect(),
+            ),
             seen: Rc::default(),
             tables: Rc::new(blocks.table_keys().into_iter().collect()),
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
@@ -104,7 +112,34 @@ impl Watched {
         Laid {
             boxes,
             tables: self.table_frames(origin, window),
+            grids: self.rows(origin, window),
         }
+    }
+
+    /// Row tracks `(start, end)` of the watched grids relative to `origin`,
+    /// read from the laid-out grid (taffy `DetailedLayoutInfo::Grid`) through
+    /// its first recorded item, before the layout engine is released.
+    pub(crate) fn rows(
+        &self,
+        origin: Point<Pixels>,
+        window: &mut Window,
+    ) -> HashMap<u64, Vec<(f32, f32)>> {
+        let mut grids = Vec::new();
+        if let Some(b) = &self.blocks {
+            b.grids(&mut grids);
+        }
+        let mut out = HashMap::new();
+        for (grid, items) in grids {
+            let Some(lid) = items.iter().find_map(|&id| self.seen(id)) else {
+                continue;
+            };
+            let Some((o, _, rows)) = window.parent_grid_tracks(lid) else {
+                continue;
+            };
+            let off = f32::from(o.y - origin.y);
+            out.insert(grid, rows.iter().map(|r| (r.0 + off, r.1 + off)).collect());
+        }
+        out
     }
 
     /// Block stack watched by the recorder (`for_blocks`).

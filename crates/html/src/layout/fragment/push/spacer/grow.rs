@@ -67,6 +67,7 @@ pub(crate) fn grow_pushed(
                 avoid_after: edge_avoid(c, true, vcx),
                 forced: s.forced.clone(),
                 solid: s.solid.clone(),
+                avoid: Vec::new(),
                 span: c.style.column_span == Some(true) && !c.inline,
                 // Щуп роста параллельного потока не знает: распорка
                 // (`spacer_before`) — про в-поточную высоту, а поток высоты
