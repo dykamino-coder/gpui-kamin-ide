@@ -59,6 +59,7 @@ pub(super) fn recorder(
         Recorded::Estimate => (Watched::new(&[]), None),
         Recorded::Lines => (Watched::for_lines(), breaks_w),
         Recorded::Blocks => (Watched::for_blocks(blocks), breaks_w),
+        Recorded::BlocksOnly => (Watched::for_blocks_only(blocks), breaks_w),
     }
 }
 
@@ -71,6 +72,9 @@ enum Recorded {
     Lines,
     /// Блочную стопку (блоки, ряды таблиц, элементы сеток) и строки.
     Blocks,
+    /// Блочную стопку корня другого контекста (сетка, таблица) без строк:
+    /// его строки — не строки потока стопки (`flow::flow_lines`).
+    BlocksOnly,
 }
 
 /// `empty` — у стопки нет ни блочных детей, ни таблицы, ни элементов сетки
@@ -80,6 +84,7 @@ fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
     match (empty, measured, flow_lines) {
         (true, _, false) => Recorded::Estimate,
         (true, true, true) => Recorded::Lines,
+        (false, _, false) => Recorded::BlocksOnly,
         _ => Recorded::Blocks,
     }
 }
@@ -127,9 +132,11 @@ mod tests {
 
     #[test]
     fn measured_grid_or_table_root_keeps_its_block_recorder() {
-        // A measured grid or table root has no block kids but rows to record.
-        assert_eq!(recorded(false, true, false), Recorded::Blocks);
-        assert_eq!(recorded(false, false, false), Recorded::Blocks);
+        // A measured grid or table root has no block kids but rows to record;
+        // the lines inside it are not lines of the stack flow.
+        assert_eq!(recorded(false, true, false), Recorded::BlocksOnly);
+        assert_eq!(recorded(false, false, false), Recorded::BlocksOnly);
+        assert_eq!(recorded(false, true, true), Recorded::Blocks);
     }
 
     #[test]

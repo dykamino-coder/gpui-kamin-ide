@@ -52,6 +52,23 @@ impl Watched {
     /// Recorder of a stack child's main copy: measured line edges plus the
     /// border boxes of its block stack `blocks`.
     pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
+        Self::with_blocks(
+            blocks,
+            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+        )
+    }
+
+    /// Recorder of a copy root of another context (a grid or a table,
+    /// `flow::flow_lines` false): the border boxes and rows of its block
+    /// stack, without line boxes — they are not lines of the stack flow.
+    pub(crate) fn for_blocks_only(blocks: BlockBox) -> Rc<Self> {
+        Self::with_blocks(blocks, Rc::default())
+    }
+
+    fn with_blocks(
+        blocks: BlockBox,
+        flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
+    ) -> Rc<Self> {
         Rc::new(Watched {
             // With the growth struts before them (`STRUT_ID`).
             ids: Rc::new(
@@ -63,7 +80,7 @@ impl Watched {
             ),
             seen: Rc::default(),
             tables: Rc::new(blocks.table_keys().into_iter().collect()),
-            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            flow,
             blocks: Some(blocks),
             ..Self::default()
         })
