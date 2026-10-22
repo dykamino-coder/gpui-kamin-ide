@@ -44,7 +44,7 @@ impl Watched {
         Rc::new(Watched {
             ids: blocks.ids().into_iter().collect(),
             seen: RefCell::default(),
-            flow: Rc::default(),
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             blocks: Some(blocks),
         })
     }

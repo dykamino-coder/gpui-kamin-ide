@@ -172,7 +172,7 @@ impl Paragraph {
             },
         );
         if let Some(f) = &self.fragment {
-            f.record(id);
+            f.node.record(id);
         }
         (id, id)
     }

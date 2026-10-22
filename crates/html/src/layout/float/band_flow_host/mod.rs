@@ -143,7 +143,7 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         inherited.width = Some(Len::Px(w));
     }
     let inherited = &inherited;
-    let parent = opts.frag.watch.as_ref().map(|w| w.flow.clone());
+    let parent = opts.frag.line_flow();
     let watched = crate::layout::fragment::paginate::watch::Watched::for_lines();
     let probes = watched.flow.clone();
     let mut child_opts = opts.clone();

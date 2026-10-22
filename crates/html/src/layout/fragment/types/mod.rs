@@ -16,6 +16,7 @@ mod repeat_bands;
 pub(crate) use repeat_bands::frag_copy;
 mod stack_child;
 use crate::tolerance::COORD_EPS;
+pub(crate) use stack_child::BreaksAt;
 pub use stack_child::Repeat;
 pub use stack_child::RepeatGeom;
 pub use stack_child::StackChild;

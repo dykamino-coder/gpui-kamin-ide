@@ -28,10 +28,29 @@ pub struct FragCx {
     /// кандидатов в разрыв, и запись узлов их раскладки читает решатель.
     /// BandFlow exports measured line edges through the same recorder.
     pub(crate) watch: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
+    /// Строится содержимое коробки, чьи строки — не строки потока под
+    /// рекордером (`flow::flow_lines`): таблица, flex, сетка, монолит,
+    /// внепоточная коробка. Их строки рекордеру не пишутся — разрывы внутри
+    /// таких коробок решает их собственная фрагментация.
+    pub(crate) nested_lines: bool,
     /// Numeric pagination displacements of floats in this rebuilt copy.
     pub(crate) float_struts: std::rc::Rc<crate::layout::fragment::paginate::Struts>,
     /// Строятся дети стопки страниц (`PagedBuild`).
     pub(crate) paged: Option<std::rc::Rc<crate::layout::page::paged::PagedBuild>>,
+}
+
+impl FragCx {
+    /// Recorder of the fragmentation flow the line boxes of this build belong
+    /// to: none outside a watched copy or inside a box of another context
+    /// (`nested_lines`).
+    pub(crate) fn line_flow(
+        &self,
+    ) -> Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasurements>> {
+        self.watch
+            .as_ref()
+            .filter(|_| !self.nested_lines)
+            .map(|w| w.flow.clone())
+    }
 }
 
 impl RenderOpts {

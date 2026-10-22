@@ -1,5 +1,6 @@
-//! Рекордер главной копии ребёнка стопки колонок: строки — всегда, блочная стопка
-//! (`flow::blocks`) — у ребёнка, чьи точки разрыва даёт раскладка копии. Это ребёнок,
+//! Рекордер главной копии ребёнка стопки колонок: у ребёнка, чьи точки разрыва даёт
+//! раскладка копии, — измеренные строки (`Paragraph`, BandFlow) и блочная стопка
+//! (`flow::blocks`). Это ребёнок,
 //! чью высоту меряет раскладка (`StackChild::measure`), и поддерево обычных блоков
 //! (`plain_block_tree`): его границы классa A, поля на разрыве, запреты и монолиты
 //! берутся из разложенных border box, а не из оценки формы.
@@ -9,6 +10,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flow::blocks::BlockBox;
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
+use crate::layout::fragment::types::BreaksAt;
 use crate::layout::options::RenderOpts;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,7 +25,7 @@ pub(super) fn recorder(
     col_vert: bool,
     line_col_w: Option<f32>,
     own_plan: bool,
-) -> (Rc<Watched>, Option<f32>) {
+) -> (Rc<Watched>, Option<BreaksAt>) {
     if col_vert {
         return (Watched::new(&[]), None);
     }
@@ -32,16 +34,39 @@ pub(super) fn recorder(
         .iter()
         .any(|&(id, _)| id == copy.node_id);
     let plain = !own_plan && plain_block_tree(copy, 4);
-    if !(measured || (plain && line_col_w.is_some())) {
+    if !(measured || plain) {
         return (Watched::new(&[]), None);
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
-    // Without block children the copy keeps its measured lines alone.
-    if blocks.kids.is_empty() {
+    let breaks_w = (!measured).then(|| line_col_w.map_or(BreaksAt::Column, BreaksAt::Width));
+    // A measured box without block children keeps its measured lines alone
+    // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
+    // estimate is replaced keeps its own border and padding edges too.
+    if blocks.kids.is_empty() && measured {
+        return (Watched::for_lines(), breaks_w);
+    }
+    // A box of another context (a table) keeps its own estimate.
+    if blocks.kids.is_empty() && !crate::layout::fragment::flow::flow_lines(copy) {
         return (Watched::new(&[]), None);
     }
-    (
-        Watched::for_blocks(blocks),
-        line_col_w.filter(|_| !measured),
-    )
+    (Watched::for_blocks(blocks), breaks_w)
+}
+
+/// Строки копии срезаются `text-box-trim` у разрывов колонок (css-inline-3
+/// §4.2; csswg-drafts#5335): срез многоколоночника или коробки копии.
+/// Измеренные строки абзаца несут свои края без среза у разрыва, и точки
+/// такой копии остаются у оценки строк (`line_run_shape`).
+pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::Computed) -> bool {
+    fn trims(e: &Element, depth: u8) -> bool {
+        e.style.text_box_trim_start
+            || e.style.text_box_trim_end
+            || e.marks.host_trim_start
+            || e.marks.host_trim_end
+            || (depth > 0
+                && e.children.iter().any(|n| match n {
+                    crate::dom::Node::Element(k) => trims(k, depth - 1),
+                    _ => false,
+                }))
+    }
+    merged.text_box_trim_start || merged.text_box_trim_end || trims(copy, 5)
 }

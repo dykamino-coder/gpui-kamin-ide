@@ -213,8 +213,12 @@ pub(crate) fn native_paragraph(
             ),
         );
     let para = para.fragment_flow(
-        opts.frag.watch.as_ref().map(|w| w.flow.clone()),
+        opts.frag.line_flow(),
         crate::layout::fragment::types::StackAxis::of(inherited.wm()),
+        (
+            usize::from(inherited.orphans.unwrap_or(2)),
+            usize::from(inherited.widows.unwrap_or(2)),
+        ),
     );
     let para = crate::render::paragraph::first_line_box::configure(para, inherited, opts);
     let para = if selectable {
