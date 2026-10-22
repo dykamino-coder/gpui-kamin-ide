@@ -22,8 +22,8 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(crate) struct Watched {
     pub(crate) flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
-    ids: HashSet<u64>,
-    seen: RefCell<HashMap<u64, LayoutId>>,
+    ids: Rc<HashSet<u64>>,
+    seen: Rc<RefCell<HashMap<u64, LayoutId>>>,
     /// Block stack of the watched copy whose boundaries are read after layout.
     blocks: Option<BlockBox>,
 }
@@ -31,8 +31,8 @@ pub(crate) struct Watched {
 impl Watched {
     pub(crate) fn new(ids: &[u64]) -> Rc<Self> {
         Rc::new(Watched {
-            ids: ids.iter().copied().collect(),
-            seen: RefCell::default(),
+            ids: Rc::new(ids.iter().copied().collect()),
+            seen: Rc::default(),
             flow: Rc::default(),
             blocks: None,
         })
@@ -42,8 +42,8 @@ impl Watched {
     /// border boxes of its block stack `blocks`.
     pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
         Rc::new(Watched {
-            ids: blocks.ids().into_iter().collect(),
-            seen: RefCell::default(),
+            ids: Rc::new(blocks.ids().into_iter().collect()),
+            seen: Rc::default(),
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             blocks: Some(blocks),
         })
@@ -93,6 +93,23 @@ impl Watched {
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             ..Self::default()
         })
+    }
+
+    /// Recorder for the inside of a box whose line boxes are not lines of
+    /// the watched flow (`flow::flow_lines`): the same watched boxes, but its
+    /// lines and float hosts go to a flow nobody reads.
+    pub(crate) fn nested(&self) -> Rc<Self> {
+        Rc::new(Self {
+            flow: Rc::default(),
+            ids: self.ids.clone(),
+            seen: self.seen.clone(),
+            blocks: None,
+        })
+    }
+
+    /// Whether this recorder takes line boxes (`nested` does not).
+    pub(crate) fn takes_lines(&self) -> bool {
+        self.flow.lines
     }
 
     /// Forget recorded nodes before a measuring layout.

@@ -213,7 +213,7 @@ pub(crate) fn native_paragraph(
             ),
         );
     let para = para.fragment_flow(
-        opts.frag.line_flow(),
+        opts.frag.watch.as_ref().map(|w| w.flow.clone()),
         crate::layout::fragment::types::StackAxis::of(inherited.wm()),
         (
             usize::from(inherited.orphans.unwrap_or(2)),

@@ -187,7 +187,6 @@ pub(super) fn multicol_stack_child(
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
-        opts.frag.nested_lines = !crate::layout::fragment::flow::flow_lines(&copy);
         build::build_copy(
             &opts,
             col_vert,
