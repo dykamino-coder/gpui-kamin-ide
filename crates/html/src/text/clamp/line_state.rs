@@ -1,10 +1,5 @@
-//! Записи проб `line-clamp` (`ClampEntry`) и доступ к межкадровому состоянию документа
-//! (`ClampState`): точки среза, бюджет строк абзаца, первый абзац за точкой, видимая
-//! протяжённость, высоты фрагментированных коробок; нумерация абзацев внутри контейнера
-//! при построении дерева (`clamp_next_seq`, `ClampSpan`). Срез считается по прошлому кадру
-//! и применяется на следующем, поэтому сопоставление идёт по номерам, а не по геометрии.
+//! Пробы строк и коробок текущей раскладки, нумерация абзацев при сборке.
 
-use crate::document::state::ValueCx;
 use crate::layout::cx::LayoutCx;
 use gpui::{Bounds, Pixels};
 
@@ -12,9 +7,9 @@ use gpui::{Bounds, Pixels};
 /// низ N-й СЧИТАЕМОЙ строки. Строки потомков в собственном контексте
 /// форматирования (BFC: overflow, флоат, корень потока) видимы, но НЕ
 /// считаются; блок, пересекающий точку среза, прячется целиком — срез
-/// поднимается к его верху. Точка меряется пробами построенного кадра и
-/// применяется потолком высоты на СЛЕДУЮЩЕМ (перестройка каждый кадр).
-#[derive(Clone)]
+/// поднимается к его верху. Точка меряется пробами локальной раскладки и
+/// применяется потолком высоты итоговой сборки того же кадра.
+#[derive(Clone, Debug)]
 pub struct ClampEntry {
     pub bounds: Bounds<Pixels>,
     /// Высота строки в точках; 0 — блок без собственного текста.
@@ -46,14 +41,14 @@ pub struct ClampEntry {
     pub node: u64,
     /// Порядковый номер абзаца ВНУТРИ клэмп-контейнера, выданный при
     /// построении. `None` — проба коробки, а не абзаца: знак обрыва на
-    /// неё не садится. Номер, а не совпадение по геометрии, потому что
-    /// сопоставлять надо КАДРЫ: срез считается по прошлому кадру, а
-    /// применяется на следующем.
+    /// неё не садится. Номер связывает абзац пробы с абзацем
+    /// итоговой сборки независимо от изменения его геометрии.
     pub seq: Option<u32>,
     /// Сколько строк этому абзацу оставлено УЖЕ на этом кадре. Признак
     /// того, что абзац укорочен нами: его собственный низ за срез больше
     /// не выходит, и без этой защёлки «что-то срезано» пропало бы, а
-    /// кадр запросил бы себя заново (css-overflow-4 §5.3: вставка знака
+    /// повторный локальный замер потерял бы признак обрезки
+    /// (css-overflow-4 §5.3: вставка знака
     /// «must not cause a reevaluation of the effects of `continue`»).
     pub clamped: Option<usize>,
     /// Пустая поточная блочная коробка (без содержимого): сама по себе —
@@ -79,21 +74,9 @@ pub struct BoxEnds {
     pub node: u64,
 }
 
-pub type ClampLines = crate::layout::probe::Sink<ClampEntry>;
-
-pub fn clamp_lines_for(key: u64, vcx: ValueCx<'_>) -> ClampLines {
-    vcx.doc
-        .clamp
-        .lines
-        .borrow_mut()
-        .entry(key)
-        .or_default()
-        .clone()
-}
-
 /// Выдать следующему абзацу клэмп-контейнера его номер. Счётчик сбрасывает
 /// вход в сам контейнер (`ClampBuild::container`), поэтому нумерация одна и та
-/// же на каждом кадре, пока не меняется дерево.
+/// же в пробе и итоговой сборке, пока не меняется дерево.
 pub fn clamp_next_seq(key: u64, cx: &LayoutCx) -> u32 {
     {
         let m = &cx.clamp_build.seq;
@@ -128,26 +111,6 @@ pub fn close_clamp_span(span: Option<ClampSpan>, cx: &LayoutCx) {
     if let (Some(span), Some((key, _))) = (span, clamp_context(cx)) {
         span.set((span.get().0, clamp_peek_seq(key, cx)));
     }
-}
-
-pub fn clamp_cut(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
-    vcx.doc.clamp.cuts.borrow().get(&key).copied()
-}
-
-/// Бюджет строк абзаца со знаком обрыва: (номер абзаца, сколько строк
-/// оставить). Считает `ClampCut::paint` прошлого кадра.
-pub fn clamp_para(key: u64, vcx: ValueCx<'_>) -> Option<(u32, usize)> {
-    vcx.doc.clamp.para.borrow().get(&key).copied()
-}
-
-/// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).
-pub fn clamp_next(key: u64, vcx: ValueCx<'_>) -> Option<u32> {
-    vcx.doc.clamp.next.borrow().get(&key).copied()
-}
-
-/// Visible extent of the content before the clamp point (see `CLAMP_EXTENT`).
-pub fn clamp_extent(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
-    vcx.doc.clamp.extent.borrow().get(&key).copied()
 }
 
 /// Active container and its BFC counting boundary for this build.

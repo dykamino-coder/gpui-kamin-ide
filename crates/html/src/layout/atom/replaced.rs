@@ -3,12 +3,11 @@
 use crate::dom::Element;
 use crate::layout::multicol::spanner::multicol_container;
 use crate::layout::options::RenderOpts;
-use crate::layout::replaced::image::{image_with, pct_height_to_px};
+use crate::layout::replaced::image::pct_height_to_px;
 use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, with_inherited_font};
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -94,11 +93,11 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
         return Some(doc);
     }
-    Some(image_with(
-        &copy,
-        Some(atom_base_font(inherited, opts)),
-        &opts.cx,
-    ))
+    Some(
+        opts.cx
+            .build
+            .replaced(&copy, Some(atom_base_font(inherited, opts)), &opts.cx),
+    )
 }
 
 pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
@@ -123,7 +122,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
     svg_replaced(&sized, &fitted, &shell, opts).or_else(|| {
-        Some(image_with(
+        Some(opts.cx.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
@@ -146,7 +145,7 @@ pub(super) fn canvas_atom(
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
     let merged = inherit(inherited, &e.style, vcx);
-    let d = styled_div_with(e, &merged, cx).flex_shrink_0();
+    let d = cx.build.styled_box(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

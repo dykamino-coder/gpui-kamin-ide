@@ -43,7 +43,8 @@ impl Hooks for PageStack {
         let (aw, ah) = (g.area.0.max(1.0), g.area.1.max(1.0));
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
-        let (kids, limit) = self.page_kids(window, cx, self.area_logical(&g).0.max(1.0));
+        let area = self.area_logical(&g);
+        let (kids, limit) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
         for (pk, k) in self.kids.iter().zip(&kids) {
             pk.end.set(k.h);
         }

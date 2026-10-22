@@ -67,38 +67,7 @@ impl Paragraph {
         }
         self.lines = self.split(Some(limit), window);
         self.publish_scroll_overflow(bounds, *state, window);
-        self.unbalanced_steps = None;
-        if self.clamp_tag.is_some() && self.wrap.balance && self.clamp.is_none() {
-            if self.run_metrics.len() != self.runs.len() {
-                self.run_metrics = self.measure_runs(window);
-            }
-            let segs = self.measure(window);
-            let unbalanced = self.lay(Some(limit), &segs);
-            let balanced = std::mem::replace(&mut self.lines, unbalanced);
-            let lh = f32::from(self.line_height);
-            self.unbalanced_steps = Some(
-                self.line_padding()
-                    .iter()
-                    .map(|(a, b)| lh + a + b)
-                    .collect(),
-            );
-            self.lines = balanced;
-        }
         self.place_atoms(*state, window, _cx);
-        // The clamp point of THIS frame needs this frame's rows: `ClampCut`
-        // computes it in paint, and paint order inside the container does
-        // not put every paragraph before it, but prepaint of the whole tree
-        // precedes any paint (css-overflow-4 §5.3; one frame per relayout
-        // step, like Blink's measure-then-relayout pass).
-        if !self.vertical && !self.paint_context.is_rotated() {
-            let pads = self.line_padding();
-            let lh = self.line_height;
-            let step = |i: usize| -> Pixels {
-                let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
-                lh + px(a + b)
-            };
-            self.publish_rows(bounds, self.lines.len(), &step);
-        }
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {

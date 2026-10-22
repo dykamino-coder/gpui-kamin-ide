@@ -10,8 +10,8 @@ use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
 use crate::paint::gap_rules::painter::GapRulePainter;
-use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Computed;
+use crate::style::computed::stacking::fixed_cb_layer_box;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
 mod kids;
@@ -42,7 +42,7 @@ pub(crate) fn multicol_column_stack(
     col_vert: bool,
     col_rl: bool,
     col_h: Option<f32>,
-    line_col_w: Option<f32>,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
     rows: Option<crate::layout::fragment::types::Rows>,
     nest_rows: Option<f32>,
     nest_phase: f32,
@@ -87,7 +87,16 @@ pub(crate) fn multicol_column_stack(
         crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
             let vcx = opts.cx.vcx();
             column_kids(
-                &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, vcx,
+                &merged,
+                kids,
+                cols,
+                used_gap,
+                col_vert,
+                rows,
+                copies,
+                fixed,
+                (line_col_w, layout_col_w),
+                vcx,
             )
         });
     // `box-decoration-break: clone`: геометрия фрагментов —
@@ -142,7 +151,7 @@ pub(crate) fn multicol_column_stack(
         cols,
         col_vert,
         col_rl,
-        line_col_w,
+        (line_col_w, layout_col_w),
         rows,
         nested_auto,
         nested_whole,

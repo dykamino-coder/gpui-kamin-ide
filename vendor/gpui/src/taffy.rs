@@ -1,7 +1,10 @@
+mod grid_item_rows;
 mod alignment_adapter;
 mod measurement;
 mod line_baselines;
 mod measured_content;
+mod measured_box;
+pub use measured_box::MeasuredBox;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;
 
@@ -36,6 +39,7 @@ type StackSafe<T> = T;
 type MeasureFn = dyn FnMut(
     Size<Option<Pixels>>,
     Size<AvailableSpace>,
+    MeasuredBox,
     &mut Window,
     &mut App,
 ) -> MeasuredContent;
@@ -444,6 +448,13 @@ impl TaffyLayoutEngine {
             .copied()
             .unwrap_or((0.0, 0.0));
         point(Pixels(ax / scale_factor), Pixels(ay / scale_factor))
+    }
+
+    /// KaminIDE patch: точный полуоткрытый охват рядов из размещения элемента.
+    /// Индексы начинаются с 1 и учитывают ведущие неявные дорожки.
+    /// `None` означает отсутствие завершённого размещения в родительской сетке.
+    pub fn grid_item_rows(&self, child: LayoutId) -> Option<(u16, u16)> {
+        grid_item_rows::grid_item_rows(&self.taffy, child.into())
     }
 
     /// KaminIDE patch: дорожки РОДИТЕЛЯ-сетки узла `child` — `(начало

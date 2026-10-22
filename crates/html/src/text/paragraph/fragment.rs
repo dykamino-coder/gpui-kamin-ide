@@ -5,18 +5,30 @@ use crate::layout::fragment::flow::{FlowGeometry, FlowMeasurements, FlowNode};
 use crate::layout::fragment::types::StackAxis;
 use std::rc::Rc;
 
+/// The paragraph's line boxes in a measured fragmentation flow, with the
+/// `orphans`/`widows` of its block container (css-break-3 §4.4).
+#[derive(Clone, Debug)]
+pub(crate) struct LineFlow {
+    pub(crate) node: FlowNode,
+    keep: (usize, usize),
+}
+
 impl Paragraph {
     pub(crate) fn fragment_flow(
         mut self,
         flow: Option<Rc<FlowMeasurements>>,
         axis: StackAxis,
+        keep: (usize, usize),
     ) -> Self {
-        self.fragment = flow.filter(|f| f.lines).map(|f| FlowNode::new(f, axis));
+        self.fragment = flow.filter(|f| f.lines).map(|f| LineFlow {
+            node: FlowNode::new(f, axis),
+            keep,
+        });
         self
     }
 
     pub(super) fn publish_fragment_lines(&self, pads: &[(f32, f32)], height: f32) {
-        if let Some(node) = &self.fragment {
+        if let Some(LineFlow { node, keep }) = &self.fragment {
             // CSS Break 3 section 4.1: break between line boxes. The same
             // padding accounts for atoms, emphasis and ruby in the box size.
             let mut geometry = FlowGeometry::lines(pads.iter().map(|(a, b)| height + a + b));
@@ -28,6 +40,7 @@ impl Paragraph {
                     geometry.cuts.push((solid.0, solid.0));
                 }
             }
+            geometry.keep_lines(keep.0, keep.1);
             *node.geometry.borrow_mut() = geometry;
         }
     }
@@ -67,7 +80,10 @@ mod tests {
             Rc::new(FlowMeasurements::for_lines()),
             StackAxis::Horizontal,
         );
-        paragraph.fragment = Some(node.clone());
+        paragraph.fragment = Some(LineFlow {
+            node: node.clone(),
+            keep: (1, 1),
+        });
         paragraph.publish_fragment_lines(&[(0., 0.), (32., 0.)], 16.);
         let geometry = node.geometry.borrow();
         assert_eq!(geometry.solid, [(0., 16.), (48., 64.)]);

@@ -6,7 +6,6 @@
 use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};
 use crate::layout::options::RenderOpts;
-use crate::layout::replaced::image::image_with;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -34,7 +33,7 @@ pub(super) fn band_atom(
     let mut inner = c.clone();
     inner.style.margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
-        image_with(
+        opts.cx.build.replaced(
             &with_inherited_font(&inner, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,

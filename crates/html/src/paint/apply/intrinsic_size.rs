@@ -1,39 +1,11 @@
 //! Применение к GPUI: ключевые слова внутреннего размера (`min-content`,
 //! `max-content`, `fit-content`, `fit-content(N)`, `stretch`) доносятся до родной
-//! раскладки как `CssSizingKeyword`, а не теряются на границе. Здесь же
-//! решается, нужен ли коробке родной контракт content-box: доля и функциональный
-//! `fit-content` прибавляют разрешённые края к используемому размеру
-//! (CSS 2.1 §10.2, §10.5). При `contain: size` ключевые слова содержимое не меряют.
+//! раскладки как `CssSizingKeyword`, а не теряются на границе. Нужен ли коробке
+//! родной контракт content-box, решает раскладка (`layout::native_box`).
+//! При `contain: size` ключевые слова содержимое не меряют.
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::CssSizingKeyword;
-
-/// Percentages and functional fit need the native content-box contract: their
-/// used size must add the resolved edges (CSS 2.1 sections 10.2 and 10.5).
-pub(crate) fn native_content_box(style: &Computed) -> bool {
-    style.border_box != Some(true)
-        && ((style.width == Some(Len::FitContent)
-            && matches!(style.fit_arg[0], Some(Len::Px(_) | Len::Pct(_))))
-            || [
-                style.width,
-                style.height,
-                style.min_width,
-                style.max_width,
-                style.min_height,
-                style.max_height,
-            ]
-            .into_iter()
-            .zip(style.stretch_size)
-            .any(|(size, stretch)| !stretch && matches!(size, Some(Len::Pct(_))))
-            || [
-                style.padding.left,
-                style.padding.right,
-                style.padding.top,
-                style.padding.bottom,
-            ]
-            .into_iter()
-            .any(|side| matches!(side, Some(Len::Pct(_)))))
-}
 
 pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
     let keyword = |value, argument| match value {
@@ -71,6 +43,7 @@ pub(crate) fn keywords(style: &Computed) -> [Option<CssSizingKeyword>; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::native_box::native_content_box;
     use gpui::{Styled, div, px};
     #[test]
     fn functional_fit_uses_one_box_model_for_keywords_and_numeric_axes() {

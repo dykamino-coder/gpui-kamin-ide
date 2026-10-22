@@ -6,6 +6,7 @@
 
 #[cfg(debug_assertions)]
 mod acceptance;
+mod availability;
 mod blank_probe;
 mod browsers;
 #[cfg(debug_assertions)]
@@ -41,17 +42,27 @@ mod outbox;
 mod popup;
 mod process;
 mod profile;
+mod profile_gate;
+mod profile_probe;
 mod pump;
+mod relaunch;
 mod render_handler;
 mod respawn;
 mod scheme;
 mod shared_texture;
+mod subprocess;
 mod typed;
 mod visibility;
 
+pub(crate) use availability::recovery;
+pub use availability::{Unavailable, unavailable};
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
 pub use element::{ensure_focus_handles, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
+pub use profile_gate::Outcome;
+pub(crate) use profile_gate::Recovery;
+pub(crate) use relaunch::spawn_successor;
+pub use relaunch::wait_for_predecessor;
 pub use visibility::mark_visible;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -410,40 +421,5 @@ pub fn open(id: &str, url: &str, width: i32, height: i32, scale: f32) {
 }
 
 #[cfg(test)]
-mod pump_wake_tests {
-    //! BR-31: постановка вью в `PULL_PENDING` обязана будить насос САМА, без
-    //! кадра от какого-либо вью. Иначе статичная страница не получает
-    //! `__kaminPull()` и висит до движения мыши (INC-2026-0002).
-    //!
-    //! Проверки идут ОДНИМ тестом: канал пробуждения один на процесс
-    //! (`OnceLock`), и параллельные тесты разбирали бы сигналы друг друга.
-
-    #[test]
-    fn отложенный_pull_будит_насос_и_не_заказывает_кадр() {
-        let (tx, rx) = smol::channel::unbounded::<()>();
-        super::set_wake(tx);
-        while rx.try_recv().is_ok() {}
-        super::take_repaint_request();
-
-        super::mark_pull_pending("test-view-wake");
-
-        assert!(
-            rx.try_recv().is_ok(),
-            "насос не разбужен: страница заберёт пачку только со следующего чужого кадра",
-        );
-        assert!(
-            super::PULL_PENDING
-                .lock()
-                .is_ok_and(|s| s.contains("test-view-wake")),
-            "вью не помечен непрочитанным",
-        );
-        // Заказ кадра на каждую пачку сообщений — прямой источник фризов на
-        // RDP: насос будим, а окно перерисовывать не просим.
-        assert!(
-            !super::take_repaint_request(),
-            "доставка сообщений не должна заказывать перерисовку окна",
-        );
-
-        super::flush_pending_pulls();
-    }
-}
+#[path = "pump_wake_tests.rs"]
+mod pump_wake_tests;

@@ -2,9 +2,7 @@
 //! (`StackChild`), колонки, зазор, ось, ряды, линейка и буферы плана после укладки; сама
 //! укладка — в подмодулях `balance`, `fill`, `avoid`, `paginate`, `element`.
 
-use crate::layout::fragment::types::{
-    Frag, Intrinsic, Kid, RepeatGeom, Rows, StackAxis, StackChild,
-};
+use crate::layout::fragment::types::{Frag, Intrinsic, Kid, Rows, StackAxis, StackChild};
 use gpui::{Bounds, Pixels};
 
 pub mod avoid;
@@ -200,28 +198,7 @@ impl ColumnStack {
     /// Геометрия детей для укладки (то же, что строят `request_layout` и
     /// `prepaint` горизонтальной стопки).
     pub(crate) fn kid_geoms(&self) -> Vec<Kid> {
-        self.children
-            .iter()
-            .map(|c| Kid {
-                h: c.h,
-                mt: c.mt,
-                mb: c.mb,
-                monolith: c.monolith,
-                cuts: c.cuts.clone(),
-                force_before: c.force_before,
-                force_after: c.force_after,
-                avoid_before: c.avoid_before,
-                avoid_after: c.avoid_after,
-                forced: c.forced.clone(),
-                solid: c.solid.clone(),
-                span: c.span,
-                over: c.over,
-                clone_dec: c.clone_dec,
-                overflow_top: c.overflow_top,
-                repeat: c.repeat.as_ref().map_or(RepeatGeom::default(), |r| r.geom),
-                par: c.par,
-            })
-            .collect()
+        self.children.iter().map(StackChild::kid).collect()
     }
 
     /// Строчный и блочный размеры коробки стопки по её оси.

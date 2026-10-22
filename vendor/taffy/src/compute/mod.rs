@@ -57,6 +57,8 @@ pub use self::flexbox::compute_flexbox_layout;
 pub use self::grid::compute_grid_layout;
 
 #[cfg(feature = "float_layout")]
+pub use self::block::FloatMark;
+#[cfg(feature = "float_layout")]
 pub use self::float::{BfcSlot, ContentSlot, FloatContext, FloatIntrinsicWidthCalculator};
 
 use crate::geometry::{Line, Point, Size};
@@ -128,7 +130,7 @@ pub fn compute_root_layout(
         oof::perform_oof_layout(
             tree,
             root,
-            candidates,
+            candidates.as_slice(),
             area_size,
             area_offset,
             direction,

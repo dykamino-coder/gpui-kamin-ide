@@ -2,11 +2,8 @@
 
 use super::{TableBands, row_geometry};
 use crate::document::state::ValueCx;
-use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::breaks::{edge_avoid, edge_break};
-use crate::layout::table::is_cell;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table_row_cuts(
@@ -139,41 +136,6 @@ pub(super) fn table_row_cuts(
         *y = start + h;
     }
     Some(())
-}
-
-// `break-before`/`break-after: avoid*` РЯДА — не только своё значение.
-// css-break-4 §break-propagation переносит `break-before` ПЕРВОГО поточного
-// ребёнка на контейнер («a 'break-before' value on a first in-flow child box
-// is propagated to its container. Likewise a 'break-after' value on a last
-// in-flow child box»), а для «parallel layout» разрешает более частное
-// правило — ячейки ряда как раз параллельные потоки. Частное правило берём у
-// эталона: Blink СЛИВАЕТ значения ВСЕХ ячеек ряда в значение ряда,
-// `table_row_layout_algorithm.cc:169-177` (`row_break_before =
-// JoinFragmentainerBreakValues(row_break_before, cell_break_before)` и та же
-// строка для `break-after`), и отдаёт результат наружу на `:255-257`.
-// `edge_avoid` уже делает перенос с КРАЙНЕГО ребёнка ячейки — это Blink'овы
-// `InitialBreakBefore`/`FinalBreakAfter`; остаётся объединение по всем ячейкам.
-pub(super) fn row_avoid(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
-    edge_avoid(row, last, vcx)
-        || row.children.iter().filter(|n| !is_blank(n)).any(
-            |n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_avoid(cell, last, vcx)),
-        )
-}
-
-// Принудительные `break-before`/`break-after` ячеек — тем же слиянием на
-// ряд (Blink `table_row_layout_algorithm.cc:169-177`,
-// `JoinFragmentainerBreakValues`): `break-before-expansion-001` — ячейка
-// второго ряда с `break-before: column`.
-pub(super) fn row_force(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
-    (if last {
-        row.style.break_after_force
-    } else {
-        row.style.break_before_force
-    }) || row
-        .children
-        .iter()
-        .filter(|n| !is_blank(n))
-        .any(|n| matches!(n, Node::Element(cell) if is_cell(cell) && edge_break(cell, last, vcx)))
 }
 
 // Плоский список рядов: ряд, № группы, avoid группы, разрывы (свои и

@@ -10,7 +10,6 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::styled_div;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -55,7 +54,9 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     );
     let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(
-        styled_div(e, &opts.cx)
+        opts.cx
+            .build
+            .styled_box(e, &e.style, &opts.cx)
             .w(px(w))
             .h(px(h))
             .overflow_hidden()

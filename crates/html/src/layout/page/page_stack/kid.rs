@@ -5,6 +5,32 @@
 use gpui::AnyElement;
 
 impl PageKid {
+    /// Полосы повтора таблицы по её разложенным секциям `sections` на листе с
+    /// page area высотой `per` (`table_bands::repeat_spec`); без повторяемой
+    /// секции повтора нет вовсе.
+    pub(super) fn refresh_repeat(
+        &mut self,
+        sections: Option<crate::layout::fragment::flow::blocks::table::TableSections>,
+        per: f32,
+    ) {
+        let Some(sec) = sections else {
+            return;
+        };
+        if self.repeat.is_none() {
+            return;
+        }
+        match crate::layout::fragment::table_bands::repeat_spec(sec, per) {
+            Some((head, foot, geom)) => {
+                if let Some(r) = self.repeat.as_mut() {
+                    r.head = head;
+                    r.foot = foot;
+                    r.geom = geom;
+                }
+            }
+            None => self.repeat = None,
+        }
+    }
+
     pub(super) fn paint_sections(
         &mut self,
         f: &crate::layout::fragment::types::Frag,

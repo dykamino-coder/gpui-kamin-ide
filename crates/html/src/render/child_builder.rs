@@ -1,17 +1,84 @@
 //! Реализация в render контракта раскладки по сборке дочерних элементов.
 
-use crate::layout::build_contracts::ChildBuild;
+use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::{
+    BoxBuild, ChildBuild, Effect, EffectBuild, FlowBuild, GridPlacement, Layer, Styling,
+};
+use crate::layout::cx::LayoutCx;
+use crate::paint::apply;
+use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
+use crate::paint::decorations::outline_phase;
+use crate::paint::effects::{grouped, transform, underlay::Underlay};
+use crate::paint::stacking;
+use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
+use crate::style::computed::Computed;
+use gpui::AnyElement;
 
 impl Default for ChildBuild {
     fn default() -> Self {
         ChildBuild::new(
-            blocks,
+            FlowBuild::new(
+                blocks,
+                paragraph,
+                crate::render::generic_box::child_probes,
+                crate::render::first_line_descendants::route,
+            ),
             element,
-            paragraph,
-            crate::paint::box_tree::styled::styled_div_with,
-            crate::render::generic_box::child_probes,
-            crate::render::first_line_descendants::route,
+            BoxBuild::new(styled_div_with, styled_div, content_sized),
+            crate::paint::replaced::image::image_with,
+            EffectBuild::new(
+                effects,
+                crate::paint::effects::grouped::paint_group,
+                crate::paint::effects::mask::collect_mask_defs,
+            ),
+            layer,
         )
+    }
+}
+
+fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
+    let vcx = cx.vcx();
+    match styling {
+        Styling::Box(style) => apply::apply(gpui::div(), style, vcx),
+        Styling::Text(style) => apply::apply_text(gpui::div(), style, vcx),
+        Styling::Margins(margins) => apply::margins(gpui::div(), margins, vcx),
+    }
+}
+
+fn content_sized(
+    el: AnyElement,
+    style: &Computed,
+    item_style: &Computed,
+    placement: GridPlacement,
+    cx: &LayoutCx,
+) -> AnyElement {
+    content_wrapper::content_sized(el, style, item_style, placement, cx.vcx())
+}
+
+fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
+    match effect {
+        Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
+        Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
+        Effect::Group { style, vcx } => grouped::grouped(child, style, vcx),
+        Effect::GroupReplaced { style, vcx } => grouped::grouped_replaced(child, style, vcx),
+        Effect::Transform {
+            style,
+            parent,
+            ref_box,
+            vcx,
+        } => transform::transformed_with(child, style, parent, ref_box, vcx),
+        Effect::Underlay => Underlay::new(child).hooked(),
+        Effect::PaintLast(key) => stacking::paint_last(child, key),
+    }
+}
+
+fn layer(layer: Layer<'_>) -> AnyElement {
+    match layer {
+        Layer::CellBand { rects, style, vcx } => {
+            table::layer(CellsClipped::new(rects, *style, vcx))
+        }
+        Layer::CellBackgrounds(bgs) => table::layer(CellBgPainter::new(bgs)),
+        Layer::CollapsedEdges(edges) => table::layer(EdgePainter::new(edges)),
     }
 }

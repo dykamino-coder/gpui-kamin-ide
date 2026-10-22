@@ -63,7 +63,7 @@ pub(in super::super) struct GridItem {
     pub align_self: AlignSelf,
     /// The item's justify_self property, or the parent's justify_items property if it is `None`
     pub justify_self: AlignSelf,
-    /// The items first baseline (horizontal)
+    /// KaminIDE patch: пробная baseline от начала border box, без margin.
     pub baseline: Option<f32>,
     /// Shim for baseline alignment that acts like an extra top margin
     pub baseline_shim: f32,
@@ -122,7 +122,7 @@ pub(in super::super) struct GridItem {
     /// Cache for the max-content size
     pub max_content_contribution_cache: Size<Option<f32>>,
 
-    /// Final y position. Used to compute baseline alignment for the container.
+    /// KaminIDE patch: итоговый normal-flow Y без relative, для baseline контейнера.
     pub y_position: f32,
     /// Final height. Used to compute baseline alignment for the container.
     pub height: f32,
@@ -1393,3 +1393,7 @@ mod migration_tests {
         assert_eq!(adjusted.height, AvailableSpace::MaxContent);
     }
 }
+
+#[cfg(all(test, feature = "taffy_tree"))]
+#[path = "grid_compression_scope_tests.rs"]
+mod compression_scope_tests;

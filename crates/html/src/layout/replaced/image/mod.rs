@@ -1,32 +1,20 @@
-//! Картинки `<img>` и замещаемые с источником-изображением: сборка GPUI-элемента по
-//! стилю (`image_with`), сведение долей высоты и пределов к точкам от содержащего блока
-//! до раскладки, `object-view-box` (css-images-4) как новый природный размер; локальные,
-//! вписанные, заданного и авто-размера пути — в подмодулях.
+//! Размеры замещаемых с источником-изображением: доли высоты и пределов, сведённые к точкам
+//! от содержащего блока до раскладки; используемый размер рисунка по стилю и природным
+//! размерам источника (`PictureSizing`, `Picture`), под обособлением размера и с
+//! `object-view-box`; автоматический минимум гибкого элемента по пропорции и перенос осей и
+//! выравнивания с держателя на измеряемый элемент. Сборку самой картинки (`Img`, растр или
+//! вектор источника) по этим размерам ведёт `paint::replaced::image`.
 
 use crate::dom::Element;
-use crate::paint::box_tree::styled::styled_div;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::{Len, px_lossy_zero, px_strict};
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, div, px};
-mod with;
-pub(crate) use with::image_with;
-mod grid_measured;
-pub(crate) use grid_measured::inherit_item_metadata;
-mod content_radii;
-mod filtered;
-mod local;
-mod piped;
-use local::{fit_local_image, local_image_source};
-mod contained;
-use contained::contained_image;
-mod sized;
-use sized::sized_image;
+use crate::style::values::value::{Len, px_lossy_zero};
+pub(crate) mod automatic_minimum;
+pub(crate) mod contained_size;
+mod used_size;
+pub(crate) mod view_box;
+pub(crate) use used_size::{Picture, PictureSizing};
 mod auto_sized;
-use auto_sized::auto_sized_image;
-
-pub(crate) fn image(e: &Element, cx: &crate::layout::cx::LayoutCx) -> AnyElement {
-    image_with(e, None, cx)
-}
+mod sized;
 
 /// Доля ВЫСОТЫ замещаемого, сведённая к точкам по содержащему блоку.
 ///
@@ -111,112 +99,22 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
     copy
 }
 
-// Не отдавать использованный размер замещаемого КОРОБКЕ, а не только
-// рисунку (предпочтительное соотношение на коробку элемента, упругий
-// рисунок в гибком контейнере, выведенная сторона в коробку;
-// css-flexbox-1 §9.2 п. B, §9.8 п.3, §9.4, Blink
-// `ComputeReplacedSizeInternal` + `GetReplacedAspectRatio`) без разбора
-// `box-sizing-007`: соотношение на коробку складывается с `border-box` в
-// двойной учёт рамок (выигрыш — `image-fractional-height-with-wide-
-// aspect-ratio`).
-/// То же, но с базовым кеглем для разрешения долей: атом строится от СЫРОГО
-/// стиля, и `padding-right: 1em` без разрешения терялся вовсе
-/// (wm-propagation-body-040: сосед вставал на 16 точек левее эталона).
-/// `object-view-box` (css-images-4 §object-view-box, `csswg-drafts/css-images-4/
-/// Overview.bs` «object-view-box»): видимая часть природного объекта
-/// становится его НОВЫМ природным размером, а рисуется только она — вырез
-/// растягивается на коробку (`object-fit: fill`). Вид записи сводится к
-/// прямоугольнику в точках природного растра: `inset(t r b l)`, `rect(t r b l)`
-/// (правый и нижний края от левого/верхнего края объекта), `xywh(x y w h)`.
-/// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
-/// иначе из выреза — с соотношением выреза для одной заданной стороны.
-/// Только растр (`background::Source::Raster`); иначе — прежний путь.
-fn view_boxed(
-    e: &Element,
-    vb: (u8, [Len; 4]),
-    cx: &crate::layout::cx::LayoutCx,
-) -> Option<AnyElement> {
-    let src = e.attr("src")?;
-    let local = src
-        .strip_prefix("file:///")
-        .or_else(|| src.strip_prefix("file://"))
-        .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::element_source(local.unwrap_or(src), &e.style)?;
-    let nat = source.intrinsic();
-    let (w0, h0) = (nat.w?, nat.h?);
-    let crate::paint::background::Source::Raster(ready) = source else {
-        return None;
-    };
-    let at = |l: Len, base: f32| match l {
-        Len::Px(v) => v,
-        Len::Pct(k) => k * base,
-        _ => 0.0,
-    };
-    let [a, b, c, d] = vb.1;
-    let (vx, vy, vw, vh) = match vb.0 {
-        // inset(top right bottom left)
-        0 => (
-            at(d, w0),
-            at(a, h0),
-            w0 - at(d, w0) - at(b, w0),
-            h0 - at(a, h0) - at(c, h0),
-        ),
-        // rect(top right bottom left)
-        1 => (
-            at(d, w0),
-            at(a, h0),
-            at(b, w0) - at(d, w0),
-            at(c, h0) - at(a, h0),
-        ),
-        // xywh(x y w h)
-        _ => (at(a, w0), at(b, h0), at(c, w0), at(d, h0)),
-    };
-    if !(vw > 0.0 && vh > 0.0) {
-        return None;
+/// The measured item must see the same computed axes and inherited alignment as its holder.
+pub(crate) fn inherit_item_metadata(style: &mut Computed, merged: &Computed, parent: &Computed) {
+    style.parent_grid = merged.parent_grid;
+    if merged.parent_grid == 0 {
+        return;
     }
-    let px_of = px_strict;
-    let (bw, bh) = if e.style.contains_width() || e.style.contains_height() {
-        (
-            px_of(e.style.width)
-                .or(e.style.contain_intrinsic.0)
-                .unwrap_or(0.0),
-            px_of(e.style.height)
-                .or(e.style.contain_intrinsic.1)
-                .unwrap_or(0.0),
-        )
-    } else {
-        match (px_of(e.style.width), px_of(e.style.height)) {
-            (Some(w), Some(h)) => (w, h),
-            (Some(w), None) => (w, w * vh / vw),
-            (None, Some(h)) => (h * vw / vh, h),
-            (None, None) => (vw, vh),
-        }
-    };
-    let mut boxed = e.clone();
-    boxed.style.object_view_box = None;
-    boxed.style.width = Some(Len::Px(bw));
-    boxed.style.height = Some(Len::Px(bh));
-    boxed.style.contain_size = Some(false);
-    boxed.style.contain_inline_size = Some(false);
-    let (sx, sy) = (bw / vw, bh / vh);
-    let picture = gpui::img(ready)
-        .preserve_natural_pixels(true)
-        .pixelated(e.style.image_pixelated == Some(true))
-        .absolute()
-        .left(px(-vx * sx))
-        .top(px(-vy * sy))
-        .w(px(w0 * sx))
-        .h(px(h0 * sy))
-        .object_fit(gpui::ObjectFit::Fill);
-    let window = div()
-        .size_full()
-        .relative()
-        .overflow_hidden()
-        .child(picture);
-    Some(
-        styled_div(&boxed, cx)
-            .flex_shrink_0()
-            .child(window)
-            .into_any_element(),
-    )
+    style.rtl = merged.rtl;
+    style.cb_wm = merged.cb_wm;
+    if merged.align_self.is_none() {
+        style.align_self = parent.align_items;
+        style.align_self_last = parent.align_items_last;
+        style.align_self_safe = parent.align_items_safe;
+    }
+    if merged.justify_self.is_none() {
+        style.justify_self = parent.justify_items;
+        style.justify_self_last = parent.justify_items_last;
+        style.justify_self_safe = parent.justify_items_safe;
+    }
 }

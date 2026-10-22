@@ -31,6 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
+        "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
         "Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.",
@@ -39,6 +40,7 @@ FIXES = {
         "Host integration: frame capture with an opt-in first-frame latch for WPT convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
+        "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
@@ -67,8 +69,13 @@ FIXES = {
         "Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.",
         "CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.",
         "Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.",
-        "Grid/subgrid/lanes: retain local track sizing, masonry and fragmentation algorithms with their regression fixtures.",
+        "Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.",
         "Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.",
+        "Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.",
+        "Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.",
+        "Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.",
+        "Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.",
+        "Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.",
         "Packaging: retain the selected source/examples; omit the upstream generated test module.",
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],

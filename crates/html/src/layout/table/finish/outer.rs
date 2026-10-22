@@ -1,9 +1,10 @@
 //! Внешняя коробка таблицы: клон-обёртка для рамки сросшейся модели и итоговая обёртка.
 
 use super::wrap_with_captions;
-use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::paint::box_tree::styled::styled_div_with;
+use crate::layout::build_contracts::Styling;
+use crate::layout::cx::LayoutCx;
+use crate::layout::fragment::paginate::watch::TablePart;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -80,9 +81,9 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        styled_div_with(e, &host_style, cx).flex().flex_col()
+        cx.build.styled_box(e, &host_style, cx).flex().flex_col()
     } else {
-        styled_div_with(e, inherited, cx).flex().flex_col()
+        cx.build.styled_box(e, inherited, cx).flex().flex_col()
     }
 }
 
@@ -96,7 +97,8 @@ pub(super) fn finish_table_outer(
     root_table: bool,
     outer: gpui::Div,
     shrink_wrap: bool,
-    vcx: ValueCx<'_>,
+    mark: &dyn Fn(TablePart, AnyElement) -> AnyElement,
+    cx: &LayoutCx,
 ) -> AnyElement {
     let mut outer = outer;
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
@@ -110,7 +112,7 @@ pub(super) fn finish_table_outer(
     }
     let outer = outer;
     // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
-    let outer = wrap_with_captions(e, caps_top, caps_bot, inherited, outer);
+    let outer = wrap_with_captions(e, caps_top, caps_bot, inherited, outer, mark);
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
@@ -120,7 +122,9 @@ pub(super) fn finish_table_outer(
             z_index: e.style.z_index,
             ..Default::default()
         };
-        let mut wrap = crate::paint::apply::apply(div(), &wrap, vcx)
+        let mut wrap = cx
+            .build
+            .styled_div(Styling::Box(&wrap), cx)
             .flex()
             .flex_row();
         wrap.style().no_inline_block_baseline = Some(true);

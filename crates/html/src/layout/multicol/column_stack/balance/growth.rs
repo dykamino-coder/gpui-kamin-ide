@@ -48,9 +48,14 @@ impl ColumnStack {
         rows: Option<Rows>,
         copies: usize,
     ) -> Vec<(usize, f32, f32, bool)> {
-        let probe = Self::growth_probe(count, fixed_height, rows, copies);
-        let (_, lines, plan, _) = probe.balance(kids);
-        let count = probe.count;
+        Self::growth_probe(count, fixed_height, rows, copies).grow_points(kids)
+    }
+
+    /// Точки роста `growths` по плану ЭТОЙ стопки: при раскладке — тот же
+    /// план, что кладёт копии (`push::Regrow`).
+    pub(crate) fn grow_points(&self, kids: &[Kid]) -> Vec<(usize, f32, f32, bool)> {
+        let (_, lines, plan, _) = self.balance(kids);
+        let count = self.count;
         let mut out = Vec::new();
         for f in &plan {
             let k = &kids[f.kid];

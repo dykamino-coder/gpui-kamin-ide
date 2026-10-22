@@ -3,6 +3,7 @@
 
 use super::kid::{Kid, Kind};
 use super::{Layer, Slot, flatten, frame};
+use crate::layout::build_contracts::ChildBuild;
 use crate::paint::context::PaintCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 use std::cell::Cell;
@@ -11,6 +12,7 @@ use std::rc::Rc;
 /// What every holder of one host shares.
 pub(super) struct Placing<'a> {
     pub(super) paint: &'a Rc<PaintCx>,
+    pub(super) build: &'a ChildBuild,
     /// Inline size of the host's containing block.
     pub(super) cb: f32,
     /// Block size of the plan.
@@ -46,6 +48,7 @@ fn holder(kid: &Kid, s: &Slot, at: &Placing, origin: (f32, f32)) -> AnyElement {
         Rc::new(Cell::new(None)),
         at.vert.is_some(),
         at.paint,
+        at.build,
     );
     // Логическое место → физическое (Blink
     // `writing_mode_converter.cc:80-110`): line-left is the bottom

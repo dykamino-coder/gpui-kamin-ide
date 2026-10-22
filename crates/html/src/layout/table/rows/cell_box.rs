@@ -45,7 +45,7 @@ pub(super) fn prepare_cell_box(
     //
     // Сросшиеся рамки (border-collapse): рамки С ЯЧЕЕК СНИМАЮТСЯ
     // целиком — их рисует отдельный слой кромок на линиях сетки
-    // (см. layout::table::paint::edge_painter::EdgePainter): кромка соседей ОДНА, рисуется
+    // (см. paint::table::EdgePainter): кромка соседей ОДНА, рисуется
     // поверх фонов, и «шире побеждает» решается наложением.
     let cell_edge = if geom.collapse_cells {
         collapsed_cell_edge(cell, cm, &geom.win_edges, &px_of)

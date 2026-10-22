@@ -137,10 +137,20 @@ pub(super) fn fill_pieces(
         // block-000…002`: коробка 25 в остатке 25, внутри `contain: size` 50).
         let at_top =
             !*placed || cur <= 0.01 || (flow > k.h + 0.01 && from <= 0.01 && k.h <= room + 0.01);
+        // Под повторяемой шапкой таблицы содержимое тоже стоит «с верха»:
+        // Blink кладёт неповторяемые секции со смещением фрагментаинера за
+        // вычетом шапки (`table_layout_algorithm.cc:1325-1354`
+        // `child_block_offset - repeated_header_block_size`), и разрыв сразу
+        // под ней разделения не даёт.
+        let start = if copy == 0 && rg.head > 0.0 && from <= rg.box_top + 0.01 {
+            from.max(rg.head_end)
+        } else {
+            from
+        };
         let overflow_to = if k.overflow_top && !mono && room > 0.01 && at_top {
             k.solid
                 .iter()
-                .filter(|&&(a, b)| holds(a, b) && a <= from + 0.01)
+                .filter(|&&(a, b)| holds(a, b) && a <= start + 0.01)
                 .map(|&(_, b)| b)
                 .fold(None::<f32>, |m, b| Some(m.map_or(b, |x| x.max(b))))
         } else {

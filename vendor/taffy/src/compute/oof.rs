@@ -363,7 +363,7 @@ impl OofAxis {
 /// This should be called once per `RunMode::PerformLayout` container layout, after the layout
 /// algorithm (block/flexbox/grid) has run, and *inside* any layout caching wrapper (such as
 /// [`compute_cached_layout`](crate::compute_cached_layout)) so that cache hits do not re-run the
-/// pass. It is a no-op when `output.oof_positioning_area` is `None` (leaf and size-only outputs).
+/// pass. Outputs without a positioning area clear previously hoisted children without positioning.
 ///
 /// Which candidates the node claims is determined by the node's style via
 /// [`CoreStyle::is_containing_block`]. `position: fixed` boxes unclaimed by every ancestor are
@@ -373,6 +373,12 @@ pub fn compute_oof_layout(
     node_id: NodeId,
     output: &mut LayoutOutput,
 ) {
+    // KaminIDE patch: a container can become a leaf after its last child is removed.
+    // Clear retained hoisted state even when the new output has no positioning area.
+    tree.clear_hoisted_children(node_id);
+    if output.oof_candidates.is_empty() {
+        return;
+    }
     let Some(area) = output.oof_positioning_area else {
         return;
     };
@@ -383,10 +389,7 @@ pub fn compute_oof_layout(
     drop(style);
 
     let candidates = output.oof_candidates.take();
-    let result = compute_oof_layout_for_area(tree, node_id, candidates, area, direction, claims);
-    // Always record the hoisted child list (even when empty) so that lists recorded by previous
-    // layout runs do not persist
-    tree.clear_hoisted_children(node_id);
+    let result = compute_oof_layout_for_area(tree, node_id, candidates.as_slice(), area, direction, claims);
     tree.add_hoisted_children(node_id, &result.hoisted);
     output.oof_candidates = result.unclaimed;
     #[cfg(feature = "content_size")]
@@ -415,10 +418,13 @@ pub struct OofLayoutResult {
 /// `geometry_owner` supplies the layout tree operations, detailed layout information, and
 /// scroll-container state used by the positioning pass. `direction` and `claims` describe the
 /// actual CSS containing block.
+///
+/// KaminIDE patch: borrow the candidate slice (upstream #1293) while the host retains
+/// its lazy [`OofCandidates`] owner; surfaced and unclaimed candidates remain owned results.
 pub fn compute_oof_layout_for_area(
     tree: &mut impl LayoutContainingBlock,
     geometry_owner: NodeId,
-    candidates: OofCandidates,
+    candidates: &[OofCandidate],
     area: OofPositioningArea,
     direction: Direction,
     claims: ContainingBlockClaims,
@@ -796,7 +802,7 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
 pub(crate) fn perform_oof_layout(
     tree: &mut impl LayoutContainingBlock,
     node_id: NodeId,
-    candidates: OofCandidates,
+    candidates: &[OofCandidate],
     area_size: Size<f32>,
     area_offset: Point<f32>,
     direction: Direction,
@@ -819,7 +825,7 @@ pub(crate) fn perform_oof_layout(
     // remainder. Further claimed candidates surfaced while laying out a claimed box are appended
     // to the work list (Blink-style re-sweep).
     let mut worklist: Vec<OofCandidate> = Vec::new();
-    for candidate in candidates.iter() {
+    for candidate in candidates {
         if claims.for_position(candidate.position) {
             worklist.push(*candidate);
         } else {

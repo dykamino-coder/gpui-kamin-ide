@@ -6,7 +6,6 @@ pub(crate) mod list_item;
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled};
 
@@ -30,7 +29,9 @@ pub(crate) fn render(e: &Element, inherited: &Computed, opts: &RenderOpts) -> An
         }
     }
     rows.extend(opts.cx.build.blocks(&pending, inherited, opts));
-    styled_div_with(e, inherited, &opts.cx)
+    opts.cx
+        .build
+        .styled_box(e, inherited, &opts.cx)
         .flex()
         .flex_col()
         .children(rows)

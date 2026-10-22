@@ -62,12 +62,12 @@ pub(crate) fn natural_control_with(
     .hooked()
 }
 
-pub(super) struct MeasuredReplaced {
-    pub(super) image: AnyElement,
-    pub(super) style: Style,
-    pub(super) natural: gpui::Size<Pixels>,
-    pub(super) ratio: Option<f32>,
-    pub(super) measure: Option<ControlMeasure>,
+pub(crate) struct MeasuredReplaced {
+    pub(crate) image: AnyElement,
+    pub(crate) style: Style,
+    pub(crate) natural: gpui::Size<Pixels>,
+    pub(crate) ratio: Option<f32>,
+    pub(crate) measure: Option<ControlMeasure>,
 }
 
 impl Hooks for MeasuredReplaced {

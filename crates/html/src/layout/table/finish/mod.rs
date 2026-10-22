@@ -1,6 +1,6 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::Computed;
@@ -28,16 +28,25 @@ pub(super) fn table_finish(
     let vcx = opts.cx.vcx();
     let mut grid_children = std::mem::take(&mut out.under);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::CellBgPainter::new(out.cell_bgs.clone()).hooked());
+        grid_children.push(
+            opts.cx
+                .build
+                .layer(Layer::CellBackgrounds(out.cell_bgs.clone())),
+        );
     }
     grid_children.append(&mut out.cells);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::EdgePainter::new(out.table_edges.clone()).hooked());
+        grid_children.push(
+            opts.cx
+                .build
+                .layer(Layer::CollapsedEdges(out.table_edges.clone())),
+        );
     }
     grid_children.append(&mut out.cells_over);
     let cells = grid_children;
+    // Части таблицы, чью раскладку читает фрагментация (`watch::table_part`).
+    let key = crate::layout::table::grid_rows::table_key(geom.e);
+    let mark = |part, el| crate::layout::fragment::paginate::watch::table_part(key, part, el, opts);
     // Заголовок таблицы живёт ВНЕ коробки таблицы (CSS 2.1 §17.4:
     // анонимная обёртка держит заголовок и коробку) — рамка и обрезка
     // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
@@ -184,6 +193,7 @@ pub(super) fn table_finish(
         grid_box,
         collapse,
         outer,
+        &mark,
     );
     outer = paint_table_border(
         out.table_edges.clone(),
@@ -215,6 +225,7 @@ pub(super) fn table_finish(
         root_table,
         outer,
         shrink_wrap,
-        vcx,
+        &mark,
+        &opts.cx,
     )
 }

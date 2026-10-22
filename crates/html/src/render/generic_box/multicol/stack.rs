@@ -35,6 +35,7 @@ pub(crate) fn stack_box(
 ) -> Result<(gpui::Div, Computed), AnyElement> {
     let StackPlan {
         line_col_w,
+        layout_col_w,
         direct_oof,
         oof_static,
         nested_auto,
@@ -72,7 +73,7 @@ pub(crate) fn stack_box(
             col_vert,
             col_rl,
             col_h,
-            line_col_w,
+            (line_col_w, layout_col_w),
             rows,
             nest_rows,
             nest_phase,

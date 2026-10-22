@@ -2,7 +2,6 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
 use crate::style::cascade::inherit::inherit;
@@ -29,7 +28,7 @@ pub(super) fn float_box(
         // inheriting the paragraph's line limit alone loses the root strut.
         opts.cx.build.element(copy, inherited, opts)
     } else if copy.tag == "img" {
-        image(copy, &opts.cx)
+        opts.cx.build.replaced(copy, None, &opts.cx)
     } else {
         let span = open_clamp_span(&opts.cx);
         let mut kids = opts.cx.build.blocks(&copy.children, &merged, opts);

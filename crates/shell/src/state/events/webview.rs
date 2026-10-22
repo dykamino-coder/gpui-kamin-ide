@@ -13,7 +13,6 @@ use crate::root::RootView;
 impl RootView {
     /// Вебвью и браузер-панель: жизненный цикл, JS-мост, ошибки загрузки.
     pub(crate) fn apply_webview(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
-        let _ = cx;
         match event {
             // Доставка постов расширения (бывший WebviewDeliver) ушла в
             // WS-поток (ws_events/views.rs): main loop её не касается.
@@ -52,8 +51,45 @@ impl RootView {
                 self.view_resolve_at.remove(&id);
                 self.view_resolve_start.remove(&id);
             }
+            ShellEvent::Term(TermEvent::RestartForWeb(manual)) => self.restart_for_web(manual, cx),
             // Сюда диспетчер чужого не пришлёт
             _ => {}
         }
+    }
+
+    /// CEF в этом процессе не поднялся, а второй раз его не инициализировать
+    /// (`cef_app.h`): веб-панели возвращает только новый процесс. Несохранённые
+    /// правки редактора штатный выход не спасает — тогда решает пользователь.
+    fn restart_for_web(&mut self, manual: bool, cx: &mut Context<Self>) {
+        let unsaved = self.ed.editor_tabs.iter().any(|t| t.dirty);
+        let message = match crate::web::recovery(unsaved, manual) {
+            crate::web::Recovery::Wait => None,
+            crate::web::Recovery::AskUser if manual => {
+                Some("Save your changes, then restart KaminIDE to load web panels.".to_string())
+            }
+            crate::web::Recovery::AskUser => None,
+            crate::web::Recovery::Relaunch => match crate::web::spawn_successor(!manual) {
+                Ok(()) => {
+                    // Тот же путь, что у установки обновления: раскладка
+                    // сохраняется, окно закрывается штатно (`frame/focus.rs`).
+                    self.pending_quit = true;
+                    None
+                }
+                Err(e) => Some(format!("Could not restart KaminIDE: {e}")),
+            },
+        };
+        if let Some(message) = message {
+            let _ = self
+                .tx
+                .try_send(ShellEvent::Toast(crate::ui::toasts::Toast {
+                    id: "web-restart".into(),
+                    severity: "warning".into(),
+                    title: None,
+                    message,
+                    actions: vec!["Dismiss".into()],
+                    sticky: false,
+                }));
+        }
+        cx.notify();
     }
 }

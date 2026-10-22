@@ -2,11 +2,11 @@
 
 use super::fixed::{drop_uncontained_oof, drop_viewport_fixed, fixed_cb_box};
 use crate::dom::{Element, Node};
+use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::line_shape::nested_box_w;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table;
-use crate::paint::effects::transform::transformed;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -103,11 +103,13 @@ pub(super) fn copy_whole_box(
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
-        return Some(transformed(
+        // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
+        // от её ширины и доли размеров содержимого, а не от многоколоночника.
+        let col = line_col_w.map(|w| opts.inner(|cx| cx.avail_w = Some(w)));
+        let opts = col.as_deref().unwrap_or(opts);
+        return Some(opts.cx.build.effects(
             table(&tc, inner, opts),
-            inner,
-            merged,
-            opts.cx.vcx(),
+            Effect::transform(inner, merged, opts.cx.vcx()),
         ));
     }
     None

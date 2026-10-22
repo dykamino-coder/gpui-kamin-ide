@@ -1,7 +1,8 @@
 //! Alignment of tracks and final positioning of items
 use super::types::GridTrack;
 use crate::compute::common::alignment::{
-    apply_alignment_fallback, compute_alignment_offset, resolve_self_alignment_safety,
+    apply_alignment_fallback, baseline_coordinate, compute_alignment_offset, exposed_baseline,
+    resolve_self_alignment_safety,
 };
 use crate::geometry::{InBothAbsAxis, Line, Point, Rect, Size};
 use crate::style::{
@@ -123,6 +124,7 @@ pub(super) fn align_and_position_item(
     let scrollbar_width = style.scrollbar_width();
     let aspect_ratio = style.aspect_ratio();
     let is_replaced = style.is_replaced();
+    let table_cell_baseline = style.table_cell_baseline();
     // KaminIDE patch: the item's own writing mode is vertical (`baseline_x_flags` bit 4), so its
     // inline axis is physical y.
     let inline_is_y = style.baseline_x_flags() & 4 != 0;
@@ -671,6 +673,11 @@ pub(super) fn align_and_position_item(
         y_direction,
     );
 
+    // KaminIDE patch: #1323 — baseline относится к нормальному положению.
+    let normal_x = x;
+    let normal_y = y;
+    let x = x + relative_offset(position, inset_horizontal, direction);
+    let y = y + relative_offset(position, inset_vertical, y_direction);
     let scrollbar_size = Size {
         width: if overflow.y == Overflow::Scroll { scrollbar_width } else { 0.0 },
         height: if overflow.x == Overflow::Scroll { scrollbar_width } else { 0.0 },
@@ -722,20 +729,28 @@ pub(super) fn align_and_position_item(
     #[cfg(not(feature = "content_size"))]
     let contribution = Rect::ZERO;
 
+    // KaminIDE patch: CSS 2.1 §17.5.3 — пустая ячейка синтезирует content edge.
+    let first_baseline = layout_output.baselines.first.or_else(|| {
+        table_cell_baseline.then_some(height - padding.bottom - border.bottom)
+    });
     (
         contribution,
-        y,
+        normal_y,
         height,
-        layout_output.baselines.first,
-        layout_output.last_or_first_y(),
+        exposed_baseline(first_baseline, height, overflow.y.is_scroll_container()),
+        exposed_baseline(layout_output.last_or_first_y(), height, overflow.y.is_scroll_container()),
         // KaminIDE patch: physical-x baselines of vertical content, in the container's coordinates.
         Line {
-            start: layout_output.baselines_x.first.map(|b| x + b),
+            start: layout_output.baselines_x.first.map(|b| {
+                normal_x + baseline_coordinate(Some(b), width, overflow.x.is_scroll_container())
+            }),
             end: layout_output
                 .baselines_x
                 .last
                 .or(layout_output.baselines_x.first)
-                .map(|b| x + b),
+                .map(|b| {
+                    normal_x + baseline_coordinate(Some(b), width, overflow.x.is_scroll_container())
+                }),
         },
     )
 }
@@ -827,17 +842,20 @@ pub(super) fn align_item_within_area(
         alignment_based_offset
     };
 
-    let mut start = grid_area.start + offset_within_area;
-    if position == Position::Relative {
-        let relative_inset = if direction.is_rtl() {
-            inset.end.map(|pos| -pos).or(inset.start)
-        } else {
-            inset.start.or(inset.end.map(|pos| -pos))
-        };
-        start += relative_inset.unwrap_or(0.0);
-    }
+    (grid_area.start + offset_within_area, resolved_margin)
+}
 
-    (start, resolved_margin)
+/// KaminIDE patch: относительный сдвиг применяется после расчёта baseline.
+pub(super) fn relative_offset(position: Position, inset: Line<Option<f32>>, direction: Direction) -> f32 {
+    if position != Position::Relative {
+        return 0.0;
+    }
+    let relative_inset = if direction.is_rtl() {
+        inset.end.map(|pos| -pos).or(inset.start)
+    } else {
+        inset.start.or(inset.end.map(|pos| -pos))
+    };
+    relative_inset.unwrap_or(0.0)
 }
 
 #[cfg(test)]

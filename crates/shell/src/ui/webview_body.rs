@@ -67,6 +67,12 @@ pub fn webview_body_dyn(
             .child(crate::probe::registry::probe_area(sid))
             .into_any_element();
     }
+    // CEF в процессе не поднялся: скелет «грузится» был бы вечным —
+    // объясняем и даём перезапуск (INC-2026-0076).
+    if let Some(state) = crate::web::unavailable() {
+        let card = crate::ui::web_unavailable::card(state, tx, p);
+        return div().relative().size_full().child(card).into_any_element();
+    }
     // Вью ещё не поднялся: скелет загрузки, а по исчерпании бюджета resolve —
     // терминальная ошибка с Retry (`WebviewLoadingSkeleton.tsx`). Раньше здесь
     // рисовался плейсхолдер ПУСТОГО слота — «Open new tool or drag-n-drop…»

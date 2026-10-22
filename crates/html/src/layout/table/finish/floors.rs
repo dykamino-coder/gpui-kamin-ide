@@ -1,6 +1,7 @@
 //! Нижние пределы размеров таблицы (min-*, фиксированная ширина) и ребёнок-сетка.
 
 use crate::dom::Element;
+use crate::layout::fragment::paginate::watch::TablePart;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 use std::cell::RefCell;
@@ -81,7 +82,7 @@ pub(super) fn table_size_floors(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table_grid_child(
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     e: &Element,
     spacing: (f32, f32),
     from_cols: &[Option<f32>],
@@ -91,6 +92,7 @@ pub(super) fn table_grid_child(
     grid_box: gpui::Div,
     collapse: bool,
     outer: gpui::Div,
+    mark: &dyn Fn(TablePart, AnyElement) -> AnyElement,
 ) -> gpui::Div {
     let spacing = (
         if have_rows || !from_cols.is_empty() {
@@ -105,7 +107,14 @@ pub(super) fn table_grid_child(
     } else {
         spacing
     };
-    let mut outer = outer.child(
+    // Элемент сетки — по нему фрагментация читает дорожки рядов.
+    let mut cells = cells;
+    if !cells.is_empty() {
+        let first = cells.remove(0);
+        cells.insert(0, mark(TablePart::Item, first));
+    }
+    let mut outer = outer.child(mark(
+        TablePart::Grid,
         grid_box
             // `border-spacing: 2px` — умолчание браузера для таблицы с
             // раздельными рамками. Без него строки идут плотнее, и
@@ -119,7 +128,7 @@ pub(super) fn table_grid_child(
             .py(px(spacing_phys.1))
             .children(cells)
             .into_any_element(),
-    );
+    ));
     if collapse {
         // Граница СЕТКИ выдаётся ВСЕГДА: слой кромок обязан знать, где
         // кончаются дорожки, даже когда своей рамки у таблицы нет. Кромок
@@ -128,7 +137,7 @@ pub(super) fn table_grid_child(
         // Не подменять ею пробу КРОМОК таблицы (нулевые ширины в общем
         // разборе): у таблицы без рамки её коробка совпадает с внешними
         // краями ячеек, и те перестают центрироваться.
-        outer = outer.child(crate::layout::table::paint::grid_probe(
+        outer = outer.child(crate::layout::table::probes::grid_probe(
             table_edges.clone(),
             bw,
         ));

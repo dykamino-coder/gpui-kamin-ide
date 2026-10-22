@@ -89,7 +89,7 @@ pub(crate) fn mask_layer(
             (bh + et + group.poly_expand[2]).max(1.0),
         );
         let mut d = Geometry::default();
-        crate::paint::background::shape_commands(body, fw2, fh2, &mut d, vcx)?;
+        crate::style::values::basic_shape::shape_commands(body, fw2, fh2, &mut d, vcx)?;
         let rule = if rule == "evenodd" {
             FillRule::EvenOdd
         } else {

@@ -98,7 +98,7 @@ pub(super) fn spacer_before(c: &mut Element, id: u64, grow: f32, vcx: ValueCx<'_
                 // Свой устойчивый номер: анимации у распорки нет, но номер
                 // обязан быть уникальным — иначе GPUI склеит её состояние с
                 // коробкой, перед которой она стоит.
-                node_id: id ^ 0x5350_4143_4552_0001,
+                node_id: id ^ crate::layout::fragment::flow::blocks::STRUT_ID,
                 anim: None,
                 tag: "div".to_string(),
                 style: style.into(),

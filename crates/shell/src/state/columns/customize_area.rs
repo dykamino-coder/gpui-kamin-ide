@@ -60,7 +60,13 @@ impl RootView {
                                 .customize_contrib
                                 .as_deref()
                                 .is_some_and(crate::ui::chat_webview::has_html);
-                            let contrib_body = if contrib_ready {
+                            let contrib_body = if let Some(state) = crate::web::unavailable() {
+                                div()
+                                    .relative()
+                                    .size_full()
+                                    .child(crate::ui::web_unavailable::card(state, &self.tx, p))
+                                    .into_any_element()
+                            } else if contrib_ready {
                                 // Вью страницы живёт под СВОИМ id: бандл
                                 // Customize выбирает раздел из location.pathname,
                                 // а общий /czShared раздела не содержит — вью

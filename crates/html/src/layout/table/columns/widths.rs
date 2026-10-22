@@ -1,9 +1,9 @@
 //! Полосы колонок и ширины из элементов <col>/<colgroup>.
 
 use super::{col_role, col_span};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
+use crate::layout::cx::LayoutCx;
 use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 
@@ -16,12 +16,12 @@ pub(in crate::layout::table) fn push_col_bands(
     cols: usize,
     have_rows: bool,
     cells: &mut Vec<AnyElement>,
-    vcx: ValueCx<'_>,
+    cx: &LayoutCx,
 ) {
     let mut seen: Vec<u64> = vec![];
     // Один буфер на элемент: `<col span>` красит несколько дорожек одной
     // полосой.
-    let mut by_node: std::collections::HashMap<u64, crate::layout::table::paint::RowRects> =
+    let mut by_node: std::collections::HashMap<u64, crate::layout::table::probes::RowRects> =
         Default::default();
     for (i, layer) in layers.iter_mut().enumerate() {
         let Some(el) = layer.element else { continue };
@@ -46,9 +46,7 @@ pub(in crate::layout::table) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(
-                crate::layout::table::paint::CellsClipped::new(rects, band_style, vcx).hooked(),
-            );
+            cells.push(cx.build.layer(Layer::cell_band(rects, band_style, cx)));
         }
     }
 }

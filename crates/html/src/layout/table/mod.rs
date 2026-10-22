@@ -12,7 +12,7 @@ use gpui::AnyElement;
 pub mod anon;
 mod axes;
 pub mod columns;
-pub mod paint;
+pub mod probes;
 
 mod context;
 mod finish;
@@ -29,6 +29,7 @@ use build_rows::table_rows_with_bands;
 mod zero_cols;
 use zero_cols::zero_width_cols;
 mod col_measure;
+pub(crate) mod grid_rows;
 use col_measure::measure_col_widths;
 mod setup;
 use setup::{
@@ -133,14 +134,14 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // нет, а слой кромок (ниже) обязан лечь после ВСЕХ полос.
     let under: Vec<AnyElement> = vec![];
     // Фоны ячеек сросшейся модели — отдельным слоем под кромками
-    // (`layout::table::paint::cell_bg::CellBgs`): так кромки красятся поверх фонов ячеек, но под
+    // (`layout::table::probes::CellBgs`): так кромки красятся поверх фонов ячеек, но под
     // их содержимым — у Blink сросшиеся кромки идут в фазе
     // `kDescendantBlockBackgroundsOnly` (`box_fragment_painter.cc:952`), а
     // строчное/плавающее/позиционированное содержимое ячеек — позже
     // (`collapsed-border-paint-phase-001`, `collapsed-borders-painting-order-
     // 009/010/012/013`: вложенный стол и инлайн-блок с отрицательным полем
     // накрывались кромками внешнего стола).
-    let cell_bgs: crate::layout::table::paint::CellBgs = Default::default();
+    let cell_bgs: crate::layout::table::probes::CellBgs = Default::default();
     // Слои фонов и кромок строятся только при настоящем `border-collapse:
     // collapse` — ровно там, где ниже кладётся `EdgePainter` (у легаси
     // `rules=` без `border-collapse` кромки живут на коробках, и проба фона
