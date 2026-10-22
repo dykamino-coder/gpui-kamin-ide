@@ -9,6 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_box;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
 /// Gate of the path: a block-level, non-monolithic child of a horizontal
@@ -31,16 +32,12 @@ pub(crate) fn refusal(
         (matches!(e.style.computed().display, Some(Display::Flex) | Some(Display::Grid))
             && e.style.computed().gap.is_some()
             && super::row_gap(&e.style.computed()).is_none())
-            || (e
-                .children
-                .iter()
+            || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))
     }
     fn has_flex(e: &Element) -> bool {
         e.style.computed().display == Some(Display::Flex)
-            || (e
-                .children
-                .iter()
+            || (children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k))))
     }
     if c.inline

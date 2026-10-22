@@ -13,6 +13,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_box;
 use crate::layout::fragment::flex_lines::class_a_box;
+use crate::layout::fragment::flow::box_children::children;
 use crate::layout::fragment::table_bands::table_box;
 use crate::layout::page::names::page_names;
 use crate::style::computed::{Display, LenCx};
@@ -102,7 +103,7 @@ pub(super) fn push_kids(
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) {
-    for n in nodes.iter().filter(|n| !is_blank(n)) {
+    for n in children(nodes).filter(|n| !is_blank(n)) {
         let k = match n {
             // Внепоточные соседей не двигают (CSS 2.1 §9.3.1) и границу
             // соседей не прерывают.
@@ -140,7 +141,7 @@ pub(super) fn push_kids(
 
 /// Крайние поточные узлы; текст и строчная коробка не передают блочный break.
 fn edges(e: &Element) -> (Option<u64>, Option<u64>) {
-    let nodes: Vec<_> = e.children.iter().filter(|n| !is_blank(n)).filter(|n| {
+    let nodes: Vec<_> = children(&e.children).filter(|n| !is_blank(n)).filter(|n| {
         !matches!(n, Node::Element(k) if out_of_flow(&k.style.computed()) || k.style.computed().display == Some(Display::None))
     }).collect();
     let block = |n: &&Node| match n {

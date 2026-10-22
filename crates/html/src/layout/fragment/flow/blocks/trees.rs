@@ -6,6 +6,7 @@
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_box;
+use crate::layout::fragment::flow::box_children::children;
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::Display;
 
@@ -26,7 +27,7 @@ pub(super) fn stacks_blocks(e: &Element) -> bool {
 /// legacy probe проверяется всё дерево, без глубины оценщика.
 pub(crate) fn plain_tree(e: &Element) -> bool {
     stacks_blocks(e)
-        && e.children.iter().all(|n| match n {
+        && children(&e.children).all(|n| match n {
             Node::Element(k) => k.inline || plain_tree(k),
             _ => true,
         })
@@ -37,7 +38,7 @@ pub(crate) fn plain_tree(e: &Element) -> bool {
 /// plain_tree здесь неприменим, поскольку намеренно исключает таблицы.
 pub(crate) fn stacked_tree(e: &Element) -> bool {
     stacks_blocks(e)
-        && e.children.iter().all(|n| match n {
+        && children(&e.children).all(|n| match n {
             Node::Element(k) if out_of_flow(&k.style.computed()) || k.inline => {
                 !holds_blocks(k) || stacked_tree(k)
             }
@@ -65,7 +66,7 @@ pub(crate) fn table_tree(e: &Element) -> bool {
                     "tr" | "thead" | "tbody" | "tfoot" | "td" | "th"
                 ) =>
             {
-                k.children.iter().all(part)
+                children(&k.children).all(part)
             }
             Node::Element(k) => {
                 stacked_tree(k) || table_tree(k) || super::grid_tree(k) || super::flex_tree(k)
@@ -73,12 +74,12 @@ pub(crate) fn table_tree(e: &Element) -> bool {
             _ => true,
         }
     }
-    table_box(e) && !e.style.cascaded().wm().vertical() && e.children.iter().all(part)
+    table_box(e) && !e.style.cascaded().wm().vertical() && children(&e.children).all(part)
 }
 
 /// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
 pub(super) fn holds_blocks(e: &Element) -> bool {
-    e.children.iter().any(|n| match n {
+    children(&e.children).any(|n| match n {
         Node::Element(k) if out_of_flow(&k.style.computed()) => false,
         Node::Element(k) if !k.inline => true,
         Node::Element(k) => k.style.computed().display.is_none() && holds_blocks(k),

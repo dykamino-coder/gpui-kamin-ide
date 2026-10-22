@@ -6,6 +6,7 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::{monolith_box, solid_box};
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 use crate::style::values::value::px_auto_zero;
 
@@ -17,7 +18,7 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: ValueCx<'_>) ->
     }
     let mut force_next = false;
     let mut prev: Option<(u64, bool)> = None;
-    for n in p.children.iter().filter(|n| !is_blank(n)) {
+    for n in children(&p.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { continue };
         if out_of_flow(&k.style.computed()) {
             if k.style.computed().float.is_some_and(|f| f != 0) {

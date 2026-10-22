@@ -6,6 +6,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::content_monolith_blockified;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 use crate::tolerance::COORD_EPS;
 
@@ -56,9 +57,7 @@ pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> FlexBo
     };
     FlexBox {
         main_gap,
-        items: e
-            .children
-            .iter()
+        items: children(&e.children)
             .filter_map(|n| {
                 let Node::Element(k) = n else { return None };
                 if out_of_flow(&k.style.computed())

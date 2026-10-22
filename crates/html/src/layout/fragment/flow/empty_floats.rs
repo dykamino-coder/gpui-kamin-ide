@@ -2,6 +2,7 @@
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
 pub(crate) fn empty_floats(e: &Element) -> bool {
@@ -19,15 +20,12 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
             return None;
         }
         let mut floats = false;
-        for n in e.children.iter().filter(|n| !is_blank(n)) {
+        for n in children(&e.children).filter(|n| !is_blank(n)) {
             let Node::Element(f) = n else { return None };
-            if f.style.display == Some(Display::None) {
-                continue;
-            }
             if f.style.float.is_some_and(|s| s != 0) {
                 let mut flow = f.clone();
                 flow.style.float = None;
-                if !f.children.iter().all(is_blank) || !super::independent_copy(&flow) {
+                if !children(&f.children).all(is_blank) || !super::independent_copy(&flow) {
                     return None;
                 }
                 floats = true;

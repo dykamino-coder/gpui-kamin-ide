@@ -196,6 +196,8 @@ pub fn render_paged_select(
     };
     let mut groups: Vec<Vec<Node>> = Vec::new();
     let run = Run::None;
+    let nodes =
+        crate::layout::fragment::flow::box_children::projected(&nodes, &root, opts.cx.vcx());
     group_runs(nodes, inline_level, floated, &mut groups, run);
     for g in groups.iter_mut() {
         while g.last().is_some_and(is_blank) {

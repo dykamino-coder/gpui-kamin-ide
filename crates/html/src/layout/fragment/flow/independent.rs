@@ -2,7 +2,7 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::fragment::push::measured_tree;
-use crate::style::computed::Position;
+use crate::style::computed::{Display, Position};
 
 /// У копии нет отдельного плана фрагментов или параллельного потока.
 /// Отдельные планы clone, OOF и nested требуют продолжений F2-1/F2-2/F2-3.
@@ -46,15 +46,19 @@ pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
 }
 
 fn separate(e: &Element, vertical: bool) -> bool {
-    e.style.bdb_clone
-        || e.style.text_box_trim_start
-        || e.style.text_box_trim_end
-        || e.marks.host_trim_start
-        || e.marks.host_trim_end
-        || (!vertical && e.style.vertical_decl() == Some(true))
-        || e.style.float.is_some_and(|f| f != 0)
-        || matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
-        || crate::layout::multicol::spanner::multicol_container(&e.style)
+    if e.style.display == Some(Display::None) {
+        return false;
+    }
+    (e.style.display != Some(Display::Contents)
+        && (e.style.bdb_clone
+            || e.style.text_box_trim_start
+            || e.style.text_box_trim_end
+            || e.marks.host_trim_start
+            || e.marks.host_trim_end
+            || (!vertical && e.style.vertical_decl() == Some(true))
+            || e.style.float.is_some_and(|f| f != 0)
+            || matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
+            || crate::layout::multicol::spanner::multicol_container(&e.style)))
         || e.children
             .iter()
             .any(|n| matches!(n, Node::Element(k) if separate(k, vertical)))
