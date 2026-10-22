@@ -12,7 +12,6 @@ use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::paint::effects::grouped::grouped_replaced;
 use crate::paint::effects::transform::transformed;
-use crate::paint::replaced::image::image_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -117,7 +116,7 @@ pub(super) fn atom_element_raw(
         // собственный размер (§10.3.2, §10.6.2) — коробки не заводил и уходил
         // прогоном запасного текста. Отсечка по атрибуту обязательна: объект
         // без `data` и видео без `poster` замещаемыми не являются.
-        "embed" if e.attr("src").is_some() => Some(image_with(
+        "embed" if e.attr("src").is_some() => Some(opts.cx.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),
             &opts.cx,
@@ -139,7 +138,7 @@ pub(super) fn atom_element_raw(
                 copy.style.resolve_em(atom_base_font(inherited, opts), vcx);
                 return iframe(&copy, inherited, opts);
             }
-            Some(image_with(
+            Some(opts.cx.build.replaced(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
                 &opts.cx,
@@ -149,7 +148,7 @@ pub(super) fn atom_element_raw(
             let mut copy = e.clone();
             let url = e.attr("poster").unwrap_or_default().to_string();
             copy.attrs.push(("src".to_string(), url));
-            Some(image_with(
+            Some(opts.cx.build.replaced(
                 &with_inherited_font(&copy, inherited),
                 Some(atom_base_font(inherited, opts)),
                 &opts.cx,

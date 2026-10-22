@@ -6,7 +6,6 @@ use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::paint::box_tree::styled::styled_div_with;
-use crate::paint::replaced::image::image;
 use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -52,9 +51,9 @@ pub(super) fn static_position_atom(
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| image(&copy, &opts.cx))
+                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
                 }
-                _ => image(&copy, &opts.cx),
+                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
             })
         }
         _ => None,

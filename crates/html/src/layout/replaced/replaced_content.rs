@@ -95,7 +95,7 @@ pub(crate) fn empty_iframe(
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return crate::paint::replaced::image::image(&copy, &opts.cx);
+        return opts.cx.build.replaced(&copy, None, &opts.cx);
     }
     crate::paint::box_tree::styled::styled_div(&copy, &opts.cx)
         .flex_shrink_0()

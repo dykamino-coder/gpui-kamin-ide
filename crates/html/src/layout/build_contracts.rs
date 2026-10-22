@@ -27,6 +27,7 @@ use std::rc::Rc;
 
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildStyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
+type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
 
@@ -75,15 +76,17 @@ impl<'a> Layer<'a> {
 /// ([`FlowBuild`]: a block-level node list, one inline formatting context,
 /// the children's boundary probes and the `::first-line` routing), one
 /// element box (`element`), the styled, childless div of an element under a
-/// given style (`styled_box`, paint's `styled_div_with`), a paint effect
-/// around a built box (`effects`) and a paint layer over probed geometry
-/// (`layer`). Inputs are the inherited computed style and the options or
-/// layout context of the box being built.
+/// given style (`styled_box`, paint's `styled_div_with`), the box of a
+/// replaced element with an image source (`replaced`, paint's `image_with`),
+/// a paint effect around a built box (`effects`) and a paint layer over
+/// probed geometry (`layer`). Inputs are the inherited computed style and the
+/// options or layout context of the box being built.
 #[derive(Clone, Copy)]
 pub(crate) struct ChildBuild {
     flow: FlowBuild,
     element: BuildElement,
     styled_box: BuildStyledBox,
+    replaced: BuildReplaced,
     effects: BuildEffect,
     layer: BuildLayer,
 }
@@ -93,6 +96,7 @@ impl ChildBuild {
         flow: FlowBuild,
         element: BuildElement,
         styled_box: BuildStyledBox,
+        replaced: BuildReplaced,
         effects: BuildEffect,
         layer: BuildLayer,
     ) -> Self {
@@ -100,6 +104,7 @@ impl ChildBuild {
             flow,
             element,
             styled_box,
+            replaced,
             effects,
             layer,
         }
@@ -158,6 +163,19 @@ impl ChildBuild {
     /// Слой первой строки передаётся первому блочному потомку в потоке.
     pub(crate) fn first_line_route(&self, nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         self.flow.first_line_route(nodes, parent)
+    }
+
+    /// The box of the replaced element `e` with an image source, its picture
+    /// sized by layout's replaced sizing (`layout::replaced`). `base_font`
+    /// resolves font-relative lengths of a raw style; `None` when they are
+    /// already resolved.
+    pub(crate) fn replaced(
+        &self,
+        e: &Element,
+        base_font: Option<f32>,
+        cx: &LayoutCx,
+    ) -> AnyElement {
+        (self.replaced)(e, base_font, cx)
     }
 
     /// `child` under the paint effect `effect`.
