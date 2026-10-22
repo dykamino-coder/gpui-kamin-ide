@@ -51,13 +51,37 @@ pub(super) fn recorder(
     // A box of another context without recorded parts keeps its own
     // estimate; its line boxes are not lines of the stack flow
     // (`flow::flow_lines`).
-    if blocks.is_empty() && !crate::layout::fragment::flow::flow_lines(copy) {
-        return (Watched::new(&[]), None);
+    match recorded(
+        blocks.is_empty(),
+        measured,
+        crate::layout::fragment::flow::flow_lines(copy),
+    ) {
+        Recorded::Estimate => (Watched::new(&[]), None),
+        Recorded::Lines => (Watched::for_lines(), breaks_w),
+        Recorded::Blocks => (Watched::for_blocks(blocks), breaks_w),
     }
-    if blocks.kids.is_empty() && measured {
-        return (Watched::for_lines(), breaks_w);
+}
+
+/// Что записывает рекордер копии, чьи точки разрыва даёт раскладка.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Recorded {
+    /// Ничего: точки остаются у оценки.
+    Estimate,
+    /// Только измеренные строки.
+    Lines,
+    /// Блочную стопку (блоки, ряды таблиц, элементы сеток) и строки.
+    Blocks,
+}
+
+/// `empty` — у стопки нет ни блочных детей, ни таблицы, ни элементов сетки
+/// (`BlockBox::is_empty`): корень-таблица и корень-сетка блочных детей не
+/// имеют, но их ряды пишет стопка.
+fn recorded(empty: bool, measured: bool, flow_lines: bool) -> Recorded {
+    match (empty, measured, flow_lines) {
+        (true, _, false) => Recorded::Estimate,
+        (true, true, true) => Recorded::Lines,
+        _ => Recorded::Blocks,
     }
-    (Watched::for_blocks(blocks), breaks_w)
 }
 
 /// Строки копии срезаются `text-box-trim` у разрывов колонок (css-inline-3
@@ -95,4 +119,23 @@ pub(super) fn repeatable(
             .any(|&(id, _)| id == copy.node_id);
     let t = watched.blocks().filter(|_| laid_out)?.table.as_ref()?;
     Some((t.head.is_some_and(|s| s.2), t.foot.is_some_and(|s| s.2)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Recorded, recorded};
+
+    #[test]
+    fn measured_grid_or_table_root_keeps_its_block_recorder() {
+        // A measured grid or table root has no block kids but rows to record.
+        assert_eq!(recorded(false, true, false), Recorded::Blocks);
+        assert_eq!(recorded(false, false, false), Recorded::Blocks);
+    }
+
+    #[test]
+    fn empty_stack_keeps_lines_or_the_estimate() {
+        assert_eq!(recorded(true, true, true), Recorded::Lines);
+        assert_eq!(recorded(true, false, true), Recorded::Blocks);
+        assert_eq!(recorded(true, true, false), Recorded::Estimate);
+    }
 }
