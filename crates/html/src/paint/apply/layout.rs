@@ -108,7 +108,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // прежде такая коробка оставалась border-box, и её содержимое ужималось
     // на ширину отступов (`padding-percentage-inherit-001`: 30 → 6 точек у
     // ребёнка).
-    let native_content_box = intrinsic_size::native_content_box(c);
+    let native_content_box = crate::layout::native_box::native_content_box(c);
     if native_content_box {
         d.style().content_box = Some(true);
     }
