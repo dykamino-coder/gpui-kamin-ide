@@ -165,7 +165,7 @@ impl std::fmt::Debug for Watched {
 pub(crate) fn wrap(id: u64, el: AnyElement, opts: &RenderOpts) -> AnyElement {
     match &opts.frag.watch {
         Some(rec) if rec.ids.contains(&id) => Watch {
-            id,
+            slot: Slot::Box(id),
             inner: el,
             rec: rec.clone(),
         }
@@ -174,8 +174,17 @@ pub(crate) fn wrap(id: u64, el: AnyElement, opts: &RenderOpts) -> AnyElement {
     }
 }
 
+/// What a watched node is recorded as.
+#[derive(Clone, Copy)]
+enum Slot {
+    /// Border box of the box with this node id.
+    Box(u64),
+    /// Part of the table with this key (`table_part`).
+    Table(u64, TablePart),
+}
+
 struct Watch {
-    id: u64,
+    slot: Slot,
     inner: AnyElement,
     rec: Rc<Watched>,
 }
@@ -186,7 +195,12 @@ impl Hooks for Watch {
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let lid = self.inner.request_layout(window, cx);
-        self.rec.seen.borrow_mut().insert(self.id, lid);
+        match self.slot {
+            Slot::Box(id) => {
+                self.rec.seen.borrow_mut().insert(id, lid);
+            }
+            Slot::Table(key, part) => self.rec.record_part(key, part, lid),
+        }
         (lid, ())
     }
 
