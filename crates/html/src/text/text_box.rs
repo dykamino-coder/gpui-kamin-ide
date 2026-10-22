@@ -226,7 +226,7 @@ pub(crate) fn normal_fraction(style: &Computed, opts: &RenderOpts) -> f32 {
         .filter(|f| !f.is_empty())
         .unwrap_or_else(|| {
             if style.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(style.lang.as_deref()).to_string()
+                super::metrics::mono_family_for(style.lang.as_deref(), opts.cx.vcx()).to_string()
             } else {
                 opts.text.font_family.to_string()
             }

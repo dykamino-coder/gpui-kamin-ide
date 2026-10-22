@@ -7,10 +7,12 @@ pub(super) fn resolved_style(c: &Computed, used: gpui::MeasuredBox, vcx: ValueCx
     let mut frame = c.clone();
     let resolve = |value: Option<Len>, basis: Option<gpui::Pixels>| {
         value.and_then(|v| match v {
-            Len::Pct(_) => v.to_px(basis.map(f32::from), c.font_cx(), vcx).map(Len::Px),
-            Len::Calc(id) if calc_get(id, vcx).pct_px().is_some() => {
-                v.to_px(basis.map(f32::from), c.font_cx(), vcx).map(Len::Px)
-            }
+            Len::Pct(_) => v
+                .to_px(basis.map(f32::from), c.font_cx(vcx), vcx)
+                .map(Len::Px),
+            Len::Calc(id) if calc_get(id, vcx).pct_px().is_some() => v
+                .to_px(basis.map(f32::from), c.font_cx(vcx), vcx)
+                .map(Len::Px),
             _ => Some(v),
         })
     };

@@ -108,7 +108,10 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         None => {}
     }
     if c.monospace == Some(true) {
-        d = d.font_family(crate::text::metrics::mono_family_for(c.lang.as_deref()));
+        d = d.font_family(crate::text::metrics::mono_family_for(
+            c.lang.as_deref(),
+            vcx,
+        ));
     }
     if let Some(Len::Px(v)) = c.letter_spacing {
         d = d.letter_spacing(px(v));

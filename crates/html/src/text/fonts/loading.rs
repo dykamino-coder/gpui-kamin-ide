@@ -114,7 +114,7 @@ pub(super) fn load_faces_into(css: &str, base: Option<&url::Url>, vcx: ValueCx<'
                         .romn_by_src
                         .borrow_mut()
                         .insert(src.clone(), romn);
-                    crate::text::metrics::load_font(bytes)
+                    crate::text::metrics::load_font(bytes, vcx)
                 });
                 vcx.doc
                     .font_faces

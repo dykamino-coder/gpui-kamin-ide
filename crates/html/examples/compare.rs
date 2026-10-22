@@ -72,20 +72,18 @@ fn main() {
         }
         // Метрики `ch`/`ex` меряются по РЕАЛЬНОМУ шрифту — щуп ставится после
         // регистрации, иначе замер шёл бы по шрифту-подмене.
-        kamin_html::metrics::use_text_system(cx.text_system().clone());
-        // Свои шрифты страницы (`@font-face`): файл отдаётся системе, а её имя
-        // семейства запоминается под тем, которым шрифт зовут в разметке.
-        let fonts = cx.text_system().clone();
-        kamin_html::fonts::install_loader(move |bytes| {
-            let before: std::collections::HashSet<String> =
-                fonts.all_font_names().into_iter().collect();
-            fonts.add_fonts(vec![bytes.into()]).ok()?;
-            fonts
-                .all_font_names()
-                .into_iter()
-                .find(|name| !before.contains(name))
-        });
-        let doc = Rc::new(Document::builder(&html, BROWSER_CSS).build());
+        let system = cx.text_system().clone();
+        let fonts =
+            kamin_html::metrics::FontContext::new(system.clone()).with_loader(move |bytes| {
+                let before: std::collections::HashSet<String> =
+                    system.all_font_names().into_iter().collect();
+                system.add_fonts(vec![bytes.into()]).ok()?;
+                system
+                    .all_font_names()
+                    .into_iter()
+                    .find(|name| !before.contains(name))
+            });
+        let doc = Rc::new(Document::builder(&html, BROWSER_CSS).fonts(&fonts).build());
         cx.open_window(
             WindowOptions {
                 // Точка в углу экрана и точный размер: снимок сравнивается с

@@ -14,7 +14,8 @@ pub(crate) fn measure_font(c: &Computed, opts: &RenderOpts) -> gpui::Font {
             .unwrap_or_else(|| family.clone())
             .into();
     } else if c.monospace == Some(true) {
-        font.family = crate::text::metrics::mono_family_for(c.lang.as_deref()).into();
+        font.family =
+            crate::text::metrics::mono_family_for(c.lang.as_deref(), opts.cx.vcx()).into();
     }
     if let Some(w) = c.font_weight {
         font.weight = gpui::FontWeight(w as f32);

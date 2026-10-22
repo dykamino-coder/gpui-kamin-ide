@@ -101,7 +101,7 @@ pub(crate) fn line_run_shape(
         return None;
     }
     let font = measure_font(&inh, &opts);
-    let lines = crate::text::metrics::line_count(&font, size, &text, w)?.max(1);
+    let lines = crate::text::metrics::line_count(&font, size, &text, w, opts.cx.vcx())?.max(1);
     let orphans = inh.orphans.unwrap_or(2).max(1) as usize;
     let widows = inh.widows.unwrap_or(2).max(1) as usize;
     // Свой срез первой/последней строки (`blocks()` кладёт его отрицательным

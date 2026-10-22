@@ -29,7 +29,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
     };
     let px = |value: Option<Len>, style: &Computed| match value {
         None | Some(Len::Auto) => 0.0,
-        Some(v) => v.to_px(basis, style.font_cx(), vcx).unwrap_or(0.0),
+        Some(v) => v.to_px(basis, style.font_cx(vcx), vcx).unwrap_or(0.0),
     };
     let edges = |style: &Computed| {
         let b = style.borders();
@@ -74,7 +74,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
             _ if !vertical && opts.cx.avail_h.is_some() => opts.cx.avail_h.unwrap_or(0.0),
             Some(v) if v != Len::Auto => {
                 let size = v
-                    .to_px(Some(viewport), parent.font_cx(), vcx)
+                    .to_px(Some(viewport), parent.font_cx(vcx), vcx)
                     .unwrap_or(0.0);
                 size - if parent.border_box == Some(true) {
                     edges(parent)
@@ -106,7 +106,7 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &Computed, opts: &Ren
         st.min_height
     };
     let old = old
-        .and_then(|v| v.to_px(Some(available), st.font_cx(), vcx))
+        .and_then(|v| v.to_px(Some(available), st.font_cx(vcx), vcx))
         .unwrap_or(0.0);
     let minimum = Len::Px(minimum.max(old));
     if vertical {
