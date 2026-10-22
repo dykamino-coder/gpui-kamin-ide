@@ -63,6 +63,13 @@ mod tests {
         let crate::dom::Node::Element(c) = &tree[0] else {
             panic!("grid")
         };
+        let mut c = c;
+        while c.tag != "div" {
+            let crate::dom::Node::Element(child) = &c.children[0] else {
+                panic!("grid ancestor")
+            };
+            c = child;
+        }
         let registry = RefCell::default();
         let (_, shape) =
             measured(c, &Computed::default(), tree.values(), 120.0, &registry).expect("copy");
