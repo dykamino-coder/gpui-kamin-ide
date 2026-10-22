@@ -11,7 +11,11 @@ pub(super) fn align(placed: &mut [Placed], n: usize, rows: bool) {
             if group.len() < 2 {
                 continue;
             }
-            let base_of = |p: &Placed| p.margin.top + p.baseline.unwrap_or(p.size.height);
+            let base_of = |p: &Placed| {
+                p.margin.top + super::super::track_sizing::baseline_coordinate(
+                    p.baseline, p.size.height, p.overflow.y.is_scroll_container(),
+                )
+            };
             let shared = group
                 .iter()
                 .map(|&i| base_of(&placed[i]))
@@ -35,7 +39,9 @@ pub(super) fn align(placed: &mut [Placed], n: usize, rows: bool) {
                 continue;
             }
             let from_end = |p: &Placed| {
-                p.margin.bottom + p.size.height - p.last_baseline.unwrap_or(p.size.height)
+                p.margin.bottom + p.size.height - super::super::track_sizing::baseline_coordinate(
+                    p.last_baseline.or(p.baseline), p.size.height, p.overflow.y.is_scroll_container(),
+                )
             };
             let shared = group
                 .iter()

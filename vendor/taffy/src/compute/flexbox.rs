@@ -3472,7 +3472,9 @@ fn calculate_flex_item(
         item.baseline = baseline_offset_cross + inner_baseline;
     } else {
         let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
-        let inner_baseline = layout_output.baselines.first.unwrap_or(size.height);
+        let inner_baseline = crate::compute::common::alignment::baseline_coordinate(
+            layout_output.baselines.first, size.height, item.overflow.y.is_scroll_container(),
+        );
         item.baseline = baseline_offset_main + inner_baseline;
     }
 

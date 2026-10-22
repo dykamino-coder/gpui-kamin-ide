@@ -1,5 +1,6 @@
 //! Row grid-lanes export grid-axis baselines using CSS Grid's occupied-edge rule.
 //! Sharing groups precede available child baselines and border-box synthesis.
+use crate::compute::common::alignment::baseline_coordinate;
 
 use crate::Baselines;
 
@@ -13,8 +14,12 @@ pub(super) fn compute(placed: &[super::super::Placed]) -> Baselines {
             placement: item.placement_stack_pos,
             offset: item.grid_pos,
             height: item.size.height,
-            first: item.baseline,
-            last: item.last_baseline,
+            first: item.baseline.map(|v| {
+                    baseline_coordinate(Some(v), item.size.height, item.overflow.y.is_scroll_container())
+                }),
+            last: item.last_baseline.map(|v| {
+                    baseline_coordinate(Some(v), item.size.height, item.overflow.y.is_scroll_container())
+                }),
             first_shared: item.grid_baseline,
             last_shared: item.grid_last_baseline,
         })

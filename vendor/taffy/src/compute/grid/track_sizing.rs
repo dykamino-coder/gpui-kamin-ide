@@ -476,16 +476,7 @@ fn initialize_track_sizes(
     }
 }
 
-/// Scroll-container baselines are clamped to the border box at initial scroll position.
-/// Non-scrollers may legitimately expose a baseline outside that box.
-pub(super) fn baseline_coordinate(own: Option<f32>, size: f32, scroll_container: bool) -> f32 {
-    let value = own.unwrap_or(size);
-    if scroll_container {
-        value.min(size).max(0.0)
-    } else {
-        value
-    }
-}
+pub(super) use crate::compute::common::alignment::baseline_coordinate;
 
 /// 11.5.1 Shim baseline-aligned items so their intrinsic size contributions reflect their baseline alignment.
 fn resolve_item_baselines(
@@ -648,26 +639,15 @@ fn resolve_item_baseline_groups(
 
             let baseline = measured_size_and_baselines.baselines.first;
             let height = measured_size_and_baselines.size.height;
+            item.height = height;
 
-            // KaminIDE patch: у последних базовых — расстояние ОТ КОНЦА: от
-            // последней базовой до нижнего края margin-бокса; без своей —
-            // синтез у нижнего края рамки (css-align-3 §9.1; Blink
-            // logical_box_fragment.h `LastBaselineOrSynthesize`), то есть одно
-            // нижнее поле.
+            // KaminIDE patch: храним координату от начала border box;
+            // расстояние от конца и margin учитываются при сравнении группы.
             if last {
-                let margin_bottom = item
-                    .margin
-                    .bottom
-                    .resolve_or_zero(Some(column_width), |val, basis| tree.calc(val, basis));
-                item.baseline = Some(
-                    height
-                        - baseline_coordinate(
-                            measured_size_and_baselines.last_or_first_y(),
-                            height,
-                            item.overflow.y.is_scroll_container(),
-                        )
-                        + margin_bottom,
-                );
+                item.baseline = Some(baseline_coordinate(
+                    measured_size_and_baselines.last_or_first_y(), height,
+                    item.overflow.y.is_scroll_container(),
+                ));
                 continue;
             }
 
@@ -691,22 +671,27 @@ fn resolve_item_baseline_groups(
                 own => own,
             };
 
-            item.baseline = Some(
-                baseline_coordinate(baseline, height, item.overflow.y.is_scroll_container())
-                    + item
-                        .margin
-                        .top
-                        .resolve_or_zero(Some(column_width), |val, basis| tree.calc(val, basis)),
-            );
+            item.baseline = Some(baseline_coordinate(
+                baseline, height, item.overflow.y.is_scroll_container(),
+            ));
         }
 
+        // KaminIDE patch: #1322 — margin участвует только в сравнении группы.
+        let group_baseline = |item: &GridItem| {
+            let column_width: f32 = other_axis_tracks[item.track_range_excluding_lines(axis.other())]
+                .iter().map(|track| track.base_size).sum();
+            let margin = if last { item.margin.bottom } else { item.margin.top }
+                .resolve_or_zero(Some(column_width), |val, basis| tree.calc(val, basis));
+            let baseline = item.baseline.unwrap_or(0.0);
+            if last { item.height - baseline + margin } else { baseline + margin }
+        };
         // Compute the max baseline of all items in the row
         let row_max_baseline = row_items
             .iter()
             .filter(|item| {
                 item.align_self.keyword == wanted && item.participates_in_baseline_alignment()
             })
-            .map(|item| item.baseline.unwrap_or(0.0))
+            .map(|item| group_baseline(item))
             .max_by(|a, b| a.total_cmp(b))
             .unwrap();
 
@@ -717,7 +702,7 @@ fn resolve_item_baseline_groups(
             if item.align_self.keyword != wanted || !item.participates_in_baseline_alignment() {
                 continue;
             }
-            let shim = row_max_baseline - item.baseline.unwrap_or(0.0);
+            let shim = row_max_baseline - group_baseline(item);
             if last {
                 item.baseline_shim_end = shim;
             } else {

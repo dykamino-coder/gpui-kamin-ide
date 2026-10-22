@@ -1,4 +1,5 @@
 //! Computes the CSS block layout algorithm in the case that the block container being laid out contains only block-level boxes
+use crate::compute::common::alignment::{baseline_coordinate, exposed_baseline};
 // KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
 use super::content_size_limits;
 #[path = "block_keyword_width.rs"]
@@ -1746,7 +1747,7 @@ fn perform_final_layout_on_in_flow_children(
                 } else {
                     item_layout.baselines.first
                 };
-                first_baseline = child_baseline.map(|baseline| location.y + baseline);
+                first_baseline = child_baseline.map(|baseline| (location.y - inset_offset.y) + baseline);
             }
             let child_last_y = exposed_baseline(
                 item_layout.last_or_first_y(),
@@ -1754,31 +1755,31 @@ fn perform_final_layout_on_in_flow_children(
                 item.overflow.y.is_scroll_container(),
             );
             if let Some(baseline) = child_last_y {
-                last_baseline = Some(location.y + baseline);
+                last_baseline = Some((location.y - inset_offset.y) + baseline);
             }
             // Inside an `inline-block`, tables contribute no baseline (see
             // `LayoutOutput::inline_block_last_y`).
             if let Some(baseline) = exposed_baseline(
                 item_layout.inline_block_last_y(),
                 item_layout.size.height,
-                item.overflow.y.is_scroll_container(),
+                item.overflow.y.is_scroll_container() && item_layout.inline_block_last_y != Some(None),
             ) {
-                inline_block_last = Some(location.y + baseline);
+                inline_block_last = Some((location.y - inset_offset.y) + baseline);
             }
             if first_baseline_x.is_none() {
-                first_baseline_x = exposed_baseline(
-                    item_layout.baselines_x.first,
+                first_baseline_x = item_layout.baselines_x.first.map(|value| baseline_coordinate(
+                    Some(value),
                     item_layout.size.width,
                     item.overflow.x.is_scroll_container(),
-                )
-                .map(|baseline| location.x + baseline);
+                ))
+                .map(|baseline| (location.x - inset_offset.x) + baseline);
             }
-            if let Some(baseline) = exposed_baseline(
-                item_layout.last_or_first_x(),
+            if let Some(baseline) = item_layout.last_or_first_x().map(|value| baseline_coordinate(
+                Some(value),
                 item_layout.size.width,
                 item.overflow.x.is_scroll_container(),
-            ) {
-                last_baseline_x = Some(location.x + baseline);
+            )) {
+                last_baseline_x = Some((location.x - inset_offset.x) + baseline);
             }
 
             // Used auto margins include float-avoidance offsets, unlike the alignment margins above.
@@ -1916,14 +1917,6 @@ fn perform_final_layout_on_in_flow_children(
     )
 }
 
-/// Keep native scroll-container synthesis/clamping; other boxes expose only actual baselines.
-fn exposed_baseline(own: Option<f32>, size: f32, scroll_container: bool) -> Option<f32> {
-    if scroll_container {
-        Some(own.unwrap_or(size).min(size).max(0.0))
-    } else {
-        own
-    }
-}
 
 #[cfg(test)]
 mod kamin_block_tests {

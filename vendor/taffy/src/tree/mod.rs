@@ -190,3 +190,12 @@ mod grid_flex_fraction_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_track_sum_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox", feature = "block_layout"))]
+mod baseline_transport_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_final_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
+mod block_baseline_relative_tests;
