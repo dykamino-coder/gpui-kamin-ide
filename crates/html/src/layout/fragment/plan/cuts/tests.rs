@@ -7,23 +7,8 @@ use crate::layout::multicol::column_stack::ColumnStack;
 fn kid(h: f32) -> Kid {
     Kid {
         h,
-        mt: 0.0,
-        mb: 0.0,
-        monolith: false,
-        cuts: Vec::new(),
-        force_before: false,
-        force_after: false,
-        avoid_before: false,
-        avoid_after: false,
-        forced: Vec::new(),
-        solid: Vec::new(),
-        avoid: Vec::new(),
-        span: false,
         over: h,
-        clone_dec: None,
-        overflow_top: false,
-        repeat: Default::default(),
-        par: Default::default(),
+        ..Default::default()
     }
 }
 

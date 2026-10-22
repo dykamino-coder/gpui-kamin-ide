@@ -30,7 +30,9 @@ pub(crate) mod table;
 use table::TableBox;
 mod grid;
 mod grid_breaks;
-pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, grid_tree, item_rows};
+pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, item_rows};
+mod grid_tree;
+pub(crate) use grid_tree::grid_tree;
 #[cfg(test)]
 mod grid_tests;
 #[cfg(test)]

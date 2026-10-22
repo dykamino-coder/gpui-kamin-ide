@@ -3,7 +3,7 @@
 use super::RepeatGeom;
 
 /// Мера ребёнка для укладки колонок.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Kid {
     pub h: f32,
     pub mt: f32,

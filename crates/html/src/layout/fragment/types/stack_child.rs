@@ -205,3 +205,32 @@ impl RepeatGeom {
         }
     }
 }
+
+impl StackChild {
+    /// Геометрия ребёнка для укладки (`Kid`).
+    pub(crate) fn kid(&self) -> super::rows::Kid {
+        super::rows::Kid {
+            h: self.h,
+            mt: self.mt,
+            mb: self.mb,
+            monolith: self.monolith,
+            cuts: self.cuts.clone(),
+            force_before: self.force_before,
+            force_after: self.force_after,
+            avoid_before: self.avoid_before,
+            avoid_after: self.avoid_after,
+            forced: self.forced.clone(),
+            solid: self.solid.clone(),
+            avoid: self.avoid.clone(),
+            span: self.span,
+            over: self.over,
+            clone_dec: self.clone_dec,
+            overflow_top: self.overflow_top,
+            repeat: self
+                .repeat
+                .as_ref()
+                .map_or(RepeatGeom::default(), |r| r.geom),
+            par: self.par,
+        }
+    }
+}
