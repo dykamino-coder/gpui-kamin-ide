@@ -1,5 +1,6 @@
 //! Измерение блочных детей и вложенных многоколоночников.
 
+use super::grid_kid;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
@@ -119,6 +120,10 @@ pub(crate) fn measure_children(
                     },
                 ))
             }
+            // Поддерево с сеткой: мера — раскладка копии (`grid_kid`).
+            Node::Element(c) if grid_kid::gate(c, measure_ok || whole_ok, line_col_w) => {
+                grid_kid::measured(c, merged, vcx, line_col_w?, measured_kids)
+            }
             // `position: relative` укладке не мешает — сдвиг
             // накладывается на месте (корень A1).
             Node::Element(c)
@@ -177,13 +182,7 @@ pub(crate) fn measure_children(
                             // многоколоночника — корень контекста — берёт).
                             // Принудительного разрыва внутри мера без
                             // точек тоже не видит.
-                            // Поддерево с сеткой (`grid_tree`) — и под
-                            // балансом: его точки разрыва, принудительные
-                            // тоже, и рост даёт раскладка копии
-                            // (`flow::blocks`, css-grid-1 §12).
-                            let grid = (measure_ok || whole_ok)
-                                && crate::layout::fragment::flow::blocks::grid_tree(c, 4);
-                            if !grid && (!measure_ok || forced_inside(c, 6)) {
+                            if !measure_ok || forced_inside(c, 6) {
                                 return None;
                             }
                             let w = line_col_w?;
@@ -226,7 +225,7 @@ fn measured_nested(
 }
 
 /// Мера копии принимает только разрешённые отступы; auto равен нулю.
-fn measured_margins(c: &Element) -> Option<(f32, f32)> {
+pub(super) fn measured_margins(c: &Element) -> Option<(f32, f32)> {
     let m = |l: &Option<Len>| match l {
         Some(Len::Px(v)) => Some(*v),
         None | Some(Len::Auto) => Some(0.0),

@@ -169,12 +169,22 @@ pub(super) fn kid_copy_count(
                 && per > 0.0
                 && visible_overflow(&e.style)
                 && visible_overflow(&copy.style)
+                && measure.is_none()
                 && matches!(copy.style.display, Some(Display::Grid))
                 && !has_monolith(copy, 4) =>
         {
             ((h.max(over) / per).ceil() as usize + 1)
                 .min(16)
                 .max(copies)
+        }
+        // Сетка с монолитом: его переполнение не занимает места в потоке,
+        // и разложенная высота числа колонок не даёт (как выше).
+        Some(_)
+            if measure.is_some()
+                && matches!(copy.style.display, Some(Display::Grid))
+                && has_monolith(copy, 4) =>
+        {
+            copies
         }
         // Высота неизвестна до раскладки: копий — на
         // переполняющие колонки (css-multicol-1 §8.2).
