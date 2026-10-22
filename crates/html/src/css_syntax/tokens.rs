@@ -76,4 +76,3 @@ pub(crate) fn escape_end(raw: &str, at: usize) -> usize {
     }
     end
 }
-
