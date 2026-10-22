@@ -9,7 +9,6 @@ use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::layout::fragment::{Shape, paginate};
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::Len;
 use std::cell::RefCell;
 
 /// F2-1: разрываемый float и обтекающий текст имеют разные consumed/resume.
@@ -80,9 +79,9 @@ fn prepare(
             }
             let mut c = resolved_lengths(c, merged, vcx);
             let Some(w) = width else {
-                let resolvable = |l| matches!(l, None | Some(Len::Px(_) | Len::Pct(_) | Len::Auto));
-                return (resolvable(c.style.margin.top) && resolvable(c.style.margin.bottom))
-                    .then_some((c, Shape::default()));
+                // Поля разрешаются по настоящей ширине в children(), как у
+                // остальных native-копий; pending не нуждается в их оценке.
+                return Some((c, Shape::default()));
             };
             c = fragment_box(c, w, vcx);
             if !independent {
@@ -128,18 +127,19 @@ mod tests {
     }
 
     #[test]
-    fn unknown_width_float_reuses_native_solver_and_resolves_percentage_margins() {
+    fn unknown_width_float_reuses_native_solver_and_resolves_calc_margins() {
         let tree = crate::dom::parse(
-            "<div><div style='margin-top:10%'><div style='float:left;width:20px;overflow:scroll'>float</div>text</div><div>ordinary</div></div>",
+            "<div><div style='margin:calc(10% + 3px) 0 0'><div style='float:left;width:20px;overflow:scroll'>float</div>text</div><div>ordinary</div></div>",
             "",
         );
-        let opts = RenderOpts {
+        let mut opts = RenderOpts {
             text: Default::default(),
             viewport: (800.0, 600.0),
             normal_line_height: 1.2,
             cx: Default::default(),
             frag: Default::default(),
         };
+        opts.cx.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
         let recipe = Recipe::new(
             host(&tree),
             &Computed::default(),
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(kids.len(), 2);
         assert!(kids[0].paginate.is_some());
         assert_eq!(kids[0].measure, Some(120.0));
-        assert_eq!(kids[0].mt, 12.0);
+        assert_eq!(kids[0].mt, 15.0);
         assert!(kids[1].regrow.is_some());
         #[cfg(feature = "wpt-harness")]
         assert!(
