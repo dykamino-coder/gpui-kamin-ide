@@ -50,7 +50,11 @@ pub(super) fn build(
         let opts = opts.inner(|cx| {
             cx.clamp_build = cx.clamp_build.container(key);
             cx.clamp_input = Some(input);
-            cx.positioning = if publish { positioning.resume() } else { positioning.isolate().0 };
+            cx.positioning = if publish {
+                positioning.resume()
+            } else {
+                positioning.isolate().0
+            };
             cx.clamp_frame = Some((key, width));
         });
         super::generic_box(

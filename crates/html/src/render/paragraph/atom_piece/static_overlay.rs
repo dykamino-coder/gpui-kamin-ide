@@ -26,7 +26,7 @@ pub(crate) fn static_overlay(
     }
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
     let mut group_style = (*e.style).clone();

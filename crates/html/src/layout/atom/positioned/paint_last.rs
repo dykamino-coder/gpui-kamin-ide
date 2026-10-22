@@ -15,9 +15,9 @@ use gpui::AnyElement;
 /// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
-pub(super) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
+pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
     if crate::layout::order::hoists_inline_abs(e, cx) {
-        cx.build.effects(el, Effect::PaintLast(cx.next_paint_key()))
+        cx.build.effects(el, Effect::PaintLast(cx.paint_key_for(e)))
     } else {
         el
     }

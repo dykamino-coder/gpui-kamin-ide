@@ -10,7 +10,7 @@ pub(super) fn children(e: &Element, own: &Computed, opts: &RenderOpts) -> Vec<An
     let layer = LayerScope::strict(
         &opts.cx.positioning,
         own,
-        crate::paint::stacking::fixed_cb_layer_box(own),
+        crate::style::computed::stacking::fixed_cb_layer_box(own),
     );
     let mut children = opts.cx.build.blocks(&e.children, own, opts);
     children.extend(layer.finish());

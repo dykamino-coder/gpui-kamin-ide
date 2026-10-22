@@ -1,11 +1,10 @@
 //! Абсолютный строчный атом с обеими свободными осями.
 
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
-use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::text::text_box::line_height_px;
@@ -50,14 +49,14 @@ pub(in crate::layout::atom) fn static_position_atom(
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| image(&copy, &opts.cx))
+                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
                 }
-                _ => image(&copy, &opts.cx),
+                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
             })
         }
         _ => None,
     };
-    let inner = styled_div_with(e, &merged, &opts.cx);
+    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(super::children::children(e, &positioned, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -97,7 +96,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     );
     let inner = match replaced {
         Some(el) if merged.corner_shaped() => {
-            crate::paint::effects::grouped::grouped(el, &merged, vcx)
+            opts.cx.build.effects(el, Effect::group(&merged, vcx))
         }
         Some(el) => el,
         None => inner.into_any_element(),

@@ -15,9 +15,11 @@ mod hang;
 pub use hang::InlineStartHang;
 mod layers;
 mod oof;
+pub(crate) use crate::paint::positioned::DeferredPaint;
 pub(crate) use layers::Escaped;
 pub(crate) use layers::LayerScope;
 pub use layers::Positioning;
+pub(crate) use oof::OofKid;
 
 mod line_box;
 pub use line_box::{LineBoxSlot, with_line_box};

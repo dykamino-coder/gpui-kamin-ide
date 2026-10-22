@@ -107,7 +107,7 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                     let child =
                         crate::layout::atom::positioned::trial(&inherited, &candidate, &opts)
                             .unwrap_or_else(|| gpui::div().into_any_element());
-                    let child = crate::paint::stacking::inline_abs::inline_abs_paint_last(
+                    let child = crate::layout::atom::positioned::inline_abs_paint_last(
                         &candidate, child, &opts.cx,
                     );
                     (child, escaped)
