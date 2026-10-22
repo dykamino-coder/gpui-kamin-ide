@@ -326,6 +326,12 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// Size-only probes do not publish geometry. Fragmentation policy stays with the caller.
     fn set_detailed_flex_info(&mut self, _node_id: NodeId, _info: crate::tree::DetailedFlexInfo) {}
 
+    /// KaminIDE patch: physical block axis and whether block-start is its high edge.
+    /// Defaults to horizontal writing mode for existing callers.
+    fn flex_fragmentation_axis(&self, _node_id: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
+        (crate::geometry::AbsoluteAxis::Vertical, false)
+    }
+
     /// KaminIDE patch: border-box extent consumed in a row continuation.
     fn flex_item_fragmentation_consumed(&self, _node_id: NodeId) -> f32 { 0.0 }
 

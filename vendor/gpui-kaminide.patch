@@ -1,7 +1,7 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 2. Expose final Taffy flex line/item geometry and typed fragmentation growth constraints.
+# 2. Expose final Taffy flex line/item geometry and typed block-axis/reverse fragmentation growth constraints (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 3. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
 # 4. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
 # 5. CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.
@@ -10831,10 +10831,10 @@ index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e02
 +}
 diff --git a/vendor/gpui/src/taffy/flex_layout.rs b/vendor/gpui/src/taffy/flex_layout.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ddb0c1981f7743fff5eca455c01457e757651691
+index 0000000000000000000000000000000000000000..51905f5435683b369b2bd8f569feb4e76a56249e
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/flex_layout.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,148 @@
 +//! Финальные линии flex и координаты их элементов без округления устройства.
 +use super::{LayoutId, TaffyLayoutEngine};
 +use crate::{Pixels, Point};
@@ -10880,6 +10880,15 @@ index 0000000000000000000000000000000000000000..ddb0c1981f7743fff5eca455c01457e7
 +}
 +
 +impl TaffyLayoutEngine {
++    /// KaminIDE patch: consumed-space constraints follow the writing-mode block axis.
++    pub fn set_flex_fragmentation_axis(&mut self, id: LayoutId, axis: crate::Axis, reversed: bool) -> bool {
++        let axis = match axis {
++            crate::Axis::Horizontal => taffy::geometry::AbsoluteAxis::Horizontal,
++            crate::Axis::Vertical => taffy::geometry::AbsoluteAxis::Vertical,
++        };
++        self.taffy.set_flex_fragmentation_axis(id.into(), axis, reversed).is_ok()
++    }
++
 +    /// KaminIDE patch: consumed cross extent of a row flex continuation.
 +    pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32, scale: f32) -> bool {
 +        self.taffy.set_flex_item_fragmentation_consumed(id.into(), consumed * scale).is_ok()
@@ -14010,7 +14019,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e5421d34657
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..81f7dcfa9b68ccc21fae4fddb76576a7f3413504
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -15244,7 +15253,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6205,133 @@
+@@ -5116,0 +6205,140 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -15308,6 +15317,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +        let scale = self.scale_factor();
 +        let (origin, layout) = self.layout_engine.as_mut()?.parent_flex_layout(child, scale)?;
 +        Some((origin + self.element_offset(), layout))
++    }
++
++    /// KaminIDE patch: select the writing-mode block axis before applying flex constraints.
++    pub fn set_flex_fragmentation_axis(&mut self, id: LayoutId, axis: crate::Axis, reversed: bool) {
++        if let Some(engine) = self.layout_engine.as_mut() {
++            engine.set_flex_fragmentation_axis(id, axis, reversed);
++        }
 +    }
 +
 +    /// KaminIDE patch: consumed cross extent of a row flex continuation.
@@ -15378,7 +15394,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6354,48 @@
+@@ -5132,0 +6361,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -15427,7 +15443,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6416,6 @@
+@@ -5147,2 +6423,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -15436,7 +15452,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5209,0 +6483,16 @@
+@@ -5209,0 +6490,16 @@
 +    }
 +
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
@@ -15453,7 +15469,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..470b2be50a8ba3fb51d3cf126d5d0e54
 +    pub(crate) fn asset_subscriber(&self) -> Option<EntityId> {
 +        self.current_view_opt()
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
-@@ -5792,0 +7082,5 @@
+@@ -5792,0 +7089,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {

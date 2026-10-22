@@ -6267,6 +6267,13 @@ impl Window {
         Some((origin + self.element_offset(), layout))
     }
 
+    /// KaminIDE patch: select the writing-mode block axis before applying flex constraints.
+    pub fn set_flex_fragmentation_axis(&mut self, id: LayoutId, axis: crate::Axis, reversed: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_fragmentation_axis(id, axis, reversed);
+        }
+    }
+
     /// KaminIDE patch: consumed cross extent of a row flex continuation.
     pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32) {
         let scale = self.scale_factor();

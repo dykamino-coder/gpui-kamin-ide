@@ -1,6 +1,6 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space.
+# 1. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
 # 2. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
 # 3. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
 # 4. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
@@ -1754,6 +1754,152 @@ index 0000000000000000000000000000000000000000..487b3be1ce665eec3e31d55667e4c0bb
 +    .size
 +    .cross(constants.dir)
 +}
+diff --git a/vendor/taffy/src/compute/flex_fragmentation.rs b/vendor/taffy/src/compute/flex_fragmentation.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..26dab704e7f0446afb10e6c0fd2a18ed2290a272
+--- /dev/null
++++ b/vendor/taffy/src/compute/flex_fragmentation.rs
+@@ -0,0 +1,140 @@
++//! KaminIDE patch: CSS Flexbox 1 §10 fragmentation in the writing-mode block axis.
++//! Constraints consume space after native flexible sizing; they cannot add flex items or margins.
++use super::*;
++
++/// Largest consumed main-axis space among parallel native lines.
++pub(super) fn main_growth(tree: &impl LayoutFlexboxContainer, lines: &[FlexLine]) -> f32 {
++    lines
++        .iter()
++        .map(|line| {
++            line.items
++                .iter()
++                .map(|item| tree.flex_item_fragmentation_offset(item.node))
++                .sum::<f32>()
++        })
++        .fold(0.0, f32::max)
++}
++
++/// Apply fragmentainer space after flexible sizing and before native line placement.
++pub(super) fn apply(
++    tree: &impl LayoutFlexboxContainer,
++    node: NodeId,
++    lines: &mut [FlexLine],
++    known: Size<Option<f32>>,
++    constants: &mut AlgoConstants,
++) {
++    let (axis, reversed) = constants.fragmentation_axis;
++    let dir = constants.dir;
++    if axis == dir.cross_axis() {
++        let count = lines.len();
++        let mut growth_sum = 0.0;
++        for (index, line) in lines.iter_mut().enumerate() {
++            let physical = if constants.is_wrap_reverse {
++                count - 1 - index
++            } else {
++                index
++            };
++            line.fragmented = line
++                .items
++                .iter()
++                .any(|item| tree.flex_item_fragmentation_consumed(item.node) > 0.0);
++            if line.fragmented {
++                line.cross_size = line
++                    .items
++                    .iter_mut()
++                    .map(|item| {
++                        let consumed = tree.flex_item_fragmentation_consumed(item.node);
++                        item.offset_cross = 0.0;
++                        (item.target_size.cross(dir) - consumed).max(0.0)
++                            + if consumed == 0.0 {
++                                item.margin.cross_axis_sum(dir)
++                            } else if reversed {
++                                item.margin.cross_start(dir)
++                            } else {
++                                item.margin.cross_end(dir)
++                            }
++                    })
++                    .fold(0.0, f32::max);
++            }
++            let growth = tree.flex_line_fragmentation_growth(node, physical);
++            line.cross_size += growth;
++            // In a reversed block flow the item stays at the expanded line's high edge.
++            if reversed && !line.fragmented {
++                line.fragmentation_item_shift = growth;
++            }
++            growth_sum += growth;
++        }
++        let native_reversed = constants.is_column && constants.layout_direction.is_rtl();
++        if known.cross(dir).is_some() {
++            constants.fragmentation_cross_alignment = growth_sum;
++        }
++        if known.cross(dir).is_some() && reversed != native_reversed {
++            let shift = if reversed { -growth_sum } else { growth_sum };
++            for line in lines {
++                line.fragmentation_shift += shift;
++            }
++        }
++    } else if known.main(dir).is_none() {
++        let growth = main_growth(tree, lines);
++        constants.fragmentation_main_growth = growth;
++        constants
++            .container_size
++            .set_main(dir, constants.container_size.main(dir) + growth);
++        constants
++            .inner_container_size
++            .set_main(dir, constants.inner_container_size.main(dir) + growth);
++    }
++}
++
++/// Physical placement order can disagree with logical block progression (reverse and RTL).
++/// The native cursor remains untouched so flexible sizing and alignment see no fake margins.
++pub(super) struct MainCursor {
++    /// Whether fragmentation follows this native main axis.
++    enabled: bool,
++    /// Whether block progression starts at the physical high edge.
++    reversed: bool,
++    /// Whether native inline progression starts at the physical high edge.
++    native_reversed: bool,
++    /// Constraints still ahead in the native iteration order.
++    remaining: f32,
++    /// Constraints already traversed in the native iteration order.
++    consumed: f32,
++    /// Extra intrinsic main size reserved for these constraints.
++    auto_growth: f32,
++}
++impl MainCursor {
++    /// Preserve the native cursor while tracking logical fragmentainer progression.
++    pub(super) fn new(
++        tree: &impl LayoutFlexboxContainer,
++        line: &FlexLine,
++        constants: &AlgoConstants,
++    ) -> Self {
++        Self {
++            enabled: constants.fragmentation_axis.0 == constants.dir.main_axis(),
++            reversed: constants.fragmentation_axis.1,
++            native_reversed: constants.dir.is_row() && constants.layout_direction.is_rtl(),
++            remaining: line
++                .items
++                .iter()
++                .map(|i| tree.flex_item_fragmentation_offset(i.node))
++                .sum(),
++            consumed: 0.0,
++            auto_growth: constants.fragmentation_main_growth,
++        }
++    }
++    /// Translate this item without feeding fragmentation space back into flex sizing.
++    pub(super) fn next(&mut self, offset: f32) -> f32 {
++        if !self.enabled {
++            return 0.0;
++        }
++        self.consumed += offset;
++        let shift = match (self.reversed, self.native_reversed) {
++            (false, false) => self.consumed,
++            (true, true) => -self.consumed,
++            (true, false) => self.auto_growth - self.remaining,
++            (false, true) => self.remaining - self.auto_growth,
++        };
++        self.remaining -= offset;
++        shift
++    }
++}
 diff --git a/vendor/taffy/src/compute/flex_intrinsic_floor.rs b/vendor/taffy/src/compute/flex_intrinsic_floor.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..52d10e94b650da93a43684af0b3361238352f6dc
@@ -2016,14 +2162,16 @@ index 0000000000000000000000000000000000000000..a4e022902e6087ae2d05432cebc4bc61
 +#[path = "../tree/flex_main_fit_tests.rs"]
 +mod tests;
 diff --git a/vendor/taffy/src/compute/flexbox.rs b/vendor/taffy/src/compute/flexbox.rs
-index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f0511952ec8
+index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..480965897162b82f891f09ef704efb6f8333dc87
 --- a/vendor/taffy/src/compute/flexbox.rs
 +++ b/vendor/taffy/src/compute/flexbox.rs
-@@ -1,0 +2,3 @@
+@@ -1,0 +2,5 @@
 +// KaminIDE patch: share the measurement helper instead of compiling duplicate modules.
 +use super::content_size_limits;
++#[path = "flex_fragmentation.rs"]
++mod fragmentation;
 +
-@@ -2,0 +6,14 @@
+@@ -2,0 +8,14 @@
 +#[path = "flex_baseline_x.rs"]
 +mod column_baselines;
 +#[path = "flex_containment.rs"]
@@ -2038,12 +2186,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +mod main_keyword;
 +#[path = "flex_baseline_y.rs"]
 +mod row_baselines;
-@@ -14,0 +32,2 @@
+@@ -14,0 +34,2 @@
 +// KaminIDE patch: publish final solver geometry without reconstructing line membership.
 +use crate::tree::{DetailedFlexInfo, DetailedFlexItem, DetailedFlexLine};
-@@ -24 +42,0 @@
+@@ -24 +44,0 @@
 -use super::common::sizing_keyword::{resolve_sizing_keyword, SizingKeywordResolution};
-@@ -100,0 +119,25 @@
+@@ -100,0 +121,25 @@
 +    /// Last y baseline measured from cross-end margin edge during grouping.
 +    last_baseline_from_end: f32,
 +    /// Last y baseline after final physical placement, from container top.
@@ -2069,7 +2217,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    column_baseline: Option<(bool, f32)>,
 +    /// Independent last x channel; final placement must populate this too.
 +    last_baseline_x_pos: Option<f32>,
-@@ -118,0 +162,18 @@
+@@ -118,0 +164,18 @@
 +    /// KaminIDE patch: используем готовые padding и border для content-box.
 +    fn box_sizing_adjustment(&self, style: &impl CoreStyle) -> Size<f32> {
 +        if style.box_sizing() == BoxSizing::ContentBox {
@@ -2088,7 +2236,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                || (self.align_self.keyword == AlignItemsKeyword::Stretch && cross.is_auto()))
 +    }
 +
-@@ -128 +189,9 @@
+@@ -128 +191,9 @@
 -        self.align_self == AlignSelf::BASELINE
 +        self.align_self.keyword == AlignItemsKeyword::Baseline
 +            && !self.margin_is_auto.cross_start(dir)
@@ -2099,13 +2247,27 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    /// while remaining a different baseline group.
 +    fn participates_in_last_baseline_alignment(&self, dir: FlexDirection) -> bool {
 +        self.align_self.keyword == AlignItemsKeyword::LastBaseline
-@@ -155,0 +225,2 @@
+@@ -141,0 +213,6 @@
++    /// KaminIDE patch: placement-only cross translation and parallel continuation state.
++    fragmentation_shift: f32,
++    /// Preserve the block-start edge of items when their line grows in reverse flow.
++    fragmentation_item_shift: f32,
++    /// Whether this line represents parallel item continuations.
++    fragmented: bool,
+@@ -149,0 +227,6 @@
++    /// KaminIDE patch: block-axis constraints are independent of physical flex direction.
++    fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
++    /// Space reserved in an intrinsically sized main axis after native flex sizing.
++    fragmentation_main_growth: f32,
++    /// Fragmentainer growth excluded from native align-content free space.
++    fragmentation_cross_alignment: f32,
+@@ -155,0 +239,2 @@
 +    /// KaminIDE patch: block-container baselines (`Style::block_baselines`), column containers only
 +    block_baselines: bool,
-@@ -157,0 +229,2 @@
+@@ -157,0 +243,2 @@
 +    /// Physical sides trimmed before flexible lengths are resolved.
 +    margin_trim: u8,
-@@ -192,0 +266,7 @@
+@@ -192,0 +280,7 @@
 +    /// KaminIDE patch: процентная база сохранённых padding и border элемента.
 +    initial_inner_width: Option<f32>,
 +    /// Ratio transfer is definite for percentages, but may grow with content.
@@ -2113,7 +2275,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    /// Transparent anonymous row's containing-block height; Some(None) must
 +    /// remain distinct from no override, otherwise percentages become cyclic.
 +    pct_height_from_parent: Option<Option<f32>>,
-@@ -232,0 +313,53 @@
+@@ -232,0 +327,53 @@
 +/// Anonymous rows are transparent only when descendants actually depend on
 +/// a percentage height. Native sizing keywords are not percentages.
 +fn row_children_use_pct_height(tree: &impl LayoutFlexboxContainer, node: NodeId) -> bool {
@@ -2167,20 +2329,20 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    }
 +}
 +
-@@ -243,0 +377 @@
+@@ -243,0 +391 @@
 +    let contained_width = style.contained_intrinsic_size().width;
-@@ -251 +385 @@
+@@ -251 +399 @@
 -    let min_size = style
 +    let min_size = content_size_limits::for_measurement(style
-@@ -255,2 +389,2 @@
+@@ -255,2 +403,2 @@
 -        .maybe_add(box_sizing_adjustment);
 -    let max_size = style
 +        .maybe_add(box_sizing_adjustment), inputs);
 +    let max_size = content_size_limits::for_measurement(style
-@@ -260 +394 @@
+@@ -260 +408 @@
 -        .maybe_add(box_sizing_adjustment);
 +        .maybe_add(box_sizing_adjustment), inputs);
-@@ -279,2 +413,13 @@
+@@ -279,2 +427,13 @@
 -    let styled_based_known_dimensions =
 -        known_dimensions.or(min_max_definite_size.or(clamped_style_size).maybe_max(padding_border_sum));
 +    // Known sizes, including zero-height stretch, cannot shrink the border box
@@ -2196,7 +2358,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        min_size.width,
 +        max_size.width,
 +    );
-@@ -296,0 +442,44 @@
+@@ -296,0 +456,44 @@
 +    debug_log!("FLEX:", dbg:style.flex_direction());
 +    let height_is_auto = style.size().height.is_auto();
 +    let scroll =
@@ -2241,14 +2403,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        }
 +    }
 +
-@@ -305,3 +493,0 @@
+@@ -305,3 +507,0 @@
 -    debug_log!("FLEX:", dbg:style.flex_direction());
 -    drop(style);
 -
-@@ -310 +496 @@
+@@ -310 +510 @@
 -    let known_dimensions_are_definite = inputs
 +    let mut known_dimensions_are_definite = inputs
-@@ -312 +498,67 @@
+@@ -312 +512,67 @@
 -        .zip_map(known_dimensions, |is_definite, known_dimension| is_definite || known_dimension.is_none());
 +        .zip_map(known_dimensions, |is_definite, known_dimension| {
 +            is_definite || known_dimension.is_none()
@@ -2317,13 +2479,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            known_dimensions_are_definite.height = ratio_is_definite;
 +        }
 +    }
-@@ -320,4 +572 @@
+@@ -320,4 +586 @@
 -    // Layout containment suppresses the box's baseline for baseline-alignment purposes
 -    if contain.suppresses_baseline() {
 -        output.baselines = Baselines::NONE;
 -    }
 +    containment::suppress_baselines(&mut output, contain);
-@@ -340,0 +590,8 @@
+@@ -340,0 +604,9 @@
++    constants.fragmentation_axis = tree.flex_fragmentation_axis(node);
 +    constants.min_size = content_size_limits::for_measurement(constants.min_size, inputs);
 +    constants.max_size = content_size_limits::for_measurement(constants.max_size, inputs);
 +
@@ -2332,7 +2495,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    if constants.pct_height_from_parent.is_some() && !row_children_use_pct_height(tree, node) {
 +        constants.pct_height_from_parent = None;
 +    }
-@@ -349,0 +607,34 @@
+@@ -349,0 +622,34 @@
 +    // KaminIDE patch: a table item of a COLUMN container takes its width on the
 +    // cross axis, and that width is floored by the table's min-content width
 +    // (CSS 2.1 §17.5.2.2: "the used width is the greater of W and MIN";
@@ -2367,14 +2530,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +
 +    intrinsic_limits::resolve(tree, &constants, &mut flex_items);
 +
-@@ -358,0 +650,6 @@
+@@ -358,0 +665,6 @@
 +    // KaminIDE patch: in a fragmentation context a column item that may not
 +    // shrink encompasses its intrinsic block size (Blink
 +    // `MinBlockSizeShouldEncompassIntrinsicSize`, flex_layout_algorithm.cc).
 +    if constants.dir.is_column() && tree.flex_fragmentation(node) {
 +        encompass_intrinsic_block_size(tree, &constants, available_space, &mut flex_items);
 +    }
-@@ -375,0 +673,7 @@
+@@ -375,0 +688,7 @@
 +    // KaminIDE patch: line breaking precedes fragmentation (css-flexbox-1 §10).
 +    // Lines fixed by the fragmenter are kept while fragmentation grows items.
 +    let pinned: Option<Vec<usize>> = constants
@@ -2382,12 +2545,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        .then(|| flex_items.iter().map(|item| tree.flex_item_fragmentation_line(item.node)).collect::<Option<Vec<_>>>())
 +        .flatten()
 +        .filter(|lines| !lines.is_empty() && lines.windows(2).all(|w| w[0] <= w[1]));
-@@ -377 +681,3 @@
+@@ -377 +696,3 @@
 -    let mut flex_lines = if constants.is_balance {
 +    let mut flex_lines = if let Some(lines) = pinned {
 +        pinned_flex_lines(&lines, &mut flex_items)
 +    } else if constants.is_balance {
-@@ -383 +689,10 @@
+@@ -383 +704,10 @@
 -    let mut flex_lines = collect_flex_lines(&constants, available_space, &mut flex_items);
 +    let mut flex_lines = if let Some(lines) = pinned {
 +        pinned_flex_lines(&lines, &mut flex_items)
@@ -2399,55 +2562,19 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    // sizing and flex length resolution. Line collection itself still needs
 +    // the trim-aware wrapping port in the residual map.
 +    trim_flex_margins(&mut flex_lines, &constants);
-@@ -483,0 +799,35 @@
-+    // KaminIDE patch: fragmentation consumes cross space without stretching or
-+    // realigning completed items. Keep the flex solver independent of the paginator.
-+    let mut fragmentation_growth = 0.0;
-+    if constants.dir.is_row() {
-+        let count = flex_lines.len();
-+        for (index, line) in flex_lines.iter_mut().enumerate() {
-+            let physical = if constants.is_wrap_reverse { count - 1 - index } else { index };
-+            if line.items.iter().any(|item| tree.flex_item_fragmentation_consumed(item.node) > 0.0) {
-+                line.cross_size = line.items.iter_mut().map(|item| {
-+                    let consumed = tree.flex_item_fragmentation_consumed(item.node);
-+                    // Continuing parallel flows start at the fragment's cross start.
-+                    item.offset_cross = 0.0;
-+                    (item.target_size.cross(constants.dir) - consumed).max(0.0)
-+                        + if consumed > 0.0 { item.margin.cross_end(constants.dir) }
-+                          else { item.margin.cross_axis_sum(constants.dir) }
-+                }).fold(0.0, f32::max);
-+            }
-+            let growth = tree.flex_line_fragmentation_growth(node, physical);
-+            line.cross_size += growth;
-+            fragmentation_growth += growth;
-+        }
-+    }
+@@ -421 +751,6 @@
+-            let size = Size::ZERO.with_main(constants.dir, constants.container_size.main(constants.dir));
++            // KaminIDE patch: a main-only probe still includes consumed block space.
++            let growth = if constants.fragmentation_axis.0 == constants.dir.main_axis()
++                && known_dimensions.main(constants.dir).is_none() {
++                fragmentation::main_growth(tree, &flex_lines)
++            } else { 0.0 };
++            let size = Size::ZERO.with_main(constants.dir, constants.container_size.main(constants.dir) + growth);
+@@ -483,0 +819,3 @@
++    // KaminIDE patch: CSS Flexbox 1 §10 consumes fragmentainer space after sizing.
++    fragmentation::apply(tree, node, &mut flex_lines, known_dimensions, &mut constants);
 +
-+    // KaminIDE patch: column fragmentation consumes block space independently in
-+    // each flex line. Preserve the flexed item sizes and grow only an auto main size.
-+    if constants.dir.is_column() && known_dimensions.height.is_none() {
-+        let consumed = flex_lines.iter().map(|line| line.items.iter()
-+            .map(|item| tree.flex_item_fragmentation_offset(item.node)).sum::<f32>())
-+            // A suppressed gap (negative offset) shrinks a single line; parallel
-+            // lines keep the longest one.
-+            .fold(if flex_lines.len() == 1 { f32::NEG_INFINITY } else { 0.0 }, f32::max);
-+        constants.container_size.height += consumed;
-+        constants.inner_container_size.height += consumed;
-+    }
-+
-@@ -496 +846,21 @@
--    align_flex_lines_per_align_content(&mut flex_lines, &constants, total_line_cross_size);
-+    // KaminIDE patch: space consumed by fragmentation is not free space of a
-+    // definite container: `align-content` places the lines as without breaks and
-+    // the growth moves the following lines (Blink `item_offset_adjustment` is
-+    // applied after alignment). An auto-sized container grows instead.
-+    let aligned_total = if known_dimensions.cross(constants.dir).is_some() {
-+        total_line_cross_size - fragmentation_growth
-+    } else {
-+        total_line_cross_size
-+    };
-+    align_flex_lines_per_align_content(&mut flex_lines, &constants, aligned_total);
-+
+@@ -497,0 +836,11 @@
 +    // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
 +    // block axis after line alignment; completed lines and the container keep
 +    // their used sizes (the item's own overflow is a parallel flow).
@@ -2458,11 +2585,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            }
 +        }
 +    }
-@@ -500 +870,2 @@
++
+@@ -500 +849,2 @@
 -    let inflow_overflow_rect = final_layout_pass(tree, &mut flex_lines, &constants);
 +    let (inflow_overflow_rect, flex_info) = final_layout_pass(tree, &mut flex_lines, &constants);
 +    tree.set_detailed_flex_info(node, flex_info);
-@@ -541,0 +913,9 @@
+@@ -541,0 +892,9 @@
 +        if constants.block_baselines {
 +            // CSS 2.1 10.8.1 / css-align-3 9.1: a block container's first baseline is that
 +            // of its first in-flow child that has one; children without one are skipped.
@@ -2472,7 +2600,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                .find(|child| child.has_first_baseline)
 +                .map(|child| child.baseline);
 +        }
-@@ -556 +936,50 @@
+@@ -556 +915,50 @@
 -    let mut output = LayoutOutput::from_sizes_and_baselines(
 +    // Last y baseline uses the endmost visual line and its separate last
 +    // baseline group. First-group fallback is already in container coordinates
@@ -2524,7 +2652,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        .rev()
 +        .find_map(|child| child.last_baseline_x_pos.or(child.baseline_x_pos));
 +    let mut output = LayoutOutput::from_sizes_and_all_baselines(
-@@ -559 +988,8 @@
+@@ -559 +967,8 @@
 -        Baselines::from_first(first_vertical_baseline),
 +        Baselines {
 +            first: first_vertical_baseline,
@@ -2534,7 +2662,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            first: first_x,
 +            last: last_x,
 +        },
-@@ -560,0 +997,20 @@
+@@ -560,0 +976,20 @@
 +    // An anonymous flex wrapper whose every item is a table (wrapper) box hides
 +    // the table baseline from an enclosing inline-block as the table itself does.
 +    // Likewise a float (CSS 2.1 §10.8.1: only in-flow line boxes give an
@@ -2555,39 +2683,43 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            flex_lines.iter().rev().find_map(shown)
 +        });
 +    }
-@@ -592 +1048 @@
+@@ -592 +1027 @@
 -    let is_wrap_reverse = flex_wrap.is_reverse();
 +    let authored_wrap_reverse = flex_wrap.is_reverse();
-@@ -619,0 +1076,6 @@
+@@ -619,0 +1055,6 @@
 +    // The current HTML adapter projects RTL into physical flex-direction and
 +    // keeps Direction::Ltr. Its no-wrap column cross reversal is still needed.
 +    // Native RTL callers already project that cross axis and must not flip twice.
 +    let cross_reverse_only =
 +        !is_wrap && style.flex_cross_reverse() && layout_direction == Direction::Ltr;
 +    let is_wrap_reverse = authored_wrap_reverse || cross_reverse_only;
-@@ -640,0 +1103,3 @@
+@@ -640,0 +1082,3 @@
 +    let ratio_preferred_inner_size = style
 +        .aspect_ratio_preferred_size()
 +        .maybe_sub(content_box_inset.sum_axes());
-@@ -642,0 +1108,2 @@
+@@ -642,0 +1087,2 @@
 +    let pct_height_from_parent =
 +        (is_row && style.percent_basis_from_parent()).then_some(parent_size.height);
-@@ -648 +1115,5 @@
+@@ -648 +1094,5 @@
 -    let gap = style.gap().resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| tree.calc(val, basis));
 +    let gap = style
 +        .gap()
 +        .resolve_or_zero(node_inner_size.or(Size::zero()), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -658,0 +1130 @@
+@@ -655,0 +1106,3 @@
++        fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
++        fragmentation_main_growth: 0.0,
++        fragmentation_cross_alignment: 0.0,
+@@ -658,0 +1112 @@
 +        block_baselines: is_column && style.block_baselines(),
-@@ -659,0 +1132 @@
+@@ -659,0 +1114 @@
 +        margin_trim: style.margin_trim(),
-@@ -669 +1142,2 @@
+@@ -669 +1124,2 @@
 -        max_size: style
 +        max_size: {
 +            let max_size = style
-@@ -673 +1147,21 @@
+@@ -673 +1129,21 @@
 -            .maybe_add(box_sizing_adjustment),
 +                .maybe_add(box_sizing_adjustment);
 +            // KaminIDE patch: a table box is never narrower than its grid
@@ -2610,11 +2742,11 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                max_size
 +            }
 +        },
-@@ -684,0 +1179,3 @@
+@@ -684,0 +1161,3 @@
 +        initial_inner_width: node_inner_size.width,
 +        ratio_preferred_inner_size,
 +        pct_height_from_parent,
-@@ -730,6 +1227,5 @@
+@@ -730,6 +1209,5 @@
 -    let percent_resolution_size = if constants.known_main_size_is_definite {
 -        constants.node_inner_size
 -    } else {
@@ -2626,17 +2758,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    // KaminIDE patch: выделяем буфер один раз при первом поточном элементе.
 +    let child_count = tree.child_count(node);
 +    let mut flex_items = Vec::new();
-@@ -745 +1241,3 @@
+@@ -745 +1223,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -748 +1246,3 @@
+@@ -748 +1228,3 @@
 -                .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 +                .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                    tree.calc(val, basis)
 +                });
-@@ -751,0 +1252,16 @@
+@@ -751,0 +1234,16 @@
 +            // Transfer constraints only into an auto or cyclic-percentage
 +            // receiving axis. Native non-auto sizing keywords retain their
 +            // separate measurement path; a sentinel prevents auto transfer.
@@ -2653,16 +2785,16 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis)),
 +                aspect_ratio,
 +            );
-@@ -755 +1271,2 @@
+@@ -755 +1253,2 @@
 -                size: child_style
 +                size: calc_size_derived(
 +                    child_style
-@@ -759,0 +1277,4 @@
+@@ -759,0 +1259,4 @@
 +                    child_style.calc_size(),
 +                    child_style.calc_size_basis(),
 +                    if child_style.calc_size_content_box() { pb_sum } else { Size::ZERO },
 +                ),
-@@ -761,8 +1282,2 @@
+@@ -761,8 +1264,2 @@
 -                min_size: child_style
 -                    .min_size()
 -                    .maybe_resolve(percent_resolution_size, |val, basis| tree.calc(val, basis))
@@ -2673,12 +2805,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                    .maybe_add(box_sizing_adjustment),
 +                min_size: min_transferred.maybe_add(box_sizing_adjustment),
 +                max_size: max_transferred.maybe_add(box_sizing_adjustment),
-@@ -781 +1296,3 @@
+@@ -781 +1278,3 @@
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
 +                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| {
 +                        tree.calc(val, basis)
 +                    }),
-@@ -783,8 +1300,10 @@
+@@ -783,8 +1282,10 @@
 -                padding: child_style
 -                    .padding()
 -                    .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis)),
@@ -2697,7 +2829,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                    constants.layout_direction,
 +                    constants.is_column,
 +                ),
-@@ -809,0 +1329,11 @@
+@@ -809,0 +1311,11 @@
 +                last_baseline_from_end: 0.0,
 +                last_baseline_pos: 0.0,
 +                has_first_baseline: false,
@@ -2709,7 +2841,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                baseline_x_flags: child_style.baseline_x_flags(),
 +                column_baseline: None,
 +                last_baseline_x_pos: None,
-@@ -817 +1347,7 @@
+@@ -817 +1329,7 @@
 -        .collect()
 +        .for_each(|item| {
 +            if flex_items.capacity() == 0 {
@@ -2718,21 +2850,21 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            flex_items.push(item);
 +        });
 +    flex_items
-@@ -841,3 +1377,3 @@
+@@ -841,3 +1359,3 @@
 -        Some(node_width) => {
 -            AvailableSpace::Definite((node_width - constants.content_box_inset.horizontal_axis_sum()).max(0.0))
 -        }
 +        Some(node_width) => AvailableSpace::Definite(
 +            (node_width - constants.content_box_inset.horizontal_axis_sum()).max(0.0),
 +        ),
-@@ -848,3 +1384,3 @@
+@@ -848,3 +1366,3 @@
 -        Some(node_height) => {
 -            AvailableSpace::Definite((node_height - constants.content_box_inset.vertical_axis_sum()).max(0.0))
 -        }
 +        Some(node_height) => AvailableSpace::Definite(
 +            (node_height - constants.content_box_inset.vertical_axis_sum()).max(0.0),
 +        ),
-@@ -854,0 +1391,101 @@
+@@ -854,0 +1373,101 @@
 +}
 +
 +/// KaminIDE patch: перенос min/max через соотношение сторон (css-sizing-4
@@ -2834,10 +2966,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            child.hypothetical_outer_size.set_main(dir, outer);
 +        }
 +    }
-@@ -894,2 +1530,0 @@
+@@ -894,2 +1512,0 @@
 -        let child_style = tree.get_flexbox_child_style(child.node);
 -
-@@ -898 +1533,11 @@
+@@ -898 +1515,11 @@
 -        let child_parent_size = Size::from_cross(dir, cross_axis_parent_size);
 +        // Anonymous row children in a column need the real containing-block
 +        // height even during main-basis measurement; other children remain
@@ -2850,12 +2982,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        } else {
 +            Size::from_cross(dir, constants.pct_basis().cross(dir))
 +        };
-@@ -903,2 +1548,2 @@
+@@ -903,2 +1530,2 @@
 -        let transferred_min_size = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 -        let transferred_max_size = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio);
 +        let transferred_min_size = child.min_size;
 +        let transferred_max_size = child.max_size;
-@@ -925,0 +1571,9 @@
+@@ -925,0 +1553,9 @@
 +        let cross_axis_available_space = cross_keyword::available(
 +            tree,
 +            child,
@@ -2865,15 +2997,15 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        );
 +        let child_style = tree.get_flexbox_child_style(child.node);
 +
-@@ -929,0 +1584,3 @@
+@@ -929,0 +1566,3 @@
 +            if ckd.cross(dir).is_none() {
 +                ckd.set_cross(dir, cross_keyword::fit_content_size(child, constants, cross_axis_available_space));
 +            }
-@@ -937 +1594,2 @@
+@@ -937 +1576,2 @@
 -            if child.align_self == AlignSelf::STRETCH
 +            if child.align_self.keyword == AlignItemsKeyword::Stretch
 +                && cross_keyword::allows_alignment_stretch(child, constants)
-@@ -951,11 +1609 @@
+@@ -951,11 +1591 @@
 -        // Percentage padding and border resolve against the container's inline size (its width),
 -        // whichever axis is the main axis
 -        let container_width = constants.node_inner_size.width;
@@ -2886,11 +3018,11 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -        }
 -        .main(dir);
 +        let box_sizing_adjustment = child.box_sizing_adjustment(&child_style).main(dir);
-@@ -965,2 +1613 @@
+@@ -965,2 +1595 @@
 -        let percent_resolution_main_size =
 -            if constants.known_main_size_is_definite { constants.node_inner_size.main(dir) } else { None };
 +        let percent_resolution_main_size = constants.pct_basis().main(dir);
-@@ -969 +1616,11 @@
+@@ -969 +1598,11 @@
 -            .maybe_resolve(percent_resolution_main_size, |val, basis| tree.calc(val, basis))
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
@@ -2903,7 +3035,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            .maybe_resolve(percent_resolution_main_size, |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -982,16 +1639,6 @@
+@@ -982,16 +1621,6 @@
 -            let main_size = child.size.main(dir);
 -            let main_stretch_size =
 -                percent_resolution_main_size.maybe_sub(child.margin.main_axis_sum(dir)).maybe_max(0.0);
@@ -2926,7 +3058,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                tree,
 +                child,
 +                constants,
-@@ -999,3 +1646,5 @@
+@@ -999,3 +1628,5 @@
 -                    main_stretch_size,
 -                    percent_resolution_main_size,
 -                    |val, basis| tree.calc(val, basis),
@@ -2935,12 +3067,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                child_parent_size,
 +                cross_axis_available_space,
 +                box_sizing_adjustment,
-@@ -1003,2 +1652,2 @@
+@@ -1003,2 +1634,2 @@
 -                    Some(SizingKeywordResolution::Exact(size)) => {
 -                        child.flex_basis_is_definite = true;
 +                main_keyword::Basis::Size(size, definite) => {
 +                    child.flex_basis_is_definite = definite;
-@@ -1007,28 +1656 @@
+@@ -1007,28 +1638 @@
 -                    Some(SizingKeywordResolution::Measure(available)) => Some(available),
 -                    None => None,
 -                }
@@ -2970,7 +3102,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                    None
 -                }
 +                main_keyword::Basis::Space(space) => space,
-@@ -1069,0 +1692,51 @@
+@@ -1069,0 +1674,51 @@
 +
 +            // A stretched cross suggestion still supplies the ratio-derived
 +            // basis when its input is indefinite, but must NOT mark that basis
@@ -3022,7 +3154,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                    }
 +                }
 +            }
-@@ -1091 +1764,11 @@
+@@ -1091 +1746,11 @@
 -                SizingMode::ContentSize,
 +                // A block-axis or wrapped probe still needs its own limits
 +                // for line formation and aspect-ratio transfers. Restrict the
@@ -3035,14 +3167,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                } else {
 +                    SizingMode::ContentSize
 +                },
-@@ -1110,2 +1793 @@
+@@ -1110,2 +1775 @@
 -        child.inner_flex_basis =
 -            child.flex_basis - child.padding.main_axis_sum(constants.dir) - child.border.main_axis_sum(constants.dir);
 +        child.inner_flex_basis = child.flex_basis - padding_border_sum;
-@@ -1131 +1813 @@
+@@ -1131 +1795 @@
 -                    child_known_dimensions,
 +                    child_known_dimensions.with_main(dir, None),
-@@ -1139,0 +1822,24 @@
+@@ -1139,0 +1804,24 @@
 +            let ratio_cross = child.size.cross(dir).or_else(|| {
 +                if child.align_self.keyword == AlignItemsKeyword::Stretch
 +                    && !child.margin_is_auto.cross_start(dir)
@@ -3067,13 +3199,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            });
 +            let min_content_main_size = min_content_main_size.maybe_max(transferred_main);
 +
-@@ -1142,2 +1848,3 @@
+@@ -1142,2 +1830,3 @@
 -            let clamped_min_content_size =
 -                min_content_main_size.maybe_min(child.size.main(dir)).maybe_min(transferred_max_size.main(dir));
 +            let clamped_min_content_size = min_content_main_size
 +                .maybe_min(specified_main_size)
 +                .maybe_min(transferred_max_size.main(dir));
-@@ -1145,0 +1853,61 @@
+@@ -1145,0 +1835,61 @@
 +
 +        // KaminIDE patch: `min-width/min-height: calc-size(auto, …)` по главной
 +        // оси — выражение над АВТОМИНИМУМОМ (css-values-5 §calc-size: основа
@@ -3135,7 +3267,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            let table_floor = content_floor + padding_border_axes_sums.main(dir).unwrap_or(0.0);
 +            child.resolved_minimum_main_size = child.resolved_minimum_main_size.max(table_floor);
 +        }
-@@ -1162,0 +1931,15 @@
+@@ -1162,0 +1913,15 @@
 +/// KaminIDE patch: lines given by each item's fixed line index.
 +fn pinned_flex_lines<'a>(lines: &[usize], flex_items: &'a mut [FlexItem]) -> Vec<FlexLine<'a>> {
 +    let mut out = new_vec_with_capacity(1);
@@ -3151,7 +3283,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    out
 +}
 +
-@@ -1186,4 +1969,10 @@
+@@ -1186,4 +1951,10 @@
 -    // Wrapping into multiple lines requires a definite main size. If the container's known main size
 -    // is derived from its own content (and is thus indefinite) then all items are collected into a
 -    // single flex line, matching how the container was sized under a min/max-content constraint.
@@ -3166,22 +3298,31 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                .main(constants.dir)
 +                .is_none())
 +    {
-@@ -1193,0 +1983,6 @@
+@@ -1191 +1962 @@
+-        lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
++        lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1193,0 +1965,6 @@
 +        let available_space =
 +            if let Some(preferred) = constants.ratio_preferred_inner_size.main(constants.dir) {
 +                available_space.with_main(constants.dir, AvailableSpace::Definite(preferred))
 +            } else {
 +                available_space
 +            };
-@@ -1204,0 +2000,2 @@
+@@ -1204,0 +1982,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1206,0 +2004,4 @@
+@@ -1206,0 +1986,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1251 +2052,6 @@
+@@ -1219 +2002 @@
+-                lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0 });
++                lines.push(FlexLine { items: flex_items.as_mut_slice(), cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1229 +2012 @@
+-                    lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
++                    lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1251 +2034,6 @@
 -                            line_length > main_axis_available_space && idx != 0
 +                            if idx == 0 {
 +                                line_length -= trimmed_main(child, constants, true);
@@ -3189,7 +3330,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                            line_length - trimmed_main(child, constants, false)
 +                                > main_axis_available_space
 +                                && idx != 0
-@@ -1266,4 +2072,121 @@
+@@ -1257 +2045 @@
+-                    lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0 });
++                    lines.push(FlexLine { items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1266,4 +2054,121 @@
 -/// Collect flex items into balanced flex lines (`flex-wrap: balance`), such that the largest
 -/// line is as small as possible.
 -///
@@ -3315,7 +3459,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +}
 +
 +/// Native balanced line collection; local DP is superseded.
-@@ -1283 +2206,7 @@
+@@ -1283 +2188,7 @@
 -    let main_axis_available_space = if constants.known_main_size_is_definite {
 +    let preferred = constants.ratio_preferred_inner_size.main(constants.dir);
 +    let available_space = match preferred {
@@ -3324,19 +3468,25 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    };
 +    let main_axis_available_space = if constants.known_main_size_is_definite || preferred.is_some()
 +    {
-@@ -1294,0 +2224,2 @@
+@@ -1294,0 +2206,2 @@
 +            // KaminIDE patch: a ratio-transferred preferred main size (`aspect_ratio_preferred_size`)
 +            // is the container's own constraint, not ancestor-derived space, so it still wraps.
-@@ -1296,0 +2228,4 @@
+@@ -1296,0 +2210,4 @@
 +                && constants
 +                    .ratio_preferred_inner_size
 +                    .main(constants.dir)
 +                    .is_none()
-@@ -1360 +2295,2 @@
+@@ -1315 +2232 @@
+-            lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
++            lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1334 +2251 @@
+-        lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0 });
++        lines.push(FlexLine { items: line_items, cross_size: 0.0, offset_cross: 0.0, fragmentation_shift: 0.0, fragmentation_item_shift: 0.0, fragmented: false });
+@@ -1360 +2277,2 @@
 -        && (cross_size.is_stretch() || (item.align_self == AlignSelf::STRETCH && cross_size.is_auto()));
 +        && (cross_size.is_stretch()
 +            || (item.align_self.keyword == AlignItemsKeyword::Stretch && cross_size.is_auto()));
-@@ -1384,3 +2320,8 @@
+@@ -1384,3 +2302,8 @@
 -                    (child.flex_basis.maybe_max(child.min_size.main(constants.dir))
 -                        + child.margin.main_axis_sum(constants.dir))
 -                    .max(padding_border_sum)
@@ -3348,7 +3498,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                                .maybe_max(child.min_size.main(constants.dir))
 +                        };
 +                        (size + child.margin.main_axis_sum(constants.dir)).max(padding_border_sum)
-@@ -1441,19 +2382 @@
+@@ -1441,19 +2364 @@
 -                let longest_line_length: f32 = lines
 -                    .iter()
 -                    .map(|line| {
@@ -3369,57 +3519,57 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                    .unwrap_or(0.0);
 -                longest_line_length + main_content_box_inset
 +                    intrinsic_floor::line_minimum(lines, constants) + main_content_box_inset
-@@ -1468,0 +2392 @@
+@@ -1468,0 +2374 @@
 +                        let margin_sum = item.margin.main_axis_sum(constants.dir);
-@@ -1482 +2405,0 @@
+@@ -1482 +2387,0 @@
 -                        // Gentest: blockflex_min_content_ignores_own_height_as_percentage_basis.html
-@@ -1484 +2407,2 @@
+@@ -1484 +2389,2 @@
 -                            Some(item.flex_basis).maybe_max(style_preferred)
 +                                Some(item.hypothetical_inner_size.main(constants.dir))
 +                                    .maybe_max(style_preferred.maybe_min(style_max))
-@@ -1486 +2410,2 @@
+@@ -1486 +2392,2 @@
 -                            Some(item.flex_basis)
 +                                // Gentest: blockflex_min_content_ignores_own_height_as_percentage_basis.html
 +                                Some(item.hypothetical_inner_size.main(constants.dir))
-@@ -1503 +2428 @@
+@@ -1503 +2410 @@
 -                                pref.min(max).max(min) + item.margin.main_axis_sum(constants.dir)
 +                                pref.min(max).max(min) + margin_sum
-@@ -1505 +2430,3 @@
+@@ -1505 +2412,3 @@
 -                            (min, _, max) if max <= min => min + item.margin.main_axis_sum(constants.dir),
 +                                    (min, _, max) if max <= min => {
 +                                        min + margin_sum
 +                                    }
-@@ -1510 +2437 @@
+@@ -1510 +2419 @@
 -                                item.flex_basis + item.margin.main_axis_sum(constants.dir)
 +                                item.flex_basis + margin_sum
-@@ -1522 +2449 @@
+@@ -1522 +2431 @@
 -                                    (inner_main_size + item.margin.main_axis_sum(constants.dir))
 +                                    (inner_main_size + margin_sum)
-@@ -1523,0 +2451,2 @@
+@@ -1523,0 +2433,2 @@
 +                                            .min(max_main_size + margin_sum)
 +                                            .max(min_main_size + margin_sum)
-@@ -1525 +2454 @@
+@@ -1525 +2436 @@
 -                                    (inner_main_size.max(item.flex_basis) + item.margin.main_axis_sum(constants.dir))
 +                                    (inner_main_size.max(item.flex_basis) + margin_sum)
-@@ -1540,2 +2469,3 @@
+@@ -1540,2 +2451,3 @@
 -                                        (constants.divided_cross_space(cross_axis_parent_size.unwrap_or(val))
 -                                            - item.margin.cross_axis_sum(dir))
 +                                                    (constants.divided_cross_space(
 +                                                        cross_axis_parent_size.unwrap_or(val),
 +                                                    ) - item.margin.cross_axis_sum(dir))
-@@ -1554,4 +2484,2 @@
+@@ -1554,4 +2466,2 @@
 -                                    let transferred_min_size =
 -                                        item.min_size.maybe_apply_aspect_ratio(item.aspect_ratio);
 -                                    let transferred_max_size =
 -                                        item.max_size.maybe_apply_aspect_ratio(item.aspect_ratio);
 +                                            // (KaminIDE patch: `item.min_size`/`max_size` already carry the
 +                                            // aspect-ratio transfer, see `aspect_ratio_constraints`.)
-@@ -1561,2 +2489,2 @@
+@@ -1561,2 +2471,2 @@
 -                                            transferred_min_size.cross(dir),
 -                                            transferred_max_size.cross(dir),
 +                                                    item.min_size.cross(dir),
 +                                                    item.max_size.cross(dir),
-@@ -1565,2 +2493,7 @@
+@@ -1565,2 +2475,7 @@
 -                                    if item.align_self == AlignSelf::STRETCH && ckd.cross(dir).is_none() {
 -                                        ckd.set_cross(dir, cross_axis_available_space.into_option());
 +                                            if item.align_self.keyword == AlignItemsKeyword::Stretch
@@ -3429,10 +3579,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                                                    dir,
 +                                                    cross_axis_available_space.into_option(),
 +                                                );
-@@ -1577 +2510 @@
+@@ -1577 +2492 @@
 -                                    constants.node_inner_size,
 +                                            constants.pct_basis(),
-@@ -1589 +2522,7 @@
+@@ -1589 +2504,7 @@
 -                                    .map(|(ratio, cross)| if constants.is_row { cross * ratio } else { cross / ratio });
 +                                            .map(|(ratio, cross)| {
 +                                                if constants.is_row {
@@ -3441,30 +3591,30 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                                                    cross / ratio
 +                                                }
 +                                            });
-@@ -1606 +2545 @@
+@@ -1606 +2527 @@
 -                                    (inner_main_size + item.margin.main_axis_sum(constants.dir))
 +                                    (inner_main_size + margin_sum)
-@@ -1607,0 +2547,2 @@
+@@ -1607,0 +2529,2 @@
 +                                            .min(max_main_size + margin_sum)
 +                                            .max(min_main_size + margin_sum)
-@@ -1609 +2550 @@
+@@ -1609 +2532 @@
 -                                    (inner_main_size.max(item.flex_basis) + item.margin.main_axis_sum(constants.dir))
 +                                    (inner_main_size.max(item.flex_basis) + margin_sum)
-@@ -1615 +2556 @@
+@@ -1615 +2538 @@
 -                            let diff = content_contribution - item.flex_basis;
 +                            let diff = content_contribution - margin_sum - item.flex_basis;
-@@ -1619 +2560,2 @@
+@@ -1619 +2542,2 @@
 -                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
 +                                    let scaled_shrink_factor =
 +                                        f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
-@@ -1644,0 +2587,2 @@
+@@ -1644,0 +2569,2 @@
 +                    let floor_by_largest_item = constants.is_wrap && constants.is_row;
 +                    let mut largest_item_size = 0.0_f32;
-@@ -1655 +2599,2 @@
+@@ -1655 +2581,2 @@
 -                                let scaled_shrink_factor = f32_max(1.0, item.flex_shrink) * item.inner_flex_basis;
 +                                    let scaled_shrink_factor =
 +                                        f32_max(1.0, item.flex_shrink * item.inner_flex_basis);
-@@ -1664,3 +2609,5 @@
+@@ -1664,3 +2591,5 @@
 -                            let size = item.flex_basis + flex_contribution;
 -                            item.outer_target_size.set_main(constants.dir, size);
 -                            item.target_size.set_main(constants.dir, size);
@@ -3473,10 +3623,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                            if floor_by_largest_item {
 +                                largest_item_size = f32_max(largest_item_size, size);
 +                            }
-@@ -1672 +2619 @@
+@@ -1672 +2601 @@
 -                    main_size = f32_max(main_size, item_main_size_sum + gap_sum)
 +                    main_size = f32_max(main_size, f32_max(largest_item_size, item_main_size_sum + gap_sum))
-@@ -1675 +2622,6 @@
+@@ -1675 +2604,6 @@
 -                main_size + main_content_box_inset
 +                    let minimum = if constants.is_wrap {
 +                        intrinsic_floor::item_minimum(lines, constants)
@@ -3484,7 +3634,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                        0.0
 +                    };
 +                    main_size.max(minimum) + main_content_box_inset
-@@ -1761,2 +2713,18 @@
+@@ -1761,2 +2695,18 @@
 -
 -        if line.items.iter().all(|child| child.frozen) {
 +        //    The space used by the items and the sums of the unfrozen items' flex factors
@@ -3505,7 +3655,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            }
 +        }
 +        if all_frozen {
-@@ -1772,19 +2740 @@
+@@ -1772,19 +2722 @@
 -        let used_space: f32 = total_main_axis_gap
 -            + line
 -                .items
@@ -3526,10 +3676,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                (flex_grow + item.flex_grow, flex_shrink + item.flex_shrink)
 -            });
 +        let used_space: f32 = total_main_axis_gap + items_space;
-@@ -1824 +2774 @@
+@@ -1824 +2756 @@
 -                for child in &mut unfrozen {
 +                for child in line.items.iter_mut().filter(|child| !child.frozen) {
-@@ -1830,2 +2780,6 @@
+@@ -1830,2 +2762,6 @@
 -                let sum_scaled_shrink_factor: f32 =
 -                    unfrozen.iter().map(|child| child.inner_flex_basis * child.flex_shrink).sum();
 +                let sum_scaled_shrink_factor: f32 = line
@@ -3538,18 +3688,18 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                    .filter(|child| !child.frozen)
 +                    .map(|child| child.inner_flex_basis * child.flex_shrink)
 +                    .sum();
-@@ -1834 +2788 @@
+@@ -1834 +2770 @@
 -                    for child in &mut unfrozen {
 +                    for child in line.items.iter_mut().filter(|child| !child.frozen) {
-@@ -1850 +2804 @@
+@@ -1850 +2786 @@
 -        let total_violation = unfrozen.iter_mut().fold(0.0, |acc, child| -> f32 {
 +        let total_violation = line.items.iter_mut().filter(|child| !child.frozen).fold(0.0, |acc, child| -> f32 {
-@@ -1873 +2827 @@
+@@ -1873 +2809 @@
 -        for child in &mut unfrozen {
 +        for child in line.items.iter_mut().filter(|child| !child.frozen) {
-@@ -1897,0 +2852 @@
+@@ -1897,0 +2834 @@
 +    let line_cross_size_is_known = !constants.is_wrap && constants.has_definite_cross_size;
-@@ -1898,0 +2854,8 @@
+@@ -1898,0 +2836,8 @@
 +        // Финальная раскладка измеряет метрики; пропускается лишь неиспользуемая cross-проба.
 +        if line_cross_size_is_known
 +            && child.is_stretched(constants.dir)
@@ -3558,7 +3708,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        {
 +            continue;
 +        }
-@@ -1907,8 +2870,27 @@
+@@ -1907,8 +2852,27 @@
 -        let transferred_min_cross = child.min_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -        let transferred_max_cross = child.max_size.maybe_apply_aspect_ratio(child.aspect_ratio).cross(constants.dir);
 -
@@ -3594,7 +3744,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        } else {
 +            child.size.cross(constants.dir)
 +        });
-@@ -1924,19 +2906,12 @@
+@@ -1924,19 +2888,12 @@
 -        // A cross size that is a sizing keyword (min-content, max-content, fit-content,
 -        // fit-content(...)) determines the available space constraint the item is measured under.
 -        // The `stretch` keyword is not resolved here: it stretches to the flex line, which is
@@ -3626,18 +3776,18 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            .or_else(|| cross_keyword::fit_content_size(child, constants, child_available_cross))
 +            .maybe_clamp(transferred_min_cross, transferred_max_cross)
 +            .maybe_max(padding_border_sum);
-@@ -1945 +2920,2 @@
+@@ -1945 +2902,2 @@
 -            tree.compute_child_layout(
 +            let measured = tree
 +                .compute_child_layout(
-@@ -1955,2 +2931,4 @@
+@@ -1955,2 +2913,4 @@
 -                    known_dimensions_are_definite: item_known_dimension_definiteness(constants, child),
 -                    parent_size: constants.node_inner_size,
 +                        known_dimensions_are_definite: item_known_dimension_definiteness(
 +                            constants, child,
 +                        ),
 +                        parent_size: constants.pct_basis(),
-@@ -1965 +2943,47 @@
+@@ -1965 +2925,47 @@
 -            .get_abs(constants.dir.cross_axis())
 +                .get_abs(constants.dir.cross_axis());
 +            // Definite-width fit-content in a non-stretched column must not
@@ -3686,16 +3836,16 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            };
 +            measured
 +                .max(ratio_cross.unwrap_or(0.0))
-@@ -1976,2 +3000 @@
+@@ -1976,2 +2982 @@
 -/// Calculate the base lines of the children.
 -#[inline]
 +/// KaminIDE patch: Measure and collect the flex children's alignment baselines.
-@@ -1981,2 +3004,2 @@
+@@ -1981,2 +2986,2 @@
 -    available_space: Size<AvailableSpace>,
 -    flex_lines: &mut [FlexLine],
 +    available: Size<AvailableSpace>,
 +    lines: &mut [FlexLine],
-@@ -1985,30 +3008,2 @@
+@@ -1985,30 +2990,2 @@
 -    // Only compute baselines for flex rows because we only support baseline alignment in the cross axis
 -    // where that axis is also the inline axis
 -    // TODO: this may need revisiting if/when we support vertical writing modes
@@ -3728,7 +3878,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                            child.target_size.width.into()
 +    if constants.is_row {
 +        row_baselines::calculate_children_base_lines(tree, node_size, available, lines, constants);
-@@ -2016,43 +3011 @@
+@@ -2016,43 +2993 @@
 -                            child.hypothetical_inner_size.width.into()
 -                        },
 -                        height: if constants.is_row {
@@ -3773,7 +3923,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -            child.baseline = baseline + child.margin.top;
 -        }
 +        column_baselines::measure(tree, node_size, available, lines, constants);
-@@ -2096 +3049,15 @@
+@@ -2096 +3031,15 @@
 -            let max_baseline: f32 = line.items.iter().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +            if constants.is_column {
 +                line.cross_size = column_baselines::cross_size(line.items, constants);
@@ -3790,14 +3940,14 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                .filter(|child| child.participates_in_last_baseline_alignment(constants.dir))
 +                .map(|child| child.last_baseline_from_end)
 +                .fold(0.0, f32::max);
-@@ -2102,0 +3070,6 @@
+@@ -2102,0 +3052,6 @@
 +                    } else if constants.is_row
 +                        && child.participates_in_last_baseline_alignment(constants.dir)
 +                    {
 +                        child.hypothetical_outer_size.cross(constants.dir)
 +                            - child.last_baseline_from_end
 +                            + max_last_from_end
-@@ -2132,2 +3105,6 @@
+@@ -2132,2 +3087,6 @@
 -fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
 -    if constants.align_content == AlignContent::STRETCH {
 +fn handle_align_content_stretch(
@@ -3806,9 +3956,9 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    constants: &AlgoConstants,
 +) {
 +    if constants.align_content.keyword() == AlignContentKeyword::Stretch {
-@@ -2180 +3156,0 @@
+@@ -2180 +3138,0 @@
 -            let cross_is_stretch = child.size_style.cross(constants.dir).is_stretch();
-@@ -2183,6 +3159 @@
+@@ -2183,6 +3141 @@
 -                if !child.margin_is_auto.cross_start(constants.dir)
 -                    && !child.margin_is_auto.cross_end(constants.dir)
 -                    && (cross_is_stretch
@@ -3816,7 +3966,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                            && child_style.size().cross(constants.dir).is_auto()))
 -                {
 +                if child.is_stretched(constants.dir) {
-@@ -2194,7 +3164,0 @@
+@@ -2194,7 +3146,0 @@
 -                    let padding = child_style
 -                        .padding()
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
@@ -3824,7 +3974,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                        .border()
 -                        .resolve_or_zero(constants.node_inner_size.width, |val, basis| tree.calc(val, basis));
 -                    let pb_sum = (padding + border).sum_axes();
-@@ -2202 +3166,12 @@
+@@ -2202 +3148,12 @@
 -                        if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
 +                        if constants.node_inner_size.width == constants.initial_inner_width {
 +                            child.box_sizing_adjustment(&child_style)
@@ -3838,12 +3988,12 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                        } else {
 +                            Size::ZERO
 +                        };
-@@ -2206 +3181,3 @@
+@@ -2206 +3163,3 @@
 -                        .maybe_resolve(constants.node_inner_size, |val, basis| tree.calc(val, basis))
 +                        .maybe_resolve(constants.node_inner_size, |val, basis| {
 +                            tree.calc(val, basis)
 +                        })
-@@ -2312 +3289,6 @@
+@@ -2312 +3271,6 @@
 -        let max_baseline: f32 = line.items.iter_mut().map(|child| child.baseline).fold(0.0, |acc, x| acc.max(x));
 +        let column_groups = column_baselines::maxima(line.items);
 +        let max_baseline: f32 = line
@@ -3851,7 +4001,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            .iter_mut()
 +            .map(|child| child.baseline)
 +            .fold(0.0, |acc, x| acc.max(x));
-@@ -2319,0 +3302,14 @@
+@@ -2319,0 +3284,14 @@
 +        let max_last_from_end: f32 = line
 +            .items
 +            .iter()
@@ -3866,7 +4016,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end
 +            })
 +            .fold(0.0, f32::max);
-@@ -2323 +3319,24 @@
+@@ -2323 +3301,24 @@
 -            if child.margin_is_auto.cross_start(constants.dir) && child.margin_is_auto.cross_end(constants.dir) {
 +            // Auto margins absorb positive space. During overflow the logical
 +            // start margin becomes zero and the logical end receives the deficit.
@@ -3892,17 +4042,17 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                        if reverse { fill } else { free_space },
 +                    )
 +                };
-@@ -2325,2 +3344,2 @@
+@@ -2325,2 +3326,2 @@
 -                    child.margin.top = free_space / 2.0;
 -                    child.margin.bottom = free_space / 2.0;
 +                    child.margin.top = physical_start;
 +                    child.margin.bottom = physical_end;
-@@ -2328,2 +3347,2 @@
+@@ -2328,2 +3329,2 @@
 -                    child.margin.left = free_space / 2.0;
 -                    child.margin.right = free_space / 2.0;
 +                    child.margin.left = physical_start;
 +                    child.margin.right = physical_end;
-@@ -2331,3 +3350,11 @@
+@@ -2331,3 +3332,11 @@
 -            } else if child.margin_is_auto.cross_start(constants.dir) {
 -                if constants.is_row {
 -                    child.margin.top = free_space;
@@ -3917,7 +4067,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                    let from_start =
 +                        child.outer_target_size.cross(constants.dir) - child.last_baseline_from_end;
 +                    max_last_from_start - from_start
-@@ -2335,8 +3362,2 @@
+@@ -2335,8 +3344,2 @@
 -                    child.margin.left = free_space;
 -                }
 -            } else if child.margin_is_auto.cross_end(constants.dir) {
@@ -3928,13 +4078,13 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 -                }
 +                    free_space - (max_last_from_end - child.last_baseline_from_end)
 +                };
-@@ -2377,0 +3399,5 @@
+@@ -2377,0 +3381,5 @@
 +        // HTML projects a no-wrap column's logical cross start through this
 +        // legacy reversal. Authored wrap-reverse does not reverse logical start.
 +        if !constants.is_wrap && constants.is_wrap_reverse {
 +            return free_space;
 +        }
-@@ -2433,0 +3460,20 @@
+@@ -2433,0 +3442,20 @@
 +        AlignItemsKeyword::LastBaseline => {
 +            if constants.is_row {
 +                // Group alignment is handled before this fallback. A lone
@@ -3955,35 +4105,52 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +                }
 +            }
 +        }
-@@ -2443 +3489,3 @@
+@@ -2443 +3471,3 @@
 -        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => unreachable!(),
 +        AlignItemsKeyword::Normal | AlignItemsKeyword::SelfStart | AlignItemsKeyword::SelfEnd => {
 +            unreachable!()
 +        }
-@@ -2520 +3568,6 @@
+@@ -2493 +3523,3 @@
+-    let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap;
++    // KaminIDE patch: fragmentainer space must not realign already sized flex lines (§10).
++    let free_space = constants.inner_container_size.cross(constants.dir) - total_cross_size - total_cross_axis_gap
++        + constants.fragmentation_cross_alignment;
+@@ -2516,0 +3549,3 @@
++    fragmentation_main_shift: f32,
++    line_cross_size: f32,
++    line_fragmented: bool,
+@@ -2520 +3555 @@
 -) {
 +) -> DetailedFlexItem {
-+    // KaminIDE patch: a column break consumes main space after flexible lengths
-+    // have been resolved. It is not an item margin or an anonymous flex item.
-+    if constants.dir.is_column() {
-+        *total_offset_main += tree.flex_item_fragmentation_offset(item.node);
-+    }
-@@ -2522 +3575 @@
+@@ -2522 +3557 @@
 -    let node_inner_size = constants.node_inner_size;
 +    let node_inner_size = constants.pct_basis();
-@@ -2558,0 +3612 @@
-+    let consumed_cross = if direction.is_row() { tree.flex_item_fragmentation_consumed(item.node) } else { 0.0 };
-@@ -2563 +3617,3 @@
+@@ -2553 +3588 @@
+-    let offset_main = if is_rtl_row {
++    let offset_main = fragmentation_main_shift + if is_rtl_row {
+@@ -2559 +3594,8 @@
+-    let offset_cross = total_offset_cross
++    let consumed_cross = if constants.fragmentation_axis.0 == direction.cross_axis() {
++        tree.flex_item_fragmentation_consumed(item.node)
++    } else { 0.0 };
++    let offset_cross = if line_fragmented && constants.fragmentation_axis.1 {
++        total_offset_cross + effective_line_offset_cross + line_cross_size - size.cross(direction)
++            + consumed_cross - if consumed_cross > 0.0 { 0.0 } else { item.margin.cross_end(direction) }
++            + cross_relative_inset
++    } else { total_offset_cross
+@@ -2563 +3605,3 @@
 -        + cross_relative_inset;
 +        + cross_relative_inset
 +        - consumed_cross
-+        - if consumed_cross > 0.0 { item.margin.cross_start(direction) } else { 0.0 };
-@@ -2582 +3638,3 @@
++        - if consumed_cross > 0.0 { item.margin.cross_start(direction) } else { 0.0 } };
+@@ -2581,2 +3625,4 @@
+-        let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction);
 -        let inner_baseline = layout_output.baselines.first.unwrap_or(size.height);
++        let baseline_offset_main = *total_offset_main + item.offset_main + item.margin.main_start(direction) + fragmentation_main_shift;
 +        let inner_baseline = crate::compute::common::alignment::baseline_coordinate(
 +            layout_output.baselines.first, size.height, item.overflow.y.is_scroll_container(),
 +        );
-@@ -2590,0 +3649,50 @@
+@@ -2590,0 +3637,50 @@
 +    // Keep first/last y in the same normal-flow coordinate system as native
 +    // first baselines (relative-position insets do not move the baseline set).
 +    let baseline_origin_y = if direction.is_row() {
@@ -3992,7 +4159,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            + effective_line_offset_cross
 +            + item.margin.cross_start(direction)
 +    } else {
-+        *total_offset_main + item.offset_main + item.margin.main_start(direction)
++        *total_offset_main + item.offset_main + item.margin.main_start(direction) + fragmentation_main_shift
 +    };
 +    let last_y = layout_output.last_or_first_y().unwrap_or(size.height);
 +    let last_y = if item.overflow.y.is_scroll_container() {
@@ -4034,7 +4201,7 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +    };
 +    item.baseline_x_pos = layout_output.baselines_x.first.map(baseline_x);
 +    item.last_baseline_x_pos = layout_output.last_or_first_x().map(baseline_x);
-@@ -2639,0 +3748,15 @@
+@@ -2639,0 +3736,15 @@
 +
 +    // KaminIDE patch: fragmentation uses normal-flow positions (css-break-3 §5.5).
 +    DetailedFlexItem {
@@ -4050,10 +4217,10 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +        main_size: size.main(direction),
 +        cross_size: size.cross(direction),
 +    }
-@@ -2651 +3774 @@
+@@ -2651 +3762 @@
 -) {
 +) -> DetailedFlexLine {
-@@ -2667,0 +3791,9 @@
+@@ -2667,0 +3779,13 @@
 +    // KaminIDE patch: capture the aligned line before advancing the placement cursor.
 +    let cross_offset = *total_offset_cross
 +        + if is_rtl_column {
@@ -4062,23 +4229,43 @@ index 4e9ab121cb080beec8fdad3a1d75f3a10ae26b40..843cec07c6ee63b0f85c5cd337934f05
 +            line_offset_cross
 +        };
 +    let mut items = new_vec_with_capacity(line.items.len());
++    let mut fragmentation = fragmentation::MainCursor::new(tree, line, constants);
++    let fragment_cross = line.fragmentation_shift + line.fragmentation_item_shift;
++    let fragment_size = line.cross_size;
++    let fragmented = line.fragmented;
 +
-@@ -2670 +3802 @@
+@@ -2670 +3794,2 @@
 -            calculate_flex_item(
++            let fragment_main = fragmentation.next(tree.flex_item_fragmentation_offset(item.node));
 +            items.push(calculate_flex_item(
-@@ -2681 +3813 @@
+@@ -2674 +3799 @@
+-                *total_offset_cross,
++                *total_offset_cross + fragment_cross,
+@@ -2675,0 +3801,3 @@
++                fragment_main,
++                fragment_size,
++                fragmented,
+@@ -2681 +3809 @@
 -            );
 +            ));
-@@ -2685 +3817 @@
+@@ -2685 +3813,2 @@
 -            calculate_flex_item(
++            let fragment_main = fragmentation.next(tree.flex_item_fragmentation_offset(item.node));
 +            items.push(calculate_flex_item(
+@@ -2689 +3818 @@
+-                *total_offset_cross,
++                *total_offset_cross + fragment_cross,
+@@ -2690,0 +3820,3 @@
++                fragment_main,
++                fragment_size,
++                fragmented,
 @@ -2696 +3828 @@
 -            );
 +            ));
 @@ -2701,0 +3834,5 @@
 +    }
 +    DetailedFlexLine {
-+        cross_offset,
++        cross_offset: cross_offset + line.fragmentation_shift,
 +        cross_size: line.cross_size,
 +        items,
 @@ -2711 +3848 @@
@@ -17635,6 +17822,360 @@ index 0000000000000000000000000000000000000000..5566368ff362e479b663baa914ca98bf
 +        }
 +    }
 +}
+diff --git a/vendor/taffy/src/tree/flex_fragmentation_axis_tests.rs b/vendor/taffy/src/tree/flex_fragmentation_axis_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..00d8db2cb0a661b51e31190e9cdb9a66681ef7cb
+--- /dev/null
++++ b/vendor/taffy/src/tree/flex_fragmentation_axis_tests.rs
+@@ -0,0 +1,185 @@
++//! KaminIDE patch: fragmentation consumes the physical block axis, independently of flex axes.
++use crate::geometry::{AbsoluteAxis, Size};
++use crate::style_helpers::TaffyMaxContent;
++use crate::{AlignContent, Dimension, Direction, FlexDirection, FlexWrap, Style, TaffyTree};
++
++#[test]
++fn main_axis_offsets_preserve_native_sizes_in_both_block_directions() {
++    for direction in [FlexDirection::Row, FlexDirection::RowReverse] {
++        for layout_direction in [Direction::Ltr, Direction::Rtl] {
++            for reversed in [false, true] {
++                for auto in [false, true] {
++                    let mut tree: TaffyTree<()> = TaffyTree::new();
++                    tree.disable_rounding();
++                    let child = Style {
++                        size: Size::from_lengths(30.0, 40.0),
++                        flex_shrink: 0.0,
++                        ..Style::DEFAULT
++                    };
++                    let a = tree.new_leaf(child.clone()).unwrap();
++                    let b = tree.new_leaf(child).unwrap();
++                    let root = tree
++                        .new_with_children(
++                            Style {
++                                flex_direction: direction,
++                                direction: layout_direction,
++                                size: Size {
++                                    width: if auto {
++                                        Dimension::auto()
++                                    } else {
++                                        Dimension::length(60.0)
++                                    },
++                                    height: Dimension::length(40.0),
++                                },
++                                ..Style::DEFAULT
++                            },
++                            &[a, b],
++                        )
++                        .unwrap();
++                    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                    let before = [*tree.layout(a).unwrap(), *tree.layout(b).unwrap()];
++                    tree.set_flex_fragmentation_axis(root, AbsoluteAxis::Horizontal, reversed)
++                        .unwrap();
++                    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                    assert_eq!(*tree.layout(a).unwrap(), before[0]);
++                    assert_eq!(*tree.layout(b).unwrap(), before[1]);
++                    let target = if (before[0].location.x < before[1].location.x) == reversed {
++                        a
++                    } else {
++                        b
++                    };
++                    let target_x = tree.layout(target).unwrap().location.x;
++                    tree.set_flex_item_fragmentation_offset(target, 50.0)
++                        .unwrap();
++                    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                    for (node, old) in [a, b].into_iter().zip(before) {
++                        let consumed = if reversed {
++                            old.location.x <= target_x
++                        } else {
++                            old.location.x >= target_x
++                        };
++                        let expected = old.location.x
++                            + if reversed {
++                                (if auto { 50.0 } else { 0.0 }) - if consumed { 50.0 } else { 0.0 }
++                            } else if consumed {
++                                50.0
++                            } else {
++                                0.0
++                            };
++                        let now = tree.layout(node).unwrap();
++                        assert_eq!(
++                            now.location.x, expected,
++                            "{direction:?} {layout_direction:?} reversed={reversed} auto={auto}"
++                        );
++                        assert_eq!(now.location.y, old.location.y);
++                        assert_eq!(now.size, old.size);
++                    }
++                    assert_eq!(
++                        tree.layout(root).unwrap().size.width,
++                        if auto { 110.0 } else { 60.0 }
++                    );
++                    tree.set_flex_item_fragmentation_offset(target, 0.0)
++                        .unwrap();
++                    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                    assert_eq!(*tree.layout(a).unwrap(), before[0]);
++                    assert_eq!(*tree.layout(b).unwrap(), before[1]);
++                }
++            }
++        }
++    }
++}
++
++#[test]
++fn cross_axis_growth_preserves_items_and_native_line_membership() {
++    for direction in [FlexDirection::Column, FlexDirection::ColumnReverse] {
++        for layout_direction in [Direction::Ltr, Direction::Rtl] {
++            for wrap in [FlexWrap::Wrap, FlexWrap::WrapReverse] {
++                for reversed in [false, true] {
++                    for (auto, align) in [(true, AlignContent::START), (false, AlignContent::START), (false, AlignContent::END), (false, AlignContent::CENTER), (false, AlignContent::SPACE_BETWEEN)] {
++                        let mut tree: TaffyTree<()> = TaffyTree::new();
++                        tree.disable_rounding();
++                        let item = Style {
++                            size: Size::from_lengths(30.0, 40.0),
++                            flex_shrink: 0.0,
++                            ..Style::DEFAULT
++                        };
++                        let a = tree.new_leaf(item.clone()).unwrap();
++                        let b = tree.new_leaf(item).unwrap();
++                        let root = tree
++                            .new_with_children(
++                                Style {
++                                    flex_direction: direction,
++                                    direction: layout_direction,
++                                    flex_wrap: wrap,
++                                    align_content: align,
++                                    size: Size {
++                                        width: if auto {
++                                            Dimension::auto()
++                                        } else {
++                                            Dimension::length(100.0)
++                                        },
++                                        height: Dimension::length(40.0),
++                                    },
++                                    ..Style::DEFAULT
++                                },
++                                &[a, b],
++                            )
++                            .unwrap();
++                        tree.set_flex_fragmentation_axis(root, AbsoluteAxis::Horizontal, reversed)
++                            .unwrap();
++                        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                        let before = [*tree.layout(a).unwrap(), *tree.layout(b).unwrap()];
++                        let crate::DetailedLayoutInfo::Flex(info) = tree.detailed_layout_info(root)
++                        else {
++                            panic!("no lines")
++                        };
++                        let members: Vec<_> = info.lines.iter().map(|l| l.items[0].node).collect();
++                        let first = if (info.lines[0].cross_offset < info.lines[1].cross_offset)
++                            == reversed
++                        {
++                            1
++                        } else {
++                            0
++                        };
++                        let first_node = members[first];
++                        let mut growth = vec![0.0; 2];
++                        growth[first] = 50.0;
++                        tree.set_flex_line_fragmentation_growth(root, growth)
++                            .unwrap();
++                        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                        for (node, old) in [a, b].into_iter().zip(before) {
++                            let shift = if node == first_node {
++                                0.0
++                            } else if reversed {
++                                -50.0
++                            } else {
++                                50.0
++                            };
++                            let expected =
++                                old.location.x + shift + if reversed && auto { 50.0 } else { 0.0 };
++                            let now = tree.layout(node).unwrap();
++                            assert_eq!(now.location.x, expected, "{direction:?} {layout_direction:?} {wrap:?} {align:?} reversed={reversed} auto={auto}");
++                            assert_eq!(now.location.y, old.location.y);
++                            assert_eq!(now.size, old.size);
++                        }
++                        assert_eq!(
++                            tree.layout(root).unwrap().size.width,
++                            if auto { 110.0 } else { 100.0 }
++                        );
++                        let crate::DetailedLayoutInfo::Flex(info) = tree.detailed_layout_info(root)
++                        else {
++                            panic!("no lines")
++                        };
++                        assert_eq!(
++                            info.lines
++                                .iter()
++                                .map(|l| l.items[0].node)
++                                .collect::<Vec<_>>(),
++                            members
++                        );
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/vendor/taffy/src/tree/flex_fragmentation_continuation_tests.rs b/vendor/taffy/src/tree/flex_fragmentation_continuation_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d723c8575358b45d028d630e6175b4e95f0a7ad1
+--- /dev/null
++++ b/vendor/taffy/src/tree/flex_fragmentation_continuation_tests.rs
+@@ -0,0 +1,157 @@
++//! KaminIDE patch: consumed space follows block-start without changing flexible lengths.
++use crate::geometry::{AbsoluteAxis, Size};
++use crate::style_helpers::TaffyMaxContent;
++use crate::{DetailedLayoutInfo, Dimension, Direction, FlexDirection, Position, Style, TaffyTree};
++
++#[test]
++fn horizontal_cross_axis_continuations_keep_original_item_sizes() {
++    for direction in [Direction::Ltr, Direction::Rtl] {
++        for reversed in [false, true] {
++            let mut tree: TaffyTree<()> = TaffyTree::new();
++            tree.disable_rounding();
++            let item = Style {
++                size: Size::from_lengths(30.0, 40.0),
++                ..Style::DEFAULT
++            };
++            let a = tree.new_leaf(item.clone()).unwrap();
++            let b = tree.new_leaf(item).unwrap();
++            let root = tree
++                .new_with_children(
++                    Style {
++                        flex_direction: FlexDirection::Column,
++                        direction,
++                        size: Size {
++                            width: Dimension::auto(),
++                            height: Dimension::length(80.0),
++                        },
++                        ..Style::DEFAULT
++                    },
++                    &[a, b],
++                )
++                .unwrap();
++            tree.set_flex_fragmentation_axis(root, AbsoluteAxis::Horizontal, reversed)
++                .unwrap();
++            tree.set_flex_item_fragmentation_consumed(a, 20.0).unwrap();
++            tree.set_flex_item_fragmentation_consumed(b, 10.0).unwrap();
++            tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++            assert_eq!(tree.layout(root).unwrap().size.width, 20.0);
++            for (node, consumed) in [(a, 20.0), (b, 10.0)] {
++                let actual = tree.layout(node).unwrap();
++                assert_eq!(actual.size, Size { width: 30.0, height: 40.0 });
++                assert_eq!(
++                    actual.location.x,
++                    if reversed { consumed - 10.0 } else { -consumed },
++                    "{direction:?} reversed={reversed}"
++                );
++            }
++            let DetailedLayoutInfo::Flex(info) = tree.detailed_layout_info(root) else {
++                panic!("no lines")
++            };
++            assert_eq!(info.lines[0].cross_offset, 0.0);
++            assert_eq!(info.lines[0].cross_size, 20.0);
++            tree.set_flex_item_fragmentation_consumed(a, 0.0).unwrap();
++            tree.set_flex_item_fragmentation_consumed(b, 0.0).unwrap();
++            tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++            assert_eq!(tree.layout(root).unwrap().size.width, 30.0);
++        }
++    }
++}
++
++#[test]
++fn horizontal_main_axis_offset_keeps_flex_grow_and_absolute_static_position() {
++    for reversed in [false, true] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        tree.disable_rounding();
++        let child = Style {
++            size: Size::from_lengths(30.0, 40.0),
++            flex_grow: 1.0,
++            ..Style::DEFAULT
++        };
++        let a = tree.new_leaf(child.clone()).unwrap();
++        let b = tree.new_leaf(child).unwrap();
++        let abs = tree
++            .new_leaf(Style {
++                position: Position::Absolute,
++                size: Size::from_lengths(10.0, 10.0),
++                ..Style::DEFAULT
++            })
++            .unwrap();
++        let root = tree
++            .new_with_children(
++                Style {
++                    size: Size::from_lengths(100.0, 40.0),
++                    ..Style::DEFAULT
++                },
++                &[a, b, abs],
++            )
++            .unwrap();
++        tree.set_flex_fragmentation_axis(root, AbsoluteAxis::Horizontal, reversed)
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        let before = [*tree.layout(a).unwrap(), *tree.layout(b).unwrap()];
++        let static_position = *tree.layout(abs).unwrap();
++        tree.set_flex_item_fragmentation_offset(if reversed { a } else { b }, 50.0)
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(*tree.layout(abs).unwrap(), static_position);
++        for (node, old) in [a, b].into_iter().zip(before) {
++            assert_eq!(tree.layout(node).unwrap().size, old.size);
++        }
++        assert_eq!(
++            tree.layout(a).unwrap().location.x,
++            if reversed { -50.0 } else { 0.0 }
++        );
++        assert_eq!(
++            tree.layout(b).unwrap().location.x,
++            if reversed { 50.0 } else { 100.0 }
++        );
++        assert_eq!(tree.layout(root).unwrap().size.width, 100.0);
++    }
++}
++
++#[test]
++fn main_only_size_probes_include_consumed_space_without_publishing_layout() {
++    use crate::{LayoutInput, LayoutPartialTree, RequestedAxis, RunMode};
++    for (direction, axis) in [
++        (FlexDirection::Row, AbsoluteAxis::Horizontal),
++        (FlexDirection::Column, AbsoluteAxis::Vertical),
++    ] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        tree.disable_rounding();
++        let child = Style {
++            size: Size::from_lengths(30.0, 30.0),
++            flex_shrink: 0.0,
++            ..Style::DEFAULT
++        };
++        let a = tree.new_leaf(child.clone()).unwrap();
++        let b = tree.new_leaf(child).unwrap();
++        let root = tree
++            .new_with_children(
++                Style {
++                    flex_direction: direction,
++                    ..Style::DEFAULT
++                },
++                &[a, b],
++            )
++            .unwrap();
++        tree.set_flex_fragmentation_axis(root, axis, false).unwrap();
++        tree.set_flex_item_fragmentation_offset(b, 50.0).unwrap();
++        let input = LayoutInput {
++            run_mode: RunMode::ComputeSize,
++            axis: RequestedAxis::from(axis),
++            ..LayoutInput::HIDDEN
++        };
++        let probe = tree.as_layout_tree().compute_child_layout(root, input);
++        assert_eq!(probe.size.main(direction), 110.0);
++        assert!(matches!(
++            tree.detailed_layout_info(root),
++            DetailedLayoutInfo::None
++        ));
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(
++            tree.layout(root).unwrap().size.main(direction),
++            probe.size.main(direction)
++        );
++        assert_eq!(tree.layout(b).unwrap().location.main(direction), 80.0);
++    }
++}
 diff --git a/vendor/taffy/src/tree/flex_fragmentation_tests.rs b/vendor/taffy/src/tree/flex_fragmentation_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..0debda70f9d6e779b5760124a90cf07927a16075
@@ -22704,7 +23245,7 @@ index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d50
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/mod.rs b/vendor/taffy/src/tree/mod.rs
-index 1d70419936e58bdaeda090b9f73188c0f7999985..9c347592dcfe89ffba2a9babe9e246e6fce80e2b
+index 1d70419936e58bdaeda090b9f73188c0f7999985..4db92fc3e0e6795cf578e7bcd6028874ba778b00
 --- a/vendor/taffy/src/tree/mod.rs
 +++ b/vendor/taffy/src/tree/mod.rs
 @@ -9,0 +10,5 @@
@@ -22728,7 +23269,7 @@ index 1d70419936e58bdaeda090b9f73188c0f7999985..9c347592dcfe89ffba2a9babe9e246e6
 +pub use kamin_calc::calc_value;
 +#[cfg(all(feature = "taffy_tree", feature = "std"))]
 +pub use kamin_calc::{calc_handle, CalcScope};
-@@ -38,0 +53,176 @@
+@@ -38,0 +53,182 @@
 +
 +#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 +mod flex_safe_alignment_tests;
@@ -22905,6 +23446,12 @@ index 1d70419936e58bdaeda090b9f73188c0f7999985..9c347592dcfe89ffba2a9babe9e246e6
 +// KaminIDE patch: fragmentation constraints preserve completed item geometry.
 +#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 +mod flex_fragmentation_tests;
++
++#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
++mod flex_fragmentation_axis_tests;
++
++#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
++mod flex_fragmentation_continuation_tests;
 diff --git a/vendor/taffy/src/tree/node_lifetime.rs b/vendor/taffy/src/tree/node_lifetime.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..300e6c0826937ae1db5eb3a6df451e0e5df41bfc
@@ -23770,7 +24317,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945034deb24
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..1301ff818ac451e6ff9b12cd5d861f7527129043
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,7 @@
@@ -23790,7 +24337,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +            TaffyError::InvalidInputNode(node) => {
 +                write!(f, "Supplied Node {node:?} is not in the TaffyTree instance")
 +            }
-@@ -118,0 +130,23 @@
+@@ -118,0 +130,26 @@
 +    /// Tracks published by the parent subgrid layout, outside the native cache key.
 +    #[cfg(feature = "grid")]
 +    pub(crate) subgrid_tracks: Option<crate::style::SubgridTracks>,
@@ -23814,7 +24361,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
 +    #[cfg(feature = "flexbox")]
 +    pub(crate) flex_fragmentation: bool,
-@@ -132,0 +167,14 @@
++    /// KaminIDE patch: physical block axis and block-start direction of fragmentation.
++    #[cfg(feature = "flexbox")]
++    pub(crate) flex_fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
+@@ -132,0 +170,16 @@
 +            #[cfg(feature = "grid")]
 +            subgrid_tracks: None,
 +            pct_parent_h: None,
@@ -23829,18 +24379,31 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +            flex_item_line: None,
 +            #[cfg(feature = "flexbox")]
 +            flex_fragmentation: false,
-@@ -168,0 +217,5 @@
++            #[cfg(feature = "flexbox")]
++            flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
+@@ -168,0 +222,5 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
 +    #[cfg(feature = "std")]
 +    calc: super::kamin_calc::SharedRegistry,
-@@ -173,0 +227,64 @@
+@@ -173,0 +232,75 @@
 +    }
 +}
 +
 +#[cfg(feature = "flexbox")]
 +impl<NodeContext> TaffyTree<NodeContext> {
++    /// KaminIDE patch: fragmentation follows the writing-mode block axis (CSS Writing Modes 3 §6).
++    /// Reversal affects consumed-space placement, never flex sizing or line membership.
++    pub fn set_flex_fragmentation_axis(&mut self, node: NodeId, axis: crate::geometry::AbsoluteAxis, reversed: bool) -> TaffyResult<()> {
++        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
++        if data.flex_fragmentation_axis != (axis, reversed) {
++            data.flex_fragmentation_axis = (axis, reversed);
++            self.mark_dirty(node)?;
++        }
++        Ok(())
++    }
++
 +    /// KaminIDE patch: content extent already consumed by a row flex item.
 +    /// The item retains its main size and full contents; only its remaining
 +    /// cross contribution and final cross position change (CSS Flexbox 1 §10).
@@ -23900,7 +24463,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -283,0 +401,19 @@
+@@ -283,0 +417,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -23920,10 +24483,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +        )
 +    }
 +
-@@ -287 +423 @@
+@@ -287 +439 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +436,13 @@
+@@ -299,0 +452,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -23937,30 +24500,34 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +            }
 +        }
 +
-@@ -313 +462 @@
+@@ -313 +478 @@
 -            let mut output = match (display_mode, has_children) {
 +            let output = match (display_mode, has_children) {
-@@ -322,0 +472,6 @@
+@@ -322,0 +488,6 @@
 +                // An empty grid without a measurement context still has explicit
 +                // tracks and auto-fill sizing. A measured grid leaf stays a leaf.
 +                #[cfg(feature = "grid")]
 +                (Display::Grid, false) if !tree.taffy.nodes[node_id.into()].has_context => {
 +                    compute_grid_layout(tree, node_id, inputs)
 +                }
-@@ -330,0 +486,2 @@
+@@ -330,0 +502,2 @@
 +            let mut output =
 +                super::kamin_output::adapt(output, &tree.taffy.nodes[node_id.into()].style);
-@@ -401,2 +558,2 @@
+@@ -401,2 +574,2 @@
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +678,26 @@
+@@ -520,0 +694,30 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
 +        self.taffy.nodes[node_id.into()].detailed_layout_info =
 +            DetailedLayoutInfo::Flex(Box::new(info));
++    }
++
++    fn flex_fragmentation_axis(&self, node: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
++        self.taffy.nodes[node.into()].flex_fragmentation_axis
 +    }
 +
 +    fn flex_item_fragmentation_consumed(&self, node: NodeId) -> f32 {
@@ -23982,7 +24549,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].flex_fragmentation
 +    }
-@@ -546,0 +730,16 @@
+@@ -546,0 +750,16 @@
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
 +        self.taffy.nodes[node_id.into()].subgrid_tracks.clone()
 +    }
@@ -23999,7 +24566,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +        }
 +    }
 +
-@@ -586,0 +786,25 @@
+@@ -586,0 +806,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -24025,7 +24592,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +        })
 +    }
 +
-@@ -606 +830,18 @@
+@@ -606 +850,18 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -24045,13 +24612,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -666,0 +908,5 @@
+@@ -666,0 +928,5 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
 +            .unwrap_or_else(|error| error.into_inner())
 +            .clear();
-@@ -916,0 +1163,8 @@
+@@ -916,0 +1183,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -24060,7 +24627,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1231,6 @@
+@@ -977 +1251,6 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -24068,23 +24635,29 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..28a487d6063302ab9dbb4173654f2945
 +            taffy: self,
 +            measure_function,
 +        };
-@@ -988 +1247 @@
+@@ -988 +1267 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1262,3 @@
+@@ -1003 +1282,3 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
 diff --git a/vendor/taffy/src/tree/traits.rs b/vendor/taffy/src/tree/traits.rs
-index 7d4adf226accc9339bedf755ca3b60007addecd9..a13a99afab1e5bbb2476de6a105fc423cbc44282
+index 7d4adf226accc9339bedf755ca3b60007addecd9..2e0327ad607886fc75419258c36bb40b4b5ab628
 --- a/vendor/taffy/src/tree/traits.rs
 +++ b/vendor/taffy/src/tree/traits.rs
-@@ -323,0 +324,25 @@
+@@ -323,0 +324,31 @@
 +
 +    /// KaminIDE patch: optionally retain the final solver lines and item positions.
 +    /// Size-only probes do not publish geometry. Fragmentation policy stays with the caller.
 +    fn set_detailed_flex_info(&mut self, _node_id: NodeId, _info: crate::tree::DetailedFlexInfo) {}
++
++    /// KaminIDE patch: physical block axis and whether block-start is its high edge.
++    /// Defaults to horizontal writing mode for existing callers.
++    fn flex_fragmentation_axis(&self, _node_id: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
++        (crate::geometry::AbsoluteAxis::Vertical, false)
++    }
 +
 +    /// KaminIDE patch: border-box extent consumed in a row continuation.
 +    fn flex_item_fragmentation_consumed(&self, _node_id: NodeId) -> f32 { 0.0 }
@@ -24106,7 +24679,7 @@ index 7d4adf226accc9339bedf755ca3b60007addecd9..a13a99afab1e5bbb2476de6a105fc423
 +    /// Column items whose block size may not shrink then encompass their
 +    /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
 +    fn flex_fragmentation(&self, _node_id: NodeId) -> bool { false }
-@@ -345,0 +371,25 @@
+@@ -345,0 +377,25 @@
 +
 +    /// KaminIDE patch: дорожки, выданные узлу-ПОДСЕТКЕ его родительской сеткой
 +    /// (css-grid-2 §9). Родитель пишет их ПЕРЕД каждым замером и раскладкой
