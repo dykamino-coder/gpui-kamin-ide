@@ -211,3 +211,6 @@ mod flex_outer_margin_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
 mod grid_calc_repeat_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_perf_contract_tests;
