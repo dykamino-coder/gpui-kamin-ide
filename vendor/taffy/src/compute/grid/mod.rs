@@ -1004,7 +1004,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             &mut item.oof_candidates,
         );
         item.y_position = y_position;
-        if x_lines.start.is_some() {
+        if x_lines.start.is_some() || x_lines.end.is_some() {
             baseline_x_items.push((item.source_order, x_lines));
         }
         item.height = height;
@@ -1019,10 +1019,8 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             tree.set_content_shift(item.node, shim);
             // Every baseline cell of the row sits on the row baseline: its
             // measured (or content-box synthesized) baseline plus its shim.
-            item.first_baseline = match item.baseline {
-                Some(b) if item.participates_in_baseline_alignment() => Some(b + shim),
-                _ => item.first_baseline.map(|b| b + shim),
-            };
+            // KaminIDE patch: #1322 — итоговая метрика приоритетнее sizing probe.
+            item.first_baseline = item.first_baseline.map(|b| b + shim);
             item.last_baseline = item.last_baseline.map(|b| b + shim);
         }
 
@@ -1223,10 +1221,12 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
             Baselines {
                 first: baseline_x_items
                     .iter()
+                    .filter(|(_, l)| l.start.is_some())
                     .min_by_key(|(order, _)| *order)
                     .and_then(|(_, l)| l.start),
                 last: baseline_x_items
                     .iter()
+                    .filter(|(_, l)| l.end.is_some())
                     .max_by_key(|(order, _)| *order)
                     .and_then(|(_, l)| l.end),
             }

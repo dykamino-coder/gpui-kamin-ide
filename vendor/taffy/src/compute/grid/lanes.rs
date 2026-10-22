@@ -16,7 +16,7 @@
 //! (`render::lanes`), и размеры по оси решётки там ОЦЕНИВАЛИСЬ, а эталоны
 //! (`grid-subgridded-to-grid-lanes/**` и соседи) рисовались настоящей сеткой
 //! taffy: тест и эталон шли разными алгоритмами.
-use super::alignment::{align_item_within_area, align_tracks};
+use super::alignment::{align_item_within_area, align_tracks, relative_offset};
 use super::explicit_grid::{
     compute_explicit_grid_size_in_axis, initialize_grid_tracks, AutoRepeatStrategy,
 };
@@ -96,6 +96,8 @@ struct Placed {
     margin: Rect<f32>,
     /// Сдвиг `position: relative` по оси укладки.
     stack_relative: f32,
+    /// KaminIDE patch: сдвиг по оси решётки применяется только при публикации.
+    grid_relative: f32,
     /// Внешний размер по оси укладки (без зазора).
     outer_stack: f32,
     /// KaminIDE patch: Resolved item padding.
@@ -160,6 +162,8 @@ struct ItemBox {
     grid_offset: f32,
     /// KaminIDE patch: Relative-position offset on the stacking axis.
     stack_relative: f32,
+    /// KaminIDE patch: сдвиг по оси решётки применяется только при публикации.
+    grid_relative: f32,
     /// KaminIDE patch: Resolved item padding.
     padding: Rect<f32>,
     /// KaminIDE patch: Resolved item border widths.
@@ -1181,6 +1185,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     size: item.size,
                     margin: item.margin,
                     stack_relative: item.stack_relative,
+                    grid_relative: item.grid_relative,
                     outer_stack,
                     padding: item.padding,
                     border: item.border,
@@ -1242,6 +1247,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
             size: item.size,
             margin: item.margin,
             stack_relative: item.stack_relative,
+            grid_relative: item.grid_relative,
             outer_stack,
             padding: item.padding,
             border: item.border,
@@ -1407,6 +1413,8 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
                     );
                     let p = &mut *placed_item;
                     p.size = item.size;
+                    p.grid_relative = item.grid_relative;
+                    p.stack_relative = item.stack_relative;
                     p.scrollable_overflow_rect = item.scrollable_overflow_rect;
                     p.contain = item.contain;
                     p.baseline = item.baseline;
@@ -1603,14 +1611,16 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         );
     }
 
-    LayoutOutput::from_sizes_and_baselines(
+    LayoutOutput::from_sizes_and_all_baselines(
         container_border_box,
         item_content_size_contribution,
-        if contain.intersects(Contain::LAYOUT) {
+        if contain.suppresses_baseline() {
             Baselines::NONE
         } else {
             baselines
         },
+        if contain.suppresses_baseline() { Baselines::NONE }
+        else { container_baselines::compute_x(&placed, rows, stack_start_inset) },
     )
 }
 
@@ -2293,6 +2303,7 @@ fn layout_lanes_item(
         margin: resolved_margin,
         grid_offset,
         stack_relative,
+        grid_relative: relative_offset(position, if rows { inset_v } else { inset_h }, Direction::Ltr),
         padding,
         border,
         scrollbar_size,
