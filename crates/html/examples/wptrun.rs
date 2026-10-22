@@ -204,6 +204,8 @@ fn main() {
                     cx.new(|_| Page {
                         doc: empty,
                         select: None,
+                        #[cfg(feature = "wpt-harness")]
+                        probes: Default::default(),
                     })
                 },
             )

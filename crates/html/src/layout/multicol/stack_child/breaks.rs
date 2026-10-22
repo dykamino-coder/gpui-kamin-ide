@@ -24,12 +24,19 @@ pub(super) fn recorder(
     measured_kids: &RefCell<Vec<(u64, f32)>>,
     opts: &RenderOpts,
     col_vert: bool,
+    col_rl: bool,
     line_col_w: Option<f32>,
     own_plan: bool,
 ) -> (Rc<Watched>, Option<BreaksAt>) {
-    if col_vert {
-        return (Watched::new(&[]), None);
-    }
+    let logical = if col_vert {
+        if own_plan || !crate::layout::fragment::flow::vertical_copy(copy, col_rl) {
+            return (Watched::new(&[]), None);
+        }
+        crate::layout::fragment::line_shape::transpose_tree(copy, col_rl)
+    } else {
+        None
+    };
+    let copy = logical.as_ref().unwrap_or(copy);
     let measured = measured_kids
         .borrow()
         .iter()

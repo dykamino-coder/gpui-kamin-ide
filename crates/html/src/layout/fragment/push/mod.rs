@@ -1,3 +1,4 @@
+//! ADR P-19 F2-1/F2-3/F2-4: оценочный рост остаётся у preplan; measured использует геометрию копии.
 //! Перенос коробок на следующий фрагмент распорками роста (`grow_pushed`): по точке разреза
 //! `a` от верха ребёнка стопки ищется самая внешняя коробка, начинающаяся ровно там
 //! (`pushed_box_at`), и перед ней встаёт распорка. Смещения детей считаются той же
@@ -26,7 +27,8 @@ pub(crate) use spacer::grow_pushed;
 pub(crate) mod flex_flow;
 mod grid_row;
 mod measured;
-pub(crate) use measured::{Regrow, measured_push};
+mod vertical;
+pub(crate) use measured::{Regrow, measured_push, measured_tree};
 
 // Самая внешняя коробка, начинающаяся ровно в `a` от верха `c`, — перед
 // ней встаёт распорка роста (`grow_pushed`). Смещения детей — той же

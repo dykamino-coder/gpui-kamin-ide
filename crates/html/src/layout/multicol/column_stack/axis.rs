@@ -21,6 +21,9 @@ impl ColumnStack {
         let (inline_avail, block_avail) = self.axis_sizes(bounds);
         let col_w =
             ((inline_avail - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        if let Some(recipe) = self.deferred.clone() {
+            recipe.prepare(self, col_w, window, cx);
+        }
         let heights = self.kid_geoms();
         let (_, lines, mut plan, spans) = self.balance(&heights);
         plan.check_copies(|kid| self.children[kid].frags.len() + 1);

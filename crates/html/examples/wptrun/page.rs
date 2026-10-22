@@ -9,6 +9,8 @@ pub(super) struct Page {
     pub(super) doc: Rc<Document>,
     /// Сравниваемые листы печатного теста (с нуля), `None` — все.
     pub(super) select: Option<Vec<usize>>,
+    #[cfg(feature = "wpt-harness")]
+    pub(super) probes: kamin_html::FragmentProbes,
 }
 
 impl Render for Page {
@@ -118,6 +120,10 @@ impl Render for Page {
             cx: Default::default(),
             frag: Default::default(),
         };
+        #[cfg(feature = "wpt-harness")]
+        {
+            opts.frag.probe = self.probes.clone();
+        }
         opts.cx.freeze_scrollbars = true;
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся

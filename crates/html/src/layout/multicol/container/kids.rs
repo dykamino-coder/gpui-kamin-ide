@@ -14,7 +14,7 @@ use crate::style::values::value::Len;
 #[allow(clippy::too_many_arguments)]
 // Child records keep their layout and paint callbacks with measured geometry.
 #[allow(clippy::type_complexity)]
-pub(super) fn column_kids(
+pub(in crate::layout::multicol) fn column_kids(
     _merged: &Computed,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     cols: u16,
@@ -76,7 +76,7 @@ pub(super) fn column_kids(
 #[allow(clippy::too_many_arguments)]
 // The stack is assembled from the same measured child/callback records.
 #[allow(clippy::type_complexity)]
-pub(super) fn stack_children(
+pub(in crate::layout::multicol) fn stack_children(
     e: &Element,
     merged: &Computed,
     opts: &RenderOpts,

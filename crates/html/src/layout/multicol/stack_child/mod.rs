@@ -18,6 +18,7 @@ use cuts::{copy_cuts_and_height, stack_child_of};
 mod breaks;
 mod build;
 mod fixed;
+mod vertical;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
 mod frag_div;
@@ -97,35 +98,27 @@ pub(super) fn multicol_stack_child(
     if float_zero {
         copy.style.height = Some(Len::Px(0.0));
     }
-    // Параллельный поток (css-break-3 §3):
-    // содержимое, переполняющее коробку с заданной
-    // высотой, продолжается в следующей колонке
-    // САМО ПО СЕБЕ, а сосед встаёт сразу под
-    // коробкой. Протяжённость потока — та же мера
-    // без обрезки высотой; вместе с ней берём её
-    // НЕусечённые точки разреза и монолитные
-    // диапазоны (в пределах `h` они совпадают с
-    // обычными: усечение только отбрасывает записи
-    // ниже `h`).
-    // ТРОЕ ворот, каждые обязательны:
-    //  1) `column-fill: auto` — иначе поток уходит
-    //     в балансировку и меняет высоту колонки
-    //     (`single-line-column-flex-
-    //     fragmentation-051`);
-    //  2) поддерево обычных блоков — иначе мера
-    //     `shape_full` приближённая и
-    //     протяжённость выдуманная;
-    //  3) коробка своё переполнение показывает —
-    //     у обрезающей и прокручиваемой потока нет.
-    // Четвёртые ворота — внутри меры: бюджет
-    // разжатия ОДИН на путь (`ShapeCx::unclamped`,
-    // перепривязка `cx` в `shape_full`). Без него
-    // разъезжался ЭТАЛОН четырёх пар
-    // `flex-item-content-overflow-*`.
-    let (cuts, forced, solid, h, over, no_reach) = copy_cuts_and_height(
-        ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
-        &copy,
-    );
+    // Независимая копия получает высоту, переполнение и разрывы в lay_out_main.
+    // Остальные копии сохраняют старую меру: clone/nested/OOF требуют
+    // F2-1/F2-3/F2-2; ортогональные потоки требуют F2-3.
+    let laid = measured_kids
+        .borrow()
+        .iter()
+        .any(|&(id, _)| id == copy.node_id)
+        && (if col_vert {
+            crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
+        } else {
+            crate::layout::fragment::flow::independent_copy(&copy)
+        });
+    let (cuts, forced, solid, h, over, no_reach) = if laid {
+        // Высоту, переполнение и разрывы заменяет lay_out_main до плана.
+        (cuts, forced, solid, h, h, true)
+    } else {
+        copy_cuts_and_height(
+            ix, h, cuts, forced, solid, opts, kid_par, col_vert, col_rl, line_col_w, fixed, merged,
+            &copy,
+        )
+    };
     // Относительный сдвиг — не коробке, а фрагменту
     // (css-break-3 §5.5): его кладёт `ColumnStack`
     // вместе со срезом.
@@ -167,7 +160,8 @@ pub(super) fn multicol_stack_child(
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
     let own = dec.is_some() || whole || nest_row.is_some();
     let own = own || breaks::trims_at_breaks(&copy, &merged);
-    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, kid_w, own);
+    let (watched, breaks_w) =
+        breaks::recorder(&copy, measured_kids, opts, col_vert, col_rl, kid_w, own);
     let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();

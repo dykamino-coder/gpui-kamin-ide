@@ -107,7 +107,7 @@ impl Watched {
     /// (`FlowMeasurements`) and the block stack's class A boundaries, forced
     /// breaks and unbreakable ranges from the laid-out border boxes
     /// (`BlockBox::breaks`). `end` bounds the flow (the box or its parallel
-    /// flow). Block boundaries are read on the horizontal axis only.
+    /// flow). Границы блоков переводятся в логическую блочную ось.
     pub(crate) fn breaks(
         &self,
         origin: Point<Pixels>,
@@ -117,10 +117,9 @@ impl Watched {
         window: &mut Window,
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
-        let blocks = match (&self.blocks, axis) {
-            (Some(b), StackAxis::Horizontal) => b.breaks(end, &self.laid(origin, window)),
-            _ => BlockBreaks::default(),
-        };
+        let blocks = self.blocks.as_ref().map_or_else(BlockBreaks::default, |b| {
+            b.breaks(end, &self.laid_axis(origin, size, axis, window))
+        });
         blocks.finish(lines, end)
     }
 

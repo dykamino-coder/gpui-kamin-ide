@@ -5,6 +5,44 @@ use gpui::{Pixels, Point, Window};
 use std::collections::HashMap;
 
 impl Watched {
+    /// Физические border box в логической блочной оси вертикального потока.
+    pub(crate) fn laid_axis(
+        &self,
+        origin: Point<Pixels>,
+        size: gpui::Size<Pixels>,
+        axis: crate::layout::fragment::types::StackAxis,
+        window: &mut Window,
+    ) -> Laid {
+        use crate::layout::fragment::types::StackAxis;
+        if axis == StackAxis::Horizontal {
+            return self.laid(origin, window);
+        }
+        let boxes = self
+            .seen
+            .borrow()
+            .iter()
+            .map(|(&id, &lid)| {
+                let left = f32::from(window.layout_origin_unrounded(lid).x - origin.x);
+                let width = f32::from(window.layout_size_unrounded(lid).width);
+                let start = if axis == StackAxis::VerticalRl {
+                    f32::from(size.width) - left - width
+                } else {
+                    left
+                };
+                (id, (start, start + width))
+            })
+            .collect();
+        let mut descendants = HashMap::new();
+        if let Some(blocks) = &self.blocks {
+            blocks.descendants(&mut descendants);
+        }
+        Laid {
+            boxes,
+            descendants,
+            ..Laid::default()
+        }
+    }
+
     /// Laid-out geometry of the copy relative to `origin`, read before the
     /// layout engine is released: border boxes `(top, bottom)` of the watched
     /// boxes and frames of the watched tables.

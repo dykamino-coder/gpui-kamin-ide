@@ -93,6 +93,15 @@ impl Measured {
                 side_margin_wrap(el, dom, col_vert)
             };
             child.regrow = Some(Regrow {
+                axis: if col_vert {
+                    if col_rl {
+                        crate::layout::fragment::types::StackAxis::VerticalRl
+                    } else {
+                        crate::layout::fragment::types::StackAxis::VerticalLr
+                    }
+                } else {
+                    crate::layout::fragment::types::StackAxis::Horizontal
+                },
                 dom: copy.clone(),
                 source: copy.clone(),
                 build: Rc::new(build),

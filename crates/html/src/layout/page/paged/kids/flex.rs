@@ -1,4 +1,4 @@
-//! Пересборка печатного flex с теми же независимыми ICB/fixed-слоями и ограничениями роста.
+//! Пересборка независимой печатной копии с теми же независимыми ICB/fixed-слоями и ограничениями роста.
 use crate::dom::Node;
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::fragment::paginate::watch::Watched;
@@ -55,7 +55,7 @@ pub(super) fn regrow(
     };
     let mut flexes = Vec::new();
     watched.blocks()?.flexes(&mut flexes);
-    if flexes.is_empty() {
+    if flexes.is_empty() && !crate::layout::fragment::flow::independent_copy(dom) {
         return None;
     }
     let slots: Vec<_> = icb
@@ -107,6 +107,7 @@ pub(super) fn regrow(
         el
     };
     Some(Regrow {
+        axis: crate::layout::fragment::types::StackAxis::Horizontal,
         dom: dom.clone(),
         source: dom.clone(),
         build: Rc::new(build),

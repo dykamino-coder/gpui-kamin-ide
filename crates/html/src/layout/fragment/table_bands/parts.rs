@@ -7,7 +7,7 @@ use crate::style::computed::Display;
 use crate::style::values::value::Len;
 
 /// Зазор берётся из каскада; контекст меры ячеек не зависит от HTML-атрибутов.
-pub(crate) fn cell_settings(c: &Element, cx: ShapeCx) -> Option<(f32, ShapeCx)> {
+pub(crate) fn cell_settings<'a>(c: &Element, cx: ShapeCx<'a>) -> Option<(f32, ShapeCx<'a>)> {
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),

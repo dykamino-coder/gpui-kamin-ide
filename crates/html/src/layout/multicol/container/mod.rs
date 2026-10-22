@@ -14,7 +14,7 @@ use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, ParentElement};
-mod kids;
+pub(super) mod kids;
 mod parallel;
 use kids::{column_kids, stack_children};
 mod clone_plan;
@@ -80,10 +80,12 @@ pub(crate) fn multicol_column_stack(
     // `multi-line-row-flex-fragmentation-037/038` («красное видно»).
     // Проверено: баланс одними колонками (без рядов) ничего не меняет.
     // Балансу нужен свой подбор высоты по строкам, а не оценка.
-    // Строки flex и распорки роста (`grow_pushed`) меряют
-    // ФИЗИЧЕСКОЕ дерево и знают только вертикальную ось —
-    // в вертикальном письме их нет (следующий шаг).
-    let (kid_parent, kid_starts, kid_par, kids) =
+    let deferred = (line_col_w.is_none() && rows.is_none() && nest_rows.is_none())
+        .then(|| super::deferred::Recipe::new(e, &merged, opts, cols, used_gap, fixed, col_axis))
+        .flatten();
+    let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+    } else {
         crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
             let vcx = opts.cx.vcx();
             column_kids(
@@ -98,7 +100,8 @@ pub(crate) fn multicol_column_stack(
                 (line_col_w, layout_col_w),
                 vcx,
             )
-        });
+        })
+    };
     // `box-decoration-break: clone`: геометрия фрагментов —
     // ДО сборки копий: каждая копия такой коробки строится
     // отдельной коробкой своей высоты (`clone_fragment`).
@@ -106,7 +109,9 @@ pub(crate) fn multicol_column_stack(
     // потоком соседей (та же мера, что у `StackChild` ниже):
     // иначе план соседа с потоком разошёлся бы с укладкой.
     // Без `clone` среди детей не считается вовсе.
-    let clone_plan = clone_plan_of(cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx);
+    let clone_plan = clone_plan_of(
+        cols, col_vert, rows, copies, fixed, &kid_par, &kids, vcx, opts,
+    );
     let rule = column_rule_of(e, &merged, opts);
     // С рядами линейки (`column-rule` со втяжкой/разрывом,
     // `row-rule` — css-multicol-2 §rg/§crc → css-gaps-1)
@@ -144,43 +149,30 @@ pub(crate) fn multicol_column_stack(
     let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
         crate::layout::positioned::layer_scope::LayerScope::fixed_only(&opts.cx.positioning)
     });
-    let children = stack_children(
-        e,
-        &merged,
-        opts,
-        cols,
-        col_vert,
-        col_rl,
-        (line_col_w, layout_col_w),
-        rows,
-        nested_auto,
-        nested_whole,
-        measured_kids,
-        copies,
-        fixed,
-        kid_parent,
-        kid_par,
-        kids,
-        clone_plan,
-    );
-    // Щуп статической позиции — НУЛЕВОЙ записью стопки на
-    // месте позиционированного ребёнка: высоты нет, полей
-    // нет, точек разреза нет, монолитных диапазонов нет —
-    // план укладки от него не двигается (`fill_at`:
-    // `rest = 0` всегда влезает в остаток колонки), а
-    // холст `layout::positioned::containing_block::late::spot::spot_probe` запоминает экранную
-    // дырку. Сама коробка в стопку НЕ идёт: она рисуется
-    // после стопки заместителем `spot_place` и сдвигается
-    // в эту дырку. Тем это отличается от прежней пробы
-    // «нулевая запись в стопке», о которой говорит
-    // комментарий у `direct_oof`: там в колонку уходил САМ
-    // элемент, и его резала маска
-    // (`out-of-flow-in-multicolumn-094…097`).
-    //
-    // Blink берёт статическую позицию оттуда же —
-    // `out_of_flow_layout_part.cc`,
-    // `LayoutFragmentainerDescendants`: позиция кандидата
-    // считается относительно ФРАГМЕНТАИНЕРА.
+    let children = if deferred.is_some() {
+        Vec::new()
+    } else {
+        stack_children(
+            e,
+            &merged,
+            opts,
+            cols,
+            col_vert,
+            col_rl,
+            (line_col_w, layout_col_w),
+            rows,
+            nested_auto,
+            nested_whole,
+            measured_kids,
+            copies,
+            fixed,
+            kid_parent,
+            kid_par,
+            kids,
+            clone_plan,
+        )
+    };
+    // Статические места OOF — нулевые записи в исходном порядке потока.
     let (children, oof_spots) = place_oof_statics(&merged, opts, &oof_static, kid_starts, children);
     // Стопка тянется по СТРОЧНОЙ оси: в вертикальном письме
     // это высота, значит коробка кладёт её гибким рядом
@@ -211,6 +203,7 @@ pub(crate) fn multicol_column_stack(
         rule,
         children,
         opts,
+        deferred,
     );
     if let Some(layer) = fixed_layer {
         d = d.children(layer.finish());

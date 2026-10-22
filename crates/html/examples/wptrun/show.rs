@@ -42,6 +42,28 @@ impl Stage {
         source: Option<&str>,
         print: bool,
     ) -> Option<Shot> {
+        let shot = self
+            .show_frame(cx, html, prev, want_flat, source, print)
+            .await;
+        #[cfg(feature = "wpt-harness")]
+        let _ = cx.update_window(self.window, |view, _, cx| {
+            if let Ok(page) = view.downcast::<Page>() {
+                let probes = page.read(cx).probes.take();
+                eprintln!("FRAGMENT_PROBES source={source:?} {probes:?}");
+            }
+        });
+        shot
+    }
+
+    async fn show_frame(
+        &self,
+        cx: &mut AsyncApp,
+        html: String,
+        prev: Option<Vec<u8>>,
+        want_flat: bool,
+        source: Option<&str>,
+        print: bool,
+    ) -> Option<Shot> {
         let (window, hwnd, note) = (self.window, self.hwnd, &self.trace);
         let mut captures = CaptureCursor::new();
         let first = first_frame();

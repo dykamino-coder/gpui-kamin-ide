@@ -23,8 +23,8 @@ pub(super) fn measure(
     } else {
         size(fixed, free)
     };
-    let laid = crate::layout::fragment::types::frag_copy(&mut k.el, &mut k.frags, copy)
-        .map(|el| el.layout_as_root(space, window, cx))
+    let (laid, content) = crate::layout::fragment::types::frag_copy(&mut k.el, &mut k.frags, copy)
+        .map(|el| el.layout_as_root_with_content(space, window, cx))
         .unwrap_or_default();
     let measured_flow = k
         .watched
@@ -76,17 +76,24 @@ pub(super) fn measure(
                 // подписи, заданная высота), а не оценка.
                 let geometry = w.laid(origin, window);
                 let flex = !geometry.flexes.is_empty();
-                if let Some(root) = w.blocks().filter(|b| b.table.is_some() || flex)
+                if let Some(root) = w
+                    .blocks()
+                    .filter(|b| k.shape.is_none() || b.table.is_some() || flex)
                     && k.float_id.is_none()
                     && let Some((_, bottom)) = geometry.at(root.id)
                 {
                     h = bottom;
                 }
+                if k.shape.is_none() && k.regrow.is_some() {
+                    // Реальное переполнение копии резервирует последующие листы.
+                    let reach = f32::from(content.height) - lift;
+                    k.reach = (reach > h + 0.01).then_some(reach);
+                }
                 if let Some(r) = k.regrow.as_mut() {
                     r.laid = geometry;
                 }
                 let m = w.breaks(origin, laid, h + lift, axis, window);
-                if flex {
+                if flex || k.shape.is_none() {
                     avoid = m.avoid;
                     keep = m.keep;
                 }

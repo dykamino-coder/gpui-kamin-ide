@@ -1,3 +1,4 @@
+//! ADR P-19 F2-3: оценка остаётся у внешнего плана рядов и спаннеров до вложенных Space.
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
 use crate::dom::whitespace::is_blank;
@@ -132,7 +133,7 @@ pub(crate) fn multicol_spanner_segments(
                         is_blank(n)
                             || matches!(n, Node::Element(k)
                                 if !k.inline
-                                    && shape_full(k, 4, ShapeCx::COLUMNS, vcx).is_some())
+                                    && shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some())
                     })
                     && let Some(rest) = rest_h
                 {

@@ -18,17 +18,31 @@ impl ColumnStack {
     pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) {
         let (axis, fixed) = (self.axis, self.fixed_height);
         let c = &mut self.children[i];
+        let measured_size;
         if let Some(w) = c.measure {
             let (sz, content) = c.el.layout_as_root_with_content(
-                size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
+                if axis.is_vertical() {
+                    size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
+                } else {
+                    size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
+                },
                 window,
                 cx,
             );
-            let h = f32::from(sz.height);
+            measured_size = sz;
+            let h = f32::from(if axis.is_vertical() {
+                sz.width
+            } else {
+                sz.height
+            });
             c.h = h;
             // Видимое переполнение потомков — параллельный поток
             // (css-break-3 §3): продолжается в следующих колонках само.
-            c.over = h.max(f32::from(content.height));
+            c.over = h.max(f32::from(if axis.is_vertical() {
+                content.width
+            } else {
+                content.height
+            }));
             if c.regrow.is_some() {
                 c.cuts.clear();
                 c.forced.clear();
@@ -46,13 +60,26 @@ impl ColumnStack {
             // Точки разрыва блочной стопки — по раскладке главной копии
             // в колонку (`StackChild::breaks_w`).
             let (sz, content) = c.el.layout_as_root_with_content(
-                size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
+                if axis.is_vertical() {
+                    size(AvailableSpace::MaxContent, AvailableSpace::Definite(px(w)))
+                } else {
+                    size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent)
+                },
                 window,
                 cx,
             );
+            measured_size = sz;
             #[cfg(feature = "wpt-harness")]
             if c.probe_pending && c.watched.is_some() {
-                c.probe.height("columns.width", c.h, f32::from(sz.height));
+                c.probe.height(
+                    "columns.width",
+                    c.h,
+                    f32::from(if axis.is_vertical() {
+                        sz.width
+                    } else {
+                        sz.height
+                    }),
+                );
             }
             // Использованный блочный размер — разложенный border box: в нём
             // уже `min-height`/`max-height` и распорки роста. Параллельный
@@ -65,11 +92,23 @@ impl ColumnStack {
                 // Таблица: высота — разложенные ряды, подписи и заданная
                 // высота (css-tables-3 §computing-the-table-height), поток —
                 // и видимое переполнение её содержимого (css-break-3 §3).
-                let h = f32::from(sz.height);
+                let h = f32::from(if axis.is_vertical() {
+                    sz.width
+                } else {
+                    sz.height
+                });
                 c.h = h;
-                c.over = h.max(f32::from(content.height));
+                c.over = h.max(f32::from(if axis.is_vertical() {
+                    content.width
+                } else {
+                    content.height
+                }));
             } else if c.regrow.as_ref().is_some_and(|r| r.laid_h) {
-                let h = f32::from(sz.height);
+                let h = f32::from(if axis.is_vertical() {
+                    sz.width
+                } else {
+                    sz.height
+                });
                 c.over = if c.over > c.h + COORD_EPS {
                     c.over.max(h)
                 } else {
@@ -83,7 +122,7 @@ impl ColumnStack {
             return;
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
-            r.laid = w.laid(point(px(0.0), px(0.0)), window);
+            r.laid = w.laid_axis(point(px(0.0), px(0.0)), measured_size, axis, window);
             if !r.laid.flexes.is_empty()
                 && let Some(blocks) = w.blocks()
             {
@@ -98,7 +137,7 @@ impl ColumnStack {
 
     /// Распорки роста детей с `regrow` по плану этой стопки.
     pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
-        if self.axis.is_vertical() || !self.children.iter().any(|c| c.regrow.is_some()) {
+        if !self.children.iter().any(|c| c.regrow.is_some()) {
             return;
         }
         for _ in 0..PASSES {

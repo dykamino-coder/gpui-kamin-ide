@@ -3,7 +3,6 @@
 //! css-sizing-4 §multicol-intrinsic (как Blink `ComputeMinMaxSizes`) для случаев, когда
 //! ширину решает содержимое, и пробная балансировка, дающая размер коробки и базовые линии.
 
-use crate::layout::fragment::intrinsic_measure;
 use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::types::{BreaksAt, Intrinsic};
 use crate::layout::multicol::column_stack::ColumnStack;
@@ -15,13 +14,15 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
-        for i in 0..self.children.len() {
-            self.lay_out_main(i, window, cx);
+        if self.deferred.is_none() {
+            for i in 0..self.children.len() {
+                self.lay_out_main(i, window, cx);
+            }
+            self.regrow_children(window, cx);
+            self.paginate_children(window, cx);
         }
         // Распорки роста по раскладке копий — до разметки по сетке: её рамки
         // берут план с уже выросшими соседями.
-        self.regrow_children(window, cx);
-        self.paginate_children(window, cx);
         let heights = self.kid_geoms();
         let count = self.count;
         let fixed = self.fixed_height;
@@ -47,24 +48,43 @@ impl ColumnStack {
         // Детей меряем ТОЛЬКО когда ширину решает содержимое: обычному
         // блочному контейнеру её даёт родитель, и второй проход раскладки там
         // ничего не даст, кроме времени.
+        let mut intrinsic_children = self
+            .deferred
+            .as_ref()
+            .map(|r| r.intrinsic_children())
+            .unwrap_or_default();
+        let deferred_intrinsic = self.deferred.is_some();
         let intrinsic = self
             .intrinsic
             .filter(|_| !axis.is_vertical())
             .map(|Intrinsic(col_w)| {
                 let (mut kid_min, mut kid_max) = (0.0f32, 0.0f32);
                 let (mut span_min, mut span_max) = (0.0f32, 0.0f32);
-                for c in self.children.iter_mut() {
+                for (el, span) in self
+                    .children
+                    .iter_mut()
+                    .filter(|_| !deferred_intrinsic)
+                    .map(|c| (&mut c.el, c.span))
+                    .chain(intrinsic_children.iter_mut().map(|el| (el, false)))
+                {
                     let mut measure = |el: &mut AnyElement, w: gpui::AvailableSpace| {
-                        intrinsic_measure::width(el, w, window, cx)
+                        f32::from(
+                            el.layout_as_root_unrounded(
+                                size(w, gpui::AvailableSpace::MaxContent),
+                                window,
+                                cx,
+                            )
+                            .width,
+                        )
                     };
-                    let mn = measure(&mut c.el, gpui::AvailableSpace::MinContent);
-                    let mx = measure(&mut c.el, gpui::AvailableSpace::MaxContent);
+                    let mn = measure(el, gpui::AvailableSpace::MinContent);
+                    let mx = measure(el, gpui::AvailableSpace::MaxContent);
                     // Спаннер идёт во всю ширину коробки: на число колонок он не
                     // умножается, а лишь ПОДНИМАЕТ итог — Blink
                     // `ComputeSpannersMinMaxSizes` (:523) через
                     // `MinMaxSizes::Encompass` (`min_max_sizes.h:26`, это `max`
                     // по обеим границам).
-                    if c.span {
+                    if span {
                         span_min = span_min.max(mn);
                         span_max = span_max.max(mx);
                     } else {
@@ -96,7 +116,7 @@ impl ColumnStack {
                 mx = mx * n + gap_extra;
                 (mn.max(span_min), mx.max(span_max))
             });
-        let mut baselines = (!axis.is_vertical()).then(|| {
+        let mut baselines = (!axis.is_vertical() && self.deferred.is_none()).then(|| {
             crate::layout::multicol::column_baselines::Measurements::new(
                 &mut self.children,
                 window,
@@ -104,12 +124,14 @@ impl ColumnStack {
             )
         });
         let paint = self.paint.clone();
+        let deferred = self.deferred.clone();
         let id = window.request_measured_layout_with_baselines(
             gpui::Style::default(),
             move |known, available, window, cx| {
-                let probe = ColumnStack {
+                let mut probe = ColumnStack {
                     paint: paint.clone(),
                     children: Vec::new(),
+                    deferred: None,
                     count,
                     gap,
                     axis,
@@ -141,7 +163,11 @@ impl ColumnStack {
                             _ => None,
                         })
                         .unwrap_or(0.0);
-                    let (block, _, _, _) = probe.balance(&heights);
+                    let block = if let Some(recipe) = &deferred {
+                        recipe.measure(&mut probe, inline, window, cx).0
+                    } else {
+                        probe.balance(&heights).0
+                    };
                     return (size(px(block), px(inline)), None, None);
                 }
                 let w = known
@@ -153,6 +179,10 @@ impl ColumnStack {
                         gpui::AvailableSpace::MaxContent => intrinsic.map(|(_, mx)| mx),
                     })
                     .unwrap_or(0.0);
+                if let Some(recipe) = &deferred {
+                    let (height, first, last) = recipe.measure(&mut probe, w, window, cx);
+                    return (size(px(w), px(height)), first, last);
+                }
                 let (height, lines, plan, spans) = probe.balance(&heights);
                 let (first, last) = baselines.as_mut().map_or((None, None), |baselines| {
                     baselines.measure(&probe, &heights, w, &lines, &plan, &spans, window, cx)

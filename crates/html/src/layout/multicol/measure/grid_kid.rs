@@ -5,9 +5,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::Shape;
 use crate::layout::fragment::line_shape::resolved_lengths;
-use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Computed, Position};
 use std::cell::RefCell;
 
@@ -33,18 +32,37 @@ pub(super) fn measured(
     measured_kids: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<(Element, Shape)> {
     let c = resolved_lengths(c, merged, vcx);
-    match super::children::measured_margins(&c) {
-        Some((mt, mb)) => {
-            measured_kids.borrow_mut().push((c.node_id, w));
-            Some((
-                c,
-                Shape {
-                    margin_top: mt,
-                    margin_bottom: mb,
-                    ..Shape::default()
-                },
-            ))
-        }
-        None => shape_full(&c, 4, ShapeCx::COLUMNS, vcx).map(|h| (c.clone(), h)),
+    let c = crate::layout::block::margins::fragment_box(c, w, vcx);
+    let (margin_top, margin_bottom) = crate::layout::block::margins::fragment_margins(&c)?;
+    measured_kids.borrow_mut().push((c.node_id, w));
+    Some((
+        c,
+        Shape {
+            margin_top,
+            margin_bottom,
+            ..Shape::default()
+        },
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_margins_use_the_copy_inline_size() {
+        let tree = crate::dom::parse(
+            "<div style='display:grid;margin-top:10%;margin-bottom:5%'><div>x</div></div>",
+            "",
+        );
+        let crate::dom::Node::Element(c) = &tree[0] else {
+            panic!("grid")
+        };
+        let registry = RefCell::default();
+        let (_, shape) =
+            measured(c, &Computed::default(), tree.values(), 120.0, &registry).expect("copy");
+        assert_eq!((shape.margin_top, shape.margin_bottom), (12.0, 6.0));
+        assert_eq!(shape.height, 0.0);
+        assert_eq!(*registry.borrow(), vec![(c.node_id, 120.0)]);
     }
 }

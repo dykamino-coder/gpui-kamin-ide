@@ -1,3 +1,4 @@
+//! ADR P-19 F2-1: consumed и края украшений ещё не представлены токеном продолжения.
 //! План клонов (box-decoration-break: clone) по колонкам и правило колонок (column-rule).
 
 use crate::document::state::ValueCx;
@@ -25,6 +26,7 @@ pub(super) fn clone_plan_of(
     kid_par: &[crate::layout::fragment::types::Par],
     kids: &[(Element, crate::layout::fragment::Shape)],
     vcx: ValueCx<'_>,
+    opts: &RenderOpts,
 ) -> Vec<Vec<(f32, f32)>> {
     let clone_plan: Vec<Vec<(f32, f32)>> =
         if !col_vert && kids.iter().any(|(c, _)| clone_dec(c).is_some()) {
@@ -40,7 +42,7 @@ pub(super) fn clone_plan_of(
                         4,
                         ShapeCx {
                             unclamped: true,
-                            ..ShapeCx::COLUMNS
+                            ..ShapeCx::COLUMNS.observed(opts)
                         },
                         vcx,
                     )

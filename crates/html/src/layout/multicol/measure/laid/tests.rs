@@ -1,0 +1,113 @@
+//! Геометрия копий не требует предварительных высот и сохраняет поля потока.
+
+use super::*;
+
+fn root(nodes: &[Node]) -> &Element {
+    let Node::Element(e) = &nodes[0] else {
+        panic!("host")
+    };
+    e
+}
+
+#[test]
+fn copies_export_collapsed_margins_before_root_layout() {
+    let tree = crate::dom::parse(
+        "<div><div style='margin-top:3px'><div style='height:20px;margin-top:7px'>x</div></div></div>",
+        "",
+    );
+    let measured = RefCell::default();
+    let kids = children(
+        root(&tree),
+        &Computed::default(),
+        tree.values(),
+        100.0,
+        &measured,
+    )
+    .expect("all copies are recorded");
+    assert_eq!(kids[0].1.margin_top, 7.0);
+    assert_eq!(kids[0].1.height, 0.0);
+    let Node::Element(inner) = &kids[0].0.children[0] else {
+        panic!("inner")
+    };
+    assert_eq!(
+        inner.style.margin.top,
+        Some(crate::style::values::value::Len::Px(0.0))
+    );
+    assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
+}
+
+#[test]
+fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
+    for special in [
+        "<div style='columns:2'>nested</div>",
+        "<div style='box-decoration-break:clone'>clone</div>",
+        "<div style='text-box-trim:trim-both'>trim</div>",
+        "<div><div style='position:absolute'>parallel</div></div>",
+    ] {
+        let tree = crate::dom::parse(&format!("<div><div>ordinary</div>{special}</div>"), "");
+        let measured = RefCell::default();
+        assert!(
+            children(
+                root(&tree),
+                &Computed::default(),
+                tree.values(),
+                100.0,
+                &measured
+            )
+            .is_none(),
+            "{special}"
+        );
+        assert!(measured.borrow().is_empty());
+    }
+}
+
+#[test]
+fn pending_tree_waits_for_width_without_resolving_percentages() {
+    let tree = crate::dom::parse(
+        "<div><div style='margin-top:10%;height:20px'>x</div></div>",
+        "",
+    );
+    let host = root(&tree);
+    let pending = pending(host, &Computed::default(), tree.values()).expect("deferred tree");
+    assert_eq!(
+        pending[0].0.style.margin.top,
+        Some(crate::style::values::value::Len::Pct(0.1))
+    );
+    let measured = RefCell::default();
+    let kids = children(host, &Computed::default(), tree.values(), 120.0, &measured)
+        .expect("definite width");
+    assert_eq!(kids[0].1.margin_top, 12.0);
+    assert_eq!(kids[0].1.height, 0.0);
+}
+
+#[test]
+fn vertical_copies_export_logical_margins_without_estimating_width() {
+    for reverse in [false, true] {
+        let mode = if reverse {
+            "vertical-rl"
+        } else {
+            "vertical-lr"
+        };
+        let tree = crate::dom::parse(
+            &format!(
+                "<div><div style='writing-mode:{mode};width:20px;margin-left:3px;margin-right:7px'>x</div></div>"
+            ),
+            "",
+        );
+        let host = root(&tree);
+        let measured = RefCell::default();
+        let kids = vertical_children(
+            &host,
+            &Computed::default(),
+            tree.values(),
+            100.0,
+            reverse,
+            &measured,
+        )
+        .expect("vertical copy");
+        assert_eq!(kids[0].1.height, 0.0);
+        assert_eq!(kids[0].1.margin_top, if reverse { 7.0 } else { 3.0 });
+        assert_eq!(kids[0].1.margin_bottom, if reverse { 3.0 } else { 7.0 });
+        assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
+    }
+}

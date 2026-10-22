@@ -28,7 +28,7 @@ pub(super) fn frag_box_div(
     // блока в `element()`: гибкий ряд, у `vertical-rl`
     // обратный. Гибкому и сеточному ось ставит `apply`.
     if col_vert && matches!(src.style.display, None | Some(Display::Block)) {
-        d = d.flex();
+        d = d.flex().flex_shrink(0.0);
         d = if col_rl {
             d.flex_row_reverse()
         } else {

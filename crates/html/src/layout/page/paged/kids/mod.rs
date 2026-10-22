@@ -1,3 +1,4 @@
+//! ADR P-19 F2-2: оценочный reach остаётся у параллельного потока; независимые группы меряет копия.
 //! Дети листов из групп корневых узлов: копии ICB/fixed, имена страниц, формы.
 
 use super::PAGE_COPIES;
@@ -14,6 +15,7 @@ use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod breaks;
 mod flex;
+mod laid;
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
@@ -57,30 +59,28 @@ pub(super) fn page_kids_from_groups(
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        // Мера поддерева — те же точки разреза, что у колонок. Обёртка
-        // первого ребёнка несёт отбивку корня сверху (`pad_top`): все
-        // смещения меры сдвигаются на неё, а высота растёт.
-        // Внепоточный корня места в стопке не занимает (CSS 2.1 §9.3.1):
-        // его мера — обёртка (0); иначе абсолют `height: 4in` двигал соседей
-        // на 384 (`monolithic-overflow-027`, абсолют `fixedpos-007` — 720).
-        // Флоат: не влезший MARGIN box уходит на следующую страницу целиком
-        // (`float-with-large-margin-bottom-cross-page-002`: эталон —
-        // `break-before: page`), нижнее поле — часть его меры.
-        // Флоат корня — ребёнок стопки СО СВОЕЙ мерой: css-break-4 §3.1
-        // «User agents should also apply these properties to floated boxes
-        // whose containing block is in the normal flow of the root fragmented
-        // element». Гейт `out_of_flow` отнимал у него меру вместе с
-        // абсолютами: таблица `float: left; break-inside: avoid` выше листа
-        // резалась срезом по краю сквозь абзац вместо точки класса A между
-        // абзацами ячейки (`float-page-break-inside-avoid-1-print` против
-        // эталона с обычной таблицей), а ветка `h + mb` ниже была мёртвой.
-        // The subtree measure is physical (heights): a vertical root has no
-        // class-A cut list yet and its kids are sliced at the page edge.
-        let (margins, shape) = match vertical {
-            Some(_) => ((0.0, 0.0, 0.0), None),
-            None => group_shape(root, shape_cx, group, n, pad_top, vcx),
+        let prepared = vertical
+            .is_none()
+            .then(|| laid::group(group, root, aw - left - right, pad_top, vcx))
+            .flatten();
+        let group = prepared
+            .as_ref()
+            .map_or(group.as_slice(), |p| p.nodes.as_slice());
+        let n = &group[0];
+        let (margins, shape) = match (&prepared, vertical) {
+            (Some(p), _) => (p.margins, None),
+            (_, Some(_)) => ((0.0, 0.0, 0.0), None),
+            _ => group_shape(root, shape_cx, group, n, pad_top, vcx),
         };
-        let watched = breaks::recorder(group, n, vertical, shape.is_some(), shape_cx, vcx);
+        let watched = breaks::recorder(
+            group,
+            n,
+            vertical,
+            shape.is_some(),
+            prepared.is_some(),
+            shape_cx,
+            vcx,
+        );
         // Таблица, чьи ряды даёт раскладка копии: может ли повторяться её
         // шапка и подвал (`break-inside: avoid*` секции).
         let measured_table = watched
@@ -115,7 +115,7 @@ pub(super) fn page_kids_from_groups(
                 }
                 None => div().pl(px(left)).pr(px(right)).pt(px(pad_top)),
             };
-            if let [Node::Element(r)] = group.as_slice()
+            if let [Node::Element(r)] = group
                 && matches!(r.tag.as_str(), "html" | "body")
                 && matches!(r.style.height, Some(Len::Pct(_)))
             {

@@ -210,3 +210,6 @@ mod tests {
         assert_eq!(geometry.solid[1], (15.0, 45.0));
     }
 }
+
+mod independent;
+pub(crate) use independent::{independent_copy, vertical_copy};
