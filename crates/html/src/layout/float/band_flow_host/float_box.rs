@@ -2,9 +2,9 @@
 
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
-use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
+use crate::paint::replaced::image::image;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::text::clamp::{close_clamp_span, open_clamp_span};

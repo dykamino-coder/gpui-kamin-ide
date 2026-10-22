@@ -112,7 +112,7 @@ pub(crate) fn resolve(
 }
 
 pub(crate) fn render(e: &Element, opts: &RenderOpts) -> AnyElement {
-    image::image(e, &opts.cx)
+    crate::paint::replaced::image::image(e, &opts.cx)
 }
 
 #[cfg(test)]

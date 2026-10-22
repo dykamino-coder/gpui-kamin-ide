@@ -29,7 +29,7 @@ pub(super) fn transfer(
     }
 }
 
-pub(super) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
+pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Option<Element> {
     let keyword = |length| {
         matches!(
             length,
