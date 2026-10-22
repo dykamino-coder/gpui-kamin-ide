@@ -8,21 +8,38 @@ use crate::style::computed::Computed;
 
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
+pub(crate) fn place_in_context(
+    el: AnyElement,
+    own: &Computed,
+    inherited: &Computed,
+    cx: &crate::layout::cx::LayoutCx,
+) -> AnyElement {
+    if let Some((key, probe)) = &cx.oof_trial
+        && *key == own.anchor_key
+        && let Some(mut plan) = AnchorPlan::of(own, inherited, cx.vcx())
+    {
+        plan.history = false;
+        return probe.wrap(el, plan, own.position_visibility, own.anchor_key);
+    }
+    place(el, own, inherited, cx.vcx())
+}
+
 /// Обернуть готовую коробку заместителем; без `anchor()`-вставок, области,
 /// `anchor-center`, списка вариантов и `position-visibility` — как есть.
 ///
 /// Кандидаты §fallback строятся от БАЗОВЫХ стилей (`try_base` — стиль до
 /// наложения выбранного варианта, `apply_chosen`): [0] — база, дальше по
 /// одному на элемент списка: правило `@position-try` накладывается на копию
-/// базы, `<position-area>` подменяет область, тактика переворачивает
-/// готовый план. Правило без определения — «does nothing»: варианта нет.
+/// базы, `<position-area>` подменяет область, тактика преобразует свойства
+/// до построения плана. Правило без определения — «does nothing»: варианта нет.
 pub fn place(el: AnyElement, own: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     let base = own.try_base.as_deref().unwrap_or(own);
     let Some(first) = AnchorPlan::of(base, inherited, vcx) else {
         return el;
     };
     let mut plans = vec![first];
-    for fb in &base.position_try_fallbacks {
+    let mut indices = vec![0];
+    for (index, fb) in base.position_try_fallbacks.iter().enumerate() {
         let mut c = base.clone();
         if let Some(n) = &fb.name {
             let Some(decls) = vcx.doc.try_rule(n) else {
@@ -33,14 +50,16 @@ pub fn place(el: AnyElement, own: &Computed, inherited: &Computed, vcx: ValueCx<
         if let Some(area) = fb.area {
             c.position_area = Some(area);
         }
-        let Some(mut p) = AnchorPlan::of(&c, inherited, vcx) else {
+        super::trials::tactics::apply(&mut c, inherited, fb.tactics, vcx);
+        let Some(p) = AnchorPlan::of(&c, inherited, vcx) else {
             continue;
         };
-        p.apply_tactics(fb.tactics);
         plans.push(p);
+        indices.push(index + 1);
     }
     let plans = PlacementPlans {
         plans,
+        indices,
         order: base.position_try_order,
         key: own.anchor_key,
         visibility: own.position_visibility,
@@ -128,10 +147,10 @@ pub(crate) fn place_one(
             .anchor_frame
             .chosen
             .borrow_mut()
-            .insert(plans.key, k);
+            .insert(plans.key, super::trials::Chosen::legacy(plans.indices[k]));
         // Объявления выбранного правила лягут в стиль на следующей
         // сборке (`apply_chosen`) — попросить её.
-        if prev != Some(k) {
+        if prev.map(|p| p.index) != Some(plans.indices[k]) {
             request_rebuild(window);
         }
     }

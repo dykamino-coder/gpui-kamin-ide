@@ -11,7 +11,7 @@ mod lookup;
 use lookup::last_lookup;
 pub(super) use lookup::last_named;
 mod insets;
-pub(crate) use current::{SizeInputs, current_inputs, needs_deferred, resolve_current};
+pub(crate) use current::{SizeInputs, current_inputs, needs_deferred, prepare};
 mod try_rule;
 use insets::fill_anchor_pairs;
 pub(crate) use try_rule::apply_try_rule;
@@ -35,7 +35,7 @@ pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
         .chosen
         .borrow()
         .get(&c.anchor_key)
-        .copied()
+        .map(|c| c.index)
         .unwrap_or(0);
     if chosen > 0
         && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)

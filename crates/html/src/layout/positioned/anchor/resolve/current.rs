@@ -14,8 +14,8 @@ pub(crate) struct SizeInputs {
 
 pub(crate) fn needs_deferred(c: &Computed) -> bool {
     matches!(c.position, Some(Position::Absolute | Position::Fixed))
-        && c.position_try_fallbacks.is_empty()
-        && (c.position_area.is_some()
+        && (!c.position_try_fallbacks.is_empty()
+            || c.position_area.is_some()
             || c.align_self == Some(Align::AnchorCenter)
             || c.justify_self == Some(Align::AnchorCenter)
             || [
@@ -73,3 +73,22 @@ pub(crate) fn resolve_current(
 #[cfg(test)]
 #[path = "current_tests.rs"]
 mod tests;
+
+/// Общая подготовка размеров блочного и строчного OOF в контексте хоста.
+pub(crate) fn prepare(c: &mut Computed, inherited: &Computed, cx: &crate::layout::cx::LayoutCx) {
+    let vcx = cx.vcx();
+    if cx
+        .oof_trial
+        .as_ref()
+        .is_none_or(|(key, _)| *key != c.anchor_key)
+    {
+        super::apply_chosen(c, vcx);
+    }
+    if let Some((key, inputs)) = cx.oof_sizes
+        && key == c.anchor_key
+    {
+        resolve_current(c, inherited, inputs, vcx);
+    } else {
+        super::resolve_sizes(c, inherited, vcx);
+    }
+}

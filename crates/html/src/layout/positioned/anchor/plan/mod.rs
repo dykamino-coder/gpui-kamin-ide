@@ -6,7 +6,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::{AnchorFn, AnchorSide, Len, anchor_get};
 use gpui::{Bounds, Pixels};
 mod axis;
-mod tactics;
+mod compute;
 use axis::Edge;
 mod align;
 mod lookup;

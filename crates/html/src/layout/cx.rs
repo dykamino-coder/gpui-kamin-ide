@@ -21,6 +21,8 @@ pub struct LayoutCx {
         Option<Rc<crate::layout::positioned::anchor::identities::Identities>>,
     /// Входы размера корня OOF из геометрии текущего кадра.
     pub(crate) oof_sizes: Option<(u64, crate::layout::positioned::anchor::resolve::SizeInputs)>,
+    /// Проба position-try: только корень публикует свой layout id, без prepaint.
+    pub(crate) oof_trial: Option<(u64, Rc<crate::layout::positioned::anchor::trials::Probe>)>,
     /// Неизменяемые планы clamp этого построения.
     pub(crate) clamp_plans: Rc<crate::text::clamp::ClampPlans>,
     /// Вход измерения или применения плана активного clamp-контейнера.

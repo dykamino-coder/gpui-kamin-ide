@@ -11,6 +11,8 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Position};
 use gpui::{AnyElement, IntoElement};
 
+use crate::layout::positioned::anchor::trials;
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn defer(
     e: &Element,
@@ -85,49 +87,99 @@ pub(super) fn defer(
     let source_paint = (!paint_last
         || crate::layout::positioned::predicates::stays_positioned(rest))
     .then(crate::layout::positioned::containing_block::DeferredPaint::default);
-    let kid = OofKid::Deferred(
-        Box::new(move |bounds, window, _cx| {
-            build_opts.cx.positioning = retained.resume();
-            let vcx = build_opts.cx.vcx();
-            let mut own = inherit(&inherited, &source.style, vcx);
-            own.self_node = source.node_id;
-            own.anchor_key = key_of(&source);
-            own.anchor_seq = build_opts.cx.anchor_seq_for(&source);
-            own.resolve_viewport(build_opts.viewport, vcx);
-            let inputs = resolve::current_inputs(&own, &inherited, bounds, window, vcx);
-            build_opts.cx.oof_sizes = Some((own.anchor_key, inputs));
-            let child =
-                super::build::build(&source, &inherited, &build_opts, &frame, layer_ok, root_box);
-            let child = if !fixed && source.style.z_index.is_some_and(|z| z > 0) {
-                crate::paint::stacking::layered(
-                    child,
-                    &source.style,
-                    &inherited,
-                    layer_ok,
-                    under_tf,
+    let base_opts = build_opts.clone();
+    let base_source = source.clone();
+    let base_inherited = inherited.clone();
+    let mut build = move |style: Option<&Computed>,
+                          positioning,
+                          probe: Option<
+        std::rc::Rc<crate::layout::positioned::anchor::trials::Probe>,
+    >,
+                          bounds,
+                          window: &mut gpui::Window| {
+        build_opts.cx.positioning = positioning;
+        let mut candidate = source.clone();
+        if let Some(style) = style {
+            crate::layout::positioned::anchor::trials::apply_style(&mut candidate.style, style);
+        }
+        let source = &candidate;
+        let vcx = build_opts.cx.vcx();
+        let mut own = inherit(&inherited, &source.style, vcx);
+        own.self_node = source.node_id;
+        own.anchor_key = key_of(source);
+        own.anchor_seq = build_opts.cx.anchor_seq_for(source);
+        own.resolve_viewport(build_opts.viewport, vcx);
+        let inputs = resolve::current_inputs(&own, &inherited, bounds, window, vcx);
+        build_opts.cx.oof_sizes = Some((own.anchor_key, inputs));
+        build_opts.cx.oof_trial = probe.map(|p| (own.anchor_key, p));
+        let child = super::build::build(
+            source,
+            &inherited,
+            &build_opts,
+            &frame,
+            layer_ok,
+            root_box.clone(),
+        );
+        let child = if !fixed && source.style.z_index.is_some_and(|z| z > 0) {
+            crate::paint::stacking::layered(child, &source.style, &inherited, layer_ok, under_tf)
+        } else {
+            child
+        };
+        let child = if paint_last {
+            gpui::PaintLast::new(child)
+                .key(paint_key)
+                .into_any_element()
+        } else {
+            child
+        };
+        if source.style.z_index.is_some_and(|z| z < 0)
+            && !crate::paint::stacking::nested_context(&inherited)
+        {
+            crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(child))
+        } else {
+            child
+        }
+    };
+    let kid = if e.style.position_try_fallbacks.is_empty() {
+        OofKid::Deferred(
+            Box::new(move |bounds, window, _cx| {
+                build(None, retained.resume(), None, bounds, window)
+            }),
+            source_paint.clone(),
+        )
+    } else {
+        OofKid::Trials(
+            Box::new(move |bounds, spot, place, window, cx| {
+                let vcx = base_opts.cx.vcx();
+                let mut base = inherit(&base_inherited, &base_source.style, vcx);
+                base.self_node = base_source.node_id;
+                base.anchor_key = key_of(&base_source);
+                base.anchor_seq = base_opts.cx.anchor_seq_for(&base_source);
+                base.resolve_viewport(base_opts.viewport, vcx);
+                let options = crate::layout::positioned::anchor::trials::Options::new(
+                    &base,
+                    &base_inherited,
+                    vcx,
+                );
+                trials::run(
+                    bounds,
+                    spot,
+                    place,
+                    &options,
+                    &base_inherited,
+                    |style, probe, window| {
+                        let (positioning, escaped) = retained.isolate();
+                        let child = build(Some(style), positioning, Some(probe), bounds, window);
+                        (child, escaped)
+                    },
+                    window,
+                    cx,
+                    vcx,
                 )
-            } else {
-                child
-            };
-            let child = if paint_last {
-                gpui::PaintLast::new(child)
-                    .key(paint_key)
-                    .into_any_element()
-            } else {
-                child
-            };
-            if source.style.z_index.is_some_and(|z| z < 0)
-                && !crate::paint::stacking::nested_context(&inherited)
-            {
-                crate::hooks::IntoHooked::hooked(crate::paint::effects::underlay::Underlay::new(
-                    child,
-                ))
-            } else {
-                child
-            }
-        }),
-        source_paint.clone(),
-    );
+            }),
+            source_paint.clone(),
+        )
+    };
     if opts
         .cx
         .positioning

@@ -38,6 +38,7 @@ pub(crate) mod place;
 mod plan;
 pub(crate) mod resolve;
 pub(crate) mod settle;
+pub(crate) mod trials;
 
 use gpui::{Bounds, Pixels};
 
@@ -139,6 +140,7 @@ pub struct AnchorPlan {
 pub(crate) struct PlacementPlans {
     /// Кандидаты: [0] — базовые стили, дальше — `position-try-fallbacks`.
     plans: Vec<AnchorPlan>,
+    indices: Vec<usize>,
     order: u8,
     key: u64,
     visibility: u8,

@@ -20,7 +20,7 @@ use gpui::AnyElement;
 
 mod own_box;
 mod pct;
-mod positioned;
+pub(crate) mod positioned;
 mod replaced;
 pub(super) use pct::pct_resolved_against_block;
 pub(crate) use pct::pct_resolved_for_wrapper;

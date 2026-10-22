@@ -139,7 +139,7 @@ pub struct Corners {
 
 /// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
 /// обязано скопировать вычисленное значение родителя (§6.2.1).
-pub(super) mod ainh {
+pub(crate) mod ainh {
     pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
     pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
     pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;

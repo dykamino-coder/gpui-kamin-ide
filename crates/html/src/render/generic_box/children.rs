@@ -241,5 +241,5 @@ pub(crate) fn generic_children(
         Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
+    crate::layout::positioned::anchor::place::place_in_context(child, &merged, inherited, &opts.cx)
 }
