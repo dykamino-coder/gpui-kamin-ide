@@ -30,6 +30,8 @@ pub struct Marks {
     /// `node_id` of the source-tree parent of a hoisted column spanner: margins
     /// of spanners from different parents do not collapse.
     pub(crate) span_parent: Option<u64>,
+    /// Исходный содержащий блок, удалённый из пути при разрыве inline.
+    pub(crate) inline_cb: Option<InlineCb>,
     /// Block whose auto height is proven zero by its float host
     /// (`layout::block::margin_height`).
     pub(crate) auto_zero_height: bool,
@@ -78,4 +80,11 @@ pub(crate) struct LeadProbe {
     pub(crate) base: bool,
     pub(crate) from: usize,
     pub(crate) to: usize,
+}
+
+/// Потерянные предки CB при разрыве строчной коробки вокруг блока.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct InlineCb {
+    pub(crate) node: u64,
+    pub(crate) depth: u16,
 }
