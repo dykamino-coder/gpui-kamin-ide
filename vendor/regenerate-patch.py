@@ -42,6 +42,7 @@ FIXES = {
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
+        "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",

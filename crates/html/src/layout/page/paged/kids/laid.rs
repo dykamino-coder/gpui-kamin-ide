@@ -60,6 +60,27 @@ mod tests {
     use super::*;
     use crate::style::values::value::Len;
 
+    #[test]
+    fn empty_page_grid_uses_native_group_without_estimated_shape() {
+        let tree = crate::dom::parse(
+            "<div style='display:grid;grid-template-rows:20px 30px'></div>",
+            "",
+        );
+        let nodes = [Node::Element(authored(&tree).clone())];
+        let p = group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).unwrap();
+        assert!(p.blocks);
+        let Node::Element(e) = &p.nodes[0] else {
+            panic!("grid")
+        };
+        let blocks = crate::layout::fragment::flow::blocks::BlockBox::collect(
+            e,
+            crate::layout::fragment::ShapeCx::COLUMNS,
+            tree.values(),
+        );
+        assert!(!blocks.is_empty());
+        assert!(blocks.grid.as_ref().unwrap().items.is_empty());
+    }
+
     fn authored(nodes: &[Node]) -> &Element {
         fn find(nodes: &[Node]) -> Option<&Element> {
             nodes.iter().find_map(|n| match n {

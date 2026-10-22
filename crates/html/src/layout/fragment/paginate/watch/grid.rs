@@ -3,9 +3,8 @@ use super::{Watched, axis::BlockAxis};
 use gpui::Window;
 use std::collections::HashMap;
 impl Watched {
-    /// Row tracks `(start, end)` of the watched grids relative to `origin`,
-    /// read from the laid-out grid (taffy `DetailedLayoutInfo::Grid`) through
-    /// its first recorded item, before the layout engine is released.
+    /// Дорожки по ID самой разложенной сетки: пустая сетка также имеет
+    /// геометрию; ребёнок для чтения `DetailedLayoutInfo::Grid` не нужен.
     pub(super) fn rows(
         &self,
         axis: BlockAxis,
@@ -16,11 +15,11 @@ impl Watched {
             b.grids(&mut grids);
         }
         let mut out = HashMap::new();
-        for (grid, items) in grids {
-            let Some(lid) = items.iter().find_map(|&id| self.seen(id)) else {
+        for (grid, _) in grids {
+            let Some(lid) = self.seen(grid) else {
                 continue;
             };
-            let Some((o, columns, rows)) = window.parent_grid_tracks(lid) else {
+            let Some((o, columns, rows)) = window.grid_tracks(lid) else {
                 continue;
             };
             out.insert(grid, axis.tracks(o, columns, rows, false));

@@ -219,7 +219,6 @@ pub(super) fn build_copy(
         col_vert,
         col_rl,
         copy,
-        h,
         src,
         src_inner,
         frag_gap_rules,

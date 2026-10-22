@@ -119,17 +119,16 @@ impl BlockBox {
         out
     }
 
-    /// Нет ни блочных детей, ни таблицы, ни элементов сетки: рекордеру
-    /// стопки нечего наблюдать.
+    /// Даже без элементов сетка имеет дорожки, которые наблюдает рекордер.
     pub(crate) fn is_empty(&self) -> bool {
         self.kids.is_empty()
             && self.table.is_none()
-            && self.grid.as_ref().is_none_or(|g| g.items.is_empty())
+            && self.grid.is_none()
             && self.flex.as_ref().is_none_or(|f| f.items.is_empty())
     }
 
     /// Сетки стопки: номер контейнера и номера его элементов — дорожки рядов
-    /// читаются у разложенного элемента (`parent_grid_tracks`).
+    /// читаются у самого разложенного контейнера (`grid_tracks`).
     pub(crate) fn grids(&self, out: &mut Vec<(u64, Vec<u64>)>) {
         for flow in self.table.iter().flat_map(|t| t.flows()) {
             flow.grids(out);
