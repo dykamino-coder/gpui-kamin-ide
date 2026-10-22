@@ -2,7 +2,7 @@
 
 use super::probes::{CellBgs, CellEdges, RowRects};
 use crate::dom::Element;
-use crate::paint::effects::transformed_element::RefBox;
+use crate::layout::build_contracts::RefBox;
 use crate::style::computed::Computed;
 use crate::style::values::value::Color;
 use gpui::AnyElement;
