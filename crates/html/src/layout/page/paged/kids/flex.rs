@@ -41,15 +41,13 @@ pub(super) fn regrow(
     root: &BoxStyle,
     group: &[Node],
     watched: &Rc<Watched>,
-    (left, right, top): (f32, f32, f32),
+    padding: (f32, f32, f32),
+    first: bool,
     (aw, ah): (f32, f32),
     vertical: Option<bool>,
     icb: &mut [Vec<AnyElement>],
     fixed: &mut [Vec<AnyElement>],
 ) -> Option<Regrow> {
-    if vertical.is_some() {
-        return None;
-    }
     let [Node::Element(dom)] = group else {
         return None;
     };
@@ -58,9 +56,11 @@ pub(super) fn regrow(
     let blocks = watched.blocks()?;
     let mut flexes = Vec::new();
     blocks.flexes(&mut flexes);
-    if flexes.is_empty()
-        && (blocks.table.is_some() || !crate::layout::fragment::flow::independent_copy(dom))
-    {
+    let independent = match vertical {
+        Some(rl) => crate::layout::fragment::flow::vertical_copy(dom, rl),
+        None => crate::layout::fragment::flow::independent_copy(dom),
+    };
+    if flexes.is_empty() && (blocks.table.is_some() || !independent) {
         return None;
     }
     let slots: Vec<_> = icb
@@ -84,9 +84,8 @@ pub(super) fn regrow(
         } else {
             rec.copy_recorder(part)
         });
-        let scope =
-            crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
-        let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(top));
+        let scope = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
+        let mut wrap = super::frame::wrap(padding, ah, first, vertical);
         if matches!(dom.tag.as_str(), "html" | "body")
             && matches!(dom.style.computed().height, Some(Len::Pct(_)))
         {
@@ -113,7 +112,11 @@ pub(super) fn regrow(
         el
     };
     Some(Regrow {
-        axis: crate::layout::fragment::types::StackAxis::Horizontal,
+        axis: match vertical {
+            Some(true) => crate::layout::fragment::types::StackAxis::VerticalRl,
+            Some(false) => crate::layout::fragment::types::StackAxis::VerticalLr,
+            None => crate::layout::fragment::types::StackAxis::Horizontal,
+        },
         dom: dom.clone(),
         source: dom.clone(),
         build: Rc::new(build),

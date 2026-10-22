@@ -28,7 +28,7 @@ pub(super) fn recorder(
     match n {
         Node::Element(e)
             if single
-                && vertical.is_none()
+                && (vertical.is_none() || measured)
                 && !e.inline
                 && !matches!(
                     e.style.computed().position,
@@ -38,6 +38,11 @@ pub(super) fn recorder(
                     || (shaped
                         && (plain_block_tree(e, 4) || table_tree(e, 4) || flex_tree(e, 4)))) =>
         {
+            let logical = vertical.map(|rl| {
+                crate::layout::fragment::flow::logical_copy(e, rl)
+                    .expect("measured vertical copy retains its logical metadata")
+            });
+            let e = logical.as_ref().unwrap_or(e);
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
             if blocks.is_empty() && !measured {

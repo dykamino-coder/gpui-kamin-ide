@@ -100,15 +100,22 @@ impl FlowMeasure {
         origin: Point<Pixels>,
         window: &mut Window,
     ) -> Vec<super::LinePush> {
+        self.line_pushes_axis(origin, Size::default(), StackAxis::Horizontal, window)
+    }
+
+    /// Геометрия строк остаётся в области текущего layout-движка.
+    pub(crate) fn line_pushes_axis(
+        &self,
+        origin: Point<Pixels>,
+        size: Size<Pixels>,
+        axis: StackAxis,
+        window: &mut Window,
+    ) -> Vec<super::LinePush> {
         let mut pushes = Vec::new();
         self.records.for_each(window, |bounds, record| {
-            let offset = f32::from(bounds.origin.y - origin.y);
+            let Some(offset) = record.offset(origin, size, axis, bounds) else { return; };
             pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| {
-                super::LinePush {
-                    at: offset + at,
-                    line,
-                    growth: record.growth.clone(),
-                }
+                super::LinePush { at: offset + at, line, growth: record.growth.clone() }
             }));
         });
         pushes
@@ -148,27 +155,25 @@ impl FlowMeasure {
         window: &mut Window,
     ) -> FlowGeometry {
         let mut result = FlowGeometry::default();
-        self.records.for_each(
-            window,
-            |bounds,
-             Record {
-                 axis: own_axis,
-                 geometry,
-                 ..
-             }| {
-                if *own_axis != axis {
-                    return;
-                }
-                let at = bounds.origin;
-                let offset = match axis {
-                    StackAxis::Horizontal => at.y - origin.y,
-                    StackAxis::VerticalLr => at.x - origin.x,
-                    StackAxis::VerticalRl => origin.x + size.width - at.x - bounds.size.width,
-                };
-                result.append(&geometry.borrow(), f32::from(offset));
-            },
-        );
+        self.records.for_each(window, |bounds, record| {
+            if let Some(offset) = record.offset(origin, size, axis, bounds) {
+                result.append(&record.geometry.borrow(), offset);
+            }
+        });
         result.normalize();
         result
+    }
+}
+
+impl Record {
+    pub(super) fn offset(
+        &self,
+        origin: Point<Pixels>,
+        size: Size<Pixels>,
+        axis: StackAxis,
+        bounds: gpui::Bounds<Pixels>,
+    ) -> Option<f32> {
+        if self.axis != axis { return None; }
+        Some(super::coordinates::block_offset(origin, size, bounds.origin, bounds.size, axis))
     }
 }

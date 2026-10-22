@@ -1,4 +1,4 @@
-//! Группы строчных прогонов, транспонирование дерева и боковые поля обёртки.
+//! Группы строчных прогонов и боковые поля обёртки.
 
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -94,72 +94,4 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let mut g = e.clone();
     g.children = out;
     Some(g)
-}
-
-/// Клон поддерева, у которого ФИЗИЧЕСКИЕ поля коробки повёрнуты так, что
-/// БЛОЧНАЯ ось вертикального письма встаёт на место вертикальной: `width` ↔
-/// `height`, стороны — по логическим ролям (css-writing-modes-4 §3.1, §6.4
-/// «abstract-to-physical mappings»): новый верх — block-start (левый край у
-/// `vertical-lr`, правый у `vertical-rl`), новый низ — block-end, новые лево/право
-/// — inline-start/-end (верх/низ при `direction: ltr`).
-///
-/// Нужен ТОЛЬКО мере стопки колонок: `shape_full` написана в терминах блочного
-/// потока (`h` — размер по оси потока, `cuts`/`solid` — смещения от его начала),
-/// но читает физические поля. На повёрнутом клоне её `h` — блочный размер, а
-/// `flex-direction: row` остаётся строчной осью (в вертикали она вертикальна) —
-/// дети ряда стоят рядом, точек разреза между ними нет, как и должно быть.
-/// Рисуется по-прежнему ИСХОДНЫЙ элемент: повернуть отрисовку нельзя, вместе с
-/// коробкой повернулись бы текст, рамки и фон. Blink делает то же логическими
-/// величинами (`BoxStrut`/`LogicalSize` в `block_layout_algorithm.cc`).
-///
-/// `None` — в поддереве потомок с ДРУГИМ письмом (ортогональный поток,
-/// css-writing-modes-4 §7.3, или обратная блочная ось) либо `direction: rtl`:
-/// поворотом его мера не выражается, и многоколоночник остаётся на прежнем
-/// пути.
-pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
-    if c.style.cascaded().vertical_decl() == Some(false)
-        || c.style.cascaded().rl_decl().is_some_and(|v| v != rl)
-        || c.style.cascaded().wm().rtl()
-    {
-        return None;
-    }
-    let turn = |s: &crate::style::computed::Sides| crate::style::computed::Sides {
-        top: if rl { s.right } else { s.left },
-        bottom: if rl { s.left } else { s.right },
-        left: s.top,
-        right: s.bottom,
-    };
-    let mut t = c.clone();
-    let style = &mut *t.style.used_mut();
-    std::mem::swap(&mut style.width, &mut style.height);
-    std::mem::swap(&mut style.min_width, &mut style.min_height);
-    std::mem::swap(&mut style.max_width, &mut style.max_height);
-    t.style.used_mut().padding = turn(&c.style.computed().padding);
-    t.style.used_mut().margin = turn(&c.style.computed().margin);
-    t.style.used_mut().border_width = turn(&c.style.computed().border_width);
-    t.style.used_mut().inset = turn(&c.style.computed().inset);
-    // Видимость рамки — `[верх, право, низ, лево]` (`Computed::borders`).
-    let v = c.style.computed().border_visible;
-    t.style.used_mut().border_visible = if rl {
-        [v[1], v[2], v[3], v[0]]
-    } else {
-        [v[3], v[2], v[1], v[0]]
-    };
-    // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
-    t.style.used_mut().overflow_y = c.style.computed().overflow_x;
-    t.style.used_mut().overflow_x = c.style.computed().overflow_y;
-    // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
-    // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = c.style.computed().border_spacing {
-        t.style.used_mut().border_spacing = Some((y, x));
-    }
-    t.children = c
-        .children
-        .iter()
-        .map(|n| match n {
-            Node::Element(k) => transpose_tree(k, rl).map(Node::Element),
-            other => Some(other.clone()),
-        })
-        .collect::<Option<Vec<Node>>>()?;
-    Some(t)
 }

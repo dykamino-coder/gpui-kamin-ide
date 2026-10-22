@@ -86,8 +86,7 @@ pub(crate) fn pin_inherited_margins(
 /// не реже, чем в точках: без перевода правило не срабатывало ни разу на таких
 /// отступах, и блоки уезжали вниз на целый отступ. Кегль берётся свой, если
 /// элемент его задал, иначе базовый — унаследованного здесь ещё нет.
-/// Проценты не переводятся: они считаются от ширины родителя, а её тут никто
-/// не знает, и выдуманное число было бы хуже пропуска.
+/// Доли, в том числе в calc(), требуют известной ширины содержащего блока.
 pub(crate) fn margin_px(
     l: Option<Len>,
     style: &Computed,
@@ -121,6 +120,11 @@ pub(crate) fn margin_px(
         // Процент — от ширины содержащего блока, когда она известна в точках
         // (`margin-top-103`, `margin-bottom-113`); иначе поле пропускается.
         Len::Pct(k) => vcx.collapse.width.map(|w| k * w),
+        l @ Len::Calc(_) => crate::style::computed::LenCx {
+            basis: vcx.collapse.width,
+            ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), style)
+        }
+        .px(l, vcx),
         _ => None,
     }
 }

@@ -24,9 +24,9 @@ pub(crate) use nested::nested_rows_shape;
 pub(crate) use nested_kid::layout_unit;
 pub(crate) use resolved_lengths::resolved_lengths;
 mod inline_runs;
+pub(crate) use crate::layout::fragment::flow::transpose_tree;
 pub(crate) use inline_runs::group_inline_runs;
 pub(crate) use inline_runs::side_margin_wrap;
-pub(crate) use inline_runs::transpose_tree;
 
 /// Ширина содержимого блока в потоке родителя шириной `pw` (CSS 2.1 §10.3.3:
 /// `margin-left + border + padding + width + … = containing block width`).

@@ -14,6 +14,42 @@ pub(super) struct Group {
     pub(super) float_extent: bool,
 }
 
+/// Вертикальная физическая копия; логическое дерево нужно только для полей
+/// и рекордера, но не заменяет настоящее дерево в native layout.
+pub(super) fn vertical_group(
+    nodes: &[Node],
+    root: &Computed,
+    inline: f32,
+    head: f32,
+    rl: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Group> {
+    use crate::layout::fragment::flow::{logical_copy, vertical_copy};
+    let [Node::Element(e)] = nodes else {
+        return None;
+    };
+    if !vertical_copy(e, rl) {
+        return None;
+    }
+    let e = crate::layout::block::margins::vertical_fragment_box(
+        resolved_lengths(e, root, vcx),
+        inline,
+        rl,
+        vcx,
+    );
+    let (mt, mb) = fragment_margins(&logical_copy(&e, rl)?)?;
+    Some(Group {
+        nodes: vec![Node::Element(e)],
+        margins: if head > 0.0 {
+            (0.0, mb, 0.0)
+        } else {
+            (mt, mb, mt)
+        },
+        blocks: true,
+        float_extent: false,
+    })
+}
+
 pub(super) fn group(
     nodes: &[Node],
     root: &Computed,
@@ -55,81 +91,4 @@ pub(super) fn group(
 }
 
 #[cfg(test)]
-mod tests {
-
-    use super::*;
-    use crate::style::values::value::Len;
-
-    #[test]
-    fn empty_page_grid_uses_native_group_without_estimated_shape() {
-        let tree = crate::dom::parse(
-            "<div style='display:grid;grid-template-rows:20px 30px'></div>",
-            "",
-        );
-        let nodes = [Node::Element(authored(&tree).clone())];
-        let p = group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).unwrap();
-        assert!(p.blocks);
-        let Node::Element(e) = &p.nodes[0] else {
-            panic!("grid")
-        };
-        let blocks = crate::layout::fragment::flow::blocks::BlockBox::collect(
-            e,
-            crate::layout::fragment::ShapeCx::COLUMNS,
-            tree.values(),
-        );
-        assert!(!blocks.is_empty());
-        assert!(blocks.grid.as_ref().unwrap().items.is_empty());
-    }
-
-    fn authored(nodes: &[Node]) -> &Element {
-        fn find(nodes: &[Node]) -> Option<&Element> {
-            nodes.iter().find_map(|n| match n {
-                Node::Element(e) if e.tag == "div" => Some(e),
-                Node::Element(e) => find(&e.children),
-                _ => None,
-            })
-        }
-        find(nodes).expect("authored float")
-    }
-
-    #[test]
-    fn monolithic_page_float_keeps_its_measured_margin_box() {
-        let tree = crate::dom::parse(
-            "<div style='float:left;overflow:scroll;margin-top:20%;margin-bottom:10%;width:40px'>float</div>",
-            "",
-        );
-        let nodes = [Node::Element(authored(&tree).clone())];
-        let p = group(&nodes, &Computed::default(), 120.0, 15.0, tree.values())
-            .expect("native monolithic float");
-        assert!(!p.blocks);
-        assert_eq!(p.margins, (0.0, 0.0, 0.0));
-        let Node::Element(e) = &p.nodes[0] else {
-            panic!("float")
-        };
-        assert_eq!(e.style.float, Some(-1));
-        assert_eq!(e.style.margin.top, Some(Len::Px(24.0)));
-        assert_eq!(e.style.margin.bottom, Some(Len::Px(12.0)));
-    }
-
-    #[test]
-    fn flowing_page_float_requires_its_own_continuation() {
-        let tree = crate::dom::parse("<div style='float:left;width:20px'>flowing text</div>", "");
-        let nodes = [Node::Element(authored(&tree).clone())];
-        assert!(group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).is_none());
-    }
-
-    #[test]
-    fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
-        let tree = crate::dom::parse(
-            "<div style='width:100px;padding:5px'><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div>",
-            "",
-        );
-        let nodes = [Node::Element(authored(&tree).clone())];
-        let p = group(&nodes, &Computed::default(), 120.0, 0.0, tree.values()).unwrap();
-        assert!(p.blocks && p.float_extent);
-        let Node::Element(e) = &p.nodes[0] else {
-            panic!("float host")
-        };
-        assert_eq!(e.style.width, Some(Len::Px(100.0)));
-    }
-}
+mod tests;

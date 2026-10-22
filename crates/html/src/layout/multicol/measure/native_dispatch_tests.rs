@@ -30,81 +30,86 @@ fn opts() -> RenderOpts {
 
 #[test]
 fn grid_table_and_plain_groups_bypass_estimates_before_and_after_width_is_known() {
-    for (mode, vertical, rl) in [
-        ("horizontal-tb", false, false),
-        ("vertical-lr", true, false),
-        ("vertical-rl", true, true),
-    ] {
-        for body in [
-            "<div style='display:grid;grid-template-rows:auto 1fr 10%'></div>",
-            "<div style='display:grid;height:150px;width:150px;align-content:center;grid-template-rows:20px 30px'></div>",
-            "<div style='display:grid'><div style='height:40px;width:30px'></div></div>",
-            "<table><tr><td><div style='height:20px;width:30px'></div></td></tr></table>",
-            "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
+    for rtl in [false, true] {
+        for (mode, vertical, rl) in [
+            ("horizontal-tb", false, false),
+            ("vertical-lr", true, false),
+            ("vertical-rl", true, true),
         ] {
-            // Явное письмо у детей: StackPlan получает уже унаследованный DOM.
-            let tree = crate::dom::parse(&format!("<div>{body}</div>"), "");
-            let mut root = host(&tree).clone();
-            fn writing(e: &mut Element, mode: &str) {
-                use crate::style::computed::writing_mode::WritingModeKw;
-                let wm = match mode {
-                    "vertical-lr" => WritingModeKw::VerticalLr,
-                    "vertical-rl" => WritingModeKw::VerticalRl,
-                    _ => WritingModeKw::HorizontalTb,
-                };
-                e.style.writing_mode = Some(wm);
-                e.style.flat_mode = Some(wm);
-                for n in &mut e.children {
-                    if let Node::Element(k) = n {
-                        writing(k, mode);
+            for body in [
+                "<div style='margin:calc(10% + 3px);height:20px;width:30px'>text</div>",
+                "<div style='display:grid;grid-template-rows:auto 1fr 10%'></div>",
+                "<div style='display:grid;height:150px;width:150px;align-content:center;grid-template-rows:20px 30px'></div>",
+                "<div style='display:grid'><div style='height:40px;width:30px'></div></div>",
+                "<table><tr><td><div style='height:20px;width:30px'></div></td></tr></table>",
+                "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
+            ] {
+                // Явное письмо у детей: StackPlan получает уже унаследованный DOM.
+                let tree = crate::dom::parse(&format!("<div>{body}</div>"), "");
+                let mut root = host(&tree).clone();
+                fn writing(e: &mut Element, mode: &str, rtl: bool) {
+                    use crate::style::computed::writing_mode::WritingModeKw;
+                    let wm = match mode {
+                        "vertical-lr" => WritingModeKw::VerticalLr,
+                        "vertical-rl" => WritingModeKw::VerticalRl,
+                        _ => WritingModeKw::HorizontalTb,
+                    };
+                    e.style.writing_mode = Some(wm);
+                    e.style.flat_mode = Some(wm);
+                    e.style.rtl = Some(rtl);
+                    for n in &mut e.children {
+                        if let Node::Element(k) = n {
+                            writing(k, mode, rtl);
+                        }
                     }
                 }
-            }
-            writing(&mut root, mode);
-            for auto in [false, true] {
-                root.style.column_fill_auto = Some(auto);
-                for width in [None, Some(Len::Px(240.0))] {
-                    for rows in [
-                        None,
-                        Some(Rows {
-                            h: Some(100.0),
-                            gap: 10.0,
-                            wrap: true,
-                            cap: false,
-                        }),
-                    ] {
-                        let opts = opts();
-                        let plan = stack_plan(
-                            &root,
-                            &root.style,
-                            &Computed::default(),
-                            &opts,
-                            2,
-                            0.0,
-                            vertical,
-                            rl,
-                            Some(100.0),
-                            Some(100.0),
-                            width,
-                            rows,
+                writing(&mut root, mode, rtl);
+                for auto in [false, true] {
+                    root.style.column_fill_auto = Some(auto);
+                    for width in [None, Some(Len::Px(240.0))] {
+                        for rows in [
                             None,
-                        );
-                        let kids = plan.stackable.expect("native group");
-                        assert!(!kids.is_empty(), "{mode}: {body}");
-                        assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
-                        assert_eq!(
-                            plan.measured_kids.borrow().len(),
-                            if width.is_some() { kids.len() } else { 0 }
-                        );
-                        #[cfg(feature = "wpt-harness")]
-                        assert!(
-                            opts.frag
-                                .probe
-                                .take()
-                                .values()
-                                .all(|p| p.estimate_calls == 0),
-                            "{mode}: {body}"
-                        );
+                            Some(Rows {
+                                h: Some(100.0),
+                                gap: 10.0,
+                                wrap: true,
+                                cap: false,
+                            }),
+                        ] {
+                            let mut opts = opts();
+                            opts.cx.doc = crate::layout::cx::BuildDoc(tree.doc.clone());
+                            let plan = stack_plan(
+                                &root,
+                                &root.style,
+                                &Computed::default(),
+                                &opts,
+                                2,
+                                0.0,
+                                vertical,
+                                rl,
+                                Some(100.0),
+                                Some(100.0),
+                                width,
+                                rows,
+                                None,
+                            );
+                            let kids = plan.stackable.expect("native group");
+                            assert!(!kids.is_empty(), "{mode}: {body}");
+                            assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
+                            assert_eq!(
+                                plan.measured_kids.borrow().len(),
+                                if width.is_some() { kids.len() } else { 0 }
+                            );
+                            #[cfg(feature = "wpt-harness")]
+                            assert!(
+                                opts.frag
+                                    .probe
+                                    .take()
+                                    .values()
+                                    .all(|p| p.estimate_calls == 0),
+                                "{mode}: {body}"
+                            );
+                        }
                     }
                 }
             }
