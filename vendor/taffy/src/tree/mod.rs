@@ -173,6 +173,9 @@ mod flex_fit_cross_tests;
 #[cfg(all(test, feature = "taffy_tree"))]
 mod leaf_xy_baselines_tests;
 
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod oof_borrow_tests;
+
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_abspos_fit_tests;
 
