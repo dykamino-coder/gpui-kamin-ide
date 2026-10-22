@@ -19,7 +19,8 @@ use std::cell::RefCell;
 mod scope;
 pub(crate) use scope::LayerScope;
 
-use super::oof::OofHost;
+use super::oof::OofQueue;
+mod retained;
 
 /// Which boxes a nearest-containing-block layer takes.
 const ABS: u8 = 1;
@@ -32,7 +33,7 @@ struct CbLayer {
     /// boxes whose NEAREST containing block is its owner — the CB-ancestor
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
-    taken: OofHost,
+    taken: OofQueue,
 }
 
 #[derive(Default)]
@@ -43,16 +44,16 @@ pub struct Positioning {
     /// block, a nested document. By §10.1 an out-of-flow box without a
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
-    icb: RefCell<Vec<OofHost>>,
+    icb: RefCell<Vec<OofQueue>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
-    late: RefCell<Vec<OofHost>>,
+    late: RefCell<Vec<OofQueue>>,
     /// Content boxes of flex containers measured in this pass's prepaint
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
     /// once both exist. Keyed by the container's node id.
-    flex_content: RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>,
+    flex_content: std::rc::Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
 }
 
 impl Positioning {
@@ -96,7 +97,7 @@ impl Positioning {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
-            taken: OofHost::default(),
+            taken: OofQueue::default(),
         });
     }
 
@@ -147,7 +148,7 @@ impl Positioning {
     /// Open an initial-containing-block layer: the document, a strip block or
     /// a nested document.
     pub fn icb_open(&self) {
-        self.icb.borrow_mut().push(OofHost::default());
+        self.icb.borrow_mut().push(OofQueue::default());
     }
 
     /// Take what the top ICB layer collected and close it.
@@ -178,7 +179,7 @@ impl Positioning {
 
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
-        self.late.borrow_mut().push(OofHost::default());
+        self.late.borrow_mut().push(OofQueue::default());
     }
 
     /// Take what the top paint layer collected and close it.

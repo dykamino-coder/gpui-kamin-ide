@@ -50,16 +50,27 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     let mut merged = inherit(inherited, &e.style, vcx);
     list_item::inherited_style(e, inherited, &mut merged);
     // Якорный шаг: ключи реестров кадра (свой `node_id` для содержащего
-    // блока детей, порядок сборки, ключ клетки) и размеры от якоря —
-    // `anchor-size()`, растяжка в клетке `position-area` — из реестра
-    // ПРОШЛОГО кадра, до раскладки.
+    // блока детей, порядок сборки, ключ клетки). Хост OOF передаёт размеры
+    // из опубликованной геометрии текущего кадра; остальные пути сохраняют
+    // временный fallback реестра прошлого кадра.
     merged.self_node = e.node_id;
-    merged.anchor_seq = crate::layout::positioned::anchor::next_seq(vcx);
+    merged.anchor_seq = opts.cx.anchor_seq_for(e);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
     // Вариант `position-try-fallbacks`, выбранный на прошлом кадре, — в стиль
     // ДО размеров и раскладки (§fallback: «the element keeps those styles»).
     crate::layout::positioned::anchor::resolve::apply_chosen(&mut merged, vcx);
-    crate::layout::positioned::anchor::resolve::resolve_sizes(&mut merged, inherited, vcx);
+    if let Some((key, inputs)) = opts.cx.oof_sizes
+        && key == merged.anchor_key
+    {
+        crate::layout::positioned::anchor::resolve::resolve_current(
+            &mut merged,
+            inherited,
+            inputs,
+            vcx,
+        );
+    } else {
+        crate::layout::positioned::anchor::resolve::resolve_sizes(&mut merged, inherited, vcx);
+    }
     // `dir="auto"` — сторона письма по ПЕРВОМУ СИЛЬНОМУ знаку содержимого.
     // Разбор двунаправленности выберет её сам при наборе, но выключка и
     // прижим текста читают `rtl` из стиля, и без этого шага блок с арабским

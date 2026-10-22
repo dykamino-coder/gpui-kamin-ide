@@ -12,11 +12,12 @@ pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
 mod source_paint;
-pub(crate) use source_paint::split as split_source_paint;
+pub(crate) use source_paint::{DeferredPaint, split as split_source_paint};
 mod layers;
 mod oof;
 pub(crate) use layers::LayerScope;
 pub use layers::Positioning;
+pub(crate) use oof::OofKid;
 
 mod line_box;
 pub use line_box::{LineBoxSlot, with_line_box};

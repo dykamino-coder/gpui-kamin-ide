@@ -104,7 +104,7 @@ pub(super) fn band_nest(
     }
     let vcx = opts.cx.vcx();
     // The step-8 key of a paint group comes before its descendants' keys.
-    let group_key = paint_group(&c.style).then(|| opts.cx.next_paint_key());
+    let group_key = paint_group(&c.style).then(|| opts.cx.paint_key_for(c));
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
     let mut merged = inherit(inherited, &c.style, vcx);

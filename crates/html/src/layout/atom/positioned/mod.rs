@@ -23,7 +23,7 @@ pub(super) fn static_position_atom(
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
     // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
@@ -127,7 +127,7 @@ pub(super) fn absolute_atom(
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.

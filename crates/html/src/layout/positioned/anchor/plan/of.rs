@@ -74,11 +74,22 @@ impl AnchorPlan {
             && !(anchor_center && default_anchor.is_some())
             && own.position_try_fallbacks.is_empty()
             && own.position_visibility == 0
+            && ![
+                own.width,
+                own.height,
+                own.min_width,
+                own.min_height,
+                own.max_width,
+                own.max_height,
+            ]
+            .into_iter()
+            .any(|l| matches!(l, Some(Len::Anchor(_))))
         {
             return None;
         }
         Some(AnchorPlan {
             values: vcx.keep(),
+            history: true,
             sides,
             default_anchor,
             cb_flipped: flipped(inherited),

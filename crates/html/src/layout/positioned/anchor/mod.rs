@@ -12,9 +12,10 @@
 //!   `prepaint` и сдвигается через `with_element_offset` — тем же приёмом,
 //!   что `LatePlace`.
 //!
-//! Якорь, которого в реестре ещё нет (он ниже по дереву или позже в том же
-//! слое), по спеке и не acceptable («laid out strictly before»): функция
-//! падает на запасное значение.
+//! In-flow якорь может идти позже по дереву (§target). Хост OOF строит
+//! anchor-зависимую коробку после публикации потока своего слоя. OOF-якорь
+//! должен удовлетворять отношению «laid out strictly before»; зависимости
+//! между разными слоями пока поддерживает fallback прошлого кадра.
 //!
 //! Раскладке `anchor()`-вставка отдаётся НУЛЁМ (`apply::len_to_gpui`):
 //! коробка встаёт к краю содержащего блока, а сдвиг до якоря дорисовывает
@@ -29,6 +30,7 @@ pub(crate) use probe::Entry;
 pub(crate) use state::AnchorState;
 mod area;
 mod geometry;
+pub(crate) mod identities;
 mod inline;
 pub use inline::{prepare_inline_abs, register_inline_anchor, register_inline_cb};
 pub(crate) mod parse;
@@ -101,6 +103,8 @@ struct SidePlan {
 
 pub struct AnchorPlan {
     values: crate::document::state::ValueDoc,
+    /// Старый путь может читать геометрию прошлого кадра; новый sizing — нет.
+    history: bool,
     /// По часовой: top, right, bottom, left — как `Sides`.
     sides: [Option<SidePlan>; 4],
     default_anchor: Option<DefaultAnchor>,

@@ -9,7 +9,12 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// §abspos-auto-size «stretch-fit»). Раскладка видит `anchor()` нулём и
 /// растянула бы коробку на весь содержащий блок, поэтому размер берётся из
 /// IMCB, найденного на подготовке прошлого кадра (`AREA_LAST`).
-pub(super) fn fill_anchor_pairs(c: &mut Computed, grid_parent: Option<bool>, vcx: ValueCx<'_>) {
+pub(super) fn fill_anchor_pairs(
+    c: &mut Computed,
+    grid_parent: Option<bool>,
+    current: Option<Option<(f32, f32)>>,
+    vcx: ValueCx<'_>,
+) {
     let anchored = |l: Option<Len>| matches!(l, Some(Len::Anchor(_)));
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
@@ -29,8 +34,11 @@ pub(super) fn fill_anchor_pairs(c: &mut Computed, grid_parent: Option<bool>, vcx
     if !x && !y {
         return;
     }
-    vcx.doc.anchor_frame.used_last.set(true);
-    let Some((w, h)) = vcx.doc.anchor_frame.last_area(c.anchor_key) else {
+    if current.is_none() {
+        vcx.doc.anchor_frame.used_last.set(true);
+    }
+    let Some((w, h)) = current.unwrap_or_else(|| vcx.doc.anchor_frame.last_area(c.anchor_key))
+    else {
         return;
     };
     let pxv = px_lossy_zero;

@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement};
 pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
     if hoists_inline_abs(e, cx) {
         gpui::PaintLast::new(el)
-            .key(cx.next_paint_key())
+            .key(cx.paint_key_for(e))
             .into_any_element()
     } else {
         el
