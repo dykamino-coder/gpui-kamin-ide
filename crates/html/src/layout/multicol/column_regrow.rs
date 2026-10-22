@@ -66,6 +66,7 @@ impl ColumnStack {
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
             r.boxes = w.boxes(point(px(0.0), px(0.0)), window);
+            r.rows = w.rows(point(px(0.0), px(0.0)), window);
         }
     }
 

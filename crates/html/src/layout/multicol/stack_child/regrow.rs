@@ -87,6 +87,7 @@ impl Measured {
                 build: Box::new(build),
                 opts: opts.clone(),
                 boxes: Default::default(),
+                rows: Default::default(),
                 laid_h: self.laid_h,
             });
         }

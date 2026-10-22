@@ -63,6 +63,7 @@ pub(crate) fn cut_at(
             match k
                 .solid
                 .iter()
+                .chain(&k.avoid)
                 .find(|&&(s0, s1)| s0 < a - 0.01 && a < s1 - 0.01 && s0 > from + 0.01)
             {
                 Some(&(s0, _)) => a = s0,

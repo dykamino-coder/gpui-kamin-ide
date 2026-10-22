@@ -59,6 +59,7 @@ pub(super) fn place_oof_statics(
             avoid_after: false,
             forced: Vec::new(),
             solid: Vec::new(),
+            avoid: Vec::new(),
             h: 0.0,
             mt: 0.0,
             mb: 0.0,

@@ -177,7 +177,13 @@ pub(crate) fn measure_children(
                             // многоколоночника — корень контекста — берёт).
                             // Принудительного разрыва внутри мера без
                             // точек тоже не видит.
-                            if !measure_ok || forced_inside(c, 6) {
+                            // Поддерево с сеткой (`grid_tree`) — и под
+                            // балансом: его точки разрыва, принудительные
+                            // тоже, и рост даёт раскладка копии
+                            // (`flow::blocks`, css-grid-1 §12).
+                            let grid = (measure_ok || whole_ok)
+                                && crate::layout::fragment::flow::blocks::grid_tree(c, 4);
+                            if !grid && (!measure_ok || forced_inside(c, 6)) {
                                 return None;
                             }
                             let w = line_col_w?;

@@ -5,10 +5,11 @@
 //! раскладки и отдаёт его как свой — taffy видит то же дерево. Узлы читает `seen`, `reset`
 //! забывает их перед замером. Рекордер блочной стопки (`for_blocks`) наблюдает коробки
 //! `flow::blocks::BlockBox` главной копии ребёнка стопки и после её раскладки отдаёт точки
-//! разрыва по разложенной геометрии (`breaks`).
+//! разрыва по разложенной геометрии (`breaks`): border box коробок и дорожки рядов сеток
+//! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента).
 
 use crate::hooks::{Hooks, IntoHooked};
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
 use crate::layout::fragment::types::StackAxis;
 use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Point, Size, Window};
@@ -42,7 +43,12 @@ impl Watched {
     /// border boxes of its block stack `blocks`.
     pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
         Rc::new(Watched {
-            ids: blocks.ids().into_iter().collect(),
+            // With the growth struts before them (`STRUT_ID`).
+            ids: blocks
+                .ids()
+                .into_iter()
+                .flat_map(|id| [id, id ^ crate::layout::fragment::flow::blocks::STRUT_ID])
+                .collect(),
             seen: RefCell::default(),
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             blocks: Some(blocks),
@@ -72,7 +78,14 @@ impl Watched {
         let blocks = match (&self.blocks, axis) {
             (Some(b), StackAxis::Horizontal) => {
                 let boxes = self.boxes(origin, window);
-                b.breaks(end, &|id| boxes.get(&id).copied())
+                let rows = self.rows(origin, window);
+                b.breaks_laid(
+                    end,
+                    &Laid {
+                        at: &|id| boxes.get(&id).copied(),
+                        rows: &|id| rows.get(&id).cloned(),
+                    },
+                )
             }
             _ => BlockBreaks::default(),
         };
@@ -95,6 +108,32 @@ impl Watched {
                 (id, (top, top + h))
             })
             .collect()
+    }
+
+    /// Row tracks `(start, end)` of the watched grids relative to `origin`,
+    /// read from the laid-out grid (taffy `DetailedLayoutInfo::Grid`) through
+    /// its first recorded item, before the layout engine is released.
+    pub(crate) fn rows(
+        &self,
+        origin: Point<Pixels>,
+        window: &mut Window,
+    ) -> HashMap<u64, Vec<(f32, f32)>> {
+        let mut grids = Vec::new();
+        if let Some(b) = &self.blocks {
+            b.grids(&mut grids);
+        }
+        let mut out = HashMap::new();
+        for (grid, items) in grids {
+            let Some(lid) = items.iter().find_map(|&id| self.seen(id)) else {
+                continue;
+            };
+            let Some((o, _, rows)) = window.parent_grid_tracks(lid) else {
+                continue;
+            };
+            let off = f32::from(o.y - origin.y);
+            out.insert(grid, rows.iter().map(|r| (r.0 + off, r.1 + off)).collect());
+        }
+        out
     }
 
     /// Block stack watched by the recorder (`for_blocks`).

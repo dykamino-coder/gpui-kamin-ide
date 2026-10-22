@@ -17,6 +17,7 @@ fn kid(h: f32) -> Kid {
         avoid_after: false,
         forced: Vec::new(),
         solid: Vec::new(),
+        avoid: Vec::new(),
         span: false,
         over: h,
         clone_dec: None,

@@ -37,7 +37,7 @@ pub(super) fn recorder(
         {
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
-            if blocks.kids.is_empty() {
+            if blocks.is_empty() {
                 Watched::new(&[])
             } else {
                 Watched::for_blocks(blocks)

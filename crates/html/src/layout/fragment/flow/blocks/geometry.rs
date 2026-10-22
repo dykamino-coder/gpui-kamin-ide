@@ -11,7 +11,7 @@
 //! сплошные диапазоны (§4.1); нижняя рамка с отбивкой без зазора держит примыкающее к ней
 //! содержимое (класс C есть только при ненулевом зазоре, css-break-4 §possible-breaks).
 
-use super::BlockBox;
+use super::{BlockBox, Laid};
 use crate::layout::fragment::flow::FlowGeometry;
 use crate::tolerance::COORD_EPS;
 
@@ -21,9 +21,11 @@ pub(crate) struct BlockBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Диапазоны запрета, достижимые только переносом (`MeasuredBreaks::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
     /// Диапазоны, которым нужны все точки и монолиты (вместе со строками):
     /// в порядке обхода, вложенные раньше объемлющих.
-    pending: Vec<Pending>,
+    pub(super) pending: Vec<Pending>,
 }
 
 /// Измеренные возможности разрыва копии: точки класса A `(need, from)`,
@@ -33,10 +35,14 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Диапазоны под `break-*: avoid`, край фрагментаинера в которых сам
+    /// разрыв не уводит: в начало диапазона уходит лишь разрыв, перенесённый
+    /// к его концу монолитом (`Kid::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Pending {
+pub(super) enum Pending {
     /// Граница под запретом: предыдущий ребёнок `[top, bottom)`, верх
     /// содержимого контейнера `floor`, начало следующего `next`.
     Avoid {
@@ -59,66 +65,39 @@ impl BlockBox {
     /// Точки разрыва стопки, корень которой кончается на `bottom`; `at(id)` —
     /// разложенный border box коробки `(верх, низ)` в координатах потока.
     /// Корень без записи стоит с нуля.
+    #[cfg(test)]
     pub(crate) fn breaks(
         &self,
         bottom: f32,
         at: &dyn Fn(u64) -> Option<(f32, f32)>,
     ) -> BlockBreaks {
+        self.breaks_laid(
+            bottom,
+            &Laid {
+                at,
+                rows: &|_| None,
+            },
+        )
+    }
+
+    /// `breaks` с дорожками рядов разложенных сеток (`Laid::rows`).
+    pub(crate) fn breaks_laid(&self, bottom: f32, laid: &Laid<'_>) -> BlockBreaks {
         let mut out = BlockBreaks::default();
-        let top = at(self.id).map_or(0.0, |b| b.0);
-        walk(self, top, bottom, at, &mut out);
+        let top = (laid.at)(self.id).map_or(0.0, |b| b.0);
+        walk(self, top, bottom, laid, &mut out);
         out
     }
 }
 
-fn walk(
-    b: &BlockBox,
-    top: f32,
-    bottom: f32,
-    at: &dyn Fn(u64) -> Option<(f32, f32)>,
-    out: &mut BlockBreaks,
-) {
+pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid<'_>, out: &mut BlockBreaks) {
     if b.head > 0.0 {
         out.solid.push((top, top + b.head));
     }
     let floor = top + b.head;
-    let mut prev: Option<(&super::BlockKid, f32, f32)> = None;
-    let mut last: Option<f32> = None;
-    // Конечное имя страницы последнего именованного соседа.
-    let mut page_prev: Option<&str> = None;
-    for k in &b.kids {
-        let Some((kt, kb)) = at(k.id) else {
-            // Коробка без записи раскладки: её места нет, границы вокруг неё
-            // не строятся.
-            prev = None;
-            last = None;
-            continue;
-        };
-        let renamed = matches!((page_prev, &k.page), (Some(a), Some((b, _))) if a != b);
-        if let Some((_, end)) = &k.page {
-            page_prev = Some(end);
-        }
-        if let Some((p, pt, pb)) = prev.filter(|_| k.adjoins) {
-            out.cuts.push((pb, kt));
-            if p.force_after || k.force_before || renamed {
-                out.forced.push(pb);
-            } else if p.avoid_after || k.avoid_before {
-                out.pending.push(Pending::Avoid {
-                    top: pt,
-                    bottom: pb,
-                    floor,
-                    next: kt,
-                });
-            }
-        }
-        if k.monolith {
-            out.solid.push((kt, kb));
-        } else if let Some(inner) = &k.inner {
-            walk(inner, kt, kb, at, out);
-        }
-        prev = Some((k, kt, kb));
-        last = Some(kb);
-    }
+    let last = match &b.grid {
+        Some(g) => g.breaks(b.id, floor, laid, out),
+        None => walk_kids(b, floor, laid, out),
+    };
     if b.end_margin
         && b.tail <= 0.0
         && let Some(lb) = last
@@ -135,6 +114,52 @@ fn walk(
             gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
         });
     }
+}
+
+/// Блочные дети стопки: границы соседей, принудительные разрывы и запреты,
+/// монолиты и вложенные стопки. Возвращает низ последнего ребёнка.
+fn walk_kids(b: &BlockBox, floor: f32, laid: &Laid<'_>, out: &mut BlockBreaks) -> Option<f32> {
+    let mut prev: Option<(&super::BlockKid, f32, f32)> = None;
+    let mut last: Option<f32> = None;
+    // Конечное имя страницы последнего именованного соседа.
+    let mut page_prev: Option<&str> = None;
+    for k in &b.kids {
+        let Some((kt, kb)) = (laid.at)(k.id) else {
+            // Коробка без записи раскладки: её места нет, границы вокруг неё
+            // не строятся.
+            prev = None;
+            last = None;
+            continue;
+        };
+        let renamed = matches!((page_prev, &k.page), (Some(a), Some((b, _))) if a != b);
+        if let Some((_, end)) = &k.page {
+            page_prev = Some(end);
+        }
+        if let Some((p, pt, pb)) = prev.filter(|_| k.adjoins) {
+            // Распорка роста перед коробкой (`STRUT_ID`) — содержимое
+            // предыдущего фрагмента: граница встаёт под ней.
+            let pb = (laid.at)(k.id ^ super::STRUT_ID).map_or(pb, |s| s.1.max(pb));
+            out.cuts.push((pb, kt));
+            if p.force_after || k.force_before || renamed {
+                out.forced.push(pb);
+            } else if p.avoid_after || k.avoid_before {
+                out.pending.push(Pending::Avoid {
+                    top: pt,
+                    bottom: pb,
+                    floor,
+                    next: kt,
+                });
+            }
+        }
+        if k.monolith {
+            out.solid.push((kt, kb));
+        } else if let Some(inner) = &k.inner {
+            walk(inner, kt, kb, laid, out);
+        }
+        prev = Some((k, kt, kb));
+        last = Some(kb);
+    }
+    last
 }
 
 impl BlockBreaks {
@@ -200,10 +225,13 @@ impl BlockBreaks {
         for r in g.solid.iter_mut() {
             r.1 = r.1.min(end);
         }
+        let mut avoid = self.avoid;
+        avoid.retain(|&(a, _)| a < end - 0.01);
         MeasuredBreaks {
             cuts: g.cuts,
             forced,
             solid: g.solid,
+            avoid,
         }
     }
 }

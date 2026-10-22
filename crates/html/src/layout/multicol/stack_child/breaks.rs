@@ -1,12 +1,13 @@
 //! Рекордер главной копии ребёнка стопки колонок: строки — всегда, блочная стопка
 //! (`flow::blocks`) — у ребёнка, чьи точки разрыва даёт раскладка копии. Это ребёнок,
 //! чью высоту меряет раскладка (`StackChild::measure`), и поддерево обычных блоков
-//! (`plain_block_tree`): его границы классa A, поля на разрыве, запреты и монолиты
-//! берутся из разложенных border box, а не из оценки формы.
+//! (`plain_block_tree`) или поддерево с сеткой (`grid_tree`): его границы классa A, поля
+//! на разрыве, запреты, монолиты и ряды сетки берутся из разложенных border box и дорожек,
+//! а не из оценки формы.
 
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::BlockBox;
+use crate::layout::fragment::flow::blocks::{BlockBox, grid_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::options::RenderOpts;
@@ -31,13 +32,13 @@ pub(super) fn recorder(
         .borrow()
         .iter()
         .any(|&(id, _)| id == copy.node_id);
-    let plain = !own_plan && plain_block_tree(copy, 4);
+    let plain = !own_plan && (plain_block_tree(copy, 4) || grid_tree(copy, 4));
     if !(measured || (plain && line_col_w.is_some())) {
         return (Watched::new(&[]), None);
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
     // Without block children the copy keeps its measured lines alone.
-    if blocks.kids.is_empty() {
+    if blocks.is_empty() {
         return (Watched::new(&[]), None);
     }
     (

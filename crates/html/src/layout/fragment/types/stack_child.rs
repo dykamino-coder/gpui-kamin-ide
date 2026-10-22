@@ -61,6 +61,9 @@ pub struct StackChild {
     /// Диапазоны, внутри которых разрыв запрещён (css-break-4 §4.1 —
     /// монолиты-потомки; рамка и отбивка самой коробки): `[a, b)` от верха.
     pub solid: Vec<(f32, f32)>,
+    /// Диапазоны запрета `break-*: avoid`, достижимые только переносом
+    /// (`MeasuredBreaks::avoid`, `Kid::avoid`).
+    pub(crate) avoid: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
