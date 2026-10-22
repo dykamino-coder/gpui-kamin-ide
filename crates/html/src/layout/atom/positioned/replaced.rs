@@ -92,7 +92,7 @@ pub(super) fn replaced_abs_atom(
         };
     }
     let below_icb = e.style.z_index.is_some_and(|z| z < 0)
-        && !crate::paint::stacking::nested_context(inherited);
+        && !crate::style::computed::stacking::nested_context(inherited);
     // Позиционированный предок есть — слой ЕГО содержащего блока
     // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
     // блока не знает, и `bottom: 0` отсчитывался от верха строки

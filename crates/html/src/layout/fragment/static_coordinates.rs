@@ -74,7 +74,7 @@ impl crate::layout::multicol::column_stack::ColumnStack {
 }
 
 pub(crate) fn needed(e: &crate::dom::Element) -> bool {
-    !crate::paint::stacking::fixed_cb_layer_box(&e.style)
+    !crate::style::computed::stacking::fixed_cb_layer_box(&e.style)
         && (e.style.position == Some(crate::style::computed::Position::Fixed)
             || e.children.iter().any(|node| match node {
                 crate::dom::Node::Element(child) => needed(child),
