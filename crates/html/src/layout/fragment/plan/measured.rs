@@ -1,6 +1,6 @@
 //! План укладки с повторной мерой содержимого в новом фрагментаинере.
-use super::{Space, fill_pieces, open_kid};
-use crate::layout::fragment::types::{Frag, Kid};
+use super::{Plan, Space, fill_pieces, open_kid};
+use crate::layout::fragment::types::Kid;
 
 // Filling returns column geometry and continuation metadata together.
 #[allow(clippy::type_complexity)]
@@ -9,7 +9,7 @@ pub(crate) fn fill_measured(
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
     remeasure: &mut super::Remeasure<'_>,
-) -> (usize, f32, Vec<Frag>) {
+) -> (usize, f32, Plan) {
     let limit = space.limit;
     let paged = space.space.is_paginated();
     let not_top = space.space.not_at_start;
@@ -19,7 +19,10 @@ pub(crate) fn fill_measured(
     let mut first = true;
     let mut placed = not_top > 0;
     let mut shortage = f32::MAX;
-    let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
+    let mut out = Plan {
+        fragments: Vec::with_capacity(kids.len()),
+        ..Plan::default()
+    };
     let mut force_next = false;
     // Группа параллельных строк (`Par`): место начала `(col, y, placed)` и
     // самый дальний конец строки `(col, y)`.

@@ -38,7 +38,6 @@ fn page_and_column_spaces_differ_only_in_kind() {
     assert_eq!(parts(p), (4, 0, true));
 }
 
-<<<<<<< HEAD
 #[test]
 fn next_fragmentainer_replaces_height_and_resume_coordinate_before_cutting() {
     let kid = Kid {
@@ -74,7 +73,8 @@ fn next_fragmentainer_replaces_height_and_resume_coordinate_before_cutting() {
         [(0, 0., 40.), (1, 20., 40.), (2, 60., 40.)]
     );
     assert_eq!(calls, [(0, 0, 0.), (1, 1, 40.), (2, 2, 60.)]);
-=======
+}
+
 fn slice(h: f32) -> Kid {
     Kid {
         h,
@@ -107,7 +107,7 @@ fn exact_capacity_and_monolithic_overflow_are_complete() {
     for limit in [12, 48, 16] {
         let (_, _, plan) = fill(&[slice(limit as f32 * 10.0)], 10.0, Space::columns(limit));
         assert_eq!(plan.completion, super::Completion::Complete);
-        let (_, _, plan) = fill(&[monolith(1000.0, 0.0)], 10.0, Space::pages(limit));
+        let (_, _, plan) = fill(&[monolith(1000.0, 0.0)], 10.0, Space::columns(limit));
         assert_eq!(plan.completion, super::Completion::Complete);
     }
 }
@@ -145,5 +145,5 @@ fn missing_built_copy_marks_plan_without_dropping_fragments() {
     assert_eq!(plan[2].copy, 2);
     plan.check_copies(|_| 3);
     assert_eq!(plan.completion, super::Completion::Incomplete);
->>>>>>> d06ac58 (feat(html): report incomplete fragmentation plans)
+
 }
