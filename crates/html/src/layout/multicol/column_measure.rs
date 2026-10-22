@@ -14,41 +14,12 @@ impl ColumnStack {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
-        for c in self.children.iter_mut() {
-            if let Some(w) = c.measure {
-                let (sz, content) = c.el.layout_as_root_with_content(
-                    gpui::size(
-                        gpui::AvailableSpace::Definite(gpui::px(w)),
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
-                let h = f32::from(sz.height);
-                c.h = h;
-                // Видимое переполнение потомков — параллельный поток
-                // (css-break-3 §3): продолжается в следующих колонках само.
-                c.over = h.max(f32::from(content.height));
-                c.measure_breaks(sz, self.axis, window);
-                // Целый вложенный многоколоночник выше колонки — не монолит:
-                // его режет край внешней колонки (`StackChild::fit_whole`).
-                if c.fit_whole {
-                    c.monolith = self.fixed_height.is_none_or(|f| h <= f + 0.01);
-                }
-            } else if let Some(w) = c.breaks_w {
-                // Точки разрыва блочной стопки — по раскладке главной копии
-                // в колонку (`StackChild::breaks_w`).
-                let sz = c.el.layout_as_root(
-                    gpui::size(
-                        gpui::AvailableSpace::Definite(gpui::px(w)),
-                        gpui::AvailableSpace::MaxContent,
-                    ),
-                    window,
-                    cx,
-                );
-                c.replace_breaks(sz, self.axis, window);
-            }
+        for i in 0..self.children.len() {
+            self.lay_out_main(i, window, cx);
         }
+        // Распорки роста по раскладке копий — до разметки по сетке: её рамки
+        // берут план с уже выросшими соседями.
+        self.regrow_children(window, cx);
         self.paginate_children(window, cx);
         let heights = self.kid_geoms();
         let count = self.count;

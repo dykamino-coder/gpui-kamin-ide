@@ -155,3 +155,37 @@ fn block_inside_inline_is_a_sibling_of_the_flow_blocks() {
     let (cuts, _, _) = finish(&b, 280.0, &boxes);
     assert_eq!(cuts, vec![(70.0, 230.0)]);
 }
+
+#[test]
+fn pushed_box_is_the_outermost_box_starting_at_the_point() {
+    // The wrapper and its first child start together (collapsed margin): the
+    // growth strut goes before the wrapper, as the stack plan cuts there.
+    let (b, ids) = tree(
+        "<div><div style='height:40px'></div><div><div style='height:60px;break-inside:avoid'></div></div></div>",
+    );
+    let boxes = at(&[
+        (ids[0], 0.0, 40.0),
+        (ids[1], 40.0, 100.0),
+        (ids[2], 40.0, 100.0),
+    ]);
+    assert_eq!(
+        b.pushed_at(40.0, &|id| boxes.get(&id).copied()),
+        Some(ids[1])
+    );
+}
+
+#[test]
+fn pushed_box_descends_into_the_box_covering_the_point() {
+    let (b, ids) = tree(
+        "<div><div style='padding-top:10px'><div style='height:30px'></div><div style='height:60px'></div></div></div>",
+    );
+    let boxes = at(&[
+        (ids[0], 0.0, 100.0),
+        (ids[1], 10.0, 40.0),
+        (ids[2], 40.0, 100.0),
+    ]);
+    let found = |a: f32| b.pushed_at(a, &|id| boxes.get(&id).copied());
+    assert_eq!(found(40.0), Some(ids[2]));
+    // No box starts inside the second child: no strut.
+    assert_eq!(found(70.0), None);
+}
