@@ -12,7 +12,30 @@ pub struct Color {
     pub a: f32,
 }
 
+/// `light-dark(светлый, тёмный)` (css-color-5 §light-dark): ветвь по
+/// используемой схеме узла. `None` — запись не эта функция; `Some(None)` —
+/// функция с негодным числом аргументов.
+pub(crate) fn light_dark_branch<'a>(s: &'a str, vcx: ValueCx<'_>) -> Option<Option<&'a str>> {
+    if !(s
+        .get(..11)
+        .is_some_and(|h| h.eq_ignore_ascii_case("light-dark("))
+        && s.ends_with(')'))
+    {
+        return None;
+    }
+    let args = crate::style::css::split_args(&s[11..s.len() - 1]);
+    Some((args.len() == 2).then(|| args[usize::from(dark_scheme(vcx))]))
+}
+
 impl Color {
+    /// Начальный цвет текста без схемы (`CanvasText` светлой схемы).
+    pub const BLACK: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+
     pub fn to_hsla(self) -> gpui::Hsla {
         gpui::Rgba {
             r: self.r,
@@ -25,18 +48,8 @@ impl Color {
 
     pub fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
-        // `light-dark(светлый, тёмный)` (css-color-5 §light-dark): вариант по
-        // используемой схеме узла. Прежде функция не разбиралась, и
-        // объявление пропадало целиком.
-        if s.get(..11)
-            .is_some_and(|h| h.eq_ignore_ascii_case("light-dark("))
-            && s.ends_with(')')
-        {
-            let args = crate::style::css::split_args(&s[11..s.len() - 1]);
-            if args.len() == 2 {
-                return Self::parse(args[usize::from(dark_scheme(vcx))], vcx);
-            }
-            return None;
+        if let Some(branch) = light_dark_branch(s, vcx) {
+            return Self::parse(branch?, vcx);
         }
         if s.eq_ignore_ascii_case("transparent") {
             return Some(Color {

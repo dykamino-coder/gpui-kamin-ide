@@ -1,12 +1,12 @@
 //! Операнды color-mix, проценты и метод интерполяции, сохранённые как числа.
 
-use super::{Color, ColorExpression, mix};
+use super::{Color, StyleColor, mix};
 use crate::document::state::ValueCx;
 use crate::style::computed::GradSpace;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ColorMix {
-    pub(super) colors: [ColorExpression; 2],
+    pub(super) colors: [StyleColor; 2],
     weights: (f32, f32),
     space: GradSpace,
     hue: u8,
@@ -45,23 +45,25 @@ impl ColorMix {
         } else {
             0
         };
-        let one = |raw: &str| -> Option<(ColorExpression, Option<f32>)> {
-            let raw = raw.trim();
-            let (color, share) = match raw.rfind('%') {
-                Some(at) => {
-                    let head = raw[..at].trim_end();
-                    let cut = head
-                        .rfind(char::is_whitespace)
-                        .map(|i| i + head[i..].chars().next().map_or(1, char::len_utf8))
-                        .unwrap_or(0);
-                    let pct: f32 = head[cut..].parse().ok()?;
-                    (raw[..cut].trim(), Some(pct / 100.0))
+        let one = |raw: &str| -> Option<(StyleColor, Option<f32>)> {
+            // `<color> && <percentage>?` (css-color-5 §2.1): the share is a
+            // top-level token, never a percentage inside a nested function.
+            let words = crate::style::computed::split_outside_parens(raw.trim());
+            let mut share = None;
+            let mut rest = Vec::with_capacity(words.len());
+            for word in &words {
+                match word.strip_suffix('%') {
+                    Some(n) if !word.contains('(') && share.is_none() => {
+                        share = Some(n.parse::<f32>().ok()? / 100.0)
+                    }
+                    _ => rest.push(word.as_str()),
                 }
-                None => (raw, None),
-            };
-            let color = ColorExpression::parse(color, vcx)?;
+            }
+            let joined = rest.join(" ");
+            let color = joined.as_str();
+            let color = StyleColor::parse(color, vcx)?;
             // Relative functions are not accepted as color-mix operands yet.
-            if matches!(color, ColorExpression::Relative(_)) {
+            if matches!(color, StyleColor::Relative(_)) {
                 return None;
             }
             Some((color, share))

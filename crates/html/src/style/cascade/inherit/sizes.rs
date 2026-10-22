@@ -52,14 +52,16 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed,
             _ => None,
         };
     }
-    c.color = own.color.or(parent.color);
-    // `background-color: inherit` переносит вычисленное значение родителя —
-    // вместе с нерешённой относительной функцией (css-color-5 §4.1).
+    // `color` с функцией от `currentcolor` вычисляется от цвета родителя
+    // (css-color-4 §6.4): дети наследуют уже абсолютный цвет.
+    c.color = match &own.color_function {
+        Some(function) => Some(function.resolve(parent.color.unwrap_or(Color::BLACK))),
+        None => own.color.or(parent.color),
+    };
     // Единица `lh` разрешается ЗДЕСЬ: высота строки известна после каскада.
     inherit_lh_units(parent, c, vcx);
     // `box-shadow: inherit` копирует ВЫЧИСЛЕННУЮ тень родителя — вместе с
-    // нерешённым `currentColor` (метка отрицательной альфы): решает её
-    // отрисовка цветом СВОЕГО элемента.
+    // нерешённым `currentcolor`: решает его отрисовка цветом СВОЕГО элемента.
     if own.shadow_inherit {
         c.shadows = parent.shadows.clone();
         c.inset_shadows = parent.inset_shadows.clone();
@@ -82,10 +84,9 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed,
         }
         if own.border_inherit_c[i] {
             // Начальное значение `border-color` — `currentColor`, и по
-            // css-color-3 наследуется оно КЛЮЧЕВЫМ СЛОВОМ: у родителя, своего
-            // цвета рамки не задавшего, наследуется само слово, а решает его
+            // css-color-4 §6.4 наследуется оно КЛЮЧЕВЫМ СЛОВОМ: решает его
             // цвет РЕБЁНКА (`border-color-011`).
-            c.border_colors[i] = parent.border_colors[i].or(parent.border_color).or(c.color);
+            c.border_colors[i] = parent.border_colors[i].clone();
         }
     }
     if own.padding_inherit {

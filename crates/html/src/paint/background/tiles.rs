@@ -161,9 +161,7 @@ pub(super) fn paint_tiles_in(
             // полупрозрачная рамка пропускают фон — там border-box целиком
             // (`background-repeat-001`, `c548-ln-ht-001`, `margin-shorthand-001`).
             let covers = |i: usize| {
-                let opaque = c.border_colors[i]
-                    .or(c.border_color)
-                    .is_none_or(|col| col.a >= 1.0);
+                let opaque = c.used_border_color(i).a >= 1.0;
                 // solid / inset / outset / groove / ridge — сплошная краска.
                 matches!(c.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
             };

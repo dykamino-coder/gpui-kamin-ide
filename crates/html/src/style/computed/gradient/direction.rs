@@ -91,7 +91,7 @@ pub(super) fn gradient_direction(
                 && split_outside_parens(first)
                     .first()
                     .and_then(|color| {
-                        crate::style::values::color_space::ColorExpression::parse(color, vcx)
+                        crate::style::values::color_space::StyleColor::parse(color, vcx)
                     })
                     .is_none() =>
         {

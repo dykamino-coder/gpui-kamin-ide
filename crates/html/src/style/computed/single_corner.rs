@@ -67,8 +67,7 @@ pub(crate) fn eligible(c: &Computed) -> bool {
     if b > 0.0 && c.border_side_styles.iter().any(|v| *v != Some(9)) {
         return false;
     }
-    let colors: Vec<_> = c.border_colors.iter().flatten().collect();
-    if colors.iter().any(|v| *v != colors[0]) {
+    if c.used_uniform_border_color().is_none() {
         return false;
     }
     let (Some(Len::Px(w)), Some(Len::Px(h))) = (c.width, c.height) else {

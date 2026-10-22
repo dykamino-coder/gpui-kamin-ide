@@ -1,25 +1,15 @@
 //! Наследуемые цвета полос прокрутки и нормализация вычисленных осей overflow.
 
-use super::{Color, Computed};
+use super::Computed;
 
 pub(crate) fn inherit(parent: &Computed, c: &mut Computed) {
     normalize_overflow(c);
     super::super::snap::inherit(parent, c);
     // Only color inherits by default (CSS Scrollbars 1 §2). Width and gutter
     // remain local to the scroll container, including a nested one.
-    if let Some(Some(mut colors)) = c.scroll.colors {
-        let current = c.color.or(parent.color).unwrap_or(Color {
-            a: 1.0,
-            ..Color::default()
-        });
-        for (i, color) in colors.iter_mut().enumerate() {
-            if c.scroll.current[i] {
-                *color = current;
-            }
-        }
-        c.scroll.colors = Some(Some(colors));
+    if c.scroll.colors.is_none() {
+        c.scroll.colors = parent.scroll.colors.clone();
     }
-    c.scroll.colors = c.scroll.colors.or(parent.scroll.colors);
     if c.scroll.inherit_gutter {
         c.scroll.gutter = parent.scroll.gutter;
     }

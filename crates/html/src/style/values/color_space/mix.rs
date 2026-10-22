@@ -18,7 +18,7 @@ pub(super) fn color_mix_unmapped(body: &str, vcx: ValueCx<'_>) -> Option<(f32, f
 }
 
 fn color_mix_impl(body: &str, mapped: bool, vcx: ValueCx<'_>) -> Option<(f32, f32, f32, f32)> {
-    super::color_expression::absolute_mix(body, mapped, vcx)
+    super::style_color::absolute_mix(body, mapped, vcx)
 }
 
 /// Смешать два цвета в заданном пространстве интерполяции (css-color-4 §12).

@@ -56,12 +56,7 @@ pub(super) fn collapsed_cell_edge(
     // Цвет без объявления — `currentColor` (css-backgrounds-3
     // §border-color, initial: currentcolor), а не чёрный: `td.blue
     // {color: blue; border: solid 1em}` красил кромку чёрным.
-    let side_colour = |i: usize| {
-        cell.style.border_colors[i]
-            .or(cell.style.border_color)
-            .or(cm.color)
-            .unwrap_or(black)
-    };
+    let side_colour = |i: usize| cell.style.border_colors[i].resolve(cm.color.unwrap_or(black));
     let colors = [
         side_colour(0),
         side_colour(1),
@@ -153,11 +148,7 @@ pub(super) fn collapsed_group_edges(
             a: 1.0,
         };
         let side_colour = |k: usize| {
-            g.style.border_colors[k]
-                .or(g.style.border_color)
-                .or(g.style.color)
-                .or(inherited.color)
-                .unwrap_or(black)
+            g.style.border_colors[k].resolve(g.style.color.or(inherited.color).unwrap_or(black))
         };
         let colors = [
             side_colour(0),

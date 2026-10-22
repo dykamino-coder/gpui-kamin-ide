@@ -3,13 +3,22 @@
 use super::*;
 
 /// Тень: GPUI умеет несколько внешних теней, поэтому храним список.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Shadow {
     pub x: f32,
     pub y: f32,
     pub blur: f32,
     pub spread: f32,
-    pub color: Color,
+    /// Вычисленный цвет; без цвета в записи — `currentcolor`
+    /// (css-backgrounds-3 §7.1, css-text-decor-3 §4).
+    pub color: crate::style::values::value::StyleColor,
+}
+
+impl Shadow {
+    /// Используемый цвет тени у элемента с цветом текста `current`.
+    pub(crate) fn used_color(&self, current: Color) -> Color {
+        self.color.resolve(current)
+    }
 }
 
 /// Градиент: линейный под углом либо радиальный от центра.
@@ -50,7 +59,7 @@ pub struct Gradient {
     /// 2 increasing, 3 decreasing (css-color-4 §12.4).
     pub hue: u8,
     /// Parsed stop operands retained for inherited currentColor resolution.
-    pub(crate) colors: Vec<crate::style::values::color_space::ColorExpression>,
+    pub(crate) colors: Vec<crate::style::values::color_space::StyleColor>,
 }
 
 /// Пространство интерполяции цвета градиента (css-color-4 §12.2).

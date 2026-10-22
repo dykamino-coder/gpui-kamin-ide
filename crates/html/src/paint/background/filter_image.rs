@@ -21,7 +21,7 @@ pub(super) fn apply(
     let (w, h) = (size.width.0.max(0) as usize, size.height.0.max(0) as usize);
     let src = image.as_bytes(0)?;
     let mut out = src.to_vec();
-    if let Some(shadow) = style.shadow {
+    if let Some(shadow) = &style.shadow {
         // Filter Effects 1 §drop-shadow: a blur-free shadow is the source
         // alpha offset by (dx, dy) in the shadow colour, under the source.
         if style.calls != 1 || shadow.blur > 0.0 {
@@ -31,7 +31,7 @@ pub(super) fn apply(
             (shadow.x * scale.0).round() as isize,
             (shadow.y * scale.1).round() as isize,
         );
-        let c = shadow.color;
+        let c = style.shadow_used;
         for y in 0..h {
             for x in 0..w {
                 let (sx, sy) = (x as isize - dx, y as isize - dy);

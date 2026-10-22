@@ -197,7 +197,7 @@ pub(super) fn colors(
         && style.gradient.is_none()
         && let Some(c) = color_of("bgcolor")
     {
-        style.background = Some(c);
+        style.set_background_color(Some(c.into()));
     }
     if tag == "body"
         && style.color.is_none()

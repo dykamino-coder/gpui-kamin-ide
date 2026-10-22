@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::values::value::StyleColor;
 
 impl Computed {
     pub(super) fn apply_text_decor_emphasis_ruby(
@@ -36,11 +37,7 @@ impl Computed {
                     return;
                 }
                 if key == "text-emphasis-color" {
-                    let t = v.trim();
-                    if t.eq_ignore_ascii_case("currentcolor") {
-                        self.accept_declaration();
-                        self.emphasis_color = None;
-                    } else if let Some(c) = Color::parse(t, vcx) {
+                    if let Some(c) = StyleColor::parse_value(v, vcx) {
                         self.accept_declaration();
                         self.emphasis_color = Some(c);
                     }
@@ -62,7 +59,7 @@ impl Computed {
                                 | "currentcolor"
                         ) || (key == "text-emphasis"
                             && (w.eq_ignore_ascii_case("currentcolor")
-                                || Color::parse(w, vcx).is_some()))
+                                || crate::style::values::value::Color::parse(w, vcx).is_some()))
                     })
                 {
                     return;
@@ -74,9 +71,7 @@ impl Computed {
                     if key == "text-emphasis" && !v.starts_with(['"', '\'']) {
                         let mut kept = Vec::new();
                         for w in v.split_whitespace() {
-                            if w.eq_ignore_ascii_case("currentcolor") {
-                                self.emphasis_color = None;
-                            } else if !matches!(
+                            if !matches!(
                                 w,
                                 "none"
                                     | "open"
@@ -86,7 +81,7 @@ impl Computed {
                                     | "double-circle"
                                     | "triangle"
                                     | "sesame"
-                            ) && let Some(c) = Color::parse(w, vcx)
+                            ) && let Some(c) = StyleColor::parse_value(w, vcx)
                             {
                                 self.emphasis_color = Some(c);
                             } else {

@@ -7,7 +7,7 @@ use crate::dom::{Element, Node};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::css::parse_decls_in;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{ColorOrAuto, Len, StyleColor};
 
 fn doc() -> std::rc::Rc<crate::document::state::DocState> {
     crate::document::state::DocState::new(crate::style::css::Media::default())
@@ -61,11 +61,12 @@ fn shorthand_and_longhands_meet_by_order_of_appearance() {
     // `grid-gap-decorations-*`: a side shorthand resets that side's color to
     // `currentColor`, a later `border-color` wins over it.
     let (c, d) = styled("border-right: 6px solid; border-color: pink");
-    assert_eq!(c.border_colors[1], Color::parse("pink", d.values()));
-    let (c, d) = styled("border-color: pink; border-right: 6px solid");
-    assert_eq!(c.border_colors[1], None);
-    assert_eq!(c.border_colors[0], Color::parse("pink", d.values()));
-    assert_eq!(c.border_color, None);
+    let pink = StyleColor::parse_value("pink", d.values()).unwrap();
+    assert_eq!(c.border_colors[1], pink);
+    let (c, _d) = styled("border-color: pink; border-right: 6px solid");
+    assert_eq!(c.border_colors[1], StyleColor::Current);
+    assert_eq!(c.border_colors[0], pink);
+    assert_eq!(c.used_uniform_border_color(), None);
 }
 
 #[test]
@@ -80,7 +81,11 @@ fn invalid_border_declarations_are_dropped_whole() {
     ] {
         let (c, d) = styled(css);
         assert_eq!(c.borders().top, Some(Len::Px(2.0)), "{css}");
-        assert_eq!(c.border_color, Color::parse("green", d.values()), "{css}");
+        assert_eq!(
+            c.used_uniform_border_color(),
+            crate::style::values::value::Color::parse("green", d.values()),
+            "{css}"
+        );
     }
 }
 
@@ -92,11 +97,11 @@ fn style_alone_gives_the_initial_medium_width() {
     assert_eq!(c.borders().right, Some(Len::Px(3.0)));
     let (c, _d) = styled("border-right: 10px dotted; border-color: pink");
     assert_eq!(c.border_dotted, Some(true));
-    // `currentColor` stays empty: the text color decides it after
-    // inheritance.
+    // `currentColor` stays the keyword (css-color-4 §6.4): the element's
+    // color decides it at use.
     let (c, _d) = styled("border: 1px solid currentColor");
     assert_eq!(c.borders().top, Some(Len::Px(1.0)));
-    assert_eq!(c.border_colors, [None; 4]);
+    assert!(c.border_colors.iter().all(StyleColor::is_current));
     assert_eq!(c.border_side_styles, [Some(9); 4]);
 }
 
@@ -110,12 +115,12 @@ fn border_resets_border_image_and_outline_resets_its_parts() {
     let o = c.outline.expect("outline");
     assert_eq!(
         (o.width, o.style, o.color),
-        (Some(Len::Px(2.0)), Some(1), None)
+        (Some(Len::Px(2.0)), Some(1), ColorOrAuto::Auto)
     );
     let (c, _d) = styled("outline: 2px solid; outline-color: red");
     assert_eq!(
-        c.outline.and_then(|o| o.color),
-        Color::parse("red", d.values())
+        c.outline.and_then(|o| o.color.color().cloned()),
+        StyleColor::parse_value("red", d.values())
     );
     // `hidden` is not an outline style (css-ui-4 §outline-style).
     let (c, _d) = styled("outline: 2px dotted; outline-style: hidden");

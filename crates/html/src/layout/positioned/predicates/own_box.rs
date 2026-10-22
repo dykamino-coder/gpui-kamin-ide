@@ -116,9 +116,13 @@ pub(crate) fn has_own_box(
         return false;
     }
     let visible = |col: &Option<crate::style::values::value::Color>| col.is_some_and(|x| x.a > 0.0);
-    let colored = c.border_color.is_some() || c.border_colors.iter().any(Option::is_some);
-    let border_paints = visible(&c.border_color)
-        || c.border_colors.iter().any(visible)
+    let colored = c.border_color_declared();
+    // Красит только сторона с толщиной: цвет стороны без неё не виден.
+    let w = c.borders();
+    let wide = [w.top, w.right, w.bottom, w.left]
+        .map(|l| !matches!(l, None | Some(crate::style::values::value::Len::Px(0.0))));
+    let border_paints = colored
+        && (0..4).any(|i| wide[i] && visible(&Some(c.used_border_color(i))))
         // Цвет не задан вовсе — рамка красится цветом текста, то есть видна.
         || (!colored && any(&c.borders()));
     c.gradient.is_some()

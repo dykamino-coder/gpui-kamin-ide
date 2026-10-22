@@ -6,15 +6,15 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, ParseResult};
 use crate::style::css::{Grammar, LonghandId};
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{ColorOrAuto, Len, StyleColor};
 
 /// Годится ли значение длинному свойству рамки или контура.
 pub(crate) fn accepts(id: LonghandId, value: &str, vcx: ValueCx<'_>) -> bool {
     match id.grammar() {
         Grammar::LineWidth => line_width(value, vcx).is_some(),
         Grammar::LineStyle | Grammar::OutlineStyle => line_style_ok(id, value),
-        Grammar::LineColor => line_color(value, vcx).is_some(),
-        Grammar::OutlineColor => outline_color(value, vcx).is_some(),
+        Grammar::LineColor => StyleColor::parse_value(value, vcx).is_some(),
+        Grammar::OutlineColor => ColorOrAuto::parse_value(value, vcx).is_some(),
         Grammar::OutlineOffset => outline_offset(value, vcx).is_some(),
         Grammar::BorderImage => {
             let mut parser = Computed {
@@ -74,15 +74,6 @@ pub(crate) fn border_style_rank(v: &str) -> Option<u8> {
     })
 }
 
-/// Цвет стороны: `Some(None)` — `currentcolor`, его решает цвет текста
-/// после наследования.
-pub(crate) fn line_color(v: &str, vcx: ValueCx<'_>) -> Option<Option<Color>> {
-    if v.trim().eq_ignore_ascii_case("currentcolor") {
-        return Some(None);
-    }
-    Color::parse(v, vcx).map(Some)
-}
-
 /// Код рисунка контура (`outline_style`): `hidden` контуру не годится
 /// (css-ui-4 §outline-style).
 pub(crate) fn outline_line_style(v: &str) -> Option<u8> {
@@ -91,15 +82,6 @@ pub(crate) fn outline_line_style(v: &str) -> Option<u8> {
         return None;
     }
     crate::style::computed::outline_style_of(&lower)
-}
-
-/// `outline-color`: `auto` и `currentcolor` хранятся пустым слотом — цвет
-/// решает отрисовка (акцентный при `outline-style: auto`, иначе цвет текста).
-pub(crate) fn outline_color(v: &str, vcx: ValueCx<'_>) -> Option<Option<Color>> {
-    if v.trim().eq_ignore_ascii_case("auto") {
-        return Some(None);
-    }
-    line_color(v, vcx)
 }
 
 /// `outline-offset`: `<length>` или `inset` (сдвиг минус толщина) —

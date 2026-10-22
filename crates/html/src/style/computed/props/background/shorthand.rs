@@ -30,22 +30,19 @@ impl Computed {
         let valid = key != "background"
             || (Self::background_list_valid(BgListProp::Shorthand, v, vcx)
                 && (background_shorthand_valid(&v.to_ascii_lowercase(), vcx)
-                    || crate::style::values::color_space::ColorExpression::parse(v, vcx)
-                        .is_some()));
+                    || crate::style::values::color_space::StyleColor::parse(v, vcx).is_some()));
         if !valid {
             return;
         }
         if key == "background-color"
             && v != "currentcolor"
-            && Color::parse(v, vcx).is_none()
-            && crate::style::values::color_space::ColorExpression::parse(v, vcx).is_none()
+            && crate::style::values::color_space::StyleColor::parse_value(v, vcx).is_none()
         {
             return;
         }
         if key == "background" {
             self.accept_declaration();
-            self.background = None;
-            self.background_rcs = None;
+            self.set_background_color(None);
         }
         self.bg_explicit = true;
         // Цвет от `currentColor` решается не здесь: цвет элемента
@@ -58,10 +55,13 @@ impl Computed {
                 || low.contains("(from ")
                 || (low.starts_with("color-mix(") && low.contains("currentcolor")))
         {
-            self.background_rcs = accept_parsed!(
+            let value = accept_parsed!(
                 self,
-                crate::style::values::color_space::ColorExpression::parse(v, vcx)
+                crate::style::values::color_space::StyleColor::parse_value(v, vcx)
             );
+            if value.is_some() {
+                self.set_background_color(value);
+            }
             return;
         }
         // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
@@ -153,8 +153,9 @@ impl Computed {
                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
                 t if Self::background_position_length(t, vcx) => pos.push(token.clone()),
                 t => {
-                    if let Some(c) = Color::parse(t, vcx) {
-                        self.background = accept_parsed!(self, Some(c));
+                    if let Some(c) = StyleColor::parse_value(t, vcx) {
+                        self.accept_declaration();
+                        self.set_background_color(Some(c));
                     }
                 }
             }
@@ -171,8 +172,8 @@ impl Computed {
         // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
         if layers.len() > 1 {
             for token in split_outside_parens(bottom) {
-                if let Some(c) = Color::parse(&token, vcx) {
-                    self.background = Some(c);
+                if let Some(c) = StyleColor::parse_value(&token, vcx) {
+                    self.set_background_color(Some(c));
                 }
             }
         }

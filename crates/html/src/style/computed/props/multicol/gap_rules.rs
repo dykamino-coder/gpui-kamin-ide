@@ -42,12 +42,8 @@ pub(super) fn gap_kind(v: &str) -> Option<u8> {
 }
 
 /// Цвет линейки; `currentcolor` — `None` (цвет текста контейнера).
-pub(super) fn gap_color(t: &str, vcx: ValueCx<'_>) -> Option<Option<Color>> {
-    let t = t.trim();
-    if t.eq_ignore_ascii_case("currentcolor") {
-        return Some(None);
-    }
-    Color::parse(t, vcx).map(Some)
+pub(super) fn gap_color(t: &str, vcx: ValueCx<'_>) -> Option<StyleColor> {
+    StyleColor::parse_value(t, vcx)
 }
 
 /// Втяжка конца (css-gaps-1 §inset): длина/доля или `overlap-join`.
@@ -71,7 +67,7 @@ pub(super) fn gap_inset(t: &str, vcx: ValueCx<'_>) -> Option<GapInset> {
 pub(super) fn gap_rule(
     entry: &str,
     vcx: ValueCx<'_>,
-) -> Option<(Option<Len>, Option<bool>, Option<Option<Color>>)> {
+) -> Option<(Option<Len>, Option<bool>, Option<StyleColor>)> {
     let (mut w, mut s, mut c) = (None, None, None);
     for token in split_outside_parens(entry) {
         if s.is_none()
@@ -97,7 +93,7 @@ pub(super) fn gap_rule(
 /// раскрывается на месте, `repeat(auto, …)` допустим один раз и делит список
 /// на ведущие и хвостовые. Любой неразобранный элемент — весь список
 /// недействителен.
-pub(super) fn gap_list<T: Copy>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
+pub(super) fn gap_list<T: Clone>(v: &str, one: impl Fn(&str) -> Option<T>) -> Option<GapList<T>> {
     let mut out = GapList {
         lead: vec![],
         auto: vec![],
@@ -171,13 +167,13 @@ impl Computed {
         *list = l.is_plural().then(|| l.clone());
     }
 
-    pub(crate) fn set_gap_colors(&mut self, column: bool, l: &GapList<Option<Color>>) {
+    pub(crate) fn set_gap_colors(&mut self, column: bool, l: &GapList<StyleColor>) {
         let (scalar, list) = if column {
             (&mut self.column_rule_color, &mut self.column_rule_colors)
         } else {
             (&mut self.row_rule_color, &mut self.row_rule_colors)
         };
-        *scalar = l.first().flatten();
+        *scalar = l.first().unwrap_or_default();
         *list = l.is_plural().then(|| l.clone());
     }
 
@@ -191,7 +187,7 @@ impl Computed {
         self.accept_declaration();
         let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
         let styles = list.map(|r| r.1.unwrap_or(false));
-        let colors = list.map(|r| r.2.flatten());
+        let colors = list.map(|r| r.2.clone().unwrap_or_default());
         let double = !v.contains(',')
             && split_outside_parens(v)
                 .iter()

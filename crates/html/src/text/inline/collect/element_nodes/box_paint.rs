@@ -156,7 +156,7 @@ pub(super) fn element_style(
     // второго рисовальщика у которого нет.
     if merged.inline_border.is_none()
         && e.style.display.is_none()
-        && let Some(o) = e.style.outline
+        && let Some(o) = e.style.outline.as_ref()
         && o.style.is_some_and(|s| s != 0)
         && let Some(width) = match o.width {
             Some(Len::Px(w)) => Some(w),
@@ -165,12 +165,7 @@ pub(super) fn element_style(
         }
         && width > 0.0
     {
-        let color = o.color.or(merged.color).unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
+        let color = merged.used_outline_color(o);
         merged.inline_border = Some((color, [width; 4]));
         if merged.inline_bg.is_none() {
             merged.inline_bg = Some(Color {

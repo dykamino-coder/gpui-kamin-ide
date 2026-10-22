@@ -33,16 +33,7 @@ impl Computed {
             .unwrap_or(block_start);
         let w = self.borders();
         let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
-        let colour = self.border_colors[side]
-            .or(self.border_color)
-            .or(self.color)
-            .unwrap_or(Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            });
-        (width, colour)
+        (width, self.used_border_color(side))
     }
 
     /// Края опорной коробки `<geometry-box>` относительно border-box, t/r/b/l,
@@ -166,20 +157,7 @@ impl Computed {
             return None;
         }
         let off = if o.inset { -w } else { px_of(o.offset) };
-        let colour = o
-            .color
-            .or(if o.style == Some(2) {
-                self.accent_color
-            } else {
-                None
-            })
-            .or(self.color)
-            .unwrap_or(Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            });
+        let colour = self.used_outline_color(o);
         Some((w, off, colour))
     }
 

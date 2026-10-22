@@ -94,12 +94,6 @@ pub(super) fn decorate(
     if let Some(lines) = own.td_lines.filter(|l| *l != 0)
         && own.display != Some(D::Contents)
     {
-        let black = Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        };
         let thickness = match own.td_thickness.map(resolve).unwrap_or_default() {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             t => t,
@@ -117,7 +111,7 @@ pub(super) fn decorate(
         let d = Decor {
             lines,
             style: own.td_style.unwrap_or_default(),
-            color: own.td_color.or(c.color).unwrap_or(black),
+            color: c.used_color(&own.td_color),
             thickness,
             offset,
             position: c.underline_pos.unwrap_or(0),

@@ -33,9 +33,11 @@ impl CellsClipped {
             };
             let w = px_of(o.width);
             let out = px_of(o.offset) + w;
-            if let (true, true, Some(colour)) =
-                (o.style != Some(0), w > 0.0, o.color.or(self.style.color))
-            {
+            if let (true, true, Some(colour)) = (
+                o.style != Some(0),
+                w > 0.0,
+                Some(self.style.used_outline_color(o)),
+            ) {
                 let ring = Bounds {
                     origin: gpui::point(
                         area.origin.x - gpui::px(out),
@@ -61,18 +63,7 @@ impl CellsClipped {
 
     pub(super) fn paint_band_shadows(&mut self, window: &mut Window, area: Bounds<Pixels>) {
         for sh in &self.style.shadows {
-            let colour = if sh.color.a < 0.0 {
-                self.style
-                    .color
-                    .unwrap_or(crate::style::values::value::Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    })
-            } else {
-                sh.color
-            };
+            let colour = sh.used_color(self.style.current_color());
             let shifted = Bounds {
                 origin: gpui::point(
                     area.origin.x + gpui::px(sh.x),

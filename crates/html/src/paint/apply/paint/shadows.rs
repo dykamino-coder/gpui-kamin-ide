@@ -4,20 +4,8 @@
 use super::*;
 
 pub(super) fn paint_shadows(mut d: Div, c: &Computed) -> Div {
-    // Тень без своего цвета — цветом текста ЭТОГО элемента (метка:
-    // отрицательная альфа; css-backgrounds-3 §7, currentColor).
-    let shadow_colour = |sh: &crate::style::computed::Shadow| {
-        if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            })
-        } else {
-            sh.color
-        }
-    };
+    // `currentcolor` тени — цвет текста ЭТОГО элемента (css-backgrounds-3 §7).
+    let shadow_colour = |sh: &crate::style::computed::Shadow| sh.used_color(c.current_color());
     // У `border-shape` обе тени повторяют фигуру и рисуются растром
     // (`render::grouped` — наружные, `render::decorations` — внутренние);
     // прямоугольные примитивы квада легли бы поверх и мимо фигуры.
