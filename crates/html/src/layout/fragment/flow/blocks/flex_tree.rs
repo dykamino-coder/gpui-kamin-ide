@@ -26,12 +26,12 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
             return e.children.iter().all(is_blank);
         }
         let flex = flex_container(e);
-        if !flex
-            && !matches!(
+        if !(flex
+            || matches!(
                 e.style.display,
                 None | Some(Display::Block | Display::ListItem)
             )
-            && !(item && e.style.display == Some(Display::InlineBlock))
+            || item && e.style.display == Some(Display::InlineBlock))
         {
             return false;
         }
