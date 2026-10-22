@@ -103,6 +103,10 @@ pub(super) fn copy_whole_box(
     if table_box(copy) {
         let mut tc = copy.clone();
         tc.children = std::mem::take(kids);
+        // Содержащий блок таблицы в колонке — колонка (css-multicol-1 §2):
+        // от её ширины и доли размеров содержимого, а не от многоколоночника.
+        let col = line_col_w.map(|w| opts.inner(|cx| cx.avail_w = Some(w)));
+        let opts = col.as_deref().unwrap_or(opts);
         return Some(transformed(
             table(&tc, inner, opts),
             inner,

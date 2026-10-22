@@ -44,7 +44,7 @@ impl ColumnStack {
         } else if let Some(w) = c.breaks_w {
             // Точки разрыва блочной стопки — по раскладке главной копии
             // в колонку (`StackChild::breaks_w`).
-            let sz = c.el.layout_as_root(
+            let (sz, content) = c.el.layout_as_root_with_content(
                 size(AvailableSpace::Definite(px(w)), AvailableSpace::MaxContent),
                 window,
                 cx,
@@ -52,13 +52,18 @@ impl ColumnStack {
             // Использованный блочный размер — разложенный border box: в нём
             // уже `min-height`/`max-height` и распорки роста. Параллельный
             // поток (css-break-3 §3) остаётся протяжённостью меры.
-            // Таблица — тоже: её высота — сумма разложенных рядов, подписей и
-            // заданной высоты (css-tables-3 §computing-the-table-height).
             let table = c
                 .watched
                 .as_ref()
                 .is_some_and(|w| w.blocks().is_some_and(|b| b.table.is_some()));
-            if table || c.regrow.as_ref().is_some_and(|r| r.laid_h) {
+            if table {
+                // Таблица: высота — разложенные ряды, подписи и заданная
+                // высота (css-tables-3 §computing-the-table-height), поток —
+                // и видимое переполнение её содержимого (css-break-3 §3).
+                let h = f32::from(sz.height);
+                c.h = h;
+                c.over = h.max(f32::from(content.height));
+            } else if c.regrow.as_ref().is_some_and(|r| r.laid_h) {
                 let h = f32::from(sz.height);
                 c.over = if c.over > c.h + COORD_EPS {
                     c.over.max(h)

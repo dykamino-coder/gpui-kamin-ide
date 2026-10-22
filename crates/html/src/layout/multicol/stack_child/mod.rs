@@ -176,7 +176,7 @@ pub(super) fn multicol_stack_child(
             &opts,
             col_vert,
             col_rl,
-            line_col_w,
+            kid_w,
             &frag_geom,
             dec,
             merged,
@@ -231,7 +231,7 @@ pub(super) fn multicol_stack_child(
     measured.attach(
         &mut child,
         opts,
-        (col_vert, col_rl, line_col_w),
+        (col_vert, col_rl, kid_w),
         merged,
         &copy,
         (h, over),
