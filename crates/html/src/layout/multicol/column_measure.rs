@@ -4,7 +4,7 @@
 //! ширину решает содержимое, и пробная балансировка, дающая размер коробки и базовые линии.
 
 use crate::layout::fragment::intrinsic_measure;
-use crate::layout::fragment::types::Intrinsic;
+use crate::layout::fragment::types::{BreaksAt, Intrinsic};
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{AnyElement, App, LayoutId, Window, px, size};
 
@@ -160,5 +160,30 @@ impl ColumnStack {
             },
         );
         (id, id)
+    }
+
+    /// Измеренные точки разрыва детей, чья колонка до раскладки коробки
+    /// стопки неизвестна (`BreaksAt::Column`): главная копия раскладывается
+    /// шириной `col_w`, и её строки и блочная стопка заменяют оценку. Только
+    /// при высоте колонки, заданной до меры детей (`fixed_height`): высоту
+    /// балансируемой коробки решила мера при запросе раскладки.
+    pub(crate) fn column_breaks(&mut self, col_w: f32, window: &mut Window, cx: &mut App) {
+        if self.fixed_height.is_none() {
+            return;
+        }
+        for c in self.children.iter_mut() {
+            if c.measure.is_some() || c.span || c.breaks_w != Some(BreaksAt::Column) {
+                continue;
+            }
+            let sz = c.el.layout_as_root(
+                gpui::size(
+                    gpui::AvailableSpace::Definite(px(col_w)),
+                    gpui::AvailableSpace::MaxContent,
+                ),
+                window,
+                cx,
+            );
+            c.replace_breaks(sz, self.axis, window);
+        }
     }
 }

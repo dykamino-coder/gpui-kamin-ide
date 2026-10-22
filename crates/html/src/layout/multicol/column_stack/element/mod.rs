@@ -35,6 +35,7 @@ impl Hooks for ColumnStack {
         };
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
+        self.column_breaks(col_w, window, cx);
         let heights = self.kid_geoms();
         let (_, lines, plan, spans) = self.balance(&heights);
         self.col_w.set(col_w);

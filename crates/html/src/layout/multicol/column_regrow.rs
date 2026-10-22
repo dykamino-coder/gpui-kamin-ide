@@ -5,7 +5,7 @@
 //! (`push::Regrow`), копии собираются заново и раскладываются, пока план не перестанет
 //! требовать роста (css-break-3 §box-splitting; Blink `FinishFragmentation`).
 
-use crate::layout::fragment::types::StackChild;
+use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::multicol::column_stack::ColumnStack;
 use crate::tolerance::COORD_EPS;
 use gpui::{App, AvailableSpace, Window, point, px, size};
@@ -40,7 +40,7 @@ impl ColumnStack {
             if c.fit_whole {
                 c.monolith = fixed.is_none_or(|f| h <= f + 0.01);
             }
-        } else if let Some(w) = c.breaks_w {
+        } else if let Some(BreaksAt::Width(w)) = c.breaks_w {
             // Точки разрыва блочной стопки — по раскладке главной копии
             // в колонку (`StackChild::breaks_w`).
             let sz = c.el.layout_as_root(

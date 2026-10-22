@@ -8,7 +8,7 @@ use crate::layout::fragment::line_shape::side_margin_wrap;
 use crate::layout::fragment::paginate::Paginate;
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::push::{Regrow, measured_push};
-use crate::layout::fragment::types::StackChild;
+use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -18,7 +18,7 @@ use std::rc::Rc;
 pub(super) struct Measured {
     pub(super) paginate: Option<Paginate>,
     pub(super) watched: Rc<Watched>,
-    pub(super) breaks_w: Option<f32>,
+    pub(super) breaks_w: Option<BreaksAt>,
     /// У ребёнка свой план фрагментов (клон украшений, целый или рядами
     /// вложенный многоколоночник).
     pub(super) own: bool,

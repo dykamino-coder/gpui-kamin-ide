@@ -160,16 +160,18 @@ pub(super) fn multicol_stack_child(
     let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
-    // Копии на случай разреза между колонками:
-    // элемент GPUI рисуется один раз, а фрагмент
-    // нужен свой в каждой колонке. Больше, чем
-    // колонок, ребёнок занять не может.
+    // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,
+    // а фрагмент нужен свой в каждой колонке. Больше, чем колонок, ребёнок
+    // занять не может.
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let (own, line_w) = (dec.is_some() || whole || nest_row.is_some(), line_col_w);
-    let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, line_w, own);
+    let own = dec.is_some() || whole || nest_row.is_some();
+    let own = own || breaks::trims_at_breaks(&copy, &merged);
+    let (watched, breaks_w) =
+        breaks::recorder(&copy, measured_kids, opts, col_vert, line_col_w, own);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
+        opts.frag.nested_lines = !crate::layout::fragment::flow::flow_lines(&copy);
         build::build_copy(
             &opts,
             col_vert,
