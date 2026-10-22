@@ -3,9 +3,9 @@
 use super::{contained_image, fit_local_image, local_image_source, view_boxed};
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
+use crate::layout::replaced::image::PictureSizing;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::box_tree::styled::styled_div;
-use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
 pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> AnyElement {
@@ -112,94 +112,20 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
             }
             out
         };
-        // Контентная поправка: при `box-sizing: border-box` названный размер
-        // или предел включает паддинг и рамку — рисунку остаётся остальное.
-        let side = px_lossy_zero;
-        let (sub_w, sub_h) = if e.style.border_box == Some(true) {
-            let b = e.style.borders();
-            (
-                side(e.style.padding.left)
-                    + side(e.style.padding.right)
-                    + side(b.left)
-                    + side(b.right),
-                side(e.style.padding.top)
-                    + side(e.style.padding.bottom)
-                    + side(b.top)
-                    + side(b.bottom),
-            )
-        } else {
-            (0.0, 0.0)
-        };
-        let clamp = |l: Option<Len>, sub: f32| match l {
-            Some(Len::Px(v)) => Some((v - sub).max(0.0)),
-            _ => None,
-        };
-        let max_w = clamp(e.style.max_width, sub_w);
-        let max_h = clamp(e.style.max_height, sub_h);
-        // Сперва потолок, затем пол (§10.4).
-        let limit = |v: f32, min: Option<f32>, max: Option<f32>| {
-            let v = match max {
-                Some(m) => v.min(m),
-                None => v,
-            };
-            match min {
-                Some(m) => v.max(m),
-                None => v,
-            }
-        };
+        // Контентная поправка, пределы и соотношение рисунка — `PictureSizing`
+        // по природным размерам источника.
         // Проверено: подсказка, ПЕРЕНЕСЁННАЯ через отношение сторон, в
         // автоматическом минимуме гибкого элемента (css-flexbox §4.5;
         // `FlexItem::aspect_ratio` и зажим `min_content` в
         // `vendor/taffy/src/compute/flexbox.rs`) `flexbox-min-*-auto-*` не
         // меняет — ни с отношением только на ВНУТРЕННЕЙ картинке
-        // (`image.style().aspect_ratio` ниже), ни с отношением и на ВНЕШНЕЙ
-        // коробке замещённого (`image_with`, после `flex_shrink_0`).
+        // (`image.style().aspect_ratio` в `local::draw`), ни с отношением и на
+        // ВНЕШНЕЙ коробке замещённого (`image_with`, после `flex_shrink_0`).
         // Автоматический минимум этим парам не корень; корень искать заново.
-        // Использованный размер замещённого после §10.4: если пределы его
-        // изменили, коробка обязана ужаться вместе с рисунком.
-        let узкая: Option<(f32, f32)> = None;
-        let natural_ratio = || {
-            crate::paint::background::element_source(local.unwrap_or(src), &e.style)
-                .map(|s| s.intrinsic())
-                .and_then(|i| {
-                    i.ratio.or(match (i.w, i.h) {
-                        (Some(w), Some(h)) if h > 0.0 => Some(w / h),
-                        _ => None,
-                    })
-                })
-        };
-        let ratio_of = || {
-            // CSS Sizing 4 #aspect-ratio: authored ratio overrides the natural ratio.
-            if let Some(r) = e.style.aspect_ratio.filter(|r| *r > 0.0) {
-                return Some(r);
-            }
-            // `auto <ratio>`: природное сильнее, заявленное — запасное.
-            natural_ratio()
-                .filter(|r| *r > 0.0)
-                .or(e.style.aspect_ratio_auto.filter(|r| *r > 0.0))
-        };
-        let transfer = |size, ratio, from_width| {
-            replaced_used_style::transfer(&e.style, size, ratio, from_width, [sub_w, sub_h])
-        };
-        return fit_local_image(
-            src,
-            e,
-            local,
-            d,
-            image,
-            vectorize,
-            sub_w,
-            sub_h,
-            clamp,
-            max_w,
-            max_h,
-            limit,
-            узкая,
-            ratio_of,
-            transfer,
-            cx.cb_width,
-            vcx,
-        );
+        let natural = crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+            .map(|s| s.intrinsic());
+        let sizing = PictureSizing::new(&e.style, natural, cx.cb_width);
+        return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки
     // она не порождает и в замер по содержимому не входит (HTML §4.8.4.4 —

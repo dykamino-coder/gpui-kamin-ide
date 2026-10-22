@@ -1,11 +1,11 @@
 //! Локальная картинка: источник, путь объектного вида (object-*), вписывание в коробку.
 
+use super::content_radii::content_radii;
 use super::piped::piped_image;
-use super::{content_radii::content_radii, sized_image};
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::replaced::image::{Picture, PictureSizing};
 use crate::layout::replaced::{replaced_content, replaced_holder_ratio};
-use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::too_many_arguments)]
@@ -14,38 +14,13 @@ pub(super) fn fit_local_image(
     e: &Element,
     local: Option<&str>,
     d: gpui::Div,
-    mut image: gpui::Img,
+    image: gpui::Img,
     vectorize: impl Fn(gpui::Img, f32, f32) -> gpui::Img,
-    sub_w: f32,
-    sub_h: f32,
-    clamp: impl Fn(Option<Len>, f32) -> Option<f32>,
-    max_w: Option<f32>,
-    max_h: Option<f32>,
-    limit: impl Fn(f32, Option<f32>, Option<f32>) -> f32,
-    mut узкая: Option<(f32, f32)>,
-    ratio_of: impl Fn() -> Option<f32>,
-    transfer: impl Fn(f32, f32, bool) -> f32,
-    cb_width: Option<f32>,
+    sizing: &PictureSizing<'_>,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    image = sized_image(
-        src,
-        e,
-        local,
-        image,
-        vectorize,
-        sub_w,
-        sub_h,
-        clamp,
-        max_w,
-        max_h,
-        limit,
-        &mut узкая,
-        &ratio_of,
-        transfer,
-        cb_width,
-        vcx,
-    );
+    let (picture, узкая) = sizing.picture();
+    let mut image = draw(image, picture, vectorize);
     image = match e.style.object_fit.as_deref() {
         Some("cover") => image.object_fit(gpui::ObjectFit::Cover),
         Some("contain") => image.object_fit(gpui::ObjectFit::Contain),
@@ -53,12 +28,13 @@ pub(super) fn fit_local_image(
         Some("none") => image.object_fit(gpui::ObjectFit::None),
         _ => image.object_fit(gpui::ObjectFit::Fill),
     };
+    let (sub_w, sub_h) = sizing.sub;
     let mut d = match узкая {
         Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
         None => d,
     };
     let fills_holder =
-        replaced_holder_ratio::apply(&mut d, &e.style, ratio_of(), узкая.is_some(), vcx);
+        replaced_holder_ratio::apply(&mut d, &e.style, sizing.ratio(), узкая.is_some(), vcx);
     if fills_holder {
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
@@ -80,6 +56,51 @@ pub(super) fn fit_local_image(
     // CSS Images 3 §4.5: object-fit initially fills the content box.
     // Intrinsic sizing above already preserves the natural ratio. Applying
     // contain again to the snapped box introduces unintended letterboxing.
+}
+
+/// Рисунок в размерах `picture`; вектор растрируется в размер растра.
+fn draw(
+    image: gpui::Img,
+    picture: Picture,
+    vectorize: impl Fn(gpui::Img, f32, f32) -> gpui::Img,
+) -> gpui::Img {
+    match picture {
+        Picture::Natural => image,
+        Picture::Authored {
+            raster: (rw, rh),
+            size,
+        } => {
+            let image = vectorize(image, rw, rh);
+            match size {
+                Some((w, h)) => image.w(px(w)).h(px(h)),
+                None => image.size_full(),
+            }
+        }
+        Picture::Used {
+            raster: (rw, rh),
+            size: (w, h),
+        } => vectorize(image, rw, rh)
+            .w(px(w))
+            .h(px(h))
+            .object_fit(gpui::ObjectFit::Fill),
+        Picture::FullWidth { ratio } => {
+            let mut image = image.w(gpui::relative(1.0));
+            if let Some(r) = ratio {
+                image.style().aspect_ratio = Some(r);
+            }
+            image
+        }
+        Picture::FullHeight { ratio } => {
+            let mut image = image.h(gpui::relative(1.0));
+            if let Some(r) = ratio {
+                image.style().aspect_ratio = Some(r);
+            }
+            image
+        }
+        Picture::FullWidthPxHeight(h) => image.w(gpui::relative(1.0)).h(px(h)),
+        Picture::PxWidthFullHeight(w) => image.w(px(w)).h(gpui::relative(1.0)),
+        Picture::Full => image.size_full(),
+    }
 }
 
 pub(super) fn local_image_source<'a>(
