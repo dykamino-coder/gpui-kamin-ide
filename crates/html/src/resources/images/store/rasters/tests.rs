@@ -158,3 +158,29 @@ fn svg_links_resolve_from_resource_base_and_file_url_decodes_spaces() {
         Some([0, 0, 255, 255])
     );
 }
+
+#[test]
+fn raw_markup_does_not_implicitly_inherit_document_base() {
+    let mut temp = TempDir::new("svg-explicit-base");
+    let name = format!("imgsvc-markup-base-only-{}.png", std::process::id());
+    temp.write(&name, &fixtures::solid_png([255, 0, 0, 255]));
+    let base = url::Url::from_file_path(temp.path().join("document.html")).unwrap();
+    let store = ImageStore::new(
+        ImageServices::process(),
+        Some(base.clone()),
+        ResourcePolicy::default(),
+    );
+    let markup = format!(
+        "<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'><image href='{name}' width='1' height='1'/></svg>"
+    );
+    let req = RasterRequest::new(1.0, 1.0, 1.0, 0.0);
+    assert_eq!(
+        store.rasterize_svg(&markup, req).unwrap().pixel(0, 0),
+        Some([0, 0, 0, 0])
+    );
+    let linked = svg_links::with_base(&markup, Some(&base));
+    assert_eq!(
+        store.rasterize_svg(&linked, req).unwrap().pixel(0, 0),
+        Some([0, 0, 255, 255])
+    );
+}
