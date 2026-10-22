@@ -212,4 +212,4 @@ mod tests {
 }
 
 mod independent;
-pub(crate) use independent::{independent_copy, vertical_copy};
+pub(crate) use independent::{independent_copy, logical_copy, vertical_copy};

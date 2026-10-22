@@ -1,5 +1,5 @@
 //! Геометрия наблюдаемой копии: нормальные flex-позиции и независимые потоки.
-use super::Watched;
+use super::{Watched, axis::BlockAxis};
 use crate::layout::fragment::flow::blocks::Laid;
 use gpui::{Pixels, Point, Window};
 use std::collections::HashMap;
@@ -17,19 +17,19 @@ impl Watched {
         if axis == StackAxis::Horizontal {
             return self.laid(origin, window);
         }
+        let projection = BlockAxis { origin, size, axis };
         let boxes = self
             .seen
             .borrow()
             .iter()
             .map(|(&id, &lid)| {
-                let left = f32::from(window.layout_origin_unrounded(lid).x - origin.x);
-                let width = f32::from(window.layout_size_unrounded(lid).width);
-                let start = if axis == StackAxis::VerticalRl {
-                    f32::from(size.width) - left - width
-                } else {
-                    left
-                };
-                (id, (start, start + width))
+                (
+                    id,
+                    projection.span(
+                        window.layout_origin_unrounded(lid),
+                        window.layout_size_unrounded(lid),
+                    ),
+                )
             })
             .collect();
         let mut descendants = HashMap::new();
@@ -38,6 +38,8 @@ impl Watched {
         }
         Laid {
             boxes,
+            tables: self.table_frames(projection, window),
+            grids: self.rows(projection, window),
             descendants,
             ..Laid::default()
         }
@@ -63,8 +65,13 @@ impl Watched {
             table_shifts,
             margins,
         } = self.flex_frames(origin, window, &mut boxes);
-        let mut tables = self.table_frames(origin, window);
-        let mut grids = self.rows(origin, window);
+        let projection = BlockAxis {
+            origin,
+            size: gpui::Size::default(),
+            axis: crate::layout::fragment::types::StackAxis::Horizontal,
+        };
+        let mut tables = self.table_frames(projection, window);
+        let mut grids = self.rows(projection, window);
         let mut flows = self.item_geometry(origin, window);
         let mut content: HashMap<_, _> = self
             .item_flows
