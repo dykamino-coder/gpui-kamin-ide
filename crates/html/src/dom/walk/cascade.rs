@@ -117,6 +117,7 @@ pub(super) fn cascade_element(
     let element = CascadeCx {
         attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
+        root: path.is_empty(),
     };
     let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
     matched.extend(hints.iter());

@@ -9,6 +9,7 @@ mod container_units;
 mod decor_inset;
 mod derived;
 mod em;
+mod font_size;
 mod len_cx;
 mod len_px;
 pub use len_cx::{LenCx, ViewportCx};

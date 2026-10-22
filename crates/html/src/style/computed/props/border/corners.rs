@@ -134,13 +134,9 @@ impl Computed {
                 }
             }
             // Сокращения стороны (css-borders-4 §corner-sizing, tentative):
-            // два угла одной стороны. До `/` — первый угол (`rx [ry]`), после —
-            // второй; без `/` оба одинаковы. Углы стороны идут слева направо
-            // (верх/низ) и сверху вниз (лево/право): `border-bottom-radius:
-            // 3em 2em / 4em 1em` ≡ `bottom-left: 3em 2em; bottom-right: 4em
-            // 1em` (`border-radius-side-shorthands-001`). Логические — по
-            // письму на момент объявления; вертикальное письмо пока как
-            // горизонтальное (`-002` горизонтальный).
+            // два угла одной стороны. Логические стороны сопоставляет с
+            // физическими каскад по письму элемента (`apply_side_radius`);
+            // вне каскада элемента нет, и письмо — начальное.
             "border-top-radius"
             | "border-right-radius"
             | "border-bottom-radius"
@@ -148,31 +144,7 @@ impl Computed {
             | "border-block-start-radius"
             | "border-block-end-radius"
             | "border-inline-start-radius"
-            | "border-inline-end-radius" => {
-                let rtl = self.wm().rtl();
-                let (a, b) = match (key, rtl) {
-                    ("border-top-radius", _) | ("border-block-start-radius", false) => (0, 1),
-                    ("border-block-start-radius", true) => (1, 0),
-                    ("border-bottom-radius", _) | ("border-block-end-radius", false) => (3, 2),
-                    ("border-block-end-radius", true) => (2, 3),
-                    ("border-left-radius", _)
-                    | ("border-inline-start-radius", false)
-                    | ("border-inline-end-radius", true) => (0, 3),
-                    _ => (1, 2),
-                };
-                let (first, second) = match v.split_once('/') {
-                    Some((x, y)) => (x.trim(), y.trim()),
-                    None => (v, v),
-                };
-                const LONG: [&str; 4] = [
-                    "border-top-left-radius",
-                    "border-top-right-radius",
-                    "border-bottom-right-radius",
-                    "border-bottom-left-radius",
-                ];
-                self.apply_one(LONG[a], first, vcx);
-                self.apply_one(LONG[b], second, vcx);
-            }
+            | "border-inline-end-radius" => self.apply_side_radius(key, v, false, vcx),
             "border-radius" => self.apply_radius_shorthand(v, vcx),
             "border-top-left-radius"
             | "border-top-right-radius"
@@ -181,5 +153,37 @@ impl Computed {
 
             _ => *hit = false,
         }
+    }
+    /// Сокращение радиусов одной стороны: два её угла. До `/` — первый угол
+    /// (`rx [ry]`), после — второй; без `/` оба одинаковы. Углы стороны идут
+    /// слева направо (верх/низ) и сверху вниз (лево/право): `border-bottom-
+    /// radius: 3em 2em / 4em 1em` равно `bottom-left: 3em 2em; bottom-right:
+    /// 4em 1em` (`border-radius-side-shorthands-001`). Логическая сторона
+    /// сопоставляется по направлению `rtl` — входу фазы письма
+    /// (`style::cascade::compute_cx`); вертикальное письмо пока как
+    /// горизонтальное (`-002` горизонтальный).
+    pub(crate) fn apply_side_radius(&mut self, key: &str, v: &str, rtl: bool, vcx: ValueCx<'_>) {
+        let (a, b) = match (key, rtl) {
+            ("border-top-radius", _) | ("border-block-start-radius", false) => (0, 1),
+            ("border-block-start-radius", true) => (1, 0),
+            ("border-bottom-radius", _) | ("border-block-end-radius", false) => (3, 2),
+            ("border-block-end-radius", true) => (2, 3),
+            ("border-left-radius", _)
+            | ("border-inline-start-radius", false)
+            | ("border-inline-end-radius", true) => (0, 3),
+            _ => (1, 2),
+        };
+        let (first, second) = match v.split_once('/') {
+            Some((x, y)) => (x.trim(), y.trim()),
+            None => (v, v),
+        };
+        const LONG: [&str; 4] = [
+            "border-top-left-radius",
+            "border-top-right-radius",
+            "border-bottom-right-radius",
+            "border-bottom-left-radius",
+        ];
+        self.apply_one(LONG[a], first, vcx);
+        self.apply_one(LONG[b], second, vcx);
     }
 }
