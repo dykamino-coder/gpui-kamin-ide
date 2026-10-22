@@ -1,10 +1,10 @@
 //! Согласование имён листов, их размеров и роста фрагментируемого flex.
 use super::{PageGeom, PageStack};
-use crate::layout::fragment::plan::{self, Space};
-use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::fragment::plan::{self, Plan, Space};
+use crate::layout::fragment::types::Kid;
 use gpui::{App, Window};
 
-pub(super) type PlannedPages = (Vec<Kid>, Vec<PageGeom>, Vec<String>, usize, Vec<Frag>);
+pub(super) type PlannedPages = (Vec<Kid>, Vec<PageGeom>, Vec<String>, usize, Plan);
 impl PageStack {
     pub(super) fn fragment_plan(
         &mut self,
@@ -22,7 +22,7 @@ impl PageStack {
         let kid_names: Vec<_> = self.kids.iter().map(|k| k.page.clone()).collect();
         let mut geoms = vec![g];
         let mut names = vec![first.clone()];
-        let mut result = (0, Vec::new());
+        let mut result = (0, Plan::default());
         for pass in 0..=6 {
             let tail = names.last().cloned().unwrap_or_default();
             self.measured.clear();
