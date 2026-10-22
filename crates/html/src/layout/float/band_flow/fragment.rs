@@ -18,6 +18,7 @@ impl super::BandFlow {
 }
 
 impl<'a> super::Probe<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         window: &'a mut gpui::Window,
         cx: &'a mut gpui::App,
@@ -26,9 +27,11 @@ impl<'a> super::Probe<'a> {
         paint: Rc<crate::paint::context::PaintCx>,
         clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
         positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+        build: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
         Self {
             paint,
+            build,
             clamp,
             positioning,
             last_clamp: Default::default(),

@@ -1,9 +1,9 @@
 //! Полосы колонок и ширины из элементов <col>/<colgroup>.
 
 use super::{col_role, col_span};
-use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
+use crate::layout::cx::LayoutCx;
 use crate::style::values::value::{Len, px_strict};
 use gpui::AnyElement;
 
@@ -16,7 +16,7 @@ pub(in crate::layout::table) fn push_col_bands(
     cols: usize,
     have_rows: bool,
     cells: &mut Vec<AnyElement>,
-    vcx: ValueCx<'_>,
+    cx: &LayoutCx,
 ) {
     let mut seen: Vec<u64> = vec![];
     // Один буфер на элемент: `<col span>` красит несколько дорожек одной
@@ -46,7 +46,7 @@ pub(in crate::layout::table) fn push_col_bands(
             if band_style.bg_image.is_none() {
                 band_style.bg_image = band_style.gradient_raw.clone();
             }
-            cells.push(crate::paint::table::CellsClipped::new(rects, band_style, vcx).hooked());
+            cells.push(cx.build.layer(Layer::cell_band(rects, band_style, cx)));
         }
     }
 }

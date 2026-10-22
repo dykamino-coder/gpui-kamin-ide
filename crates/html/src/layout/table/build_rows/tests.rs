@@ -43,9 +43,9 @@ fn column_records_retain_elements_beyond_grid_without_paint_probes() {
         a: 1.0,
     });
     let table = anon_element("table", vec![Node::Element(col)]);
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let cx = crate::layout::cx::LayoutCx::default();
     let mut under = Vec::new();
-    let layers = column_bands(&table, 1, &mut under, true, doc.values());
+    let layers = column_bands(&table, 1, &mut under, true, &cx);
     assert_eq!(layers.columns.len(), 3);
     assert!(layers.columns.iter().all(|layer| layer.element.is_some()));
     assert!(layers.columns[0].rects.is_some());
@@ -56,7 +56,7 @@ fn column_records_retain_elements_beyond_grid_without_paint_probes() {
     );
     assert_eq!(under.len(), 1);
     let mut under = Vec::new();
-    let layers = column_bands(&table, 1, &mut under, false, doc.values());
+    let layers = column_bands(&table, 1, &mut under, false, &cx);
     assert!(layers.columns.iter().all(|layer| layer.rects.is_none()));
     assert!(under.is_empty());
 }

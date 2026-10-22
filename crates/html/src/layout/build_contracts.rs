@@ -14,27 +14,78 @@
 mod flow;
 pub(crate) use flow::FlowBuild;
 
+use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
+use crate::layout::table::probes::{CellBgs, CellEdges, RowRects};
+use crate::paint::context::PaintCx;
 use crate::style::computed::Computed;
 use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
+use std::rc::Rc;
 
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildStyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
+type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
+type BuildLayer = fn(Layer<'_>) -> AnyElement;
+
+/// A paint effect around a box the algorithm has built. The box keeps its
+/// layout; the effect only changes how and when it is painted.
+pub(crate) enum Effect<'a> {
+    /// The outline phase (CSS 2.1 Appendix E, step 10) isolated inside the
+    /// box: a float is painted atomically (E.2 step 5), so its outlines are
+    /// painted with it rather than with the enclosing phase.
+    OutlineScope(&'a Rc<PaintCx>),
+    /// The outline phase of a formatting context, which is no stacking
+    /// context: the enclosing phase is reused when one is collecting.
+    OutlineFlow(&'a Rc<PaintCx>),
+}
+
+/// A paint layer over geometry that layout's probes record in prepaint of
+/// the same frame (`layout::table::probes`). The layer is laid out of flow
+/// and only paints.
+pub(crate) enum Layer<'a> {
+    /// A row, row-group or column band: its background, shadows and outline
+    /// painted inside the cells of the band (css-tables-3
+    /// §drawing-backgrounds), under the given style.
+    CellBand {
+        rects: RowRects,
+        style: Box<Computed>,
+        vcx: ValueCx<'a>,
+    },
+    /// The cell backgrounds of a collapsed-border table, below its edges.
+    CellBackgrounds(CellBgs),
+    /// The collapsed edges of a table (CSS 2.1 §17.6.2.1).
+    CollapsedEdges(CellEdges),
+}
+
+impl<'a> Layer<'a> {
+    /// The band over `rects` under `style`, its values from the build `cx`.
+    pub(crate) fn cell_band(rects: RowRects, style: Computed, cx: &'a LayoutCx) -> Self {
+        Layer::CellBand {
+            rects,
+            style: Box::new(style),
+            vcx: cx.vcx(),
+        }
+    }
+}
 
 /// The build requests the algorithms need: the normal-flow requests
 /// ([`FlowBuild`]: a block-level node list, one inline formatting context,
 /// the children's boundary probes and the `::first-line` routing), one
-/// element box (`element`) and the styled, childless div of an element under a given
-/// style (`styled_box`, paint's `styled_div_with`). Inputs are the inherited
-/// computed style and the options or layout context of the box being built.
+/// element box (`element`), the styled, childless div of an element under a
+/// given style (`styled_box`, paint's `styled_div_with`), a paint effect
+/// around a built box (`effects`) and a paint layer over probed geometry
+/// (`layer`). Inputs are the inherited computed style and the options or
+/// layout context of the box being built.
 #[derive(Clone, Copy)]
 pub(crate) struct ChildBuild {
     flow: FlowBuild,
     element: BuildElement,
     styled_box: BuildStyledBox,
+    effects: BuildEffect,
+    layer: BuildLayer,
 }
 
 impl ChildBuild {
@@ -42,11 +93,15 @@ impl ChildBuild {
         flow: FlowBuild,
         element: BuildElement,
         styled_box: BuildStyledBox,
+        effects: BuildEffect,
+        layer: BuildLayer,
     ) -> Self {
         Self {
             flow,
             element,
             styled_box,
+            effects,
+            layer,
         }
     }
 
@@ -103,5 +158,15 @@ impl ChildBuild {
     /// Слой первой строки передаётся первому блочному потомку в потоке.
     pub(crate) fn first_line_route(&self, nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         self.flow.first_line_route(nodes, parent)
+    }
+
+    /// `child` under the paint effect `effect`.
+    pub(crate) fn effects(&self, child: AnyElement, effect: Effect<'_>) -> AnyElement {
+        (self.effects)(child, effect)
+    }
+
+    /// The paint layer `layer`.
+    pub(crate) fn layer(&self, layer: Layer<'_>) -> AnyElement {
+        (self.layer)(layer)
     }
 }
