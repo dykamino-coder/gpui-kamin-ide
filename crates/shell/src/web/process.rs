@@ -53,6 +53,28 @@ cef::wrap_app! {
                 }
             }
         }
+
+        fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
+            Some(KaminBrowserProcess::new())
+        }
+    }
+}
+
+cef::wrap_browser_process_handler! {
+    struct KaminBrowserProcess;
+    impl BrowserProcessHandler {
+        /// Новый процесс KaminIDE постучался в наш профиль (`cef_browser_process_
+        /// handler.h:100-122`). По умолчанию CEF открыл бы здесь окно Chromium
+        /// «New Tab» (воспроизведено, INC-2026-0076); новый процесс сам
+        /// покажет своё окно и восстановится — нам делать нечего.
+        fn on_already_running_app_relaunch(
+            &self,
+            _command_line: Option<&mut CommandLine>,
+            _current_directory: Option<&CefString>,
+        ) -> ::std::os::raw::c_int {
+            super::diag_sink::emit_line("[cef] already-running relaunch handled".into());
+            1
+        }
     }
 }
 
@@ -118,7 +140,7 @@ pub fn init() {
     // Тайминги фаз (#76, холодный старт): init блокирует показ окна —
     // цифры в лог, чтобы знать, ЧТО именно распараллеливать.
     let t_init = std::time::Instant::now();
-    let subprocess = prepare_subprocess();
+    let subprocess = super::subprocess::prepare();
     let t_sub = t_init.elapsed().as_millis();
     let cache_dir = {
         let dir = crate::host::paths::data_dirs().1.join("cef");
@@ -179,6 +201,11 @@ pub fn init() {
         }
         settings
     };
+    // Хвост прошлого инстанса держит профиль до своего `cef::shutdown`:
+    // короткое ожидание до окна снимает частое перекрытие (INC-2026-0076).
+    let profile_wait = cache_dir
+        .as_deref()
+        .map_or(0, super::profile_probe::wait_until_free);
     let t_cef = std::time::Instant::now();
     let ok = initialize(
         Some(args.as_main_args()),
@@ -186,57 +213,24 @@ pub fn init() {
         Some(&mut app),
         std::ptr::null_mut(),
     );
-    eprintln!(
-        "[cef] init: helper {t_sub} мс, cef_initialize {} мс, всего {} мс",
+    // После отказа разрешён только `CefGetExitCode` (`cef_app.h:68-76`).
+    let exit_code = if ok == 1 { 0 } else { get_exit_code() };
+    let outcome = super::profile_gate::classify(ok, exit_code);
+    super::diag_sink::emit_line(format!(
+        "[cef] initialize={ok} exit_code={exit_code} outcome={outcome:?} \
+         profile_wait_ms={profile_wait} helper_ms={t_sub} cef_initialize_ms={} total_ms={}",
         t_cef.elapsed().as_millis(),
         t_init.elapsed().as_millis()
-    );
-
+    ));
+    if outcome != super::profile_gate::Outcome::Live {
+        super::availability::record_failure(outcome, cache_dir);
+        return;
+    }
     // Наш HTML (чат Bridge, вью расширений) грузится не из сети: отдаём его
     // обработчиком схемы на хост `kamin.localhost` — так же, как это делал
     // перехват запросов у WebView2.
     super::scheme::register();
-    if ok == 1 {
-        LIVE.store(true, Ordering::Relaxed);
-    } else {
-        eprintln!("[cef] initialize вернула {ok} — веб-содержимое будет недоступно");
-    }
-}
-
-/// Подготовить exe дочерних процессов: копия помощника под именем главного.
-fn prepare_subprocess() -> Option<std::path::PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let helper = dir.join("kaminide-web.exe");
-    if !helper.exists() {
-        eprintln!("[cef] kaminide-web.exe не найден — дети будут копией главного exe");
-        return None;
-    }
-    let sub_dir = dir.join("web");
-    let target = sub_dir.join("kaminide-gpui.exe");
-    let fresh = match (helper.metadata(), target.metadata()) {
-        (Ok(src), Ok(dst)) => src.len() != dst.len() || src.modified().ok() > dst.modified().ok(),
-        _ => true,
-    };
-    if fresh {
-        if std::fs::create_dir_all(&sub_dir).is_err() {
-            return None;
-        }
-        // Копия может быть занята живым ребёнком прошлого запуска — тогда
-        // оставляем старую: она того же происхождения.
-        let _ = std::fs::remove_file(&target);
-        if std::fs::copy(&helper, &target).is_err() && !target.exists() {
-            return None;
-        }
-    }
-    // libcef.dll и его свита лежат рядом с ГЛАВНЫМ exe; дети из подпапки
-    // найдут их через PATH (наследуется).
-    let path = std::env::var("PATH").unwrap_or_default();
-    let dir_s = dir.to_string_lossy();
-    if !path.split(';').any(|p| p == dir_s) {
-        unsafe { std::env::set_var("PATH", format!("{dir_s};{path}")) };
-    }
-    Some(target)
+    LIVE.store(true, Ordering::Relaxed);
 }
 
 /// Живёт ли CEF в этом процессе (браузеры создаём только тогда).

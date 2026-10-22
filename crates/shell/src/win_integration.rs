@@ -191,6 +191,9 @@ pub fn reduce_motion() -> bool {
 /// Мёртвый/чужой порт (нет ответа на ping) — false, стартуем сами.
 pub fn forward_to_running_instance(folder: Option<&Path>) -> bool {
     use std::io::{BufRead as _, BufReader, Write as _};
+    // Нас запустил уходящий инстанс ради веб-содержимого (`web/relaunch.rs`):
+    // ему форвардить нельзя — он закрывается.
+    crate::web::wait_for_predecessor();
     let port: u16 = std::env::var("KAMIN_PROBE_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
