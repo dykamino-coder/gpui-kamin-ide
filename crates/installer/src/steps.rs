@@ -118,7 +118,8 @@ fn remove_legacy_tauri(our_dir: &Path) {
         return;
     }
     klog(&format!("legacy: found {}", loc.display()));
-    let _ = quiet("taskkill", &["/F", "/IM", "kaminide.exe"]);
+    let report = crate::procs::kill_in(&loc, &["kaminide.exe"]);
+    klog(&format!("legacy: {report}"));
     // Сначала штатный деинсталлятор (он же чистит свои ярлыки и ключи), и
     // только если он не справился — ручная зачистка.
     let uninstaller = loc.join("uninstall.exe");
@@ -173,14 +174,14 @@ fn reg_read(key: &str, value: &str) -> Option<String> {
 pub fn install_with_progress(dir: &Path, version: &str, progress: impl Fn(u8)) -> Result<()> {
     klog("install section start");
     progress(3);
-    for image in crate::unlock::IMAGES {
-        let _ = quiet("taskkill", &["/F", "/IM", image]);
-    }
-    // taskkill возвращается раньше, чем процесс выгрузит свои DLL.
+    // Только процессы этой установки (по пути exe), не все одноимённые.
+    let report = crate::procs::kill_in(dir, &crate::unlock::IMAGES);
+    klog(&format!("kill in {}: {report}", dir.display()));
+    // Завершение возвращается раньше, чем процесс выгрузит свои DLL.
     // 2026-10-14: measured 22.4 s from `taskkill /F` until the last
     // kaminide-gpui.exe disappeared (CEF/GPU teardown); 20 s was too short and
     // the install fell back to the old version.
-    let gone = crate::unlock::wait_processes_gone(30);
+    let gone = crate::unlock::wait_processes_gone(dir, 30);
     klog(&format!("taskkill done (processes gone: {gone})"));
     remove_legacy_tauri(dir);
     progress(8);
@@ -350,13 +351,8 @@ pub fn relaunch_app(dir: &Path) {
         }
         let ok = c.spawn().is_ok();
         std::thread::sleep(std::time::Duration::from_secs(3));
-        let alive = quiet_cmd(
-            "tasklist",
-            &["/FI", "IMAGENAME eq kaminide-gpui.exe", "/NH"],
-        )
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("kaminide-gpui.exe"))
-        .unwrap_or(false);
+        // Чужая одноимённая копия не должна засчитываться как перезапуск.
+        let alive = crate::procs::any_in(dir, &["kaminide-gpui.exe"]);
         klog(&format!(
             "relaunch attempt {attempt} spawn={ok} alive={alive}"
         ));
@@ -415,9 +411,8 @@ fn self_delete(dir: &Path, me: Option<&Path>) {
 
 pub fn uninstall() -> Result<()> {
     let dir = resolve_install_dir();
-    for image in ["kaminide-gpui.exe", "kaminhost.exe", "kaminide-web.exe"] {
-        let _ = quiet("taskkill", &["/F", "/IM", image]);
-    }
+    let report = crate::procs::kill_in(&dir, &crate::unlock::IMAGES);
+    klog(&format!("uninstall kill in {}: {report}", dir.display()));
     std::thread::sleep(std::time::Duration::from_millis(500));
     // Себя удалить нельзя (запущены) — чистим содержимое, свой exe пропускаем.
     let me = std::env::current_exe().ok();

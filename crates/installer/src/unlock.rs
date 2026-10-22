@@ -10,24 +10,15 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Образы, которые установщик гасит перед распаковкой.
+/// Образы, которые установщик гасит перед распаковкой — только если их exe
+/// лежит в обновляемом каталоге (`procs`, INC-2026-0075).
 pub const IMAGES: [&str; 3] = ["kaminide-gpui.exe", "kaminhost.exe", "kaminide-web.exe"];
 
-/// Жив ли ещё хоть один процесс с таким образом (по `tasklist`).
-fn image_running(image: &str) -> bool {
-    let filter = format!("IMAGENAME eq {image}");
-    match crate::steps::quiet_cmd("tasklist", &["/FI", &filter, "/NH"]).output() {
-        Ok(out) => String::from_utf8_lossy(&out.stdout)
-            .to_ascii_lowercase()
-            .contains(&image.to_ascii_lowercase()),
-        Err(_) => false,
-    }
-}
-
-/// Ждать (до `secs` секунд), пока погашенные процессы не исчезнут.
-pub fn wait_processes_gone(secs: u32) -> bool {
+/// Ждать (до `secs` секунд), пока процессы установленной копии в `dir` не
+/// исчезнут. Одноимённые процессы из других каталогов ожидание не продлевают.
+pub fn wait_processes_gone(dir: &Path, secs: u32) -> bool {
     for _ in 0..secs * 2 {
-        if !IMAGES.iter().any(|i| image_running(i)) {
+        if !crate::procs::any_in(dir, &IMAGES) {
             return true;
         }
         std::thread::sleep(Duration::from_millis(500));
