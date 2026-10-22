@@ -52,7 +52,7 @@ pub(crate) fn float_shape_of(
                 // 120). Вылезающий эллипс идёт профилем по точке высоты:
                 // тот же срез `ellipse_cut`, по высоте только [0, mh), по
                 // оси зажат [0, mw] — как растровый путь
-                // (`background::shape_profile`). Лежащий внутри — прежней
+                // (`profile::shape_profile`). Лежащий внутри — прежней
                 // аналитикой, ни на сотую не меняется.
                 let spills =
                     cy - ry < -COORD_EPS || cy + ry > mh + COORD_EPS || cx + rx > mw + COORD_EPS;
