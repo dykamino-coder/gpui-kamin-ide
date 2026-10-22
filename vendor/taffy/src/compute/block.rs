@@ -82,6 +82,17 @@ impl BlockFormattingContext {
     }
 }
 
+/// A mark of how many floats a Block Formatting Context held when it was taken.
+/// See [`BlockContext::float_mark`].
+#[cfg(feature = "float_layout")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FloatMark {
+    /// The number of left floats
+    left: usize,
+    /// The number of right floats
+    right: usize,
+}
+
 /// Context for each individual Block within a Block Formatting Context
 ///
 /// Contains a mutable reference to the BlockFormattingContext + block-specific data
@@ -169,9 +180,10 @@ impl BlockContext<'_> {
         self.bfc.float_context.has_active_floats(min_y + self.y_offset)
     }
 
-    /// Position a floated box with the context
+    /// Position a floated box with the context. `id` identifies the box in [`Self::floats_placed_since`].
     pub fn place_floated_box(
         &mut self,
+        id: u64,
         floated_box: Size<f32>,
         min_y: f32,
         direction: FloatDirection,
@@ -182,6 +194,7 @@ impl BlockContext<'_> {
             self.adjoining_floats[direction as usize] = true;
         }
         let mut pos = self.bfc.float_context.place_floated_box(
+            id,
             floated_box,
             min_y + self.y_offset,
             self.content_box_insets,
@@ -194,6 +207,25 @@ impl BlockContext<'_> {
         self.float_content_contribution = self.float_content_contribution.max(pos.y + floated_box.height);
 
         pos
+    }
+
+    /// A mark of the floats placed in the Block Formatting Context so far, for [`Self::floats_placed_since`]
+    pub fn float_mark(&self) -> FloatMark {
+        let float_context = &self.bfc.float_context;
+        FloatMark { left: float_context.left_floats().len(), right: float_context.right_floats().len() }
+    }
+
+    /// The id and position of each floated box placed since `mark` was taken: left floats in the
+    /// order they were placed, then right floats. Positions are relative to this block, as
+    /// returned by [`Self::place_floated_box`].
+    pub fn floats_placed_since(&self, mark: FloatMark) -> impl Iterator<Item = (u64, Point<f32>)> + '_ {
+        let float_context = &self.bfc.float_context;
+        let left = float_context.left_floats()[mark.left..].iter().map(|placed| (placed, FloatDirection::Left));
+        let right = float_context.right_floats()[mark.right..].iter().map(|placed| (placed, FloatDirection::Right));
+        left.chain(right).map(move |(placed, direction)| {
+            let pos = float_context.placed_position(placed, direction);
+            (placed.id, Point { x: pos.x - self.insets[0], y: pos.y - self.y_offset })
+        })
     }
 
     /// Search a space suitable for laying out non-floated content into
@@ -569,7 +601,8 @@ fn compute_inner(
         || style.contain().establishes_independent_formatting_context();
 
     // Determine margin collapsing behaviour
-    let own_margins_collapse_with_children = Line {
+    // KaminIDE patch: adjoining edges differ from actual end-margin collapse.
+    let children_margins_adjoin_own_edges = Line {
         start: vertical_margins_are_collapsible.start
             && !establishes_new_bfc
             && !style.position().is_out_of_flow()
@@ -579,8 +612,11 @@ fn compute_inner(
             && !establishes_new_bfc
             && !style.position().is_out_of_flow()
             && padding.bottom == 0.0
-            && border.bottom == 0.0
-            && size.height.is_none(),
+            && border.bottom == 0.0,
+    };
+    let own_margins_collapse_with_children = Line {
+        start: children_margins_adjoin_own_edges.start,
+        end: children_margins_adjoin_own_edges.end && size.height.is_none(),
     };
     let has_styles_preventing_being_collapsed_through = !style.is_block()
         || block_ctx.is_bfc_root()
@@ -667,6 +703,7 @@ fn compute_inner(
         justify_items,
         direction,
         own_margins_collapse_with_children,
+        children_margins_adjoin_own_edges,
         #[cfg(feature = "content_size")]
         is_scroll_container,
         block_ctx,
@@ -1000,18 +1037,47 @@ fn generate_item_list(
 fn resolve_stretch_height(
     height_style: Dimension,
     container_inner_height: Option<f32>,
-    item_y_margin_sum: f32,
+    item_margin: Rect<f32>,
+    margins_treated_as_zero: Line<bool>,
     calc_resolver: impl Fn(*const (), f32) -> f32,
 ) -> Option<f32> {
+    // KaminIDE patch: CSS Sizing 4 stretch ignores margins adjoining the parent's edges.
+    let margin_sum = if margins_treated_as_zero.start { 0.0 } else { item_margin.top }
+        + if margins_treated_as_zero.end { 0.0 } else { item_margin.bottom };
     match resolve_sizing_keyword(
         height_style,
-        container_inner_height.maybe_sub(item_y_margin_sum),
+        container_inner_height.maybe_sub(margin_sum),
         container_inner_height,
         calc_resolver,
     ) {
         Some(SizingKeywordResolution::Exact(height)) => Some(height),
         _ => None,
     }
+}
+
+// KaminIDE patch: floats and normal blocks share relative inset resolution.
+/// Compute the offset applied to a box by its `inset` if it is `position: relative` (CSS2.2 9.4.3).
+///
+/// Percentages resolve against the containing block's content box (`parent_size`); a percentage
+/// that cannot be resolved behaves as `auto`. If both insets in an axis are non-auto, `top` wins
+/// over `bottom`, and `left` wins over `right` in LTR (`right` over `left` in RTL).
+#[inline]
+fn resolve_relative_offset(
+    item: &BlockItem,
+    parent_size: Size<Option<f32>>,
+    direction: Direction,
+    tree: &impl LayoutPartialTree,
+) -> Point<f32> {
+    if item.position != Position::Relative {
+        return Point::ZERO;
+    }
+    let inset = item.inset.zip_size(parent_size, |p, s| p.maybe_resolve(s, |val, basis| tree.calc(val, basis)));
+    let x = if direction.is_rtl() {
+        inset.right.map(|x| -x).or(inset.left)
+    } else {
+        inset.left.or(inset.right.map(|x| -x))
+    };
+    Point { x: x.unwrap_or(0.0), y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0) }
 }
 
 /// Compute the content-based width in the case that the width of the container is not known
@@ -1097,6 +1163,7 @@ fn perform_final_layout_on_in_flow_children(
     justify_items: AlignItems,
     direction: Direction,
     own_margins_collapse_with_children: Line<bool>,
+    children_margins_adjoin_own_edges: Line<bool>,
     #[cfg(feature = "content_size")] is_scroll_container: bool,
     block_ctx: &mut BlockContext<'_>,
 ) -> BlockItemLayout {
@@ -1194,7 +1261,8 @@ fn perform_final_layout_on_in_flow_children(
                 let item_known_height = resolve_stretch_height(
                     item.size_style.height,
                     container_percentage_resolution_height,
-                    item_non_auto_margin.vertical_axis_sum(),
+                    item_non_auto_margin,
+                    Line::FALSE,
                     |val, basis| tree.calc(val, basis),
                 );
                 let mut item_layout = tree.perform_child_layout(
@@ -1227,6 +1295,7 @@ fn perform_final_layout_on_in_flow_children(
                 };
 
                 let mut location = block_ctx.place_floated_box(
+                    item.node_id.into(),
                     margin_box,
                     y_offset_for_float,
                     float_direction,
@@ -1245,6 +1314,11 @@ fn perform_final_layout_on_in_flow_children(
                 // for the output Layout
                 location.y += item_non_auto_margin.top;
                 location.x += item_non_auto_margin.left;
+
+                // Relative painting does not alter float exclusions (CSS 2.2 9.4.3).
+                let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
+                location.x += inset_offset.x;
+                location.y += inset_offset.y;
 
                 // println!("BLOCK FLOATED BOX ({:?}) {:?}", item.node_id, float_direction);
                 // println!("w:{} h:{} x:{}, y:{}", margin_box.width, margin_box.height, location.x, location.y);
@@ -1425,7 +1499,8 @@ fn perform_final_layout_on_in_flow_children(
                 let keyword_height = resolve_stretch_height(
                     item.size_style.height,
                     container_percentage_resolution_height,
-                    item_non_auto_margin.vertical_axis_sum(),
+                    item_non_auto_margin,
+                    children_margins_adjoin_own_edges,
                     |val, basis| tree.calc(val, basis),
                 );
 
@@ -1524,25 +1599,7 @@ fn perform_final_layout_on_in_flow_children(
             };
 
             // Resolve item inset
-            let inset_percentage_basis = Size {
-                width: Some(container_inner_width),
-                height: container_percentage_resolution_height,
-            };
-            let inset = item.inset.zip_size(inset_percentage_basis, |p, s| {
-                p.maybe_resolve(s, |val, basis| tree.calc(val, basis))
-            });
-            let inset_offset = if item.position == Position::Relative {
-                Point {
-                    x: if direction.is_rtl() {
-                        inset.right.map(|x| -x).or(inset.left).unwrap_or(0.0)
-                    } else {
-                        inset.left.or(inset.right.map(|x| -x)).unwrap_or(0.0)
-                    },
-                    y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0),
-                }
-            } else {
-                Point::ZERO
-            };
+            let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
 
             // Set y_margin_offset (same bfc child)
             if item.is_in_same_bfc
