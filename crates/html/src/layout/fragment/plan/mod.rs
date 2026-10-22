@@ -93,7 +93,7 @@ pub(crate) fn skip_float(
     }
 }
 
-// Filling returns column geometry and continuation metadata together.
+// Укладка возвращает геометрию колонок вместе с признаком неполноты.
 #[allow(clippy::type_complexity)]
 pub(crate) fn fill_at(
     kids: &[Kid],

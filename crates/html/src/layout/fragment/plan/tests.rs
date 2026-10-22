@@ -70,7 +70,7 @@ fn exact_capacity_and_monolithic_overflow_are_complete() {
     for limit in [12, 48, 16] {
         let (_, _, plan) = fill(&[slice(limit as f32 * 10.0)], 10.0, Space::columns(limit));
         assert_eq!(plan.completion, super::Completion::Complete);
-        let (_, _, plan) = fill(&[monolith(1000.0, 0.0)], 10.0, Space::pages(limit));
+        let (_, _, plan) = fill(&[monolith(1000.0, 0.0)], 10.0, Space::columns(limit));
         assert_eq!(plan.completion, super::Completion::Complete);
     }
 }
