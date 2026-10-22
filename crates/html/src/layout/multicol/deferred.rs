@@ -46,7 +46,11 @@ impl Recipe {
                 axis == crate::layout::fragment::types::StackAxis::VerticalRl,
             )?;
         } else {
-            laid::pending(&host, merged, opts.cx.vcx())?;
+            laid::pending(&host, merged, opts.cx.vcx()).or_else(|| {
+                (!opts.frag.in_stack_copy && rows.is_none_or(|r| r.cap))
+                    .then(|| super::measure::native_float::pending(&host, merged, opts.cx.vcx()))
+                    .flatten()
+            })?;
         }
         Some(std::rc::Rc::new(Self {
             host,
@@ -87,7 +91,15 @@ impl Recipe {
         let kids = if vertical {
             laid::vertical_children(&self.host, &self.merged, vcx, width, reverse, &measured)
         } else {
-            laid::children(&self.host, &self.merged, vcx, width, &measured)
+            laid::children(&self.host, &self.merged, vcx, width, &measured).or_else(|| {
+                super::measure::native_float::children(
+                    &self.host,
+                    &self.merged,
+                    vcx,
+                    width,
+                    &measured,
+                )
+            })
         };
         let kids = kids.expect("deferred recipe preserves the measured-tree contract");
         let copies = self.count.max(1) as usize;

@@ -77,7 +77,7 @@ pub(super) fn page_kids_from_groups(
             n,
             vertical,
             shape.is_some(),
-            prepared.is_some(),
+            prepared.as_ref().is_some_and(|p| p.blocks),
             shape_cx,
             vcx,
         );
@@ -207,6 +207,7 @@ pub(super) fn page_kids_from_groups(
                 Node::Element(e) if floated(n) => Some(e.node_id),
                 _ => None,
             },
+            float_extent: prepared.as_ref().is_some_and(|p| p.float_extent),
             reach,
             end: Default::default(),
             el,

@@ -61,7 +61,7 @@ pub(super) fn measure(
                 .floats
                 .iter()
                 .filter(|g| g.id == id)
-                .map(|g| g.bottom)
+                .map(|g| g.bottom + g.margins[1])
                 .fold(h, f32::max);
         }
         match k.watched.clone().filter(|w| w.has_blocks()) {
@@ -83,6 +83,13 @@ pub(super) fn measure(
                     && let Some((_, bottom)) = geometry.at(root.id)
                 {
                     h = bottom;
+                }
+                if k.float_extent {
+                    h = flow
+                        .floats
+                        .iter()
+                        .map(|g| g.bottom + g.margins[1] - lift)
+                        .fold(h, f32::max);
                 }
                 if k.shape.is_none() && k.regrow.is_some() {
                     // Реальное переполнение копии резервирует последующие листы.

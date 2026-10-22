@@ -133,7 +133,11 @@ pub(crate) fn multicol_spanner_segments(
                         is_blank(n)
                             || matches!(n, Node::Element(k)
                                 if !k.inline
-                                    && shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some())
+                                    && (crate::layout::fragment::flow::independent_copy(k)
+                                        || crate::layout::fragment::flow::empty_floats(k)
+                                        // ADR P-19 F2-3: хвост со своим вложенным
+                                        // планом ещё зависит от consumed внешнего ряда.
+                                        || shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some()))
                     })
                     && let Some(rest) = rest_h
                 {

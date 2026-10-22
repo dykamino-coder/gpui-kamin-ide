@@ -6,6 +6,7 @@ mod children;
 mod floats;
 mod grid_kid;
 pub(crate) mod laid;
+pub(crate) mod native_float;
 mod rows;
 mod stack_plan;
 mod tail;
