@@ -16,6 +16,7 @@ use crate::layout::fragment::clone::monolith_box;
 use crate::layout::fragment::flex_lines::class_a_box;
 use crate::layout::page::names::page_names;
 use crate::style::computed::{Display, LenCx};
+use crate::tolerance::COORD_EPS;
 
 mod geometry;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
@@ -90,6 +91,25 @@ impl BlockBox {
             }
         }
     }
+
+    /// Самая внешняя коробка стопки, чей разложенный border box начинается
+    /// ровно в `a` (`at(id)` — `(верх, низ)` в координатах потока): перед ней
+    /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;
+    /// монолит и коробка без своей стопки спуска не дают.
+    pub(crate) fn pushed_at(&self, a: f32, at: &dyn Fn(u64) -> Option<(f32, f32)>) -> Option<u64> {
+        for k in &self.kids {
+            let Some((top, bottom)) = at(k.id) else {
+                continue;
+            };
+            if (top - a).abs() < COORD_EPS {
+                return Some(k.id);
+            }
+            if top < a && a < bottom - COORD_EPS {
+                return k.inner.as_ref()?.pushed_at(a, at);
+            }
+        }
+        None
+    }
 }
 
 /// Блочный контейнер, чьи дети идут стопкой по блочной оси: блок и элемент
@@ -103,6 +123,21 @@ fn stacks_blocks(e: &Element) -> bool {
         && !crate::layout::multicol::spanner::multicol_container(&e.style)
         && !crate::layout::fragment::table_bands::table_box(e)
         && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
+}
+
+/// Всё поточное блочное поддерево `e` до глубины `depth` — блочные стопки и
+/// монолиты: каждую коробку, перед которой может встать распорка, рекордер
+/// стопки видит (таблица, flex и сетка кладут детей иначе).
+pub(crate) fn stacked_tree(e: &Element, depth: u8) -> bool {
+    stacks_blocks(e)
+        && (depth == 0
+            || e.children.iter().all(|n| match n {
+                Node::Element(k) if out_of_flow(&k.style) || k.inline => {
+                    !holds_blocks(k) || stacked_tree(k, depth - 1)
+                }
+                Node::Element(k) => monolith_box(k) || stacked_tree(k, depth - 1),
+                _ => true,
+            }))
 }
 
 fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {

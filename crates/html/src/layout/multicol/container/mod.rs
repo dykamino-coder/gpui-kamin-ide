@@ -87,7 +87,7 @@ pub(crate) fn multicol_column_stack(
         crate::layout::fragment::with_lines(&merged, line_col_w, opts, |opts| {
             let vcx = opts.cx.vcx();
             column_kids(
-                &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, vcx,
+                &merged, kids, cols, used_gap, col_vert, rows, copies, fixed, line_col_w, vcx,
             )
         });
     // `box-decoration-break: clone`: геометрия фрагментов —

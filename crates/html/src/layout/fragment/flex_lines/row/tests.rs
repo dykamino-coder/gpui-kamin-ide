@@ -128,6 +128,7 @@ fn a_fragmented_row_gap_does_not_expand_the_next_row() {
         None,
         3,
         &[Default::default(); 2],
+        &|_| false,
         vcx,
     );
     assert_eq!(grown[1].1.height, 200.0);

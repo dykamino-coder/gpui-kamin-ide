@@ -44,7 +44,7 @@ impl Watched {
         Rc::new(Watched {
             ids: blocks.ids().into_iter().collect(),
             seen: RefCell::default(),
-            flow: Rc::default(),
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             blocks: Some(blocks),
         })
     }
@@ -71,21 +71,35 @@ impl Watched {
         let lines = self.flow.at(origin, size, axis, window);
         let blocks = match (&self.blocks, axis) {
             (Some(b), StackAxis::Horizontal) => {
-                let boxes: HashMap<u64, (f32, f32)> = self
-                    .seen
-                    .borrow()
-                    .iter()
-                    .map(|(&id, &lid)| {
-                        let top = f32::from(window.layout_origin_unrounded(lid).y - origin.y);
-                        let h = f32::from(window.layout_size_unrounded(lid).height);
-                        (id, (top, top + h))
-                    })
-                    .collect();
+                let boxes = self.boxes(origin, window);
                 b.breaks(end, &|id| boxes.get(&id).copied())
             }
             _ => BlockBreaks::default(),
         };
         blocks.finish(lines, end)
+    }
+
+    /// Laid-out border boxes `(top, bottom)` of the watched boxes relative to
+    /// `origin`, read before the layout engine is released.
+    pub(crate) fn boxes(
+        &self,
+        origin: Point<Pixels>,
+        window: &mut Window,
+    ) -> HashMap<u64, (f32, f32)> {
+        self.seen
+            .borrow()
+            .iter()
+            .map(|(&id, &lid)| {
+                let top = f32::from(window.layout_origin_unrounded(lid).y - origin.y);
+                let h = f32::from(window.layout_size_unrounded(lid).height);
+                (id, (top, top + h))
+            })
+            .collect()
+    }
+
+    /// Block stack watched by the recorder (`for_blocks`).
+    pub(crate) fn blocks(&self) -> Option<&BlockBox> {
+        self.blocks.as_ref()
     }
 
     pub(crate) fn for_lines() -> Rc<Self> {

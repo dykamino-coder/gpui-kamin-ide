@@ -5,7 +5,7 @@ use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::flex_lines::split_flex_lines;
 use crate::layout::fragment::line_shape::nested_rows_box;
-use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed};
+use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
 use crate::layout::multicol::stack_child::multicol_stack_child;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
@@ -23,6 +23,7 @@ pub(super) fn column_kids(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
+    line_col_w: Option<f32>,
     vcx: ValueCx<'_>,
 ) -> (
     Vec<Option<Computed>>,
@@ -62,7 +63,17 @@ pub(super) fn column_kids(
     let mut kids = if col_vert {
         kids
     } else {
-        grow_pushed(kids, cols as usize, fixed, rows, copies, &kid_par, vcx)
+        let measured = |c: &Element| measured_push(c, line_col_w, col_vert);
+        grow_pushed(
+            kids,
+            cols as usize,
+            fixed,
+            rows,
+            copies,
+            &kid_par,
+            &measured,
+            vcx,
+        )
     };
     if !col_vert
         && rows.is_none()

@@ -32,6 +32,9 @@ use crate::style::computed::Display;
 /// только от мер (`ColumnStack::growths`), поэтому распорки ставятся ДО
 /// сборки копий, до неподвижной точки (≤ 6 заходов; обычно один). Проба
 /// устройства руками: SLC-007/009/010/011 и `table-cell-expansion-001` 0.00.
+/// Ребёнка, для которого `measured` истинно, распорками растит раскладка его
+/// копии (`push::measured`), и оценка его не правит.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn grow_pushed(
     mut kids: Vec<(Element, Shape)>,
     count: usize,
@@ -39,6 +42,7 @@ pub(crate) fn grow_pushed(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     par: &[crate::layout::fragment::types::Par],
+    measured: &dyn Fn(&Element) -> bool,
     vcx: ValueCx<'_>,
 ) -> Vec<(Element, Shape)> {
     for _ in 0..6 {
@@ -94,7 +98,7 @@ pub(crate) fn grow_pushed(
         let mut changed = false;
         for (kid, at, grow, forced) in grows {
             let c = &mut kids[kid].0;
-            if c.marks.paginate {
+            if c.marks.paginate || measured(c) {
                 continue;
             }
             // Ряд в точках, вытолкнутый целиком: растёт ПРЕДЫДУЩАЯ дорожка.
