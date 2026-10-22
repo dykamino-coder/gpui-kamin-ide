@@ -36,11 +36,11 @@ pub(super) fn position(
         let location = if rows {
             Point {
                 x: stack,
-                y: p.grid_pos,
+                y: p.grid_pos + p.grid_relative,
             }
         } else {
             Point {
-                x: p.grid_pos,
+                x: p.grid_pos + p.grid_relative,
                 y: stack,
             }
         };

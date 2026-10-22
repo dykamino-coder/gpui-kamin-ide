@@ -1,5 +1,6 @@
 //! Export grid baselines from final child layouts, never track-sizing shims.
 //! CSS Grid 2 grid-baselines: sharing preference, available child set, synthesis.
+use crate::compute::common::alignment::baseline_coordinate;
 
 use super::types::GridItem;
 use crate::{AlignItemsKeyword, Baselines};
@@ -37,12 +38,9 @@ fn measured(item: &GridItem, last: bool) -> Option<f32> {
 
 /// KaminIDE patch: Convert an item baseline into container coordinates.
 fn coordinate(item: &GridItem, last: bool) -> f32 {
-    let baseline = measured(item, last).unwrap_or(item.height);
-    let baseline = if item.overflow.y.is_scroll_container() {
-        baseline.clamp(0.0, item.height.max(0.0))
-    } else {
-        baseline
-    };
+    let baseline = baseline_coordinate(
+        measured(item, last), item.height, item.overflow.y.is_scroll_container(),
+    );
     item.y_position + baseline
 }
 

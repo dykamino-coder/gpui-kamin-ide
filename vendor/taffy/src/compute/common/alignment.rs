@@ -1,6 +1,26 @@
 //! Generic CSS alignment code that is shared between both the Flexbox and CSS Grid algorithms.
 use crate::style::{AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignmentSafety};
 
+/// KaminIDE patch: css-align-3 §9 — отсчёт от border-box при начальной прокрутке.
+/// Синтез вызывается контекстом; отсутствующий физический канал остаётся None.
+pub(crate) fn baseline_coordinate(own: Option<f32>, size: f32, scroll_container: bool) -> f32 {
+    let value = own.unwrap_or(size);
+    if scroll_container {
+        value.min(size).max(0.0)
+    } else {
+        value
+    }
+}
+
+/// KaminIDE patch: сохраняет отсутствие метрики вне контекста scroll-синтеза.
+pub(crate) fn exposed_baseline(own: Option<f32>, size: f32, scroll_container: bool) -> Option<f32> {
+    if scroll_container {
+        Some(baseline_coordinate(own, size, true))
+    } else {
+        own
+    }
+}
+
 /// Resolve the `safe`/`unsafe` overflow-position fallback for a self-level alignment value
 /// (used by `align-self` / `justify-self`-style sites and by absolutely-positioned items in
 /// flex/grid). If the alignment subject overflows its alignment container and the requested

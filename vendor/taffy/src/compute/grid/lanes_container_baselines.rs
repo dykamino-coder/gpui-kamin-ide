@@ -1,5 +1,6 @@
 //! CSS Grid 3 stacking baselines come from the first/last usable item in each track.
 //! Placement order is independent of relative positioning and final alignment offsets.
+use crate::compute::common::alignment::baseline_coordinate;
 
 use crate::Baselines;
 
@@ -19,17 +20,43 @@ pub(super) fn compute(
     let candidates: crate::util::sys::Vec<_> = placed
         .iter()
         .map(|item| {
-            let offset = stack_start_inset + item.stack_pos + item.margin.top + item.stack_relative;
+            let offset = stack_start_inset + item.stack_pos + item.margin.top;
             Candidate {
                 start: item.start,
                 end: item.end,
                 placement: item.placement_stack_pos,
-                first: item.baseline.map(|value| offset + value),
-                last: item.last_baseline.map(|value| offset + value),
+                first: item.baseline.map(|value| {
+                    offset + baseline_coordinate(Some(value), item.size.height, item.overflow.y.is_scroll_container())
+                }),
+                last: item.last_baseline.map(|value| {
+                    offset + baseline_coordinate(Some(value), item.size.height, item.overflow.y.is_scroll_container())
+                }),
             }
         })
         .collect();
     columns(&candidates, first_in_track.len())
+}
+
+/// KaminIDE patch: физический X сохраняет порядок содержимого, а не сортировку координат.
+pub(super) fn compute_x(placed: &[super::Placed], rows: bool, stack_start_inset: f32) -> Baselines {
+    let mut output = Baselines::NONE;
+    for item in placed {
+        let origin = if rows {
+            stack_start_inset + item.stack_pos + item.margin.left
+        } else {
+            item.grid_pos
+        };
+        let coordinate = |value| origin + baseline_coordinate(
+            Some(value), item.size.width, item.overflow.x.is_scroll_container(),
+        );
+        if output.first.is_none() {
+            output.first = item.baseline_x.map(coordinate);
+        }
+        if let Some(last) = item.last_baseline_x.or(item.baseline_x) {
+            output.last = Some(coordinate(last));
+        }
+    }
+    output
 }
 
 /// KaminIDE patch: Lane placement and measured baselines used for edge selection.
@@ -53,14 +80,14 @@ fn columns(items: &[Candidate], tracks: usize) -> Baselines {
         let mut first: Option<&Candidate> = None;
         let mut last: Option<&Candidate> = None;
         for item in items {
-            if item.start > track || item.end <= track || item.first.is_none() {
+            if item.start > track || item.end <= track {
                 continue;
             }
             // Dense placement may fill an earlier opening after this track was occupied.
-            if first.map_or(true, |old| item.placement < old.placement) {
+            if item.first.is_some() && first.map_or(true, |old| item.placement < old.placement) {
                 first = Some(item);
             }
-            if last.map_or(true, |old| item.placement >= old.placement) {
+            if item.last.or(item.first).is_some() && last.map_or(true, |old| item.placement >= old.placement) {
                 last = Some(item);
             }
         }
