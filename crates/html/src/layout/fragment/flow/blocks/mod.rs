@@ -11,9 +11,11 @@ use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
 
 mod collect;
+mod registry;
 use collect::{collect, frame, push_kids};
 mod finish;
 mod geometry;
+mod stack;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;
 pub(crate) use laid::{Laid, TableFrame};
@@ -26,6 +28,14 @@ mod grid_breaks;
 pub(crate) use grid::{GridBox, Pushed, RowPush, grid_container, item_rows};
 mod grid_tree;
 pub(crate) use grid_tree::grid_tree;
+mod flex;
+mod flex_breaks;
+mod flex_edges;
+mod flex_tree;
+pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
+pub(crate) use flex_tree::flex_tree;
+#[cfg(test)]
+mod flex_tests;
 #[cfg(test)]
 mod grid_tests;
 #[cfg(test)]
@@ -45,6 +55,11 @@ const DEPTH: u8 = 5;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct BlockBox {
     pub(crate) id: u64,
+    /// Собственные before/after force, before/after avoid до переноса с детей.
+    pub(crate) own_breaks: (bool, bool, bool, bool),
+    pub(crate) inside_avoid: bool,
+    /// Поточные крайние дети: строчный текст на краю останавливает перенос break.
+    pub(crate) edge_kids: (Option<u64>, Option<u64>),
     /// Рамка и отбивка у начального края блочной оси: разрыв внутри них
     /// недопустим (Blink «avoid breaking inside block-start border»).
     pub(crate) head: f32,
@@ -60,6 +75,7 @@ pub(crate) struct BlockBox {
     pub(crate) table: Option<Box<TableBox>>,
     /// Элементы, если контейнер — сетка: детей стопкой она не кладёт.
     pub(crate) grid: Option<GridBox>,
+    pub(crate) flex: Option<FlexBox>,
 }
 
 /// Поточный блочный ребёнок контейнера.
@@ -107,6 +123,7 @@ impl BlockBox {
         self.kids.is_empty()
             && self.table.is_none()
             && self.grid.as_ref().is_none_or(|g| g.items.is_empty())
+            && self.flex.as_ref().is_none_or(|f| f.items.is_empty())
     }
 
     /// Сетки стопки: номер контейнера и номера его элементов — дорожки рядов
@@ -120,25 +137,14 @@ impl BlockBox {
                 }
             }
         }
-        for k in &self.kids {
+        for k in self
+            .kids
+            .iter()
+            .chain(self.flex.iter().flat_map(|f| &f.items))
+        {
             if let Some(inner) = &k.inner {
                 inner.grids(out);
             }
-        }
-    }
-
-    fn push_ids(&self, out: &mut Vec<u64>) {
-        if let Some(g) = &self.grid {
-            g.push_ids(out);
-        }
-        for k in &self.kids {
-            out.push(k.id);
-            if let Some(inner) = &k.inner {
-                inner.push_ids(out);
-            }
-        }
-        if let Some(t) = &self.table {
-            t.push_ids(out);
         }
     }
 
@@ -148,24 +154,6 @@ impl BlockBox {
         let mut out = Vec::new();
         self.push_keys(&mut out);
         out
-    }
-
-    fn push_keys(&self, out: &mut Vec<u64>) {
-        if let Some(g) = &self.grid {
-            for it in &g.items {
-                if let Some(inner) = &it.inner {
-                    inner.push_keys(out);
-                }
-            }
-        }
-        for k in &self.kids {
-            if let Some(inner) = &k.inner {
-                inner.push_keys(out);
-            }
-        }
-        if let Some(t) = &self.table {
-            t.push_keys(out);
-        }
     }
 
     /// Стопка блочного контейнера по определению — ячейки или подписи

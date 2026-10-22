@@ -1,0 +1,117 @@
+//! Пересборка печатного flex с теми же независимыми ICB/fixed-слоями и ограничениями роста.
+use crate::dom::Node;
+use crate::hooks::{Hooks, IntoHooked};
+use crate::layout::fragment::paginate::watch::Watched;
+use crate::layout::fragment::push::Regrow;
+use crate::layout::options::RenderOpts;
+use crate::style::computed::Computed;
+use crate::style::values::value::Len;
+use gpui::{
+    AnyElement, App, Bounds, IntoElement, LayoutId, ParentElement, Pixels, Styled, Window, div, px,
+};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+/// Слот слоя остаётся в исходном порядке краски; пересборка меняет его содержимое.
+struct Layer(Rc<RefCell<AnyElement>>);
+impl Hooks for Layer {
+    type Layout = ();
+    type Prepaint = ();
+    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
+        (self.0.borrow_mut().request_layout(window, cx), ())
+    }
+    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
+        self.0.borrow_mut().prepaint(window, cx);
+    }
+    fn paint(
+        &mut self,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        _: &mut (),
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.0.borrow_mut().paint(window, cx);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn regrow(
+    opts: &RenderOpts,
+    root: &Computed,
+    group: &[Node],
+    watched: &Rc<Watched>,
+    (left, right, top): (f32, f32, f32),
+    (aw, ah): (f32, f32),
+    vertical: Option<bool>,
+    icb: &mut [Vec<AnyElement>],
+    fixed: &mut [Vec<AnyElement>],
+) -> Option<Regrow> {
+    if vertical.is_some() {
+        return None;
+    }
+    let [Node::Element(dom)] = group else {
+        return None;
+    };
+    let mut flexes = Vec::new();
+    watched.blocks()?.flexes(&mut flexes);
+    if flexes.is_empty() {
+        return None;
+    }
+    let slots: Vec<_> = icb
+        .iter_mut()
+        .zip(fixed)
+        .map(|(i, f)| {
+            let a = Rc::new(RefCell::new(div().into_any_element()));
+            let b = Rc::new(RefCell::new(div().into_any_element()));
+            i.push(Layer(a.clone()).hooked());
+            f.push(Layer(b.clone()).hooked());
+            (a, b)
+        })
+        .collect();
+    let (base, root, rec) = (opts.clone(), root.clone(), watched.clone());
+    let build = move |dom: &crate::dom::Element, part: usize| {
+        let mut opts = base.clone();
+        let paged = crate::layout::page::paged::PagedBuild::begin();
+        opts.frag.paged = Some(paged.clone());
+        opts.frag.watch = Some(if part == 0 {
+            rec.clone()
+        } else {
+            rec.constraints_only()
+        });
+        let scope = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+        let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(top));
+        if matches!(dom.tag.as_str(), "html" | "body")
+            && matches!(dom.style.height, Some(Len::Pct(_)))
+        {
+            wrap = wrap.h(px(ah));
+        }
+        let el = wrap
+            .children(
+                opts.cx
+                    .build
+                    .blocks(&[Node::Element(dom.clone())], &root, &opts),
+            )
+            .into_any_element();
+        let layer = |els| {
+            div()
+                .relative()
+                .w(px(aw))
+                .h(px(ah))
+                .children(els)
+                .into_any_element()
+        };
+        *slots[part].0.borrow_mut() = layer(scope.finish());
+        *slots[part].1.borrow_mut() = layer(opts.take_paged_fixed());
+        paged.end();
+        el
+    };
+    Some(Regrow {
+        dom: dom.clone(),
+        build: Box::new(build),
+        opts: opts.clone(),
+        laid: Default::default(),
+        laid_h: true,
+        watched: watched.clone(),
+    })
+}

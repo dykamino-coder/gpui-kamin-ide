@@ -86,6 +86,8 @@ impl PageStack {
                 };
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
+                let mut avoid = Vec::new();
+                let mut keep = Vec::new();
                 let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
                     Some((h, cuts, forced, solid)) => {
                         (*h, cuts.clone(), forced.clone(), solid.clone())
@@ -116,13 +118,22 @@ impl PageStack {
                             let origin = point(px(0.0), px(lift));
                             // Таблица: высота — её разложенная обёртка (ряды,
                             // подписи, заданная высота), а не оценка.
-                            if let Some(root) = w.blocks().filter(|b| b.table.is_some())
+                            let geometry = w.laid(origin, window);
+                            let flex = !geometry.flexes.is_empty();
+                            if let Some(root) = w.blocks().filter(|b| b.table.is_some() || flex)
                                 && k.float_id.is_none()
-                                && let Some((_, bottom)) = w.laid(origin, window).at(root.id)
+                                && let Some((_, bottom)) = geometry.at(root.id)
                             {
                                 h = bottom;
                             }
+                            if let Some(r) = k.regrow.as_mut() {
+                                r.laid = geometry;
+                            }
                             let m = w.breaks(origin, laid, h + lift, self.axis, window);
+                            if flex {
+                                avoid = m.avoid;
+                                keep = m.keep;
+                            }
                             (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
                             k.refresh_repeat(m.sections, ah);
                         }
@@ -135,17 +146,14 @@ impl PageStack {
                     mb: k.mb,
                     monolith: k.monolith,
                     cuts,
-                    force_before: k.force_before,
-                    force_after: k.force_after,
-                    // Правило 1 §4.3 в ПЕЧАТИ пока не применяется (§2 отчёта):
-                    // `PageKid` запретов не носит, а `false` в обоих полях
-                    // включает быстрый выход `fill_avoiding` — путь страниц
-                    // остаётся байт-в-байт прежним.
-                    avoid_before: false,
-                    avoid_after: false,
+                    force_before: k.renamed || k.measured_edge(false).0,
+                    force_after: k.measured_edge(true).0,
+                    avoid_before: k.measured_edge(false).1,
+                    avoid_after: k.measured_edge(true).1,
                     forced,
                     solid,
-                    avoid: Vec::new(),
+                    avoid,
+                    keep,
                     span: false,
                     // Страницы параллельный поток пока не берут: у них своё
                     // правило переполнения монолита (`fill_at`, ветка

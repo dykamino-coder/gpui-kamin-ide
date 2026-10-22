@@ -1,9 +1,7 @@
 //! PageStack как элемент gpui: раскладка листов (prepaint) и их краска (paint).
 
-use super::{PageGeom, PageStack};
+use super::PageStack;
 use crate::hooks::Hooks;
-use crate::layout::fragment::plan::{self, Space};
-use crate::layout::fragment::types::Frag;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, point, px, size};
 
 impl Hooks for PageStack {
@@ -44,62 +42,7 @@ impl Hooks for PageStack {
         // 1. Мера: ширина — page area, высота — по содержимому. Поля детей
         //    — из меры (`PageKid::mt/mb`), у измеренных без меры они внутри обёртки.
         let area = self.area_logical(&g);
-        let (kids, limit) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));
-        for (pk, k) in self.kids.iter().zip(&kids) {
-            pk.end.set(k.h);
-        }
-        // Листы бывают РАЗНЫЕ (`@page :first { size }`, `@page <имя>`), и
-        // высота page area решает разрезы, а имя листа — от первой коробки на
-        // нём, то есть от тех же разрезов. Укладка повторяется, пока имена
-        // листов не перестанут меняться (у одинаковых листов — один проход,
-        // байт-в-байт прежний).
-        let kid_names: Vec<String> = self.kids.iter().map(|k| k.page.clone()).collect();
-        let names_of = |plan: &[Frag], pages: usize| -> Vec<String> {
-            let mut out: Vec<Option<String>> = vec![None; pages];
-            for f in plan {
-                if let Some(slot) = out.get_mut(f.col)
-                    && slot.is_none()
-                {
-                    *slot = Some(kid_names[f.kid].clone());
-                }
-            }
-            let mut last = first_name.clone();
-            out.into_iter()
-                .map(|n| {
-                    if let Some(n) = n {
-                        last = n;
-                    }
-                    last.clone()
-                })
-                .collect()
-        };
-        let mut geoms: Vec<PageGeom> = vec![g];
-        let mut names: Vec<String> = vec![first_name.clone()];
-        let mut result = None;
-        for _ in 0..4 {
-            let tail = names.last().cloned().unwrap_or_default();
-            let at = |c: usize| -> f32 {
-                let g = geoms
-                    .get(c)
-                    .copied()
-                    .unwrap_or_else(|| (self.geom_for)(c, &tail));
-                self.area_logical(&g).1.max(1.0)
-            };
-            let (pages, _, plan) = plan::fill_at(&kids, &at, Space::pages(limit));
-            let new_names = names_of(&plan, pages);
-            let stable = new_names == names;
-            names = new_names;
-            geoms = names
-                .iter()
-                .enumerate()
-                .map(|(i, n)| (self.geom_for)(i, n))
-                .collect();
-            result = Some((pages, plan));
-            if stable {
-                break;
-            }
-        }
-        let (pages, mut plan) = result.unwrap_or_default();
+        let (kids, mut geoms, names, pages, mut plan) = self.fragment_plan(window, cx, g, area);
         // Абсолюты корня добавляют листы, пока не кончится их досягаемость
         // (Blink: «If overflowed by monolithic overflow, we need more pages»,
         // box_fragment_builder.h). Потолок — число копий слоя.

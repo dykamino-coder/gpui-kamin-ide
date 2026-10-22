@@ -126,10 +126,7 @@
 //! }
 //! ```
 //!
-use super::{
-    DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode,
-    SizingMode,
-};
+use super::{DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode, SizingMode};
 use crate::debug::debug_log;
 use crate::geometry::{AbsoluteAxis, Line, Size};
 use crate::style::{AvailableSpace, CoreStyle, OofItemStyle};
@@ -328,6 +325,14 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// KaminIDE patch: optionally retain the final solver lines and item positions.
     /// Size-only probes do not publish geometry. Fragmentation policy stays with the caller.
     fn set_detailed_flex_info(&mut self, _node_id: NodeId, _info: crate::tree::DetailedFlexInfo) {}
+
+    /// KaminIDE patch: consumed block space before a column item, after flex sizing.
+    fn flex_item_fragmentation_offset(&self, _node_id: NodeId) -> f32 { 0.0 }
+
+    /// KaminIDE patch: space consumed by fragmentation after each row flex line.
+    /// Applied after item sizing/alignment: completed items retain their used size.
+    /// Values are physical line indices as returned by `DetailedFlexInfo`.
+    fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
 }
 
 #[cfg(feature = "grid")]
@@ -380,11 +385,7 @@ pub trait LayoutGridContainer: LayoutPartialTree {
     ///
     /// Implementing this method is optional. Doing so allows you to access details about the the grid such as
     /// the computed size of each grid track and the computed placement of each grid item.
-    fn set_detailed_grid_info(
-        &mut self,
-        _node_id: NodeId,
-        _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>,
-    ) {
+    fn set_detailed_grid_info(&mut self, _node_id: NodeId, _detailed_grid_info: DetailedGridInfo<Self::CustomIdent>) {
         debug_log!("LayoutGridContainer::set_detailed_grid_info called");
     }
 }
@@ -444,10 +445,7 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size {
-                    width: true,
-                    height: true,
-                },
+                known_dimensions_are_definite: Size { width: true, height: true },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -476,10 +474,7 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size {
-                    width: true,
-                    height: true,
-                },
+                known_dimensions_are_definite: Size { width: true, height: true },
                 parent_size,
                 available_space,
                 sizing_mode,
@@ -506,10 +501,7 @@ pub(crate) trait LayoutPartialTreeExt: LayoutPartialTree {
             node_id,
             LayoutInput {
                 known_dimensions,
-                known_dimensions_are_definite: Size {
-                    width: true,
-                    height: true,
-                },
+                known_dimensions_are_definite: Size { width: true, height: true },
                 parent_size,
                 available_space,
                 sizing_mode,

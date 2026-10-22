@@ -216,6 +216,7 @@ pub fn render_paged_select(
         &mut kids,
         prev_end,
         first,
+        aw,
         ah,
         layer,
         floated,

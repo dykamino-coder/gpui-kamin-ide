@@ -1,4 +1,7 @@
 mod grid_item_rows;
+// KaminIDE patch: final flex line metadata for fragmentation.
+mod flex_layout;
+pub use flex_layout::{FlexItemLayout, FlexLayout, FlexLineLayout};
 mod alignment_adapter;
 mod measurement;
 mod line_baselines;

@@ -14,6 +14,7 @@ use crate::style::values::value::Len;
 use crate::tolerance::COORD_EPS;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 mod breaks;
+mod flex;
 mod repeat;
 mod shape;
 pub(super) use shape::group_shape;
@@ -34,6 +35,7 @@ pub(super) fn page_kids_from_groups(
     kids: &mut Vec<super::super::page_stack::PageKid>,
     mut prev_end: Option<String>,
     mut first: bool,
+    aw: f32,
     ah: f32,
     layer: impl Fn(Vec<AnyElement>) -> Vec<AnyElement>,
     floated: impl Fn(&Node) -> bool,
@@ -138,10 +140,26 @@ pub(super) fn page_kids_from_groups(
             fixed_slot.extend(layer(opts.take_paged_fixed()));
             el
         };
-        let el = build(true, false, &mut icb_copies[0], &mut fixed_copies[0]);
-        let frags: Vec<AnyElement> = (1..PAGE_COPIES)
-            .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
-            .collect();
+        let regrow = flex::regrow(
+            opts,
+            root,
+            group,
+            &watched,
+            (left, right, pad_top),
+            (aw, ah),
+            vertical,
+            icb_copies,
+            fixed_copies,
+        );
+        let (el, frags) = match &regrow {
+            Some(r) => r.rebuild(PAGE_COPIES - 1),
+            None => (
+                build(true, false, &mut icb_copies[0], &mut fixed_copies[0]),
+                (1..PAGE_COPIES)
+                    .map(|i| build(false, false, &mut icb_copies[i], &mut fixed_copies[i]))
+                    .collect(),
+            ),
+        };
         // CSS Paged Media: anonymous runs inherit the page name; floats
         // and out-of-flow boxes do not pass a name to subsequent pages.
         let (fb, fa, monolith, renamed, start_name) =
@@ -184,6 +202,7 @@ pub(super) fn page_kids_from_groups(
                     }
                 })
                 .flatten(),
+            regrow,
             watched: Some(watched),
             float_id: match n {
                 Node::Element(e) if floated(n) => Some(e.node_id),
@@ -195,6 +214,7 @@ pub(super) fn page_kids_from_groups(
             frags,
             monolith,
             force_before: fb || renamed,
+            renamed,
             force_after: fa,
             shape,
             page: start_name,

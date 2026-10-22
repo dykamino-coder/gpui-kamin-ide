@@ -25,10 +25,7 @@ pub use layout::{
 };
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
-pub use traits::{
-    LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree,
-    TraverseTree,
-};
+pub use traits::{LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
 
 #[cfg(feature = "flexbox")]
 pub use traits::LayoutFlexboxContainer;
@@ -199,13 +196,7 @@ mod grid_flex_fraction_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_track_sum_tests;
 
-#[cfg(all(
-    test,
-    feature = "taffy_tree",
-    feature = "grid",
-    feature = "flexbox",
-    feature = "block_layout"
-))]
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox", feature = "block_layout"))]
 mod baseline_transport_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
@@ -214,32 +205,16 @@ mod grid_final_baseline_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
 mod block_baseline_relative_tests;
 
-#[cfg(all(
-    test,
-    feature = "taffy_tree",
-    feature = "block_layout",
-    feature = "float_layout"
-))]
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
 mod block_float_transfer_tests;
 
-#[cfg(all(
-    test,
-    feature = "taffy_tree",
-    feature = "block_layout",
-    feature = "float_layout"
-))]
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
 mod float_context_transfer_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_outer_margin_tests;
 
-#[cfg(all(
-    test,
-    feature = "taffy_tree",
-    feature = "grid",
-    feature = "calc",
-    feature = "std"
-))]
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
 mod grid_calc_repeat_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
@@ -247,3 +222,7 @@ mod flex_perf_contract_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_layout_info_tests;
+
+// KaminIDE patch: fragmentation constraints preserve completed item geometry.
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_tests;

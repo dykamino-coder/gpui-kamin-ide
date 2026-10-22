@@ -133,6 +133,11 @@ pub(crate) fn monolith_box(k: &Element) -> bool {
 /// строчной она не является, монолитом её делают только `contain: size`,
 /// `break-inside: avoid`, прокрутка и замещаемое содержимое.
 pub(crate) fn monolith_blockified(k: &Element) -> bool {
+    k.style.break_inside_avoid || content_monolith_blockified(k)
+}
+
+/// Физически неделимый блокифицированный элемент; avoid остаётся пожеланием.
+pub(crate) fn content_monolith_blockified(k: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
@@ -144,7 +149,6 @@ pub(crate) fn monolith_blockified(k: &Element) -> bool {
     // обрезающей коробки рожает колонку (`single-line-{column,row}-flex-
     // fragmentation-010/011/051/063`, `overflow-clip-012`).
     size_monolith(k)
-        || k.style.computed().break_inside_avoid
         || scrolls(k.style.computed().overflow_x)
         || scrolls(k.style.computed().overflow_y)
         || matches!(

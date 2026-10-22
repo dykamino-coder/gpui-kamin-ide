@@ -21,8 +21,8 @@ pub(crate) fn gate(c: &Element, col_w: Option<f32>, auto_fill: bool, vcx: ValueC
 /// Why `gate` refuses `c` (`None` — accepted).
 pub(crate) fn refusal(
     c: &Element,
-    col_w: Option<f32>,
-    auto_fill: bool,
+    _col_w: Option<f32>,
+    _auto_fill: bool,
     vcx: ValueCx<'_>,
 ) -> Option<&'static str> {
     // Flex gaps adjoining a break are truncated (Blink
@@ -61,11 +61,6 @@ pub(crate) fn refusal(
         || c.style.computed().column_span == Some(true)
     {
         return Some("box");
-    }
-    // Lines opened as parallel flows keep that model: it fixes the line
-    // breaking before fragmentation (css-flexbox-1 §12), a strut would rewrap.
-    if auto_fill && crate::layout::fragment::flex_lines::explodes(c, col_w, vcx) {
-        return Some("exploded");
     }
     if gapped(c, 4) {
         return Some("gap");
