@@ -6,8 +6,8 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::{clone_dec, monolith_blockified};
 use crate::style::computed::Display;
 
-pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
-    fn eligible(e: &Element, depth: u8, item: bool) -> bool {
+pub(crate) fn flex_tree(e: &Element) -> bool {
+    fn eligible(e: &Element, item: bool) -> bool {
         if e.style.wm().vertical()
             || clone_dec(e).is_some()
             || e.style.webkit_box == Some(true)
@@ -16,14 +16,8 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
         {
             return false;
         }
-        if grid_tree(e, depth)
-            || table_tree(e, depth)
-            || (!flex_container(e) && crate::layout::fragment::probe::plain_block_tree(e, depth))
-        {
+        if grid_tree(e) || table_tree(e) || (!flex_container(e) && super::plain_tree(e)) {
             return true;
-        }
-        if depth == 0 {
-            return e.children.iter().all(is_blank);
         }
         let flex = flex_container(e);
         if !(flex
@@ -39,16 +33,15 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
             Node::Element(k) if k.style.display == Some(Display::None) => true,
             // OOF не участвует в членстве линии и не создаёт разрыв потока.
             Node::Element(k) if out_of_flow(&k.style) => true,
-            Node::Element(k) if !k.inline || flex => {
-                monolith_blockified(k) || eligible(k, depth - 1, flex)
-            }
+            Node::Element(k) if !k.inline || flex => monolith_blockified(k) || eligible(k, flex),
             n => is_blank(n),
         })
     }
-    fn contains(e: &Element, depth: u8) -> bool {
-        flex_container(e) || (depth > 0 && e.children.iter().any(|n| {
-            matches!(n, Node::Element(k) if !out_of_flow(&k.style) && contains(k, depth - 1))
-        }))
+    fn contains(e: &Element) -> bool {
+        flex_container(e)
+            || e.children
+                .iter()
+                .any(|n| matches!(n, Node::Element(k) if !out_of_flow(&k.style) && contains(k)))
     }
-    contains(e, depth) && eligible(e, depth, false)
+    contains(e) && eligible(e, false)
 }

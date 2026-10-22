@@ -14,7 +14,7 @@ pub(crate) struct FlexBox {
     pub(crate) items: Vec<BlockKid>,
 }
 
-/// Линии финальной раскладки; координаты физические, до relative-сдвигов.
+/// Линии финальной раскладки; координаты вдоль блочной оси копии, до relative-сдвигов.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FlexFrame {
     pub(crate) column: bool,
@@ -40,7 +40,7 @@ pub(crate) fn flex_container(e: &Element) -> bool {
     matches!(e.style.display, Some(Display::Flex | Display::InlineFlex))
 }
 
-pub(super) fn collect_flex(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> FlexBox {
+pub(super) fn collect_flex(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> FlexBox {
     FlexBox {
         items: e
             .children
@@ -58,7 +58,7 @@ pub(super) fn collect_flex(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>
                     avoid_before: edge_avoid(k, false, vcx),
                     avoid_after: edge_avoid(k, true, vcx),
                     monolith,
-                    inner: (!monolith).then(|| collect(k, depth, true, cx, vcx)),
+                    inner: (!monolith).then(|| collect(k, true, cx, vcx)),
                     ..Default::default()
                 })
             })

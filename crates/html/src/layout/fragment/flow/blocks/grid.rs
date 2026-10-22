@@ -85,8 +85,8 @@ pub(crate) fn grid_container(e: &Element) -> bool {
     )
 }
 
-/// Элементы сетки `e` до глубины `depth`.
-pub(super) fn collect_grid(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
+/// Все элементы сетки `e`, записываемые native рекордером.
+pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
     let mut out = GridBox::default();
     for k in e.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = k else { continue };
@@ -106,7 +106,7 @@ pub(super) fn collect_grid(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
             span: row_span(e, k),
-            inner: (!monolith).then(|| collect(k, depth, true, cx, vcx)),
+            inner: (!monolith).then(|| collect(k, true, cx, vcx)),
         });
     }
     out

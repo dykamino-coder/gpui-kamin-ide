@@ -70,8 +70,8 @@ impl TableBox {
             )
     }
 
-    /// Факты таблицы `e` для глубины спуска `depth`.
-    pub(crate) fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+    /// Устройство таблицы `e` и все потоки её ячеек и подписей.
+    pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = TableBox {
             key: table_key(e),
             ..Default::default()
@@ -83,7 +83,7 @@ impl TableBox {
             }
             // Сторона — с самой подписи, при пустоте — с таблицы (как
             // `layout::table::finish::collect_captions`).
-            let kid = caption_kid(cap, depth, cx, vcx);
+            let kid = caption_kid(cap, cx, vcx);
             if cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true) {
                 out.caps_bot.push(kid);
             } else {
@@ -111,10 +111,9 @@ impl TableBox {
                     .children
                     .iter()
                     .filter_map(|n| match n {
-                        Node::Element(c) if is_cell(c) => Some((
-                            cell_row_span(c, r.left),
-                            BlockBox::container(c, depth.saturating_sub(1), cx, vcx),
-                        )),
+                        Node::Element(c) if is_cell(c) => {
+                            Some((cell_row_span(c, r.left), BlockBox::container(c, cx, vcx)))
+                        }
                         _ => None,
                     })
                     .collect();
@@ -187,7 +186,7 @@ impl TableBox {
 
 /// Подпись — блочная коробка обёртки таблицы (CSS 2.1 §17.4: блочный
 /// контейнер), сосед коробки таблицы и других подписей.
-fn caption_kid(cap: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockKid {
+fn caption_kid(cap: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockKid {
     let monolith = monolith_box(cap);
     BlockKid {
         id: cap.node_id,
@@ -197,7 +196,7 @@ fn caption_kid(cap: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Block
         avoid_before: edge_avoid(cap, false, vcx),
         avoid_after: edge_avoid(cap, true, vcx),
         monolith,
-        inner: (!monolith).then(|| BlockBox::container(cap, depth.saturating_sub(1), cx, vcx)),
+        inner: (!monolith).then(|| BlockBox::container(cap, cx, vcx)),
         page: None,
     }
 }

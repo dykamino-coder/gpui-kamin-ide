@@ -1,5 +1,5 @@
 //! ADR P-19 F2-1/F2-3: preplan clone, вложенных рядов и trim требует состояния продолжения.
-//! F1: vertical flex ещё требует native adapter; не объявлен F2.
+//! Независимые plain/grid/table/flex, включая vertical, проходят native-dispatch до этой ветки.
 //! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
 //! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
 
@@ -191,7 +191,7 @@ pub(crate) fn measure_children(
                             // Таблицу из обычных блоков мерит раскладка копии
                             // целиком, с её принудительными разрывами
                             // (`flow::blocks::table`).
-                            let table = table_tree(c, 4);
+                            let table = table_tree(c);
                             if !measure_ok || (forced_inside(c, 6) && !table) {
                                 return None;
                             }

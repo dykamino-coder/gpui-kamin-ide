@@ -20,7 +20,7 @@ pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;
 pub(crate) use laid::{Laid, TableFrame};
 mod trees;
-pub(crate) use trees::{stacked_tree, table_tree};
+pub(crate) use trees::{plain_tree, stacked_tree, table_tree};
 pub(crate) mod table;
 use table::TableBox;
 mod grid;
@@ -35,6 +35,8 @@ mod flex_tree;
 pub(crate) use flex::{FlexBox, FlexFrame, FlexLine, FlexPush, flex_container};
 pub(crate) use flex_tree::flex_tree;
 #[cfg(test)]
+mod depth_tests;
+#[cfg(test)]
 mod flex_tests;
 #[cfg(test)]
 mod grid_tests;
@@ -47,10 +49,6 @@ mod tests;
 /// (`push::spacer::spacer_before`): рекордер стопки пишет и её, и её низ —
 /// граница, на которой встаёт разрыв перед коробкой.
 pub(crate) const STRUT_ID: u64 = 0x5350_4143_4552_0001;
-
-/// Глубина спуска — та же, что у меры стопки (`shape_full(c, 4, ..)`) плюс
-/// корень копии.
-const DEPTH: u8 = 5;
 
 /// Блочный контейнер стопки: его рамка с отбивкой у краёв и поточные
 /// блочные дети в порядке потока.
@@ -108,7 +106,7 @@ impl BlockBox {
     /// Стопка копии `e` в условиях меры `cx`: у страниц (`paged`) — имена
     /// страниц, `viewport` решает единицы окна рамок (как у меры формы).
     pub(crate) fn collect(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
-        collect(e, DEPTH, false, cx, vcx)
+        collect(e, false, cx, vcx)
     }
 
     /// Номера узлов корня и всех коробок стопки (их раскладку пишет
@@ -163,12 +161,10 @@ impl BlockBox {
     /// Стопка блочного контейнера по определению — ячейки или подписи
     /// таблицы (CSS 2.1 §17.4, §17.5): дети кладутся блочной стопкой, какое
     /// бы значение `display` ни несла коробка.
-    pub(crate) fn container(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn container(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = frame(e, cx, vcx);
-        if depth > 0 {
-            let mut adjoins = false;
-            push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
-        }
+        let mut adjoins = false;
+        push_kids(&e.children, &mut out.kids, &mut adjoins, cx, vcx);
         out
     }
 }
