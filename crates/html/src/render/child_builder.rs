@@ -1,9 +1,10 @@
 //! Реализация в render контракта раскладки по сборке дочерних элементов.
 
 use crate::layout::build_contracts::{
-    BoxBuild, ChildBuild, Effect, FlowBuild, GridPlacement, Layer,
+    BoxBuild, ChildBuild, Effect, FlowBuild, GridPlacement, Layer, Styling,
 };
 use crate::layout::cx::LayoutCx;
+use crate::paint::apply;
 use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
 use crate::paint::decorations::outline_phase;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
@@ -21,11 +22,20 @@ impl Default for ChildBuild {
                 crate::render::first_line_descendants::route,
             ),
             element,
-            BoxBuild::new(styled_div_with, content_sized),
+            BoxBuild::new(styled_div_with, styled_div, content_sized),
             crate::paint::replaced::image::image_with,
             effects,
             layer,
         )
+    }
+}
+
+fn styled_div(styling: Styling<'_>, cx: &LayoutCx) -> gpui::Div {
+    let vcx = cx.vcx();
+    match styling {
+        Styling::Box(style) => apply::apply(gpui::div(), style, vcx),
+        Styling::Text(style) => apply::apply_text(gpui::div(), style, vcx),
+        Styling::Margins(margins) => apply::margins(gpui::div(), margins, vcx),
     }
 }
 

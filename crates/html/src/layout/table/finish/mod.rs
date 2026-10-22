@@ -226,6 +226,6 @@ pub(super) fn table_finish(
         outer,
         shrink_wrap,
         &mark,
-        vcx,
+        &opts.cx,
     )
 }

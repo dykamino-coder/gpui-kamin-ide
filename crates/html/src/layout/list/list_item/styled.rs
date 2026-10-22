@@ -2,6 +2,7 @@
 
 use super::{shrink0, tabular_marker};
 use crate::dom::{Element, Node};
+use crate::layout::build_contracts::Styling;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::text::inline;
@@ -63,7 +64,10 @@ pub(crate) fn render_with_style(
     // item with no content gets a hidden zero-width copy of the marker line.
     let empty = li.children.iter().all(crate::dom::whitespace::is_blank);
     let strut = (!no_marker && empty).then(|| {
-        let mut d = crate::paint::apply::apply_text(div(), &mark_style, vcx)
+        let mut d = opts
+            .cx
+            .build
+            .styled_div(Styling::Text(&mark_style), &opts.cx)
             .w_0()
             .whitespace_nowrap()
             .child(SharedString::from(marker.clone()));
@@ -96,7 +100,10 @@ pub(crate) fn render_with_style(
         // левым краем (`list-style-type-string-003`: строка
         // маркера уходила за левый край окна).
         {
-            let m = crate::paint::apply::apply_text(div(), &mark_style, vcx)
+            let m = opts
+                .cx
+                .build
+                .styled_div(Styling::Text(&mark_style), &opts.cx)
                 .absolute()
                 .top_0();
             // An outside marker sits outside the item's principal BORDER
