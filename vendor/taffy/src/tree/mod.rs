@@ -205,3 +205,9 @@ mod block_float_transfer_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
 mod float_context_transfer_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_outer_margin_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
+mod grid_calc_repeat_tests;
