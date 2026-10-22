@@ -23,6 +23,8 @@ pub(crate) struct Laid {
     pub(crate) tables: HashMap<u64, TableFrame>,
     pub(crate) grids: HashMap<u64, Vec<(f32, f32)>>,
     pub(crate) flexes: HashMap<u64, super::FlexFrame>,
+    pub(crate) content: HashMap<u64, Vec<super::super::ContentLine>>,
+    pub(crate) descendants: HashMap<u64, Vec<u64>>,
     pub(crate) lines: HashMap<u64, Vec<super::super::LinePush>>,
     pub(crate) flows: HashMap<u64, super::super::FlowGeometry>,
 }
@@ -53,6 +55,8 @@ impl Laid {
             flexes: HashMap::new(),
             flows: HashMap::new(),
             lines: HashMap::new(),
+            content: HashMap::new(),
+            descendants: HashMap::new(),
         }
     }
 }

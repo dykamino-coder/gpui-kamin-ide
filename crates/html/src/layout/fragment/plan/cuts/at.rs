@@ -49,7 +49,7 @@ pub(crate) fn cut_at(
                 .filter(|&&(a, b)| holds(a, b) && a > from + 0.01)
                 .map(|&(a, _)| a)
                 .fold(None::<f32>, |m, a| Some(m.map_or(a, |x| x.min(a))))
-                .map(at)
+                .map(&at)
         }
     } else if let Some(&(a, _)) = k.solid.iter().find(|&&(a, b)| holds(a, b)) {
         // Колонки — как прежде: первый содержащий диапазон. Его

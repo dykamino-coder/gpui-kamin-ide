@@ -783,6 +783,16 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
         let count = flex_lines.len();
         for (index, line) in flex_lines.iter_mut().enumerate() {
             let physical = if constants.is_wrap_reverse { count - 1 - index } else { index };
+            if line.items.iter().any(|item| tree.flex_item_fragmentation_consumed(item.node) > 0.0) {
+                line.cross_size = line.items.iter_mut().map(|item| {
+                    let consumed = tree.flex_item_fragmentation_consumed(item.node);
+                    // Continuing parallel flows start at the fragment's cross start.
+                    item.offset_cross = 0.0;
+                    (item.target_size.cross(constants.dir) - consumed).max(0.0)
+                        + if consumed > 0.0 { item.margin.cross_end(constants.dir) }
+                          else { item.margin.cross_axis_sum(constants.dir) }
+                }).fold(0.0, f32::max);
+            }
             line.cross_size += tree.flex_line_fragmentation_growth(node, physical);
         }
     }
@@ -3498,11 +3508,14 @@ fn calculate_flex_item(
         *total_offset_main + item.offset_main + item.margin.main_start(direction) + main_relative_inset
     };
 
+    let consumed_cross = if direction.is_row() { tree.flex_item_fragmentation_consumed(item.node) } else { 0.0 };
     let offset_cross = total_offset_cross
         + item.offset_cross
         + effective_line_offset_cross
         + item.margin.cross_start(direction)
-        + cross_relative_inset;
+        + cross_relative_inset
+        - consumed_cross
+        - if consumed_cross > 0.0 { item.margin.cross_start(direction) } else { 0.0 };
 
     if direction.is_row() {
         let baseline_offset_cross =

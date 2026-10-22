@@ -90,7 +90,8 @@ impl Measured {
             };
             child.regrow = Some(Regrow {
                 dom: copy.clone(),
-                build: Box::new(build),
+                source: copy.clone(),
+                build: Rc::new(build),
                 opts: opts.clone(),
                 laid: Default::default(),
                 laid_h: self.laid_h,

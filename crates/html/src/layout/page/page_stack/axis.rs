@@ -92,7 +92,10 @@ impl PageStack {
     /// Mask extent of fragment `f` along the block axis: a fragment that ends
     /// its box shows the box's overflow up to the page area's end.
     pub(crate) fn mask_extent(&self, g: &PageGeom, f: &Frag) -> f32 {
-        let end = self.kids.get(f.kid).map_or(f32::MAX, |k| k.end.get());
+        let end = self.measured.get(&(f.kid, f.copy)).map_or_else(
+            || self.kids.get(f.kid).map_or(f32::MAX, |k| k.end.get()),
+            |m| m.kid.h,
+        );
         if f.from + f.h >= end - COORD_EPS {
             (self.area_logical(g).1 - f.y).max(f.h)
         } else {

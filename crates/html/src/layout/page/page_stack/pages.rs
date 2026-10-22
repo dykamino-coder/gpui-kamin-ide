@@ -39,7 +39,10 @@ impl PageStack {
             let pg = geoms.get(f.col).copied().unwrap_or(g);
             let (ax, ay) = pg.area_origin();
             let aw = pg.area.0.max(1.0);
-            let full_h = kids[f.kid].h;
+            let full_h = self
+                .measured
+                .get(&(f.kid, f.copy))
+                .map_or(kids[f.kid].h, |m| m.kid.h);
             let inner_top = self.kids[f.kid].inner_top;
             // The copy is laid out WHOLE and shifted onto its slice; physical
             // box by the root's block axis (`page_stack/axis.rs`).

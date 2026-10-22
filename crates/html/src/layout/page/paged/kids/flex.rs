@@ -77,7 +77,7 @@ pub(super) fn regrow(
         opts.frag.watch = Some(if part == 0 {
             rec.clone()
         } else {
-            rec.constraints_only()
+            rec.copy_recorder(part)
         });
         let scope = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
         let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(top));
@@ -108,7 +108,8 @@ pub(super) fn regrow(
     };
     Some(Regrow {
         dom: dom.clone(),
-        build: Box::new(build),
+        source: dom.clone(),
+        build: Rc::new(build),
         opts: opts.clone(),
         laid: Default::default(),
         laid_h: true,

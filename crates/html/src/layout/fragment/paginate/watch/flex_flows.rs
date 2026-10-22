@@ -9,8 +9,47 @@ use std::rc::Rc;
 
 impl Watched {
     pub(crate) fn rewind_flows(&self) {
+        self.flow.rewind();
+        for copy in self.copies.borrow().values() {
+            copy.rewind_flows();
+        }
         for flow in self.item_flows.values() {
             flow.rewind();
+        }
+    }
+
+    pub(crate) fn consume_flex_items(
+        &self,
+        values: HashMap<u64, (f32, bool)>,
+        window: &mut Window,
+    ) {
+        for (&id, &(amount, _)) in &values {
+            if let Some(lid) = self.seen(id) {
+                window.set_flex_item_fragmentation_consumed(lid, amount);
+            }
+        }
+        *self.flex_consumed.borrow_mut() = values;
+    }
+
+    pub(crate) fn clear_consumed(&self, window: &mut Window) {
+        let ids: Vec<_> = self.flex_consumed.borrow().keys().copied().collect();
+        for id in ids {
+            if let Some(lid) = self.seen(id) {
+                window.set_flex_item_fragmentation_consumed(lid, 0.0);
+            }
+        }
+        self.flex_consumed.borrow_mut().clear();
+    }
+
+    pub(crate) fn resume_content(
+        &self,
+        laid: &crate::layout::fragment::flow::blocks::Laid,
+        from: f32,
+    ) {
+        for (&id, lines) in &laid.content {
+            if let Some(flow) = self.item_flows.get(&id) {
+                flow.resume_lines(lines, from);
+            }
         }
     }
 

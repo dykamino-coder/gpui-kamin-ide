@@ -10,11 +10,14 @@ mod canvas;
 pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
 mod axis;
 mod contents;
+mod continuation;
 mod element;
 mod kids;
+mod measure;
 mod pages;
 mod planning;
 mod regrow;
+mod resume;
 mod sheets;
 
 /// Лист страницы (css-page-3 §page-model): полный размер, поля, рамка и
@@ -91,6 +94,8 @@ pub type MarginFn = std::rc::Rc<dyn Fn(usize, &str, usize, &PageGeom) -> Vec<Mar
 /// сравнивать надо все страницы обеих сторон.
 pub struct PageStack {
     pub(crate) kids: Vec<PageKid>,
+    measured: std::collections::HashMap<(usize, usize), continuation::CopyGeometry>,
+    continuations: std::collections::HashMap<(usize, usize), crate::layout::fragment::push::Regrow>,
     /// Лист `i` с именем страницы — его геометрия (css-page-3 §cascading).
     pub(crate) geom_for: PageGeomFn,
     /// Геометрия КАЖДОГО листа, итог `prepaint` (листы бывают разные:
@@ -139,6 +144,8 @@ impl PageStack {
     ) -> Self {
         PageStack {
             kids,
+            measured: Default::default(),
+            continuations: Default::default(),
             geom_for,
             geoms: std::cell::RefCell::new(Vec::new()),
             cell: std::cell::Cell::new((1.0, 1.0)),

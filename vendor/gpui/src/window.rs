@@ -6267,6 +6267,14 @@ impl Window {
         Some((origin + self.element_offset(), layout))
     }
 
+    /// KaminIDE patch: consumed cross extent of a row flex continuation.
+    pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_consumed(id, consumed, scale);
+        }
+    }
+
     /// KaminIDE patch: consumed block space before a column flex item.
     pub fn set_flex_item_fragmentation_offset(&mut self, id: LayoutId, offset: f32) {
         let scale = self.scale_factor();

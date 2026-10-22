@@ -23,8 +23,18 @@ pub(super) fn fill_pieces(
     mut copy: usize,
     flow: f32,
     rg: crate::layout::fragment::types::RepeatGeom,
+    remeasure: &mut super::Remeasure<'_>,
 ) {
+    let mut measured = None;
     loop {
+        let current = measured.as_ref().unwrap_or(k);
+        if let Some((next, offset)) = remeasure(kid, copy, *col, current, from) {
+            measured = Some(next);
+            from = offset;
+        }
+        let k = measured.as_ref().unwrap_or(k);
+        let flow = measured.as_ref().map_or(flow, |k| k.h.max(k.over));
+        let rg = measured.as_ref().map_or(rg, |k| k.repeat);
         let target = target_at(*col);
         let room = target - cur;
         // `box-decoration-break: clone` (css-break-4 §break-decoration):
