@@ -53,6 +53,7 @@ pub(super) fn replaced_abs_atom(
     } else {
         holder
     };
+    let holder = crate::layout::positioned::anchor::place::place(holder, merged, inherited, vcx);
     let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
     let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
     if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {

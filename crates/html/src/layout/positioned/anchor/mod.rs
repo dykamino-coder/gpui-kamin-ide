@@ -18,7 +18,7 @@
 //!
 //! Раскладке `anchor()`-вставка отдаётся НУЛЁМ (`apply::len_to_gpui`):
 //! коробка встаёт к краю содержащего блока, а сдвиг до якоря дорисовывает
-//! `AnchorPlace`. Тот же ноль делает запасное значение тривиальным:
+//! `place_one`. Тот же ноль делает запасное значение тривиальным:
 //! `anchor(left, 20px)` в `right` — это сдвиг на −20 точек от нулевой вставки.
 //! Статически неразрешимые функции (нет имени и якоря по умолчанию; имя,
 //! которого в документе нет) сводятся ДО сборки (`settle_static`): их место
@@ -37,7 +37,7 @@ mod plan;
 pub(crate) mod resolve;
 pub(crate) mod settle;
 
-use gpui::{AnyElement, Bounds, Pixels};
+use gpui::{Bounds, Pixels};
 
 use crate::style::computed::Align;
 use crate::style::values::value::{AnchorFn, Len};
@@ -131,11 +131,8 @@ pub struct AnchorPlan {
     refs_default: bool,
 }
 
-/// Заместитель абсолютной коробки с якорными вставками: своей коробки не
-/// заводит (отдаёт `layout_id` ребёнка, как `LatePlace`), сдвиг считает на
-/// подготовке кадра — к этому моменту якори раньше по дереву уже в реестре.
-pub struct AnchorPlace {
-    child: AnyElement,
+/// Планы якорного размещения абсолютной коробки на подготовке кадра.
+pub(crate) struct PlacementPlans {
     /// Кандидаты: [0] — базовые стили, дальше — `position-try-fallbacks`.
     plans: Vec<AnchorPlan>,
     order: u8,
