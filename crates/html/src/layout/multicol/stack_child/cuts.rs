@@ -14,7 +14,6 @@ use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
 use crate::tolerance::COORD_EPS;
-
 #[allow(clippy::too_many_arguments)]
 // Fragment copies carry cuts, heights and continuation flags together.
 #[allow(clippy::type_complexity)]
@@ -160,6 +159,10 @@ pub(super) fn stack_child_of(
 ) -> crate::layout::fragment::types::StackChild {
     let repeat = repeat_bands(copy, fixed, rows, measured_table, vcx);
     crate::layout::fragment::types::StackChild {
+        #[cfg(feature = "wpt-harness")]
+        probe_pending: measure.is_none(),
+        #[cfg(feature = "wpt-harness")]
+        probe: Default::default(),
         watched: None,
         breaks_w: None,
         regrow: None,

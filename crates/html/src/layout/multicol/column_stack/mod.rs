@@ -2,7 +2,8 @@
 //! (`StackChild`), колонки, зазор, ось, ряды, линейка и буферы плана после укладки; сама
 //! укладка — в подмодулях `balance`, `fill`, `avoid`, `paginate`, `element`.
 
-use crate::layout::fragment::types::{Frag, Intrinsic, Kid, Rows, StackAxis, StackChild};
+use crate::layout::fragment::plan::Plan;
+use crate::layout::fragment::types::{Intrinsic, Kid, Rows, StackAxis, StackChild};
 use gpui::{Bounds, Pixels};
 
 pub mod avoid;
@@ -51,7 +52,7 @@ pub struct ColumnStack {
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
     pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
-    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) plan: std::cell::RefCell<Plan>,
     /// Reuse placement storage while mapping viewport static-position probes.
     pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
     pub(crate) col_w: std::cell::Cell<f32>,
@@ -116,7 +117,7 @@ impl ColumnStack {
             copies,
             gap_items,
             intrinsic,
-            plan: std::cell::RefCell::new(Vec::new()),
+            plan: std::cell::RefCell::new(Plan::default()),
             static_places: Default::default(),
             col_w: std::cell::Cell::new(0.0),
             lines_plan: std::cell::RefCell::new(Vec::new()),

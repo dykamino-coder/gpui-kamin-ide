@@ -1,6 +1,7 @@
 //! Ребёнок с box-decoration-break: clone — фрагменты с повторяемой декорацией.
 
 use super::pieces::LoopStep;
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
 
@@ -12,7 +13,7 @@ pub(super) fn fill_clone_dec(
     not_top: usize,
     placed: &mut bool,
     shortage: &mut f32,
-    out: &mut Vec<Frag>,
+    out: &mut Plan,
     float_hold: &mut Option<(usize, usize, f32)>,
     kid: usize,
     k: &Kid,
@@ -113,6 +114,7 @@ pub(super) fn fill_clone_dec(
         });
         *from += take;
         if *copy + 1 >= limit {
+            out.incomplete();
             *y = target;
             *placed = true;
             return Some(LoopStep::Break);

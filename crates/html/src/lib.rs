@@ -167,6 +167,9 @@ pub const BROWSER_CSS: &str = r#"
                border-radius: 0; padding: 2px; margin: 0 }
 "#;
 
+#[cfg(feature = "wpt-harness")]
+pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
+
 pub use document::{Document, DocumentBuilder};
 pub use dom::{Element, Node, parse};
 pub use render::{RenderOpts, render, render_block};

@@ -23,7 +23,8 @@ impl ColumnStack {
         let col_w =
             ((inline_avail - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
         let heights = self.kid_geoms();
-        let (_, lines, plan, spans) = self.balance(&heights);
+        let (_, lines, mut plan, spans) = self.balance(&heights);
+        plan.check_copies(|kid| self.children[kid].frags.len() + 1);
         self.col_w.set(col_w);
         *self.lines_plan.borrow_mut() = lines;
         let step = col_w + self.gap;

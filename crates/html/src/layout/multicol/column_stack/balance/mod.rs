@@ -3,6 +3,7 @@
 //! линия (css-multicol-1); с рядами — курсор по сетке `column-height + row-gap`, пробеги
 //! линий между спаннерами и переполняющие колонки вбок при `nowrap`. Поверх `fill`.
 
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::{self, Space};
 use crate::layout::fragment::types::{Frag, Kid, Rows};
 use crate::layout::multicol::column_stack::ColumnStack;
@@ -26,12 +27,9 @@ impl ColumnStack {
     /// `multicol-fill-balance-038`, `multi-line-*-flex-fragmentation-*`).
     /// Вернуть можно только с разделением «переполнение» и «балансировка»
     /// в самой `balance`.
-    // Balancing returns column geometry with the fragment's continuation metadata.
+    // Балансировка возвращает геометрию колонок и статус продолжения плана.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn balance(
-        &self,
-        kids: &[Kid],
-    ) -> (f32, Vec<(f32, f32)>, Vec<Frag>, Vec<(usize, f32)>) {
+    pub(crate) fn balance(&self, kids: &[Kid]) -> (f32, Vec<(f32, f32)>, Plan, Vec<(usize, f32)>) {
         let count = self.count;
         // Потолок баланса без рядов (`Rows::cap`): баланс как прежде, но не
         // выше высоты коробки; копий — сколько построил `render::generic_box::multicol`, лишние
@@ -134,7 +132,7 @@ impl ColumnStack {
         let not_at_start = if phase0 > COORD_EPS { count } else { 0 };
         let mut y = phase0;
         let mut lines: Vec<(f32, f32)> = Vec::new();
-        let mut plan: Vec<Frag> = Vec::new();
+        let mut plan = Plan::default();
         let mut spans: Vec<(usize, f32)> = Vec::new();
         let mut i = 0usize;
         while i < kids.len() {
@@ -181,6 +179,9 @@ impl ColumnStack {
             let base = lines.len() * count;
             let (n, frags, tail) =
                 self.balance_run(&kids[i..j], first, cap, balance_last, not_at_start);
+            if frags.completion == crate::layout::fragment::plan::Completion::Incomplete {
+                plan.incomplete();
+            }
             for f in frags {
                 plan.push(Frag {
                     kid: f.kid + i,

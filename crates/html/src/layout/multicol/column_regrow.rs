@@ -50,6 +50,10 @@ impl ColumnStack {
                 window,
                 cx,
             );
+            #[cfg(feature = "wpt-harness")]
+            if c.probe_pending && c.watched.is_some() {
+                c.probe.height("columns.width", c.h, f32::from(sz.height));
+            }
             // Использованный блочный размер — разложенный border box: в нём
             // уже `min-height`/`max-height` и распорки роста. Параллельный
             // поток (css-break-3 §3) остаётся протяжённостью меры.

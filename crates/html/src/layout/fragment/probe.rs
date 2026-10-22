@@ -173,3 +173,6 @@ pub(crate) fn forced_opaque(k: &Element) -> bool {
             )
             && !matches!(k.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot"))
 }
+
+#[cfg(feature = "wpt-harness")]
+pub(crate) mod diagnostics;

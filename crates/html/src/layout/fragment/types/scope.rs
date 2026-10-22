@@ -9,6 +9,9 @@ use crate::layout::options::RenderOpts;
 /// `ConstraintSpace` каждого вызова раскладки, а не в глобальном состоянии).
 #[derive(Clone, Debug, Default)]
 pub struct FragCx {
+    /// Сборщик диагностики конкретного прогона; хост забирает снимок через take.
+    #[cfg(feature = "wpt-harness")]
+    pub probe: crate::FragmentProbes,
     /// Строится копия ребёнка стопки колонок (`multicol_stack_child`).
     /// Многоколоночник со спаннером внутри другой стопки остаётся на
     /// сегментном пути: единой стопке нужен перенос ряда/спаннера во ВНЕШНЮЮ
