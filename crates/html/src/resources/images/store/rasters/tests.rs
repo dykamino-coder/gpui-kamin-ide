@@ -135,13 +135,11 @@ fn external_bytes_are_cached_revalidated_and_checked_by_document_policy() {
     assert_eq!(secure.pixel(0, 0), Some([0, 0, 0, 0]));
     assert_eq!(loader.reads.load(Ordering::Relaxed), 1);
     assert!(!Arc::ptr_eq(&a, &secure));
-    use base64::Engine;
-    let data =
-        base64::engine::general_purpose::STANDARD.encode(fixtures::solid_png([255, 0, 0, 255]));
-    let inline = markup.replace(
-        "file:///resource.png",
-        &format!("data:image/png;base64,{data}"),
-    );
+    let data = fixtures::solid_png([255, 0, 0, 255])
+        .iter()
+        .map(|byte| format!("%{byte:02X}"))
+        .collect::<String>();
+    let inline = markup.replace("file:///resource.png", &format!("data:image/png,{data}"));
     assert_eq!(
         store
             .rasterize_svg(&inline, req.without_external_resources())
