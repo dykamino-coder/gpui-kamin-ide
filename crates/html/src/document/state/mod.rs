@@ -75,6 +75,9 @@ pub struct DocState {
     pub(crate) counter_styles: RefCell<CounterStyles>,
     /// `@color-profile`: имя → байты ICC (css-color-5 §color-profile).
     pub(crate) profiles: RefCell<HashMap<String, Vec<u8>>>,
+    /// Запросы картинок документа, его база и политика доступа; декодированное — в
+    /// общем процессном кэше по содержимому (`resources::images::store`).
+    pub(crate) images: RefCell<crate::resources::images::store::ImageStore>,
     /// Смешанные суммы `calc()` (`Len::Calc`).
     pub(crate) calc: Arena<Sum>,
     /// Функции `anchor()` (`Len::Anchor`).

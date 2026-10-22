@@ -111,6 +111,14 @@ impl DecodedImage {
             DecodedImage::Vector(v) => v.natural,
         }
     }
+
+    /// Байты, которые держит значение (точки или разметка).
+    pub(crate) fn held_bytes(&self) -> usize {
+        match self {
+            DecodedImage::Raster(r) => r.bytes.len(),
+            DecodedImage::Vector(v) => v.markup.len(),
+        }
+    }
 }
 
 /// Факты о картинке, доступные раскладке без точек.
@@ -125,6 +133,12 @@ pub(crate) struct ImageMetadata {
 /// Почему картинки нет.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum ImageError {
+    /// Бэкенда загрузки для схемы нет.
+    UnsupportedScheme(String),
+    /// Политика документа запрещает этот адрес.
+    AccessDenied,
+    /// Байты не получены (нет файла, ошибка чтения, битый `data:`).
+    Io,
     /// Байты не являются картинкой известного формата или текст SVG не UTF-8.
     InvalidData,
     /// Кодек распознал формат, но данные повреждены.
