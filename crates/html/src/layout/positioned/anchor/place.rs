@@ -1,7 +1,7 @@
-//! `AnchorPlace`: сдвиг абсолютной коробки к якорю на подготовке кадра.
+//! Единое размещение OOF по якорю и прозрачный адаптер готовой коробки.
 
 use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
-use super::{AnchorPlace, AnchorPlan, geometry, reframe_if_stale, request_rebuild};
+use super::{AnchorPlan, PlacementPlans, geometry, reframe_if_stale, request_rebuild};
 use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
@@ -39,18 +39,22 @@ pub fn place(el: AnyElement, own: &Computed, inherited: &Computed, vcx: ValueCx<
         p.apply_tactics(fb.tactics);
         plans.push(p);
     }
-    AnchorPlace {
-        child: el,
+    let plans = PlacementPlans {
         plans,
         order: base.position_try_order,
         key: own.anchor_key,
         visibility: own.position_visibility,
         values: vcx.keep(),
-    }
-    .hooked()
+    };
+    Placed { child: el, plans }.hooked()
 }
 
-impl Hooks for AnchorPlace {
+struct Placed {
+    child: AnyElement,
+    plans: PlacementPlans,
+}
+
+impl Hooks for Placed {
     type Layout = LayoutId;
     /// Спрятана ли коробка по `position-visibility`: `paint` пропускает
     /// всё поддерево (`force-hidden`; Blink — слой и потомки не рисуются).
@@ -68,62 +72,7 @@ impl Hooks for AnchorPlace {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        let vcx = self.values.vcx();
-        let own = geometry::logical_own(*state, bounds, window);
-        let (k, p) = self.choose(own, window, self.values.vcx());
-        let plan = &self.plans[k];
-        // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
-        // при `auto`-размере (`resolve::fill_anchor_pairs`).
-        {
-            vcx.doc
-                .anchor_frame
-                .area_now
-                .borrow_mut()
-                .insert(self.key, p.imcb);
-            vcx.doc
-                .anchor_frame
-                .cell_now
-                .borrow_mut()
-                .insert(self.key, p.cell);
-            let stale = vcx.doc.anchor_frame.area_last.borrow().get(&self.key) != Some(&p.imcb)
-                || vcx.doc.anchor_frame.cell_last.borrow().get(&self.key) != Some(&p.cell);
-            if stale && vcx.doc.anchor_frame.used_last.get() {
-                reframe_if_stale(window, vcx);
-            }
-        }
-        if self.plans.len() > 1 {
-            let prev = vcx.doc.anchor_frame.chosen.borrow_mut().insert(self.key, k);
-            // Объявления выбранного правила лягут в стиль на следующей
-            // сборке (`apply_chosen`) — попросить её.
-            if prev != Some(k) {
-                request_rebuild(window);
-            }
-        }
-        let mut hidden = false;
-        // §position-visibility. anchor-valid: якорь по умолчанию нужен, но не
-        // разрешается. anchor-visible: якорь невидим либо целиком обрезан
-        // промежуточной коробкой — его маска его не пересекает, а маска самой
-        // коробки (обрезки содержащего блока и выше) пересекает. no-overflow:
-        // выбранный вариант всё равно переполняет IMCB.
-        if self.visibility & VIS_VALID != 0 && plan.refs_default && plan.rec(None).is_none() {
-            hidden = true;
-        }
-        if self.visibility & VIS_VISIBLE != 0
-            && let Some(r) = plan.rec(None)
-        {
-            let own_clip = window.content_mask().bounds;
-            if r.hidden || (!r.rect.intersects(&r.clip) && r.rect.intersects(&own_clip)) {
-                hidden = true;
-            }
-        }
-        if self.visibility & VIS_NO_OVERFLOW != 0 && p.overflow {
-            hidden = true;
-        }
-        let child = &mut self.child;
-        window.with_exact_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
-            child.prepaint(window, cx)
-        });
-        hidden
+        place_one(&mut self.child, &self.plans, bounds, *state, window, cx)
     }
 
     fn paint(
@@ -138,4 +87,76 @@ impl Hooks for AnchorPlace {
             self.child.paint(window, cx);
         }
     }
+}
+
+/// Разместить одну уже разложенную коробку; слой и строчные входы используют
+/// общую процедуру выбора варианта, публикации геометрии и видимости.
+pub(crate) fn place_one(
+    child: &mut AnyElement,
+    plans: &PlacementPlans,
+    bounds: Bounds<Pixels>,
+    layout: LayoutId,
+    window: &mut Window,
+    cx: &mut App,
+) -> bool {
+    let vcx = plans.values.vcx();
+    let own = geometry::logical_own(layout, bounds, window);
+    let (k, p) = plans.choose(own, window, plans.values.vcx());
+    let plan = &plans.plans[k];
+    // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
+    // при `auto`-размере (`resolve::fill_anchor_pairs`).
+    {
+        vcx.doc
+            .anchor_frame
+            .area_now
+            .borrow_mut()
+            .insert(plans.key, p.imcb);
+        vcx.doc
+            .anchor_frame
+            .cell_now
+            .borrow_mut()
+            .insert(plans.key, p.cell);
+        let stale = vcx.doc.anchor_frame.area_last.borrow().get(&plans.key) != Some(&p.imcb)
+            || vcx.doc.anchor_frame.cell_last.borrow().get(&plans.key) != Some(&p.cell);
+        if stale && vcx.doc.anchor_frame.used_last.get() {
+            reframe_if_stale(window, vcx);
+        }
+    }
+    if plans.plans.len() > 1 {
+        let prev = vcx
+            .doc
+            .anchor_frame
+            .chosen
+            .borrow_mut()
+            .insert(plans.key, k);
+        // Объявления выбранного правила лягут в стиль на следующей
+        // сборке (`apply_chosen`) — попросить её.
+        if prev != Some(k) {
+            request_rebuild(window);
+        }
+    }
+    let mut hidden = false;
+    // §position-visibility. anchor-valid: якорь по умолчанию нужен, но не
+    // разрешается. anchor-visible: якорь невидим либо целиком обрезан
+    // промежуточной коробкой — его маска его не пересекает, а маска самой
+    // коробки (обрезки содержащего блока и выше) пересекает. no-overflow:
+    // выбранный вариант всё равно переполняет IMCB.
+    if plans.visibility & VIS_VALID != 0 && plan.refs_default && plan.rec(None).is_none() {
+        hidden = true;
+    }
+    if plans.visibility & VIS_VISIBLE != 0
+        && let Some(r) = plan.rec(None)
+    {
+        let own_clip = window.content_mask().bounds;
+        if r.hidden || (!r.rect.intersects(&r.clip) && r.rect.intersects(&own_clip)) {
+            hidden = true;
+        }
+    }
+    if plans.visibility & VIS_NO_OVERFLOW != 0 && p.overflow {
+        hidden = true;
+    }
+    window.with_exact_element_offset(gpui::point(px(p.dx), px(p.dy)), |window| {
+        child.prepaint(window, cx)
+    });
+    hidden
 }

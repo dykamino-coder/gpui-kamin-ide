@@ -1,9 +1,9 @@
-//! Геометрия якорного размещения (`AnchorPlace`): собственная коробка берётся из
+//! Геометрия якорного размещения (`PlacementPlans`): собственная коробка берётся из
 //! неокруглённой раскладки до привязки к пикселям устройства, и среди вариантов
 //! `position-try-fallbacks` выбирается первый непереполняющий (с учётом прежнего выбора
 //! и `position-try-order`), как цикл `TryCalculateOffset` в Blink `OutOfFlowLayoutPart`.
 
-use super::{AnchorPlace, Placement};
+use super::{Placement, PlacementPlans};
 use crate::document::state::ValueCx;
 use gpui::{Bounds, LayoutId, Pixels, Window, px};
 
@@ -24,7 +24,7 @@ pub(super) fn logical_own(
     }
 }
 
-impl AnchorPlace {
+impl PlacementPlans {
     /// Выбор варианта (§fallback; Blink `OutOfFlowLayoutPart`, цикл
     /// `TryCalculateOffset`): сперва последний удачный (`CHOSEN`), пока он
     /// не переполняет; иначе первый непереполняющий по порядку списка, а при
