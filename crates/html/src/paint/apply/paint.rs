@@ -58,7 +58,7 @@ pub(crate) fn apply_paint(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     // Фон, обрезанный внутренним краем (`background-clip`), красит не сама
     // коробка, а отдельный слой внутри неё (`render::clip_layer`): коробка в
     // раскладке красится целиком, вместе с рамкой и полями.
-    if c.color_clip(vcx).is_none()
+    if c.color_inset_clip(vcx).is_none()
         && !crate::style::computed::single_corner::eligible(c)
         && crate::paint::effects::corner_clip::insets(c, vcx).is_none()
     {

@@ -21,6 +21,28 @@ impl Computed {
         probe.bg_clip
     }
 
+    /// Clip of the colour that needs an inset layer (`paint::box_tree::styled::clip_layer`):
+    /// `padding-box`/`content-box` whose edge coincides with the border edge (no border, and
+    /// for `content-box` no padding) paints exactly the border box (css-backgrounds-3 §3.7),
+    /// so the box keeps painting its colour itself. Boxes without a clip layer — replaced
+    /// elements such as `<canvas>` — otherwise lost the colour of `background: green
+    /// content-box` (CSS2 floats-clear/clear-on-replaced-element).
+    pub(crate) fn color_inset_clip(&self, vcx: ValueCx<'_>) -> Option<BgClip> {
+        let clip = self.color_clip(vcx)?;
+        let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
+        let b = self.borders();
+        let p = &self.padding;
+        let flush = match clip {
+            BgClip::PaddingBox => [b.top, b.right, b.bottom, b.left].into_iter().all(zero),
+            BgClip::ContentBox => [b.top, b.right, b.bottom, b.left, p.top, p.right, p.bottom]
+                .into_iter()
+                .chain([p.left])
+                .all(zero),
+            _ => false,
+        };
+        (!flush).then_some(clip)
+    }
+
     /// Слои сверху вниз. Цвет лежит под всей стопкой; градиенты слоёв идут
     /// общим путём растровых плиток. Разбор CSS завершён каскадом.
     pub(crate) fn bg_layers(&self, _vcx: ValueCx<'_>) -> Option<Vec<Computed>> {
@@ -69,6 +91,29 @@ mod tests {
         );
         assert_eq!(c.color_clip(vcx), Some(BgClip::ContentBox));
         assert!(layers.iter().all(|c| c.bg_lists.is_empty()));
+    }
+
+    #[test]
+    fn inset_clip_flush_with_the_border_edge_paints_on_the_box() {
+        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+        let vcx = doc.values();
+        // `<canvas style="background: green content-box">`: no border, no padding.
+        let mut c = Computed::default();
+        c.apply_one("background-clip", "content-box", vcx);
+        assert_eq!(c.color_clip(vcx), Some(BgClip::ContentBox));
+        assert_eq!(c.color_inset_clip(vcx), None);
+        c.padding.bottom = Some(Len::Px(10.0));
+        assert_eq!(c.color_inset_clip(vcx), Some(BgClip::ContentBox));
+        let mut p = Computed::default();
+        p.apply_one("background-clip", "padding-box", vcx);
+        p.padding.top = Some(Len::Px(4.0));
+        assert_eq!(p.color_inset_clip(vcx), None);
+        p.border_width.left = Some(Len::Px(2.0));
+        p.border_visible[3] = Some(true);
+        assert_eq!(p.color_inset_clip(vcx), Some(BgClip::PaddingBox));
+        let mut t = Computed::default();
+        t.apply_one("background-clip", "text", vcx);
+        assert_eq!(t.color_inset_clip(vcx), Some(BgClip::Text));
     }
 
     #[test]

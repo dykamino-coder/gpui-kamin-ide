@@ -23,7 +23,7 @@ pub(crate) fn clip_layer(c: &Computed, opts: &RenderOpts) -> Option<AnyElement> 
     if crate::style::computed::single_corner::eligible(c) {
         return None;
     }
-    let clip = c.color_clip(vcx)?;
+    let clip = c.color_inset_clip(vcx)?;
     if c.gradient.is_none() && c.background.is_none() {
         return None;
     }
