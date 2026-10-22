@@ -81,9 +81,7 @@ pub(super) fn pseudo_holds(
         return me.empty;
     }
     if pseudo == "link" || pseudo == "visited" {
-        let Some(href) = &me.href else { return false };
-        let visited = href.is_empty() || href.starts_with('#');
-        return (pseudo == "visited") == visited;
+        return me.href.is_some() && (pseudo == "visited") == me.visited;
     }
     if let Some(want) = pseudo
         .strip_prefix("dir(")

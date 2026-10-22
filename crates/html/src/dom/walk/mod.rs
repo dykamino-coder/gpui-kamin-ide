@@ -24,6 +24,7 @@ mod details_content;
 mod finish_element;
 mod pseudo_styles;
 mod style_normalization;
+mod visited_match;
 use crate::dom::walk::animation_frames::animation_frames;
 use crate::dom::walk::finish_element::finish_element;
 use crate::dom::walk::pseudo_styles::pseudo_styles;

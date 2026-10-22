@@ -25,11 +25,13 @@ pub use crate::style::css::selector::*;
 pub(super) mod declaration;
 mod origin;
 pub(super) mod property;
+pub(crate) mod visited;
 pub use crate::style::css::declaration::{DeclBlock, Declaration, VarMap};
 pub use crate::style::css::origin::Origin;
 pub use crate::style::css::property::{
     BoxGroup, CssWide, Grammar, LonghandId, ShorthandId, Slot, Specified,
 };
+pub use crate::style::css::visited::LinkMatch;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;
 pub(crate) use decls::split_top_level;
@@ -66,6 +68,9 @@ pub struct Rule {
     /// неявный слой. Обычные объявления сравниваются по возрастанию пути,
     /// важные — по убыванию.
     pub layer: Vec<u32>,
+    /// При каком состоянии ссылки правило совпало с элементом (ограничение
+    /// `:visited`, см. [`visited`]); у правила таблицы — `Any`.
+    pub link: LinkMatch,
 }
 
 #[cfg(test)]

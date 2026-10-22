@@ -37,6 +37,7 @@ pub(super) fn hint(css: &str) -> Option<Rule> {
         // Below every author layer, above UA rules; part of author for revert.
         // CSS Cascade 5 §6.4: author presentational hint origin.
         layer: Vec::new(),
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 

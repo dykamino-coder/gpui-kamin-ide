@@ -14,7 +14,7 @@ use crate::dom::*;
 use crate::style::cascade::map::{CascadeMap, Pick};
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, Rule, VarMap, parse_decls_in};
+use crate::style::css::{DeclBlock, LinkMatch, Rule, VarMap, parse_decls_in};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
@@ -60,9 +60,19 @@ pub(super) fn cascade_element(
         .find(|(k, _)| k == "style")
         .map(|(_, v)| parse_decls_in(v, vcx))
         .unwrap_or_default();
-    let mut matched: Vec<&Rule> = rules
+    // Ограничение `:visited`: правило, совпавшее лишь при одном состоянии
+    // своей ссылки, входит в каскад копией с этим признаком.
+    let link = super::visited_match::link_matches(rules, me, path, sibs);
+    let restricted: Vec<Rule> = link
         .iter()
-        .filter(|r| matches(&r.sel, &me, path, sibs))
+        .filter(|(_, l)| *l != LinkMatch::Any)
+        .map(|&(i, l)| crate::style::css::visited::restrict(&rules[i], l))
+        .collect();
+    let mut matched: Vec<&Rule> = link
+        .iter()
+        .filter(|(_, l)| *l == LinkMatch::Any)
+        .map(|&(i, _)| &rules[i])
+        .chain(restricted.iter())
         .collect();
     let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
     matched.extend(math_defaults.iter());
