@@ -118,7 +118,6 @@ impl Computed {
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                css_wide_reset!(self, position_visibility);
                 let Some(bits) = parse_visibility(v) else {
                     return;
                 };
