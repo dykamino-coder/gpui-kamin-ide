@@ -76,18 +76,7 @@ pub(crate) fn pending(
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);
-            let resolvable = |l| {
-                matches!(
-                    l,
-                    None | Some(
-                        crate::style::values::value::Len::Px(_)
-                            | crate::style::values::value::Len::Pct(_)
-                            | crate::style::values::value::Len::Auto
-                    )
-                )
-            };
-            (resolvable(c.style.margin.top) && resolvable(c.style.margin.bottom))
-                .then_some((c, Shape::default()))
+            Some((c, Shape::default()))
         })
         .collect()
 }
@@ -162,18 +151,7 @@ pub(crate) fn pending_vertical(
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);
-            let resolvable = |l| {
-                matches!(
-                    l,
-                    None | Some(
-                        crate::style::values::value::Len::Px(_)
-                            | crate::style::values::value::Len::Pct(_)
-                            | crate::style::values::value::Len::Auto
-                    )
-                )
-            };
-            (resolvable(c.style.margin.left) && resolvable(c.style.margin.right))
-                .then_some((c, Shape::default()))
+            Some((c, Shape::default()))
         })
         .collect()
 }

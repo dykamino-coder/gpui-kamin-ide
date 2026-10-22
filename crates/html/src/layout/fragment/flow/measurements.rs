@@ -99,11 +99,24 @@ impl FlowMeasurements {
         origin: Point<Pixels>,
         window: &mut Window,
     ) -> Vec<super::LinePush> {
+        self.line_pushes_axis(origin, Size::default(), StackAxis::Horizontal, window)
+    }
+
+    /// Строки и их распорки в той же логической оси, что геометрия потока.
+    pub(crate) fn line_pushes_axis(
+        &self,
+        origin: Point<Pixels>,
+        size: Size<Pixels>,
+        axis: StackAxis,
+        window: &mut Window,
+    ) -> Vec<super::LinePush> {
         self.records
             .borrow()
             .iter()
             .flat_map(|r| {
-                let offset = f32::from(window.layout_origin_unrounded(r.id).y - origin.y);
+                let Some(offset) = r.offset(origin, size, axis, window) else {
+                    return Vec::new();
+                };
                 r.starts
                     .borrow()
                     .iter()
@@ -156,25 +169,10 @@ impl FlowMeasurements {
         window: &mut Window,
     ) -> FlowGeometry {
         let mut result = FlowGeometry::default();
-        for Record {
-            id,
-            axis: own_axis,
-            geometry,
-            ..
-        } in self.records.borrow().iter()
-        {
-            if *own_axis != axis {
-                continue;
+        for record in self.records.borrow().iter() {
+            if let Some(offset) = record.offset(origin, size, axis, window) {
+                result.append(&record.geometry.borrow(), offset);
             }
-            let at = window.layout_origin_unrounded(*id);
-            let offset = match axis {
-                StackAxis::Horizontal => at.y - origin.y,
-                StackAxis::VerticalLr => at.x - origin.x,
-                StackAxis::VerticalRl => {
-                    origin.x + size.width - at.x - window.layout_size_unrounded(*id).width
-                }
-            };
-            result.append(&geometry.borrow(), f32::from(offset));
         }
         result.normalize();
         result
@@ -189,5 +187,26 @@ pub(crate) struct FlowScope {
 impl Drop for FlowScope {
     fn drop(&mut self) {
         *self.owner.records.borrow_mut() = std::mem::take(&mut self.saved);
+    }
+}
+
+impl Record {
+    pub(super) fn offset(
+        &self,
+        origin: Point<Pixels>,
+        size: Size<Pixels>,
+        axis: StackAxis,
+        window: &mut Window,
+    ) -> Option<f32> {
+        if self.axis != axis {
+            return None;
+        }
+        Some(super::coordinates::block_offset(
+            origin,
+            size,
+            window.layout_origin_unrounded(self.id),
+            window.layout_size_unrounded(self.id),
+            axis,
+        ))
     }
 }

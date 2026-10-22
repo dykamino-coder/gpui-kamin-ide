@@ -33,12 +33,16 @@ pub(crate) fn fragment_box(
         unreachable!("margin collapse preserves the box")
     };
     crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, vcx);
+    let lengths = crate::style::computed::LenCx {
+        basis: Some(width),
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style)
+    };
     for margin in [
         &mut element.style.margin.top,
         &mut element.style.margin.bottom,
     ] {
-        if let Some(Len::Pct(k)) = *margin {
-            *margin = Some(Len::Px(k * width));
+        if let Some(px) = lengths.px_strict(*margin, vcx) {
+            *margin = Some(Len::Px(px));
         }
     }
     element
@@ -57,12 +61,16 @@ pub(crate) fn vertical_fragment_box(
     });
     flow::absorb_margin(&mut element, false, reverse, vcx);
     flow::absorb_margin(&mut element, true, reverse, vcx);
+    let lengths = crate::style::computed::LenCx {
+        basis: Some(width),
+        ..crate::style::computed::LenCx::box_viewport(Some(vcx.viewport), &element.style)
+    };
     for margin in [
         &mut element.style.margin.left,
         &mut element.style.margin.right,
     ] {
-        if let Some(Len::Pct(k)) = *margin {
-            *margin = Some(Len::Px(k * width));
+        if let Some(px) = lengths.px_strict(*margin, vcx) {
+            *margin = Some(Len::Px(px));
         }
     }
     element

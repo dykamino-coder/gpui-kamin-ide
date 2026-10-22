@@ -12,9 +12,10 @@ use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 mod breaks;
 mod flex;
+mod frame;
 mod laid;
 mod repeat;
 mod shape;
@@ -59,10 +60,21 @@ pub(super) fn page_kids_from_groups(
         let first_kid = first;
         let pad_top = if first { top } else { 0.0 };
         first = false;
-        let prepared = vertical
-            .is_none()
-            .then(|| laid::group(group, root, aw - left - right, pad_top, vcx))
-            .flatten();
+        let prepared = match vertical {
+            Some(rl) => laid::vertical_group(
+                group,
+                root,
+                ah - top,
+                if first_kid {
+                    if rl { right } else { left }
+                } else {
+                    0.0
+                },
+                rl,
+                vcx,
+            ),
+            None => laid::group(group, root, aw - left - right, pad_top, vcx),
+        };
         let group = prepared
             .as_ref()
             .map_or(group.as_slice(), |p| p.nodes.as_slice());
@@ -98,23 +110,7 @@ pub(super) fn page_kids_from_groups(
             opts.clear_paged_fixed();
             // Оставленная обёртка (`html`/`body`) с долей высоты считает её от
             // page area — содержащего блока корня (css-page-3 §page-model).
-            // Writing Modes 4: vertical blocks advance along x. Repeat the
-            // inline-start padding; slice block-start decoration on later pages
-            // (CSS Break 3 section 5.4).
-            let mut wrap = match vertical {
-                Some(rl) => {
-                    // Inline size: the page area's height (a block's `auto`
-                    // inline size fills its containing block, CSS 2.1 §10.3.3).
-                    let d = div().flex().h(px(ah)).pt(px(top));
-                    match (rl, first_kid) {
-                        (true, true) => d.flex_row_reverse().pr(px(right)),
-                        (true, false) => d.flex_row_reverse(),
-                        (false, true) => d.flex_row().pl(px(left)),
-                        (false, false) => d.flex_row(),
-                    }
-                }
-                None => div().pl(px(left)).pr(px(right)).pt(px(pad_top)),
-            };
+            let mut wrap = frame::wrap((left, right, top), ah, first_kid, vertical);
             if let [Node::Element(r)] = group
                 && matches!(r.tag.as_str(), "html" | "body")
                 && matches!(r.style.height, Some(Len::Pct(_)))
@@ -144,7 +140,8 @@ pub(super) fn page_kids_from_groups(
             root,
             group,
             &watched,
-            (left, right, pad_top),
+            (left, right, top),
+            first_kid,
             (aw, ah),
             vertical,
             icb_copies,

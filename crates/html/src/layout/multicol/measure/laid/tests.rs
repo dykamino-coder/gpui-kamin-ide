@@ -132,3 +132,62 @@ fn full_width_float_converted_to_block_uses_a_measured_copy() {
     assert_eq!(kids[0].1.height, 0.0);
     assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }
+
+#[test]
+fn calc_margins_wait_for_width_and_use_the_same_collapse_basis() {
+    let tree = crate::dom::parse(
+        "<div><div style='margin:calc(10% + 3px) 0 0'><div style='height:20px;margin:calc(20% + 7px) 0 0'>x</div></div></div>",
+        "",
+    );
+    let host = root(&tree);
+    let pending = pending(host, &Computed::default(), tree.values()).expect("deferred calc");
+    assert!(matches!(
+        pending[0].0.style.margin.top,
+        Some(crate::style::values::value::Len::Calc(_))
+    ));
+    for width in [100.0, 200.0] {
+        let measured = RefCell::default();
+        let kids = children(host, &Computed::default(), tree.values(), width, &measured)
+            .expect("definite calc basis");
+        assert_eq!(kids[0].1.margin_top, width * 0.2 + 7.0);
+        assert_eq!(kids[0].1.height, 0.0);
+        let Node::Element(inner) = &kids[0].0.children[0] else {
+            panic!("inner")
+        };
+        assert_eq!(
+            inner.style.margin.top,
+            Some(crate::style::values::value::Len::Px(0.0))
+        );
+    }
+}
+
+#[test]
+fn vertical_calc_margins_resolve_only_after_inline_size_is_known() {
+    for (mode, reverse) in [("vertical-lr", false), ("vertical-rl", true)] {
+        let tree = crate::dom::parse(
+            &format!(
+                "<div><div style='writing-mode:{mode};width:20px;margin-left:calc(10% + 3px);margin-right:calc(20% + 7px)'>x</div></div>"
+            ),
+            "",
+        );
+        let host = root(&tree);
+        let pending = pending_vertical(host, &Computed::default(), tree.values(), reverse)
+            .expect("deferred vertical calc");
+        assert!(matches!(
+            pending[0].0.style.margin.left,
+            Some(crate::style::values::value::Len::Calc(_))
+        ));
+        let measured = RefCell::default();
+        let kids = vertical_children(
+            host,
+            &Computed::default(),
+            tree.values(),
+            100.0,
+            reverse,
+            &measured,
+        )
+        .expect("definite inline size");
+        assert_eq!(kids[0].1.margin_top, if reverse { 27.0 } else { 13.0 });
+        assert_eq!(kids[0].1.margin_bottom, if reverse { 13.0 } else { 27.0 });
+    }
+}

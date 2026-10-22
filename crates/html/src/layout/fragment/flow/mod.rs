@@ -7,6 +7,7 @@
 
 pub(crate) mod blocks;
 mod continuation;
+mod coordinates;
 mod line_growth;
 mod measurements;
 pub(crate) use continuation::ContentLine;
@@ -211,6 +212,8 @@ mod tests {
     }
 }
 
+mod logical;
+pub(crate) use logical::transpose_tree;
 mod independent;
 pub(crate) use independent::{independent_copy, logical_copy, vertical_copy};
 mod empty_floats;

@@ -1,6 +1,7 @@
 //! Адрес строки по содержимому сохраняется при смене ширины фрагментаинера.
 use super::FlowMeasurements;
-use gpui::{Pixels, Point, Window};
+use crate::layout::fragment::types::StackAxis;
+use gpui::{Pixels, Point, Size, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -44,9 +45,22 @@ impl FlowMeasurements {
         origin: Point<Pixels>,
         window: &mut Window,
     ) -> Vec<ContentLine> {
+        self.content_lines_axis(origin, Size::default(), StackAxis::Horizontal, window)
+    }
+
+    /// Адреса содержимого используют ту же проекцию, что cuts и распорки.
+    pub(crate) fn content_lines_axis(
+        &self,
+        origin: Point<Pixels>,
+        size: Size<Pixels>,
+        axis: StackAxis,
+        window: &mut Window,
+    ) -> Vec<ContentLine> {
         let mut out = Vec::new();
         for record in self.records.borrow().iter() {
-            let offset = f32::from(window.layout_origin_unrounded(record.id).y - origin.y);
+            let Some(offset) = record.offset(origin, size, axis, window) else {
+                continue;
+            };
             out.extend(record.content.borrow().iter().cloned().map(|mut l| {
                 l.top += offset;
                 l.bottom += offset;

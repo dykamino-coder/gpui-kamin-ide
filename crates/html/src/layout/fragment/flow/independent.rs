@@ -40,7 +40,7 @@ pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
             }
         }
     }
-    let mut logical = crate::layout::fragment::line_shape::transpose_tree(c, rl)?;
+    let mut logical = super::logical::recorded_tree(c, rl)?;
     horizontal(&mut logical);
     Some(logical)
 }
@@ -117,5 +117,38 @@ mod tests {
             "",
         );
         assert!(!vertical_copy(authored(&tree), true));
+    }
+
+    #[test]
+    fn rtl_metadata_projects_sides_without_enabling_the_legacy_line_estimator() {
+        use crate::style::values::value::Len;
+        for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
+            let tree = crate::dom::parse(
+                &format!(
+                    "<div style='writing-mode:{mode};direction:rtl;margin:1px 2px 3px 4px'><div></div></div>"
+                ),
+                "",
+            );
+            let mut physical = authored(&tree).clone();
+            physical.style.border_visible = [Some(true), Some(true), Some(false), Some(false)];
+            assert!(vertical_copy(&physical, rl));
+            assert!(super::super::transpose_tree(&physical, rl).is_none());
+            let logical = logical_copy(&physical, rl).unwrap();
+            assert_eq!(
+                logical.style.margin.top,
+                Some(Len::Px(if rl { 2.0 } else { 4.0 }))
+            );
+            assert_eq!(
+                logical.style.margin.bottom,
+                Some(Len::Px(if rl { 4.0 } else { 2.0 }))
+            );
+            assert_eq!(logical.style.margin.left, Some(Len::Px(3.0)));
+            assert_eq!(logical.style.margin.right, Some(Len::Px(1.0)));
+            assert_eq!(
+                logical.style.border_visible,
+                [Some(rl), Some(true), Some(!rl), Some(false)]
+            );
+            assert!(physical.style.wm().vertical());
+        }
     }
 }

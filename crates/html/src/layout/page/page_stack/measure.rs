@@ -71,10 +71,17 @@ pub(super) fn measure(
             // поднята на `inner_top`.
             Some(w) => {
                 let lift = k.inner_top;
-                let origin = point(px(0.0), px(lift));
+                let (origin, frame) = match axis {
+                    StackAxis::Horizontal => (point(px(0.0), px(lift)), laid),
+                    StackAxis::VerticalLr => (point(px(lift), px(0.0)), laid),
+                    StackAxis::VerticalRl => (
+                        point(px(0.0), px(0.0)),
+                        size(laid.width - px(lift), laid.height),
+                    ),
+                };
                 // Таблица: высота — её разложенная обёртка (ряды,
                 // подписи, заданная высота), а не оценка.
-                let geometry = w.laid(origin, window);
+                let geometry = w.laid_axis(origin, frame, axis, window);
                 let flex = !geometry.flexes.is_empty();
                 if let Some(root) = w
                     .blocks()
@@ -93,13 +100,17 @@ pub(super) fn measure(
                 }
                 if k.shape.is_none() && k.regrow.is_some() {
                     // Реальное переполнение копии резервирует последующие листы.
-                    let reach = f32::from(content.height) - lift;
+                    let reach = f32::from(if vertical {
+                        content.width
+                    } else {
+                        content.height
+                    }) - lift;
                     k.reach = (reach > h + 0.01).then_some(reach);
                 }
                 if let Some(r) = k.regrow.as_mut() {
                     r.laid = geometry;
                 }
-                let m = w.breaks(origin, laid, h + lift, axis, window);
+                let m = w.breaks(origin, frame, h + lift, axis, window);
                 if flex || k.shape.is_none() {
                     avoid = m.avoid;
                     keep = m.keep;
