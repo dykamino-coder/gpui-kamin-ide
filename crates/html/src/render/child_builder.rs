@@ -14,6 +14,7 @@ impl Default for ChildBuild {
             element,
             paragraph,
             crate::paint::box_tree::styled::styled_div_with,
+            crate::paint::replaced::image::image_with,
             effects,
             layer,
         )

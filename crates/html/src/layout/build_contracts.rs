@@ -25,6 +25,7 @@ type BuildNodes = fn(&[Node], &Computed, &RenderOpts) -> Vec<AnyElement>;
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildParagraph = fn(&[Node], &Computed, &RenderOpts) -> AnyElement;
 type BuildStyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
+type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
 
@@ -72,8 +73,10 @@ impl<'a> Layer<'a> {
 /// The build requests the algorithms need: a block-level node list
 /// (`blocks`), one element box (`element`), one inline formatting context
 /// (`paragraph`), the styled, childless div of an element under a given
-/// style (`styled_box`, paint's `styled_div_with`), a paint effect around a
-/// built box (`effects`) and a paint layer over probed geometry (`layer`).
+/// style (`styled_box`, paint's `styled_div_with`), the box of a replaced
+/// element with an image source (`replaced`, paint's `image_with`), a paint
+/// effect around a built box (`effects`) and a paint layer over probed
+/// geometry (`layer`).
 /// Inputs are the inherited computed style and the options or layout context
 /// of the box being built.
 #[derive(Clone, Copy)]
@@ -82,6 +85,7 @@ pub(crate) struct ChildBuild {
     element: BuildElement,
     paragraph: BuildParagraph,
     styled_box: BuildStyledBox,
+    replaced: BuildReplaced,
     effects: BuildEffect,
     layer: BuildLayer,
 }
@@ -92,6 +96,7 @@ impl ChildBuild {
         element: BuildElement,
         paragraph: BuildParagraph,
         styled_box: BuildStyledBox,
+        replaced: BuildReplaced,
         effects: BuildEffect,
         layer: BuildLayer,
     ) -> Self {
@@ -100,6 +105,7 @@ impl ChildBuild {
             element,
             paragraph,
             styled_box,
+            replaced,
             effects,
             layer,
         }
@@ -137,6 +143,19 @@ impl ChildBuild {
     /// The styled div of `e` under `style`, without children.
     pub(crate) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
         (self.styled_box)(e, style, cx)
+    }
+
+    /// The box of the replaced element `e` with an image source, its picture
+    /// sized by layout's replaced sizing (`layout::replaced`). `base_font`
+    /// resolves font-relative lengths of a raw style; `None` when they are
+    /// already resolved.
+    pub(crate) fn replaced(
+        &self,
+        e: &Element,
+        base_font: Option<f32>,
+        cx: &LayoutCx,
+    ) -> AnyElement {
+        (self.replaced)(e, base_font, cx)
     }
 
     /// `child` under the paint effect `effect`.

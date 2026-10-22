@@ -6,7 +6,6 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
 use crate::paint::box_tree::styled::styled_div_with;
-use crate::paint::replaced::image::image;
 use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -33,12 +32,13 @@ pub(super) fn replaced_abs_atom(
         copy.style.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
+        crate::svg::element_with_html(&copy, opts)
+            .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        image(&copy, &opts.cx)
+        opts.cx.build.replaced(&copy, None, &opts.cx)
     };
     let holder = styled_div_with(e, merged, &opts.cx)
         .child(built)
