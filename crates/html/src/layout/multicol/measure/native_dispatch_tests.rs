@@ -43,6 +43,8 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
         ] {
             for body in [
                 deep.as_str(),
+                "<div><div style='float:left;width:70px;height:40px'></div><div style='float:right;width:70px;height:60px'></div></div>",
+                "<div><div><div style='float:left;width:70px;height:40px'></div></div><div style='clear:both;width:20px;height:20px'></div></div>",
                 "<div style='display:contents;font-size:20px'><div>first</div><div>second</div></div>",
                 "<div><div style='display:contents'><div style='display:flex'><div>first</div><div>second</div></div></div><div style='display:none;box-decoration-break:clone;columns:2'></div></div>",
                 "<div style='display:grid'><div style='display:contents'><div style='height:20px'></div><div style='height:30px'></div></div></div>",
@@ -110,7 +112,11 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                             );
                             let kids = plan.stackable.expect("native group");
                             assert!(!kids.is_empty(), "{mode}: {body}");
-                            assert!(kids.iter().all(|(_, shape)| shape.height == 0.0));
+                            assert!(
+                                kids.iter().all(|(_, shape)| shape.height == 0.0),
+                                "{mode}, auto={auto}, width={width:?}, rows={}: {body}",
+                                rows.is_some()
+                            );
                             assert_eq!(
                                 plan.measured_kids.borrow().len(),
                                 if width.is_some() { kids.len() } else { 0 }

@@ -35,7 +35,14 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
         }
         Some(floats)
     }
-    walk(e) == Some(true)
+    // Вся проверка относится к блочной оси. BandFlow сохраняет физическое
+    // дерево; транспонирование нужно только для метаданных допуска.
+    if e.style.wm().vertical() {
+        super::logical_copy(e, e.style.wm().block_rl())
+            .is_some_and(|logical| walk(&logical) == Some(true))
+    } else {
+        walk(e) == Some(true)
+    }
 }
 
 #[cfg(test)]

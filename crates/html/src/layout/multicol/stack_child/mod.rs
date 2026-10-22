@@ -2,14 +2,11 @@
 //! `multicol_column_stack`).
 
 use crate::dom::Element;
-use crate::layout::block::struts::through_strut;
-use crate::layout::float::float_only_box;
 use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
 use crate::style::computed::BoxStyle;
-use crate::style::values::value::Len;
 mod finish;
 use finish::{finish_stack_child, nest_row_of};
 mod cuts;
@@ -17,6 +14,7 @@ use cuts::{copy_cuts_and_height, stack_child_of};
 mod breaks;
 mod build;
 mod fixed;
+mod floats;
 mod vertical;
 mod whole;
 use whole::{copy_kids, copy_whole_box};
@@ -83,18 +81,7 @@ pub(super) fn multicol_stack_child(
         // второй раз его вставил бы корень копии.
         strip_through_top(&mut copy, 4);
     }
-    // Коробка из одних флоатов меряется высотой их ряда (`float_only_box`), но сама по §10.6.3
-    // высотой НОЛЬ — вне колонок это делает `collapse_margins`, а копия фрагмента строится мимо
-    // него. Без нуля в каждой колонке проступил бы фон контейнера (`floats-clear-multicol-*`:
-    // `background: red`); флоаты переполняют нулевую коробку, и маска колонки режет их по
-    // разрезам меры.
-    let empty_floats = crate::layout::fragment::flow::empty_floats(&copy);
-    let float_zero = !col_vert
-        && (empty_floats || float_only_box(&copy).is_some())
-        && through_strut(&copy, opts.cx.vcx()).is_some();
-    if float_zero {
-        copy.style.used_mut().height = Some(Len::Px(0.0));
-    }
+    let (empty_floats, float_zero) = floats::normalize(&mut copy, col_vert, col_rl, opts.cx.vcx());
     // Независимая копия получает высоту, переполнение и разрывы в lay_out_main.
     // Остальные копии сохраняют старую меру: clone/nested/OOF требуют
     // F2-1/F2-3/F2-2; ортогональные потоки требуют F2-3.

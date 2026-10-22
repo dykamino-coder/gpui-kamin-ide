@@ -77,6 +77,28 @@ fn empty_page_floats_use_their_layout_extent_even_when_the_pair_wraps() {
 }
 
 #[test]
+fn vertical_empty_page_floats_keep_bandflow_extent_and_physical_tree() {
+    for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {
+        let tree = crate::dom::parse(
+            &format!(
+                "<div style='writing-mode:{mode};height:100px'><div style='float:left;width:40px;height:70px'></div><div style='float:right;width:60px;height:70px'></div></div>"
+            ),
+            "",
+        );
+        let nodes = [Node::Element(authored(&tree).clone())];
+        let p = vertical_group(&nodes, &Computed::default(), 120.0, 0.0, rl, tree.values())
+            .expect("native empty floats");
+        assert!(p.blocks && p.float_extent);
+        let Node::Element(e) = &p.nodes[0] else {
+            panic!("host")
+        };
+        assert!(e.style.wm().vertical());
+        assert_eq!(e.style.height, Some(Len::Px(100.0)));
+        assert_eq!(e.children.len(), 2);
+    }
+}
+
+#[test]
 fn vertical_page_groups_record_real_blocks_and_keep_physical_sides() {
     use crate::layout::fragment::{ShapeCx, flow::blocks::Laid};
     for (mode, rl) in [("vertical-lr", false), ("vertical-rl", true)] {

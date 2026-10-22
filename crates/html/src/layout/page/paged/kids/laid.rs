@@ -37,7 +37,9 @@ pub(super) fn vertical_group(
         rl,
         vcx,
     );
-    let (mt, mb) = fragment_margins(&logical_copy(&e, rl)?)?;
+    let logical = logical_copy(&e, rl)?;
+    let (mt, mb) = fragment_margins(&logical)?;
+    let float_extent = empty_floats(&logical);
     Some(Group {
         nodes: vec![Node::Element(e)],
         margins: if head > 0.0 {
@@ -46,7 +48,7 @@ pub(super) fn vertical_group(
             (mt, mb, mt)
         },
         blocks: true,
-        float_extent: false,
+        float_extent,
     })
 }
 

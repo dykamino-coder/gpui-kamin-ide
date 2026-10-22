@@ -21,11 +21,12 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
         && !c.marks.paginate
         && c.style.column_span != Some(true)
         && crate::layout::fragment::clone::clone_dec(c).is_none()
-        && !separate(c, true)
-        && (stacked_tree(&logical)
-            || table_tree(&logical)
-            || grid_tree(&logical)
-            || flex_tree(&logical))
+        && (super::empty_floats(&logical)
+            || (!separate(c, true)
+                && (stacked_tree(&logical)
+                    || table_tree(&logical)
+                    || grid_tree(&logical)
+                    || flex_tree(&logical))))
 }
 
 /// Только метаданные рекордера: физическое дерево рисуется без поворота.
