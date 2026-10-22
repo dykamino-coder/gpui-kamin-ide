@@ -93,7 +93,7 @@ pub(crate) fn path_commands(
             .map(|(a, _)| a)
             .unwrap_or(&raw[at + 6..]);
         {
-            super::super::shape_path::shape_commands(&inner.replace(',', ";"), b.rw, b.rh, d, vcx)?;
+            super::shape_function::shape_commands(&inner.replace(',', ";"), b.rw, b.rh, d, vcx)?;
             return Some("nonzero");
         }
     }

@@ -5,8 +5,8 @@ use crate::style::computed::ImageSource;
 mod dilation;
 pub(super) use dilation::dilate;
 
-use super::{ShapeBox, svg_path_of};
-use crate::paint::background::*;
+use crate::paint::background::computed_source;
+use crate::style::values::basic_shape::{ShapeBox, rrect_of, shape_params, svg_path_of};
 
 /// Альфа-маска формы в холсте margin-box.
 pub(super) fn shape_mask(

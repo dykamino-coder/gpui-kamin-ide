@@ -33,16 +33,13 @@ use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 pub(crate) mod alpha_sampling;
 mod flat_vector;
-mod float_geometry;
 mod oriented_vector;
 mod sampling;
 pub(crate) use sampling::paint_gradient;
-pub(crate) mod single_corner;
-use crate::paint::background::float_geometry::rrect_of;
-pub use float_geometry::rounded_float;
 pub(crate) mod filter_image;
 mod mask_composite;
 mod mask_luminance;
+pub(crate) mod single_corner;
 pub use mask_composite::{MaskLayer, compose_mask_layers};
 pub(crate) use mask_luminance::luminance_mask_image;
 mod clip;
@@ -63,8 +60,6 @@ mod shape_path;
 pub use crate::paint::background::shape_path::*;
 mod shape_raster;
 pub use crate::paint::background::shape_raster::*;
-pub(super) mod shape_profile;
-pub use crate::paint::background::shape_profile::*;
 pub(super) mod raster;
 pub(crate) use crate::paint::background::raster::*;
 pub(super) mod image_decode;
@@ -80,8 +75,6 @@ static CACHE: BoundedCache<String, Option<Source>> =
 /// Потолок на число плиток вдоль оси: битый `background-size` иначе просит
 /// миллионы копий.
 const MAX_TILES: f32 = 2048.0;
-
-pub(crate) use crate::style::css::value_tokens::split_top;
 
 /// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
 pub fn canvas_layer(c: &Computed, area: RootArea, vcx: ValueCx<'_>) -> Option<AnyElement> {

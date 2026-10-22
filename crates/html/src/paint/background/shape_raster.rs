@@ -4,9 +4,6 @@ use crate::document::state::ValueCx;
 mod ellipse;
 pub use ellipse::rasterize_ellipse_px;
 
-mod shape_parameters;
-pub use shape_parameters::shape_params;
-
 pub mod contour;
 mod linear_corners;
 mod shaped;
@@ -14,6 +11,7 @@ pub use linear_corners::{rasterize_ring_at, rasterize_shape_at};
 pub use shaped::{Ring, contour_offset, contour_outline, contour_ring};
 
 use crate::paint::background::*;
+use crate::style::values::basic_shape::shape_params;
 use gpui::RenderImage;
 use std::sync::Arc;
 

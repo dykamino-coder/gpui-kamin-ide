@@ -21,7 +21,8 @@ pub(super) fn css(
     shift: (f32, f32),
     vcx: ValueCx<'_>,
 ) -> Option<String> {
-    let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, width, height, 1.0, vcx)?;
+    let (cx, cy, rx, ry) =
+        crate::style::values::basic_shape::shape_params(raw, width, height, 1.0, vcx)?;
     if rx <= 0.0 || ry <= 0.0 {
         return Some(origin_shift(
             c,

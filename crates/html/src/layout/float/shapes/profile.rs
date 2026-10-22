@@ -2,15 +2,13 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::ImageSource;
-pub(super) mod svg_path;
-pub(super) use svg_path::svg_path_of;
 
 mod mask;
 use mask::dilate;
 use mask::mask_intervals;
 use mask::shape_mask;
 
-use crate::paint::background::*;
+use crate::style::values::basic_shape::{ShapeBox, shape_params};
 
 // --- Общий путь формы обтекания (css-shapes-1 §3, §shape-margin) ---------
 //
@@ -21,25 +19,6 @@ use crate::paint::background::*;
 // превращаются в экстенты от начала стороны текста. Клип к margin-box
 // двойной: холст режет форму, зажим на шаге экстента режет поле
 // («a shape can only ever reduce a float area»).
-
-/// Геометрия флоата в системе его margin-box, всё в CSS-точках.
-pub struct ShapeBox {
-    pub mw: f32,
-    pub mh: f32,
-    /// Опорная коробка формы.
-    pub rx: f32,
-    pub ry: f32,
-    pub rw: f32,
-    pub rh: f32,
-    /// Content-box (для картинки/градиента).
-    pub cx: f32,
-    pub cy: f32,
-    pub cw: f32,
-    pub ch: f32,
-    /// Радиусы опорной коробки (tl,tr,br,bl), эллиптические.
-    pub radius: [(f32, f32); 4],
-    pub threshold: f32,
-}
 
 /// Экстенты обтекания по строкам margin-box; None — форма нераспознана
 /// (вызывающий откатывается к прямоугольнику коробки). Пустая форма —

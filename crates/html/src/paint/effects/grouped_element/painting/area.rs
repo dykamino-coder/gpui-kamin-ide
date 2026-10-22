@@ -42,7 +42,8 @@ pub(crate) fn group_area(
                 return None;
             }
             let (bw, bh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-            let (cx, cy, rx, ry) = crate::paint::background::shape_params(raw, bw, bh, 1.0, vcx)?;
+            let (cx, cy, rx, ry) =
+                crate::style::values::basic_shape::shape_params(raw, bw, bh, 1.0, vcx)?;
             let l = (rx - cx).max(0.0);
             let t = (ry - cy).max(0.0);
             let r = (cx + rx - bw).max(0.0);
