@@ -34,7 +34,8 @@ impl ColumnStack {
                 c.forced.clear();
                 c.solid.clear();
             }
-            c.measure_breaks(sz, axis, window);
+            let sections = c.measure_breaks(sz, axis, window);
+            c.refresh_repeat(sections, fixed);
             // Целый вложенный многоколоночник выше колонки — не монолит:
             // его режет край внешней колонки (`StackChild::fit_whole`).
             if c.fit_whole {
@@ -51,7 +52,13 @@ impl ColumnStack {
             // Использованный блочный размер — разложенный border box: в нём
             // уже `min-height`/`max-height` и распорки роста. Параллельный
             // поток (css-break-3 §3) остаётся протяжённостью меры.
-            if c.regrow.as_ref().is_some_and(|r| r.laid_h) {
+            // Таблица — тоже: её высота — сумма разложенных рядов, подписей и
+            // заданной высоты (css-tables-3 §computing-the-table-height).
+            let table = c
+                .watched
+                .as_ref()
+                .is_some_and(|w| w.blocks().is_some_and(|b| b.table.is_some()));
+            if table || c.regrow.as_ref().is_some_and(|r| r.laid_h) {
                 let h = f32::from(sz.height);
                 c.over = if c.over > c.h + COORD_EPS {
                     c.over.max(h)
@@ -60,12 +67,13 @@ impl ColumnStack {
                 };
                 c.h = h;
             }
-            c.replace_breaks(sz, axis, window);
+            let sections = c.replace_breaks(sz, axis, window);
+            c.refresh_repeat(sections, fixed);
         } else {
             return;
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
-            r.boxes = w.boxes(point(px(0.0), px(0.0)), window);
+            r.laid = w.laid(point(px(0.0), px(0.0)), window);
         }
     }
 

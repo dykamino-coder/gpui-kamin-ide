@@ -29,6 +29,7 @@ use build_rows::table_rows_with_bands;
 mod zero_cols;
 use zero_cols::zero_width_cols;
 mod col_measure;
+pub(crate) mod grid_rows;
 use col_measure::measure_col_widths;
 mod setup;
 use setup::{

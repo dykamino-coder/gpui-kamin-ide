@@ -154,8 +154,10 @@ pub(super) fn stack_child_of(
     monolith: bool,
     span: bool,
     kid_copies: usize,
+    measured_table: Option<(bool, bool)>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
+    let repeat = repeat_bands(copy, fixed, rows, measured_table, vcx);
     crate::layout::fragment::types::StackChild {
         watched: None,
         breaks_w: None,
@@ -223,7 +225,7 @@ pub(super) fn stack_child_of(
         // Повтор шапки/подвала таблицы — полосы своими
         // копиями (`flow::Repeat`); та же мера, что у
         // щупов (`repeat_leads`).
-        repeat: repeat_bands(copy, fixed, rows, vcx)
+        repeat: repeat
             .filter(|_| !span && !col_vert)
             .map(
                 |(head, foot, geom)| crate::layout::fragment::types::Repeat {

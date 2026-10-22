@@ -1,12 +1,12 @@
 //! Рекордер главной копии ребёнка стопки колонок: строки — всегда, блочная стопка
 //! (`flow::blocks`) — у ребёнка, чьи точки разрыва даёт раскладка копии. Это ребёнок,
 //! чью высоту меряет раскладка (`StackChild::measure`), и поддерево обычных блоков
-//! (`plain_block_tree`): его границы классa A, поля на разрыве, запреты и монолиты
-//! берутся из разложенных border box, а не из оценки формы.
+//! (`plain_block_tree`) или таблица из них (`table_tree`): его границы классa A, поля на
+//! разрыве, запреты и монолиты берутся из разложенных border box и рядов, а не из оценки формы.
 
 use crate::dom::Element;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::BlockBox;
+use crate::layout::fragment::flow::blocks::{BlockBox, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::layout::options::RenderOpts;
@@ -31,17 +31,35 @@ pub(super) fn recorder(
         .borrow()
         .iter()
         .any(|&(id, _)| id == copy.node_id);
-    let plain = !own_plan && plain_block_tree(copy, 4);
+    let plain = !own_plan && (plain_block_tree(copy, 4) || table_tree(copy, 4));
     if !(measured || (plain && line_col_w.is_some())) {
         return (Watched::new(&[]), None);
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
     // Without block children the copy keeps its measured lines alone.
-    if blocks.kids.is_empty() {
+    if blocks.is_empty() {
         return (Watched::new(&[]), None);
     }
     (
         Watched::for_blocks(blocks),
         line_col_w.filter(|_| !measured),
     )
+}
+
+/// Таблица-корень копии, чьи ряды даёт раскладка (`breaks_w` или мера
+/// раскладкой): может ли по стилю повторяться её шапка и подвал
+/// (`break-inside: avoid*` секции, css-tables-3 §repeated-headers).
+pub(super) fn repeatable(
+    watched: &Watched,
+    copy: &Element,
+    breaks_w: Option<f32>,
+    measured_kids: &RefCell<Vec<(u64, f32)>>,
+) -> Option<(bool, bool)> {
+    let laid_out = breaks_w.is_some()
+        || measured_kids
+            .borrow()
+            .iter()
+            .any(|&(id, _)| id == copy.node_id);
+    let t = watched.blocks().filter(|_| laid_out)?.table.as_ref()?;
+    Some((t.head.is_some_and(|s| s.2), t.foot.is_some_and(|s| s.2)))
 }

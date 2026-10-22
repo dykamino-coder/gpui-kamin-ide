@@ -38,6 +38,9 @@ pub(super) fn table_finish(
     }
     grid_children.append(&mut out.cells_over);
     let cells = grid_children;
+    // Части таблицы, чью раскладку читает фрагментация (`watch::table_part`).
+    let key = crate::layout::table::grid_rows::table_key(geom.e);
+    let mark = |part, el| crate::layout::fragment::paginate::watch::table_part(key, part, el, opts);
     // Заголовок таблицы живёт ВНЕ коробки таблицы (CSS 2.1 §17.4:
     // анонимная обёртка держит заголовок и коробку) — рамка и обрезка
     // таблицы его не трогают; `caption-side: bottom` ставит его под сетку.
@@ -184,6 +187,7 @@ pub(super) fn table_finish(
         grid_box,
         collapse,
         outer,
+        &mark,
     );
     outer = paint_table_border(
         out.table_edges.clone(),
@@ -215,6 +219,7 @@ pub(super) fn table_finish(
         root_table,
         outer,
         shrink_wrap,
+        &mark,
         vcx,
     )
 }

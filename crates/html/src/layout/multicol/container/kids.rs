@@ -6,6 +6,7 @@ use crate::layout::fragment::breaks::edge_break;
 use crate::layout::fragment::flex_lines::split_flex_lines;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
+use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::multicol::stack_child::multicol_stack_child;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
@@ -23,7 +24,7 @@ pub(super) fn column_kids(
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
-    line_col_w: Option<f32>,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
     vcx: ValueCx<'_>,
 ) -> (
     Vec<Option<Computed>>,
@@ -63,7 +64,8 @@ pub(super) fn column_kids(
     let mut kids = if col_vert {
         kids
     } else {
-        let measured = |c: &Element| measured_push(c, line_col_w, col_vert);
+        let measured =
+            |c: &Element| measured_push(c, kid_layout_w(c, line_col_w, layout_col_w), col_vert);
         grow_pushed(
             kids,
             cols as usize,
@@ -94,7 +96,7 @@ pub(super) fn stack_children(
     cols: u16,
     col_vert: bool,
     col_rl: bool,
-    line_col_w: Option<f32>,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
     rows: Option<crate::layout::fragment::types::Rows>,
     nested_auto: std::cell::RefCell<Vec<u64>>,
     nested_whole: std::cell::RefCell<Vec<u64>>,
@@ -164,6 +166,7 @@ pub(super) fn stack_children(
                     },
                 ),
             )| {
+                let kid_w = kid_layout_w(&c, line_col_w, layout_col_w);
                 multicol_stack_child(
                     ix,
                     c,
@@ -182,6 +185,7 @@ pub(super) fn stack_children(
                     col_vert,
                     col_rl,
                     line_col_w,
+                    kid_w,
                     rows,
                     copies,
                     fixed,

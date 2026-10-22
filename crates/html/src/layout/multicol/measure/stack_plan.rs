@@ -2,7 +2,7 @@
 //! (анонимные строчные блоки, флоаты во всю ширину, обёртки `clone`), внепоточные
 //! прямые дети со статическим местом в потоке и замер детей, уходящих в стопку.
 
-use super::{block_floats, column_measure_width, measure_children};
+use super::{block_floats, column_layout_width, column_measure_width, measure_children};
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
@@ -16,6 +16,9 @@ use crate::style::values::value::Len;
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
 pub(crate) struct StackPlan {
     pub(crate) line_col_w: Option<f32>,
+    /// Ширина колонки для раскладки копии таблицы-ребёнка до укладки
+    /// (`column_layout_width`).
+    pub(crate) layout_col_w: Option<f32>,
     pub(crate) direct_oof: Vec<Element>,
     pub(crate) oof_static: Vec<(usize, Element)>,
     pub(crate) nested_auto: std::cell::RefCell<Vec<u64>>,
@@ -120,6 +123,15 @@ pub(crate) fn stack_plan(
     let outer_frag = (e.style.column_fill_auto == Some(true) && rows.is_none() && !col_vert)
         .then(|| col_h.or(box_h))
         .flatten();
+    let layout_col_w = column_layout_width(
+        e,
+        inherited,
+        merged,
+        col_inline_size,
+        col_vert,
+        cols,
+        used_gap,
+    );
     let first_flow = ge
         .children
         .iter()
@@ -170,7 +182,7 @@ pub(crate) fn stack_plan(
             first_flow,
             last_flow,
             outer_frag,
-            line_col_w,
+            (line_col_w, layout_col_w),
             &nested_auto,
             whole_ok,
             &nested_whole,
@@ -183,6 +195,7 @@ pub(crate) fn stack_plan(
     });
     StackPlan {
         line_col_w,
+        layout_col_w,
         direct_oof,
         oof_static,
         nested_auto,

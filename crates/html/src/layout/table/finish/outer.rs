@@ -3,6 +3,7 @@
 use super::wrap_with_captions;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
+use crate::layout::fragment::paginate::watch::TablePart;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -96,6 +97,7 @@ pub(super) fn finish_table_outer(
     root_table: bool,
     outer: gpui::Div,
     shrink_wrap: bool,
+    mark: &dyn Fn(TablePart, AnyElement) -> AnyElement,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let mut outer = outer;
@@ -110,7 +112,7 @@ pub(super) fn finish_table_outer(
     }
     let outer = outer;
     // Обёртка «заголовок + коробка»: заголовок вне рамки и обрезки.
-    let outer = wrap_with_captions(e, caps_top, caps_bot, inherited, outer);
+    let outer = wrap_with_captions(e, caps_top, caps_bot, inherited, outer, mark);
     // Вторая половина §17.4: сама обёртка. Гибкий ряд возвращает сетке сжатие
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {

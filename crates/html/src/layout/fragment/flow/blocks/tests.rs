@@ -1,9 +1,9 @@
 //! Тесты точек разрыва блочной стопки по заданной геометрии border box.
 
 use super::BlockBox;
+use super::Laid;
 use crate::dom::Node;
 use crate::layout::fragment::flow::FlowGeometry;
-use std::collections::HashMap;
 
 fn tree(html: &str) -> (BlockBox, Vec<u64>) {
     let doc = crate::dom::parse(html, "");
@@ -26,16 +26,14 @@ fn tree(html: &str) -> (BlockBox, Vec<u64>) {
     (b, ids)
 }
 
-fn at(boxes: &[(u64, f32, f32)]) -> HashMap<u64, (f32, f32)> {
-    boxes.iter().map(|&(id, t, b)| (id, (t, b))).collect()
+fn at(boxes: &[(u64, f32, f32)]) -> Laid {
+    Laid::of_boxes(boxes)
 }
 
 type Out = (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>);
 
-fn finish(b: &BlockBox, end: f32, boxes: &HashMap<u64, (f32, f32)>) -> Out {
-    let m = b
-        .breaks(end, &|id| boxes.get(&id).copied())
-        .finish(FlowGeometry::default(), end);
+fn finish(b: &BlockBox, end: f32, boxes: &Laid) -> Out {
+    let m = b.breaks(end, boxes).finish(FlowGeometry::default(), end);
     (m.cuts, m.forced, m.solid)
 }
 
@@ -139,7 +137,7 @@ fn block_end_padding_holds_the_adjoining_line() {
     let (b, _) = tree("<div style='padding-bottom:40px'>a</div>");
     let mut lines = FlowGeometry::lines([30.0, 30.0]);
     lines.normalize();
-    let m = b.breaks(100.0, &|_| None).finish(lines, 100.0);
+    let m = b.breaks(100.0, &Laid::default()).finish(lines, 100.0);
     assert!(m.solid.contains(&(30.0, 100.0)));
     assert!(m.cuts.contains(&(30.0, 30.0)));
 }
@@ -168,10 +166,7 @@ fn pushed_box_is_the_outermost_box_starting_at_the_point() {
         (ids[1], 40.0, 100.0),
         (ids[2], 40.0, 100.0),
     ]);
-    assert_eq!(
-        b.pushed_at(40.0, &|id| boxes.get(&id).copied()),
-        Some(ids[1])
-    );
+    assert_eq!(b.pushed_at(40.0, &boxes), Some(ids[1]));
 }
 
 #[test]
@@ -184,7 +179,7 @@ fn pushed_box_descends_into_the_box_covering_the_point() {
         (ids[1], 10.0, 40.0),
         (ids[2], 40.0, 100.0),
     ]);
-    let found = |a: f32| b.pushed_at(a, &|id| boxes.get(&id).copied());
+    let found = |a: f32| b.pushed_at(a, &boxes);
     assert_eq!(found(40.0), Some(ids[2]));
     // No box starts inside the second child: no strut.
     assert_eq!(found(70.0), None);

@@ -10,8 +10,10 @@
 //! `kBreakAppealViolatingBreakAvoid`). Рамка с отбивкой у начального края и монолиты —
 //! сплошные диапазоны (§4.1); нижняя рамка с отбивкой без зазора держит примыкающее к ней
 //! содержимое (класс C есть только при ненулевом зазоре, css-break-4 §possible-breaks).
+//! Таблица — своими подписями и рядами (`table::geometry`).
 
-use super::BlockBox;
+use super::table::TableSections;
+use super::{BlockBox, Laid};
 use crate::layout::fragment::flow::FlowGeometry;
 use crate::tolerance::COORD_EPS;
 
@@ -23,7 +25,9 @@ pub(crate) struct BlockBreaks {
     pub(crate) solid: Vec<(f32, f32)>,
     /// Диапазоны, которым нужны все точки и монолиты (вместе со строками):
     /// в порядке обхода, вложенные раньше объемлющих.
-    pending: Vec<Pending>,
+    pub(super) pending: Vec<Pending>,
+    /// Секции повтора, если корень стопки — таблица.
+    pub(super) sections: Option<TableSections>,
 }
 
 /// Измеренные возможности разрыва копии: точки класса A `(need, from)`,
@@ -33,10 +37,13 @@ pub(crate) struct MeasuredBreaks {
     pub(crate) cuts: Vec<(f32, f32)>,
     pub(crate) forced: Vec<f32>,
     pub(crate) solid: Vec<(f32, f32)>,
+    /// Разложенные секции повтора таблицы-корня (css-tables-3
+    /// §repeated-headers).
+    pub(crate) sections: Option<TableSections>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Pending {
+pub(super) enum Pending {
     /// Граница под запретом: предыдущий ребёнок `[top, bottom)`, верх
     /// содержимого контейнера `floor`, начало следующего `next`.
     Avoid {
@@ -45,11 +52,14 @@ enum Pending {
         floor: f32,
         next: f32,
     },
-    /// Нижняя рамка с отбивкой `[edge, bottom)` коробки с верхом `top`;
-    /// `gapless` — последний ребёнок кончается ровно на ней.
+    /// Нижняя рамка с отбивкой коробки с верхом `top`, кончающейся на
+    /// `bottom`: сплошная от `from`; `gapless` — последний ребёнок кончается
+    /// ровно на `edge`, и сплошные диапазоны, кончающиеся там, приклеены к
+    /// ней.
     Tail {
         top: f32,
         edge: f32,
+        from: f32,
         bottom: f32,
         gapless: bool,
     },
@@ -59,25 +69,43 @@ impl BlockBox {
     /// Точки разрыва стопки, корень которой кончается на `bottom`; `at(id)` —
     /// разложенный border box коробки `(верх, низ)` в координатах потока.
     /// Корень без записи стоит с нуля.
-    pub(crate) fn breaks(
-        &self,
-        bottom: f32,
-        at: &dyn Fn(u64) -> Option<(f32, f32)>,
-    ) -> BlockBreaks {
+    pub(crate) fn breaks(&self, bottom: f32, laid: &Laid) -> BlockBreaks {
         let mut out = BlockBreaks::default();
-        let top = at(self.id).map_or(0.0, |b| b.0);
-        walk(self, top, bottom, at, &mut out);
+        let top = laid.at(self.id).map_or(0.0, |b| b.0);
+        walk(self, top, bottom, laid, &mut out);
+        out.sections = self.table.as_ref().and_then(|t| t.sections(laid));
         out
+    }
+
+    /// Самая внешняя коробка стопки, чей разложенный border box начинается
+    /// ровно в `a` (`laid` — разложенная копия в координатах потока): перед ней
+    /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;
+    /// монолит и коробка без своей стопки спуска не дают.
+    pub(crate) fn pushed_at(&self, a: f32, laid: &Laid) -> Option<u64> {
+        if let Some(t) = &self.table {
+            return t.pushed_at(a, laid);
+        }
+        for k in &self.kids {
+            let Some((top, bottom)) = laid.at(k.id) else {
+                continue;
+            };
+            if (top - a).abs() < COORD_EPS {
+                return Some(k.id);
+            }
+            if top < a && a < bottom - COORD_EPS {
+                return k.inner.as_ref()?.pushed_at(a, laid);
+            }
+        }
+        None
     }
 }
 
-fn walk(
-    b: &BlockBox,
-    top: f32,
-    bottom: f32,
-    at: &dyn Fn(u64) -> Option<(f32, f32)>,
-    out: &mut BlockBreaks,
-) {
+/// Точки стопки `b`, стоящей в `[top, bottom)`.
+pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut BlockBreaks) {
+    if let Some(t) = &b.table {
+        t.walk(top, laid, out);
+        return;
+    }
     if b.head > 0.0 {
         out.solid.push((top, top + b.head));
     }
@@ -87,7 +115,7 @@ fn walk(
     // Конечное имя страницы последнего именованного соседа.
     let mut page_prev: Option<&str> = None;
     for k in &b.kids {
-        let Some((kt, kb)) = at(k.id) else {
+        let Some((kt, kb)) = laid.at(k.id) else {
             // Коробка без записи раскладки: её места нет, границы вокруг неё
             // не строятся.
             prev = None;
@@ -114,7 +142,7 @@ fn walk(
         if k.monolith {
             out.solid.push((kt, kb));
         } else if let Some(inner) = &k.inner {
-            walk(inner, kt, kb, at, out);
+            walk(inner, kt, kb, laid, out);
         }
         prev = Some((k, kt, kb));
         last = Some(kb);
@@ -131,6 +159,7 @@ fn walk(
         out.pending.push(Pending::Tail {
             top,
             edge,
+            from: edge,
             bottom,
             gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
         });
@@ -174,6 +203,7 @@ impl BlockBreaks {
                 Pending::Tail {
                     top,
                     edge,
+                    from,
                     bottom,
                     gapless,
                 } => {
@@ -182,9 +212,9 @@ impl BlockBreaks {
                             .iter()
                             .filter(|&&(a, e)| a > top + 0.01 && (e - edge).abs() < 0.01)
                             .map(|&(a, _)| a)
-                            .fold(edge, f32::min)
+                            .fold(from, f32::min)
                     } else {
-                        edge
+                        from
                     };
                     g.solid.push((glue, bottom));
                 }
@@ -204,6 +234,7 @@ impl BlockBreaks {
             cuts: g.cuts,
             forced,
             solid: g.solid,
+            sections: self.sections,
         }
     }
 }

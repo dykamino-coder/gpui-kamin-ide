@@ -24,6 +24,8 @@ pub(super) struct Measured {
     pub(super) own: bool,
     /// Высота ребёнка — его разложенный border box (`Regrow::laid_h`).
     pub(super) laid_h: bool,
+    /// Ширина раскладки копии до укладки (`StackChild::breaks_w`).
+    pub(super) push_w: Option<f32>,
 }
 
 impl Measured {
@@ -49,7 +51,7 @@ impl Measured {
             && self.paginate.is_none()
             && self.watched.has_blocks()
             && (child.measure.is_some()
-                || (child.breaks_w.is_some() && measured_push(copy, line_col_w, col_vert)));
+                || (child.breaks_w.is_some() && measured_push(copy, self.push_w, col_vert)));
         child.paginate = self.paginate;
         if regrows {
             let watched = self.watched.clone();
@@ -86,7 +88,7 @@ impl Measured {
                 dom: copy.clone(),
                 build: Box::new(build),
                 opts: opts.clone(),
-                boxes: Default::default(),
+                laid: Default::default(),
                 laid_h: self.laid_h,
             });
         }

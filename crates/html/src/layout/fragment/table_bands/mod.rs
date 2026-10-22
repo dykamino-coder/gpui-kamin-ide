@@ -9,6 +9,7 @@
 use crate::document::state::ValueCx;
 
 use crate::dom::Element;
+use crate::layout::fragment::flow::blocks::table::TableSections;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::Display;
 pub(crate) mod parts;
@@ -70,7 +71,7 @@ struct TableBands {
 }
 
 /// Повтор секций для стопки: полосы `flow::Repeat` и геометрия укладки.
-type RepeatSpec = (
+pub(crate) type RepeatSpec = (
     Option<(f32, f32)>,
     Option<(f32, f32)>,
     crate::layout::fragment::types::RepeatGeom,
@@ -84,15 +85,25 @@ type RepeatSpec = (
 /// вне первого прохода балансировки (`HasKnownFragmentainerBlockSize`), поэтому
 /// здесь — только `column-fill: auto` с заданной высотой и без рядов. Ответ —
 /// полосы для `flow::Repeat`: шапка `(верх секции, секция + зазор под ней)`,
-/// подвал `(верх секции − зазор, зазор + секция)`.
+/// подвал `(верх секции − зазор, зазор + секция)`. У таблицы, чьи ряды даёт
+/// раскладка копии (`measured`: может ли по стилю повторяться шапка и
+/// подвал), полосы решаются по её разложенным секциям
+/// (`StackChild::refresh_repeat`), а здесь — пустые полосы под копии.
 pub(crate) fn repeat_bands(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    measured: Option<(bool, bool)>,
     vcx: ValueCx<'_>,
 ) -> Option<RepeatSpec> {
     let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
-    repeat_bands_in(c, per, ShapeCx::COLUMNS, vcx)
+    match measured {
+        Some((head, foot)) => (head || foot).then(|| {
+            let band = |on: bool| on.then_some((0.0, 0.0));
+            (band(head), band(foot), Default::default())
+        }),
+        None => repeat_bands_in(c, per, ShapeCx::COLUMNS, vcx),
+    }
 }
 
 /// Known page and column fragmentainers share the repeat reservation algorithm.
@@ -107,15 +118,54 @@ pub(crate) fn repeat_bands_in(
     }
     let mut b = TableBands::default();
     table_shape_bands(c, 4, cx, &mut b, vcx)?;
+    repeat_spec(
+        TableSections {
+            head: b.head.map(|(at, h)| (at, h, b.head_avoid)),
+            foot: b.foot.map(|(at, h)| (at, h, b.foot_avoid)),
+            spacing: b.spacing,
+            box_top: b.box_top,
+            box_end: b.box_end,
+        },
+        per,
+    )
+}
+
+/// Повтор секций таблицы, чьи ряды даёт раскладка копии: полосы решаются
+/// после неё (`repeat_spec` по разложенным секциям), а здесь — копии для
+/// полос шапки и подвала, которые по стилю (`break-inside: avoid*`) могут
+/// повторяться; без таких секций повтора нет.
+pub(crate) fn repeat_candidates(
+    head: bool,
+    foot: bool,
+    head_els: impl FnOnce() -> Vec<gpui::AnyElement>,
+    foot_els: impl FnOnce() -> Vec<gpui::AnyElement>,
+) -> Option<crate::layout::fragment::types::Repeat> {
+    (head || foot).then(|| crate::layout::fragment::types::Repeat {
+        head: head.then_some((0.0, 0.0)),
+        foot: foot.then_some((0.0, 0.0)),
+        geom: Default::default(),
+        head_els: if head { head_els() } else { Vec::new() },
+        foot_els: if foot { foot_els() } else { Vec::new() },
+    })
+}
+
+/// Полосы повтора секций `sec` во фрагментаинере размера `per`: секция
+/// повторяется, если у неё `break-inside: avoid*` и блочный размер не больше
+/// четверти фрагментаинера (css-tables-3 §repeated-headers; Blink
+/// `table_layout_algorithm.cc:1086-1121`). Шапка —
+/// `(верх секции, секция + зазор под ней)`, подвал — `(верх секции − зазор,
+/// зазор + секция)`.
+pub(crate) fn repeat_spec(sec: TableSections, per: f32) -> Option<RepeatSpec> {
     let max = per / 4.0;
-    let head = b
+    let fits = |&(_, h, avoid): &(f32, f32, bool)| avoid && h > COORD_EPS && h <= max + COORD_EPS;
+    let head = sec
         .head
-        .filter(|&(_, h)| b.head_avoid && h > COORD_EPS && h <= max + COORD_EPS)
-        .map(|(at, h)| (at, h + b.spacing));
-    let foot = b
+        .filter(fits)
+        .map(|(at, h, _)| (at, h + sec.spacing));
+    let foot = sec
         .foot
-        .filter(|&(_, h)| b.foot_avoid && h > COORD_EPS && h <= max + COORD_EPS)
-        .map(|(at, h)| (at - b.spacing, h + b.spacing));
+        .filter(fits)
+        .map(|(at, h, _)| (at - sec.spacing, h + sec.spacing));
     if head.is_none() && foot.is_none() {
         return None;
     }
@@ -125,8 +175,8 @@ pub(crate) fn repeat_bands_in(
         head_end: head.map_or(0.0, |(at, h)| at + h),
         foot_at: foot.map_or(f32::MAX, |(at, _)| at),
         foot_end: foot.map_or(f32::MAX, |(at, h)| at + h),
-        box_top: b.box_top,
-        box_end: b.box_end,
+        box_top: sec.box_top,
+        box_end: sec.box_end,
     };
     Some((head, foot, geom))
 }
@@ -139,7 +189,7 @@ pub(crate) fn repeat_leads(
     rows: Option<crate::layout::fragment::types::Rows>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::RepeatGeom {
-    repeat_bands(c, fixed, rows, vcx).map_or_else(Default::default, |r| r.2)
+    repeat_bands(c, fixed, rows, None, vcx).map_or_else(Default::default, |r| r.2)
 }
 
 #[cfg(test)]

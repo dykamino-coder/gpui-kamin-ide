@@ -6,6 +6,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::oof_reach;
 use crate::layout::fragment::fragment_size::shape_full;
+use crate::layout::fragment::table_bands::repeat_candidates;
 use crate::layout::options::RenderOpts;
 use crate::layout::page::paged::visible_overflow;
 use crate::style::computed::{Computed, Display};
@@ -78,6 +79,12 @@ pub(super) fn page_kids_from_groups(
             None => group_shape(root, shape_cx, group, n, pad_top, vcx),
         };
         let watched = breaks::recorder(group, n, vertical, shape.is_some(), shape_cx, vcx);
+        // Таблица, чьи ряды даёт раскладка копии: может ли повторяться её
+        // шапка и подвал (`break-inside: avoid*` секции).
+        let measured_table = watched
+            .blocks()
+            .and_then(|b| b.table.as_ref())
+            .map(|t| (t.head.is_some_and(|s| s.2), t.foot.is_some_and(|s| s.2)));
         let build = |main: bool,
                      band: bool,
                      slot: &mut Vec<AnyElement>,
@@ -160,15 +167,18 @@ pub(super) fn page_kids_from_groups(
             repeat: vertical
                 .is_none()
                 .then(|| {
-                    repeat::sections(
-                        group,
-                        ah,
-                        shape_cx,
-                        pad_top,
-                        PAGE_COPIES,
-                        || build(false, true, &mut Vec::new(), &mut Vec::new()),
-                        vcx,
-                    )
+                    let band = || build(false, true, &mut Vec::new(), &mut Vec::new());
+                    match measured_table {
+                        Some((head, foot)) => repeat_candidates(
+                            head,
+                            foot,
+                            || (1..PAGE_COPIES).map(|_| band()).collect(),
+                            || (0..PAGE_COPIES).map(|_| band()).collect(),
+                        ),
+                        None => {
+                            repeat::sections(group, ah, shape_cx, pad_top, PAGE_COPIES, band, vcx)
+                        }
+                    }
                 })
                 .flatten(),
             watched: Some(watched),

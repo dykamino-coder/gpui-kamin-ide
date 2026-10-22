@@ -44,6 +44,7 @@ pub(super) fn multicol_stack_child(
     col_vert: bool,
     col_rl: bool,
     line_col_w: Option<f32>,
+    kid_w: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
     fixed: Option<f32>,
@@ -165,8 +166,9 @@ pub(super) fn multicol_stack_child(
     // нужен свой в каждой колонке. Больше, чем
     // колонок, ребёнок занять не может.
     let whole = nest_row.is_none() && nested_whole.borrow().contains(&copy.node_id);
-    let (own, line_w) = (dec.is_some() || whole || nest_row.is_some(), line_col_w);
+    let (own, line_w) = (dec.is_some() || whole || nest_row.is_some(), kid_w);
     let (watched, breaks_w) = breaks::recorder(&copy, measured_kids, opts, col_vert, line_w, own);
+    let measured_table = breaks::repeatable(&watched, &copy, breaks_w, measured_kids);
     let build = |first: bool, part: usize, band: bool| {
         let mut opts = opts.in_stack_copy();
         opts.frag.watch = (first && !band).then(|| watched.clone());
@@ -215,6 +217,7 @@ pub(super) fn multicol_stack_child(
         nest_row,
         whole,
         build,
+        measured_table,
         opts.cx.vcx(),
     );
     let measured = regrow::Measured {
@@ -223,6 +226,7 @@ pub(super) fn multicol_stack_child(
         breaks_w,
         own,
         laid_h: no_reach && !float_zero,
+        push_w: kid_w,
     };
     measured.attach(
         &mut child,
