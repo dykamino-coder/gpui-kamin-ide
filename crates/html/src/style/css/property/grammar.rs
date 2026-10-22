@@ -49,4 +49,17 @@ pub enum Grammar {
     Text,
     /// Линии оформления текста (css-text-decor-4 §2).
     TextDecor,
+    /// Гибкие элементы и контейнер (css-flexbox-1 §5, §7).
+    Flex,
+    /// Выравнивание (css-align-3 §5-§6): у каждого свойства свой набор слов.
+    Align,
+    /// Промежутки (css-gaps-1 §2, css-align-3 §8).
+    Gap,
+    /// Шаблоны, неявные дорожки, автопоток и размещение сетки (css-grid-2
+    /// §7-§8).
+    Grid,
+    /// Многоколонник (css-multicol-1 §3, css-multicol-2).
+    Multicol,
+    /// Линейки промежутков (css-gaps-1 §3-§6).
+    GapRule,
 }

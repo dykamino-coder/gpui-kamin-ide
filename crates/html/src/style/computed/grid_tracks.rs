@@ -11,9 +11,7 @@ pub(super) use auto_fill::{
     auto_fill_min, auto_fill_pct, auto_fill_tracks, auto_repeat_outside_intrinsic,
 };
 use line_names::line_name_tokens;
-pub(super) use line_names::{
-    parse_line_names, parse_named_pair, parse_named_placement, parse_placement, parse_span,
-};
+pub(super) use line_names::{parse_line_names, parse_named_placement, parse_placement};
 use track_list::tokenize_tracks;
 pub(super) use track_list::{count_tracks, parse_tracks};
 
@@ -95,36 +93,6 @@ pub enum TrackSize {
         fit: bool,
         tracks: Vec<TrackSize>,
     },
-}
-
-/// Разрезать короткую запись сетки по косой черте ВНЕ скобок.
-///
-/// `grid: repeat(4, auto) / 1fr` — черта внутри `repeat()` не разделитель, и
-/// резать по первой попавшейся нельзя.
-pub(super) fn split_slash(v: &str) -> (&str, &str) {
-    let mut depth = 0i32;
-    for (i, ch) in v.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            '/' if depth == 0 => return (v[..i].trim(), v[i + 1..].trim()),
-            _ => {}
-        }
-    }
-    (v.trim(), "")
-}
-
-/// Убрать слово `auto-flow` (и `dense`) из стороны короткой записи сетки.
-pub(super) fn strip_auto_flow(v: &str) -> &str {
-    v.trim()
-        .trim_start_matches("auto-flow")
-        .trim()
-        .trim_start_matches("dense")
-        .trim()
-        .trim_end_matches("dense")
-        .trim()
-        .trim_end_matches("auto-flow")
-        .trim()
 }
 
 /// Разбор списка дорожек. `repeat(n, X)` разворачивается в n одинаковых;

@@ -10,6 +10,7 @@ mod background_cascade;
 mod cascade;
 mod cascade_winners;
 mod decor_inset;
+mod layout_cascade;
 mod logical_cascade;
 mod text_cascade;
 

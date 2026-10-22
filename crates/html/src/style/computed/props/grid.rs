@@ -10,6 +10,7 @@ use crate::style::values::value::Len;
 
 mod placement;
 mod templates;
+pub(crate) mod values;
 
 impl Computed {
     pub(crate) fn apply_grid(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {

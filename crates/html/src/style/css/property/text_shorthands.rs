@@ -22,7 +22,7 @@ pub(super) const TEXT_EMPHASIS: &[LonghandId] = &[TextEmphasisStyle, TextEmphasi
 /// Части сокращения: слова, разнесённые по длинным свойствам `kind` (индекс
 /// в `longhands` или `None` — слово негодно). Слова одной части идут подряд,
 /// часть — не больше одного раза.
-fn split(
+pub(super) fn split(
     value: &str,
     longhands: &[LonghandId],
     kind: impl Fn(&str) -> Option<usize>,

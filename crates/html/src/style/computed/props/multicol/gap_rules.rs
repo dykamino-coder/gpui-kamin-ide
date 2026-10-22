@@ -1,5 +1,5 @@
 //! Списки линеек промежутков (css-gaps-1): разбор значений по осям (gap_list/gap_rule/gap_*) и
-//! запись их в Computed (set_gap_*, gap_rule_shorthand).
+//! запись их в Computed (set_gap_*).
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -58,35 +58,6 @@ pub(super) fn gap_inset(t: &str, vcx: ValueCx<'_>) -> Option<GapInset> {
     Len::parse(t, vcx)
         .filter(|l| matches!(l, Len::Px(_) | Len::Pct(_) | Len::Em(_)))
         .map(GapInset::Len)
-}
-
-/// `<gap-rule> = <line-width> || <line-style> || <color>`: любой порядок,
-/// каждая часть не более одного раза; лишний токен — недействительно.
-// The shorthand independently omits width, style and color; color also has currentColor.
-#[allow(clippy::type_complexity)]
-pub(super) fn gap_rule(
-    entry: &str,
-    vcx: ValueCx<'_>,
-) -> Option<(Option<Len>, Option<bool>, Option<StyleColor>)> {
-    let (mut w, mut s, mut c) = (None, None, None);
-    for token in split_outside_parens(entry) {
-        if s.is_none()
-            && let Some(v) = gap_style(&token)
-        {
-            s = Some(v);
-        } else if w.is_none()
-            && let Some(v) = gap_width(&token, vcx)
-        {
-            w = Some(v);
-        } else if c.is_none()
-            && let Some(v) = gap_color(&token, vcx)
-        {
-            c = Some(v);
-        } else {
-            return None;
-        }
-    }
-    Some((w, s, c))
 }
 
 /// Список css-gaps-1 §lists: значения через запятую вне скобок; `repeat(N, …)`
@@ -175,42 +146,6 @@ impl Computed {
         };
         *scalar = l.first().unwrap_or_default();
         *list = l.is_plural().then(|| l.clone());
-    }
-
-    /// `column-rule`/`row-rule`/`rule` (css-gaps-1 §rule-shorthands): каждая
-    /// часть сокращения ставит СВОЙ список; неназванные части сбрасываются в
-    /// начальные (`medium`, `none`, `currentcolor`), как у любого сокращения.
-    pub(crate) fn gap_rule_shorthand(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
-        let Some(list) = gap_list(v, |s| gap_rule(s, vcx)) else {
-            return;
-        };
-        self.accept_declaration();
-        let widths = list.map(|r| r.0.unwrap_or(Len::Px(3.0)));
-        let styles = list.map(|r| r.1.unwrap_or(false));
-        let colors = list.map(|r| r.2.clone().unwrap_or_default());
-        let double = !v.contains(',')
-            && split_outside_parens(v)
-                .iter()
-                .any(|t| t.trim().eq_ignore_ascii_case("double"));
-        let kinds = gap_list(v, |e| {
-            let toks = split_outside_parens(e);
-            gap_rule(e, vcx).map(|_| toks.iter().find_map(|t| gap_kind(t)).unwrap_or(0))
-        });
-        for column in [true, false] {
-            if (column && key == "row-rule") || (!column && key == "column-rule") {
-                continue;
-            }
-            if column {
-                self.column_rule_double = double;
-                self.column_rule_kinds = kinds.clone();
-            } else {
-                self.row_rule_double = double;
-                self.row_rule_kinds = kinds.clone();
-            }
-            self.set_gap_widths(column, &widths);
-            self.set_gap_styles(column, &styles);
-            self.set_gap_colors(column, &colors);
-        }
     }
 }
 

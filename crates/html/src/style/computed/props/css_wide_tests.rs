@@ -16,8 +16,6 @@ const RESETS: [&str; 3] = ["initial", "revert", "revert-layer"];
 /// Handlers that validate their grammar without a CSS-wide branch: a resetting
 /// keyword still leaves the earlier value. Known gaps; the list may only shrink.
 const KNOWN_GAPS: &[&str] = &[
-    "align-items",
-    "align-self",
     "appearance",
     "border-style",
     "box-shadow",
@@ -26,15 +24,7 @@ const KNOWN_GAPS: &[&str] = &[
     "content",
     "display",
     "filter",
-    "flex-basis",
-    "flex-flow",
-    "flex-grow",
-    "flex-shrink",
-    "flex-wrap",
-    "grid-area",
     "list-style",
-    "place-items",
-    "place-self",
     "zoom",
 ];
 

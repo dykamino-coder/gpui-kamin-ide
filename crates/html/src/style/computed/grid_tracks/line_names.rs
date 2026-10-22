@@ -175,25 +175,6 @@ pub(in crate::style::computed) fn parse_named_placement(v: &str) -> Option<gpui:
     })
 }
 
-/// Обе грани `grid-column`/`grid-row`: при одном значении-имени конец — то
-/// же имя («if the first value is a <custom-ident>, the grid-row-end/
-/// grid-column-end longhand is also set to that <custom-ident>», §8.4).
-pub(in crate::style::computed) fn parse_named_pair(v: &str) -> [Option<gpui::GridNamedLine>; 2] {
-    match v.split_once('/') {
-        Some((a, b)) => [parse_named_placement(a), parse_named_placement(b)],
-        None => {
-            let start = parse_named_placement(v);
-            let end = match &start {
-                Some(gpui::GridNamedLine::Line(name, 0)) => {
-                    Some(gpui::GridNamedLine::Line(name.clone(), 0))
-                }
-                _ => None,
-            };
-            [start, end]
-        }
-    }
-}
-
 pub(in crate::style::computed) fn parse_placement(v: &str) -> Placement {
     let v = v.trim();
     if let Some(n) = v.strip_prefix("span") {
@@ -204,12 +185,4 @@ pub(in crate::style::computed) fn parse_placement(v: &str) -> Placement {
             .unwrap_or(Placement::Auto);
     }
     v.parse().map(Placement::Line).unwrap_or(Placement::Auto)
-}
-
-/// `grid-column: 1 / 3` либо `span 2`.
-pub(in crate::style::computed) fn parse_span(v: &str) -> Option<(Placement, Placement)> {
-    match v.split_once('/') {
-        Some((a, b)) => Some((parse_placement(a), parse_placement(b))),
-        None => Some((parse_placement(v), Placement::Auto)),
-    }
 }
