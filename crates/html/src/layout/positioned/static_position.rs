@@ -51,7 +51,7 @@ pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32
 /// `normal`/`stretch`/`first baseline` у абсолюта ведут себя как `start`,
 /// `last baseline` — как `end` (css-align-3 §9.3); `anchor-center` без
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
-/// ведёт `anchor::AnchorPlace`, и сюда он не берётся.
+/// ведёт `anchor::place::place_one`, и сюда он не берётся.
 pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
     if e.style.inline_display == Some(true) {
         return None;
