@@ -8,6 +8,7 @@ use std::rc::Rc;
 /// Накопленные наблюдения; ключ — место сравнения оценки с watched.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FragmentProbe {
+    pub estimate_calls: u64,
     pub height_comparisons: u64,
     pub height_mismatches: u64,
     pub underestimated: u64,
@@ -25,6 +26,14 @@ impl FragmentProbes {
     /// Забрать и обнулить наблюдения этого контекста.
     pub fn take(&self) -> BTreeMap<String, FragmentProbe> {
         std::mem::take(&mut *self.0.borrow_mut())
+    }
+
+    pub(crate) fn estimate(&self, site: &str) {
+        self.0
+            .borrow_mut()
+            .entry(site.into())
+            .or_default()
+            .estimate_calls += 1;
     }
 
     pub(crate) fn height(&self, site: &str, estimate: f32, laid: f32) {
@@ -82,10 +91,13 @@ mod tests {
     fn snapshot_resets_only_its_explicit_context() {
         let a = FragmentProbes::default();
         let b = FragmentProbes::default();
+        a.estimate("test");
+        a.estimate("test");
         a.breaks("test", &[(1.0, 2.0)], &[(1.0, 3.0)]);
         assert!(b.take().is_empty());
         let clone = a.clone();
         let p = clone.take();
+        assert_eq!(p["test"].estimate_calls, 2);
         assert_eq!(p["test"].break_comparisons, 1);
         assert_eq!(p["test"].break_mismatches, 1);
         assert!(a.take().is_empty());

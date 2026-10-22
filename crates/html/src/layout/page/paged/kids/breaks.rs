@@ -20,6 +20,7 @@ pub(super) fn recorder(
     n: &Node,
     vertical: Option<bool>,
     shaped: bool,
+    measured: bool,
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) -> Rc<Watched> {
@@ -33,12 +34,13 @@ pub(super) fn recorder(
                     e.style.computed().position,
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
-                && shaped
-                && (plain_block_tree(e, 4) || table_tree(e, 4) || flex_tree(e, 4)) =>
+                && (measured
+                    || (shaped
+                        && (plain_block_tree(e, 4) || table_tree(e, 4) || flex_tree(e, 4)))) =>
         {
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
-            if blocks.is_empty() {
+            if blocks.is_empty() && !measured {
                 Watched::new(&[])
             } else {
                 if crate::layout::fragment::flow::flow_lines(e) {

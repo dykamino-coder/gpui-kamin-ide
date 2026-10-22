@@ -1,3 +1,4 @@
+//! ADR P-19 F2-1/F2-3/F2-4: этот рост остаётся только у не переведённых preplan; measured идёт отдельно.
 //! Рост перенесённой коробки, монолиты под avoid и поля абзаца.
 
 use super::super::cell::grow_before;
@@ -45,6 +46,9 @@ pub(crate) fn grow_pushed(
     measured: &dyn Fn(&Element) -> bool,
     vcx: ValueCx<'_>,
 ) -> Vec<(Element, Shape)> {
+    if kids.iter().all(|(c, _)| c.marks.paginate || measured(c)) {
+        return kids;
+    }
     for _ in 0..6 {
         let probe: Vec<crate::layout::fragment::types::Kid> = kids
             .iter()

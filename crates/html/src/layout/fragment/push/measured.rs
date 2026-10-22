@@ -51,6 +51,7 @@ impl Growth {
 /// Ребёнок стопки, чьи распорки роста ставит раскладка его копии.
 #[derive(Clone)]
 pub(crate) struct Regrow {
+    pub(crate) axis: crate::layout::fragment::types::StackAxis,
     pub(crate) source: Element,
     /// Дерево, из которого строятся копии; распорки правят его.
     pub(crate) dom: Element,
@@ -102,6 +103,18 @@ impl Regrow {
         {
             return self.watched.grow_flex_item(*id, grow);
         }
+        if self.axis.is_vertical()
+            && let Pushed::Box(id) = &pushed
+        {
+            return super::vertical::push(
+                &mut self.dom,
+                *id,
+                grow,
+                forced,
+                self.axis,
+                self.opts.cx.vcx(),
+            );
+        }
         match pushed {
             Pushed::Box(id) if forced => {
                 spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
@@ -131,9 +144,18 @@ impl Regrow {
 /// `table_tree`): ряд растёт вместе с ячейкой, чья коробка ушла распоркой; у
 /// поддерева с сеткой (`grid_tree`) — и ряды разложенной сетки.
 pub(crate) fn measured_push(c: &Element, line_col_w: Option<f32>, col_vert: bool) -> bool {
-    !col_vert
-        && line_col_w.is_some()
-        && !c.marks.paginate
+    line_col_w.is_some()
+        && if col_vert {
+            crate::layout::fragment::flow::vertical_copy(c, false)
+                || crate::layout::fragment::flow::vertical_copy(c, true)
+        } else {
+            measured_tree(c)
+        }
+}
+
+/// Поддерево, чью геометрию полностью записывает раскладка копии.
+pub(crate) fn measured_tree(c: &Element) -> bool {
+    !c.marks.paginate
         && c.style.computed().column_span != Some(true)
         && clone_dec(c).is_none()
         && ((plain_block_tree(c, 4) && stacked_tree(c, 4))

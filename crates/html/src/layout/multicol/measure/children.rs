@@ -1,8 +1,10 @@
+//! ADR P-19 F2-1/F2-3/F2-6: общий preplan clone, вложенных рядов и trim пока требует оценки соседей.
 //! Измерение блочных детей и вложенных многоколоночников.
 
 use super::grid_kid;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::block::margins::fragment_margins as measured_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
@@ -229,19 +231,6 @@ fn measured_nested(
             margin_bottom: mb,
             ..Shape::default()
         },
-    ))
-}
-
-/// Мера копии принимает только разрешённые отступы; auto равен нулю.
-pub(super) fn measured_margins(c: &Element) -> Option<(f32, f32)> {
-    let m = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => Some(*v),
-        None | Some(Len::Auto) => Some(0.0),
-        _ => None,
-    };
-    Some((
-        m(&c.style.computed().margin.top)?,
-        m(&c.style.computed().margin.bottom)?,
     ))
 }
 

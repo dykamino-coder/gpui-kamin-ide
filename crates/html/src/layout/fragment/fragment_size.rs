@@ -1,3 +1,4 @@
+//! ADR P-19: остаточная оценка сохраняется для F2-1/2/3/4/5/6; удаление F1-6 ещё не завершено.
 //! Мера коробки для фрагментации (`shape_full`): к мере содержимого (`shape_contents`)
 //! применяются `min-height`/`max-height`, рамки и отступы, а точки разреза и монолиты режутся
 //! по использованной высоте. Использованный блочный размер и протяжённость переполнения —
@@ -33,6 +34,17 @@ pub(crate) fn measure(
     cx: ShapeCx,
     vcx: ValueCx<'_>,
 ) -> Option<Measure> {
+    #[cfg(feature = "wpt-harness")]
+    if let Some(probe) = cx
+        .probe
+        .or_else(|| vcx.lines.map(|lines| &lines.opts.frag.probe))
+    {
+        probe.estimate(if cx.paged {
+            "pages.estimate"
+        } else {
+            "columns.estimate"
+        });
+    }
     let cx = ShapeCx {
         legacy_oof: cx.legacy_oof
             || element.style.computed().bdb_clone

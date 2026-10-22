@@ -145,5 +145,4 @@ fn missing_built_copy_marks_plan_without_dropping_fragments() {
     assert_eq!(plan[2].copy, 2);
     plan.check_copies(|_| 3);
     assert_eq!(plan.completion, super::Completion::Incomplete);
-
 }

@@ -116,10 +116,10 @@ pub fn render_paged_select(
     // `resolve_viewport` работает на копии внутри `element()`).
     let shape_cx = ShapeCx {
         paged: true,
-        legacy_oof: false,
         viewport: Some(opts.viewport),
-        unclamped: false,
-    };
+        ..ShapeCx::COLUMNS
+    }
+    .observed(opts);
     // Слой ICB — по КОПИИ на страницу: каждая сборка ребёнка рождает свои
     // `LatePlace` абсолютов, копия `c` уходит на лист `c` (`PageStack.icb`).
     let mut icb_copies: Vec<Vec<AnyElement>> = (0..PAGE_COPIES).map(|_| Vec::new()).collect();

@@ -232,7 +232,7 @@ pub(super) fn build_copy(
     let el = build.effects(root, Effect::transform(inner, merged, vcx));
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
-    if inner.clip_inset.is_some()
+    let el = if inner.clip_inset.is_some()
         || inner.clip_shape.is_some()
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
@@ -240,5 +240,6 @@ pub(super) fn build_copy(
         build.effects(el, Effect::group(inner, vcx))
     } else {
         el
-    }
+    };
+    super::vertical::wrap(el, copy, col_vert, col_rl, line_col_w)
 }

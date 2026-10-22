@@ -1,6 +1,4 @@
-//! Пересборка печатного ребёнка (поддерево блоков или flex) с теми же независимыми
-//! ICB/fixed-слоями и ограничениями роста: у непоследнего фрагмента коробка
-//! дотягивается до конца листа (css-break-3 §box-splitting), как в колонках.
+//! Пересборка независимой печатной копии с ICB/fixed-слоями и ограничениями роста F1-3.
 use crate::dom::Node;
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::fragment::paginate::watch::Watched;
@@ -60,7 +58,9 @@ pub(super) fn regrow(
     let blocks = watched.blocks()?;
     let mut flexes = Vec::new();
     blocks.flexes(&mut flexes);
-    if blocks.table.is_some() && flexes.is_empty() {
+    if flexes.is_empty()
+        && (blocks.table.is_some() || !crate::layout::fragment::flow::independent_copy(dom))
+    {
         return None;
     }
     let slots: Vec<_> = icb
@@ -113,6 +113,7 @@ pub(super) fn regrow(
         el
     };
     Some(Regrow {
+        axis: crate::layout::fragment::types::StackAxis::Horizontal,
         dom: dom.clone(),
         source: dom.clone(),
         build: Rc::new(build),

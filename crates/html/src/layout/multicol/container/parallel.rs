@@ -1,3 +1,4 @@
+//! ADR P-19 F2-2: reach внепоточного содержимого пока требует отдельного плана продолжения.
 //! Независимый рост на разрывах для позиционированных потоков в непрерывных блочных
 //! координатах: абсолютная коробка авто-высоты внутри ребёнка стопки получает распорки
 //! фрагментации по фазе своего содержащего блока в сетке колонок.
@@ -134,6 +135,12 @@ pub(super) fn grow(
     copies: usize,
     vcx: ValueCx<'_>,
 ) {
+    if !kids
+        .iter()
+        .any(|(c, _)| crate::layout::positioned::predicates::carries_abspos(c, 4))
+    {
+        return;
+    }
     let (mut cursor, mut previous) = (0.0f32, 0.0f32);
     for (c, s) in kids {
         let own = measure_fragment_and_own_height(c, vcx).map_or(s.height, |(_, own)| own);
@@ -156,95 +163,4 @@ pub(super) fn grow(
 }
 
 #[cfg(test)]
-mod tests {
-    //! Fragment growth preserves the original CB position and its normal-flow size.
-
-    use super::*;
-    use crate::style::computed::Computed;
-
-    fn element(style: Computed, children: Vec<Node>) -> Element {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(10_000);
-        Element {
-            marks: Default::default(),
-            node_id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-            tag: "div".into(),
-            style: style.into(),
-            children,
-            attrs: Vec::new(),
-            inline: false,
-            list_item: None,
-            anim: None,
-            hover: None,
-            first_letter: None,
-            first_line: None,
-        }
-    }
-
-    fn containing_block() -> Element {
-        let children = [(90.0, false), (50.0, true), (50.0, false)]
-            .into_iter()
-            .map(|(h, avoid)| {
-                Node::Element(element(
-                    Computed {
-                        height: Some(Len::Px(h)),
-                        break_inside_avoid: avoid,
-                        ..Default::default()
-                    },
-                    Vec::new(),
-                ))
-            })
-            .collect();
-        let mut abs = element(
-            Computed {
-                position: Some(Position::Absolute),
-                ..Default::default()
-            },
-            children,
-        );
-        abs.style.used_mut().inset.bottom = Some(Len::Px(0.0));
-        element(
-            Computed {
-                height: Some(Len::Px(190.0)),
-                position: Some(Position::Relative),
-                ..Default::default()
-            },
-            vec![Node::Element(abs)],
-        )
-    }
-
-    #[test]
-    fn bottom_position_is_resolved_before_auto_height_grows() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut cb = containing_block();
-        assert!(grow_positioned_descendants(&mut cb, 0.0, 100.0, 2, 4, vcx));
-        let Node::Element(abs) = &cb.children[0] else {
-            panic!()
-        };
-        assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
-        assert_eq!(
-            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
-            200.0
-        );
-        let (shape, own) = measure_fragment_and_own_height(&cb, vcx).unwrap();
-        assert_eq!(shape.height, 200.0);
-        assert_eq!(own, 190.0);
-    }
-
-    #[test]
-    fn independent_breaks_use_the_containing_blocks_fragmentainer_phase() {
-        let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut cb = containing_block();
-        assert!(grow_positioned_descendants(&mut cb, 80.0, 100.0, 2, 4, vcx));
-        let Node::Element(abs) = &cb.children[0] else {
-            panic!()
-        };
-        assert_eq!(abs.style.computed().inset.top, Some(Len::Px(0.0)));
-        assert_eq!(
-            measure_fragment_and_own_height(abs, vcx).unwrap().0.height,
-            220.0
-        );
-        assert_eq!(measure_fragment_and_own_height(&cb, vcx).unwrap().1, 190.0);
-    }
-}
+mod tests;

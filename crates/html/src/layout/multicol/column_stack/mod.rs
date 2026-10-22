@@ -16,6 +16,7 @@ mod paginate;
 pub struct ColumnStack {
     pub(crate) paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     pub(crate) children: Vec<StackChild>,
+    pub(crate) deferred: Option<std::rc::Rc<super::deferred::Recipe>>,
     pub(crate) count: usize,
     pub(crate) gap: f32,
     /// Ось прогрессии колонок (`StackAxis`); при вертикальном письме —
@@ -104,6 +105,7 @@ impl ColumnStack {
         ColumnStack {
             paint,
             children,
+            deferred: None,
             count: count.max(1),
             gap,
             fixed_height,
@@ -123,6 +125,14 @@ impl ColumnStack {
             lines_plan: std::cell::RefCell::new(Vec::new()),
             spans_plan: std::cell::RefCell::new(Vec::new()),
         }
+    }
+
+    pub(crate) fn with_deferred(
+        mut self,
+        recipe: Option<std::rc::Rc<super::deferred::Recipe>>,
+    ) -> Self {
+        self.deferred = recipe;
+        self
     }
 
     /// Коробка по самой высокой занятой колонке (см. `fill_shrink`).

@@ -28,7 +28,6 @@ pub(crate) mod effect_fragment;
 pub(super) mod fragment_mask;
 pub(crate) mod fragment_size;
 pub(crate) mod gap_fragment;
-pub(super) mod intrinsic_measure;
 mod row_element;
 
 /// Элемент сетки для `grid_auto_row_bands`: номер среди `c.children`, ряд,
@@ -43,7 +42,10 @@ pub(crate) use shape::Shape;
 /// для `vh`/`vw`: у страниц это page area, у колонок единицы окна остаются
 /// неразрешёнными (`None` → отказ от меры, прежнее поведение).
 #[derive(Clone, Copy)]
-pub(crate) struct ShapeCx {
+pub(crate) struct ShapeCx<'a> {
+    pub(crate) marker: std::marker::PhantomData<&'a ()>,
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: Option<&'a probe::diagnostics::FragmentProbes>,
     pub(crate) paged: bool,
     /// Nested fragmentainers and cloned decorations retain their own model.
     pub(crate) legacy_oof: bool,
@@ -63,13 +65,31 @@ pub(crate) struct ShapeCx {
     pub(crate) unclamped: bool,
 }
 
-impl ShapeCx {
-    pub(crate) const COLUMNS: ShapeCx = ShapeCx {
+impl ShapeCx<'_> {
+    pub(crate) const COLUMNS: Self = Self {
+        marker: std::marker::PhantomData,
+        #[cfg(feature = "wpt-harness")]
+        probe: None,
         paged: false,
         legacy_oof: false,
         viewport: None,
         unclamped: false,
     };
+
+    /// Сборщик принадлежит документу, а не процессу или потоку раскладки.
+    pub(crate) fn observed<'a>(self, opts: &'a crate::layout::options::RenderOpts) -> ShapeCx<'a> {
+        #[cfg(not(feature = "wpt-harness"))]
+        let _ = opts;
+        ShapeCx {
+            marker: std::marker::PhantomData,
+            #[cfg(feature = "wpt-harness")]
+            probe: Some(&opts.frag.probe),
+            paged: self.paged,
+            legacy_oof: self.legacy_oof,
+            viewport: self.viewport,
+            unclamped: self.unclamped,
+        }
+    }
 }
 
 mod line_context;

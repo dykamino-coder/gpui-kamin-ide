@@ -16,6 +16,68 @@ pub(super) use flow::collapse_flow_margins;
 mod kids;
 use kids::{collapse_kid_margins, emit_margin_struts};
 
+/// Поля отдельной копии до корневой раскладки: поля, примыкающие к детям,
+/// принадлежат внешнему потоку, а не корню Taffy (CSS 2.1 §8.3.1).
+pub(crate) fn fragment_box(
+    element: crate::dom::Element,
+    width: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> crate::dom::Element {
+    let vcx = vcx.with_collapse(CollapseInputs {
+        width: Some(width),
+        ..vcx.collapse
+    });
+    let mut nodes = [Node::Element(element)];
+    collapse_kid_margins(&mut nodes, Some(width), vcx);
+    let [Node::Element(mut element)] = nodes else {
+        unreachable!("margin collapse preserves the box")
+    };
+    crate::layout::block::struts::pin_inherited_margins(&mut element, true, true, vcx);
+    for margin in [
+        &mut element.style.margin.top,
+        &mut element.style.margin.bottom,
+    ] {
+        if let Some(Len::Pct(k)) = *margin {
+            *margin = Some(Len::Px(k * width));
+        }
+    }
+    element
+}
+
+/// Поля отдельной вертикальной копии: тот же подъём, что в общем потоке.
+pub(crate) fn vertical_fragment_box(
+    mut element: crate::dom::Element,
+    width: f32,
+    reverse: bool,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> crate::dom::Element {
+    let vcx = vcx.with_collapse(CollapseInputs {
+        width: Some(width),
+        ..vcx.collapse
+    });
+    flow::absorb_margin(&mut element, false, reverse, vcx);
+    flow::absorb_margin(&mut element, true, reverse, vcx);
+    for margin in [
+        &mut element.style.margin.left,
+        &mut element.style.margin.right,
+    ] {
+        if let Some(Len::Pct(k)) = *margin {
+            *margin = Some(Len::Px(k * width));
+        }
+    }
+    element
+}
+
+/// Поля отдельной копии: нерешённая длина требует содержащего блока.
+pub(crate) fn fragment_margins(c: &crate::dom::Element) -> Option<(f32, f32)> {
+    let m = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => Some(*v),
+        None | Some(Len::Auto) => Some(0.0),
+        _ => None,
+    };
+    Some((m(&c.style.margin.top)?, m(&c.style.margin.bottom)?))
+}
+
 /// Схлопывание вертикальных отступов соседних блоков.
 ///
 /// В CSS нижний отступ одного блока и верхний отступ следующего не

@@ -60,8 +60,8 @@ pub(crate) fn stack_plan(
         used_gap,
     );
     // Строчные прогоны среди блоков — анонимными блоками (CSS 2.1
-    // §9.2.1.1), только когда строки можно измерить.
-    let grouped_e = line_col_w.and_then(|_| group_inline_runs(e));
+    // §9.2.1.1); неизвестная ширина разрешается в deferred layout.
+    let grouped_e = group_inline_runs(e);
     let ge: &Element = grouped_e.as_ref().unwrap_or(e);
     let floats_blocked = block_floats(ge, positioned, line_col_w);
     let ge: &Element = floats_blocked.as_ref().unwrap_or(ge);
@@ -183,24 +183,43 @@ pub(crate) fn stack_plan(
             !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style.computed()))
         })
         .map(|n| n as *const Node);
-    let stackable: Option<Vec<(Element, Shape)>> = with_lines(merged, line_col_w, opts, |opts| {
-        measure_children(
-            ge,
-            merged,
-            opts,
-            first_flow,
-            last_flow,
-            outer_frag,
-            (line_col_w, layout_col_w),
-            &nested_auto,
-            whole_ok,
-            &nested_whole,
-            &measured_kids,
-            col_vert,
-            col_rl,
-            measure_ok,
-            pag_ok,
-        )
+    let laid = line_col_w
+        .filter(|_| !col_vert && rows.is_none() && nest_rows.is_none())
+        .and_then(|w| super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids));
+    let pending = (line_col_w.is_none() && rows.is_none() && nest_rows.is_none())
+        .then(|| {
+            if col_vert {
+                super::laid::pending_vertical(ge, merged, opts.cx.vcx(), col_rl)
+            } else {
+                super::laid::pending(ge, merged, opts.cx.vcx())
+            }
+        })
+        .flatten();
+    let vertical = line_col_w
+        .filter(|_| col_vert && rows.is_none() && nest_rows.is_none())
+        .and_then(|w| {
+            super::laid::vertical_children(ge, merged, opts.cx.vcx(), w, col_rl, &measured_kids)
+        });
+    let stackable: Option<Vec<(Element, Shape)>> = laid.or(pending).or(vertical).or_else(|| {
+        with_lines(merged, line_col_w, opts, |opts| {
+            measure_children(
+                ge,
+                merged,
+                opts,
+                first_flow,
+                last_flow,
+                outer_frag,
+                (line_col_w, layout_col_w),
+                &nested_auto,
+                whole_ok,
+                &nested_whole,
+                &measured_kids,
+                col_vert,
+                col_rl,
+                measure_ok,
+                pag_ok,
+            )
+        })
     });
     StackPlan {
         line_col_w,
