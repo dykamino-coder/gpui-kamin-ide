@@ -184,7 +184,7 @@ mod tests {
         style.padding.top = Some(Len::Px(7.0));
         style.padding.bottom = Some(Len::Px(7.0));
         // A percentage size already switches `apply` to the native content
-        // box (`intrinsic_size::native_content_box`), so padding is not
+        // box (`layout::native_box::native_content_box`), so padding is not
         // folded into the bounds there and the holder keeps them.
         let mut holder = crate::paint::apply::apply(div(), &style, vcx);
         assert_eq!(holder.style().content_box, Some(true));

@@ -13,6 +13,7 @@ pub(crate) use with::image_with;
 mod content_radii;
 mod filtered;
 mod grid_measured;
+mod holder_ratio;
 mod local;
 mod piped;
 use local::{fit_local_image, local_image_source};

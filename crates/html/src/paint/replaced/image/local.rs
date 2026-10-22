@@ -1,11 +1,11 @@
 //! Локальная картинка: источник, путь объектного вида (object-*), вписывание в коробку.
 
 use super::content_radii::content_radii;
+use super::holder_ratio;
 use super::piped::piped_image;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
-use crate::layout::replaced::replaced_holder_ratio;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
@@ -34,8 +34,7 @@ pub(super) fn fit_local_image(
         Some((w, h)) => d.w(px(w + sub_w)).h(px(h + sub_h)),
         None => d,
     };
-    let fills_holder =
-        replaced_holder_ratio::apply(&mut d, &e.style, sizing.ratio(), узкая.is_some(), vcx);
+    let fills_holder = holder_ratio::apply(&mut d, &e.style, sizing.ratio(), узкая.is_some(), vcx);
     if fills_holder {
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
