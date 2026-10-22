@@ -1,7 +1,7 @@
 //! Планировщик: явный `Space` вместо скрытого состояния обхода.
 
 use super::{Space, fill};
-use crate::layout::fragment::types::{Kid, Par, RepeatGeom};
+use crate::layout::fragment::types::Kid;
 
 /// Монолит высоты `h` с верхним полем `mt` (поле первого ребёнка контекста не
 /// усекается — курсор стоит ниже верха колонки).
@@ -9,22 +9,9 @@ fn monolith(h: f32, mt: f32) -> Kid {
     Kid {
         h,
         mt,
-        mb: 0.0,
         monolith: true,
-        cuts: Vec::new(),
-        force_before: false,
-        force_after: false,
-        avoid_before: false,
-        avoid_after: false,
-        forced: Vec::new(),
-        solid: Vec::new(),
-        avoid: Vec::new(),
-        span: false,
         over: h,
-        clone_dec: None,
-        overflow_top: false,
-        repeat: RepeatGeom::default(),
-        par: Par::default(),
+        ..Default::default()
     }
 }
 
