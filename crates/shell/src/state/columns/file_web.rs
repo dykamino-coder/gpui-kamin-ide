@@ -32,6 +32,9 @@ impl RootView {
             .min_h(px(0.))
             .child(crate::probe::registry::probe_area("browser-viewport"))
             .child(crate::web::web_view("browser", m::RADIUS_MD))
+            .when_some(crate::web::unavailable(), |el, state| {
+                el.child(crate::ui::web_unavailable::card(state, &self.tx, p))
+            })
             .into_any_element();
 
         let addr_focused = self

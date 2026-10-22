@@ -225,7 +225,8 @@ impl RootView {
             | ShellEvent::Term(TermEvent::WvJs { .. })
             | ShellEvent::Term(TermEvent::WebviewAlive { .. })
             | ShellEvent::Term(TermEvent::ForceViewLoadError { .. })
-            | ShellEvent::Term(TermEvent::RetryView { .. }) => self.apply_webview(event, cx),
+            | ShellEvent::Term(TermEvent::RetryView { .. })
+            | ShellEvent::Term(TermEvent::RestartForWeb { .. }) => self.apply_webview(event, cx),
             ShellEvent::Ed(EdEvent::CopyToClipboard { .. })
             | ShellEvent::Ed(EdEvent::CopyRelativePath { .. })
             | ShellEvent::Cz(CzEvent::DesignSample { .. })
