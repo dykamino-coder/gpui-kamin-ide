@@ -123,9 +123,14 @@ impl Computed {
         }
     }
 
+    /// Используемые толщины рамки (css-backgrounds-3 §4.3): у стороны со
+    /// стилем `none`/`hidden` (и с начальным `none`) толщина нулевая — `None`.
+    /// Начальную `medium` видимой стороне ставит конец каскада
+    /// (`settle_border_widths`); пустая толщина после него — рамки нет
+    /// (раскладка так гасит сторону куска).
     pub fn borders(&self) -> Sides {
         let vis = self.border_visible;
-        let keep = |w, i: usize| if vis[i] == Some(true) { w } else { None };
+        let keep = |w: Option<Len>, i: usize| if vis[i] == Some(true) { w } else { None };
         Sides {
             top: keep(self.border_width.top, 0),
             right: keep(self.border_width.right, 1),

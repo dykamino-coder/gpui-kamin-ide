@@ -5,6 +5,7 @@
 //! семействам: свойство вне него разбирается и применяется по имени, как
 //! прежде.
 
+mod line_shorthands;
 mod longhands;
 mod shorthands;
 #[cfg(test)]

@@ -21,14 +21,7 @@ const KNOWN_GAPS: &[&str] = &[
     "appearance",
     "background-color",
     "background-image",
-    "border",
-    "border-bottom",
-    "border-color",
-    "border-left",
-    "border-right",
     "border-style",
-    "border-top",
-    "border-width",
     "box-shadow",
     "clip-path",
     "container-type",
@@ -46,8 +39,6 @@ const KNOWN_GAPS: &[&str] = &[
     "grid-area",
     "list-style",
     "mask",
-    "outline",
-    "outline-width",
     "place-items",
     "place-self",
     "text-decoration",
@@ -68,6 +59,11 @@ fn fields(style: &Computed) -> Vec<String> {
         logical.margin.order = [None; 4];
         logical.inset.order = [None; 4];
         logical.size_order = [None; 6];
+        for part in logical.border.iter_mut() {
+            for (order, _) in part.iter_mut().flatten() {
+                *order = Default::default();
+            }
+        }
     }
     let text = format!("{style:?}");
     let inner = &text[text.find('{').unwrap_or(0) + 1..text.rfind('}').unwrap_or(text.len())];

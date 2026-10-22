@@ -64,14 +64,8 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed,
         c.shadows = parent.shadows.clone();
         c.inset_shadows = parent.inset_shadows.clone();
     }
-    if own.border_inherit {
-        c.border_width = parent.border_width;
-        c.border_color = parent.border_color.or(parent.color);
-        c.border_colors = parent.border_colors;
-    }
-    // `inherit` по сторонам и по частям рамки. Толщина без рисунка ничего не
-    // рисует, поэтому вместе с ней переносится и он: у наследующей стороны
-    // своего `border-style` обычно нет.
+    // `inherit` по сторонам и по частям рамки (`border: inherit` раскрыт
+    // разбором в длинные свойства): вычисленное значение родителя.
     for i in 0..4 {
         if own.border_inherit_w[i] {
             match i {
@@ -84,8 +78,7 @@ pub(super) fn inherit_sizes(parent: &Computed, own: &Computed, c: &mut Computed,
         if own.border_inherit_s[i] {
             c.border_visible[i] = parent.border_visible[i];
             c.border_side_styles[i] = parent.border_side_styles[i];
-            c.border_dashed = parent.border_dashed;
-            c.border_dotted = parent.border_dotted;
+            c.sync_border_pattern();
         }
         if own.border_inherit_c[i] {
             // Начальное значение `border-color` — `currentColor`, и по

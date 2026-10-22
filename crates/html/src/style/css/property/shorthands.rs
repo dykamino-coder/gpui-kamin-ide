@@ -24,6 +24,30 @@ pub enum ShorthandId {
     PaddingInline,
     InsetBlock,
     InsetInline,
+    /// css-backgrounds-3 §4.4: `border`, стороны и части по сторонам.
+    Border,
+    BorderTop,
+    BorderRight,
+    BorderBottom,
+    BorderLeft,
+    BorderWidth,
+    BorderStyle,
+    BorderColor,
+    /// css-logical-1 §4.4: логические кромки.
+    BorderBlock,
+    BorderInline,
+    BorderBlockStart,
+    BorderBlockEnd,
+    BorderInlineStart,
+    BorderInlineEnd,
+    BorderBlockWidth,
+    BorderBlockStyle,
+    BorderBlockColor,
+    BorderInlineWidth,
+    BorderInlineStyle,
+    BorderInlineColor,
+    /// css-ui-4 §outline.
+    Outline,
 }
 
 const SHORTHANDS: &[(&str, ShorthandId)] = &[
@@ -36,6 +60,27 @@ const SHORTHANDS: &[(&str, ShorthandId)] = &[
     ("padding-inline", ShorthandId::PaddingInline),
     ("inset-block", ShorthandId::InsetBlock),
     ("inset-inline", ShorthandId::InsetInline),
+    ("border", ShorthandId::Border),
+    ("border-top", ShorthandId::BorderTop),
+    ("border-right", ShorthandId::BorderRight),
+    ("border-bottom", ShorthandId::BorderBottom),
+    ("border-left", ShorthandId::BorderLeft),
+    ("border-width", ShorthandId::BorderWidth),
+    ("border-style", ShorthandId::BorderStyle),
+    ("border-color", ShorthandId::BorderColor),
+    ("border-block", ShorthandId::BorderBlock),
+    ("border-inline", ShorthandId::BorderInline),
+    ("border-block-start", ShorthandId::BorderBlockStart),
+    ("border-block-end", ShorthandId::BorderBlockEnd),
+    ("border-inline-start", ShorthandId::BorderInlineStart),
+    ("border-inline-end", ShorthandId::BorderInlineEnd),
+    ("border-block-width", ShorthandId::BorderBlockWidth),
+    ("border-block-style", ShorthandId::BorderBlockStyle),
+    ("border-block-color", ShorthandId::BorderBlockColor),
+    ("border-inline-width", ShorthandId::BorderInlineWidth),
+    ("border-inline-style", ShorthandId::BorderInlineStyle),
+    ("border-inline-color", ShorthandId::BorderInlineColor),
+    ("outline", ShorthandId::Outline),
 ];
 
 impl ShorthandId {
@@ -50,7 +95,8 @@ impl ShorthandId {
             .map_or("", |(n, _)| n)
     }
 
-    /// Длинные свойства в порядке компонентов значения.
+    /// Длинные свойства в порядке компонентов значения; у сокращений вида
+    /// `<width> || <style> || <color>` — см. [`Self::line_longhands`].
     pub fn longhands(self) -> &'static [LonghandId] {
         match self {
             Self::Margin => &[MarginTop, MarginRight, MarginBottom, MarginLeft],
@@ -62,13 +108,38 @@ impl ShorthandId {
             Self::PaddingInline => &[PaddingInlineStart, PaddingInlineEnd],
             Self::InsetBlock => &[InsetBlockStart, InsetBlockEnd],
             Self::InsetInline => &[InsetInlineStart, InsetInlineEnd],
+            Self::BorderWidth => &[
+                BorderTopWidth,
+                BorderRightWidth,
+                BorderBottomWidth,
+                BorderLeftWidth,
+            ],
+            Self::BorderStyle => &[
+                BorderTopStyle,
+                BorderRightStyle,
+                BorderBottomStyle,
+                BorderLeftStyle,
+            ],
+            Self::BorderColor => &[
+                BorderTopColor,
+                BorderRightColor,
+                BorderBottomColor,
+                BorderLeftColor,
+            ],
+            Self::BorderBlockWidth => &[BorderBlockStartWidth, BorderBlockEndWidth],
+            Self::BorderBlockStyle => &[BorderBlockStartStyle, BorderBlockEndStyle],
+            Self::BorderBlockColor => &[BorderBlockStartColor, BorderBlockEndColor],
+            Self::BorderInlineWidth => &[BorderInlineStartWidth, BorderInlineEndWidth],
+            Self::BorderInlineStyle => &[BorderInlineStartStyle, BorderInlineEndStyle],
+            Self::BorderInlineColor => &[BorderInlineStartColor, BorderInlineEndColor],
+            _ => self.line_longhands(),
         }
     }
 
     /// Раскрыть значение сокращения в длинные свойства: `(свойство, вид
     /// значения, текст)`. `None` — сокращение негодно и не даёт ничего.
     /// С документом (`vcx`) каждый компонент проверяется грамматикой своего
-    /// свойства; без него проверяется лишь число компонентов.
+    /// свойства; без него проверяется лишь форма значения.
     pub fn expand(
         self,
         value: &str,
@@ -87,7 +158,10 @@ impl ShorthandId {
         if has_substitution(value) {
             return Some(whole(Specified::Pending(Some(self))));
         }
-        let parts = self.components(value)?;
+        let parts = match self.line_parts() {
+            Some(_) => self.line_components(value, vcx)?,
+            None => self.components(value)?,
+        };
         let mut out = Vec::with_capacity(longhands.len());
         for (&id, text) in longhands.iter().zip(parts) {
             if CssWide::parse(&text).is_some() || vcx.is_some_and(|vcx| !id.accepts(&text, vcx)) {
