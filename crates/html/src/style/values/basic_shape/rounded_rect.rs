@@ -5,25 +5,10 @@
 use super::ShapeBox;
 use crate::document::state::ValueCx;
 
-pub fn rounded_float(
-    raw: &str,
-    b: &super::ShapeBox,
-    side: i32,
-    vcx: ValueCx<'_>,
-) -> Option<crate::layout::float::rounded_box::RoundedBox> {
-    let (rect, radii) = rrect_of(raw, b, vcx)?;
-    Some(crate::layout::float::rounded_box::RoundedBox::new(
-        rect,
-        radii,
-        (b.mw, b.mh),
-        side,
-    ))
-}
-
 /// inset/rect/xywh/слово-коробка → прямоугольник (x,y,w,h) + радиусы.
 // Rounded rectangles pair their bounds with the four corner radii.
 #[allow(clippy::type_complexity)]
-pub(super) fn rrect_of(
+pub(crate) fn rrect_of(
     raw: &str,
     b: &ShapeBox,
     vcx: ValueCx<'_>,

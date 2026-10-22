@@ -132,7 +132,7 @@ pub(crate) fn resolve_mask(
                     let [pt, pr, pb, pl] = group.poly_expand;
                     let (rw, rh) = ((bw + pl + pr).max(1.0), (bh + pt + pb).max(1.0));
                     let (cx0, cy0, rx, ry) =
-                        crate::paint::background::shape_params(raw, rw, rh, 1.0, vcx)?;
+                        crate::style::values::basic_shape::shape_params(raw, rw, rh, 1.0, vcx)?;
                     let (cx, cy) = (cx0 - pl, cy0 - pt);
                     let (aw, ah) = (bw + sl + sr, bh + st + sb);
                     let img = crate::paint::background::rasterize_ellipse_px(

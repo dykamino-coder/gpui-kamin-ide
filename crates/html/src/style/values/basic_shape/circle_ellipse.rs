@@ -3,7 +3,7 @@
 //! слов `closest-/farthest-side|corner`; хвост с опорной коробкой отбрасывается.
 
 use crate::document::state::ValueCx;
-use crate::paint::background::*;
+use crate::style::css::value_tokens::split_top;
 
 /// Параметры формы `circle(...)` / `ellipse(...)`: центр и радиусы в
 /// точках растра; `scale` переводит точечные величины записи (CSS) в них.
