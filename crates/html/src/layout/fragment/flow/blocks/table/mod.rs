@@ -19,7 +19,8 @@ use crate::layout::table::grid_rows::{cell_row_span, grid_rows, table_key};
 use crate::layout::table::is_cell;
 
 mod geometry;
-pub(crate) use geometry::TableSections;
+mod sections;
+pub(crate) use sections::TableSections;
 #[cfg(test)]
 mod tests;
 

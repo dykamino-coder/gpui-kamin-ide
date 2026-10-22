@@ -18,6 +18,7 @@ use crate::layout::fragment::table_bands::table_box;
 use crate::layout::page::names::page_names;
 use crate::style::computed::{Display, LenCx};
 
+mod finish;
 mod geometry;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
 mod laid;

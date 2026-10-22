@@ -148,3 +148,28 @@ fn sections_and_pushed_cell_content_come_from_the_laid_out_rows() {
     assert_eq!(b.pushed_at(32.0, &laid), None);
     assert_eq!(b.pushed_at(12.0, &laid), None);
 }
+
+#[test]
+fn block_start_edge_without_a_gap_holds_the_first_row_monolith() {
+    // Рамка 0..10, первый ряд сразу под ней — монолит 10..60: разрыва между
+    // рамкой и рядом нет (класс C — только при зазоре), монолит тянет её.
+    let (b, _) = table(&rows(
+        &[""],
+        "<div style=\"contain:size;height:50px\"></div>",
+    ));
+    let k = key(&b);
+    let mut laid = Laid::default();
+    laid.tables.insert(
+        k,
+        TableFrame {
+            table: (0.0, 70.0),
+            grid: (10.0, 60.0),
+            rows: vec![(10.0, 60.0)],
+        },
+    );
+    let t = b.table.as_ref().unwrap();
+    let mono = t.rows[0].cells[0].1.kids[0].id;
+    laid.boxes.insert(mono, (10.0, 60.0));
+    let m = b.breaks(70.0, &laid).finish(FlowGeometry::default(), 70.0);
+    assert!(m.solid.contains(&(0.0, 60.0)));
+}

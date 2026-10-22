@@ -18,19 +18,6 @@ use crate::layout::fragment::flow::blocks::geometry::{Pending, walk};
 use crate::layout::fragment::flow::blocks::{BlockBreaks, BlockKid, Laid, TableFrame};
 use crate::tolerance::COORD_EPS;
 
-/// Разложенные секции повтора таблицы (css-tables-3 §repeated-headers): полосы
-/// первой шапки и первого подвала `(верх, высота, break-inside: avoid)`, зазор
-/// `border-spacing` между рядами и коробка таблицы `[box_top, box_end)` — всё
-/// в координатах копии.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct TableSections {
-    pub(crate) head: Option<(f32, f32, bool)>,
-    pub(crate) foot: Option<(f32, f32, bool)>,
-    pub(crate) spacing: f32,
-    pub(crate) box_top: f32,
-    pub(crate) box_end: f32,
-}
-
 /// Ребёнок обёртки таблицы: подпись или коробка таблицы.
 enum Slot<'a> {
     Caption(&'a BlockKid),
@@ -170,6 +157,18 @@ impl TableBox {
         if let Some((_, gs)) = group_open {
             out.solid.push((gs, y));
         }
+        // Первый ряд без зазора под верхней рамкой с отбивкой: разрыва между
+        // ними нет (Blink кладёт первую секцию без разделения с началом
+        // коробки таблицы), монолит ряда тянет рамку за собой.
+        if grid_top > table_top + COORD_EPS
+            && let Some(&(first, _)) = f.rows.first()
+            && (first - grid_top).abs() < COORD_EPS
+        {
+            out.pending.push(Pending::Head {
+                top: table_top,
+                edge: first,
+            });
+        }
         // Нижняя рамка с отбивкой таблицы приклеена к содержимому, кончающемуся
         // на низу последнего ряда (класс C — только при ненулевом зазоре,
         // css-break-4 §possible-breaks; Blink `FinishFragmentation`).
@@ -182,27 +181,6 @@ impl TableBox {
                 gapless: true,
             });
         }
-    }
-
-    /// Разложенные секции повтора таблицы.
-    pub(in crate::layout::fragment::flow::blocks) fn sections(
-        &self,
-        laid: &Laid,
-    ) -> Option<TableSections> {
-        let f = laid.table(self.key)?;
-        let band = |s: Option<(usize, usize, bool)>| {
-            let (first, last, avoid) = s?;
-            let top = f.rows.get(first)?.0;
-            Some((top, f.rows.get(last)?.1 - top, avoid))
-        };
-        Some(TableSections {
-            head: band(self.head),
-            foot: band(self.foot),
-            // Зазор между рядами — он же отбивка сетки над первым рядом.
-            spacing: f.rows.first().map_or(0.0, |r| r.0 - f.grid.0),
-            box_top: f.table.0,
-            box_end: f.table.1,
-        })
     }
 
     /// Самая внешняя коробка таблицы, чей border box начинается ровно в `a`:

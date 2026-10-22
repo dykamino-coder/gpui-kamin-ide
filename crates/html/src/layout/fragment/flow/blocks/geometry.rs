@@ -14,7 +14,6 @@
 
 use super::table::TableSections;
 use super::{BlockBox, Laid};
-use crate::layout::fragment::flow::FlowGeometry;
 use crate::tolerance::COORD_EPS;
 
 /// Точки разрыва стопки до слияния со строками.
@@ -52,6 +51,11 @@ pub(super) enum Pending {
         floor: f32,
         next: f32,
     },
+    /// Верхняя рамка с отбивкой `[top, edge)`, к которой без зазора
+    /// примыкает содержимое: между ними нет точки разрыва (класс C — только
+    /// при ненулевом зазоре, css-break-4 §possible-breaks), и сплошные
+    /// диапазоны, начатые на `edge`, тянут её за собой.
+    Head { top: f32, edge: f32 },
     /// Нижняя рамка с отбивкой коробки с верхом `top`, кончающейся на
     /// `bottom`: сплошная от `from`; `gapless` — последний ребёнок кончается
     /// ровно на `edge`, и сплошные диапазоны, кончающиеся там, приклеены к
@@ -163,78 +167,5 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
             bottom,
             gapless: last.is_none_or(|lb| (edge - lb).abs() < 0.01),
         });
-    }
-}
-
-impl BlockBreaks {
-    /// Слить со строками и прочими измеренными потоками (`lines`) и
-    /// закрыть диапазоны, которым нужны все точки; всё — в пределах
-    /// `[0, end)`.
-    pub(crate) fn finish(self, lines: FlowGeometry, end: f32) -> MeasuredBreaks {
-        let mut g = FlowGeometry {
-            cuts: self.cuts,
-            solid: self.solid,
-            floats: Vec::new(),
-        };
-        g.cuts.extend(lines.cuts);
-        g.solid.extend(lines.solid);
-        for p in self.pending {
-            match p {
-                Pending::Avoid {
-                    top,
-                    bottom,
-                    floor,
-                    next,
-                } => {
-                    // Последняя законная точка ВНУТРИ предыдущего ребёнка, без
-                    // неё — его начало (Blink `early_break_`). От верха
-                    // содержимого диапазон не начинается: там это был бы
-                    // разрыв перед контейнером, и его решает уровень выше.
-                    let open = g
-                        .cuts
-                        .iter()
-                        .map(|&(need, _)| need)
-                        .filter(|&n| n > top + 0.01 && n < bottom - 0.01)
-                        .fold(top, f32::max);
-                    if open > floor + 0.01 {
-                        g.solid.push((open, next + 0.05));
-                    }
-                }
-                Pending::Tail {
-                    top,
-                    edge,
-                    from,
-                    bottom,
-                    gapless,
-                } => {
-                    let glue = if gapless {
-                        g.solid
-                            .iter()
-                            .filter(|&&(a, e)| a > top + 0.01 && (e - edge).abs() < 0.01)
-                            .map(|&(a, _)| a)
-                            .fold(from, f32::min)
-                    } else {
-                        from
-                    };
-                    g.solid.push((glue, bottom));
-                }
-            }
-        }
-        g.cuts.retain(|&(need, _)| need < end - 0.01);
-        g.normalize();
-        let mut forced = self.forced;
-        forced.retain(|&f| f > 0.01 && f < end - 0.01);
-        forced.sort_by(f32::total_cmp);
-        forced.dedup_by(|a, b| (*a - *b).abs() < COORD_EPS);
-        g.solid.retain(|&(a, _)| a < end - 0.01);
-        for r in g.solid.iter_mut() {
-            r.1 = r.1.min(end);
-        }
-        MeasuredBreaks {
-            cuts: g.cuts,
-            forced,
-            solid: g.solid,
-            sections: self.sections,
-        }
     }
 }
