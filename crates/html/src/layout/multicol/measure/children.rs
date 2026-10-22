@@ -1,5 +1,6 @@
 //! ADR P-19 F2-1/F2-3: preplan clone, вложенных рядов и trim требует состояния продолжения.
-//! Остаточные отказы F1 (vertical grid/table, empty grid, float) ещё не устранены.
+//! F1: пустая grid и vertical flex ещё требуют native adapter; не объявлены F2.
+//! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
 //! Измерение блочных детей и вложенных многоколоночников.
 
 use super::grid_kid;

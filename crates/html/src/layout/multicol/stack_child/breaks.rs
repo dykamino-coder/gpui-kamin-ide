@@ -56,8 +56,10 @@ pub(super) fn recorder(
     let breaks_w = (!measured).then(|| line_col_w.map_or(BreaksAt::Column, BreaksAt::Width));
     // Независимая измеренная копия сохраняет и корневую коробку: она нужна
     // для пересборки дополнительных видов после реальной меры рядов.
-    let independent =
-        measured && (col_vert || crate::layout::fragment::flow::independent_copy(copy));
+    let independent = measured
+        && (col_vert
+            || crate::layout::fragment::flow::independent_copy(copy)
+            || crate::layout::fragment::flow::empty_floats(copy));
     // A measured box without block children keeps its measured lines alone
     // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
     // estimate is replaced keeps its own border and padding edges too.

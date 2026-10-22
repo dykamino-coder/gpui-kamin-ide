@@ -88,8 +88,9 @@ pub(super) fn multicol_stack_child(
     // него. Без нуля в каждой колонке проступил бы фон контейнера (`floats-clear-multicol-*`:
     // `background: red`); флоаты переполняют нулевую коробку, и маска колонки режет их по
     // разрезам меры.
+    let empty_floats = crate::layout::fragment::flow::empty_floats(&copy);
     let float_zero = !col_vert
-        && float_only_box(&copy).is_some()
+        && (empty_floats || float_only_box(&copy).is_some())
         && through_strut(&copy, opts.cx.vcx()).is_some();
     if float_zero {
         copy.style.used_mut().height = Some(Len::Px(0.0));
@@ -105,6 +106,12 @@ pub(super) fn multicol_stack_child(
             crate::layout::fragment::flow::vertical_copy(&copy, col_rl)
         } else {
             crate::layout::fragment::flow::independent_copy(&copy)
+                || empty_floats
+                || (copy.marks.paginate
+                    && crate::layout::multicol::measure::native_float::float_copy(
+                        &copy,
+                        opts.cx.vcx(),
+                    ))
         });
     let (cuts, forced, solid, h, over, no_reach) = if laid {
         // Высоту, переполнение и разрывы заменяет lay_out_main до плана.

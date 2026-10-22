@@ -185,13 +185,25 @@ pub(crate) fn stack_plan(
         .map(|n| n as *const Node);
     let laid = line_col_w
         .filter(|_| !col_vert && nest_rows.is_none())
-        .and_then(|w| super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids));
+        .and_then(|w| {
+            super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids).or_else(|| {
+                pag_ok
+                    .then(|| {
+                        super::native_float::children(ge, merged, opts.cx.vcx(), w, &measured_kids)
+                    })
+                    .flatten()
+            })
+        });
     let pending = (line_col_w.is_none() && nest_rows.is_none())
         .then(|| {
             if col_vert {
                 super::laid::pending_vertical(ge, merged, opts.cx.vcx(), col_rl)
             } else {
-                super::laid::pending(ge, merged, opts.cx.vcx())
+                super::laid::pending(ge, merged, opts.cx.vcx()).or_else(|| {
+                    pag_ok
+                        .then(|| super::native_float::pending(ge, merged, opts.cx.vcx()))
+                        .flatten()
+                })
             }
         })
         .flatten();

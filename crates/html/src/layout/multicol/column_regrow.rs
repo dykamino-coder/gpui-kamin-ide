@@ -45,6 +45,18 @@ impl ColumnStack {
             } else {
                 content.height
             }));
+            if !axis.is_vertical()
+                && let Some(w) = &c.watched
+            {
+                // Floats переполняют нулевую коробку; их реальная протяжённость
+                // резервирует продолжение, не растягивая фон normal flow.
+                let flow = w.flow.at(point(px(0.0), px(0.0)), sz, axis, window);
+                c.over = flow
+                    .floats
+                    .iter()
+                    .map(|g| g.bottom + g.margins[1])
+                    .fold(c.over, f32::max);
+            }
             if c.regrow.is_some() {
                 c.cuts.clear();
                 c.forced.clear();
