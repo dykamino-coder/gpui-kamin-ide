@@ -1393,3 +1393,7 @@ mod migration_tests {
         assert_eq!(adjusted.height, AvailableSpace::MaxContent);
     }
 }
+
+#[cfg(all(test, feature = "taffy_tree"))]
+#[path = "grid_compression_scope_tests.rs"]
+mod compression_scope_tests;

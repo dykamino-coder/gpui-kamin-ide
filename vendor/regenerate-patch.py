@@ -72,6 +72,7 @@ FIXES = {
         "Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.",
         "Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.",
         "Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.",
+        "Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.",
         "Packaging: retain the selected source/examples; omit the upstream generated test module.",
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],

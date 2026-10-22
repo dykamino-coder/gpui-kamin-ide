@@ -457,6 +457,13 @@ impl CompactLength {
         self.tag() & (Self::NON_POINTER_BIT | Self::KEYWORD_BIT) == Self::NON_POINTER_BIT
     }
 
+    /// Returns true if the value is a length, a percentage or a plain `calc()` value (not a
+    /// `fit-content(calc())` value): anything that resolves to a length given a percentage basis
+    #[inline(always)]
+    pub fn is_length_percentage_or_calc(self) -> bool {
+        self.tag() & Self::KEYWORD_BIT == 0
+    }
+
     /// Returns true if the value is auto
     #[inline(always)]
     pub fn is_auto(self) -> bool {
@@ -759,6 +766,7 @@ mod tests {
         let ptr = &*boxed as *const u64 as *const ();
         let value = CompactLength::fit_content_calc(ptr);
         assert!(value.is_fit_content_calc());
+        assert!(!value.is_length_percentage_or_calc());
         assert!(value.has_calc());
         assert!(!value.is_plain_calc());
         assert!(value.is_fit_content());
@@ -776,6 +784,7 @@ mod tests {
         assert!(!calc.is_fit_content_calc());
         assert!(!calc.is_fit_content());
         assert!(!calc.is_sizing_keyword());
+        assert!(calc.is_length_percentage_or_calc());
     }
 
     #[test]
