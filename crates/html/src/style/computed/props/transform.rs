@@ -83,14 +83,14 @@ impl Computed {
                 self.offset_rotate = accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-anchor" => {
-                if !matches!(v, "auto") && !super::background::layer_props::position_valid(v, vcx) {
+                if !matches!(v, "auto") && !super::background::values::position_valid(v, vcx) {
                     return;
                 }
                 self.offset_anchor = accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-position" => {
                 if !matches!(v, "auto" | "normal")
-                    && !super::background::layer_props::position_valid(v, vcx)
+                    && !super::background::values::position_valid(v, vcx)
                 {
                     return;
                 }

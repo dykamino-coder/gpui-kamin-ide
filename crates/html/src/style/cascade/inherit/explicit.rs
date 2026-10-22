@@ -1,9 +1,8 @@
 //! inherit_stage, этап явного `inherit` у ненаследуемых свойств: биты inherit_bits, поля, отступы,
-//! размеры, inset, фон (вычисленный `background_color` и его используемый цвет).
+//! размеры, inset (фон — `background`).
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::computed::BgListProp;
 
 pub(super) fn inherit_explicit(
     parent: &Computed,
@@ -17,9 +16,6 @@ pub(super) fn inherit_explicit(
     if own.inherit_bits != 0 {
         use crate::style::computed::inh;
         let on = |b: u32| own.inherit_bits & b != 0;
-        if on(inh::BG_REPEAT) {
-            c.bg_repeat = parent.bg_repeat;
-        }
         if on(inh::Z_INDEX) {
             c.z_index = parent.z_index;
         }
@@ -59,34 +55,8 @@ pub(super) fn inherit_explicit(
             c.inline_display = parent.inline_display;
             c.math_layout = parent.math_layout;
         }
-        if on(inh::BG_IMAGE) {
-            c.bg_image = parent.bg_image.clone();
-            c.gradient = parent.gradient.clone();
-            c.gradient_raw = parent.gradient_raw.clone();
-            c.gradient_current = parent.gradient_current.clone();
-            if let Some(layers) = parent
-                .bg_lists
-                .get(BgListProp::Image)
-                .or_else(|| parent.bg_lists.get(BgListProp::Shorthand))
-            {
-                c.bg_lists.set_layers(BgListProp::Image, layers.to_vec());
-            }
-        }
-        if on(inh::BG_POS) {
-            c.bg_pos = parent.bg_pos;
-            c.bg_position_math = parent.bg_position_math.clone();
-        }
         if on(inh::CLIP) {
             c.clip_rect = parent.clip_rect;
-        }
-        if on(inh::BG_ORIGIN) {
-            c.bg_origin = parent.bg_origin;
-        }
-        if on(inh::BG_CLIP) {
-            c.bg_clip = parent.bg_clip;
-        }
-        if on(inh::BG_SIZE) {
-            c.bg_size = parent.bg_size;
         }
         if on(inh::TRANSFORM) {
             c.transform = parent.transform;
@@ -170,38 +140,5 @@ pub(super) fn inherit_explicit(
             2 => c.inset.bottom = parent.inset.bottom,
             _ => c.inset.left = parent.inset.left,
         }
-    }
-    if own.background_inherit {
-        c.background_color = parent.background_color.clone();
-        if own.background_all_inherit {
-            c.bg_lists.retain(|p| p == BgListProp::BlendMode);
-            for (prop, layers) in parent
-                .bg_lists
-                .iter()
-                .filter(|(p, _)| *p != BgListProp::BlendMode)
-            {
-                c.bg_lists.set_layers(prop, layers.to_vec());
-            }
-            c.bg_image = parent.bg_image.clone();
-            c.bg_repeat = parent.bg_repeat;
-            c.bg_pos = parent.bg_pos;
-            c.bg_position_math = parent.bg_position_math.clone();
-            c.bg_size = parent.bg_size;
-            c.bg_fixed = parent.bg_fixed;
-            c.gradient = parent.gradient.clone();
-            c.gradient_raw = parent.gradient_raw.clone();
-            c.gradient_current = parent.gradient_current.clone();
-        }
-    }
-    // `currentcolor` фона решается ЗДЕСЬ: только теперь известен цвет самого
-    // элемента. Вычисленное значение остаётся словом — его унаследуют дети
-    // (`background: inherit`) и решат своим цветом заново.
-    if own.background_inherit
-        || c.background_color
-            .as_ref()
-            .is_some_and(|value| value.depends_on_current())
-    {
-        let current = c.current_color();
-        c.derive_background(Some(current));
     }
 }

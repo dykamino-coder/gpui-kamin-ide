@@ -52,7 +52,7 @@ impl Computed {
             // отрисовки, доля — от коробки самого элемента (она же — коробка
             // родителя для его детей).
             "perspective-origin" => {
-                if !crate::style::computed::props::background::layer_props::position_valid(v, vcx) {
+                if !crate::style::computed::props::background::values::position_valid(v, vcx) {
                     return;
                 }
                 let axis = |t: &str, default: f32| -> f32 {

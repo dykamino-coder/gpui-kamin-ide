@@ -74,7 +74,7 @@ pub(super) fn origin_valid(v: &str, vcx: ValueCx<'_>) -> bool {
         return false;
     }
     let xy = words[..words.len().min(2)].join(" ");
-    super::super::background::layer_props::position_valid(&xy, vcx)
+    super::super::background::values::position_valid(&xy, vcx)
         && (words.len() < 3
             || Len::parse(&words[2], vcx).is_some_and(|l| {
                 !matches!(

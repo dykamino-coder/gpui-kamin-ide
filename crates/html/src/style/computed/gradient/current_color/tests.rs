@@ -4,7 +4,7 @@ use super::*;
 use crate::style::computed::GradSpace;
 
 #[test]
-fn shorthand_inheritance_keeps_the_native_background_route() {
+fn inherited_background_image_resolves_currentcolor_with_the_child_color() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let mut parent = Computed::default();
@@ -17,7 +17,6 @@ fn shorthand_inheritance_keeps_the_native_background_route() {
     child.apply_one("background", "inherit", vcx);
     child.apply_one("color", "limegreen", vcx);
     let child = crate::style::cascade::inherit::inherit(&parent, &child, vcx);
-    assert!(child.gradient_raw.is_none());
     let gradient = child.gradient.as_ref().unwrap();
     assert_eq!(gradient.from, Color::parse("limegreen", vcx).unwrap());
     assert_eq!(gradient.to, gradient.from);

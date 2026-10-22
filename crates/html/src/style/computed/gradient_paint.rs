@@ -12,12 +12,7 @@ impl super::Computed {
     pub(crate) fn gradient_as_tile(&self) -> bool {
         // Несколько слоёв рисует стопка плиток (`bg_layers`): заливка коробки
         // верхним градиентом легла бы ПОД нижние слои.
-        if self.gradient.is_some()
-            && self
-                .bg_lists
-                .iter()
-                .any(|(k, _)| matches!(k, BgListProp::Shorthand | BgListProp::Image))
-        {
+        if self.gradient.is_some() && self.bg_lists.get(BgListProp::Image).is_some() {
             return true;
         }
         self.gradient_raw.is_some()

@@ -2,7 +2,7 @@
 //! calc-size.
 
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::Len;
 
 mod align;
 mod background;
@@ -13,8 +13,8 @@ mod sizing;
 mod text;
 mod tokens;
 pub(super) use align::{align_keyword, is_safe, parse_align, parse_justify};
+pub(super) use background::pct_px_pair;
 pub(crate) use background::{background_blend_valid, background_layers, top_level_comma};
-pub(super) use background::{background_shorthand_valid, pct_px_pair, split_image_func};
 pub(super) use border::{
     corner_shape_param, corner_shape_shorthand, four, parse_border_shape, parse_overflow,
     uniform_round,

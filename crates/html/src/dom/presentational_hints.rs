@@ -194,6 +194,9 @@ pub(super) fn colors(
             .and_then(|v| crate::style::values::value::Color::parse(&v, vcx))
     };
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
+        // Любое авторское объявление `background-color` (в том числе
+        // начальное `transparent`, которое хранится пустым) сильнее подсказки.
+        && !style.bg_explicit
         && style.background.is_none()
         && style.gradient.is_none()
         && let Some(c) = color_of("bgcolor")

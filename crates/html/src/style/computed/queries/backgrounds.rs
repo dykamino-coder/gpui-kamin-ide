@@ -24,10 +24,7 @@ impl Computed {
     /// Слои сверху вниз. Цвет лежит под всей стопкой; градиенты слоёв идут
     /// общим путём растровых плиток. Разбор CSS завершён каскадом.
     pub(crate) fn bg_layers(&self, _vcx: ValueCx<'_>) -> Option<Vec<Computed>> {
-        let images = self
-            .bg_lists
-            .get(BgListProp::Image)
-            .or_else(|| self.bg_lists.get(BgListProp::Shorthand))?;
+        let images = self.bg_lists.get(BgListProp::Image)?;
         if images.len() < 2 {
             return None;
         }
@@ -36,14 +33,7 @@ impl Computed {
             let mut c = self.clone();
             c.bg_lists.clear();
             c.background = None;
-            if let Some(layers) = self.bg_lists.get(BgListProp::Shorthand) {
-                layers[i % layers.len()].apply(BgListProp::Shorthand, &mut c);
-            }
-            for (prop, layers) in self
-                .bg_lists
-                .iter()
-                .filter(|(k, _)| *k != BgListProp::Shorthand)
-            {
+            for (prop, layers) in self.bg_lists.iter() {
                 layers[i % layers.len()].apply(prop, &mut c);
             }
             c.gradient = None;
