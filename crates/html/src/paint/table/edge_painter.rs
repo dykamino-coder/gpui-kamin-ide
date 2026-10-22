@@ -1,9 +1,9 @@
 //! Художник сросшихся кромок таблицы: отрезки-победители красятся по ключу с привязкой к пикселям.
 
+use super::LayerPaint;
 use super::edge_segments::{Seg, collect_cands, draw_cands};
-use crate::hooks::Hooks;
 use crate::layout::table::probes::{CellEdges, GRID_BOX};
-use gpui::{App, Bounds, LayoutId, Pixels, Window};
+use gpui::{Bounds, Pixels, Window};
 
 /// Слой сросшихся кромок: рисует рамки всех ячеек таблицы, центрируя
 /// каждую на границе ячейки. Совпадающие кромки соседей ложатся друг на
@@ -28,35 +28,8 @@ impl EdgePainter {
     }
 }
 
-impl Hooks for EdgePainter {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
-    }
-
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        _cx: &mut App,
-    ) {
+impl LayerPaint for EdgePainter {
+    fn paint(&mut self, window: &mut Window) {
         let cells = std::mem::take(&mut *self.edges.borrow_mut());
         // Начало сетки по каждой оси — отдельно от того, кто эту линию красит.
         let grid_lo = cells

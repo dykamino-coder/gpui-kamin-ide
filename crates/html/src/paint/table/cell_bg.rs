@@ -1,9 +1,9 @@
 //! Слой фонов ячеек сросшейся таблицы: красит прямоугольники, снятые пробами ячеек
 //! (`layout::table::probes::cell_bg_probe`) на подготовке того же кадра.
 
-use crate::hooks::Hooks;
+use super::LayerPaint;
 use crate::layout::table::probes::CellBgs;
-use gpui::{App, Bounds, LayoutId, Pixels, Window};
+use gpui::Window;
 
 /// Слой фонов ячеек сросшейся таблицы (см. `CellBgs`).
 pub struct CellBgPainter {
@@ -16,35 +16,8 @@ impl CellBgPainter {
     }
 }
 
-impl Hooks for CellBgPainter {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
-    }
-
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        _cx: &mut App,
-    ) {
+impl LayerPaint for CellBgPainter {
+    fn paint(&mut self, window: &mut Window) {
         // Пробы пишут на подготовке, вся подготовка кадра идёт до отрисовки —
         // здесь прямоугольники ЭТОГО ЖЕ кадра.
         let bgs = std::mem::take(&mut *self.bgs.borrow_mut());

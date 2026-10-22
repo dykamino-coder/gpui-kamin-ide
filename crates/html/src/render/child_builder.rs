@@ -1,9 +1,8 @@
 //! Реализация в render контракта раскладки по сборке дочерних элементов.
 
-use crate::hooks::IntoHooked;
 use crate::layout::build_contracts::{ChildBuild, Effect, FlowBuild, Layer};
 use crate::paint::decorations::outline_phase;
-use crate::paint::table::{CellBgPainter, CellsClipped, EdgePainter};
+use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
 use gpui::AnyElement;
 
@@ -34,8 +33,10 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
 
 fn layer(layer: Layer<'_>) -> AnyElement {
     match layer {
-        Layer::CellBand { rects, style, vcx } => CellsClipped::new(rects, *style, vcx).hooked(),
-        Layer::CellBackgrounds(bgs) => CellBgPainter::new(bgs).hooked(),
-        Layer::CollapsedEdges(edges) => EdgePainter::new(edges).hooked(),
+        Layer::CellBand { rects, style, vcx } => {
+            table::layer(CellsClipped::new(rects, *style, vcx))
+        }
+        Layer::CellBackgrounds(bgs) => table::layer(CellBgPainter::new(bgs)),
+        Layer::CollapsedEdges(edges) => table::layer(EdgePainter::new(edges)),
     }
 }

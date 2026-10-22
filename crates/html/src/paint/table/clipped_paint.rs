@@ -1,41 +1,13 @@
 //! Отрисовка полосы ряда/группы, обрезанной ячейками: тени, контур и слой фона (gpui Element).
 
 use super::CellsClipped;
-use crate::hooks::Hooks;
-use gpui::{App, Bounds, LayoutId, Pixels, Window};
+use super::LayerPaint;
+use gpui::{Bounds, Pixels, Window};
 
-impl Hooks for CellsClipped {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        // Оверлей вне потока: раскладку таблицы полоса не трогает.
-        let style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
-    }
-
+impl LayerPaint for CellsClipped {
     // Border decoration records pair each edge's color and geometry.
     #[allow(clippy::type_complexity)]
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        _cx: &mut App,
-    ) {
+    fn paint(&mut self, window: &mut Window) {
         // Пробы ячеек пишут в PREPAINT, а вся подготовка кадра идёт до
         // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра. Пусто —
         // у полосы нет ячеек (`<col>` без рядов, `<col>` за краем сетки).
