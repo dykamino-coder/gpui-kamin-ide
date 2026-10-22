@@ -130,14 +130,17 @@ mod tests {
                 "cross-fade(rgba(255, 0, 0, .5) 50%, blue 50%)",
                 [170, 0, 85, 192],
             ),
-            ("filter(rgb(0, 128, 0), invert(1))", [255, 127, 255, 255]),
+            (
+                "filter(linear-gradient(green, green), invert(1))",
+                [255, 127, 255, 255],
+            ),
             ("linear-gradient(red, red)", [0, 0, 255, 255]),
             ("radial-gradient(red, red)", [0, 0, 255, 255]),
             ("conic-gradient(red, red)", [0, 0, 255, 255]),
         ] {
-            let source = crate::style::computed::ImageSource::parse(css, vcx).unwrap();
+            let source = crate::style::computed::ImageSource::parse(css, vcx).expect(css);
             for (w, h) in [(1, 1), (7, 5), (16, 9)] {
-                let raster = rasterize_gradient(&source, w, h, vcx).unwrap();
+                let raster = rasterize_gradient(&source, w, h, vcx).expect(css);
                 assert_eq!((raster.width, raster.height), (w, h), "{css}");
                 for pixel in raster.bytes.chunks_exact(4) {
                     assert_eq!(pixel, expected, "{css}");
