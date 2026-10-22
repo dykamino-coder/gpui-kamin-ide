@@ -3,6 +3,8 @@
 //! даже если переменная есть и запас не понадобился бы). Здесь же общие
 //! сканеры токенов — конец экрана, строки и блока (CSS Syntax §5.4.8).
 
+pub(super) use crate::css_syntax::escape_end;
+
 /// CSS Variables §2.1 and §3: invalid var() syntax invalidates the declaration,
 /// even when the variable exists and its fallback would never be substituted.
 pub(super) fn valid(value: &str) -> bool {
@@ -74,24 +76,6 @@ fn sequence(raw: &str, fallback: bool, depth: usize) -> bool {
         }
     }
     true
-}
-
-pub(super) fn escape_end(raw: &str, at: usize) -> usize {
-    let mut end = at + 1;
-    let mut digits = 0;
-    while end < raw.len() && digits < 6 && raw.as_bytes()[end].is_ascii_hexdigit() {
-        end += 1;
-        digits += 1;
-    }
-    if let Some(c) = raw[end..].chars().next()
-        && (digits == 0 || c.is_ascii_whitespace())
-    {
-        end += c.len_utf8();
-        if c == '\r' && raw[end..].starts_with('\n') {
-            end += 1;
-        }
-    }
-    end
 }
 
 pub(super) fn string_end(raw: &str, start: usize, quote: char) -> Option<usize> {

@@ -54,6 +54,7 @@ pub use style::values::value;
 pub(crate) mod animation;
 pub(crate) mod cache;
 pub(crate) mod color;
+pub(crate) mod css_syntax;
 pub(crate) mod document;
 pub(crate) mod interactive;
 pub(crate) mod layout;
