@@ -42,12 +42,13 @@ pub(super) fn recorder(
     // A measured box without block children keeps its measured lines alone
     // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
     // estimate is replaced keeps its own border and padding edges too.
-    if blocks.kids.is_empty() && measured {
-        return (Watched::for_lines(), breaks_w);
-    }
-    // A box of another context (a table) keeps its own estimate.
+    // A box of another context (a table) keeps its own estimate; its line
+    // boxes are not lines of the stack's flow (`flow::flow_lines`).
     if blocks.kids.is_empty() && !crate::layout::fragment::flow::flow_lines(copy) {
         return (Watched::new(&[]), None);
+    }
+    if blocks.kids.is_empty() && measured {
+        return (Watched::for_lines(), breaks_w);
     }
     (Watched::for_blocks(blocks), breaks_w)
 }
