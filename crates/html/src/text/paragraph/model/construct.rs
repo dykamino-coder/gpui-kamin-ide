@@ -1,5 +1,5 @@
 //! Создание `Paragraph`: `new` со значениями по умолчанию для всех полей, привязка к
-//! документу (`measure_context`: общая память замера, ряды строк для `ClampCut`, контекст
+//! документу (`measure_context`: общая память замера, локальные замеры строк clamp, контекст
 //! вертикальной отрисовки), контекст руби (`ruby_context`: приёмник ширины базы и слои руби)
 //! и пустой абзац-заглушка на время отрисовки в повёрнутой системе координат.
 
@@ -114,9 +114,7 @@ impl Paragraph {
         self.measures = cx.doc().paragraph_measures.clone();
         self.paint_context = cx.vertical_paint.clone();
         self.inline_measure = cx.inline_measure.clone();
-        self.clamp_rows = cx
-            .clamp_measure()
-            .map_or_else(|| cx.doc().paragraph_rows.clone(), |(_, m)| m.rows);
+        self.clamp_rows = cx.clamp_measure().map(|(_, m)| m);
         self
     }
 

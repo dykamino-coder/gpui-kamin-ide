@@ -16,8 +16,6 @@ use std::rc::Rc;
 
 #[derive(Clone, Default)]
 pub struct LayoutCx {
-    /// Неизменяемые планы clamp этого построения.
-    pub(crate) clamp_plans: Rc<crate::text::clamp::ClampPlans>,
     /// Вход измерения или применения плана активного clamp-контейнера.
     pub(crate) clamp_input: Option<crate::text::clamp::ClampInput>,
     /// Внутренний каркас измеряемого clamp: владелец и ширина border-box.
@@ -155,7 +153,7 @@ impl LayoutCx {
                 crate::text::clamp::ClampInput::Measure(_) => None,
             };
         }
-        self.clamp_plans.plan(key)
+        None
     }
 
     pub(crate) fn clamp_box_height(&self, node: u64) -> Option<f32> {
@@ -167,7 +165,7 @@ impl LayoutCx {
                 .iter()
                 .find(|(key, _)| *key == node)
                 .map(|(_, h)| *h),
-            None => self.clamp_plans.box_height(node),
+            None => None,
         }
     }
 

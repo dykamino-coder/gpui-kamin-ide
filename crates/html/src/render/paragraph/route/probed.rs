@@ -53,24 +53,25 @@ pub(crate) fn paragraph_probed(
         }
         _ => para,
     };
-    if let Some((key, skip)) = ctx {
+    if let Some((_, skip)) = ctx {
         div()
             .relative()
             .child(para)
-            .child(crate::text::clamp::clamp_probe(
-                crate::text::clamp::clamp_lines_for(key, opts.cx.vcx()),
-                opts.cx.clamp_measure().map(|(_, m)| m),
-                line_height_px(inherited, opts),
-                skip,
-                false,
-                0.0,
-                crate::text::clamp::BoxEnds::default(),
-                seq,
-                budget,
-                None,
-                0.0,
-                false,
-            ))
+            .children(opts.cx.clamp_measure().map(|(_, measure)| {
+                crate::text::clamp::clamp_probe(
+                    measure,
+                    line_height_px(inherited, opts),
+                    skip,
+                    false,
+                    0.0,
+                    crate::text::clamp::BoxEnds::default(),
+                    seq,
+                    budget,
+                    None,
+                    0.0,
+                    false,
+                )
+            }))
             .into_any_element()
     } else {
         para

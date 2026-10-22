@@ -1,18 +1,20 @@
 //! Записи временного layout-движка и геометрия, переживающая его освобождение.
 
-use super::{ClampEntry, ParagraphRows};
+use super::ClampEntry;
 use crate::layout::probe::{Sink, layout_record};
 use gpui::{AnyElement, Bounds, LayoutId, Pixels, Point, Window};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 type Entry = Rc<dyn Fn(Bounds<Pixels>) -> ClampEntry>;
+type Rows = HashMap<(u64, u32), Vec<(f32, f32)>>;
+
 type Lifted = Rc<RefCell<MeasuredClamp>>;
 
 #[derive(Clone, Default)]
 pub(crate) struct ClampMeasure {
     entries: Sink<(LayoutId, Entry)>,
     lifted: Sink<(LayoutId, Lifted)>,
-    pub(crate) rows: Rc<ParagraphRows>,
+    rows: Rc<RefCell<Rows>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -43,6 +45,23 @@ impl MeasuredClamp {
 }
 
 impl ClampMeasure {
+    pub(crate) fn publish_rows(&self, tag: (u64, u32), rows: Vec<(f32, f32)>) {
+        self.rows.borrow_mut().insert(tag, rows);
+    }
+
+    fn take_rows(&self, key: u64) -> HashMap<u32, Vec<(f32, f32)>> {
+        let mut rows = self.rows.borrow_mut();
+        let tags: Vec<_> = rows.keys().filter(|tag| tag.0 == key).copied().collect();
+        tags.into_iter()
+            .filter_map(|tag| {
+                rows.remove(&tag).map(|mut row| {
+                    row.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    (tag.1, row)
+                })
+            })
+            .collect()
+    }
+
     pub(crate) fn record(&self, f: impl Fn(Bounds<Pixels>) -> ClampEntry + 'static) -> AnyElement {
         layout_record(self.entries.clone(), Rc::new(f) as Entry)
     }
@@ -57,7 +76,7 @@ impl ClampMeasure {
         origin: Point<Pixels>,
         window: &mut Window,
     ) -> MeasuredClamp {
-        let mut rows = self.rows.take(key);
+        let mut rows = self.take_rows(key);
         let mut batch = MeasuredClamp::default();
         for (id, entry) in self.entries.take() {
             let at = window.layout_origin_unrounded(id) - origin;
@@ -90,7 +109,7 @@ impl ClampMeasure {
             key,
             entries: self.entries.take(),
             lifted: self.lifted.take(),
-            rows: self.rows.take(key),
+            rows: self.take_rows(key),
         }
     }
 }
@@ -115,7 +134,7 @@ impl Drop for MeasureScope {
     fn drop(&mut self) {
         self.measure.entries.take();
         self.measure.lifted.take();
-        self.measure.rows.take(self.key);
+        self.measure.take_rows(self.key);
         for e in self.entries.drain(..) {
             self.measure.entries.push(e);
         }
@@ -123,7 +142,7 @@ impl Drop for MeasureScope {
             self.measure.lifted.push(e);
         }
         for (seq, rows) in self.rows.drain() {
-            self.measure.rows.publish((self.key, seq), rows);
+            self.measure.publish_rows((self.key, seq), rows);
         }
     }
 }
@@ -135,24 +154,36 @@ mod tests {
     #[test]
     fn nested_measurements_restore_only_the_enclosing_rows() {
         let measure = ClampMeasure::default();
-        measure.rows.publish((7, 0), vec![(10., 20.)]);
-        measure.rows.publish((8, 0), vec![(30., 40.)]);
+        measure.publish_rows((7, 0), vec![(10., 20.)]);
+        measure.publish_rows((8, 0), vec![(30., 40.)]);
         {
             let _outer = measure.enter(7);
-            assert!(measure.rows.take(7).is_empty());
-            measure.rows.publish((7, 1), vec![(50., 60.)]);
+            assert!(measure.take_rows(7).is_empty());
+            measure.publish_rows((7, 1), vec![(50., 60.)]);
             {
                 let _inner = measure.enter(7);
-                measure.rows.publish((7, 2), vec![(70., 80.)]);
+                measure.publish_rows((7, 2), vec![(70., 80.)]);
             }
-            let rows = measure.rows.take(7);
+            let rows = measure.take_rows(7);
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[&1], vec![(50., 60.)]);
         }
-        let rows = measure.rows.take(7);
+        let rows = measure.take_rows(7);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[&0], vec![(10., 20.)]);
-        assert_eq!(measure.rows.take(8)[&0], vec![(30., 40.)]);
+        assert_eq!(measure.take_rows(8)[&0], vec![(30., 40.)]);
+    }
+
+    #[test]
+    fn measurements_with_identical_tags_have_independent_row_buffers() {
+        let a = ClampMeasure::default();
+        let b = ClampMeasure::default();
+        a.publish_rows((7, 0), vec![(20., 25.), (10., 15.)]);
+        b.publish_rows((7, 0), vec![(30., 40.)]);
+        assert_eq!(a.take_rows(7)[&0], vec![(10., 15.), (20., 25.)]);
+        assert!(a.take_rows(7).is_empty());
+        assert_eq!(b.take_rows(7)[&0], vec![(30., 40.)]);
+        assert!(ClampMeasure::default().take_rows(7).is_empty());
     }
 
     #[test]
