@@ -235,5 +235,8 @@ pub(super) fn settle_axis(
 /// Переполняет ли коробка полей `[pos, pos+mbox]` IMCB `[is, ie]` (Blink
 /// `CalculateNonOverflowingRangeInOneAxis`: любой край за краем IMCB).
 pub(super) fn overflows(pos: f32, mbox: f32, is: f32, ie: f32) -> bool {
-    pos < is - COORD_EPS || pos + mbox > ie + COORD_EPS
+    ie < is || pos < is - COORD_EPS || pos + mbox > ie + COORD_EPS
 }
+
+#[cfg(test)]
+mod tests;

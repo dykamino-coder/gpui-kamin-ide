@@ -36,7 +36,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/positioned/anchor/plan/align.rs"),
     include_str!("../../layout/positioned/anchor/plan/axis.rs"),
     include_str!("../../layout/positioned/anchor/plan/of.rs"),
-    include_str!("../../layout/positioned/anchor/plan/tactics.rs"),
+    include_str!("../../layout/positioned/anchor/plan/compute.rs"),
     include_str!("../../layout/positioned/anchor/place.rs"),
     include_str!("../../layout/positioned/anchor/resolve.rs"),
     include_str!("../../svg/serialize.rs"),

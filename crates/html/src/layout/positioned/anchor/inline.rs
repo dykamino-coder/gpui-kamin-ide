@@ -46,6 +46,5 @@ pub fn prepare_inline_abs(
     merged.self_node = e.node_id;
     merged.anchor_seq = super::next_seq(vcx);
     merged.anchor_key = super::key_of(e);
-    super::resolve::apply_chosen(merged, vcx);
-    super::resolve::resolve_sizes(merged, inherited, vcx);
+    super::resolve::prepare(merged, inherited, cx);
 }

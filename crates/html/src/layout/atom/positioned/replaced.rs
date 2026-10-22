@@ -53,7 +53,12 @@ pub(super) fn replaced_abs_atom(
     } else {
         holder
     };
-    let holder = crate::layout::positioned::anchor::place::place(holder, merged, inherited, vcx);
+    let holder = crate::layout::positioned::anchor::place::place_in_context(
+        holder, merged, inherited, &opts.cx,
+    );
+    if crate::layout::positioned::anchor::trials::inline::is_root(e, opts) {
+        return Some(holder);
+    }
     let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
     let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
     if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
