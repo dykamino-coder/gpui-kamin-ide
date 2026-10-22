@@ -100,6 +100,7 @@ pub mod tool_picker;
 pub mod tooltip;
 pub mod tree;
 pub mod typo;
+pub mod web_unavailable;
 pub mod webview_body;
 pub mod webview_skeleton;
 pub mod webview_theme;
