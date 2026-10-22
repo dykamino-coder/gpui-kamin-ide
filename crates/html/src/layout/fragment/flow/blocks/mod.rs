@@ -1,10 +1,10 @@
 //! Блочная стопка копии ребёнка фрагментации: какие коробки записывает рекордер раскладки
 //! (`paginate::watch::Watched`) и какие свойства их границ читает фрагментация. Положения и
-//! размеры берутся из РАЗЛОЖЕННЫХ border box (`geometry`), а не из оценки формы: из
-//! дерева — только то, что задаёт стиль (принудительные разрывы и запреты на границах с
-//! переносом с крайних детей, монолитность, рамка и отбивка у краёв, корень блочного
-//! контекста). Возможности разрыва класса A между соседями-блоками (css-break-3 §4.3) и
-//! усечение полей на разрыве (§5.2) — в `geometry`.
+//! размеры берутся из РАЗЛОЖЕННЫХ border box и дорожек сетки таблиц (`laid`), а не из оценки
+//! формы: из дерева — только то, что задаёт стиль (принудительные разрывы и запреты на
+//! границах с переносом с крайних детей, монолитность, рамка и отбивка у краёв, корень
+//! блочного контекста, устройство таблицы — `table`). Возможности разрыва класса A между
+//! соседями-блоками (css-break-3 §4.3) и усечение полей на разрыве (§5.2) — в `geometry`.
 
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
@@ -14,12 +14,19 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_box;
 use crate::layout::fragment::flex_lines::class_a_box;
+use crate::layout::fragment::table_bands::table_box;
 use crate::layout::page::names::page_names;
 use crate::style::computed::{Display, LenCx};
-use crate::tolerance::COORD_EPS;
 
 mod geometry;
 pub(crate) use geometry::{BlockBreaks, MeasuredBreaks};
+mod laid;
+pub(crate) use laid::{Laid, TableFrame};
+mod trees;
+use trees::{holds_blocks, stacks_blocks};
+pub(crate) use trees::{stacked_tree, table_tree};
+pub(crate) mod table;
+use table::TableBox;
 #[cfg(test)]
 mod tests;
 
@@ -42,6 +49,9 @@ pub(crate) struct BlockBox {
     /// разрывом после ребёнка (css-break-3 §5.2).
     pub(crate) end_margin: bool,
     pub(crate) kids: Vec<BlockKid>,
+    /// Устройство таблицы, если коробка — таблица (её обёртка): дети тогда
+    /// пусты, границы дают подписи и ряды (`table`).
+    pub(crate) table: Option<Box<TableBox>>,
 }
 
 /// Поточный блочный ребёнок контейнера.
@@ -90,61 +100,75 @@ impl BlockBox {
                 inner.push_ids(out);
             }
         }
+        if let Some(t) = &self.table {
+            t.push_ids(out);
+        }
     }
 
-    /// Самая внешняя коробка стопки, чей разложенный border box начинается
-    /// ровно в `a` (`at(id)` — `(верх, низ)` в координатах потока): перед ней
-    /// встаёт распорка роста. Коробка, накрывающая `a`, — спуск в её стопку;
-    /// монолит и коробка без своей стопки спуска не дают.
-    pub(crate) fn pushed_at(&self, a: f32, at: &dyn Fn(u64) -> Option<(f32, f32)>) -> Option<u64> {
+    /// Ключи таблиц стопки (`layout::table::grid_rows::table_key`): их
+    /// раскладку рекордер записывает кадрами (`Laid::tables`).
+    pub(crate) fn table_keys(&self) -> Vec<u64> {
+        let mut out = Vec::new();
+        self.push_keys(&mut out);
+        out
+    }
+
+    fn push_keys(&self, out: &mut Vec<u64>) {
         for k in &self.kids {
-            let Some((top, bottom)) = at(k.id) else {
-                continue;
-            };
-            if (top - a).abs() < COORD_EPS {
-                return Some(k.id);
-            }
-            if top < a && a < bottom - COORD_EPS {
-                return k.inner.as_ref()?.pushed_at(a, at);
+            if let Some(inner) = &k.inner {
+                inner.push_keys(out);
             }
         }
-        None
+        if let Some(t) = &self.table {
+            t.push_keys(out);
+        }
     }
-}
 
-/// Блочный контейнер, чьи дети идут стопкой по блочной оси: блок и элемент
-/// списка. Flex, сетка, таблица, многоколоночник и строчный набор кладут
-/// детей иначе — их границы дают свои контексты (строки — `Paragraph`).
-fn stacks_blocks(e: &Element) -> bool {
-    matches!(
-        e.style.display,
-        None | Some(Display::Block) | Some(Display::ListItem)
-    ) && e.style.webkit_box != Some(true)
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
-        && !crate::layout::fragment::table_bands::table_box(e)
-        && !matches!(e.tag.as_str(), "tr" | "thead" | "tbody" | "tfoot")
-}
+    /// Стопка без коробок, чьи границы читает раскладка: ни блочных детей,
+    /// ни таблицы.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.kids.is_empty() && self.table.is_none()
+    }
 
-/// Всё поточное блочное поддерево `e` до глубины `depth` — блочные стопки и
-/// монолиты: каждую коробку, перед которой может встать распорка, рекордер
-/// стопки видит (таблица, flex и сетка кладут детей иначе).
-pub(crate) fn stacked_tree(e: &Element, depth: u8) -> bool {
-    stacks_blocks(e)
-        && (depth == 0
-            || e.children.iter().all(|n| match n {
-                Node::Element(k) if out_of_flow(&k.style) || k.inline => {
-                    !holds_blocks(k) || stacked_tree(k, depth - 1)
-                }
-                Node::Element(k) => monolith_box(k) || stacked_tree(k, depth - 1),
-                _ => true,
-            }))
+    /// Стопка блочного контейнера по определению — ячейки или подписи
+    /// таблицы (CSS 2.1 §17.4, §17.5): дети кладутся блочной стопкой, какое
+    /// бы значение `display` ни несла коробка.
+    pub(crate) fn container(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
+        let mut out = frame(e, cx, vcx);
+        if depth > 0 {
+            let mut adjoins = false;
+            push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
+        }
+        out
+    }
 }
 
 fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
+    // Таблица горизонтального письма: обёртка без своих рамки и отбивки,
+    // её границы — подписи и ряды (`table`). Вертикальную таблицу рекордер
+    // не читает (блочные границы — только по горизонтальной оси).
+    if table_box(e) && !e.style.wm().vertical() {
+        return BlockBox {
+            id: e.node_id,
+            table: (depth > 0).then(|| Box::new(TableBox::collect(e, depth, cx, vcx))),
+            ..Default::default()
+        };
+    }
+    let mut out = frame(e, cx, vcx);
+    if depth == 0 || !stacks_blocks(e) {
+        return out;
+    }
+    let mut adjoins = false;
+    push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
+    out
+}
+
+/// Коробка `e` без детей: рамка с отбивкой у краёв и корень контекста.
+fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
     let lens = LenCx::box_viewport(cx.viewport, &e.style);
     let px = |l| lens.px_lossy_zero(l, vcx);
     let b = e.style.borders();
-    let mut out = BlockBox {
+    BlockBox {
         id: e.node_id,
         head: px(e.style.padding.top) + px(b.top),
         tail: px(e.style.padding.bottom) + px(b.bottom),
@@ -154,13 +178,8 @@ fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
                 None | Some(crate::style::values::value::Len::Auto)
             ),
         kids: Vec::new(),
-    };
-    if depth == 0 || !stacks_blocks(e) {
-        return out;
+        table: None,
     }
-    let mut adjoins = false;
-    push_kids(&e.children, &mut out.kids, &mut adjoins, depth, cx, vcx);
-    out
 }
 
 /// Поточные блочные дети из узлов `nodes`. Блок внутри строчной коробки
@@ -202,19 +221,10 @@ fn push_kids(
             avoid_before: edge_avoid(k, false, vcx),
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
-            inner: (!monolith && stacks_blocks(k)).then(|| collect(k, depth - 1, cx, vcx)),
+            inner: (!monolith && (stacks_blocks(k) || table_box(k)))
+                .then(|| collect(k, depth - 1, cx, vcx)),
             page: (cx.paged && class_a_box(k)).then(|| page_names(k, "")),
         });
         *adjoins = true;
     }
-}
-
-/// Строчная коробка с поточным блоком внутри (на любой глубине строчных).
-fn holds_blocks(e: &Element) -> bool {
-    e.children.iter().any(|n| match n {
-        Node::Element(k) if out_of_flow(&k.style) => false,
-        Node::Element(k) if !k.inline => true,
-        Node::Element(k) => k.style.display.is_none() && holds_blocks(k),
-        _ => false,
-    })
 }

@@ -14,4 +14,5 @@ use floats::block_floats;
 pub(crate) use rows::{RowPlan, row_plan};
 pub(crate) use stack_plan::{StackPlan, stack_plan};
 pub(crate) use tail::tail_rest_height;
-use width::column_measure_width;
+pub(crate) use width::kid_layout_w;
+use width::{column_layout_width, column_measure_width};

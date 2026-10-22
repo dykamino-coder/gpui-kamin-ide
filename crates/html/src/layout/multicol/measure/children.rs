@@ -5,12 +5,14 @@ use crate::dom::{Element, Node};
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::float::block_like_float;
+use crate::layout::fragment::flow::blocks::table_tree;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::fragment::line_shape::{
     inline_content, nested_rows_box, nested_rows_shape, resolved_lengths, transpose_tree,
 };
 use crate::layout::fragment::probe::forced_inside;
 use crate::layout::fragment::{Shape, ShapeCx};
+use crate::layout::multicol::measure::kid_layout_w;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -24,7 +26,7 @@ pub(crate) fn measure_children(
     first_flow: Option<*const Node>,
     last_flow: Option<*const Node>,
     outer_frag: Option<f32>,
-    line_col_w: Option<f32>,
+    (line_col_w, layout_col_w): (Option<f32>, Option<f32>),
     nested_auto: &RefCell<Vec<u64>>,
     whole_ok: bool,
     nested_whole: &RefCell<Vec<u64>>,
@@ -177,10 +179,14 @@ pub(crate) fn measure_children(
                             // многоколоночника — корень контекста — берёт).
                             // Принудительного разрыва внутри мера без
                             // точек тоже не видит.
-                            if !measure_ok || forced_inside(c, 6) {
+                            // Таблицу из обычных блоков мерит раскладка копии
+                            // целиком, с её принудительными разрывами
+                            // (`flow::blocks::table`).
+                            let table = table_tree(c, 4);
+                            if !measure_ok || (forced_inside(c, 6) && !table) {
                                 return None;
                             }
-                            let w = line_col_w?;
+                            let w = kid_layout_w(c, line_col_w, layout_col_w)?;
                             let (mt, mb) = measured_margins(c)?;
                             measured_kids.borrow_mut().push((c.node_id, w));
                             Some((

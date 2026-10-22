@@ -1,6 +1,7 @@
 //! Рекордер главной копии ребёнка стопки страниц: строки — всегда, блочная стопка
 //! (`flow::blocks`) — у группы из одной коробки с поддеревом обычных блоков
-//! (`plain_block_tree`), измеренной мерой формы: её точки разрыва даёт раскладка копии.
+//! (`plain_block_tree`) или таблицы из них (`table_tree`), измеренной мерой формы: её точки
+//! разрыва даёт раскладка копии.
 //! Коробку без меры формы страницы разбивают распорками по раскладке копии
 //! (`fragment::push`); точки поверх них легли бы на уже сдвинутое содержимое.
 
@@ -8,7 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::BlockBox;
+use crate::layout::fragment::flow::blocks::{BlockBox, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::style::computed::Position;
@@ -33,11 +34,11 @@ pub(super) fn recorder(
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
                 && shaped
-                && plain_block_tree(e, 4) =>
+                && (plain_block_tree(e, 4) || table_tree(e, 4)) =>
         {
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
-            if blocks.kids.is_empty() {
+            if blocks.is_empty() {
                 Watched::new(&[])
             } else {
                 Watched::for_blocks(blocks)

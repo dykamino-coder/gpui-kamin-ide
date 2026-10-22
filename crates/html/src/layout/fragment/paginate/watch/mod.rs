@@ -5,16 +5,21 @@
 //! раскладки и отдаёт его как свой — taffy видит то же дерево. Узлы читает `seen`, `reset`
 //! забывает их перед замером. Рекордер блочной стопки (`for_blocks`) наблюдает коробки
 //! `flow::blocks::BlockBox` главной копии ребёнка стопки и после её раскладки отдаёт точки
-//! разрыва по разложенной геометрии (`breaks`).
+//! разрыва по разложенной геометрии (`breaks`); таблицы стопки он записывает кадрами
+//! (`table`: коробка таблицы, сетка и дорожки рядов).
 
 use crate::hooks::{Hooks, IntoHooked};
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
 use crate::layout::fragment::types::StackAxis;
 use crate::layout::options::RenderOpts;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Point, Size, Window};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+
+mod table;
+use table::TableNodes;
+pub(crate) use table::{TablePart, table_part};
 
 /// Break candidates of one paginated child and the layout nodes its last
 /// measuring layout gave them. Owned by the child's `Paginate`, shared with
@@ -26,6 +31,10 @@ pub(crate) struct Watched {
     seen: Rc<RefCell<HashMap<u64, LayoutId>>>,
     /// Block stack of the watched copy whose boundaries are read after layout.
     blocks: Option<BlockBox>,
+    /// Keys of the tables of `blocks` (`layout::table::grid_rows::table_key`).
+    tables: Rc<HashSet<u64>>,
+    /// Layout nodes of the watched tables' parts by the last layout.
+    table_nodes: Rc<RefCell<HashMap<u64, TableNodes>>>,
 }
 
 impl Watched {
@@ -34,7 +43,7 @@ impl Watched {
             ids: Rc::new(ids.iter().copied().collect()),
             seen: Rc::default(),
             flow: Rc::default(),
-            blocks: None,
+            ..Self::default()
         })
     }
 
@@ -44,8 +53,10 @@ impl Watched {
         Rc::new(Watched {
             ids: Rc::new(blocks.ids().into_iter().collect()),
             seen: Rc::default(),
+            tables: Rc::new(blocks.table_keys().into_iter().collect()),
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             blocks: Some(blocks),
+            ..Self::default()
         })
     }
 
@@ -70,23 +81,18 @@ impl Watched {
     ) -> MeasuredBreaks {
         let lines = self.flow.at(origin, size, axis, window);
         let blocks = match (&self.blocks, axis) {
-            (Some(b), StackAxis::Horizontal) => {
-                let boxes = self.boxes(origin, window);
-                b.breaks(end, &|id| boxes.get(&id).copied())
-            }
+            (Some(b), StackAxis::Horizontal) => b.breaks(end, &self.laid(origin, window)),
             _ => BlockBreaks::default(),
         };
         blocks.finish(lines, end)
     }
 
-    /// Laid-out border boxes `(top, bottom)` of the watched boxes relative to
-    /// `origin`, read before the layout engine is released.
-    pub(crate) fn boxes(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> HashMap<u64, (f32, f32)> {
-        self.seen
+    /// Laid-out geometry of the copy relative to `origin`, read before the
+    /// layout engine is released: border boxes `(top, bottom)` of the watched
+    /// boxes and frames of the watched tables.
+    pub(crate) fn laid(&self, origin: Point<Pixels>, window: &mut Window) -> Laid {
+        let boxes = self
+            .seen
             .borrow()
             .iter()
             .map(|(&id, &lid)| {
@@ -94,7 +100,11 @@ impl Watched {
                 let h = f32::from(window.layout_size_unrounded(lid).height);
                 (id, (top, top + h))
             })
-            .collect()
+            .collect();
+        Laid {
+            boxes,
+            tables: self.table_frames(origin, window),
+        }
     }
 
     /// Block stack watched by the recorder (`for_blocks`).
@@ -118,6 +128,10 @@ impl Watched {
             ids: self.ids.clone(),
             seen: self.seen.clone(),
             blocks: None,
+            // Table parts are laid out inside the table box, under this
+            // recorder: their nodes belong to the watched flow's tables.
+            tables: self.tables.clone(),
+            table_nodes: self.table_nodes.clone(),
         })
     }
 
@@ -129,6 +143,7 @@ impl Watched {
     /// Forget recorded nodes before a measuring layout.
     pub(crate) fn reset(&self) {
         self.seen.borrow_mut().clear();
+        self.table_nodes.borrow_mut().clear();
         self.flow.reset();
     }
 

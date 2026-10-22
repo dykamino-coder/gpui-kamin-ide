@@ -1,6 +1,7 @@
 //! Подписи таблицы (caption): сбор сверху/снизу и обёртка вокруг сетки.
 
 use crate::dom::{Element, Node};
+use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::transform::transformed;
@@ -41,6 +42,9 @@ pub(super) fn collect_captions(
             // §transformable-element); its `transform` was dropped
             // (`transform-transformed-caption-contains-fixed-position`).
             let built = transformed(built, &cap.style, inherited, vcx);
+            // Подпись — сосед коробки таблицы в стопке обёртки: её border box
+            // читает фрагментация (`watch::wrap`).
+            let built = crate::layout::fragment::paginate::watch::wrap(cap.node_id, built, opts);
             // ВСЕ подписи, а не первая. Прежний `break` ронял вторую целиком:
             // у таблицы с верхней И нижней подписью рисовалась только верхняя
             // (`table-border-002/003/004`, снимок `table-border-004`: зелёное
@@ -65,9 +69,10 @@ pub(super) fn wrap_with_captions(
     caps_bot: Vec<AnyElement>,
     inherited: &Computed,
     outer: gpui::Div,
+    mark: &dyn Fn(TablePart, AnyElement) -> AnyElement,
 ) -> AnyElement {
     if caps_top.is_empty() && caps_bot.is_empty() {
-        outer.into_any_element()
+        mark(TablePart::Box, outer.into_any_element())
     } else {
         // `caption-side: top/bottom` — стороны block-start/block-end стола
         // (css-writing-modes-4 §6, особое исключение для caption-side): в
@@ -176,7 +181,7 @@ pub(super) fn wrap_with_captions(
         if !vertical && caps_px && e.style.width.is_none() && e.style.align_self.is_none() {
             outer.style().align_self = Some(gpui::AlignItems::Stretch);
         }
-        cap_wrap.push(own_width(outer.into_any_element()));
+        cap_wrap.push(own_width(mark(TablePart::Box, outer.into_any_element())));
         for cap_el in caps_bot {
             cap_wrap.push(own_width(cap_el));
         }

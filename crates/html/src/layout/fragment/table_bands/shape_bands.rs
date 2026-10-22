@@ -2,11 +2,12 @@
 
 use super::TableBands;
 use super::parts::{cell_settings, is_row, ordered_parts};
-use super::row_cuts::{RowRef, row_avoid, row_force};
+use super::row_cuts::RowRef;
 use super::row_shape::row_band_shape;
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
+use crate::layout::fragment::flow::blocks::table::{row_avoid, row_force};
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::table::anon::fixup_table_children;
 use crate::style::values::value::Len;
