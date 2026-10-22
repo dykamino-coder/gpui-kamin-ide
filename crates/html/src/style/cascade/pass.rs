@@ -77,11 +77,11 @@ impl Computed {
         // зависят другие, — раньше; `phase`), затем по ключу победителя, а
         // внутри одного блока —
         // семьями. Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ вне
-        // реестра и его длинным свойством (`background` и `background-color`):
-        // `background-color: red; background: green` обязано дать зелёный, а
-        // обратная запись красный. Сокращения реестра (`margin`, `border`,
-        // `outline`) раскрыты разбором, и их длинные свойства пишут каждое
-        // своё поле целиком — порядок между ними не важен.
+        // реестра и его длинным свойством (`border-image` и
+        // `border-image-source`). Сокращения реестра (`margin`, `border`,
+        // `outline`, `background`, `mask`) раскрыты разбором, и их длинные
+        // свойства пишут каждое своё поле целиком — порядок между ними не
+        // важен.
         //
         // Между СОСЕДЯМИ вне реестра (`white-space` и `overflow-wrap`)
         // порядок записи НЕ применяется: эти свойства кое-где читают
@@ -235,7 +235,7 @@ fn family(k: &str, block: Option<&DeclBlock>) -> String {
     if font_members::contains(k) && d.contains("font") {
         return "font".into();
     }
-    const SHORTHANDS: &[&str] = &["background", "border-image"];
+    const SHORTHANDS: &[&str] = &["border-image"];
     for root in SHORTHANDS {
         if k.len() > root.len()
             && k.starts_with(root)

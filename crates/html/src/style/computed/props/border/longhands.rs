@@ -35,7 +35,17 @@ impl Computed {
             Slot::Single if id.grammar() == Grammar::BorderImage => {
                 self.set_border_image(key, v, vcx)
             }
-            Slot::Single => self.apply_outline_longhand(id, v, vcx),
+            Slot::Single
+                if matches!(
+                    id,
+                    LonghandId::OutlineWidth
+                        | LonghandId::OutlineStyle
+                        | LonghandId::OutlineColor
+                        | LonghandId::OutlineOffset
+                ) =>
+            {
+                self.apply_outline_longhand(id, v, vcx)
+            }
             _ => return false,
         }
         true

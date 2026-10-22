@@ -7,11 +7,7 @@ use crate::coverage::Prop;
 
 pub(super) const PROPERTIES: &[Prop] = &[
     // --- Фон, рамки, тени ------------------------------------------------
-    part(
-        "background",
-        "#123456",
-        "из сокращения читаются цвет, картинка, повтор и размер; позиция и слои — нет",
-    ),
+    m("background", "#123456 url(logo.png) no-repeat"),
     m("background-color", "#123456"),
     m("background-image", "url(logo.png)"),
     m("border", "1px solid #333"),

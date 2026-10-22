@@ -51,7 +51,8 @@ fn bang_that_is_not_important_kills_the_declaration() {
     // §4.1.8); всё прочее делает объявление недействительным целиком.
     let d = parse_decls("color: red ! fail; background: green");
     assert_eq!(d.last("color"), None);
-    assert_eq!(d.last("background"), Some("green"));
+    // `background` раскрыт разбором: цвет — в `background-color`.
+    assert_eq!(d.last("background-color"), Some("green"));
 }
 
 #[test]

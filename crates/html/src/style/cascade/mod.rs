@@ -4,10 +4,7 @@ use crate::document::state::ValueCx;
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{
-    BgListProp, Computed, ParseResult, background_layers, css_wide_keyword, font_members,
-    top_level_comma,
-};
+use crate::style::computed::{Computed, ParseResult, css_wide_keyword, font_members};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 use crate::style::values::value::Color;
 
@@ -119,8 +116,6 @@ impl Computed {
         // `display: block`, не начальное `inline`.
         if matches!(v, "initial" | "unset")
             && let Some(start) = match key {
-                "background-color" => Some("transparent"),
-                "background-image" => Some("none"),
                 "display" => Some("inline"),
                 "float" => Some("none"),
                 "position" => Some("static"),
@@ -134,29 +129,18 @@ impl Computed {
             inherit::note_flow_align(self, key, v);
             return;
         }
-        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
-        // of values … the first value represents the top layer»). Одиночные
-        // поля стиля несут верхний слой, а список целиком хранится сырым —
-        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
-        // запятой список своего свойства снимает; сокращение — все.
-        let prop = BgListProp::from_key(key);
-        if prop.is_some_and(|p| !Self::background_list_valid(p, v, vcx)) {
-            return;
-        }
+        // Наблюдатель разбора (`@supports`, запасной кандидат каскада) и
+        // общее слово для свойств ВНЕ реестра: их грамматику проверяет
+        // обработчик, а не разбор блока. Длинные свойства реестра пришли
+        // проверенными и общее слово решили выше (`apply_wide`).
         let observer = self.declaration_parse;
         self.declaration_parse = ParseResult::Invalid;
-        let list = prop.is_some() && top_level_comma(v).is_some();
-        let parsed = if list && prop != Some(BgListProp::Shorthand) {
-            background_layers(v)[0]
-        } else {
-            v
-        };
         // Каждое свойство принимает CSS-wide keyword (css-cascade-5 §7.3); не
         // покрытое таблицами выше слово сбрасывает поля свойства к пустому,
         // начальному представлению, а не отвергается грамматикой значения.
         let css_wide = css_wide_keyword(v);
         let outer = std::mem::replace(&mut self.css_wide_value, css_wide);
-        self.apply_property(key, parsed, vcx);
+        self.apply_property(key, v, vcx);
         self.css_wide_value = outer;
         let accepted = self.declaration_parse == ParseResult::Accepted || css_wide;
         self.declaration_parse = if observer == ParseResult::Inactive {
@@ -168,16 +152,6 @@ impl Computed {
         };
         if accepted {
             inherit::note_flow_align(self, key, v);
-            if let Some(prop) = prop {
-                if prop == BgListProp::Shorthand {
-                    self.bg_lists.retain(|k| k == BgListProp::BlendMode);
-                } else {
-                    self.bg_lists.remove(prop);
-                }
-                if list {
-                    self.bg_lists.set(prop, v.to_string(), vcx);
-                }
-            }
         }
     }
 
@@ -200,6 +174,14 @@ impl Computed {
             }
         } else {
             self.apply_one(id.name(), id.initial(), vcx);
+        }
+        // Откаченное объявление — уже не авторское: признак авторского фона
+        // за ним не остаётся, и неявный фон агента у поля ввода живёт
+        // (`appearance-revert-001`).
+        if matches!(wide, CssWide::Revert | CssWide::RevertLayer)
+            && id == LonghandId::BackgroundColor
+        {
+            self.bg_explicit = false;
         }
     }
 

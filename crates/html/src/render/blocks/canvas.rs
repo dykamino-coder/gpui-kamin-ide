@@ -29,11 +29,25 @@ pub(crate) fn canvas_layer(
     // заливка всего холста верхним градиентом их закрыла бы
     // (`background-position-right-in-body`: 97.92).
     let canvas_layers = e.style.bg_layers(vcx);
+    // Градиент корня — картинка (css-images-3 §3): его плитка
+    // размещается и мостится от коробки корня (CSS 2.2 §14.2, «sized and
+    // positioned relative to the root element»), а не растягивается на
+    // весь холст.
+    let root_tile = (e.tag == "html"
+        && root_filter.is_none()
+        && e.style.bg_image.is_none()
+        && canvas_layers.is_none())
+    .then(|| e.style.gradient_raw.clone())
+    .flatten()
+    .map(|image| Computed {
+        bg_image: Some(image),
+        ..(*e.style).clone()
+    });
     if let Some(g) = e
         .style
         .gradient
         .as_ref()
-        .filter(|_| canvas_layers.is_none())
+        .filter(|_| canvas_layers.is_none() && root_tile.is_none())
     {
         let mut g = g.clone();
         if let Some(f) = root_filter {
@@ -66,7 +80,7 @@ pub(crate) fn canvas_layer(
     // его слой лежит в детях корня, и отсчёт от padding-box корня
     // получается сам (см. ниже).
     if e.tag == "html"
-        && (e.style.bg_image.is_some() || canvas_layers.is_some())
+        && (e.style.bg_image.is_some() || canvas_layers.is_some() || root_tile.is_some())
         && let Some(tiles) = {
             // Единицы шрифта тоже длина: `html { margin-top: 1em }`
             // роняло отсчёт в ноль, и плитка начиналась с края
@@ -123,7 +137,11 @@ pub(crate) fn canvas_layer(
                     }
                     Some(stack.into_any_element())
                 }
-                None => crate::paint::background::canvas_layer(&e.style, area, vcx),
+                None => crate::paint::background::canvas_layer(
+                    root_tile.as_ref().unwrap_or(&e.style),
+                    area,
+                    vcx,
+                ),
             }
         }
     {

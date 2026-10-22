@@ -1,28 +1,13 @@
-//! Ветвь clip-path / mask / mask-image из Computed::apply_mask_clip: сокращение mask,
-//! маска-изображение, опорная коробка, url(#id); базовые фигуры — в basic_shape.
+//! Ветвь clip-path из Computed::apply_mask_clip: опорная коробка, `shape()`, `path()`,
+//! url(#id); базовые фигуры — в basic_shape.
 
 use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
     pub(super) fn apply_clip_mask(&mut self, key: &str, v: &str, vcx: ValueCx<'_>) {
-        if key == "clip-path" && !super::shape_valid(v) {
+        if !super::shape_valid(v) {
             return;
-        }
-        if key == "mask" && mask_shorthand::apply(self, v, vcx) {
-            self.accept_declaration();
-            return;
-        }
-        if key != "clip-path" {
-            if let Some(images) = mask_shorthand::images(v, vcx) {
-                self.mask_image = accept_parsed!(self, Some(images));
-                if v.trim() == "none" {
-                    self.mask_image = None;
-                }
-            }
-            if v.contains("no-repeat") {
-                self.mask_no_repeat = Some((true, true));
-            }
         }
         // Круг и эллипс — это скруглённый прямоугольник с радиусом в
         // половину стороны; `inset(… round R)` — он же с заданным
