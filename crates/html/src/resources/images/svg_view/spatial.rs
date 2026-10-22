@@ -3,7 +3,7 @@
 //! размера CSS Images с умолчанием 300×150; пиксельная обрезка ограничивается только при
 //! наличии у документа собственного размера.
 
-use crate::paint::background::{default_size, image_decode::svg_size};
+use crate::resources::images::{natural::default_size, vector::svg_size};
 
 pub(super) fn view_box(markup: &str, fragment: &str) -> Option<String> {
     // Media Fragments §6.3: the last syntactically valid occurrence wins.

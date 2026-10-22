@@ -1,9 +1,7 @@
 //! Профили ICC (@color-profile): загрузка, теги, матрица и кривые, перевод в sRGB.
 
-use super::*;
-use crate::color::{curve_at, icc_curve, icc_matrix};
+use crate::color::{IccProfile, clamp_near_gamut, gamut_map};
 use crate::document::state::ValueCx;
-use crate::tolerance::GAMUT_SLACK;
 
 mod resources;
 pub(crate) use resources::load_profiles_sheets;
@@ -19,12 +17,7 @@ pub(crate) fn apply_icc(
     image: &std::sync::Arc<gpui::RenderImage>,
     profile: &[u8],
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
-    let m = icc_matrix(profile)?;
-    let curves = [
-        icc_curve(profile, b"rTRC")?,
-        icc_curve(profile, b"gTRC")?,
-        icc_curve(profile, b"bTRC")?,
-    ];
+    let profile = IccProfile::parse(profile)?;
     let size = image.size(0);
     let (w, h) = (size.width.0 as u32, size.height.0 as u32);
     let bytes = image.as_bytes(0)?;
@@ -41,27 +34,7 @@ pub(crate) fn apply_icc(
             }
         };
         let (b, g, r) = (un(px[0]), un(px[1]), un(px[2]));
-        let lin = [
-            curve_at(&curves[0], r),
-            curve_at(&curves[1], g),
-            curve_at(&curves[2], b),
-        ];
-        let xyz50 = mul(m, lin);
-        let xyz = mul(D50_TO_D65, xyz50);
-        let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-        let (r, g, b) = (
-            srgb_gamma(srgb[0]),
-            srgb_gamma(srgb[1]),
-            srgb_gamma(srgb[2]),
-        );
-        // Вблизи края охвата — простой зажим; охватное отображение — только
-        // настоящему выходу за охват (почему именно столько — `tolerance`).
-        let near = |v: f32| (-GAMUT_SLACK..=1.0 + GAMUT_SLACK).contains(&v);
-        let (r, g, b) = if near(r) && near(g) && near(b) {
-            (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
-        } else {
-            gamut_map(r, g, b)
-        };
+        let (r, g, b) = clamp_near_gamut(profile.to_srgb_unmapped([r, g, b]));
         out.push((b * a * 255.0).round() as u8);
         out.push((g * a * 255.0).round() as u8);
         out.push((r * a * 255.0).round() as u8);
@@ -78,22 +51,6 @@ pub(super) fn profile(name: &str, vcx: ValueCx<'_>) -> Option<Vec<u8>> {
 
 /// Прогнать цвет через профиль: кривые -> матрица -> XYZ D50 -> sRGB.
 pub(super) fn icc_to_srgb(profile: &[u8], c: [f32; 3]) -> Option<(f32, f32, f32)> {
-    let m = icc_matrix(profile)?;
-    let curves = [
-        icc_curve(profile, b"rTRC")?,
-        icc_curve(profile, b"gTRC")?,
-        icc_curve(profile, b"bTRC")?,
-    ];
-    let lin = [
-        curve_at(&curves[0], c[0]),
-        curve_at(&curves[1], c[1]),
-        curve_at(&curves[2], c[2]),
-    ];
-    let xyz = mul(D50_TO_D65, mul(m, lin));
-    let srgb = mul(XYZ_TO_LINEAR_SRGB, xyz);
-    Some(gamut_map(
-        srgb_gamma(srgb[0]),
-        srgb_gamma(srgb[1]),
-        srgb_gamma(srgb[2]),
-    ))
+    let [r, g, b] = IccProfile::parse(profile)?.to_srgb_unmapped(c);
+    Some(gamut_map(r, g, b))
 }

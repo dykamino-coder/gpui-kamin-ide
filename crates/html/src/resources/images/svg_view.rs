@@ -2,8 +2,12 @@
 //! раз, до вычисления собственного размера и растра: правки `viewBox`, `preserveAspectRatio` и
 //! `transform` корня. SVG 2 §16.3.2 и Blink `SVGViewSpec` сохраняют незаданные параметры корня
 //! и переопределяют только значения из валидного фрагмента или элемента `<view>`.
+//!
+//! Вид — выбор представления тех же байт рисунка, а не второй запрос: фрагмент не входит в
+//! ключ загрузки (`resources::loader::ResourceUrl`).
 
-use super::{opening_end, xml_text};
+pub(crate) mod markup;
+use markup::{opening_end, xml_text};
 use std::ops::Range;
 
 mod spatial;
@@ -19,7 +23,37 @@ struct View<'a> {
     transform: Option<&'a str>,
 }
 
-pub(super) fn edits(
+/// Разметка рисунка с начальным видом по фрагменту адреса (процентно-кодированному, как
+/// в адресе). Не UTF-8, не XML, не `<svg>` или вида нет — байты как есть.
+pub(crate) fn apply_view(bytes: Vec<u8>, fragment: &str) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(&bytes) else {
+        return bytes;
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(text, parsing_options()) else {
+        return bytes;
+    };
+    let decoded = crate::resources::loader::data_url::percent_decode(fragment);
+    let Ok(fragment) = std::str::from_utf8(&decoded) else {
+        return bytes;
+    };
+    let edits = edits(text, &doc, fragment);
+    if edits.is_empty() {
+        return bytes;
+    }
+    markup::apply(text, edits)
+}
+
+/// Разбор рисунка: внутренний DTD допустим (сущности в разметке рисунков набора).
+pub(crate) fn parsing_options<'input>() -> roxmltree::ParsingOptions<'input> {
+    roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    }
+}
+
+/// Правки корня по уже декодированному фрагменту: `viewBox`, `preserveAspectRatio`,
+/// `transform`.
+pub(crate) fn edits(
     text: &str,
     doc: &roxmltree::Document<'_>,
     fragment: &str,
