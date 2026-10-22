@@ -6,8 +6,13 @@
 use crate::dom::Element;
 use crate::paint::box_tree::styled::styled_div;
 use crate::style::computed::{Computed, Display};
-use crate::style::values::value::{Len, px_lossy_zero, px_strict};
+use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, div, px};
+mod contained_size;
+mod used_size;
+mod view_box;
+pub(crate) use used_size::{Picture, PictureSizing};
+use view_box::{ViewBoxSize, view_box_size};
 mod with;
 pub(crate) use with::image_with;
 mod grid_measured;
@@ -19,10 +24,8 @@ mod piped;
 use local::{fit_local_image, local_image_source};
 mod contained;
 use contained::contained_image;
-mod sized;
-use sized::sized_image;
 mod auto_sized;
-use auto_sized::auto_sized_image;
+mod sized;
 
 pub(crate) fn image(e: &Element, cx: &crate::layout::cx::LayoutCx) -> AnyElement {
     image_with(e, None, cx)
@@ -125,12 +128,9 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
 /// `object-view-box` (css-images-4 §object-view-box, `csswg-drafts/css-images-4/
 /// Overview.bs` «object-view-box»): видимая часть природного объекта
 /// становится его НОВЫМ природным размером, а рисуется только она — вырез
-/// растягивается на коробку (`object-fit: fill`). Вид записи сводится к
-/// прямоугольнику в точках природного растра: `inset(t r b l)`, `rect(t r b l)`
-/// (правый и нижний края от левого/верхнего края объекта), `xywh(x y w h)`.
-/// Коробка: размер из обособления (`contain-intrinsic-size`) или заданный,
-/// иначе из выреза — с соотношением выреза для одной заданной стороны.
-/// Только растр (`background::Source::Raster`); иначе — прежний путь.
+/// растягивается на коробку (`object-fit: fill`). Вырез и коробка —
+/// `view_box_size`. Только растр (`background::Source::Raster`); иначе —
+/// прежний путь.
 fn view_boxed(
     e: &Element,
     vb: (u8, [Len; 4]),
@@ -147,51 +147,10 @@ fn view_boxed(
     let crate::paint::background::Source::Raster(ready) = source else {
         return None;
     };
-    let at = |l: Len, base: f32| match l {
-        Len::Px(v) => v,
-        Len::Pct(k) => k * base,
-        _ => 0.0,
-    };
-    let [a, b, c, d] = vb.1;
-    let (vx, vy, vw, vh) = match vb.0 {
-        // inset(top right bottom left)
-        0 => (
-            at(d, w0),
-            at(a, h0),
-            w0 - at(d, w0) - at(b, w0),
-            h0 - at(a, h0) - at(c, h0),
-        ),
-        // rect(top right bottom left)
-        1 => (
-            at(d, w0),
-            at(a, h0),
-            at(b, w0) - at(d, w0),
-            at(c, h0) - at(a, h0),
-        ),
-        // xywh(x y w h)
-        _ => (at(a, w0), at(b, h0), at(c, w0), at(d, h0)),
-    };
-    if !(vw > 0.0 && vh > 0.0) {
-        return None;
-    }
-    let px_of = px_strict;
-    let (bw, bh) = if e.style.contains_width() || e.style.contains_height() {
-        (
-            px_of(e.style.width)
-                .or(e.style.contain_intrinsic.0)
-                .unwrap_or(0.0),
-            px_of(e.style.height)
-                .or(e.style.contain_intrinsic.1)
-                .unwrap_or(0.0),
-        )
-    } else {
-        match (px_of(e.style.width), px_of(e.style.height)) {
-            (Some(w), Some(h)) => (w, h),
-            (Some(w), None) => (w, w * vh / vw),
-            (None, Some(h)) => (h * vw / vh, h),
-            (None, None) => (vw, vh),
-        }
-    };
+    let ViewBoxSize {
+        view: (vx, vy, vw, vh),
+        size: (bw, bh),
+    } = view_box_size(&e.style, vb, (w0, h0))?;
     let mut boxed = e.clone();
     boxed.style.object_view_box = None;
     boxed.style.width = Some(Len::Px(bw));

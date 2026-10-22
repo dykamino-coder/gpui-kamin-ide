@@ -1,8 +1,10 @@
-//! Картинка под обособлением размера (contain: size): размеры из contain-intrinsic-size.
+//! Картинка под обособлением размера (contain: size): рисунок в размере из
+//! `contain-intrinsic-size` (`contained_size`).
 
 use super::with::image_with;
 use crate::dom::Element;
-use crate::style::values::value::{Len, px_lossy_zero};
+use crate::layout::replaced::image::contained_size::{ContainedSize, contained_size};
+use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::result_large_err)]
@@ -13,71 +15,17 @@ pub(super) fn contained_image(
     d: gpui::Div,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Result<AnyElement, gpui::Div> {
-    if e.style.contains_width() || e.style.contains_height() {
-        let side = px_lossy_zero;
-        let b = e.style.borders();
-        let pad_x =
-            side(e.style.padding.left) + side(e.style.padding.right) + side(b.left) + side(b.right);
-        let pad_y =
-            side(e.style.padding.top) + side(e.style.padding.bottom) + side(b.top) + side(b.bottom);
-        let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
-            Some(Len::Px(v)) => v,
-            _ => ci.unwrap_or(0.0),
-        };
-        // Обособление снимает ПРИРОДНОЕ соотношение, но не ЗАЯВЛЕННОЕ:
-        // css-contain-2 §size containment, «Size containment only suppresses
-        // the natural aspect ratio, so properties like 'aspect-ratio' which
-        // affect that preferred aspect ratio directly are honored»
-        // (Overview.bs:659-662), и пример там же (:737-752):
-        // `img{width:100px;aspect-ratio:1/1;contain:size}` = 100×100, а без
-        // объявленного соотношения — 100×0. Пара атрибутов `width`/`height`
-        // разметки — это `aspect-ratio: auto <ratio>` (HTML Rendering
-        // §attributes for embedded content): природная его половина снята,
-        // заявленная осталась. Blink делает ровно так —
-        // `BlockNode::GetReplacedAspectRatio` (`block_node.cc:1328`):
-        // заявленное отдаётся ДО проверки обособления, гейт
-        // `ShouldApplyAnySizeContainment` стоит только вокруг природного.
-        let ratio = e
-            .style
-            .aspect_ratio
-            .filter(|r| r.is_finite() && *r > 0.0)
-            .or_else(|| match (e.style.attr_width, e.style.attr_height) {
-                (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
-                _ => None,
-            });
-        let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
-        let (nw, nh) = (named(e.style.width), named(e.style.height));
-        let cw = match ratio {
-            Some(r) if !nw && nh => used(e.style.height, e.style.contain_intrinsic.1) * r,
-            _ => used(e.style.width, e.style.contain_intrinsic.0),
-        };
-        let ch = match ratio {
-            Some(r) if nw && !nh => used(e.style.width, e.style.contain_intrinsic.0) / r,
-            _ => used(e.style.height, e.style.contain_intrinsic.1),
-        };
-        // CSS Containment 2 §3.1: lay out content in the final box, including
-        // its min/max constraints, rather than the suppressed natural size.
-        let clamp = |value: f32, min: Option<Len>, max: Option<Len>, padding: f32| {
-            let content = |length| match length {
-                Some(Len::Px(v)) => Some(if e.style.border_box == Some(true) {
-                    (v - padding).max(0.0)
-                } else {
-                    v
-                }),
-                _ => None,
-            };
-            value
-                .min(content(max).unwrap_or(f32::INFINITY))
-                .max(content(min).unwrap_or(0.0))
-        };
-        let cw = clamp(cw, e.style.min_width, e.style.max_width, pad_x);
-        let ch = clamp(ch, e.style.min_height, e.style.max_height, pad_y);
+    if let Some(ContainedSize {
+        content: (cw, ch),
+        holder: (holder_w, holder_h),
+    }) = contained_size(&e.style)
+    {
         let mut d = d;
-        if e.style.contains_width() && matches!(e.style.width, None | Some(Len::Auto)) {
-            d = d.w(px(cw + pad_x));
+        if let Some(w) = holder_w {
+            d = d.w(px(w));
         }
-        if e.style.contains_height() && matches!(e.style.height, None | Some(Len::Auto)) {
-            d = d.h(px(ch + pad_y));
+        if let Some(h) = holder_h {
+            d = d.h(px(h));
         }
         // Источник берётся тем же путём, что и вне обособления: строку со
         // схемой `file:` система уходит скачивать, и картинка молча не
