@@ -9,7 +9,7 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{Div, Styled};
 
-pub(super) fn apply(
+pub(crate) fn apply(
     holder: &mut Div,
     style: &Computed,
     ratio: Option<f32>,

@@ -8,7 +8,7 @@ use crate::dom::Element;
 use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
 /// CSS 2.1 sections 10.3.2 and 10.6.2: an empty browsing context is still
 /// replaced content; its auto dimensions use the default object size.
@@ -95,7 +95,7 @@ pub(crate) fn empty_iframe(
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
     if copy.style.contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
-        return crate::layout::replaced::image::image(&copy, &opts.cx);
+        return crate::paint::replaced::image::image(&copy, &opts.cx);
     }
     crate::paint::box_tree::styled::styled_div(&copy, &opts.cx)
         .flex_shrink_0()
@@ -106,16 +106,6 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
     e.tag == "iframe"
         && e.attr("src").is_none_or(|src| src.trim().is_empty())
         && e.style.contain_size != Some(true)
-}
-
-pub(super) fn position(mut image: gpui::Img, style: &Computed, vcx: ValueCx<'_>) -> gpui::Img {
-    if let Some(position) = style.object_position {
-        image = image.object_position(gpui::point(
-            crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
-            crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),
-        ));
-    }
-    image
 }
 
 /// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —

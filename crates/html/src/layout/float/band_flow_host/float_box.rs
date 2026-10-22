@@ -1,9 +1,9 @@
 //! Независимое горизонтальное содержимое float, границы clamp и эффекты paint.
 
 use crate::dom::Element;
-use crate::layout::replaced::image::image;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
+use crate::paint::replaced::image::image;
 use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;

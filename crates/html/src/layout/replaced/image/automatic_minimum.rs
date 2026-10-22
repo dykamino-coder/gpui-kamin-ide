@@ -5,7 +5,7 @@
 use crate::style::computed::{Computed, Overflow};
 use crate::style::values::value::Len;
 
-pub(super) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, ratio: Option<f32>) {
+pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, ratio: Option<f32>) {
     if !c.flex_item {
         return;
     }

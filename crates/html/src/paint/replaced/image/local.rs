@@ -5,7 +5,8 @@ use super::piped::piped_image;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
-use crate::layout::replaced::{replaced_content, replaced_holder_ratio};
+use crate::layout::replaced::replaced_holder_ratio;
+use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
 #[allow(clippy::too_many_arguments)]
@@ -38,7 +39,7 @@ pub(super) fn fit_local_image(
     if fills_holder {
         image = image.size_full().object_fit(gpui::ObjectFit::Fill);
     }
-    let image = replaced_content::position(image, &e.style, vcx);
+    let image = position(image, &e.style, vcx);
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
         crate::paint::background::element_source(local.unwrap_or(src), &e.style)
     {
@@ -174,4 +175,18 @@ pub(super) fn local_image_source<'a>(
         image = image.rounded_bl(px(bl));
     }
     Ok((local, d, image))
+}
+
+fn position(
+    mut image: gpui::Img,
+    style: &crate::style::computed::Computed,
+    vcx: ValueCx<'_>,
+) -> gpui::Img {
+    if let Some(position) = style.object_position {
+        image = image.object_position(gpui::point(
+            crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
+            crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),
+        ));
+    }
+    image
 }

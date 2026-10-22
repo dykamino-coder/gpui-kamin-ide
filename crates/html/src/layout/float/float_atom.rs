@@ -5,8 +5,8 @@
 
 use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};
-use crate::layout::replaced::image::image_with;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
+use crate::paint::replaced::image::image_with;
 use crate::render::{RenderOpts, blocks, styled_div_with};
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
