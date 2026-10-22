@@ -39,9 +39,7 @@ pub(super) fn recorder(
     // tree only at a width known before (`kid_w`), its rows recorded by the
     // layout.
     let plain = !own_plan && plain_block_tree(copy, 4);
-    let rows = !own_plan
-        && line_col_w.is_some()
-        && (table_tree(copy, 4) || grid_tree(copy, 4));
+    let rows = !own_plan && line_col_w.is_some() && (table_tree(copy, 4) || grid_tree(copy, 4));
     if !(measured || plain || rows) {
         return (Watched::new(&[]), None);
     }
