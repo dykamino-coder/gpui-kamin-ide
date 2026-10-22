@@ -23,6 +23,7 @@ pub(crate) struct RasterRequest {
     pub(crate) height: u32,
     pub(crate) density: u32,
     pub(crate) pad: u32,
+    pub(crate) external_resources: bool,
 }
 impl RasterRequest {
     pub(crate) fn new(w: f32, h: f32, density: f32, pad: f32) -> Self {
@@ -31,7 +32,13 @@ impl RasterRequest {
             height: (h * density).round().max(1.0) as u32,
             density: density.to_bits(),
             pad: (pad.max(0.0) * density).round() as u32,
+            external_resources: true,
         }
+    }
+    /// SVG 2 secure static mode: картинки не загружают внешние файлы; data: допустим.
+    pub(crate) fn without_external_resources(mut self) -> Self {
+        self.external_resources = false;
+        self
     }
 }
 
@@ -51,6 +58,9 @@ pub(crate) fn rasterize(
                     .flatten()
             }),
             resolve_string: Box::new(move |href, opts| {
+                if !request.external_resources {
+                    return None;
+                }
                 let bytes = images
                     .iter()
                     .find(|image| {

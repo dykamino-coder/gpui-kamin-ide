@@ -25,6 +25,22 @@ pub fn rasterize(
     crate::paint::background::image_adapter::upload(&cpu)
 }
 
+/// SVG как CSS/HTML-картинка: secure static mode запрещает внешние файлы.
+/// <https://www.w3.org/TR/SVG/conform.html#secure-static-mode>
+pub(crate) fn rasterize_image(
+    markup: &str,
+    w: f32,
+    h: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
+    let cpu = vcx.doc.images.borrow().rasterize_svg(
+        markup,
+        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, 0.0)
+            .without_external_resources(),
+    )?;
+    crate::paint::background::image_adapter::upload(&cpu)
+}
+
 /// Геометрическая декорация без документа: тот же CPU-бэкенд без кэша картинок.
 pub(crate) fn geometry(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
     let cpu = crate::resources::images::svg_raster::rasterize(

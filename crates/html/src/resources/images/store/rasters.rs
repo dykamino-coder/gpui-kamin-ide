@@ -67,7 +67,9 @@ impl ImageStore {
     ) -> Option<Arc<CpuRaster>> {
         let images = svg_links::image_links(markup)
             .into_iter()
-            .filter(|(href, _)| !href.starts_with('#') && !href.starts_with("data:"))
+            .filter(|(href, _)| {
+                request.external_resources && !href.starts_with('#') && !href.starts_with("data:")
+            })
             .map(|(href, _)| {
                 // Контракт markup API не наследует базу документа. Внешний SVG
                 // привязывает href к своему адресу через svg_links::with_base.
