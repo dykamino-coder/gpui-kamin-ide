@@ -6,6 +6,7 @@
 //! временными.
 
 pub(crate) mod blocks;
+pub(crate) mod box_children;
 mod continuation;
 mod coordinates;
 mod line_growth;

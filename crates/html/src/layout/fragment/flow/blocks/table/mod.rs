@@ -15,6 +15,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_box;
+use crate::layout::fragment::flow::box_children::children;
 use crate::layout::table::grid_rows::{cell_row_span, grid_rows, table_key};
 use crate::layout::table::is_cell;
 
@@ -77,7 +78,7 @@ impl TableBox {
             key: table_key(e),
             ..Default::default()
         };
-        for n in e.children.iter().filter(|n| !is_blank(n)) {
+        for n in children(&e.children).filter(|n| !is_blank(n)) {
             let Node::Element(cap) = n else { continue };
             if cap.tag != "caption" && cap.style.is_caption != Some(true) {
                 continue;

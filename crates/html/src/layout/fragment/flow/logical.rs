@@ -20,6 +20,9 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
 }
 
 fn transpose(c: &Element, rl: bool, recorded: bool) -> Option<Element> {
+    if recorded && c.style.display == Some(crate::style::computed::Display::None) {
+        return Some(c.clone());
+    }
     if c.style.vertical_decl() == Some(false)
         || c.style.rl_decl().is_some_and(|v| v != rl)
         || (!recorded && c.style.wm().rtl())

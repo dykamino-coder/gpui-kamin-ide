@@ -6,6 +6,7 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::monolith_blockified;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
 /// Поддерево блоков и сеток с хотя бы одной сеткой, всю геометрию разрывов
@@ -25,7 +26,7 @@ pub(crate) fn grid_tree(e: &Element) -> bool {
 
 fn holds_grid(e: &Element) -> bool {
     grid_container(e)
-        || e.children.iter().any(|n| {
+        || children(&e.children).any(|n| {
             matches!(n, Node::Element(k)
                     if !k.inline && !out_of_flow(&k.style) && holds_grid(k))
         })
@@ -47,7 +48,7 @@ fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
         return lines && super::table_tree(e);
     }
     if grid_container(e) {
-        return e.children.iter().all(|n| match n {
+        return children(&e.children).all(|n| match n {
             Node::Element(k) if out_of_flow(&k.style) => false,
             Node::Element(k) if matches!(k.style.display, Some(Display::None)) => true,
             Node::Element(k) => monolith_blockified(k) || measured_tree(k, true, false),
@@ -59,15 +60,13 @@ fn measured_tree(e: &Element, item: bool, lines: bool) -> bool {
         None | Some(Display::Block) | Some(Display::ListItem)
     ) || (item && e.style.display == Some(Display::InlineBlock));
     block
-        && e.children.iter().all(|n| match n {
+        && children(&e.children).all(|n| match n {
             Node::Element(k) if out_of_flow(&k.style) => false,
             Node::Element(_) | Node::Text(_) if !lines && !is_blank(n) && n_inline(n) => false,
             // Строчная коробка: блоки внутри неё — соседи потока
             // (CSS 2.1 §9.2.1.1), остальное — строки.
             Node::Element(k) if k.inline => {
-                !k.children
-                    .iter()
-                    .any(|x| matches!(x, Node::Element(b) if !b.inline))
+                !children(&k.children).any(|x| matches!(x, Node::Element(b) if !b.inline))
                     || measured_tree(k, false, lines)
             }
             Node::Element(k) => {

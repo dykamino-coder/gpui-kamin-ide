@@ -13,6 +13,7 @@ use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::clone::monolith_blockified;
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::{Display, LenCx};
 use crate::tolerance::COORD_EPS;
 
@@ -88,7 +89,7 @@ pub(crate) fn grid_container(e: &Element) -> bool {
 /// Все элементы сетки `e`, записываемые native рекордером.
 pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> GridBox {
     let mut out = GridBox::default();
-    for k in e.children.iter().filter(|n| !is_blank(n)) {
+    for k in children(&e.children).filter(|n| !is_blank(n)) {
         let Node::Element(k) = k else { continue };
         if out_of_flow(&k.style) || matches!(k.style.display, Some(Display::None)) {
             continue;

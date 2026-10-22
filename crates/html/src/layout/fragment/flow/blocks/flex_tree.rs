@@ -4,6 +4,7 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::clone::{clone_dec, monolith_blockified};
+use crate::layout::fragment::flow::box_children::children;
 use crate::style::computed::Display;
 
 pub(crate) fn flex_tree(e: &Element) -> bool {
@@ -29,8 +30,7 @@ pub(crate) fn flex_tree(e: &Element) -> bool {
         {
             return false;
         }
-        e.children.iter().all(|n| match n {
-            Node::Element(k) if k.style.display == Some(Display::None) => true,
+        children(&e.children).all(|n| match n {
             // OOF не участвует в членстве линии и не создаёт разрыв потока.
             Node::Element(k) if out_of_flow(&k.style) => true,
             Node::Element(k) if !k.inline || flex => monolith_blockified(k) || eligible(k, flex),
@@ -39,8 +39,7 @@ pub(crate) fn flex_tree(e: &Element) -> bool {
     }
     fn contains(e: &Element) -> bool {
         flex_container(e)
-            || e.children
-                .iter()
+            || children(&e.children)
                 .any(|n| matches!(n, Node::Element(k) if !out_of_flow(&k.style) && contains(k)))
     }
     contains(e) && eligible(e, false)
