@@ -40,6 +40,7 @@ FIXES = {
         "Host integration: frame capture with an opt-in first-frame latch for WPT convergence diagnostics, animation clock, opt-in prepaint profiling and identity-transformed profiler overlay.",
         "Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.",
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
+        "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
     ],
     "gpui-windows": [
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",

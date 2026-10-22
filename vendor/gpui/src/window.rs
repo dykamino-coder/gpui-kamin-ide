@@ -6252,6 +6252,12 @@ impl Window {
         origin + self.element_offset()
     }
 
+    /// KaminIDE patch: охват рядов элемента из завершённого размещения Taffy.
+    /// Возвращает индексы линий с 1, включая ведущие неявные ряды.
+    pub fn grid_item_rows(&self, child: LayoutId) -> Option<(u16, u16)> {
+        self.layout_engine.as_ref()?.grid_item_rows(child)
+    }
+
     /// KaminIDE patch: дорожки родителя-сетки (см.
     /// `TaffyLayoutEngine::parent_grid_tracks`); начало родителя — в окне,
     /// со смещением текущего элемента.
