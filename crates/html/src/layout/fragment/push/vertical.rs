@@ -73,6 +73,13 @@ pub(super) fn push(
 mod tests {
     use super::*;
 
+    fn host(nodes: &[Node]) -> &Element {
+        let Node::Element(e) = &nodes[0] else {
+            panic!("host")
+        };
+        if e.tag == "div" { e } else { host(&e.children) }
+    }
+
     #[test]
     fn growth_uses_the_logical_start_margin_in_both_directions() {
         for (axis, reverse) in [
@@ -83,9 +90,7 @@ mod tests {
                 "<div><div style='margin-left:3px;margin-right:7px;width:20px'></div></div>",
                 "",
             );
-            let Node::Element(mut host) = tree[0].clone() else {
-                panic!("host")
-            };
+            let mut host = host(&tree).clone();
             let Node::Element(child) = &host.children[0] else {
                 panic!("child")
             };
@@ -116,9 +121,7 @@ mod tests {
                 "<div style='width:80px'><div style='margin-left:5px;margin-right:9px;width:20px'></div><div style='break-before:column;width:30px'></div></div>",
                 "",
             );
-            let Node::Element(mut host) = tree[0].clone() else {
-                panic!("host")
-            };
+            let mut host = host(&tree).clone();
             let Node::Element(next) = &host.children[1] else {
                 panic!("next")
             };

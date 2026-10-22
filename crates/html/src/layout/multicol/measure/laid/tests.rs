@@ -6,7 +6,7 @@ fn root(nodes: &[Node]) -> &Element {
     let Node::Element(e) = &nodes[0] else {
         panic!("host")
     };
-    e
+    if e.tag == "div" { e } else { root(&e.children) }
 }
 
 #[test]
