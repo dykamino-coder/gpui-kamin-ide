@@ -1569,7 +1569,8 @@ fn default_bounds(display_id: Option<DisplayId>, cx: &mut App) -> WindowBounds {
 }
 
 /// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
-pub(crate) struct PaintCtx {
+#[derive(Clone)]
+pub struct PaintCtx {
     element_id_stack: SmallVec<[ElementId; 32]>,
     text_style_stack: Vec<TextStyleRefinement>,
     // KaminIDE patch: restore host scopes when drawing outside the original traversal.
@@ -4328,7 +4329,7 @@ impl Window {
     /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
     /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
     /// собирателе) рисуется позже ровно в том окружении, где стоял.
-    pub(crate) fn paint_ctx(&self) -> PaintCtx {
+    pub fn paint_ctx(&self) -> PaintCtx {
         PaintCtx {
             element_id_stack: self.element_id_stack.clone(),
             text_style_stack: self.text_style_stack.clone(),
@@ -4347,7 +4348,7 @@ impl Window {
 
     /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
     /// прежнее.
-    pub(crate) fn with_paint_ctx<R>(
+    pub fn with_paint_ctx<R>(
         &mut self,
         mut ctx: PaintCtx,
         f: impl FnOnce(&mut Self) -> R,

@@ -1,4 +1,4 @@
-//! Очередь зависимостей до конца ICB; повторное посещение завершает цикл fallback.
+//! Очередь зависимостей до конца ICB; остановка графа разрешается через CSS fallback.
 
 use super::{Item, OofKid, OofQueue, Place};
 use crate::document::state::ValueDoc;
@@ -131,8 +131,8 @@ impl Pending {
                 break;
             };
             // Kahn: если готовых вершин больше нет, остаток содержит цикл
-            // либо отсутствующий якорь. Второе посещение всегда строит
-            // коробку с CSS fallback, а FnOnce исключает третий проход.
+            // либо отсутствующий якорь. Ранняя вершина получает CSS fallback;
+            // FnOnce исключает повторное построение этой коробки.
             context.enter(window, |window| {
                 let (mut root, paint) = super::host::build_one(item, bounds, place, window, cx);
                 root.prepaint_at(point(px(0.), px(0.)), window, cx);
