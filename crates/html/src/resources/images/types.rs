@@ -81,6 +81,11 @@ pub(crate) struct CpuRaster {
 }
 
 impl CpuRaster {
+    /// Альфа ориентированной точки, независимо от порядка RGB и шага строки.
+    pub(crate) fn alpha_at(&self, x: u32, y: u32) -> Option<u8> {
+        self.pixel(x, y).map(|p| p[3])
+    }
+
     /// Точка `(x, y)` четырьмя байтами формата растра.
     pub(crate) fn pixel(&self, x: u32, y: u32) -> Option<[u8; 4]> {
         let at = y as usize * self.stride + x as usize * 4;
@@ -149,4 +154,27 @@ pub(crate) enum ImageError {
     Decode,
     /// Размеры за пределами ограничений кодека.
     LimitExceeded,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn alpha_sampler_obeys_stride_bounds_and_both_pixel_formats() {
+        for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+            let raster = CpuRaster {
+                width: 1,
+                height: 2,
+                stride: 8,
+                format,
+                alpha: AlphaMode::Straight,
+                colour_space: ColourSpace::Srgb,
+                bytes: Arc::from([1, 2, 3, 64, 9, 9, 9, 9, 4, 5, 6, 128, 0, 0, 0, 0]),
+            };
+            assert_eq!(raster.alpha_at(0, 0), Some(64));
+            assert_eq!(raster.alpha_at(0, 1), Some(128));
+            assert_eq!(raster.alpha_at(1, 0), None);
+            assert_eq!(raster.alpha_at(0, 2), None);
+        }
+    }
 }
