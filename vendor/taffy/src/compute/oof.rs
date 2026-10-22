@@ -376,6 +376,9 @@ pub fn compute_oof_layout(
     // KaminIDE patch: a container can become a leaf after its last child is removed.
     // Clear retained hoisted state even when the new output has no positioning area.
     tree.clear_hoisted_children(node_id);
+    if output.oof_candidates.is_empty() {
+        return;
+    }
     let Some(area) = output.oof_positioning_area else {
         return;
     };
