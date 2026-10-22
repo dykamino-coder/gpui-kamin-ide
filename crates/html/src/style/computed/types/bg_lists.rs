@@ -6,10 +6,10 @@ use crate::document::state::ValueCx;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BgListProp {
     BlendMode,
-    Shorthand,
     Image,
     Size,
-    Position,
+    PositionX,
+    PositionY,
     Repeat,
     Origin,
     Clip,
@@ -20,10 +20,10 @@ impl BgListProp {
     #[cfg(test)]
     pub const ALL: [BgListProp; 9] = [
         BgListProp::BlendMode,
-        BgListProp::Shorthand,
         BgListProp::Image,
         BgListProp::Size,
-        BgListProp::Position,
+        BgListProp::PositionX,
+        BgListProp::PositionY,
         BgListProp::Repeat,
         BgListProp::Origin,
         BgListProp::Clip,
@@ -33,10 +33,10 @@ impl BgListProp {
     pub fn from_key(key: &str) -> Option<Self> {
         Some(match key {
             "background-blend-mode" => BgListProp::BlendMode,
-            "background" => BgListProp::Shorthand,
             "background-image" => BgListProp::Image,
             "background-size" => BgListProp::Size,
-            "background-position" => BgListProp::Position,
+            "background-position-x" => BgListProp::PositionX,
+            "background-position-y" => BgListProp::PositionY,
             "background-repeat" => BgListProp::Repeat,
             "background-origin" => BgListProp::Origin,
             "background-clip" => BgListProp::Clip,
@@ -49,10 +49,10 @@ impl BgListProp {
     pub const fn key(self) -> &'static str {
         match self {
             BgListProp::BlendMode => "background-blend-mode",
-            BgListProp::Shorthand => "background",
             BgListProp::Image => "background-image",
             BgListProp::Size => "background-size",
-            BgListProp::Position => "background-position",
+            BgListProp::PositionX => "background-position-x",
+            BgListProp::PositionY => "background-position-y",
             BgListProp::Repeat => "background-repeat",
             BgListProp::Origin => "background-origin",
             BgListProp::Clip => "background-clip",
@@ -61,7 +61,8 @@ impl BgListProp {
     }
 }
 
-/// Списки вычисленных фоновых компонентов в порядке объявлений.
+/// Списки вычисленных фоновых компонентов: у каждого свойства слоёв —
+/// свой (длинное свойство пишет только его).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BgLists {
     lists: Vec<(BgListProp, Vec<super::bg_layer::BgLayer>)>,
@@ -94,9 +95,6 @@ impl BgLists {
     }
     pub fn remove(&mut self, prop: BgListProp) {
         self.lists.retain(|(k, _)| *k != prop);
-    }
-    pub fn retain(&mut self, mut keep: impl FnMut(BgListProp) -> bool) {
-        self.lists.retain(|(k, _)| keep(*k));
     }
     pub(crate) fn iter(&self) -> impl Iterator<Item = (BgListProp, &[super::bg_layer::BgLayer])> {
         self.lists.iter().map(|(k, v)| (*k, v.as_slice()))
@@ -156,7 +154,7 @@ mod tests {
         assert_eq!(layers.len(), 2);
         layers[1].apply(BgListProp::Clip, &mut c);
         assert_eq!(c.bg_clip, Some(super::super::BgClip::ContentBox));
-        l.retain(|p| p == BgListProp::BlendMode);
+        l.remove(BgListProp::Clip);
         assert!(l.is_empty());
     }
 }

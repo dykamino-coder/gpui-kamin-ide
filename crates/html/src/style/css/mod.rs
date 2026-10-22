@@ -31,6 +31,9 @@ pub use crate::style::css::origin::Origin;
 pub use crate::style::css::property::{
     BoxGroup, CssWide, Grammar, LonghandId, ShorthandId, Slot, Specified,
 };
+pub(crate) use crate::style::css::property::{
+    LayerWords, layer_list, layer_tokens, split_position,
+};
 pub use crate::style::css::visited::LinkMatch;
 pub(super) mod decls;
 pub use crate::style::css::decls::*;

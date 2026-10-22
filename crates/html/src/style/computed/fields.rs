@@ -262,9 +262,6 @@ pub struct Computed {
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
-    /// `background: inherit` — сокращение, значит наследуется весь фон, а не
-    /// только цвет.
-    pub(crate) background_all_inherit: bool,
     /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
     /// от родителя при слиянии (`style::cascade::inherit`), как у padding/border.
     pub(crate) width_inherit: bool,
@@ -1599,4 +1596,9 @@ pub struct Computed {
     /// color): computed against the PARENT's color when merged (css-color-4
     /// §6.4, css-color-5 §2), then inherited as the absolute `color`. Own style only.
     pub(crate) color_function: Option<crate::style::values::value::StyleColor>,
+    /// `mask-border-source/-slice/-width/-outset/-repeat` (css-masking-1 §8);
+    /// `None` — все части начальные. Not inherited.
+    pub(crate) mask_border: Option<BorderImage>,
+    /// `mask-border-mode: luminance` (§8.7); initial `alpha`. Not inherited.
+    pub(crate) mask_border_luminance: bool,
 }

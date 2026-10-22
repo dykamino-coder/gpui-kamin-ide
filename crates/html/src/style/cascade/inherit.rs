@@ -13,6 +13,7 @@ use crate::style::computed::box_predicates::{
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::{Color, Len};
 
+mod background;
 mod containing;
 mod decorate;
 mod explicit;
@@ -65,6 +66,7 @@ fn inherit_stage(
     inherit_containing(parent, own, &mut c, vcx);
     inherit_sizes(parent, own, &mut c, vcx);
     inherit_explicit(parent, own, &mut c, vcx);
+    background::inherit_background(parent, own, &mut c);
     inherit_fonts(parent, own, &mut c);
     crate::style::computed::math_style::inherit(parent, &mut c, vcx);
     inherit_text_layout(parent, own, &mut c);

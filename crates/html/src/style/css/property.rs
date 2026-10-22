@@ -5,13 +5,20 @@
 //! семействам: свойство вне него разбирается и применяется по имени, как
 //! прежде.
 
+mod layer_shorthands;
+#[cfg(test)]
+mod layer_tests;
+mod layer_words;
 mod line_shorthands;
 mod longhands;
+mod mask_shorthands;
 mod shorthands;
 #[cfg(test)]
 mod tests;
 
 use crate::document::state::ValueCx;
+pub(crate) use layer_shorthands::split_position;
+pub(crate) use layer_words::{Words as LayerWords, layer_list, layer_tokens};
 pub use longhands::{BoxGroup, Grammar, LonghandId, Slot};
 pub use shorthands::ShorthandId;
 

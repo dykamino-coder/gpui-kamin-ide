@@ -48,6 +48,14 @@ pub enum ShorthandId {
     BorderInlineColor,
     /// css-ui-4 §outline.
     Outline,
+    /// css-backgrounds-4 §background: слои фона и цвет.
+    Background,
+    /// css-backgrounds-4 §3.6: оси положения слоёв.
+    BackgroundPosition,
+    /// css-masking-1 §7.9: слои маски и сброс `mask-border`.
+    Mask,
+    /// css-masking-1 §8.7.
+    MaskBorder,
 }
 
 const SHORTHANDS: &[(&str, ShorthandId)] = &[
@@ -81,6 +89,10 @@ const SHORTHANDS: &[(&str, ShorthandId)] = &[
     ("border-inline-style", ShorthandId::BorderInlineStyle),
     ("border-inline-color", ShorthandId::BorderInlineColor),
     ("outline", ShorthandId::Outline),
+    ("background", ShorthandId::Background),
+    ("background-position", ShorthandId::BackgroundPosition),
+    ("mask", ShorthandId::Mask),
+    ("mask-border", ShorthandId::MaskBorder),
 ];
 
 impl ShorthandId {
@@ -132,6 +144,27 @@ impl ShorthandId {
             Self::BorderInlineWidth => &[BorderInlineStartWidth, BorderInlineEndWidth],
             Self::BorderInlineStyle => &[BorderInlineStartStyle, BorderInlineEndStyle],
             Self::BorderInlineColor => &[BorderInlineStartColor, BorderInlineEndColor],
+            Self::Background => &[
+                BackgroundImage,
+                BackgroundPositionX,
+                BackgroundPositionY,
+                BackgroundSize,
+                BackgroundRepeat,
+                BackgroundAttachment,
+                BackgroundOrigin,
+                BackgroundClip,
+                BackgroundColor,
+            ],
+            Self::BackgroundPosition => &[BackgroundPositionX, BackgroundPositionY],
+            Self::Mask => super::mask_shorthands::MASK,
+            Self::MaskBorder => &[
+                MaskBorderSource,
+                MaskBorderSlice,
+                MaskBorderWidth,
+                MaskBorderOutset,
+                MaskBorderRepeat,
+                MaskBorderMode,
+            ],
             _ => self.line_longhands(),
         }
     }
@@ -158,9 +191,13 @@ impl ShorthandId {
         if has_substitution(value) {
             return Some(whole(Specified::Pending(Some(self))));
         }
-        let parts = match self.line_parts() {
-            Some(_) => self.line_components(value, vcx)?,
-            None => self.components(value)?,
+        let parts = match self {
+            Self::Background => super::layer_shorthands::background(value, vcx)?,
+            Self::BackgroundPosition => super::layer_shorthands::background_position(value, vcx)?,
+            Self::Mask => super::mask_shorthands::mask(value, vcx)?,
+            Self::MaskBorder => super::mask_shorthands::mask_border(value, vcx)?,
+            _ if self.line_parts().is_some() => self.line_components(value, vcx)?,
+            _ => self.components(value)?,
         };
         let mut out = Vec::with_capacity(longhands.len());
         for (&id, text) in longhands.iter().zip(parts) {

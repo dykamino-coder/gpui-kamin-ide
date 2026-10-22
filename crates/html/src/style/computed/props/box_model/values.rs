@@ -19,6 +19,9 @@ impl Computed {
             (Grammar::Margin | Grammar::Padding | Grammar::Inset, _) => {
                 side_len(id.grammar(), value, vcx).is_some()
             }
+            (Grammar::Background | Grammar::Mask | Grammar::MaskBorder, _) => {
+                crate::style::computed::props::background::values::accepts(id, value, vcx)
+            }
             _ => crate::style::computed::props::border::values::accepts(id, value, vcx),
         }
     }

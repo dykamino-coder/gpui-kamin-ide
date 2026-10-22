@@ -1,8 +1,11 @@
-//! Группа свойств `Computed::apply_one`: `mask*`, `clip`, `clip-path`,
+//! Группа свойств `Computed::apply_one`: `mask-*`, `clip`, `clip-path`,
 //! `shape-*`. Здесь — `shape-outside`/`shape-margin`/`shape-image-threshold`,
 //! устаревший `clip: rect(...)` (CSS 2.1), `mask-size`, `mask-mode`,
-//! `mask-type`, `mask-composite`; слои маски, `clip-path` и базовые фигуры —
-//! в подмодулях `mask_layers`, `clip_mask`, `basic_shape`.
+//! `mask-type`, `mask-composite`; слои маски, `clip-path`, базовые фигуры и
+//! `mask-border-*` — в подмодулях `mask_layers`, `clip_mask`, `basic_shape`,
+//! `mask_border`. Сокращения `mask` и `mask-border` раскрыты разбором
+//! (`style::css::property`); свойство слоёв с одним полем берёт верхний
+//! слой.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
@@ -10,7 +13,16 @@ use crate::style::values::value::Len;
 
 mod basic_shape;
 mod clip_mask;
+pub(crate) mod mask_border;
 mod mask_layers;
+
+/// Верхний (первый) слой значения-списка.
+fn top_layer(v: &str) -> &str {
+    crate::style::css::split_args(v)
+        .into_iter()
+        .next()
+        .unwrap_or("")
+}
 
 impl Computed {
     pub(crate) fn apply_mask_clip(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
@@ -93,11 +105,17 @@ impl Computed {
                     }
                 }
             }
-            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v, vcx),
+            "mask-size" | "-webkit-mask-size" => mask_size::apply(self, top_layer(v), vcx),
             "mask-mode" => {
                 self.accept_declaration();
-                self.mask_luminance = Some(v.trim() == "luminance");
-                self.mask_alpha_mode = Some(v.trim() == "alpha");
+                self.mask_luminance = Some(top_layer(v) == "luminance");
+                self.mask_alpha_mode = Some(top_layer(v) == "alpha");
+            }
+            "mask-border-source" | "mask-border-slice" | "mask-border-width"
+            | "mask-border-outset" | "mask-border-repeat" | "mask-border-mode" => {
+                if let Some(id) = crate::style::css::LonghandId::from_name(key) {
+                    self.set_mask_border(id, v, vcx);
+                }
             }
             "mask-type" => self.mask_type_alpha = accept_parsed!(self, Some(v.trim() == "alpha")),
             "mask-composite" | "-webkit-mask-composite" => {

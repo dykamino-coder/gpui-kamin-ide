@@ -4,9 +4,7 @@ use crate::document::state::ValueCx;
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{
-    BgListProp, Computed, background_layers, font_members, top_level_comma,
-};
+use crate::style::computed::{Computed, font_members};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 use crate::style::values::value::Color;
 
@@ -117,8 +115,6 @@ impl Computed {
         // `display: block`, не начальное `inline`.
         if matches!(v, "initial" | "unset")
             && let Some(start) = match key {
-                "background-color" => Some("transparent"),
-                "background-image" => Some("none"),
                 "display" => Some("inline"),
                 "float" => Some("none"),
                 "position" => Some("static"),
@@ -130,33 +126,6 @@ impl Computed {
         }
         if inherited_value::note(self, key, v, vcx) {
             return;
-        }
-        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
-        // of values … the first value represents the top layer»). Одиночные
-        // поля стиля несут верхний слой, а список целиком хранится сырым —
-        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
-        // запятой список своего свойства снимает; сокращение — все.
-        if let Some(prop) = BgListProp::from_key(key) {
-            if prop == BgListProp::BlendMode && !crate::style::computed::background_blend_valid(v) {
-                return;
-            }
-            if prop == BgListProp::Shorthand {
-                // background-blend-mode is not a background shorthand member.
-                self.bg_lists.retain(|k| k == BgListProp::BlendMode);
-            } else {
-                self.bg_lists.remove(prop);
-            }
-            if top_level_comma(v).is_some() {
-                if prop != BgListProp::Shorthand {
-                    // Верхний слой — обычным разбором; список кладётся ПОСЛЕ:
-                    // вложенный вызов того же свойства его бы снял.
-                    let first = background_layers(v)[0].to_string();
-                    self.apply_one(key, &first, vcx);
-                    self.bg_lists.set(prop, v.to_string(), vcx);
-                    return;
-                }
-                self.bg_lists.set(prop, v.to_string(), vcx);
-            }
         }
         self.apply_property(key, v, vcx);
     }

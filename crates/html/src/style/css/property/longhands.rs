@@ -1,5 +1,6 @@
 //! Таблица длинных свойств реестра: имя, начальное значение (css-box-4,
-//! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3, css-ui-4),
+//! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3/4,
+//! css-masking-1, css-ui-4),
 //! наследование, грамматика и место в логической группе (css-logical-1 §4:
 //! логическое и физическое свойство одной стороны делят вычисленное
 //! значение).
@@ -38,6 +39,14 @@ pub enum Grammar {
     /// Части `border-image` (css-backgrounds-3 §5): `-source`, `-slice`,
     /// `-width`, `-outset`, `-repeat`.
     BorderImage,
+    /// Свойства фона (css-backgrounds-3 §3, css-backgrounds-4 §3.6): у
+    /// каждого своя грамматика слоя, значение — список слоёв, у
+    /// `background-color` — один цвет.
+    Background,
+    /// Слои маски (css-masking-1 §7): список слоёв по свойству.
+    Mask,
+    /// Части `mask-border` (css-masking-1 §8).
+    MaskBorder,
 }
 
 /// Логическая группа (Stylo `logical_group`): физические и логические
@@ -168,6 +177,29 @@ longhands! {
     BorderImageWidth = "border-image-width", "1", false, BorderImage, N;
     BorderImageOutset = "border-image-outset", "0", false, BorderImage, N;
     BorderImageRepeat = "border-image-repeat", "stretch", false, BorderImage, N;
+    BackgroundColor = "background-color", "transparent", false, Background, N;
+    BackgroundImage = "background-image", "none", false, Background, N;
+    BackgroundPositionX = "background-position-x", "0%", false, Background, N;
+    BackgroundPositionY = "background-position-y", "0%", false, Background, N;
+    BackgroundSize = "background-size", "auto", false, Background, N;
+    BackgroundRepeat = "background-repeat", "repeat", false, Background, N;
+    BackgroundAttachment = "background-attachment", "scroll", false, Background, N;
+    BackgroundOrigin = "background-origin", "padding-box", false, Background, N;
+    BackgroundClip = "background-clip", "border-box", false, Background, N;
+    MaskImage = "mask-image", "none", false, Mask, N;
+    MaskMode = "mask-mode", "match-source", false, Mask, N;
+    MaskPosition = "mask-position", "0% 0%", false, Mask, N;
+    MaskSize = "mask-size", "auto", false, Mask, N;
+    MaskRepeat = "mask-repeat", "repeat", false, Mask, N;
+    MaskOrigin = "mask-origin", "border-box", false, Mask, N;
+    MaskClip = "mask-clip", "border-box", false, Mask, N;
+    MaskComposite = "mask-composite", "add", false, Mask, N;
+    MaskBorderSource = "mask-border-source", "none", false, MaskBorder, N;
+    MaskBorderSlice = "mask-border-slice", "0", false, MaskBorder, N;
+    MaskBorderWidth = "mask-border-width", "auto", false, MaskBorder, N;
+    MaskBorderOutset = "mask-border-outset", "0", false, MaskBorder, N;
+    MaskBorderRepeat = "mask-border-repeat", "stretch", false, MaskBorder, N;
+    MaskBorderMode = "mask-border-mode", "alpha", false, MaskBorder, N;
 }
 
 impl LonghandId {

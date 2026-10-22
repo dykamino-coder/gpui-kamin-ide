@@ -68,25 +68,15 @@ impl BgLayer {
 
     pub(crate) fn apply(&self, prop: BgListProp, c: &mut Computed) {
         match prop {
-            BgListProp::Shorthand => {
-                c.bg_image = self.image.clone();
-                c.bg_size = self.size;
-                c.bg_pos = self.position;
-                c.bg_position_math = self.position_math.clone();
-                c.bg_repeat = self.repeat;
-                c.bg_origin = self.origin;
-                if self.clip.is_some() {
-                    c.bg_clip = self.clip;
-                }
-                if self.fixed.is_some() {
-                    c.bg_fixed = self.fixed;
-                }
-            }
             BgListProp::Image => c.bg_image = self.image.clone(),
             BgListProp::Size => c.bg_size = self.size,
-            BgListProp::Position => {
-                c.bg_pos = self.position;
-                c.bg_position_math = self.position_math.clone();
+            BgListProp::PositionX => {
+                c.bg_pos.x = self.position.x;
+                c.bg_position_math[0] = self.position_math[0].clone();
+            }
+            BgListProp::PositionY => {
+                c.bg_pos.y = self.position.y;
+                c.bg_position_math[1] = self.position_math[1].clone();
             }
             BgListProp::Repeat => c.bg_repeat = self.repeat,
             BgListProp::Origin => c.bg_origin = self.origin,

@@ -6,6 +6,7 @@ use crate::document::state::ValueCx;
 use crate::style::css::DeclBlock;
 use crate::style::css::parse_decls;
 
+mod background_cascade;
 mod cascade;
 mod cascade_winners;
 mod decor_inset;
