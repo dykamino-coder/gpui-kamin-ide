@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::style::computed::{BgPos, GradSpace, Len};
 use crate::style::values::{
-    color_space::{ColorExpression, DirectGradient},
+    color_space::{DirectGradient, StyleColor},
     value::Color,
 };
 
@@ -18,7 +18,7 @@ pub struct ConicGradient {
     pub(crate) explicit_interpolation: bool,
     pub(crate) hue: u8,
     pub(crate) polar: Option<DirectGradient>,
-    pub(super) colors: Vec<ColorExpression>,
+    pub(super) colors: Vec<StyleColor>,
 }
 
 impl ConicGradient {
@@ -86,8 +86,7 @@ impl ConicGradient {
         };
         for part in &parts[idx..] {
             let words = crate::style::computed::split_outside_parens(part);
-            let Some(expression) = words.first().and_then(|w| ColorExpression::parse(w, vcx))
-            else {
+            let Some(expression) = words.first().and_then(|w| StyleColor::parse(w, vcx)) else {
                 if words.len() == 1
                     && let Some(at) = crate::style::values::value::angle::fraction(&words[0], vcx)
                 {
@@ -96,7 +95,7 @@ impl ConicGradient {
                 continue;
             };
             all_legacy &= crate::style::computed::gradient::legacy_srgb_color(&words[0])
-                && !matches!(expression, ColorExpression::Relative(_));
+                && !matches!(expression, StyleColor::Relative(_));
             let color = expression.resolve_for_interpolation(black);
             let positions: Vec<_> = words[1..]
                 .iter()

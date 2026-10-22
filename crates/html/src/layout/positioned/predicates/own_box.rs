@@ -116,9 +116,8 @@ pub(crate) fn has_own_box(
         return false;
     }
     let visible = |col: &Option<crate::style::values::value::Color>| col.is_some_and(|x| x.a > 0.0);
-    let colored = c.border_color.is_some() || c.border_colors.iter().any(Option::is_some);
-    let border_paints = visible(&c.border_color)
-        || c.border_colors.iter().any(visible)
+    let colored = c.border_color_declared();
+    let border_paints = colored && (0..4).any(|i| visible(&Some(c.used_border_color(i))))
         // Цвет не задан вовсе — рамка красится цветом текста, то есть видна.
         || (!colored && any(&c.borders()));
     c.gradient.is_some()

@@ -98,11 +98,7 @@ fn collapsed_column_edges(
             a: 1.0,
         };
         let side_colour = |k: usize| {
-            el.style.border_colors[k]
-                .or(el.style.border_color)
-                .or(el.style.color)
-                .or(inherited.color)
-                .unwrap_or(black)
+            el.style.border_colors[k].resolve(el.style.color.or(inherited.color).unwrap_or(black))
         };
         let colors = [
             side_colour(0),

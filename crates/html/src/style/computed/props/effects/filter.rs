@@ -52,10 +52,6 @@ impl Computed {
                 }
                 "drop-shadow" => {
                     program.shadow_value = shadow_values(arg, vcx).into_iter().find(|s| !s.inset);
-                    program.shadow_current = program
-                        .shadow_value
-                        .as_ref()
-                        .is_some_and(|s| s.color.a < 0.0);
                     self.drop_shadow = program
                         .shadow_value
                         .as_ref()
@@ -73,7 +69,9 @@ impl Computed {
         }
         self.filter = Some(f);
         program.filter = Some(f);
-        program.shadow = self.drop_shadow;
+        program.shadow = self.drop_shadow.clone();
+        // `currentcolor` is resolved per element by `resolve_colors`.
+        program.resolve_colors(crate::style::values::value::Color::BLACK);
         program
     }
 }

@@ -27,8 +27,13 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
     }
     let mut c =
         crate::style::cascade::inherit::inherit_unpainted(&Computed::default(), &root.style, vcx);
-    // This is a computed viewport policy, not another currentColor declaration.
-    c.scroll.current = [false; 2];
+    // The viewport takes the root's USED scrollbar colors (CSS Scrollbars 1
+    // §3): `currentcolor` is the root's color, not the viewport's.
+    c.scroll.colors = c
+        .scroll
+        .colors
+        .as_ref()
+        .map(|_| c.used_scrollbar_colors().map(|cols| cols.map(Into::into)));
     c.scroll.inherit_width = false;
     // CSS Values 4 §6.1.2; Blink ComputeScrollbarWidthsForViewportUnits:
     // only root policy reduces units, never overflow propagated from body.
@@ -111,7 +116,7 @@ pub(super) fn prepare(nodes: Vec<Node>, vcx: ValueCx<'_>) -> (Vec<Node>, Compute
         .or_else(|| canvas.map(|_| Computed::default()))
         .filter(|c| {
             canvas.is_some()
-                || c.scroll.colors.flatten().is_some()
+                || c.used_scrollbar_colors().is_some()
                 || c.scroll.forced.into_iter().any(|v| v)
                 || c.scroll.gutter.is_some_and(|v| v != 0)
         });
@@ -231,11 +236,10 @@ mod tests {
         );
         let c = policy(&nodes, vcx).unwrap();
         assert_eq!(
-            c.scroll.colors.flatten().unwrap(),
+            c.used_scrollbar_colors().unwrap(),
             [crate::style::values::value::Color::parse("red", vcx).unwrap(); 2]
         );
         assert_eq!(c.scroll.width, Some(2));
-        assert_eq!(c.scroll.current, [false; 2]);
         assert_eq!(c.scroll.forced, [true; 2]);
     }
 }

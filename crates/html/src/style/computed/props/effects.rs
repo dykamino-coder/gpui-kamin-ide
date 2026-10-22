@@ -7,7 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{ColorOrAuto, Len};
 mod containment;
 mod filter;
 mod timing;
@@ -211,7 +211,12 @@ impl Computed {
                     }
                 }
             }
-            "accent-color" => self.accent_color = record_parsed!(self, Color::parse(v, vcx)),
+            "accent-color" => {
+                if let Some(value) = ColorOrAuto::parse_value(v, vcx) {
+                    self.accept_declaration();
+                    self.accent_color = Some(value);
+                }
+            }
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {
                     self.appearance = accept_parsed!(self, Some(a));

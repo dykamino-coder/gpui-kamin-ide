@@ -150,7 +150,7 @@ pub(super) fn mark_canvas_background(
                 let s = &mut body.style;
                 let mut take = crate::style::computed::Computed::default();
                 take.background = s.background.take();
-                take.background_rcs = s.background_rcs.take();
+                take.background_color = s.background_color.take();
                 take.gradient = s.gradient.take();
                 take.gradient_raw = s.gradient_raw.take();
                 take.bg_image = s.bg_image.take();
@@ -196,7 +196,7 @@ pub(super) fn mark_canvas_background(
         if let Some(take) = moved {
             let s = &mut html.style;
             s.background = take.background;
-            s.background_rcs = take.background_rcs;
+            s.background_color = take.background_color;
             s.gradient = take.gradient;
             s.gradient_raw = take.gradient_raw;
             s.bg_image = take.bg_image;

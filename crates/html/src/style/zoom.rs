@@ -45,7 +45,7 @@ use scale::{scale_own, scale_shadow};
 /// ближайшего предка, задавшего свойство, уже домноженное на его зум.
 /// Единицы шрифта не несём: слияние переведёт их от кегля потомка, а кегль
 /// под зумом уже домножен.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Default)]
 struct Carried {
     line_height: Option<f32>,
     letter_spacing: Option<f32>,
@@ -74,7 +74,7 @@ fn walk(nodes: &mut [Node], parent: Option<&Computed>, parent_eff: f32, carried:
             e.style.zoom_eff = zoomed.then_some(eff);
             apply(&mut e.style, parent, eff, own, &carried);
         }
-        let mut below = carried;
+        let mut below = carried.clone();
         remember(&e.style, &mut below);
         // `<foreignObject>` content is laid out in SVG user units and magnified
         // with the SVG (its raster scale carries the zoom), so its descendants
@@ -140,7 +140,7 @@ fn inherited(c: &mut Computed, own: f32, carried: &Carried) {
     put(&mut c.text_indent, carried.text_indent);
     put(&mut c.tab_size_len, carried.tab_size);
     if c.text_shadow.is_none()
-        && let Some(mut sh) = carried.text_shadow
+        && let Some(mut sh) = carried.text_shadow.clone()
     {
         scale_shadow(&mut sh, own);
         c.text_shadow = Some(sh);

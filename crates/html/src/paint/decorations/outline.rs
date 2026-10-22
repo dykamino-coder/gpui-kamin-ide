@@ -17,6 +17,7 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
     // (`grouped` → `Grouped::over`, `Computed::shaped_outline`).
     if let Some(o) = c
         .outline
+        .clone()
         .filter(|_| c.shaped_outline().is_none() && !super::shaped_outset::shapes_outline(c, vcx))
     {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
@@ -46,20 +47,7 @@ pub(super) fn decorations(c: &Computed, vcx: ValueCx<'_>) -> Vec<AnyElement> {
         // `CanvasText`, чёрный. Прежде документ без единого `color` оставлял
         // `c.color` пустым и гасил контур целиком (`outline-offset-inset-001`
         // и `-003` зелёны пустотой на обеих сторонах).
-        let colour = o
-            .color
-            .or(if o.style == Some(2) {
-                c.accent_color
-            } else {
-                None
-            })
-            .or(c.color)
-            .or(Some(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            }));
+        let colour = Some(c.used_outline_color(&o));
         if let (true, true, Some(colour)) = (visible, w > 0.0, colour) {
             // Отрицательный сдвиг вжимает контур внутрь коробки, но внешняя
             // сторона фигуры не может стать уже удвоенной толщины

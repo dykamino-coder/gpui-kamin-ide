@@ -86,40 +86,6 @@ fn inherit_stage(
     // Кегль (в том числе процент, `larger`/`smaller` по таблице и единицы
     // шрифта) — доля РОДИТЕЛЬСКОГО: его считает `resolve_em` первым шагом.
     c.resolve_em(parent_px, vcx);
-    // Цвет рамки по умолчанию — ЦВЕТ ТЕКСТА: `border: solid 1px` без цвета
-    // рисуется в браузере чёрной рамкой, а у нас не рисовалась вовсе —
-    // коробка выходила без рамки, и эталоны переносов выглядели сломанными.
-    // Известен цвет только здесь: он наследуемый, а рамка нет.
-    let has_border = {
-        let b = c.borders();
-        [b.top, b.right, b.bottom, b.left]
-            .iter()
-            .any(|w| !matches!(w, None | Some(Len::Px(0.0))))
-    };
-    // Пустой слот цвета стороны — `currentColor` (начальное значение или
-    // заданное, в том числе боковым сокращением без цвета: §8.5.4,
-    // `border-shorthands-003`). Рядом со сторонами своего цвета он получает
-    // цвет текста ЯВНО: единый цвет квада (`apply::apply_paint`) смотрит
-    // только на заданные стороны и иначе выкрасил бы пустую их цветом.
-    if c.border_colors.iter().any(Option::is_some) && c.border_colors.iter().any(Option::is_none) {
-        let current = c.color.unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        for side in c.border_colors.iter_mut() {
-            side.get_or_insert(current);
-        }
-    }
-    if has_border && c.border_color.is_none() && c.border_colors.iter().all(Option::is_none) {
-        c.border_color = c.color.or(Some(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        }));
-    }
     // `tab-size` в длине наследуется АБСОЛЮТНОЙ величиной: `5em` при кегле
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
     // (`tab-size-inheritance-001`).

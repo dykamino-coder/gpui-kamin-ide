@@ -29,7 +29,11 @@ pub(super) fn masked_layer(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let on = block.resolved() == group;
-    let ink = if on { shadow.color } else { transparent() };
+    let ink = if on {
+        shadow.used_color(style.current_color())
+    } else {
+        transparent()
+    };
     let mut mask = style.clone();
     mask.text_shadow_ink = Some(ink);
     mask.text_shadow = None;
@@ -72,7 +76,7 @@ pub(super) fn mask_nodes(
                 }
                 let list = parent.child(&e);
                 let ink = if list.resolved() == group {
-                    shadow.color
+                    shadow.used_color(e.style.current_color())
                 } else {
                     transparent()
                 };
@@ -82,8 +86,7 @@ pub(super) fn mask_nodes(
                 s.bg_image = None;
                 s.shadows.clear();
                 s.outline = None;
-                s.border_color = Some(transparent());
-                s.border_colors = [Some(transparent()); 4];
+                s.border_colors = std::array::from_fn(|_| transparent().into());
                 s.text_shadow = None;
                 s.text_shadow_rest.clear();
                 s.text_shadow_raw = None;

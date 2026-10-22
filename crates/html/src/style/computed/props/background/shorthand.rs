@@ -29,8 +29,7 @@ impl Computed {
         // Негодное объявление не сбрасывает ничего (§4.1.7).
         if key == "background" && background_shorthand_valid(v, vcx) {
             self.accept_declaration();
-            self.background = None;
-            self.background_rcs = None;
+            self.set_background_color(None);
         }
         if key == "background-color" || background_shorthand_valid(v, vcx) {
             self.bg_explicit = true;
@@ -45,10 +44,13 @@ impl Computed {
                 || low.contains("(from ")
                 || (low.starts_with("color-mix(") && low.contains("currentcolor")))
         {
-            self.background_rcs = accept_parsed!(
+            let value = accept_parsed!(
                 self,
-                crate::style::values::color_space::ColorExpression::parse(v, vcx)
+                crate::style::values::color_space::StyleColor::parse_value(v, vcx)
             );
+            if value.is_some() {
+                self.set_background_color(value);
+            }
             return;
         }
         // Фон — СПИСОК слоёв через запятую (css-backgrounds-3 §3.10):
@@ -140,8 +142,9 @@ impl Computed {
                 "left" | "right" | "top" | "bottom" | "center" => pos.push(token.clone()),
                 t if Self::background_position_length(t, vcx) => pos.push(token.clone()),
                 t => {
-                    if let Some(c) = Color::parse(t, vcx) {
-                        self.background = accept_parsed!(self, Some(c));
+                    if let Some(c) = StyleColor::parse_value(t, vcx) {
+                        self.accept_declaration();
+                        self.set_background_color(Some(c));
                     }
                 }
             }
@@ -158,8 +161,8 @@ impl Computed {
         // Цвет живёт в НИЖНЕМ слое списка — верхний его не допускает.
         if layers.len() > 1 {
             for token in split_outside_parens(bottom) {
-                if let Some(c) = Color::parse(&token, vcx) {
-                    self.background = Some(c);
+                if let Some(c) = StyleColor::parse_value(&token, vcx) {
+                    self.set_background_color(Some(c));
                 }
             }
         }

@@ -73,20 +73,7 @@ pub(crate) fn layer(c: &Computed) -> Option<AnyElement> {
     let b = uniform(c.borders())?;
     let p = uniform(c.padding)?;
     let background = c.background.unwrap_or_default();
-    let border = c
-        .border_colors
-        .iter()
-        .flatten()
-        .next()
-        .copied()
-        .or(c.border_color)
-        .or(c.color)
-        .unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
+    let border = c.used_border_color(0);
     let clip = c.bg_clip.unwrap_or(BgClip::BorderBox);
     Some(
         super::exact_layer::ExactLayer::inset([-b; 4], move |geometry, window| {

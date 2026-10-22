@@ -168,19 +168,17 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> 
             y: 0.0,
             blur: 0.0,
             spread: 0.0,
-            color: crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.0,
-            },
+            color: crate::style::values::value::Color::default().into(),
         };
-        let a = prev.1.drop_shadow.unwrap_or(none);
-        let b = next.1.drop_shadow.unwrap_or(none);
-        let alpha = lerp(a.color.a, b.color.a);
+        let a = prev.1.drop_shadow.clone().unwrap_or(none.clone());
+        let b = next.1.drop_shadow.clone().unwrap_or(none);
+        // Interpolation works on used colors (`currentcolor` of each frame).
+        let ca = a.used_color(prev.1.current_color());
+        let cb = b.used_color(next.1.current_color());
+        let alpha = lerp(ca.a, cb.a);
         let pm = |x: f32, y: f32| {
             if alpha > 0.0 {
-                lerp(x * a.color.a, y * b.color.a) / alpha
+                lerp(x * ca.a, y * cb.a) / alpha
             } else {
                 0.0
             }
@@ -191,11 +189,12 @@ pub(crate) fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> 
             blur: lerp(a.blur, b.blur),
             spread: lerp(a.spread, b.spread),
             color: crate::style::values::value::Color {
-                r: pm(a.color.r, b.color.r),
-                g: pm(a.color.g, b.color.g),
-                b: pm(a.color.b, b.color.b),
+                r: pm(ca.r, cb.r),
+                g: pm(ca.g, cb.g),
+                b: pm(ca.b, cb.b),
                 a: alpha,
-            },
+            }
+            .into(),
         });
     }
     // `translate`/`rotate`/`scale`: `none` с одной стороны заменяется

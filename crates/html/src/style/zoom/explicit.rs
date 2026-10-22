@@ -77,8 +77,8 @@ pub(super) fn explicit(c: &mut Computed, parent: Option<&Computed>, own: f32) {
     // разряд снимается. Не в точках — разряд остаётся, как прежде.
     use crate::style::computed::inh;
     if c.inherit_bits & (inh::OUTLINE_W | inh::OUTLINE_O) != 0 {
-        let from = p.outline.unwrap_or_default();
-        let mut o = c.outline.unwrap_or_default();
+        let from = p.outline.clone().unwrap_or_default();
+        let mut o = c.outline.clone().unwrap_or_default();
         let mut hit = false;
         if c.inherit_bits & inh::OUTLINE_W != 0
             && let Some(v) = px(from.width)
@@ -123,7 +123,7 @@ pub(super) fn remember(c: &Computed, k: &mut Carried) {
     keep(&mut k.text_indent, c.text_indent);
     keep(&mut k.tab_size, c.tab_size_len);
     if c.text_shadow.is_some() {
-        k.text_shadow = c.text_shadow;
+        k.text_shadow = c.text_shadow.clone();
     }
     if let Some((row, col)) = c.border_spacing {
         k.border_spacing = Some((px(row), px(col)));

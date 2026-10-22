@@ -63,10 +63,7 @@ pub(crate) fn collapsed_row_edges(
             a: 1.0,
         };
         let colors = std::array::from_fn(|i| {
-            source.style.border_colors[i]
-                .or(source.style.border_color)
-                .or(computed.color)
-                .unwrap_or(black)
+            source.style.border_colors[i].resolve(computed.color.unwrap_or(black))
         });
         d = d.child(crate::layout::table::paint::edge_probe(
             table_edges.clone(),

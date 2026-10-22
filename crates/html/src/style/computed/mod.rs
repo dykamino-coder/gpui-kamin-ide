@@ -62,6 +62,7 @@ use crate::style::values::value::Len;
 mod fields;
 pub(crate) mod scroll;
 pub(crate) mod snap;
+mod used_color;
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;
@@ -215,3 +216,5 @@ mod border_image_tests;
 mod gradient_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod used_color_tests;
