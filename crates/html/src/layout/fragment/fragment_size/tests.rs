@@ -167,3 +167,24 @@ fn viewport_constraints_use_the_actual_page_area() {
     );
     assert_eq!(constrained(400.0, &style, 0.0, None, false), 400.0);
 }
+
+#[cfg(feature = "wpt-harness")]
+#[test]
+fn estimate_probe_records_the_shape_caller_without_double_counting() {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    let probe = crate::FragmentProbes::default();
+    let cx = ShapeCx {
+        probe: Some(&probe),
+        ..ShapeCx::COLUMNS
+    };
+    let root = element(Computed::default(), Vec::new());
+    let call_line = line!() + 1;
+    assert!(shape_full(&root, 4, cx, doc.values()).is_some());
+    let counters = probe.take();
+    let measured = &counters["columns.estimate"];
+    assert_eq!(measured.estimate_calls, 1);
+    assert_eq!(
+        measured.estimate_sites,
+        std::collections::BTreeMap::from([(format!("{}:{call_line}", file!()), 1)])
+    );
+}
