@@ -7,7 +7,6 @@ use crate::dom::Element;
 use crate::layout::block::reorder::orthogonal_vertical_children;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::responsive_embedded_sizing;
-use crate::paint::box_tree::styled::styled_div;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
@@ -174,7 +173,11 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     });
     Some(
         {
-            let mut frame = styled_div(e, &opts.cx).w(px(outer_w));
+            let mut frame = opts
+                .cx
+                .build
+                .styled_box(e, &e.style, &opts.cx)
+                .w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.
             frame.style().baseline_unavailable = Some(true);

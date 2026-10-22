@@ -3,7 +3,6 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::fragment::grid_bands::grid_rows_px;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{Styled, px};
@@ -22,7 +21,7 @@ pub(super) fn frag_box_div(
     body: &mut Vec<gpui::AnyElement>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
-    let mut d = styled_div_with(src, src_inner, cx);
+    let mut d = cx.build.styled_box(src, src_inner, cx);
     // Ось блочного потока ВНУТРИ копии — горизонтальная
     // (css-writing-modes-4 §3.1), как у вертикального
     // блока в `element()`: гибкий ряд, у `vertical-rl`

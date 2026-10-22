@@ -5,7 +5,6 @@ use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -40,7 +39,10 @@ pub(super) fn replaced_abs_atom(
     } else {
         opts.cx.build.replaced(&copy, None, &opts.cx)
     };
-    let holder = styled_div_with(e, merged, &opts.cx)
+    let holder = opts
+        .cx
+        .build
+        .styled_box(e, merged, &opts.cx)
         .child(built)
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.

@@ -12,7 +12,6 @@ use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::rotated_atom;
-use crate::paint::box_tree::content_wrapper::content_sized;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -86,12 +85,12 @@ pub(crate) fn atom_element(
         && !at_static_position(&e.style)
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
     Some(if wraps {
-        content_sized(
+        opts.cx.build.content_sized(
             el,
             &e.style,
             &inherit(inherited, &e.style, vcx),
             (None, None),
-            vcx,
+            &opts.cx,
         )
     } else {
         el
