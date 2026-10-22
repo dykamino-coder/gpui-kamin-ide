@@ -33,7 +33,6 @@ use crate::color::{
 use crate::color::{gamut_map, linear_srgb_to_oklab, oklab_to_srgb};
 use convert::{gamut_map_tuple, hsl_to_rgb, lab_to_srgb, rgb_to_hsl, srgb_to_lab, srgb_to_oklab};
 use functions::color_fn;
-pub(crate) use icc::apply_icc;
 pub(crate) use icc::load_profiles_sheets;
 use icc::{icc_to_srgb, profile};
 use mix::{color_mix, mix_in};
