@@ -6,7 +6,7 @@ use crate::dom::{Element, Node};
 use crate::layout::block::margins::fragment_box;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::fragment::Shape;
-use crate::layout::fragment::flow::independent_copy;
+use crate::layout::fragment::flow::{empty_floats, independent_copy};
 use crate::layout::fragment::line_shape::resolved_lengths;
 use crate::style::computed::Computed;
 use std::cell::RefCell;
@@ -25,7 +25,7 @@ pub(crate) fn children(
     }
     let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
     if !flow.iter().all(|n| match n {
-        Node::Element(c) => out_of_flow(&c.style) || independent_copy(c),
+        Node::Element(c) => out_of_flow(&c.style) || independent_copy(c) || empty_floats(c),
         _ => false,
     }) {
         return None;
@@ -72,7 +72,7 @@ pub(crate) fn pending(
         .filter(|n| !is_blank(n))
         .map(|n| {
             let Node::Element(c) = n else { return None };
-            if !independent_copy(c) {
+            if !independent_copy(c) && !empty_floats(c) {
                 return None;
             }
             let c = resolved_lengths(c, merged, vcx);

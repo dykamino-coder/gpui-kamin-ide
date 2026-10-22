@@ -45,9 +45,7 @@ impl ColumnStack {
             } else {
                 content.height
             }));
-            if !axis.is_vertical()
-                && let Some(w) = &c.watched
-            {
+            if let Some(w) = &c.watched {
                 // Floats переполняют нулевую коробку; их реальная протяжённость
                 // резервирует продолжение, не растягивая фон normal flow.
                 let flow = w.flow.at(point(px(0.0), px(0.0)), sz, axis, window);
