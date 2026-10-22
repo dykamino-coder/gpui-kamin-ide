@@ -52,6 +52,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 "<div style='display:grid;height:150px;width:150px;align-content:center;grid-template-rows:20px 30px'></div>",
                 "<div style='display:grid'><div style='height:40px;width:30px'></div></div>",
                 "<table><tr><td><div style='height:20px;width:30px'></div></td></tr></table>",
+                "<table><tr><td><div><div style='display:flex'><div>first</div><div>second</div></div></div></td></tr></table>",
                 "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
             ] {
                 // Явное письмо у детей: StackPlan получает уже унаследованный DOM.

@@ -72,3 +72,56 @@ fn block_containing_table_and_grid_has_one_measured_tree() {
     );
     assert!(independent_copy(authored(&doc)));
 }
+
+#[test]
+fn flex_in_table_cells_and_captions_has_frames_flows_and_relative_shifts() {
+    let flex = "<div style='display:flex'><div style='break-before:column'><div>first</div></div><div style='break-after:avoid'><div>second</div></div></div>";
+    for caption in [false, true] {
+        let body = if caption {
+            format!("<caption>{flex}</caption><tr><td>cell</td></tr>")
+        } else {
+            format!("<tr><td><div>{flex}</div></td></tr>")
+        };
+        let doc = crate::dom::parse(
+            &format!("<div><table style='break-after:avoid'>{body}</table></div>"),
+            "",
+        );
+        let root = authored(&doc);
+        assert!(independent_copy(root));
+        let b = BlockBox::collect(root, ShapeCx::COLUMNS, doc.values());
+        let mut flexes = Vec::new();
+        b.flexes(&mut flexes);
+        assert_eq!(flexes.len(), 1);
+        let (id, items) = &flexes[0];
+        assert_eq!(items.len(), 2);
+        let mut laid = Laid::of_boxes(&[
+            (*id, 0.0, 137.0),
+            (items[0], 0.0, 137.0),
+            (items[1], 0.0, 137.0),
+        ]);
+        laid.flexes.insert(
+            *id,
+            super::FlexFrame {
+                column: false,
+                lines: vec![super::FlexLine {
+                    index: 0,
+                    start: 0.0,
+                    end: 137.0,
+                    items: items.clone(),
+                }],
+            },
+        );
+        let mut flows = Vec::new();
+        b.flex_flows(&laid, &mut flows);
+        assert_eq!(flows.len(), 2);
+        assert_eq!(flows.iter().map(|b| b.id).collect::<Vec<_>>(), *items);
+        assert!(b.edge(false, &laid).0);
+        assert!(b.edge(true, &laid).1);
+        let mut shifts = std::collections::HashMap::new();
+        let mut tables = std::collections::HashMap::new();
+        b.shift_flex_item(items[0], -17.0, &mut laid.boxes, &mut shifts, &mut tables);
+        assert_eq!(laid.at(items[0]), Some((-17.0, 120.0)));
+        assert_eq!(shifts[&items[0]], -17.0);
+        assert_eq!(laid.at(items[1]), Some((0.0, 137.0)));
+    }
+}

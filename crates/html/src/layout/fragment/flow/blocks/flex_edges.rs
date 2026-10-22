@@ -47,6 +47,8 @@ impl BlockBox {
                     }
                 }
             }
+        } else if let Some(table) = &self.table {
+            propagated = table.edge(last, laid);
         } else if let Some(kid) = if last {
             self.kids.last()
         } else {

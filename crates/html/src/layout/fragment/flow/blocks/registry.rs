@@ -115,5 +115,8 @@ impl BlockBox {
                 inner.shift_flex_item(id, delta, boxes, shifts, tables);
             }
         }
+        for flow in self.table.iter().flat_map(|t| t.flows()) {
+            flow.shift_flex_item(id, delta, boxes, shifts, tables);
+        }
     }
 }

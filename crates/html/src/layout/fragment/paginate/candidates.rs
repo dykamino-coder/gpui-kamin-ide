@@ -9,15 +9,10 @@ use crate::layout::fragment::clone::{monolith_box, solid_box};
 use crate::style::computed::Display;
 use crate::style::values::value::px_auto_zero;
 
-pub(super) fn walk(
-    p: &Element,
-    depth: u8,
-    out: &mut Vec<(u64, Cand)>,
-    vcx: ValueCx<'_>,
-) -> Option<()> {
+pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: ValueCx<'_>) -> Option<()> {
     // Native table rows use the table planner's geometry and break expansion;
     // they are not ordinary block boxes observed by the measured solver.
-    if depth == 0 || crate::layout::fragment::table_bands::table_box(p) {
+    if crate::layout::fragment::table_bands::table_box(p) {
         return None;
     }
     let mut force_next = false;
@@ -36,13 +31,13 @@ pub(super) fn walk(
                         },
                     ));
                 } else {
-                    walk(k, depth - 1, out, vcx)?;
+                    walk(k, out, vcx)?;
                 }
             }
             continue;
         }
         if k.inline {
-            walk(k, depth - 1, out, vcx)?;
+            walk(k, out, vcx)?;
             continue;
         }
         if k.list_item.is_some()
@@ -109,7 +104,7 @@ pub(super) fn walk(
                 },
             ));
         }
-        walk(k, depth - 1, out, vcx)?;
+        walk(k, out, vcx)?;
     }
     Some(())
 }
