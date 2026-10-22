@@ -14,6 +14,7 @@ fn rule(css: &str, specificity_selector: &str) -> Rule {
         order: 0,
         origin: Origin::Author,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     }
 }
 

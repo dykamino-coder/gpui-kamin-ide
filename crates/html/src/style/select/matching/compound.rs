@@ -60,6 +60,10 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
         if p == "empty" {
             return node.empty;
         }
+        // Состояние ссылки предка (`a:visited span`): то же, что у предмета.
+        if p == "link" || p == "visited" {
+            return node.href.is_some() && (p == "visited") == node.visited;
+        }
         is_holds(p, sel.argument_namespace, node, &path[..at], sibs).unwrap_or(true)
     })
 }

@@ -36,6 +36,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             order: 0,
             origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     if super::mathml_routing::enabled(handle) {
@@ -83,6 +84,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             order: 0,
             origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     // Core §4.1 UA sheet (Blink mathml.css:82): single-character identifiers
@@ -97,6 +99,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             order: 0,
             origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     if hides {
@@ -107,6 +110,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             order: usize::MAX,
             origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     rules

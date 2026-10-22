@@ -69,6 +69,7 @@ pub(super) fn rule(tag: &str, attrs: &[(String, String)], style: &Computed) -> O
         origin: crate::style::css::Origin::UserAgent,
         order: usize::MAX,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 
@@ -95,6 +96,7 @@ mod tests {
             origin: crate::style::css::Origin::Author,
             order: 0,
             layer: vec![u32::MAX],
+            link: crate::style::css::LinkMatch::Any,
         };
         let rules = vec![&author, &base];
         let style = Computed::resolve_with_vars(&rules, &parse_decls(""), &Default::default(), vcx);

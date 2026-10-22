@@ -43,6 +43,12 @@ pub(super) fn element_ancestor(
             .iter()
             .find(|(k, _)| k == "href")
             .map(|(_, v)| v.clone()),
+        visited: crate::style::select::link_visited(
+            attrs
+                .iter()
+                .find(|(k, _)| k == "href")
+                .map(|(_, v)| v.as_str()),
+        ),
         dir: attrs.iter().find(|(k, _)| k == "dir").and_then(|(_, v)| {
             match v.to_ascii_lowercase().as_str() {
                 "rtl" => Some(true),

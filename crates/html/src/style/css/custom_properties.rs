@@ -167,6 +167,7 @@ mod tests {
             order,
             origin: super::super::Origin::Author,
             layer: vec![u32::MAX],
+            link: crate::style::css::LinkMatch::Any,
         };
         let first = rule("--a: green !important", 0);
         let last = rule("--a: red", 1);
