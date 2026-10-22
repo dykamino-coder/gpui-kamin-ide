@@ -12,6 +12,7 @@ pub(crate) mod intrinsic_wrap;
 pub(crate) mod list;
 pub(crate) mod mathml;
 pub(crate) mod multicol;
+pub(crate) mod native_box;
 pub(crate) mod options;
 pub(crate) mod order;
 pub(crate) mod page;

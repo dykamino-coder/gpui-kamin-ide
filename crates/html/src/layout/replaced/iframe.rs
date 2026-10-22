@@ -122,7 +122,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             .sum()
     };
     let bw = st.borders();
-    let (ex, ey) = if crate::paint::apply::intrinsic_size::native_content_box(st) {
+    let (ex, ey) = if crate::layout::native_box::native_content_box(st) {
         (0.0, 0.0)
     } else {
         (
