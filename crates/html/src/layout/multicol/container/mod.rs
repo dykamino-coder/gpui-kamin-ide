@@ -80,8 +80,10 @@ pub(crate) fn multicol_column_stack(
     // `multi-line-row-flex-fragmentation-037/038` («красное видно»).
     // Проверено: баланс одними колонками (без рядов) ничего не меняет.
     // Балансу нужен свой подбор высоты по строкам, а не оценка.
-    let deferred = (line_col_w.is_none() && rows.is_none() && nest_rows.is_none())
-        .then(|| super::deferred::Recipe::new(e, &merged, opts, cols, used_gap, fixed, col_axis))
+    let deferred = (line_col_w.is_none() && nest_rows.is_none())
+        .then(|| {
+            super::deferred::Recipe::new(e, &merged, opts, cols, used_gap, fixed, col_axis, rows)
+        })
         .flatten();
     let (kid_parent, kid_starts, kid_par, kids) = if deferred.is_some() {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())

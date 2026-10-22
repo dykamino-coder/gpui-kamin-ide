@@ -76,7 +76,7 @@ pub(super) fn clone_plan_of(
                         overflow_top: fixed.is_some()
                             && rows.is_none()
                             && !parallel_items_inside(c, 4, vcx),
-                        repeat: repeat_leads(c, fixed, rows, vcx),
+                        repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS.observed(opts), vcx),
                         par: kid_par[pi],
                     }
                 })

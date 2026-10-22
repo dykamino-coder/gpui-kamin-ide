@@ -212,6 +212,7 @@ pub(super) fn multicol_stack_child(
         whole,
         build,
         measured_table,
+        crate::layout::fragment::ShapeCx::COLUMNS.observed(opts),
         opts.cx.vcx(),
     );
     let measured = regrow::Measured {

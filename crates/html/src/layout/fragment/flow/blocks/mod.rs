@@ -39,6 +39,8 @@ mod flex_tests;
 #[cfg(test)]
 mod grid_tests;
 #[cfg(test)]
+mod mixed_tests;
+#[cfg(test)]
 mod tests;
 
 /// Номер распорки роста перед коробкой `id` — `id ^ STRUT_ID`
@@ -129,6 +131,9 @@ impl BlockBox {
     /// Сетки стопки: номер контейнера и номера его элементов — дорожки рядов
     /// читаются у разложенного элемента (`parent_grid_tracks`).
     pub(crate) fn grids(&self, out: &mut Vec<(u64, Vec<u64>)>) {
+        for flow in self.table.iter().flat_map(|t| t.flows()) {
+            flow.grids(out);
+        }
         if let Some(g) = &self.grid {
             out.push((self.id, g.items.iter().map(|i| i.id).collect()));
             for it in &g.items {

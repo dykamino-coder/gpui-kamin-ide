@@ -13,6 +13,8 @@ use gpui::{App, AvailableSpace, Window, point, px, size};
 /// Заходов роста до неподвижной точки (как у оценки `grow_pushed`).
 const PASSES: usize = 6;
 
+mod copies;
+
 impl ColumnStack {
     /// Раскладка главной копии ребёнка `i` в колонку до укладки.
     pub(crate) fn lay_out_main(&mut self, i: usize, window: &mut Window, cx: &mut App) {
@@ -137,6 +139,7 @@ impl ColumnStack {
 
     /// Распорки роста детей с `regrow` по плану этой стопки.
     pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
+        self.reserve_row_copies();
         if !self.children.iter().any(|c| c.regrow.is_some()) {
             return;
         }
@@ -189,6 +192,7 @@ impl ColumnStack {
                 rebuild(&mut self.children[i]);
                 self.lay_out_main(i, window, cx);
             }
+            self.reserve_row_copies();
         }
     }
 }

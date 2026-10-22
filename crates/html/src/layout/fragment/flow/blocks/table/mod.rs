@@ -56,6 +56,20 @@ pub(crate) struct TableRowBox {
 }
 
 impl TableBox {
+    /// Потоки подписей и ячеек: их вложенные сетки тоже требуют записи
+    /// дорожек, а принадлежность потомков не выводится из координат.
+    pub(super) fn flows(&self) -> impl Iterator<Item = &BlockBox> {
+        self.caps_top
+            .iter()
+            .chain(&self.caps_bot)
+            .filter_map(|k| k.inner.as_ref())
+            .chain(
+                self.rows
+                    .iter()
+                    .flat_map(|r| r.cells.iter().map(|(_, b)| b)),
+            )
+    }
+
     /// Факты таблицы `e` для глубины спуска `depth`.
     pub(crate) fn collect(e: &Element, depth: u8, cx: ShapeCx, vcx: ValueCx<'_>) -> Self {
         let mut out = TableBox {

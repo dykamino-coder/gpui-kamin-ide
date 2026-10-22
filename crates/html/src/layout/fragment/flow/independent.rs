@@ -27,7 +27,6 @@ fn separate(e: &Element, vertical: bool) -> bool {
         || e.marks.host_trim_end
         || (!vertical && e.style.vertical_decl() == Some(true))
         || e.style.float.is_some_and(|f| f != 0)
-        || e.marks.float_block
         || matches!(e.style.position, Some(Position::Absolute | Position::Fixed))
         || crate::layout::multicol::spanner::multicol_container(&e.style)
         || e.children

@@ -20,9 +20,12 @@ pub(crate) struct Recipe {
     pub(crate) gap: f32,
     pub(crate) fixed: Option<f32>,
     pub(crate) axis: crate::layout::fragment::types::StackAxis,
+    pub(crate) rows: Option<crate::layout::fragment::types::Rows>,
 }
 
 impl Recipe {
+    // Все независимые ограничения колонки сохраняются до известной ширины.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         host: &Element,
         merged: &Computed,
@@ -31,6 +34,7 @@ impl Recipe {
         gap: f32,
         fixed: Option<f32>,
         axis: crate::layout::fragment::types::StackAxis,
+        rows: Option<crate::layout::fragment::types::Rows>,
     ) -> Option<std::rc::Rc<Self>> {
         let host = crate::layout::fragment::line_shape::group_inline_runs(host)
             .unwrap_or_else(|| host.clone());
@@ -52,6 +56,7 @@ impl Recipe {
             gap,
             fixed,
             axis,
+            rows,
         }))
     }
 
@@ -73,7 +78,7 @@ impl Recipe {
             .collect()
     }
 
-    fn children(&self, width: f32) -> Vec<StackChild> {
+    pub(super) fn children(&self, width: f32) -> Vec<StackChild> {
         let measured = RefCell::default();
         let opts = self.opts.clone();
         let vcx = opts.cx.vcx();
@@ -92,7 +97,7 @@ impl Recipe {
             self.count,
             self.gap,
             vertical,
-            None,
+            self.rows,
             copies,
             self.fixed,
             (Some(width), Some(width)),
@@ -106,7 +111,7 @@ impl Recipe {
             vertical,
             reverse,
             (Some(width), Some(width)),
-            None,
+            self.rows,
             RefCell::default(),
             RefCell::default(),
             measured,

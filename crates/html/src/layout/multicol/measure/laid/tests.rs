@@ -3,10 +3,14 @@
 use super::*;
 
 fn root(nodes: &[Node]) -> &Element {
-    let Node::Element(e) = &nodes[0] else {
-        panic!("host")
-    };
-    if e.tag == "div" { e } else { root(&e.children) }
+    fn find(nodes: &[Node]) -> Option<&Element> {
+        nodes.iter().find_map(|n| match n {
+            Node::Element(e) if e.tag == "div" => Some(e),
+            Node::Element(e) => find(&e.children),
+            _ => None,
+        })
+    }
+    find(nodes).expect("authored div")
 }
 
 #[test]
@@ -110,4 +114,21 @@ fn vertical_copies_export_logical_margins_without_estimating_width() {
         assert_eq!(kids[0].1.margin_bottom, if reverse { 3.0 } else { 7.0 });
         assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
     }
+}
+
+#[test]
+fn full_width_float_converted_to_block_uses_a_measured_copy() {
+    let tree = crate::dom::parse(
+        "<div><div style='float:left;width:100%;height:20px'>float</div></div>",
+        "",
+    );
+    let host = super::super::block_floats(root(&tree), |_| false, Some(100.0))
+        .expect("full-width float is a block in the stack");
+    let measured = RefCell::default();
+    let kids = children(&host, &Computed::default(), tree.values(), 100.0, &measured)
+        .expect("converted float has one ordinary block flow");
+    assert!(kids[0].0.marks.float_block);
+    assert!(kids[0].0.style.float.is_none());
+    assert_eq!(kids[0].1.height, 0.0);
+    assert_eq!(*measured.borrow(), vec![(kids[0].0.node_id, 100.0)]);
 }

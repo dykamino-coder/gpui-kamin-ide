@@ -89,7 +89,7 @@ pub(crate) fn grow_pushed(
                 overflow_top: fixed.is_some()
                     && rows.is_none()
                     && !parallel_items_inside(c, 4, vcx),
-                repeat: repeat_leads(c, fixed, rows, vcx),
+                repeat: repeat_leads(c, fixed, rows, ShapeCx::COLUMNS, vcx),
                 par: par.get(i).copied().unwrap_or_default(),
             })
             .collect();

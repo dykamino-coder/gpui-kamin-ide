@@ -46,3 +46,26 @@ fn author_padding_and_spacing_match_attribute_free_fragmentation() {
         }
     }
 }
+
+#[cfg(feature = "wpt-harness")]
+#[test]
+fn direct_repeat_estimate_is_observed_without_line_context() {
+    let tree = crate::dom::parse(
+        "<table style='border-spacing:0'><thead style='break-inside:avoid'><tr><td style='height:10px'></td></tr></thead></table>",
+        "",
+    );
+    let probe = crate::layout::fragment::probe::diagnostics::FragmentProbes::default();
+    let cx = ShapeCx {
+        probe: Some(&probe),
+        ..ShapeCx::COLUMNS
+    };
+    repeat_bands(
+        table(&tree).expect("table"),
+        Some(100.0),
+        None,
+        None,
+        cx,
+        tree.values(),
+    );
+    assert_eq!(probe.take()["table.estimate"].estimate_calls, 1);
+}

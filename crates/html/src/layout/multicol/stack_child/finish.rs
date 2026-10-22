@@ -37,6 +37,7 @@ pub(super) fn finish_stack_child(
     whole: bool,
     build: impl Fn(bool, usize, bool) -> gpui::AnyElement,
     measured_table: Option<(bool, bool)>,
+    shape_cx: crate::layout::fragment::ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
     let (scrolls, monolith) = copy_monolith(copy, &cuts, nest_row);
@@ -88,6 +89,7 @@ pub(super) fn finish_stack_child(
         span,
         kid_copies,
         measured_table,
+        shape_cx,
         vcx,
     );
     child.fit_whole = whole && fixed.is_some() && measure.is_some();

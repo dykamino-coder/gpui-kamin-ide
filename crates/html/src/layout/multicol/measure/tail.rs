@@ -31,6 +31,7 @@ pub(crate) fn tail_rest_height(
     merged: &Computed,
     box_h: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    shape_cx: ShapeCx<'_>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Option<f32> {
     let is_span = |n: &Node| matches!(n, Node::Element(c) if spanner_box(c));
@@ -56,7 +57,7 @@ pub(crate) fn tail_rest_height(
                 }
                 spans += 1;
                 let st = inherit(merged, &sp.style, vcx);
-                used += shape_full(sp, 4, ShapeCx::COLUMNS, vcx)?.height
+                used += shape_full(sp, 4, shape_cx, vcx)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;
             }

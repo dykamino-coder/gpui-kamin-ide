@@ -5,12 +5,17 @@ use super::{spanner_frag_visible, spanner_fragment, spanner_height_share};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::layout::block::inline_splits::split_block_in_inline;
+use crate::layout::fragment::ShapeCx;
 use crate::style::values::value::Len;
 
 /// Разложить содержимое предка на чередование «кусок обычного потока» —
 /// «спаннер», рекурсивно вынимая спаннеров из проходимых потомков. Список
 /// всегда начинается и кончается куском потока (возможно пустым).
-pub(crate) fn spanner_parts(kids: &[Node], vcx: ValueCx<'_>) -> Vec<SpanPart> {
+pub(crate) fn spanner_parts(
+    kids: &[Node],
+    shape_cx: ShapeCx<'_>,
+    vcx: ValueCx<'_>,
+) -> Vec<SpanPart> {
     // Спаннер под строчным предком: сперва разорвать строчные на анонимные
     // блоки (§9.2.1.1) — тогда спаннер виден на этом уровне и режет поток,
     // как прямой (`splits_for_spanner`).
@@ -33,7 +38,7 @@ pub(crate) fn spanner_parts(kids: &[Node], vcx: ValueCx<'_>) -> Vec<SpanPart> {
                 out.push(SpanPart::Span(n.clone()));
             }
             Node::Element(c) if passes_spanner(c) && has_deep_spanner(c) => {
-                let inner = spanner_parts(&c.children, vcx);
+                let inner = spanner_parts(&c.children, shape_cx, vcx);
                 let bodies: Vec<Vec<Node>> = inner
                     .iter()
                     .filter_map(|p| match p {
@@ -49,7 +54,7 @@ pub(crate) fn spanner_parts(kids: &[Node], vcx: ValueCx<'_>) -> Vec<SpanPart> {
                     .count();
                 // Доли заданной высоты предка (`spanner_height_share`); без
                 // них — прежнее правило `keep` ниже.
-                let share = spanner_height_share(c, &bodies, vcx);
+                let share = spanner_height_share(c, &bodies, shape_cx, vcx);
                 let mut bi = 0usize;
                 for p in inner {
                     match p {

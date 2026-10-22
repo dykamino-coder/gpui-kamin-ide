@@ -58,7 +58,9 @@ pub(crate) fn table_tree(e: &Element, depth: u8) -> bool {
             {
                 depth > 0 && k.children.iter().all(|n| part(n, depth - 1))
             }
-            Node::Element(k) => plain_block_tree(k, depth) || table_tree(k, depth),
+            Node::Element(k) => {
+                plain_block_tree(k, depth) || table_tree(k, depth) || super::grid_tree(k, depth)
+            }
             _ => true,
         }
     }
