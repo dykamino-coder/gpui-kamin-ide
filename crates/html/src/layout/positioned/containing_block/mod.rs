@@ -1,7 +1,8 @@
 //! Содержащий блок абсолютных коробок и поздняя расстановка: геометрия щупа статической
 //! позиции (`Spot`, `SpotCell`), заместитель, ждущий места в строке (`late`), висячее
-//! строчное начало (`hang`), слои содержащего блока сборки (`layers`), разделение раскладки и
-//! рисования (`source_paint`) и строка абзаца, отдаваемая щупу (`line_box`).
+//! строчное начало (`hang`), слои содержащего блока сборки (`layers`) и строка абзаца,
+//! отдаваемая щупу (`line_box`). Половину рисования на исходном месте держит
+//! `paint::positioned`.
 
 mod spot;
 pub use spot::Spot;
@@ -11,8 +12,6 @@ pub use late::spot_place;
 pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
-mod source_paint;
-pub(crate) use source_paint::split as split_source_paint;
 mod layers;
 mod oof;
 pub(crate) use layers::LayerScope;

@@ -28,13 +28,11 @@ pub(super) fn table_finish(
     let vcx = opts.cx.vcx();
     let mut grid_children = std::mem::take(&mut out.under);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::CellBgPainter::new(out.cell_bgs.clone()).hooked());
+        grid_children.push(crate::paint::table::CellBgPainter::new(out.cell_bgs.clone()).hooked());
     }
     grid_children.append(&mut out.cells);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::EdgePainter::new(out.table_edges.clone()).hooked());
+        grid_children.push(crate::paint::table::EdgePainter::new(out.table_edges.clone()).hooked());
     }
     grid_children.append(&mut out.cells_over);
     let cells = grid_children;

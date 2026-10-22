@@ -1,6 +1,6 @@
 //! Разбор сросшихся кромок (CSS 2.1 §17.6.2.1): кандидаты по линиям сетки и победители по отрезкам.
 
-use super::{EdgeCell, GRID_BOX};
+use crate::layout::table::probes::{EdgeCell, GRID_BOX};
 use gpui::{Bounds, Pixels};
 
 // Кандидат кромки на ЛИНИИ сетки: совпадающие отрезки соседей — ОДНА

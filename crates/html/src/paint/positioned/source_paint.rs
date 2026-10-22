@@ -3,8 +3,8 @@
 //! разметки независимо от содержащего блока, поэтому `SourcePaint` без заместителя
 //! запрашивает раскладку у CB, а с заместителем делает `prepaint`/`paint` из исходного места.
 
-use super::{LatePlace, SpotCell};
 use crate::hooks::{Hooks, IntoHooked};
+use crate::layout::positioned::containing_block::{LatePlace, SpotCell};
 use gpui::{
     AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, div, point, px,
 };

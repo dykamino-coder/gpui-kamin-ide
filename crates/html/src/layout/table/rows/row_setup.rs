@@ -71,12 +71,12 @@ pub(super) fn cell_spans(
 }
 
 pub(super) struct RowBands {
-    pub row_rects: Option<crate::layout::table::paint::RowRects>,
-    pub grp_band: Option<crate::layout::table::paint::RowRects>,
+    pub row_rects: Option<crate::layout::table::probes::RowRects>,
+    pub grp_band: Option<crate::layout::table::probes::RowRects>,
 }
 
 pub(super) fn row_band_probes(
-    group_bands: &mut std::collections::HashMap<u64, crate::layout::table::paint::RowRects>,
+    group_bands: &mut std::collections::HashMap<u64, crate::layout::table::probes::RowRects>,
     under: &mut Vec<AnyElement>,
     group_of: &std::collections::HashMap<u64, crate::layout::table::context::GroupEdge<'_>>,
     row: &Element,
@@ -87,12 +87,12 @@ pub(super) fn row_band_probes(
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
     // ячеек, снятыми пробами этого кадра (`RowRects`).
-    let row_rects: Option<crate::layout::table::paint::RowRects> =
+    let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
             && (row.style.bg_image.is_some()
                 || row.style.gradient_raw.is_some()
                 || !row.style.shadows.is_empty()))
-        .then(crate::layout::table::paint::RowRects::default);
+        .then(crate::layout::table::probes::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
@@ -100,9 +100,7 @@ pub(super) fn row_band_probes(
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
-        under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
-        );
+        under.push(crate::paint::table::CellsClipped::new(rects.clone(), band_style, vcx).hooked());
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
@@ -113,7 +111,7 @@ pub(super) fn row_band_probes(
     // тоже идёт полосой: своей коробки у группы нет, а охват её ячеек
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
-    let grp_band: Option<crate::layout::table::paint::RowRects> = carry.group.and_then(|g| {
+    let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
         (g.style.collapsed != Some(true)
             && (g.style.bg_image.is_some()
                 || g.style.gradient_raw.is_some()
@@ -134,9 +132,7 @@ pub(super) fn row_band_probes(
         if band_style.bg_image.is_none() && g.style.shadows.is_empty() {
             band_style.background = None;
         }
-        under.push(
-            crate::layout::table::paint::CellsClipped::new(rects.clone(), band_style, vcx).hooked(),
-        );
+        under.push(crate::paint::table::CellsClipped::new(rects.clone(), band_style, vcx).hooked());
     }
     RowBands {
         row_rects,

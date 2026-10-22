@@ -1,22 +1,15 @@
-//! Покраска фонов ячеек и сросшихся кромок таблицы (css-tables-3 §drawing-backgrounds,
-//! §drawing-borders): прямоугольники ячеек снимаются пробами в `prepaint` того же кадра и
-//! хранятся в буферах полосы (`RowRects`), по ним полосы рядов и колонок красят фон только
-//! внутри ячеек, а слой кромок `EdgePainter` решает конфликт «шире побеждает»
+//! Геометрия покраски таблицы (css-tables-3 §drawing-backgrounds, §drawing-borders): пробы
+//! ячеек в `prepaint` того же кадра снимают прямоугольники ячеек, фоны и кромки в буферы
+//! (`RowRects`, `CellBgs`, `CellEdges`). Красят по ним слои `paint::table`: полосы рядов и
+//! колонок — фон только внутри ячеек, слой кромок — конфликт «шире побеждает»
 //! (CSS 2.1 §17.6.2.1) по рангу источника и порядку в документе.
 
 use gpui::{Bounds, Pixels};
 use std::cell::RefCell;
 use std::rc::Rc;
-mod clipped;
-mod clipped_paint;
-pub use clipped::CellsClipped;
 mod probe;
 pub use probe::cell_rect_probe;
-mod edge_painter;
-mod edge_segments;
-pub use edge_painter::EdgePainter;
 mod cell_bg;
-pub use cell_bg::CellBgPainter;
 pub use cell_bg::CellBgs;
 pub use cell_bg::GRID_BOX;
 pub use cell_bg::cell_bg_probe;

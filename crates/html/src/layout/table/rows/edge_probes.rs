@@ -50,7 +50,7 @@ pub(super) fn cell_edge_probes(
         doc_ix,
     }) = cell_edge
     {
-        d = d.child(crate::layout::table::paint::edge_probe(
+        d = d.child(crate::layout::table::probes::edge_probe(
             out.table_edges.clone(),
             widths,
             colors,
@@ -68,7 +68,7 @@ pub(super) fn cell_edge_probes(
         [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
     };
     if let Some(rects) = &row_state.row_rects {
-        d = d.child(crate::layout::table::paint::cell_rect_probe(
+        d = d.child(crate::layout::table::probes::cell_rect_probe(
             rects.clone(),
             span_rows == 1,
             shift,
@@ -76,7 +76,7 @@ pub(super) fn cell_edge_probes(
         ));
     }
     if let Some(rects) = &row_state.grp_band {
-        d = d.child(crate::layout::table::paint::cell_rect_probe(
+        d = d.child(crate::layout::table::probes::cell_rect_probe(
             rects.clone(),
             span_rows == 1,
             shift,
@@ -94,7 +94,7 @@ pub(super) fn cell_edge_probes(
         ) && !probed.contains(&el.node_id)
         {
             probed.push(el.node_id);
-            d = d.child(crate::layout::table::paint::cell_rect_probe(
+            d = d.child(crate::layout::table::probes::cell_rect_probe(
                 rects,
                 span_cols == 1,
                 shift,
@@ -114,7 +114,7 @@ pub(super) fn cell_edge_probes(
         ) && !probed_group.contains(&el.node_id)
         {
             probed_group.push(el.node_id);
-            d = d.child(crate::layout::table::paint::cell_rect_probe(
+            d = d.child(crate::layout::table::probes::cell_rect_probe(
                 rects,
                 span_cols == 1,
                 shift,

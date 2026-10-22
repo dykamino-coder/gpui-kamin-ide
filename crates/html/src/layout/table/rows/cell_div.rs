@@ -114,7 +114,7 @@ pub(super) fn cell_box_div(
         }
     }
     if let Some(bg) = layer_bg {
-        d = d.child(crate::layout::table::paint::cell_bg_probe(
+        d = d.child(crate::layout::table::probes::cell_bg_probe(
             cell_bgs.clone(),
             bg.to_hsla(),
         ));
