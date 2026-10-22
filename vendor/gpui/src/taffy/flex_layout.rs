@@ -39,6 +39,11 @@ pub struct FlexItemLayout {
 }
 
 impl TaffyLayoutEngine {
+    /// KaminIDE patch: consumed cross extent of a row flex continuation.
+    pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32, scale: f32) -> bool {
+        self.taffy.set_flex_item_fragmentation_consumed(id.into(), consumed * scale).is_ok()
+    }
+
     /// KaminIDE patch: consumed block space before a column flex item.
     pub fn set_flex_item_fragmentation_offset(&mut self, id: LayoutId, offset: f32, scale: f32) -> bool {
         self.taffy.set_flex_item_fragmentation_offset(id.into(), offset * scale).is_ok()

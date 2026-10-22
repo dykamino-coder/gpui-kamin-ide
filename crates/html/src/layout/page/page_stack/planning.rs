@@ -25,14 +25,50 @@ impl PageStack {
         let mut result = (0, Vec::new());
         for pass in 0..=6 {
             let tail = names.last().cloned().unwrap_or_default();
+            self.measured.clear();
+            for (index, kid) in self.kids.iter().enumerate() {
+                if let Some(r) = &kid.regrow {
+                    self.measured.insert(
+                        (index, 0),
+                        super::continuation::CopyGeometry {
+                            width: area.0.max(1.0),
+                            kid: kids[index].clone(),
+                            laid: r.laid.clone(),
+                            continued: false,
+                        },
+                    );
+                }
+            }
+            let geom_for = self.geom_for.clone();
+            let axis = self.axis;
             let heights = |col| {
                 let pg = geoms
                     .get(col)
                     .copied()
-                    .unwrap_or_else(|| (self.geom_for)(col, &tail));
-                self.area_logical(&pg).1.max(1.0)
+                    .unwrap_or_else(|| geom_for(col, &tail));
+                if axis.is_vertical() {
+                    pg.area.0.max(1.0)
+                } else {
+                    pg.area.1.max(1.0)
+                }
             };
-            let (pages, _, plan) = plan::fill_at(&kids, &heights, Space::pages(limit));
+            let (pages, _, plan) = plan::fill_measured(
+                &kids,
+                &heights,
+                Space::pages(limit),
+                &mut |kid, copy, col, k, from| {
+                    let pg = geoms
+                        .get(col)
+                        .copied()
+                        .unwrap_or_else(|| geom_for(col, &tail));
+                    let area = if axis.is_vertical() {
+                        (pg.area.1, pg.area.0)
+                    } else {
+                        pg.area
+                    };
+                    self.remeasure_copy(kid, copy, area, k, from, window, cx)
+                },
+            );
             let extents: Vec<_> = (0..pages).map(heights).collect();
             if pass < 6 && self.regrow_flex(&kids, &plan, &extents) {
                 (kids, _) = self.page_kids(window, cx, (area.0.max(1.0), area.1.max(1.0)));

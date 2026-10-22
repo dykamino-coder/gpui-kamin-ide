@@ -56,6 +56,19 @@ impl Paragraph {
                     geometry.cuts.push((solid.0, solid.0));
                 }
             }
+            *node.content.borrow_mut() = geometry
+                .solid
+                .iter()
+                .zip(&self.lines)
+                .map(
+                    |(&(top, bottom), line)| crate::layout::fragment::flow::ContentLine {
+                        paragraph: node.ordinal,
+                        byte: line.range.start,
+                        top,
+                        bottom,
+                    },
+                )
+                .collect();
             geometry.keep_lines(keep.0, keep.1);
             *node.geometry.borrow_mut() = geometry;
         }
@@ -149,5 +162,32 @@ mod tests {
         assert!(Rc::ptr_eq(&rebuilt.growth, &node.growth));
         let spare = FlowNode::new(Rc::new(flow.constraints_only()), StackAxis::Horizontal);
         assert!(Rc::ptr_eq(&spare.growth, &node.growth));
+        let content = node.content.borrow();
+        assert_eq!(
+            content
+                .iter()
+                .map(|l| (l.paragraph, l.byte, l.top))
+                .collect::<Vec<_>>(),
+            [(0, 0, 0.), (0, 1, 35.)]
+        );
+        flow.resume_lines(&content, 20.);
+        assert_eq!(rebuilt.resume.get(), 1);
+        assert_eq!(spare.resume.get(), 0);
+    }
+}
+
+impl super::Paragraph {
+    pub(crate) fn lay_continuation(
+        &self,
+        limit: Option<gpui::Pixels>,
+        segs: &[super::Seg],
+    ) -> Option<Vec<super::Line>> {
+        let resume = self.fragment.as_ref()?.node.resume.get();
+        if resume == 0 || resume >= self.text.len() || !self.text.is_char_boundary(resume) {
+            return None;
+        }
+        let mut lines = self.lay_in(0..resume, limit, segs);
+        lines.extend(self.lay_in(resume..self.text.len(), limit, segs));
+        Some(lines)
     }
 }

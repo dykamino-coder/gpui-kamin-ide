@@ -41,8 +41,11 @@ pub(crate) struct Watched {
     tables: Rc<HashSet<u64>>,
     /// Layout nodes of the watched tables' parts by the last layout.
     table_nodes: Rc<RefCell<HashMap<u64, TableNodes>>>,
+    copies: RefCell<HashMap<usize, Rc<Self>>>,
+    independent: bool,
     flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
+    flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
     item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasurements>>>,
 }
 
@@ -148,7 +151,10 @@ impl Watched {
             table_nodes: self.table_nodes.clone(),
             flex_growth: self.flex_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
+            flex_consumed: self.flex_consumed.clone(),
             item_flows: self.item_flows.clone(),
+            copies: RefCell::default(),
+            independent: self.independent,
         })
     }
 

@@ -54,3 +54,40 @@ fn column_break_offset_does_not_change_flexible_lengths() {
     assert_eq!(tree.layout(b).unwrap().size.height, 30.0);
     assert!(tree.set_flex_item_fragmentation_offset(a, -1.0).is_err());
 }
+
+#[test]
+fn continuation_rewraps_at_next_width_and_keeps_completed_items_in_main_sizing() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let item = Style { size: Size::from_lengths(60.0, 60.0), flex_shrink: 0.0, ..Style::DEFAULT };
+    let a = tree.new_leaf(item.clone()).unwrap();
+    let b = tree.new_leaf(item).unwrap();
+    let style = |width| Style { size: Size { width: Dimension::length(width), height: Dimension::auto() },
+        flex_wrap: FlexWrap::Wrap, ..Style::DEFAULT };
+    let root = tree.new_with_children(style(120.0), &[a, b]).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    let DetailedLayoutInfo::Flex(info) = tree.detailed_layout_info(root) else { panic!("no lines") };
+    assert_eq!(info.lines.len(), 1);
+    tree.set_style(root, style(60.0)).unwrap();
+    tree.set_flex_item_fragmentation_consumed(a, 20.0).unwrap();
+    tree.set_flex_item_fragmentation_consumed(b, 60.0).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    let DetailedLayoutInfo::Flex(info) = tree.detailed_layout_info(root) else { panic!("no lines") };
+    assert_eq!(info.lines.len(), 2);
+    assert_eq!(info.lines[0].cross_size, 40.0);
+    assert_eq!(info.lines[1].cross_size, 0.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 40.0);
+    assert_eq!(tree.layout(a).unwrap().location.y, -20.0);
+    assert_eq!(tree.layout(a).unwrap().size.width, 60.0);
+    assert_eq!(tree.layout(b).unwrap().size.width, 60.0);
+    assert_eq!(tree.layout(b).unwrap().size.height, 60.0);
+    tree.set_style(root, style(120.0)).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location.x, 60.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 40.0);
+    tree.set_flex_item_fragmentation_consumed(a, 0.0).unwrap();
+    tree.set_flex_item_fragmentation_consumed(b, 0.0).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(root).unwrap().size.height, 60.0);
+    assert!(tree.set_flex_item_fragmentation_consumed(a, f32::INFINITY).is_err());
+}

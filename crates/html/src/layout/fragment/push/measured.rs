@@ -23,10 +23,12 @@ use gpui::AnyElement;
 pub(crate) type BuildCopy = dyn Fn(&Element, usize) -> AnyElement;
 
 /// Ребёнок стопки, чьи распорки роста ставит раскладка его копии.
+#[derive(Clone)]
 pub(crate) struct Regrow {
+    pub(crate) source: Element,
     /// Дерево, из которого строятся копии; распорки правят его.
     pub(crate) dom: Element,
-    pub(crate) build: Box<BuildCopy>,
+    pub(crate) build: std::rc::Rc<BuildCopy>,
     pub(crate) opts: RenderOpts,
     /// Разложенная геометрия стопки по последней раскладке главной копии.
     pub(crate) laid: Laid,

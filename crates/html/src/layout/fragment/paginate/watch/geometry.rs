@@ -27,12 +27,23 @@ impl Watched {
         let mut tables = self.table_frames(origin, window);
         let mut grids = self.rows(origin, window);
         let mut flows = self.item_geometry(origin, window);
+        let mut content: HashMap<_, _> = self
+            .item_flows
+            .iter()
+            .map(|(&id, flow)| (id, flow.content_lines(origin, window)))
+            .collect();
         let mut lines: HashMap<_, _> = self
             .item_flows
             .iter()
             .map(|(&id, flow)| (id, flow.line_pushes(origin, window)))
             .collect();
         for (id, delta) in shifts {
+            if let Some(lines) = content.get_mut(&id) {
+                for l in lines {
+                    l.top += delta;
+                    l.bottom += delta;
+                }
+            }
             if let Some(lines) = lines.get_mut(&id) {
                 for p in lines {
                     p.at += delta;
@@ -70,6 +81,10 @@ impl Watched {
                 );
             }
         }
+        let mut descendants = HashMap::new();
+        if let Some(blocks) = &self.blocks {
+            blocks.descendants(&mut descendants);
+        }
         Laid {
             boxes,
             tables,
@@ -77,6 +92,8 @@ impl Watched {
             flexes,
             flows,
             lines,
+            content,
+            descendants,
         }
     }
 }

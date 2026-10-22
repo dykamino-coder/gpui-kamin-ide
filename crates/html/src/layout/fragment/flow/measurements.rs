@@ -15,13 +15,21 @@ pub(crate) struct FlowNode {
     pub(crate) axis: StackAxis,
     pub(crate) growth: Rc<RefCell<Vec<f32>>>,
     pub(crate) starts: Rc<RefCell<Vec<f32>>>,
+    pub(crate) content: Rc<RefCell<Vec<super::ContentLine>>>,
+    pub(crate) resume: Rc<Cell<usize>>,
+    pub(crate) ordinal: usize,
 }
 
 impl FlowNode {
     pub(crate) fn new(measurements: Rc<FlowMeasurements>, axis: StackAxis) -> Self {
+        let ordinal = measurements.next.get();
+        let resume = measurements.paragraph_resume(ordinal);
         let growth = measurements.paragraph_growth();
         Self {
             growth,
+            ordinal,
+            resume,
+            content: Default::default(),
             starts: Default::default(),
             measurements,
             geometry: Default::default(),
@@ -36,6 +44,7 @@ impl FlowNode {
             geometry: self.geometry.clone(),
             growth: self.growth.clone(),
             starts: self.starts.clone(),
+            content: self.content.clone(),
         });
     }
 }
@@ -44,19 +53,21 @@ impl FlowNode {
 // FlowGeometry (plain numbers) may be retained in a BandFlow plan.
 #[derive(Debug, Default)]
 pub(crate) struct FlowMeasurements {
-    records: RefCell<Vec<Record>>,
+    pub(super) records: RefCell<Vec<Record>>,
+    pub(super) resumes: RefCell<Vec<Rc<Cell<usize>>>>,
     pub(crate) lines: bool,
     paragraphs: Rc<RefCell<Vec<ParagraphGrowth>>>,
     next: Cell<usize>,
 }
 
 #[derive(Debug)]
-struct Record {
-    id: LayoutId,
+pub(super) struct Record {
+    pub(super) id: LayoutId,
     axis: StackAxis,
     geometry: Rc<RefCell<FlowGeometry>>,
     growth: Rc<RefCell<Vec<f32>>>,
     starts: Rc<RefCell<Vec<f32>>>,
+    pub(super) content: Rc<RefCell<Vec<super::ContentLine>>>,
 }
 
 impl FlowMeasurements {

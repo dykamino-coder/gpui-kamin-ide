@@ -6,8 +6,10 @@
 //! временными.
 
 pub(crate) mod blocks;
+mod continuation;
 mod line_growth;
 mod measurements;
+pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
 pub(crate) use measurements::{FlowMeasurements, FlowNode};

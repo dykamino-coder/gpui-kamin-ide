@@ -141,6 +141,9 @@ struct NodeData {
     /// KaminIDE patch: consumed block space before a column flex item.
     #[cfg(feature = "flexbox")]
     pub(crate) flex_item_offset: f32,
+    /// KaminIDE patch: consumed border-box cross extent in a row continuation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_item_consumed: f32,
 }
 
 impl NodeData {
@@ -163,6 +166,8 @@ impl NodeData {
             flex_line_growth: Vec::new(),
             #[cfg(feature = "flexbox")]
             flex_item_offset: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_item_consumed: 0.0,
         }
     }
 
@@ -214,6 +219,19 @@ impl Default for TaffyTree {
 
 #[cfg(feature = "flexbox")]
 impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: content extent already consumed by a row flex item.
+    /// The item retains its main size and full contents; only its remaining
+    /// cross contribution and final cross position change (CSS Flexbox 1 §10).
+    pub fn set_flex_item_fragmentation_consumed(&mut self, node: NodeId, consumed: f32) -> TaffyResult<()> {
+        if !consumed.is_finite() || consumed < 0.0 { return Err(TaffyError::InvalidInputNode(node)); }
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_item_consumed != consumed {
+            data.flex_item_consumed = consumed;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
     /// KaminIDE patch: consumed block space before a column flex item.
     /// Applied after flex sizing, so a break cannot redistribute flexible lengths.
     pub fn set_flex_item_fragmentation_offset(&mut self, node: NodeId, offset: f32) -> TaffyResult<()> {
@@ -630,6 +648,10 @@ where
     fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
         self.taffy.nodes[node_id.into()].detailed_layout_info =
             DetailedLayoutInfo::Flex(Box::new(info));
+    }
+
+    fn flex_item_fragmentation_consumed(&self, node: NodeId) -> f32 {
+        self.taffy.nodes[node.into()].flex_item_consumed
     }
 
     fn flex_item_fragmentation_offset(&self, node: NodeId) -> f32 {

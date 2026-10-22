@@ -4,7 +4,7 @@
 use super::{TablePart, Watched};
 use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::options::RenderOpts;
-use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
+use gpui::{AnyElement, App, Bounds, ContentMask, LayoutId, Pixels, Window, px};
 use std::rc::Rc;
 
 /// Wrap `el` when the build's recorder watches `id` (identity otherwise).
@@ -37,7 +37,7 @@ pub(super) struct Watch {
 
 impl Hooks for Watch {
     type Layout = ();
-    type Prepaint = ();
+    type Prepaint = Option<ContentMask<Pixels>>;
 
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
         let lid = self.inner.request_layout(window, cx);
@@ -49,6 +49,9 @@ impl Hooks for Watch {
                 if let Some(offset) = self.rec.flex_offsets.borrow().get(&id) {
                     window.set_flex_item_fragmentation_offset(lid, *offset);
                 }
+                if let Some(consumed) = self.rec.flex_consumed.borrow().get(&id) {
+                    window.set_flex_item_fragmentation_consumed(lid, consumed.0);
+                }
                 self.rec.seen.borrow_mut().insert(id, lid);
             }
             Slot::Table(key, part) => self.rec.record_part(key, part, lid),
@@ -58,22 +61,43 @@ impl Hooks for Watch {
 
     fn prepaint(
         &mut self,
-        _bounds: Bounds<Pixels>,
+        bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
         window: &mut Window,
         cx: &mut App,
     ) -> Self::Prepaint {
-        self.inner.prepaint(window, cx);
+        let mask = if let Slot::Box(id) = self.slot {
+            self.rec
+                .flex_consumed
+                .borrow()
+                .get(&id)
+                .map(|&(consumed, complete)| {
+                    let mut mask = window.content_mask();
+                    let bottom = mask.bounds.bottom();
+                    let top = if complete {
+                        bottom
+                    } else {
+                        mask.bounds.origin.y.max(bounds.origin.y + px(consumed))
+                    };
+                    mask.bounds.origin.y = top;
+                    mask.bounds.size.height = (bottom - top).max(px(0.));
+                    mask
+                })
+        } else {
+            None
+        };
+        window.with_content_mask(mask, |window| self.inner.prepaint(window, cx));
+        mask
     }
 
     fn paint(
         &mut self,
         _bounds: Bounds<Pixels>,
         _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
+        prepaint: &mut Self::Prepaint,
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.inner.paint(window, cx);
+        window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx));
     }
 }

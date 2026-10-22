@@ -32,9 +32,48 @@ impl Watched {
     }
 
     /// Запасная копия применяет те же ограничения, но не пишет геометрию главной.
+    pub(crate) fn copy_recorder(&self, part: usize) -> Rc<Self> {
+        self.copies
+            .borrow_mut()
+            .entry(part)
+            .or_insert_with(|| self.constraints_only())
+            .clone()
+    }
+
+    /// Другая ширина требует своих распорок: адрес содержимого общий, геометрия новая.
+    pub(crate) fn continuation_recorder(&self, part: usize) -> Rc<Self> {
+        if let Some(rec) = self.copies.borrow().get(&part).filter(|r| r.independent) {
+            return rec.clone();
+        }
+        let rec = Rc::new(Self {
+            ids: self.ids.clone(),
+            blocks: self.blocks.clone(),
+            tables: self.tables.clone(),
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            item_flows: Rc::new(
+                self.item_flows
+                    .keys()
+                    .map(|&id| {
+                        (
+                            id,
+                            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+                        )
+                    })
+                    .collect(),
+            ),
+            independent: true,
+            ..Self::default()
+        });
+        self.copies.borrow_mut().insert(part, rec.clone());
+        rec
+    }
+
     pub(crate) fn constraints_only(&self) -> Rc<Self> {
         Rc::new(Self {
             ids: self.ids.clone(),
+            blocks: self.blocks.clone(),
+            tables: self.tables.clone(),
+            flow: Rc::new(self.flow.constraints_only()),
             flex_growth: self.flex_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
             item_flows: Rc::new(
