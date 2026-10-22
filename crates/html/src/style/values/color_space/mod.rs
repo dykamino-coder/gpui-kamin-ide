@@ -25,20 +25,17 @@ mod gradient_stop;
 mod hsl_ramp;
 pub(crate) use hsl_ramp::HslRamp;
 mod icc;
-mod matrices;
 mod mix;
-use convert::{
-    gamut_map, gamut_map_tuple, hsl_to_rgb, lab_to_srgb, oklab_to_srgb, rgb_to_hsl, srgb_to_lab,
-    srgb_to_oklab,
+use crate::color::{
+    A98_TO_XYZ, D50, D50_TO_D65, D65_TO_D50, LINEAR_SRGB_TO_XYZ, P3_TO_XYZ, PROPHOTO_TO_XYZ,
+    REC2020_TO_XYZ, XYZ_TO_LINEAR_SRGB, mul, srgb_gamma, srgb_linear,
 };
+use crate::color::{gamut_map, linear_srgb_to_oklab, oklab_to_srgb};
+use convert::{gamut_map_tuple, hsl_to_rgb, lab_to_srgb, rgb_to_hsl, srgb_to_lab, srgb_to_oklab};
 use functions::color_fn;
 pub(crate) use icc::apply_icc;
 pub(crate) use icc::load_profiles_sheets;
 use icc::{icc_to_srgb, profile};
-use matrices::{
-    A98_TO_XYZ, D50, D50_TO_D65, D65_TO_D50, LINEAR_SRGB_TO_XYZ, P3_TO_XYZ, PROPHOTO_TO_XYZ,
-    REC2020_TO_XYZ, XYZ_TO_LINEAR_SRGB, mul, srgb_gamma, srgb_linear,
-};
 use mix::{color_mix, mix_in};
 
 /// Разложить содержимое записи на числа и долю прозрачности.

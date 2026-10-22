@@ -52,6 +52,7 @@ pub use style::values::value;
 // контракт между фазами, а не API крейта. Наружу выходит только объявленное
 // `pub` в этом файле: `dom`, `render`, `svg`, `tolerance`, `flow`, реэкспорты.
 pub(crate) mod animation;
+pub(crate) mod color;
 pub(crate) mod document;
 pub(crate) mod interactive;
 pub(crate) mod layout;
