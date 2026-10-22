@@ -9,15 +9,16 @@
 //! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
-use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
 use crate::layout::fragment::types::StackAxis;
-use crate::layout::options::RenderOpts;
-use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Point, Size, Window};
+use gpui::{LayoutId, Pixels, Point, Size, Window};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod hook;
+pub(crate) use hook::wrap;
+use hook::{Slot, Watch};
 mod table;
 use table::TableNodes;
 pub(crate) use table::{TablePart, table_part};
@@ -193,70 +194,5 @@ impl std::fmt::Debug for Watched {
         f.debug_struct("Watched")
             .field("ids", &self.ids.len())
             .finish()
-    }
-}
-
-/// Wrap `el` when the build's recorder watches `id` (identity otherwise).
-pub(crate) fn wrap(id: u64, el: AnyElement, opts: &RenderOpts) -> AnyElement {
-    match &opts.frag.watch {
-        Some(rec) if rec.ids.contains(&id) => Watch {
-            slot: Slot::Box(id),
-            inner: el,
-            rec: rec.clone(),
-        }
-        .hooked(),
-        _ => el,
-    }
-}
-
-/// What a watched node is recorded as.
-#[derive(Clone, Copy)]
-enum Slot {
-    /// Border box of the box with this node id.
-    Box(u64),
-    /// Part of the table with this key (`table_part`).
-    Table(u64, TablePart),
-}
-
-struct Watch {
-    slot: Slot,
-    inner: AnyElement,
-    rec: Rc<Watched>,
-}
-
-impl Hooks for Watch {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let lid = self.inner.request_layout(window, cx);
-        match self.slot {
-            Slot::Box(id) => {
-                self.rec.seen.borrow_mut().insert(id, lid);
-            }
-            Slot::Table(key, part) => self.rec.record_part(key, part, lid),
-        }
-        (lid, ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self::Prepaint {
-        self.inner.prepaint(window, cx);
-    }
-
-    fn paint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _prepaint: &mut Self::Prepaint,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        self.inner.paint(window, cx);
     }
 }
