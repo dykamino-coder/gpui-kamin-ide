@@ -12,6 +12,27 @@ use std::sync::{
 const MARKUP: &str = "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='8'><rect width='10' height='8' fill='green'/></svg>";
 
 #[test]
+fn concrete_viewport_handles_invalid_intrinsic_sizes_and_disabled_rendering() {
+    let store = ImageStore::default();
+    let request = RasterRequest::new(10.0, 10.0, 1.0, 0.0);
+    for dimensions in [
+        "width='0' height='50'",
+        "width='-1' height='50'",
+        "width='-1' height='-50'",
+    ] {
+        let markup = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' {dimensions} viewBox='0 0 1 1'><rect width='1' height='1' fill='red'/></svg>"
+        );
+        let viewport = crate::resources::images::viewport::with_viewport(&markup, (10.0, 10.0));
+        let raster = store.rasterize_svg(&viewport, request).unwrap();
+        assert!(raster.bytes.chunks_exact(4).all(|p| p == [0, 0, 255, 255]));
+    }
+    let markup = "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 0 10'><rect width='10' height='10' fill='red'/></svg>";
+    let raster = store.rasterize_svg(markup, request).unwrap();
+    assert!(raster.bytes.iter().all(|b| *b == 0));
+}
+
+#[test]
 fn cache_uses_actual_device_extent_density_view_and_document() {
     let store = ImageStore::default();
     let req = RasterRequest::new(10.1, 8.0, 2.0, 0.0);

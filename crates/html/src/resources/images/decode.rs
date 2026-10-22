@@ -9,7 +9,7 @@ use super::types::{
     AlphaMode, ColourPolicy, ColourSpace, CpuRaster, DecodeOptions, DecodedImage, ImageError,
     ImageMetadata, OrientationMode, PixelFormat,
 };
-use super::vector::{VectorImage, degenerate_viewbox, looks_svg, svg_size};
+use super::vector::{VectorImage, looks_svg, svg_size};
 use crate::color::IccProfile;
 use std::sync::Arc;
 
@@ -65,11 +65,7 @@ pub(crate) fn decode(
 
 fn decode_svg(bytes: &[u8]) -> Result<(DecodedImage, ImageMetadata), ImageError> {
     let markup = std::str::from_utf8(bytes).map_err(|_| ImageError::InvalidData)?;
-    // Вырожденная область просмотра (нулевая ось `viewBox`) — картинки НЕТ вовсе
-    // (SVG intrinsic sizing): браузер такой фон не рисует.
-    if degenerate_viewbox(markup) {
-        return Err(ImageError::EmptyViewBox);
-    }
+    // Нулевой viewBox отключает отрисовку, но SVG остаётся валидной картинкой.
     let natural = svg_size(markup);
     let image = DecodedImage::Vector(Arc::new(VectorImage {
         markup: markup.into(),

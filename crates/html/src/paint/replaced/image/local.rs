@@ -114,7 +114,12 @@ pub(super) fn local_image_source<'a>(
         let size = crate::paint::background::default_size(s.intrinsic(), (300.0, 150.0));
         let raster = match &s {
             crate::paint::background::Source::Vector { markup, .. } => {
-                crate::svg::raster::rasterize(markup, size.0, size.1, vcx)
+                crate::svg::raster::rasterize(
+                    &crate::resources::images::viewport::with_viewport(markup, size),
+                    size.0,
+                    size.1,
+                    vcx,
+                )
             }
             _ => s.raster(size, vcx),
         }?;

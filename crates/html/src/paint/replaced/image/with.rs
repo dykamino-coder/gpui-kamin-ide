@@ -88,7 +88,8 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
             );
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
-            let mut out = match crate::svg::raster::rasterize(m, w, h, vcx) {
+            let viewport = crate::resources::images::viewport::with_viewport(m, (w, h));
+            let mut out = match crate::svg::raster::rasterize(&viewport, w, h, vcx) {
                 Some(r) => gpui::img(r),
                 None => old,
             };
