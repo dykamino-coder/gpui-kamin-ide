@@ -377,6 +377,14 @@ and does not modify the execution batch.
 
 ### BR-07 — Surface native Claude attention in Chat
 
+**Owner-directed test handoff — 2026-10-23:** Use the shared
+[hook/permission matrix](../../docs/HOOK_PERMISSION_ACCEPTANCE.md) after BR-11's
+protocol decision. It specifies deny versus ask, Console-hidden visibility,
+single-response ownership, no-input cancellation and native keyboard cases.
+An intentional policy deny is not a missed approval dialog. The independent
+[INC-0077](runtime-issues/INC-2026-0077.md) reason defect does not implement this
+Chat interaction or waive the existing Windows gate.
+
 **Close-out audit 2026-09-06:** Нейтральный Console banner ещё не реализован; наличие hook
 notifications не доказывает blocking attention state. Сначала BR-11 classification, затем
 отдельный UI PR и Windows gate.
@@ -475,6 +483,11 @@ recovery request без duplicate teammate и бесконечного ожид�
 
 ### BR-10 — Show the effective hook in approval UI
 
+**Scope clarification — 2026-10-23:** This modal approves a plugin hook's
+declaration/hash, not each later tool invocation. The latter belongs to BR-11
+and BR-07; use [their matrix](../../docs/HOOK_PERMISSION_ACCEPTANCE.md). Existing
+focus/keyboard verification below stays open and is not replaced by relay tests.
+
 **Close-out audit 2026-09-06:** В [PR
 #13](https://github.com/dykamino-coder/gpui-kamin-ide/pull/13#issuecomment-5493712704)
 focus/keyboard containment помечен NOT DRIVEN. Maintainer с настоящим Windows UI должен
@@ -503,6 +516,22 @@ plugin update меняет hook hash, modal показывает полную de
 approve/reject сохраняются.
 
 ### BR-11 — Inventory native CLI-only blocking states
+
+**Owner-directed test handoff — 2026-10-23:** The
+[hook/permission acceptance plan](../../docs/HOOK_PERMISSION_ACCEPTANCE.md)
+defines a disposable PreToolUse allow/ask/deny fixture, blocking-exit control,
+actual CLI request/response classification, Console-hidden Chat behavior and
+tab/reconnect/late-response cases. Start from current source and existing private
+INC-0035 evidence; the owner's original hook and production access are not
+prerequisites for this research. Record the current CLI pin and permission mode.
+Do not substitute Settings Test, a declaration approval or the MCP widget for
+the native CLI-to-Chat round trip. No gate is claimed passed by this supplement.
+
+An independent source counterexample now belongs to
+[INC-0077](runtime-issues/INC-2026-0077.md): policy deny and teardown cancellation
+can be labeled `User denied permission` without a click. Its synthetic evidence
+does not prove the owner's native hook took that path. Repairing MCP provenance
+can proceed independently and does not close this protocol investigation.
 
 **Owner evidence intake (2026-09-08, TASK-008):** A September 2 screenshot labeled 1.0.53 shows a native CLI `PreToolUse` confirmation with Yes/No in Console while central Chat contains ordinary conversation and no matching interaction. Add this concrete case to the versioned CLI-only blocker inventory; no duplicate incident task is created.
 
