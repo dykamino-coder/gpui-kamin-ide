@@ -1,97 +1,75 @@
-//! Поиск приемлемого якоря в текущем реестре и временный fallback прошлого кадра.
+//! Поиск приемлемого якоря текущего кадра в порядке дерева.
 
-use super::super::resolve::last_named;
 use super::super::settle::DefaultAnchor;
 use super::super::{AnchorPlan, AnchorRec};
 
 impl AnchorPlan {
-    /// Запись якоря по имени (или якоря по умолчанию) — только приемлемого.
     pub(in crate::layout::positioned::anchor) fn rec(
         &self,
         name: Option<&str>,
     ) -> Option<AnchorRec> {
-        self.rec_with(name, self.history)
+        let f = &self.values.vcx().doc.anchor_frame;
+        let named = |name: &str| {
+            f.named_seq
+                .borrow()
+                .iter()
+                .filter(|(n, seq, rec)| {
+                    n == name
+                        && (!f.out_of_flow.borrow().contains_key(&rec.id) || *seq < self.seq)
+                        && self.acceptable(rec)
+                })
+                .max_by_key(|(_, seq, _)| *seq)
+                .map(|(_, _, rec)| *rec)
+        };
+        match name {
+            Some(n) => named(n),
+            None => match &self.default_anchor {
+                Some(DefaultAnchor::Named(n)) => named(n),
+                Some(DefaultAnchor::Implicit(id)) => f
+                    .implicit
+                    .borrow()
+                    .get(id)
+                    .copied()
+                    .filter(|r| self.acceptable(r)),
+                None => None,
+            },
+        }
     }
 
     pub(in crate::layout::positioned::anchor) fn rec_current(
         &self,
         name: Option<&str>,
     ) -> Option<AnchorRec> {
-        self.rec_with(name, false)
-    }
-
-    fn rec_with(&self, name: Option<&str>, history: bool) -> Option<AnchorRec> {
-        // Реестр ТЕКУЩЕГО кадра знает только якоря, уже прошедшие подготовку.
-        // Якорь раньше по дереву, но в слое, который готовится ПОЗЖЕ коробки
-        // (слой ICB у `fixed`, `containing_block::layers::icb_close` — последние дети
-        // документа), в нём ещё не записан: `anchor-abspos-to-fixedpos-001` —
-        // `fixed`-якорь и абсолют без краёв в потоке, коробка падала на
-        // статическую позицию под якорь. Спека требует лишь «laid out
-        // strictly before» по дереву (§target) — его и проверяет фильтр `seq`
-        // у записи прошлого кадра (стенд ждёт устоявшихся кадров, как у
-        // `anchor-size()`). Якорь ниже по дереву (`anchor-position-circular`)
-        // фильтр отсекает.
-        let named = |n: &str| {
-            self.values
-                .vcx()
-                .doc
-                .anchor_frame
-                .named
-                .borrow()
-                .get(n)
-                .copied()
-                .or_else(|| {
-                    history
-                        .then(|| last_named(n, self.seq, self.values.vcx()))
-                        .flatten()
-                })
-        };
-        let r = match name {
-            Some(n) => named(n),
-            None => match &self.default_anchor {
-                Some(DefaultAnchor::Named(n)) => named(n.as_str()),
-                Some(DefaultAnchor::Implicit(id)) => self
-                    .values
-                    .vcx()
-                    .doc
-                    .anchor_frame
-                    .implicit
-                    .borrow()
-                    .get(id)
-                    .copied()
-                    .or_else(|| {
-                        if !history {
-                            return None;
-                        }
-                        self.values
-                            .vcx()
-                            .doc
-                            .anchor_frame
-                            .last_implicit
-                            .borrow()
-                            .get(id)
-                            .copied()
-                    }),
-                None => None,
-            },
-        }?;
-        self.acceptable(&r).then_some(r)
+        self.rec(name)
     }
 
     /// §target, acceptable anchor element: «same original containing block»
     /// либо элемент, порождающий содержащий блок якоря, сам приемлем — то
     /// есть содержащий блок коробки лежит в цепочке содержащих блоков
     /// якоря (или сам является якорем: неявный якорь позиционированного
-    /// хозяина). Начальный содержащий блок (окно, `fixed`) принимает всех;
+    /// хозяина). Начальный содержащий блок завершает цепочку;
     /// звено без пробы (строчный или атомарный содержащий блок) — цепочка
     /// неизвестна, якорь не отвергается (`no-anchor-anchor-center`).
     fn acceptable(&self, r: &AnchorRec) -> bool {
-        if self.fixed || self.cb_node == 0 || r.id == self.cb_node {
+        if r.id == self.key {
+            return false;
+        }
+        if r.id == self.cb_node {
             return true;
         }
         let mut n = r.cb;
-        for _ in 0..64 {
-            if n == self.cb_node {
+        let f = &self.values.vcx().doc.anchor_frame;
+        let mut visited = std::collections::HashSet::new();
+        while visited.insert(n) {
+            if n == self.key && n != 0
+                || f.out_of_flow
+                    .borrow()
+                    .get(&n)
+                    .is_some_and(|seq| *seq >= self.seq)
+            {
+                return false;
+            }
+            if n == self.cb_node || n == 0 && self.fixed {
                 return true;
             }
             if n == 0 {
@@ -111,6 +89,6 @@ impl AnchorPlan {
                 None => return true,
             }
         }
-        true
+        false
     }
 }

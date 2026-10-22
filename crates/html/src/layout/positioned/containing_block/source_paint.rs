@@ -66,11 +66,13 @@ impl Hooks for SourcePaint {
 
 /// Корень строится у CB на prepaint, а красится в исходном месте дерева.
 #[derive(Clone, Default)]
-pub(crate) struct DeferredPaint(Rc<RefCell<Option<AnyElement>>>);
+pub(crate) struct DeferredPaint(Rc<RefCell<Option<DeferredChild>>>);
+
+type DeferredChild = (AnyElement, gpui::ContentMask<Pixels>);
 
 impl DeferredPaint {
-    pub(crate) fn publish(&self, child: AnyElement) {
-        *self.0.borrow_mut() = Some(child);
+    pub(crate) fn publish(&self, child: AnyElement, mask: gpui::ContentMask<Pixels>) {
+        *self.0.borrow_mut() = Some((child, mask));
     }
 
     pub(crate) fn source(&self) -> AnyElement {
@@ -100,8 +102,10 @@ impl Hooks for DeferredPaint {
         window: &mut Window,
         cx: &mut App,
     ) {
-        if let Some(child) = self.0.borrow_mut().as_mut() {
-            gpui::paint_reopen(|| child.paint(window, cx));
+        if let Some((child, mask)) = self.0.borrow_mut().as_mut() {
+            window.with_content_mask_replaced(*mask, |window| {
+                gpui::paint_reopen(|| child.paint(window, cx));
+            });
         }
     }
 }

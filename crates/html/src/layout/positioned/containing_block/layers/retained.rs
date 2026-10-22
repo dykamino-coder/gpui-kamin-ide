@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 pub(crate) struct Retained {
     cb: Vec<(u8, Option<u16>, Destination)>,
+    pending: Vec<super::Pending>,
     icb: Vec<Destination>,
     late: Vec<Destination>,
     flex_content: Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
@@ -16,6 +17,7 @@ pub(crate) struct Retained {
 impl Positioning {
     pub(crate) fn retain(&self) -> Retained {
         Retained {
+            pending: self.pending.borrow().clone(),
             cb: self
                 .cb
                 .borrow()
@@ -81,8 +83,7 @@ impl Retained {
     pub(crate) fn isolate(&self) -> (Rc<Positioning>, Escaped) {
         let mut escaped = Vec::new();
         let mut local = |dest: &Destination| {
-            dest.upgrade()?;
-            let queue = super::OofQueue::default();
+            let queue = super::OofQueue::with_pending(dest.upgrade()?.pending());
             escaped.push((queue.clone(), dest.clone()));
             Some(queue)
         };
@@ -101,6 +102,7 @@ impl Retained {
         let late = self.late.iter().filter_map(&mut local).collect();
         let positioning = Rc::new(Positioning {
             cb: RefCell::new(cb),
+            pending: RefCell::new(self.pending.clone()),
             icb: RefCell::new(icb),
             late: RefCell::new(late),
             flex_content: Rc::new(RefCell::new(self.flex_content.borrow().clone())),
@@ -112,6 +114,7 @@ impl Retained {
     /// а назначения старых предков разделяются с их живыми хостами.
     pub(crate) fn resume(&self) -> Rc<Positioning> {
         Rc::new(Positioning {
+            pending: RefCell::new(self.pending.clone()),
             cb: RefCell::new(
                 self.cb
                     .iter()

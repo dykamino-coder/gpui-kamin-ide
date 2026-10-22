@@ -15,7 +15,7 @@
 //! In-flow якорь может идти позже по дереву (§target). Хост OOF строит
 //! anchor-зависимую коробку после публикации потока своего слоя. OOF-якорь
 //! должен удовлетворять отношению «laid out strictly before»; зависимости
-//! между разными слоями пока поддерживает fallback прошлого кадра.
+//! между слоями завершает очередь ICB с fallback для циклических зависимостей.
 //!
 //! Раскладке `anchor()`-вставка отдаётся НУЛЁМ (`apply::len_to_gpui`):
 //! коробка встаёт к краю содержащего блока, а сдвиг до якоря дорисовывает
@@ -25,7 +25,9 @@
 //! которого в документе нет) сводятся ДО сборки (`settle_static`): их место
 //! — статическая позиция, а её выбирает сборщик дерева по `edge_set`.
 
+mod dependencies;
 mod state;
+pub(crate) use dependencies::Dependencies;
 pub(crate) use probe::Entry;
 pub(crate) use state::AnchorState;
 mod area;
@@ -50,6 +52,7 @@ mod probe;
 pub use probe::key_of;
 pub use probe::probe_for;
 mod tf_stack;
+pub(crate) use tf_stack::TransformContext;
 pub(super) use tf_stack::containing_bounds;
 pub use tf_stack::tf_pop;
 pub use tf_stack::tf_push;
@@ -57,7 +60,6 @@ use tf_stack::{tf_map, tf_under};
 mod frame;
 pub use frame::next_seq;
 pub use frame::reset;
-use frame::{reframe_if_stale, request_rebuild};
 
 /// Запись якоря в реестре кадра: рамка (border box), маска обрезки в точке
 /// пробы и `visibility: hidden` (§position-visibility: anchor-visible), свой
@@ -103,9 +105,8 @@ struct SidePlan {
 }
 
 pub struct AnchorPlan {
+    key: u64,
     values: crate::document::state::ValueDoc,
-    /// Старый путь может читать геометрию прошлого кадра; новый sizing — нет.
-    history: bool,
     /// По часовой: top, right, bottom, left — как `Sides`.
     sides: [Option<SidePlan>; 4],
     default_anchor: Option<DefaultAnchor>,
@@ -128,8 +129,7 @@ pub struct AnchorPlan {
     /// Содержащий блок: `node_id` в реестре `CB`; 0 или `fixed` — окно.
     cb_node: u64,
     fixed: bool,
-    /// Порядок сборки коробки (`Computed::anchor_seq`): якорь из реестра
-    /// прошлого кадра годен, только если собран РАНЬШЕ неё (`last_named`).
+    /// Порядок дерева: внепоточный якорь должен предшествовать коробке.
     seq: u32,
     /// Ссылается ли коробка на якорь по умолчанию — `position-area`,
     /// `anchor()` без имени, `anchor-center` (§position-visibility: anchor-valid).

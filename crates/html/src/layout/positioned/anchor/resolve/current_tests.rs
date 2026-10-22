@@ -25,13 +25,9 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
     let doc = DocState::new(Default::default());
     let vcx = doc.frame_values();
     doc.anchor_frame
-        .last_named
+        .named_seq
         .borrow_mut()
-        .push(("--a".into(), 1, record(7.)));
-    doc.anchor_frame
-        .named
-        .borrow_mut()
-        .insert("--a".into(), record(40.));
+        .push(("--a".into(), 1, record(40.)));
     let mut c = Computed {
         position: Some(Position::Absolute),
         anchor_seq: 2,
@@ -41,10 +37,8 @@ fn anchor_size_reads_current_geometry_and_falls_back_without_history() {
     let original = c.clone();
     resolve_current(&mut c, &Computed::default(), SizeInputs::default(), vcx);
     assert_eq!(c.width, Some(Len::Px(40.)));
-    assert!(!doc.anchor_frame.used_last.get());
-    doc.anchor_frame.named.borrow_mut().clear();
+    doc.anchor_frame.named_seq.borrow_mut().clear();
     c = original;
     resolve_current(&mut c, &Computed::default(), SizeInputs::default(), vcx);
     assert_eq!(c.width, Some(Len::Px(9.)));
-    assert!(!doc.anchor_frame.used_last.get());
 }

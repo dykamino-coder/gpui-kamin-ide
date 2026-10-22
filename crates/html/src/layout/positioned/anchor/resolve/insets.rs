@@ -1,6 +1,5 @@
 //! Растяжение (stretch-fit) автоматических размеров, ограниченных парами inset-ов якоря.
 
-use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Position};
 use crate::style::values::value::{Len, px_lossy_zero};
 
@@ -8,12 +7,11 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// заполняет inset-modified containing block (CSS 2.1 §10.3.7, css-position-3
 /// §abspos-auto-size «stretch-fit»). Раскладка видит `anchor()` нулём и
 /// растянула бы коробку на весь содержащий блок, поэтому размер берётся из
-/// IMCB, найденного на подготовке прошлого кадра (`AREA_LAST`).
+/// IMCB текущей layout-пробы после публикации её якорей.
 pub(super) fn fill_anchor_pairs(
     c: &mut Computed,
     grid_parent: Option<bool>,
-    current: Option<Option<(f32, f32)>>,
-    vcx: ValueCx<'_>,
+    current: Option<(f32, f32)>,
 ) {
     let anchored = |l: Option<Len>| matches!(l, Some(Len::Anchor(_)));
     let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
@@ -34,11 +32,7 @@ pub(super) fn fill_anchor_pairs(
     if !x && !y {
         return;
     }
-    if current.is_none() {
-        vcx.doc.anchor_frame.used_last.set(true);
-    }
-    let Some((w, h)) = current.unwrap_or_else(|| vcx.doc.anchor_frame.last_area(c.anchor_key))
-    else {
+    let Some((w, h)) = current else {
         return;
     };
     let pxv = px_lossy_zero;

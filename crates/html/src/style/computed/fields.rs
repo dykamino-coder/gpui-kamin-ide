@@ -176,8 +176,7 @@ pub struct Computed {
     pub position_area: Option<crate::style::values::position_area::PositionArea>,
     /// `position-try-fallbacks` (§position-try-fallbacks): варианты позиции —
     /// имя `@position-try`-правила и/или тактика, либо `<position-area>`.
-    /// Перебор — `anchor::AnchorPlace` на подготовке кадра, выбранный
-    /// вариант накладывается на стиль следующей сборки (`anchor::apply_chosen`).
+    /// Каждый кандидат отдельно строится хостом до prepaint победителя.
     pub position_try_fallbacks: Vec<crate::style::values::position_area::TryFallback>,
     /// `position-try-order` (§position-try-order-property): 0 normal,
     /// 1 most-width, 2 most-height, 3 most-block-size, 4 most-inline-size.
@@ -187,14 +186,10 @@ pub struct Computed {
     /// (начальное значение Blink; спека просит `anchor-visible`, но без
     /// явного свойства гасить коробки по обрезке якоря слишком дорого).
     pub position_visibility: u8,
-    /// Стиль ДО наложения выбранного варианта `position-try` — из него
-    /// `anchor::place` строит остальные кандидаты. Ставит `anchor::apply_chosen`.
-    pub try_base: Option<std::rc::Rc<Computed>>,
     /// Служебные поля якорного шага, ставит `render::element`: свой `node_id`
     /// (ключ реестра содержащих блоков `anchor::CB`), `node_id` ближайшего
     /// содержащего блока абсолюта (`style::cascade::inherit`; 0 — начальный, окно),
-    /// порядковый номер сборки в кадре («последний якорь раньше по дереву» в
-    /// реестре прошлого кадра) и ключ коробки в реестре размеров клетки.
+    /// порядковый номер в дереве и ключ коробки.
     pub self_node: u64,
     pub cb_node: u64,
     /// Used classic gutters of the nearest containing block and viewport.

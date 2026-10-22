@@ -121,7 +121,7 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
 /// `with_transformation` как `outer∘inner` (css-transforms-1: матрица предка
 /// применяется последней), поэтому ребёнок объёмного контекста, желая
 /// оказаться на абсолютной `G`, обязан втолкнуть `F_родителя⁻¹ ∘ G`.
-fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
+pub(crate) fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
     let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
     let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
     let det = a * d - b * c;

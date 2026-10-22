@@ -1,8 +1,8 @@
 //! Носители OOF и очередь слоя, живущая до подготовки кадра.
 
 use super::{DeferredPaint, SpotCell};
-use crate::hooks::{Hooks, IntoHooked};
-use gpui::{AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Window, point, px, size};
+use crate::hooks::IntoHooked;
+use gpui::{AnyElement, App, Bounds, Pixels, Window};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
@@ -14,6 +14,7 @@ pub(crate) type BuildTrials =
 /// Готовая геометрия остаётся в исходной раскладке; отложенная строится один раз.
 pub(crate) enum OofKid {
     Ready(AnyElement),
+    Waiting(crate::layout::positioned::anchor::Dependencies, Box<OofKid>),
     Deferred(BuildOof, Option<DeferredPaint>),
     Trials(BuildTrials, Option<DeferredPaint>),
 }
@@ -25,10 +26,12 @@ pub(crate) type Place = fn(SpotCell, AnyElement) -> AnyElement;
 pub(super) struct OofQueue {
     items: Rc<RefCell<VecDeque<Item>>>,
     destination: Rc<RefCell<Weak<RefCell<VecDeque<Item>>>>>,
+    pending: pending::Pending,
+    initial: bool,
 }
 
 #[derive(Clone)]
-pub(super) struct Destination(Rc<RefCell<Weak<RefCell<VecDeque<Item>>>>>);
+pub(super) struct Destination(Rc<RefCell<Weak<RefCell<VecDeque<Item>>>>>, pending::Pending);
 
 impl Default for OofQueue {
     fn default() -> Self {
@@ -36,6 +39,8 @@ impl Default for OofQueue {
         Self {
             destination: Rc::new(RefCell::new(Rc::downgrade(&items))),
             items,
+            pending: Default::default(),
+            initial: false,
         }
     }
 }
@@ -45,13 +50,53 @@ impl Destination {
         self.0.borrow().upgrade().map(|items| OofQueue {
             items,
             destination: self.0.clone(),
+            pending: self.1.clone(),
+            initial: false,
         })
     }
 }
 
+mod host;
+mod pending;
+pub(super) use pending::Pending;
+
 impl OofQueue {
+    pub(super) fn local(
+        self,
+        spot: SpotCell,
+        kid: OofKid,
+        cb: u64,
+        values: crate::document::state::ValueDoc,
+    ) -> AnyElement {
+        self.push_kid(spot, kid);
+        host::OofHost {
+            queue: self,
+            place: super::layers::icb_place,
+            containing: Some((cb, values)),
+        }
+        .hooked()
+    }
+
+    pub(super) fn with_pending(pending: pending::Pending) -> Self {
+        Self {
+            pending,
+            ..Default::default()
+        }
+    }
+
+    pub(super) fn pending(&self) -> pending::Pending {
+        self.pending.clone()
+    }
+
+    pub(super) fn initial() -> Self {
+        Self {
+            initial: true,
+            ..Default::default()
+        }
+    }
+
     pub(super) fn retain(&self) -> Destination {
-        Destination(self.destination.clone())
+        Destination(self.destination.clone(), self.pending.clone())
     }
 
     /// Выбранный кандидат отдаёт накопленное назначению предка. Замыкания
@@ -68,6 +113,9 @@ impl OofQueue {
     }
 
     pub(super) fn push_kid(&self, spot: SpotCell, kid: OofKid) {
+        if let OofKid::Waiting(deps, _) = &kid {
+            self.pending.observe(deps);
+        }
         if let Some(items) = self.destination.borrow().upgrade() {
             items.borrow_mut().push_back((spot, kid));
         }
@@ -83,115 +131,22 @@ impl OofQueue {
         for (spot, kid) in self.items.take() {
             match kid {
                 OofKid::Ready(element) => ready.push(place(spot, element)),
-                OofKid::Deferred(build, paint) => {
-                    deferred.push_back((spot, OofKid::Deferred(build, paint)));
-                }
-                OofKid::Trials(build, paint) => {
-                    deferred.push_back((spot, OofKid::Trials(build, paint)));
-                }
+                other => deferred.push_back((spot, other)),
             }
         }
         *self.items.borrow_mut() = deferred;
         // Пустое назначение тоже нужно: выпавший потомок может прийти из
         // вложенного хоста позже. Слабые ссылки не образуют цикл с build.
-        if !self.is_empty() || Rc::strong_count(&self.destination) > 1 {
-            ready.push(OofHost { queue: self, place }.hooked());
+        if self.initial || !self.is_empty() || Rc::strong_count(&self.destination) > 1 {
+            ready.push(
+                host::OofHost {
+                    queue: self,
+                    place,
+                    containing: None,
+                }
+                .hooked(),
+            );
         }
         ready
-    }
-}
-
-struct OofHost {
-    queue: OofQueue,
-    place: Place,
-}
-
-impl Hooks for OofHost {
-    type Layout = ();
-    type Prepaint = Vec<AnyElement>;
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, ()) {
-        let mut style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        style.inset.top = px(0.).into();
-        style.inset.left = px(0.).into();
-        style.size.width = gpui::relative(1.).into();
-        style.size.height = gpui::relative(1.).into();
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        _: &mut (),
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Vec<AnyElement> {
-        let mut built = Vec::new();
-        loop {
-            let item = self.queue.items.borrow_mut().pop_front();
-            let Some((spot, kid)) = item else { break };
-            // Выпавшие потомки текущего корня обходятся раньше следующего
-            // OOF-соседа: его якорная зависимость может ссылаться на них.
-            let pending = self.queue.items.take();
-            if let OofKid::Trials(build, paint) = kid {
-                let mut root = build(bounds, spot, self.place, window, cx);
-                root.prepaint_at(point(px(0.), px(0.)), window, cx);
-                match paint {
-                    Some(paint) => paint.publish(root),
-                    None => built.push(root),
-                }
-                self.queue.items.borrow_mut().extend(pending);
-                continue;
-            }
-            let (child, paint) = match kid {
-                OofKid::Ready(element) => (element, None),
-                OofKid::Deferred(build, paint) => (build(bounds, window, cx), paint),
-                OofKid::Trials(..) => unreachable!(),
-            };
-            // Изолированный корень использует тот же layout engine, но уже
-            // опубликованные рамки якорей текущего кадра.
-            let child = (self.place)(spot, child);
-            use gpui::{IntoElement, ParentElement, Styled};
-            let mut root = gpui::div()
-                .relative()
-                .w(bounds.size.width)
-                .h(bounds.size.height)
-                .child(child)
-                .into_any_element();
-            root.layout_as_root_at(
-                bounds.origin,
-                size(
-                    AvailableSpace::Definite(bounds.size.width),
-                    AvailableSpace::Definite(bounds.size.height),
-                ),
-                window,
-                cx,
-            );
-            root.prepaint_at(point(px(0.), px(0.)), window, cx);
-            match paint {
-                Some(paint) => paint.publish(root),
-                None => built.push(root),
-            }
-            self.queue.items.borrow_mut().extend(pending);
-        }
-        built
-    }
-
-    fn paint(
-        &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        built: &mut Vec<AnyElement>,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        gpui::paint_reopen(|| {
-            for child in built {
-                child.paint(window, cx);
-            }
-        });
     }
 }
