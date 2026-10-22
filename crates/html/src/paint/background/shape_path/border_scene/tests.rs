@@ -25,7 +25,7 @@ fn border_offsets_match_ordered_svg_fill_and_stroke() {
             let xml = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="35"><g transform="translate(7.3 8.7)">{body}</g></svg>"#
             );
-            let expected = crate::svg::raster::rasterize(&xml, 40.0, 35.0).unwrap();
+            let expected = crate::svg::raster::geometry(&xml, 40.0, 35.0).unwrap();
             let scene = Scene::new(40.0, 35.0, contour.offset(white, distance));
             assert_eq!(
                 scene.rasterize().unwrap().as_bytes(0),

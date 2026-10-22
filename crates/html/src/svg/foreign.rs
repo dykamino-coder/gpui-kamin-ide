@@ -68,7 +68,7 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                         }
                     }
                     let markup = super::serialize::serialize_sized(&tree, w, h, 0.0, 0.0, vcx);
-                    if let Some(image) = super::raster::rasterize(&markup, w, h) {
+                    if let Some(image) = super::raster::rasterize(&markup, w, h, vcx) {
                         bounds.size = gpui::size(px(w), px(h));
                         super::device_image::paint(window, bounds, image);
                     }

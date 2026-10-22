@@ -5,7 +5,7 @@ use super::with::image_with;
 use crate::dom::Element;
 use crate::layout::replaced::image::contained_size::{ContainedSize, contained_size};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
+use gpui::{AnyElement, IntoElement, ParentElement, Styled, StyledImage, px};
 
 #[allow(clippy::result_large_err)]
 pub(super) fn contained_image(
@@ -27,32 +27,20 @@ pub(super) fn contained_image(
         if let Some(h) = holder_h {
             d = d.h(px(h));
         }
-        // Источник берётся тем же путём, что и вне обособления: строку со
-        // схемой `file:` система уходит скачивать, и картинка молча не
-        // рисуется. Растр декодируется своим декодером, вектор растрируется
-        // в уже посчитанный размер.
-        let local = src
-            .strip_prefix("file:///")
-            .or_else(|| src.strip_prefix("file://"))
-            .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-        let mut image =
-            match crate::paint::background::element_source(local.unwrap_or(src), &e.style) {
-                Some(crate::paint::background::Source::Vector { markup, .. })
-                    if cw > 0.0 && ch > 0.0 =>
-                {
-                    match crate::svg::raster::rasterize(&markup, cw, ch) {
-                        Some(r) => gpui::img(r),
-                        None => gpui::img(SharedString::from(src.to_string())),
-                    }
+        let vcx = cx.vcx();
+        let ready =
+            crate::paint::background::element_source(src, &e.style, vcx).and_then(|s| match s {
+                crate::paint::background::Source::Vector { markup, .. } => {
+                    crate::svg::raster::rasterize(&markup, cw, ch, vcx)
                 }
-                Some(crate::paint::background::Source::Raster(ready)) => gpui::img(ready)
-                    .preserve_natural_pixels(true)
-                    .pixelated(e.style.image_pixelated == Some(true)),
-                _ => match local {
-                    Some(path) => gpui::img(std::path::PathBuf::from(path)),
-                    None => gpui::img(SharedString::from(src.to_string())),
-                },
-            };
+                _ => s.raster((cw, ch), vcx),
+            });
+        let Some(ready) = ready else {
+            return Ok(d.into_any_element());
+        };
+        let mut image = gpui::img(ready)
+            .preserve_natural_pixels(true)
+            .pixelated(e.style.image_pixelated == Some(true));
         // Подгонка содержимого замещаемой коробки считается от ПРИРОДНОГО
         // размера картинки, который у самой картинки никуда не делся:
         // обособление меняет коробку, а не объект. У Blink это два разных

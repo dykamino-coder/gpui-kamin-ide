@@ -182,7 +182,7 @@ pub fn element(e: &Element, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let nx = if visible_x { neg_extent(true) } else { 0.0 };
     let ny = if visible_y { neg_extent(false) } else { 0.0 };
     let (cw, ch) = (rw + nx, rh + ny);
-    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny, vcx), cw, ch)?;
+    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny, vcx), cw, ch, vcx)?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
     if let Some(bg) = e.style.background {

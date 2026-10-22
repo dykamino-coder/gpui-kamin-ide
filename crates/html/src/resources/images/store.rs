@@ -11,6 +11,8 @@
 
 mod access;
 mod job;
+mod rasters;
+mod resolve;
 mod subscriptions;
 #[cfg(test)]
 mod tests;
@@ -69,6 +71,7 @@ struct Slot {
 /// Таблица запросов картинок документа.
 pub(crate) struct ImageStore {
     services: ImageServices,
+    rasters: rasters::Rasters,
     base: Option<Url>,
     policy: ResourcePolicy,
     generation: u32,
@@ -90,6 +93,7 @@ impl ImageStore {
     pub(crate) fn new(services: ImageServices, base: Option<Url>, policy: ResourcePolicy) -> Self {
         Self {
             services,
+            rasters: rasters::Rasters::default(),
             base,
             policy,
             generation: 0,
@@ -180,6 +184,7 @@ impl ImageStore {
     /// поколения больше не принимаются.
     pub(crate) fn begin_generation(&mut self) {
         self.generation += 1;
+        self.rasters.clear();
         for (slot, cell) in self.slots.iter_mut().enumerate() {
             if cell.entry.take().is_some() {
                 cell.generation += 1;

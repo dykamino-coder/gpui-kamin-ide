@@ -2,7 +2,7 @@
 //! ориентация EXIF 1–8 (PNG и JPEG) до природного размера, профиль ICC, собственный
 //! размер и вырожденный `viewBox` SVG, вид `#view`.
 
-mod fixtures;
+use super::fixtures;
 
 use super::decode::decode;
 use super::svg_view::apply_view;

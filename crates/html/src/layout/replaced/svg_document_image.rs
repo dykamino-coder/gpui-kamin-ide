@@ -18,14 +18,15 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         return None;
     }
     let src = e.attr("src")?;
-    let path = src
-        .strip_prefix("file:///")
-        .or_else(|| src.strip_prefix("file://"))
-        .unwrap_or(src);
-    if !path.to_ascii_lowercase().ends_with(".svg") {
+    let (crate::resources::images::types::DecodedImage::Vector(vector), _) =
+        opts.cx.vcx().doc.images.borrow_mut().resolve_image(
+            src,
+            crate::resources::images::types::DecodeOptions::default(),
+        )?
+    else {
         return None;
-    }
-    let markup = std::fs::read_to_string(path).ok()?;
+    };
+    let markup = &vector.markup;
     if !markup.contains("<foreignObject") {
         return None;
     }

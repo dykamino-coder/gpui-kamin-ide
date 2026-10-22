@@ -38,6 +38,8 @@ def tree_sources(revision):
 
 
 RULES = [
+    ("image CPU layer: reverse dependency", r"(?:crate::(?:style|layout|paint|render)|\bgpui)::", r"^crates/html/src/(resources/images|color|css_syntax)/"),
+    ("CSS image layer: reverse dependency", r"(?:crate::(?:layout|paint|render)|\bgpui)::", r"^crates/html/src/resources/css_images/"),
     ("1 explicit state: new thread_local!", r"\bthread_local!\s*\{", r"^crates/html/src/"),
     ("1 explicit state: new static Mutex/RwLock", r"\bstatic\s+\w+\s*:\s*[^=]*\b(Mutex|RwLock|OnceLock<\s*Mutex)", r"^crates/html/src/"),
     ("3 side channel: kamin-* attribute/tag", r'"kamin-[a-z-]+"', r"^crates/html/src/(?!.*tests?\.rs)(?!svg/clip/ids\.rs)"),

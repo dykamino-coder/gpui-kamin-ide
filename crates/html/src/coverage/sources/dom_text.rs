@@ -99,7 +99,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../layout/float/shapes/profile/mask/dilation.rs"),
     include_str!("../../paint/background/raster.rs"),
     include_str!("../../paint/background/image_decode.rs"),
-    include_str!("../../paint/background/image_decode/orientation.rs"),
+    include_str!("../../resources/images/orientation.rs"),
     include_str!("../../paint/background/image_decode/svg_metadata.rs"),
     include_str!("../../paint/background/tiles.rs"),
     include_str!("../../paint/background/tiles/drawing.rs"),

@@ -47,6 +47,7 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
     let src = crate::paint::background::computed_source(
         image.src.as_ref()?,
         c.image_orient_none != Some(true),
+        vcx,
     )?;
     let pixelated = c.image_pixelated == Some(true);
     Some(

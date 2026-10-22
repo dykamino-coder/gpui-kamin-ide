@@ -1,31 +1,40 @@
-//! Растеризация разметки через resvg и кэш готовых растров.
+//! Адаптер CPU-растеризации документа и кэш типизированных геометрических сцен.
 
 use super::DENSITY;
 use crate::paint::cache::{BoundedCache, MIB, optional_image_bytes};
 use gpui::RenderImage;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-/// Кэш готовых растров: ключ — разметка и размер растра в пикселях устройства.
-///
-/// Без него рисунок растрировался бы на КАЖДЫЙ кадр — элементы в GPUI
-/// пересоздаются каждый раз, и вместе с ними пересоздавалась бы картинка.
-/// Для графика в чате это десятки миллисекунд на кадр вместо нуля.
-///
-/// Бюджет 128 МиБ: рисунки в чате мелкие, но их может накопиться много за
-/// длинную сессию — держим недавние; самый крупный растр (64 МиБ) помещается.
+/// Типизированные геометрические сцены не зависят от ресурсов документа.
+/// SVG-разметка идёт в отдельный кэш `ImageStore` с полной идентичностью.
 static CACHE: BoundedCache<(u64, u32, u32), Option<Arc<RenderImage>>> =
     BoundedCache::new(128 * MIB, optional_image_bytes);
 
 /// Растрировать рисунок. `None`, если разметка не разбирается — тогда
 /// вызывающий покажет запасной текст, а не пустое место.
-pub fn rasterize(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
-    let mut hasher = DefaultHasher::new();
-    markup.hash(&mut hasher);
-    cached(hasher.finish(), w, h, || {
-        gpui::svg_markup_to_image(markup, w, h, DENSITY)
-    })
+pub fn rasterize(
+    markup: &str,
+    w: f32,
+    h: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
+    let cpu = vcx.doc.images.borrow().rasterize_svg(
+        markup,
+        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, 0.0),
+    )?;
+    crate::paint::background::image_adapter::upload(&cpu)
+}
+
+/// Геометрическая декорация без документа: тот же CPU-бэкенд без кэша картинок.
+pub(crate) fn geometry(markup: &str, w: f32, h: f32) -> Option<Arc<RenderImage>> {
+    let cpu = crate::resources::images::svg_raster::rasterize(
+        markup,
+        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, 0.0),
+        Arc::new(resvg::usvg::fontdb::Database::new()),
+        &[],
+        true,
+    )?;
+    crate::paint::background::image_adapter::upload(&cpu)
 }
 
 /// Device pixels of one raster axis, normalised exactly as gpui's SVG
@@ -39,7 +48,7 @@ pub(super) fn device_extent(logical: f32) -> u32 {
     (logical * DENSITY).round().max(1.0) as u32
 }
 
-/// Reuse the bounded raster cache for markup and typed decoration scenes.
+/// Кэш типизированных декоративных сцен; разметка документа сюда не попадает.
 /// `create` must rasterize at [`DENSITY`]: the key is its device-pixel size.
 pub(super) fn cached(
     hash: u64,
@@ -53,18 +62,24 @@ pub(super) fn cached(
 
 /// `rasterize` with `pad` logical pixels of extra canvas on the right and
 /// bottom at the same user-space scale (`gpui::svg_markup_to_image_padded`).
-pub(super) fn rasterize_padded(markup: &str, w: f32, h: f32, pad: f32) -> Option<Arc<RenderImage>> {
-    let mut hasher = DefaultHasher::new();
-    markup.hash(&mut hasher);
-    pad.to_bits().hash(&mut hasher);
-    cached(hasher.finish(), w, h, || {
-        gpui::svg_markup_to_image_padded(markup, w, h, DENSITY, pad)
-    })
+pub(super) fn rasterize_padded(
+    markup: &str,
+    w: f32,
+    h: f32,
+    pad: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Arc<RenderImage>> {
+    let cpu = vcx.doc.images.borrow().rasterize_svg(
+        markup,
+        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, pad),
+    )?;
+    crate::paint::background::image_adapter::upload(&cpu)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DENSITY, device_extent, rasterize};
+    use super::geometry as rasterize;
+    use super::{DENSITY, device_extent};
 
     const MARKUP: &str = "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'>                          <rect width='10' height='10' fill='green'/><!--cache-key--></svg>";
 

@@ -103,7 +103,7 @@ pub(super) fn mask(
     let markup = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cw}" height="{ch}"><path fill="#ffffff" d="{d}"/></svg>"##
     );
-    let image = crate::svg::raster::rasterize(&markup, cw, ch)?;
+    let image = crate::svg::raster::geometry(&markup, cw, ch)?;
     // Keep source coverage through composition and sample once on the device
     // grid, as a clip-path polygon with the same contour does.
     compose_mask_layers(

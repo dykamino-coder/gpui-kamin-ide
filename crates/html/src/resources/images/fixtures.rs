@@ -3,12 +3,12 @@
 //! матричный профиль ICC с основными цветами sRGB (D50) и линейной кривой.
 
 /// Точка `(x, y)` образца: R = x, G = y, B = 200, A = 255 (каждая точка различима).
-pub(super) fn pixel_at(x: u32, y: u32) -> [u8; 4] {
+pub(crate) fn pixel_at(x: u32, y: u32) -> [u8; 4] {
     [x as u8 * 40, y as u8 * 40, 200, 255]
 }
 
 /// PNG `w×h` RGBA с точками `pixel_at`.
-pub(super) fn png(w: u32, h: u32) -> Vec<u8> {
+pub(crate) fn png(w: u32, h: u32) -> Vec<u8> {
     use image::ImageEncoder;
     let mut raw = Vec::new();
     for y in 0..h {
@@ -24,7 +24,7 @@ pub(super) fn png(w: u32, h: u32) -> Vec<u8> {
 }
 
 /// Сплошной PNG одного цвета.
-pub(super) fn solid_png(rgba: [u8; 4]) -> Vec<u8> {
+pub(crate) fn solid_png(rgba: [u8; 4]) -> Vec<u8> {
     use image::ImageEncoder;
     let mut out = Vec::new();
     image::codecs::png::PngEncoder::new(&mut out)
@@ -34,7 +34,7 @@ pub(super) fn solid_png(rgba: [u8; 4]) -> Vec<u8> {
 }
 
 /// Вставить кусок PNG сразу после `IHDR` (сигнатура 8 байт + IHDR 25 байт).
-pub(super) fn with_chunk(png: &[u8], kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+pub(crate) fn with_chunk(png: &[u8], kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut chunk = Vec::new();
     chunk.extend_from_slice(&(data.len() as u32).to_be_bytes());
     chunk.extend_from_slice(kind);
@@ -47,7 +47,7 @@ pub(super) fn with_chunk(png: &[u8], kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
 }
 
 /// Блок TIFF (big-endian) с одной записью `Orientation`.
-pub(super) fn tiff_orientation(tag: u16) -> Vec<u8> {
+pub(crate) fn tiff_orientation(tag: u16) -> Vec<u8> {
     let mut t = b"MM\0\x2A".to_vec();
     t.extend_from_slice(&8u32.to_be_bytes());
     t.extend_from_slice(&1u16.to_be_bytes());
@@ -61,7 +61,7 @@ pub(super) fn tiff_orientation(tag: u16) -> Vec<u8> {
 }
 
 /// JPEG `w×h` с EXIF-меткой ориентации в сегменте `APP1` сразу после `SOI`.
-pub(super) fn jpeg_with_orientation(w: u32, h: u32, tag: u16) -> Vec<u8> {
+pub(crate) fn jpeg_with_orientation(w: u32, h: u32, tag: u16) -> Vec<u8> {
     let raw = vec![128u8; (w * h * 3) as usize];
     let mut jpeg = Vec::new();
     image::codecs::jpeg::JpegEncoder::new(&mut jpeg)
@@ -78,7 +78,7 @@ pub(super) fn jpeg_with_orientation(w: u32, h: u32, tag: u16) -> Vec<u8> {
 }
 
 /// Тело `iCCP`: имя, нуль, метод сжатия 0 и zlib-поток профиля.
-pub(super) fn iccp(profile: &[u8]) -> Vec<u8> {
+pub(crate) fn iccp(profile: &[u8]) -> Vec<u8> {
     let mut out = b"test\0\0".to_vec();
     out.extend_from_slice(&[0x78, 0x01, 0x01]);
     let len = profile.len() as u16;
@@ -90,7 +90,7 @@ pub(super) fn iccp(profile: &[u8]) -> Vec<u8> {
 }
 
 /// Матричный профиль: основные цвета sRGB, приведённые к D50, и кривые с гаммой 1.
-pub(super) fn linear_srgb_profile() -> Vec<u8> {
+pub(crate) fn linear_srgb_profile() -> Vec<u8> {
     let xyz = |v: [f32; 3]| {
         let mut t = b"XYZ \0\0\0\0".to_vec();
         for c in v {
@@ -124,7 +124,7 @@ pub(super) fn linear_srgb_profile() -> Vec<u8> {
 }
 
 /// Адрес `data:` с процентным кодированием каждого байта.
-pub(super) fn data_url(mime: &str, bytes: &[u8]) -> String {
+pub(crate) fn data_url(mime: &str, bytes: &[u8]) -> String {
     let mut out = format!("data:{mime},");
     for b in bytes {
         out.push_str(&format!("%{b:02X}"));

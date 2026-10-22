@@ -6,14 +6,14 @@
 use crate::resources::images::svg_view::markup::{apply, opening_end, xml_text};
 use crate::resources::images::svg_view::{edits, parsing_options};
 
-pub(super) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
+pub(crate) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return bytes;
     };
     let Ok(doc) = roxmltree::Document::parse_with_options(text, parsing_options()) else {
         return bytes;
     };
-    let decoded = super::percent_decode(id);
+    let decoded = crate::resources::loader::data_url::percent_decode(id);
     let Ok(id) = std::str::from_utf8(&decoded) else {
         return bytes;
     };
@@ -108,7 +108,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
             b'[' => brackets += 1,
             b']' => brackets = brackets.saturating_sub(1),
             b'{' if brackets == 0 => {
-                let prelude = crate::style::css::strip_comments(&css[head..i]);
+                let prelude = crate::css_syntax::strip_comments(&css[head..i]);
                 let name = prelude.split_whitespace().next().unwrap_or("");
                 let group = [
                     "@media",
@@ -136,7 +136,7 @@ fn target_selectors(css: &str, selector: &str) -> String {
                 && b.get(i + 1) != Some(&b':') =>
             {
                 let end = name_end(b, i + 1);
-                if crate::style::css::unescape(&css[i + 1..end]).eq_ignore_ascii_case("target")
+                if crate::css_syntax::unescape(&css[i + 1..end]).eq_ignore_ascii_case("target")
                     && b.get(end) != Some(&b'(')
                 {
                     out.push_str(&css[from..i]);

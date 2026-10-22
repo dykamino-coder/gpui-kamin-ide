@@ -6,6 +6,7 @@
 //! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
 
 use crate::document::state::ValueCx;
+use crate::resources::css_images::{gradient_geometry::Geometry, gradient_raster::resolved_stops};
 use gpui::{Bounds, Corners, ImageSampling, Pixels, RenderImage, Window};
 use std::sync::Arc;
 
@@ -115,10 +116,8 @@ pub(crate) fn paint_gradient(
         gradient.angle_deg = angle;
     }
     let css = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    if let Some(geometry) =
-        super::gradient_geometry::Geometry::new(&gradient, css, gradient.angle_deg, vcx)
-    {
-        gradient.stops = super::gradient_raster::resolved_stops(&gradient, geometry.length());
+    if let Some(geometry) = Geometry::new(&gradient, css, gradient.angle_deg, vcx) {
+        gradient.stops = resolved_stops(&gradient, geometry.length());
     }
     // Extended stop ranges lose the visible colour variation in the analytic
     // shader and expose its dithering. Quantize device-grid samples instead.

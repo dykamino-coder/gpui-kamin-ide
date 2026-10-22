@@ -85,7 +85,7 @@ pub(crate) fn resolve_mask(
         return composite_mask(group, &inputs, bounds, bw, bh, ol, ot, window, len, vcx);
     }
     let source = match first {
-        MaskInput::Image(image) => group.mask_image_source(image),
+        MaskInput::Image(image) => group.mask_image_source(image, vcx),
         MaskInput::Source(raw) => group.mask_source(raw, vcx),
         MaskInput::Scene(_) => None,
     }?;
@@ -99,7 +99,11 @@ pub(crate) fn resolve_mask(
                 group.mask_fit,
                 vcx,
             );
-            (img.clone(), tw, th)
+            (
+                crate::paint::background::image_adapter::upload(img)?,
+                tw,
+                th,
+            )
         }
         _ => {
             let (tw, th) = mask_size::tile(

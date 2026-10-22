@@ -22,13 +22,12 @@ use fills::border_area_fill;
 pub(crate) use fills::border_paint;
 pub use fills::paint_area;
 
-mod filtered_raster;
+pub(crate) mod image_adapter;
 mod source_types;
 pub use crate::layout::replaced::natural::Intrinsic;
 pub(crate) use crate::layout::replaced::natural::default_size;
 pub use source_types::Source;
 
-use crate::paint::cache::{BoundedCache, MIB};
 use crate::style::computed::Computed;
 use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled, px};
 pub(crate) mod alpha_sampling;
@@ -36,7 +35,6 @@ mod flat_vector;
 mod oriented_vector;
 mod sampling;
 pub(crate) use sampling::paint_gradient;
-pub(crate) mod filter_image;
 mod mask_composite;
 mod mask_luminance;
 pub(crate) mod single_corner;
@@ -47,9 +45,7 @@ mod conic;
 mod sources;
 pub use sources::source;
 pub(crate) use sources::{computed_source, element_source};
-mod gradient_geometry;
 mod gradient_raster;
-mod svg_fragment;
 
 pub(super) mod exact_layer;
 mod radius_lengths;
@@ -66,11 +62,6 @@ pub(super) mod image_decode;
 pub(crate) use crate::paint::background::image_decode::*;
 pub(super) mod tiles;
 pub use crate::paint::background::tiles::*;
-
-/// Разобранные источники по строке ссылки. Бюджет 128 МиБ декодированных точек и
-/// разметки рисунков: недавние картинки документа остаются декодированными.
-static CACHE: BoundedCache<String, Option<Source>> =
-    BoundedCache::new(128 * MIB, sources::held_bytes);
 
 /// Потолок на число плиток вдоль оси: битый `background-size` иначе просит
 /// миллионы копий.

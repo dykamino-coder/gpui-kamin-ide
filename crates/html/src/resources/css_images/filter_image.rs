@@ -7,19 +7,19 @@
 //! вызывающий решает и масштабирует вход до применения списка здесь. Размытие и тень,
 //! смешанная с другими функциями, не поддерживаются и дают `None`.
 
-use gpui::RenderImage;
+use crate::resources::images::types::CpuRaster;
 use std::sync::Arc;
 
 /// Applies the filter list to a straight-BGRA raster. Unsupported lists
 /// (blurs, a drop shadow mixed with other functions) yield `None`.
-pub(super) fn apply(
-    image: &Arc<RenderImage>,
+pub(crate) fn apply(
+    image: &Arc<CpuRaster>,
     style: &crate::style::computed::ImageFilter,
     scale: (f32, f32),
-) -> Option<Arc<RenderImage>> {
-    let size = image.size(0);
-    let (w, h) = (size.width.0.max(0) as usize, size.height.0.max(0) as usize);
-    let src = image.as_bytes(0)?;
+) -> Option<Arc<CpuRaster>> {
+    let size = image;
+    let (w, h) = (size.width as usize, size.height as usize);
+    let src = &image.bytes;
     let mut out = src.to_vec();
     if let Some(shadow) = style.shadow {
         // Filter Effects 1 §drop-shadow: a blur-free shadow is the source
@@ -73,7 +73,7 @@ pub(super) fn apply(
             px.copy_from_slice(&[q(c.b), q(c.g), q(c.r), q(c.a)]);
         }
     }
-    gpui::bgra_bytes_to_image(w as u32, h as u32, out)
+    crate::resources::images::pixels::bgra(w as u32, h as u32, out)
 }
 
 #[cfg(test)]
@@ -97,19 +97,18 @@ mod tests {
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
         let rendered = crate::style::cascade::inherit::inherit(&Computed::default(), &own, vcx);
-        let image =
-            crate::paint::background::computed_source(rendered.bg_image.as_ref().unwrap(), true)
-                .unwrap()
-                .raster((7.0, 5.0), vcx)
-                .unwrap();
-        let operand =
-            crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
-                .unwrap();
-        let expected = crate::paint::background::computed_source(&operand, true)
+        let image = super::super::computed_source(rendered.bg_image.as_ref().unwrap(), true, vcx)
             .unwrap()
             .raster((7.0, 5.0), vcx)
             .unwrap();
-        assert_eq!(image.as_bytes(0), expected.as_bytes(0));
+        let operand =
+            crate::style::computed::ImageSource::parse(&format!("filter({raw}, invert(1))"), vcx)
+                .unwrap();
+        let expected = super::super::computed_source(&operand, true, vcx)
+            .unwrap()
+            .raster((7.0, 5.0), vcx)
+            .unwrap();
+        assert_eq!(image.bytes.as_ref(), expected.bytes.as_ref());
         assert!(rendered.gradient.is_none());
     }
 }
