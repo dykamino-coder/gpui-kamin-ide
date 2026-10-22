@@ -4,7 +4,7 @@
 //! ICB и `position: fixed` по копии на лист, план фрагментов и маски page area;
 //! укладка, листы, марджин-боксы, канвас и ось письма — в подмодулях.
 
-use crate::layout::fragment::types::Frag;
+use crate::layout::fragment::plan::Plan;
 use gpui::{AnyElement, Bounds, Pixels, point, px, size};
 mod canvas;
 pub(crate) use canvas::{CanvasLayerFn, builder as canvas_builder, image_layers};
@@ -120,7 +120,7 @@ pub struct PageStack {
     /// Слой `position: fixed` — по копии на страницу БЕЗ сдвига (Blink
     /// `IsMonolithic`: fixed при печати повторяется на каждой странице).
     pub(crate) fixed: Vec<Vec<AnyElement>>,
-    pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
+    pub(crate) plan: std::cell::RefCell<Plan>,
     pub(crate) pages: std::cell::Cell<usize>,
     pub(crate) grid: std::cell::Cell<(usize, f32)>,
     /// Показываемые листы (с нуля, по возрастанию), `None` — все. Печатный
@@ -154,7 +154,7 @@ impl PageStack {
             icb,
             icb_reach,
             fixed,
-            plan: std::cell::RefCell::new(Vec::new()),
+            plan: std::cell::RefCell::new(Plan::default()),
             pages: std::cell::Cell::new(1),
             grid: std::cell::Cell::new((1, 1.0)),
             select: None,

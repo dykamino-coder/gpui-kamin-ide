@@ -39,6 +39,10 @@ pub(super) fn place_oof_statics(
             ..Default::default()
         });
         let probe = crate::layout::fragment::types::StackChild {
+            #[cfg(feature = "wpt-harness")]
+            probe_pending: false,
+            #[cfg(feature = "wpt-harness")]
+            probe: opts.frag.probe.clone(),
             watched: None,
             breaks_w: None,
             regrow: None,

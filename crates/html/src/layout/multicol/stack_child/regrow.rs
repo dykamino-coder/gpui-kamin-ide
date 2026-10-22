@@ -43,6 +43,10 @@ impl Measured {
         copy: &Element,
         sizes: (f32, f32),
     ) {
+        #[cfg(feature = "wpt-harness")]
+        {
+            child.probe = opts.frag.probe.clone();
+        }
         let (col_vert, col_rl, line_col_w) = cols;
         child.breaks_w = self
             .breaks_w

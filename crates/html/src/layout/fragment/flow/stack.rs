@@ -42,6 +42,11 @@ impl StackChild {
         let watched = self.watched.as_ref()?;
         let end = self.h.max(self.over);
         let m = watched.breaks(point(px(0.0), px(0.0)), size, end, axis, window);
+        #[cfg(feature = "wpt-harness")]
+        if self.probe_pending {
+            self.probe.breaks("columns.breaks", &self.cuts, &m.cuts);
+            self.probe_pending = false;
+        }
         self.cuts = m.cuts;
         self.forced = m.forced;
         self.solid = m.solid;

@@ -1,7 +1,8 @@
 //! Заполнение колонок с обходом нарушений break-*-avoid.
 
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::{self, Space};
-use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::fragment::types::Kid;
 use crate::layout::multicol::column_stack::ColumnStack;
 
 impl ColumnStack {
@@ -25,7 +26,7 @@ impl ColumnStack {
         kids: &[Kid],
         target_at: &dyn Fn(usize) -> f32,
         space: Space,
-    ) -> (usize, f32, Vec<Frag>) {
+    ) -> (usize, f32, Plan) {
         if !kids.iter().any(|k| k.avoid_before || k.avoid_after) {
             return plan::fill_at(kids, target_at, space);
         }

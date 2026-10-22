@@ -4,6 +4,7 @@
 //! ширину решает содержимое, и пробная балансировка, дающая размер коробки и базовые линии.
 
 use crate::layout::fragment::intrinsic_measure;
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::types::{BreaksAt, Intrinsic};
 use crate::layout::multicol::column_stack::ColumnStack;
 use gpui::{AnyElement, App, LayoutId, Window, px, size};
@@ -122,7 +123,7 @@ impl ColumnStack {
                     copies,
                     gap_items: None,
                     intrinsic: None,
-                    plan: std::cell::RefCell::new(Vec::new()),
+                    plan: std::cell::RefCell::new(Plan::default()),
                     static_places: Default::default(),
                     col_w: std::cell::Cell::new(0.0),
                     lines_plan: std::cell::RefCell::new(Vec::new()),
@@ -183,6 +184,18 @@ impl ColumnStack {
                 window,
                 cx,
             );
+            #[cfg(feature = "wpt-harness")]
+            if c.probe_pending && c.watched.is_some() {
+                c.probe.height(
+                    "columns.column",
+                    c.h,
+                    f32::from(if self.axis.is_vertical() {
+                        sz.width
+                    } else {
+                        sz.height
+                    }),
+                );
+            }
             c.replace_breaks(sz, self.axis, window);
         }
     }

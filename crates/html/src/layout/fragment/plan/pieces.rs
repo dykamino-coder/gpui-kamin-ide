@@ -1,6 +1,7 @@
 //! Куски ребёнка по колонкам: цикл размещения фрагментов одного ребёнка (fill_pieces).
 
 use super::{cut_at, fill_clone_dec, forced_or_fits, place_cut};
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::skip_float;
 use crate::layout::fragment::types::{Frag, Kid};
 
@@ -14,7 +15,7 @@ pub(super) fn fill_pieces(
     not_top: usize,
     placed: &mut bool,
     shortage: &mut f32,
-    out: &mut Vec<Frag>,
+    out: &mut Plan,
     float_hold: &mut Option<(usize, usize, f32)>,
     kid: usize,
     k: &Kid,
@@ -224,6 +225,7 @@ pub(super) fn fill_pieces(
             break;
         }
         if copy + 1 >= limit {
+            out.incomplete();
             // Копий больше нет — остаток за кадром.
             *y = target;
             *placed = true;

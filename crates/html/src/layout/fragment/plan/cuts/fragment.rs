@@ -1,5 +1,6 @@
 //! Выпуск геометрии среза из неизменной позиции ребёнка в колонке.
 
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::types::Frag;
 
 pub(super) struct FragmentAt {
@@ -23,7 +24,7 @@ impl FragmentAt {
         }
     }
 
-    pub(super) fn emit(&self, out: &mut Vec<Frag>, h: f32, foot: f32) {
+    pub(super) fn emit(&self, out: &mut Plan, h: f32, foot: f32) {
         out.push(Frag {
             kid: self.kid,
             copy: self.copy,

@@ -78,6 +78,8 @@ impl PageKid {
 // A page shape stores height, cuts, forced breaks and monolithic intervals together.
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: crate::FragmentProbes,
     pub el: AnyElement,
     /// Повторная раскладка flex после роста независимого потока.
     pub(crate) regrow: Option<crate::layout::fragment::push::Regrow>,
