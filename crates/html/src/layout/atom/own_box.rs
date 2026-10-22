@@ -17,6 +17,10 @@ pub(super) fn own_box_atom(
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
+    // Atomic containers publish the same node/order keys as block containers.
+    merged.self_node = e.node_id;
+    merged.anchor_seq = opts.cx.anchor_seq_for(e);
+    merged.anchor_key = crate::layout::positioned::anchor::key_of(e);
     // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
     // `element()`: the atom path skipped it and `height: 350vh` on an
     // `inline-block` with `vertical-align: top` collapsed to its content
@@ -134,11 +138,12 @@ pub(super) fn own_box_atom(
     // (`justify-self-static-position-001-ref`: `left: 20px` from the inner
     // block's padding edge, 5px off). Genuine inline boxes stay excluded
     // (see the measurement above).
-    // Only `inline-block`: table parts reach this path too, and their
-    // absolute children keep the table's own handling
-    // (`position-relative-table-*-absolute-child`).
-    let cb_layer = e.style.display == Some(Display::InlineBlock)
-        && !genuine_inline
+    // Atomic flex/grid containers own the same CB scope. Table parts keep
+    // the table-specific handling of their absolute children.
+    let cb_layer = matches!(
+        e.style.display,
+        Some(Display::InlineBlock | Display::InlineFlex | Display::InlineGrid)
+    ) && !genuine_inline
         && crate::text::inline::establishes_cb(&merged);
     let cb_layer = cb_layer.then(|| {
         crate::layout::positioned::layer_scope::LayerScope::strict(
