@@ -48,6 +48,7 @@ fn important_survives_a_later_ordinary_rule() {
         order: 0,
         origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     };
     let late = crate::style::css::Rule {
         sel: crate::style::css::Selector::parse("p.x").expect("селектор класса"),
@@ -55,6 +56,7 @@ fn important_survives_a_later_ordinary_rule() {
         order: 1,
         origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     };
     let matched = vec![&early, &late];
     let c = crate::style::computed::Computed::resolve(
@@ -82,6 +84,7 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
         order: 0,
         origin: crate::style::css::Origin::UserAgent,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     };
     let author = crate::style::css::Rule {
         sel: crate::style::css::Selector::parse("*").expect("универсальный селектор"),
@@ -89,6 +92,7 @@ fn author_sheet_beats_user_agent_regardless_of_specificity() {
         order: 1,
         origin: crate::style::css::Origin::Author,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     };
     let matched = vec![&ua, &author];
     let c = crate::style::computed::Computed::resolve(

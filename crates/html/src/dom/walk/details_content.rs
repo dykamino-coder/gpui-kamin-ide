@@ -22,6 +22,7 @@ fn ua_rule() -> Option<Rule> {
         order: 0,
         origin: crate::style::css::Origin::UserAgent,
         layer: Vec::new(),
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 

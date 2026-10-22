@@ -108,6 +108,7 @@ pub(super) fn sheet_rules(css: &str, media: Media, top: bool, cx: &mut SheetCx) 
                 // Происхождение ставит тот, кто подключает таблицу (см. `dom`).
                 origin: crate::style::css::Origin::UserAgent,
                 layer: cx.layer_of_rules(),
+                link: crate::style::css::LinkMatch::Any,
             });
             order += 1;
         }

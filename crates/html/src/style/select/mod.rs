@@ -32,6 +32,10 @@ pub(crate) struct Ancestor {
     pub(crate) spot: Spot,
     /// Адрес ссылки: нужен `:link`/`:visited`.
     pub(crate) href: Option<String>,
+    /// Ссылка сопоставляется посещённой (`:visited`, иначе `:link`); каскад
+    /// элемента снимает признак со «своей» ссылки по ограничению `:visited`
+    /// (`style::css::visited`).
+    pub(crate) visited: bool,
     /// Атрибут `dir` самого узла (true = rtl): нужен `:dir()`.
     pub(crate) dir: Option<bool>,
     /// Отметки `:has()`: хеши аргументов, для которых узел — якорь с
@@ -150,6 +154,7 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Optio
             .collect(),
         spot,
         href: find("href"),
+        visited: link_visited(find("href").as_deref()),
         dir: find("dir").and_then(|v| match v.to_ascii_lowercase().as_str() {
             "rtl" => Some(true),
             "ltr" => Some(false),
@@ -165,6 +170,13 @@ pub(super) fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Optio
         empty: is_empty_node(child),
         foreign: &*name.ns != "http://www.w3.org/1999/xhtml",
     })
+}
+
+/// Посещена ли ссылка с адресом `href`: свою страницу браузер кладёт в
+/// историю по определению, поэтому пустой адрес и якорь на себя посещены;
+/// остальное для нас не посещено.
+pub(crate) fn link_visited(href: Option<&str>) -> bool {
+    href.is_some_and(|h| h.is_empty() || h.starts_with('#'))
 }
 
 /// Перепись детей уровня: места и паспорта всех элементов.

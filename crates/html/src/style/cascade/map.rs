@@ -12,7 +12,7 @@
 //! имена).
 
 use super::key::{CascadeKey, KeySource};
-use crate::style::css::{DeclBlock, Declaration, Origin, Rule, Specified};
+use crate::style::css::{DeclBlock, Declaration, LinkMatch, Origin, Rule, Specified};
 use std::collections::HashMap;
 
 mod picks;
@@ -38,7 +38,10 @@ impl<'a> Candidate<'a> {
 pub(crate) struct CascadeMap<'a> {
     names: Vec<&'a str>,
     lists: HashMap<&'a str, Vec<Candidate<'a>>>,
-    all: Vec<Candidate<'a>>,
+    /// Кандидаты `all` с ограничением `:visited` их правила.
+    all: Vec<(Candidate<'a>, LinkMatch)>,
+    /// Кандидаты `all` без ограничения: они задают и неназванные свойства.
+    all_any: Vec<Candidate<'a>>,
 }
 
 impl<'a> CascadeMap<'a> {
@@ -57,6 +60,7 @@ impl<'a> CascadeMap<'a> {
         for rule in matched {
             map.push_block(
                 &rule.decls,
+                rule.link,
                 &KeySource {
                     origin: rule.origin,
                     tree_order: 0,
@@ -70,6 +74,7 @@ impl<'a> CascadeMap<'a> {
         }
         map.push_block(
             inline,
+            LinkMatch::Any,
             &KeySource {
                 origin: Origin::Author,
                 tree_order: 0,
@@ -90,6 +95,7 @@ impl<'a> CascadeMap<'a> {
         let mut map = CascadeMap::default();
         map.push_block(
             block,
+            LinkMatch::Any,
             &KeySource {
                 origin,
                 tree_order: 0,
@@ -104,7 +110,7 @@ impl<'a> CascadeMap<'a> {
         map
     }
 
-    fn push_block(&mut self, block: &'a DeclBlock, src: &KeySource) {
+    fn push_block(&mut self, block: &'a DeclBlock, link: LinkMatch, src: &KeySource) {
         for decl in block {
             let cand = Candidate {
                 key: CascadeKey::new(src, decl.important, decl.pos),
@@ -115,8 +121,13 @@ impl<'a> CascadeMap<'a> {
                 // `all` принимает только общие слова (§3.2); иное значение
                 // делает объявление недействительным.
                 if matches!(decl.specified, Specified::Wide(_)) {
-                    self.all.push(cand);
+                    self.all.push((cand, link));
                 }
+                continue;
+            }
+            // Ограничение `:visited`: объявление вне свойств своего
+            // состояния ссылки в каскад не попадает.
+            if !link.admits(&decl.name) {
                 continue;
             }
             let list = self.lists.entry(decl.name.as_str()).or_default();
@@ -130,11 +141,22 @@ impl<'a> CascadeMap<'a> {
     fn finish(&mut self) {
         for (name, list) in self.lists.iter_mut() {
             if !name.starts_with("--") && !matches!(*name, "direction" | "unicode-bidi") {
-                list.extend(self.all.iter().copied());
+                list.extend(
+                    self.all
+                        .iter()
+                        .filter(|(_, link)| link.admits(name))
+                        .map(|(c, _)| *c),
+                );
             }
             list.sort_by_key(|c| std::cmp::Reverse(c.key));
         }
-        self.all.sort_by_key(|c| std::cmp::Reverse(c.key));
+        self.all.sort_by_key(|(c, _)| std::cmp::Reverse(c.key));
+        self.all_any = self
+            .all
+            .iter()
+            .filter(|(_, link)| *link == LinkMatch::Any)
+            .map(|(c, _)| *c)
+            .collect();
     }
 
     /// Имена свойств карты в порядке первого появления.
@@ -186,7 +208,7 @@ impl<'a> CascadeMap<'a> {
     /// Выбор каскада для самого `all`: значение, которое получают свойства,
     /// не названные ни одним объявлением.
     pub fn all_picks(&self) -> Picks<'_, 'a> {
-        Picks::new(&self.all).without_unset()
+        Picks::new(&self.all_any).without_unset()
     }
 }
 

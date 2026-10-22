@@ -22,6 +22,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
         order: 0,
         origin: crate::style::css::Origin::PresHint,
         layer: vec![],
+        link: crate::style::css::LinkMatch::Any,
     };
     for (name, value) in attrs {
         let property = match name.as_str() {

@@ -67,13 +67,10 @@ pub(crate) fn matches(sel: &Selector, me: &Ancestor, path: &[Ancestor], sibs: Si
         // месту среди соседей, поэтому решается здесь: без него объявления
         // вроде `:root { font: 25px/1 Ahem }` не доезжали НИКУДА, и страница
         // набиралась шрифтом по умолчанию (`text-align-last-015`).
-        // Ссылки: `:visited` — адрес уже в истории. Свою страницу браузер в
-        // историю кладёт по определению, поэтому пустой `href` и якорь на
-        // себя — посещённые; остальное для нас непосещённое.
+        // Ссылки: `:visited` — адрес в истории (`link_visited`, с
+        // ограничением `:visited` каскада элемента).
         if pseudo == "link" || pseudo == "visited" {
-            let Some(href) = &me.href else { return false };
-            let visited = href.is_empty() || href.starts_with('#');
-            if (pseudo == "visited") != visited {
+            if me.href.is_none() || (pseudo == "visited") != me.visited {
                 return false;
             }
             return matches_ignoring_pseudo(sel, me, path, sibs);

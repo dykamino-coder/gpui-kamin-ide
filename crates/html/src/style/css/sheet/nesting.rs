@@ -149,6 +149,7 @@ pub(super) fn expand(
                         order: *order,
                         origin: crate::style::css::Origin::UserAgent,
                         layer: cx.layer_of_rules(),
+                        link: crate::style::css::LinkMatch::Any,
                     });
                     *order += 1;
                 }

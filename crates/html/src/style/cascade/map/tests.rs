@@ -10,6 +10,7 @@ fn rule(css: &str, origin: Origin, layer: Vec<u32>, order: usize) -> Rule {
         order,
         origin,
         layer,
+        link: crate::style::css::LinkMatch::Any,
     }
 }
 

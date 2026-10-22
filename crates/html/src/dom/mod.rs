@@ -23,6 +23,8 @@ pub(crate) mod pseudo_line_layers;
 pub(crate) mod style_sources;
 pub(crate) mod text_content;
 pub(crate) mod tree_index;
+#[cfg(test)]
+mod visited_tests;
 pub(crate) mod xml;
 pub(crate) use xml::parse_current_xml;
 pub use xml::parse_xml;
