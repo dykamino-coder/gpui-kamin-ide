@@ -33,7 +33,7 @@ pub(super) fn contained_image(
                 crate::paint::background::Source::Vector { markup, .. } => {
                     let viewport =
                         crate::resources::images::viewport::with_viewport(&markup, (cw, ch));
-                    crate::svg::raster::rasterize(&viewport, cw, ch, vcx)
+                    crate::svg::raster::rasterize_image(&viewport, cw, ch, vcx)
                 }
                 _ => s.raster((cw, ch), vcx),
             });
