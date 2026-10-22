@@ -1,5 +1,4 @@
-//! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, ширина outline,
-//! скругление.
+//! Разбор рамки и формы: overflow, border-shape, corner-shape, четыре стороны, скругление.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -151,16 +150,6 @@ pub(in crate::style::computed) fn four<T: Copy>(
         3 => Some([v[0], v[1], v[2], v[1]]),
         4 => Some([v[0], v[1], v[2], v[3]]),
         _ => None,
-    }
-}
-
-/// Ширина обводки: ключевые слова и любые шрифтовые/абсолютные длины.
-pub(in crate::style::computed) fn outline_width_of(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
-    match v {
-        "thin" => Some(Len::Px(1.0)),
-        "medium" => Some(Len::Px(3.0)),
-        "thick" => Some(Len::Px(5.0)),
-        _ => Len::parse(v, vcx).filter(|l| !matches!(l, Len::Pct(_))),
     }
 }
 

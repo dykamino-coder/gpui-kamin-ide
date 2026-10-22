@@ -1,7 +1,8 @@
 //! Таблица длинных свойств реестра: имя, начальное значение (css-box-4,
-//! css-position-3, css-sizing-3, css-logical-1), наследование, грамматика и
-//! место в логической группе (css-logical-1 §4: логическое и физическое
-//! свойство одной стороны делят вычисленное значение).
+//! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3, css-ui-4),
+//! наследование, грамматика и место в логической группе (css-logical-1 §4:
+//! логическое и физическое свойство одной стороны делят вычисленное
+//! значение).
 
 use crate::document::state::ValueCx;
 
@@ -19,6 +20,24 @@ pub enum Grammar {
     /// Размеры коробки (css-sizing-3 §3.1-3.2, css-sizing-4, css-values-5
     /// `calc-size()`).
     Size,
+    /// `<line-width>` (css-backgrounds-3 §4.3): `thin | medium | thick |
+    /// <length [0,∞]>`; у `outline-width` та же (css-ui-4 §outline-width).
+    LineWidth,
+    /// `<line-style>` (css-backgrounds-3 §4.2).
+    LineStyle,
+    /// `<color>`, в том числе `currentcolor` (css-backgrounds-3 §4.1).
+    LineColor,
+    /// `auto | <outline-line-style>`: `<line-style>` без `hidden` (css-ui-4
+    /// §outline-style).
+    OutlineStyle,
+    /// `auto | <color>` (css-ui-4 §outline-color).
+    OutlineColor,
+    /// `<length>` (css-ui-4 §outline-offset) и `inset` (WPT
+    /// `outline-offset-inset-*`).
+    OutlineOffset,
+    /// Части `border-image` (css-backgrounds-3 §5): `-source`, `-slice`,
+    /// `-width`, `-outset`, `-repeat`.
+    BorderImage,
 }
 
 /// Логическая группа (Stylo `logical_group`): физические и логические
@@ -29,17 +48,22 @@ pub enum BoxGroup {
     Padding,
     Inset,
     Size,
+    BorderWidth,
+    BorderStyle,
+    BorderColor,
 }
 
 /// Место свойства в группе. Стороны: физические `top, right, bottom,
 /// left`, логические `inline-start, inline-end, block-start, block-end`.
 /// Размеры: физические `width, height, min-width, min-height, max-width,
 /// max-height`, логические `inline, block, min-inline, min-block,
-/// max-inline, max-block`.
+/// max-inline, max-block`. Свойство вне логических групп (`outline-*`,
+/// части `border-image`) — `Single`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     Physical(BoxGroup, usize),
     Logical(BoxGroup, usize),
+    Single,
 }
 
 macro_rules! longhands {
@@ -68,8 +92,11 @@ macro_rules! longhands {
     };
 }
 
-use BoxGroup::{Inset as I, Margin as M, Padding as P, Size as S};
-use Slot::{Logical as L, Physical as F};
+use BoxGroup::{
+    BorderColor as BC, BorderStyle as BS, BorderWidth as BW, Inset as I, Margin as M, Padding as P,
+    Size as S,
+};
+use Slot::{Logical as L, Physical as F, Single as N};
 
 longhands! {
     MarginTop = "margin-top", "0", false, Margin, F(M, 0);
@@ -108,6 +135,39 @@ longhands! {
     MinBlockSize = "min-block-size", "auto", false, Size, L(S, 3);
     MaxInlineSize = "max-inline-size", "none", false, Size, L(S, 4);
     MaxBlockSize = "max-block-size", "none", false, Size, L(S, 5);
+    BorderTopWidth = "border-top-width", "medium", false, LineWidth, F(BW, 0);
+    BorderRightWidth = "border-right-width", "medium", false, LineWidth, F(BW, 1);
+    BorderBottomWidth = "border-bottom-width", "medium", false, LineWidth, F(BW, 2);
+    BorderLeftWidth = "border-left-width", "medium", false, LineWidth, F(BW, 3);
+    BorderInlineStartWidth = "border-inline-start-width", "medium", false, LineWidth, L(BW, 0);
+    BorderInlineEndWidth = "border-inline-end-width", "medium", false, LineWidth, L(BW, 1);
+    BorderBlockStartWidth = "border-block-start-width", "medium", false, LineWidth, L(BW, 2);
+    BorderBlockEndWidth = "border-block-end-width", "medium", false, LineWidth, L(BW, 3);
+    BorderTopStyle = "border-top-style", "none", false, LineStyle, F(BS, 0);
+    BorderRightStyle = "border-right-style", "none", false, LineStyle, F(BS, 1);
+    BorderBottomStyle = "border-bottom-style", "none", false, LineStyle, F(BS, 2);
+    BorderLeftStyle = "border-left-style", "none", false, LineStyle, F(BS, 3);
+    BorderInlineStartStyle = "border-inline-start-style", "none", false, LineStyle, L(BS, 0);
+    BorderInlineEndStyle = "border-inline-end-style", "none", false, LineStyle, L(BS, 1);
+    BorderBlockStartStyle = "border-block-start-style", "none", false, LineStyle, L(BS, 2);
+    BorderBlockEndStyle = "border-block-end-style", "none", false, LineStyle, L(BS, 3);
+    BorderTopColor = "border-top-color", "currentcolor", false, LineColor, F(BC, 0);
+    BorderRightColor = "border-right-color", "currentcolor", false, LineColor, F(BC, 1);
+    BorderBottomColor = "border-bottom-color", "currentcolor", false, LineColor, F(BC, 2);
+    BorderLeftColor = "border-left-color", "currentcolor", false, LineColor, F(BC, 3);
+    BorderInlineStartColor = "border-inline-start-color", "currentcolor", false, LineColor, L(BC, 0);
+    BorderInlineEndColor = "border-inline-end-color", "currentcolor", false, LineColor, L(BC, 1);
+    BorderBlockStartColor = "border-block-start-color", "currentcolor", false, LineColor, L(BC, 2);
+    BorderBlockEndColor = "border-block-end-color", "currentcolor", false, LineColor, L(BC, 3);
+    OutlineWidth = "outline-width", "medium", false, LineWidth, N;
+    OutlineStyle = "outline-style", "none", false, OutlineStyle, N;
+    OutlineColor = "outline-color", "auto", false, OutlineColor, N;
+    OutlineOffset = "outline-offset", "0", false, OutlineOffset, N;
+    BorderImageSource = "border-image-source", "none", false, BorderImage, N;
+    BorderImageSlice = "border-image-slice", "100%", false, BorderImage, N;
+    BorderImageWidth = "border-image-width", "1", false, BorderImage, N;
+    BorderImageOutset = "border-image-outset", "0", false, BorderImage, N;
+    BorderImageRepeat = "border-image-repeat", "stretch", false, BorderImage, N;
 }
 
 impl LonghandId {

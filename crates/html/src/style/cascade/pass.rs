@@ -70,20 +70,19 @@ impl Computed {
             })
             .collect();
         // Порядок применения: по ключу победителя, а внутри одного блока —
-        // семьями. Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ и его
-        // длинным свойством (`background` и `background-color`, `border` и
-        // `border-width`): `background-color: red; background: green`
-        // обязано дать зелёный, а обратная запись красный.
+        // семьями. Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ вне
+        // реестра и его длинным свойством (`background` и `background-color`):
+        // `background-color: red; background: green` обязано дать зелёный, а
+        // обратная запись красный. Сокращения реестра (`margin`, `border`,
+        // `outline`) раскрыты разбором, и их длинные свойства пишут каждое
+        // своё поле целиком — порядок между ними не важен.
         //
-        // Между СОСЕДЯМИ (`border-width` и `border-style`, `white-space` и
-        // `overflow-wrap`) порядок записи НЕ применяется: наши свойства
-        // кое-где читают состояние друг друга на применении (`border-style`
-        // пишет ширину), и полный порядок вскрывает эту зависимость
-        // (`border-width-012`, `textarea-pre-wrap-*`). Семьи идут «сперва
-        // общее»: общность меряется числом дефисов (`border` <
-        // `border-width` < `border-top-width`), так `border: solid gray;
-        // border-width: 1px 2px 3px 4px` даёт 1/2/3/4. Порядок уходит вместе
-        // с раскрытием сокращений при разборе.
+        // Между СОСЕДЯМИ вне реестра (`white-space` и `overflow-wrap`)
+        // порядок записи НЕ применяется: эти свойства кое-где читают
+        // состояние друг друга на применении, и полный порядок вскрывает эту
+        // зависимость (`textarea-pre-wrap-*`). Семьи идут «сперва общее»:
+        // общность меряется числом дефисов. Порядок уходит вместе с
+        // раскрытием остальных сокращений при разборе.
         winners.sort_by_cached_key(|(k, pick, _)| {
             let (block, pos) = match pick {
                 Pick::Value(c, _) => (Some(c.block), c.key.decl_index()),
@@ -101,6 +100,7 @@ impl Computed {
         for (k, first, rest) in winners {
             self.apply_winner(k, first, rest, vars, cx, vcx);
         }
+        self.settle_border_widths();
         // Прямая запись после карты — позже любого её объявления.
         self.decl_order.pass += 1;
         self.decl_order.key = Default::default();
@@ -212,27 +212,6 @@ fn family(k: &str, block: Option<&DeclBlock>) -> String {
     };
     if font_members::contains(k) && d.contains("font") {
         return "font".into();
-    }
-    // A side shorthand (`border-right: 12px solid`) resets that side's color
-    // to `currentColor`; a later `border-color: pink` must win over it
-    // (css-cascade-4 §6.4: order of appearance; css-gaps
-    // `grid-gap-decorations-*-ref`). Only side shorthands and the three
-    // all-side shorthands share the order — `border-width`/`border-style`
-    // among themselves keep the name order (see the note in `apply_map`).
-    const EDGE: &[&str] = &[
-        "border-top",
-        "border-right",
-        "border-bottom",
-        "border-left",
-        "border-color",
-        "border-style",
-        "border-width",
-    ];
-    if EDGE.contains(&k)
-        && EDGE[..4].iter().any(|s| d.contains(s))
-        && EDGE[4..].iter().any(|s| d.contains(s))
-    {
-        return "border-edge".into();
     }
     const SHORTHANDS: &[&str] = &["background", "border-image"];
     for root in SHORTHANDS {

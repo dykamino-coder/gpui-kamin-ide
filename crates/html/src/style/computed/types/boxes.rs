@@ -33,16 +33,12 @@ pub struct Logical {
     pub padding: LogicalSides,
     pub margin: LogicalSides,
     pub inset: LogicalSides,
-    /// Логические кромки: сырые значения `border-block/inline-start/end` —
-    /// раскладываются по физическим сторонам ПОСЛЕ наследования письма
-    /// (у `vertical-rl` inline-start это ВЕРХ, а разбор писал влево).
-    /// Порядок: [block-start, inline-end, block-end, inline-start].
-    pub border: [Option<String>; 4],
-    /// Logical border longhands `border-{block,inline}-{start,end}-{width,
-    /// style,color}` in declaration order: (logical side in the `border`
-    /// order above, physical longhand suffix, raw value). css-logical-1 §4.3:
-    /// mapped by the element's writing mode, after inheritance.
-    pub border_long: Vec<(u8, &'static str, String)>,
+    /// Логические кромки `border-{inline,block}-{start,end}-{width,style,
+    /// color}` (css-logical-1 §4.4): `[часть][сторона]` — часть 0 толщина,
+    /// 1 стиль, 2 цвет; сторона как у [`LogicalSides`]. Значение проверено
+    /// разбором и ложится на физическую сторону ПОСЛЕ наследования письма
+    /// вместе с местом объявления в каскаде.
+    pub border: [[Option<(DeclOrder, String)>; 4]; 3],
 }
 
 /// Четыре логические стороны коробки.
@@ -150,6 +146,8 @@ pub struct SideOrder {
     pub(crate) margin: [DeclOrder; 4],
     pub(crate) inset: [DeclOrder; 4],
     pub(crate) size: [DeclOrder; 6],
+    /// Рамка: `[часть][сторона]`, часть 0 толщина, 1 стиль, 2 цвет.
+    pub(crate) border: [[DeclOrder; 4]; 3],
 }
 
 /// Метрика края текста (`<text-edge>`, css-inline-3 §4.3).

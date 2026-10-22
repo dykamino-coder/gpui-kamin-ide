@@ -112,27 +112,20 @@ fn inherit_stage(
             .iter()
             .any(|w| !matches!(w, None | Some(Len::Px(0.0))))
     };
-    // Сторона с `currentColor` из бокового сокращения при ОБЩЕМ цвете рамки:
-    // ей положен цвет текста, а не общий (§8.5.4; `border-shorthands-003`).
-    // Прочие стороны получают общий цвет ЯВНО: единый цвет квада
-    // (`apply::apply_paint`) смотрит только на заданные стороны и иначе
-    // выкрасил бы их цветом помеченной. Без общего цвета пустой слот и так
-    // даёт цвет текста.
-    if c.border_color.is_some() && c.border_side_current.iter().any(|f| *f) {
+    // Пустой слот цвета стороны — `currentColor` (начальное значение или
+    // заданное, в том числе боковым сокращением без цвета: §8.5.4,
+    // `border-shorthands-003`). Рядом со сторонами своего цвета он получает
+    // цвет текста ЯВНО: единый цвет квада (`apply::apply_paint`) смотрит
+    // только на заданные стороны и иначе выкрасил бы пустую их цветом.
+    if c.border_colors.iter().any(Option::is_some) && c.border_colors.iter().any(Option::is_none) {
         let current = c.color.unwrap_or(Color {
             r: 0.0,
             g: 0.0,
             b: 0.0,
             a: 1.0,
         });
-        for i in 0..4 {
-            if c.border_colors[i].is_none() {
-                c.border_colors[i] = if c.border_side_current[i] {
-                    Some(current)
-                } else {
-                    c.border_color
-                };
-            }
+        for side in c.border_colors.iter_mut() {
+            side.get_or_insert(current);
         }
     }
     if has_border && c.border_color.is_none() && c.border_colors.iter().all(Option::is_none) {

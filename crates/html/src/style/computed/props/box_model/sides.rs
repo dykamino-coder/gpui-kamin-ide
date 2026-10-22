@@ -22,9 +22,16 @@ impl Computed {
             return self.apply_box_model_aspect(key, v, hit);
         };
         match id.slot() {
-            Slot::Physical(BoxGroup::Size, _) => *hit = false,
-            Slot::Physical(group, side) => self.apply_side(id.grammar(), group, side, v, vcx),
-            Slot::Logical(group, i) => self.apply_logical(id.grammar(), group, i, v, vcx),
+            Slot::Physical(
+                group @ (BoxGroup::Margin | BoxGroup::Padding | BoxGroup::Inset),
+                side,
+            ) => self.apply_side(id.grammar(), group, side, v, vcx),
+            Slot::Logical(
+                group @ (BoxGroup::Margin | BoxGroup::Padding | BoxGroup::Inset | BoxGroup::Size),
+                i,
+            ) => self.apply_logical(id.grammar(), group, i, v, vcx),
+            // Размеры решает `apply_box_model`, рамку и контур — их группа.
+            _ => *hit = false,
         }
     }
 

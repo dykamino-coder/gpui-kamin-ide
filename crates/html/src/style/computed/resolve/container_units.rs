@@ -29,19 +29,20 @@ impl Computed {
                 .sum::<f32>();
             Some((v - edges).max(0.0))
         };
+        let used = self.borders();
         let w = inner(
             self.width,
             self.padding.left,
             self.padding.right,
-            self.border_width.left,
-            self.border_width.right,
+            used.left,
+            used.right,
         );
         let h = inner(
             self.height,
             self.padding.top,
             self.padding.bottom,
-            self.border_width.top,
-            self.border_width.bottom,
+            used.top,
+            used.bottom,
         );
         // Полосы прокрутки съедают содержимое контейнера (css-overflow-3
         // §4.2): `100cqh` под горизонтальной полосой короче высоты.

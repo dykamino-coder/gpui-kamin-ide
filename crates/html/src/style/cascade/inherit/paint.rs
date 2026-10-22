@@ -38,7 +38,7 @@ pub(super) fn inherit_paint(
         if own.color.is_some() || own.filter.is_some() && parent.color.is_none() {
             c.color = c.color.map(|col| f.apply(col));
         }
-        if own.border_color.is_some() || own.border_color_is_current {
+        if own.border_color.is_some() {
             c.border_color = c.border_color.map(|col| f.apply(col));
         }
         for (side, own_side) in c.border_colors.iter_mut().zip(own.border_colors.iter()) {

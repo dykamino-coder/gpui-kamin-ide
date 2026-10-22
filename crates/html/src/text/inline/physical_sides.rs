@@ -30,7 +30,6 @@ pub(super) fn project_box(flow: &Computed, style: &mut Computed) {
     style.border_colors = project(flow, style.border_colors);
     style.border_visible = project(flow, style.border_visible);
     style.border_side_styles = project(flow, style.border_side_styles);
-    style.border_side_current = project(flow, style.border_side_current);
     // Corner order rotates by the same index permutation as edge order.
     let [tl, tr, br, bl] = project(
         flow,
