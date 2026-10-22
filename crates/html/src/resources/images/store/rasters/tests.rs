@@ -128,6 +128,27 @@ fn external_bytes_are_cached_revalidated_and_checked_by_document_policy() {
     assert_eq!(a.pixel(0, 0), Some([0, 0, 255, 255]));
     assert!(Arc::ptr_eq(&a, &store.rasterize_svg(markup, req).unwrap()));
     assert_eq!(loader.reads.load(Ordering::Relaxed), 1);
+    // SVG-картинка использует secure static mode даже при доступном файле.
+    let secure = store
+        .rasterize_svg(markup, req.without_external_resources())
+        .unwrap();
+    assert_eq!(secure.pixel(0, 0), Some([0, 0, 0, 0]));
+    assert_eq!(loader.reads.load(Ordering::Relaxed), 1);
+    assert!(!Arc::ptr_eq(&a, &secure));
+    use base64::Engine;
+    let data =
+        base64::engine::general_purpose::STANDARD.encode(fixtures::solid_png([255, 0, 0, 255]));
+    let inline = markup.replace(
+        "file:///resource.png",
+        &format!("data:image/png;base64,{data}"),
+    );
+    assert_eq!(
+        store
+            .rasterize_svg(&inline, req.without_external_resources())
+            .unwrap()
+            .pixel(0, 0),
+        Some([0, 0, 255, 255])
+    );
     *loader.bytes.lock().unwrap() = fixtures::solid_png([0, 0, 255, 255]);
     loader.revision.store(2, Ordering::Relaxed);
     let b = store.rasterize_svg(markup, req).unwrap();

@@ -131,7 +131,8 @@ impl Source {
                     &with_viewport(markup, tile),
                     crate::resources::images::svg_raster::RasterRequest::new(
                         raster.0, raster.1, 2.0, 0.0,
-                    ),
+                    )
+                    .without_external_resources(),
                 )
             }
             Source::Gradient { image } => {
