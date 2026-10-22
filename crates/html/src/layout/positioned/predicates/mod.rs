@@ -34,7 +34,10 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
                             && walk(
                                 k,
                                 depth - 1,
-                                fixed_cb || crate::paint::stacking::fixed_cb_layer_box(&k.style),
+                                fixed_cb
+                                    || crate::style::computed::stacking::fixed_cb_layer_box(
+                                        &k.style,
+                                    ),
                             ))
                 }
                 _ => false,
@@ -43,7 +46,7 @@ pub(crate) fn carries_abspos(c: &Element, depth: u8) -> bool {
     walk(
         c,
         depth,
-        crate::paint::stacking::fixed_cb_layer_box(&c.style),
+        crate::style::computed::stacking::fixed_cb_layer_box(&c.style),
     )
 }
 

@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 /// clip that applies to the box and its descendants as one image
 /// (CSS Masking 1 §clipping-paths, §the-mask).
 pub(crate) fn paint_group(c: &Computed) -> bool {
-    crate::paint::stacking::stacking_context(c)
+    crate::style::computed::stacking::stacking_context(c)
         || c.mask_image.is_some()
         || c.clip_shape.is_some()
         || c.clip_inset.is_some()

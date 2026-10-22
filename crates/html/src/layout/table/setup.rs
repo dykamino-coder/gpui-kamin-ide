@@ -6,9 +6,9 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::inline_level_box;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::atom_base_font;
-use crate::paint::stacking::stacking_context;
 use crate::style::computed::Computed;
 use crate::style::computed::FontCx;
+use crate::style::computed::stacking::stacking_context;
 use crate::style::values::value::Len;
 
 pub(super) fn border_spacing_of(

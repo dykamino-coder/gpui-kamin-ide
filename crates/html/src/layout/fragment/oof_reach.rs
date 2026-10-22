@@ -8,8 +8,8 @@
 use crate::dom::Element;
 use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::page::paged::visible_overflow;
-use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::computed::Position;
+use crate::style::computed::stacking::fixed_cb_layer_box;
 
 #[derive(Clone, Copy, Default)]
 struct Extent {

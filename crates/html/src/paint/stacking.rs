@@ -11,7 +11,9 @@ use crate::dom::Node;
 use crate::style::computed::{Computed, Display};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
-pub(crate) use crate::style::computed::stacking::{nested_context, stacking_context};
+pub(crate) use crate::style::computed::stacking::{
+    fixed_cb_layer_box, nested_context, stacking_context,
+};
 
 /// Есть ли в поддереве смешивание (`mix-blend-mode` ≠ normal).
 ///
@@ -61,20 +63,6 @@ pub(crate) fn z_index_applies(c: &Computed, parent: &Computed) -> bool {
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
     )
-}
-
-/// Коробка — содержащий блок и для `position: fixed`: тот же список, что
-/// барьер `under_tf` (`style::cascade::inherit`, `transform_ancestor`).
-pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
-    // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
-    // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
-    (c.backface_hidden == Some(true) && c.transform_ancestor)
-        || c.transform.is_some()
-        || c.preserve_3d == Some(true)
-        || c.contain_layout == Some(true)
-        || c.contain_paint == Some(true)
-        || crate::style::computed::filter_contains_fixed(c)
-        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 
 /// Будет ли элемент с таким стилем отложен.

@@ -144,7 +144,7 @@ pub(super) fn own_box_atom(
         crate::layout::positioned::layer_scope::LayerScope::strict(
             &opts.cx.positioning,
             &merged,
-            crate::paint::stacking::fixed_cb_layer_box(&merged),
+            crate::style::computed::stacking::fixed_cb_layer_box(&merged),
         )
     });
     let mut kids =

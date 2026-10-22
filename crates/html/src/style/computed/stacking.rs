@@ -48,3 +48,17 @@ pub(crate) fn nested_context(parent: &Computed) -> bool {
                         | Some(crate::style::computed::Position::Sticky)
                 )))
 }
+
+/// Коробка — содержащий блок и для `position: fixed`: тот же список, что
+/// барьер `under_tf` (`style::cascade::inherit`, `transform_ancestor`).
+pub(crate) fn fixed_cb_layer_box(c: &Computed) -> bool {
+    // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
+    // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
+    (c.backface_hidden == Some(true) && c.transform_ancestor)
+        || c.transform.is_some()
+        || c.preserve_3d == Some(true)
+        || c.contain_layout == Some(true)
+        || c.contain_paint == Some(true)
+        || crate::style::computed::filter_contains_fixed(c)
+        || c.will_change & crate::style::computed::wc::CB_FIXED != 0
+}
