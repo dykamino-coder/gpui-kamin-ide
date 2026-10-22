@@ -7,6 +7,7 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Effect;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_host::band_margins;
 use crate::layout::float::band_measured::has_ruby;
@@ -156,11 +157,8 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         e.marks.adjoining_start,
         host.wm,
     );
-    let flow = crate::layout::float::band_flow::BandFlow::new(
-        kids,
-        !e.marks.inflow_height,
-        opts.cx.paint.clone(),
-    );
+    let flow =
+        crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height, &opts.cx);
     let flow = match parent {
         Some(parent) => flow.fragment_flow(
             parent,
@@ -169,10 +167,17 @@ pub(crate) fn band_flow_host(e: &Element, inherited: &Computed, opts: &RenderOpt
         ),
         None => flow,
     };
+    // A formatting context is no stacking context: its outlines join the
+    // enclosing outline phase (CSS 2.1 Appendix E, step 10).
+    let phase = |flow| {
+        opts.cx
+            .build
+            .effects(flow, Effect::OutlineFlow(&opts.cx.paint))
+    };
     if inherited.wm().vertical() {
-        return flow.vertical(inherited.wm()).hooked();
+        return phase(flow.vertical(inherited.wm()).hooked());
     }
-    let flow = flow.hooked();
+    let flow = phase(flow.hooked());
     if !host.icb {
         return flow;
     }

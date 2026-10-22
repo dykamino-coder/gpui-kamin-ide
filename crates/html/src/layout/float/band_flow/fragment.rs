@@ -24,9 +24,11 @@ impl<'a> super::Probe<'a> {
         vert: bool,
         fragment: Option<&FragmentFlow>,
         paint: Rc<crate::paint::context::PaintCx>,
+        build: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
         Self {
             paint,
+            build,
             window,
             cx,
             vert,

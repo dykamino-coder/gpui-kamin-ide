@@ -38,6 +38,7 @@ pub(super) fn probe_of(
         tap.clone(),
         vert,
         &p.paint,
+        &p.build,
     );
     let room = AvailableSpace::Definite(px(avail.max(0.0)));
     let space = if vert {

@@ -49,7 +49,7 @@ pub(super) fn table_rows(
             &layers.group_of,
             row,
             carry,
-            vcx,
+            &opts.cx,
         );
         // Письмо к строкам НЕ ПРИМЕНЯЕТСЯ (раскладку ряда ведёт таблица,
         // CSS Writing Modes §3.1) — но ВЫЧИСЛЕННОЕ значение наследуется в

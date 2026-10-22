@@ -4,7 +4,8 @@
 use crate::document::state::ValueCx;
 use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
+use crate::layout::cx::LayoutCx;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
@@ -81,7 +82,7 @@ pub(super) fn row_band_probes(
     group_of: &std::collections::HashMap<u64, crate::layout::table::context::GroupEdge<'_>>,
     row: &Element,
     carry: crate::layout::table::anon::RowCarry<'_>,
-    vcx: ValueCx<'_>,
+    cx: &LayoutCx,
 ) -> RowBands {
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
@@ -100,7 +101,8 @@ pub(super) fn row_band_probes(
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
-        under.push(crate::paint::table::CellsClipped::new(rects.clone(), band_style, vcx).hooked());
+        let band = Layer::cell_band(rects.clone(), band_style, cx);
+        under.push(cx.build.layer(band));
     }
     // Фон ГРУППЫ рядов красится так же, как фон ряда (§17.5.1, слой 3):
     // полоса идёт от левого края крайней левой колонки до правого края
@@ -132,7 +134,8 @@ pub(super) fn row_band_probes(
         if band_style.bg_image.is_none() && g.style.shadows.is_empty() {
             band_style.background = None;
         }
-        under.push(crate::paint::table::CellsClipped::new(rects.clone(), band_style, vcx).hooked());
+        let band = Layer::cell_band(rects.clone(), band_style, cx);
+        under.push(cx.build.layer(band));
     }
     RowBands {
         row_rects,

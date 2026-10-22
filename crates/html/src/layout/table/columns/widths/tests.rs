@@ -33,8 +33,7 @@ fn col(node_id: u64) -> Element {
 
 #[test]
 fn one_buffer_per_col_element_and_per_build() {
-    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
-    let vcx = doc.values();
+    let cx = crate::layout::cx::LayoutCx::default();
     let (a, b) = (col(7), col(8));
     let els = [Some(&a), Some(&a), Some(&b)];
     let build = || {
@@ -46,7 +45,7 @@ fn one_buffer_per_col_element_and_per_build() {
             })
             .collect();
         let mut cells = Vec::new();
-        push_col_bands(&mut layers, 3, true, &mut cells, vcx);
+        push_col_bands(&mut layers, 3, true, &mut cells, &cx);
         assert_eq!(cells.len(), 2, "one painter per element");
         layers
             .into_iter()

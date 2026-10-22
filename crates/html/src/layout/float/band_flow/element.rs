@@ -4,6 +4,8 @@ use super::flow_kid::intrinsic_width;
 use super::kid::Kid;
 use super::{COORD_EPS, Plan, Probe, plan};
 use crate::hooks::Hooks;
+use crate::layout::build_contracts::ChildBuild;
+use crate::layout::cx::LayoutCx;
 use crate::paint::context::PaintCx;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, LayoutId, Pixels, Window, div, point,
@@ -14,6 +16,7 @@ use std::rc::Rc;
 
 pub struct BandFlow {
     pub(super) paint: Rc<PaintCx>,
+    pub(super) build: ChildBuild,
     pub(super) kids: Rc<Vec<Kid>>,
     pub(super) plan: Rc<RefCell<Option<Plan>>>,
     pub(super) built: Vec<AnyElement>,
@@ -25,9 +28,10 @@ pub struct BandFlow {
 }
 
 impl BandFlow {
-    pub fn new(kids: Vec<Kid>, contain_floats: bool, paint: Rc<PaintCx>) -> Self {
+    pub(crate) fn new(kids: Vec<Kid>, contain_floats: bool, cx: &LayoutCx) -> Self {
         BandFlow {
-            paint,
+            paint: cx.paint.clone(),
+            build: cx.build,
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
@@ -55,6 +59,7 @@ impl Hooks for BandFlow {
         let cache = self.plan.clone();
         let fragment = self.fragment.clone();
         let paint = self.paint.clone();
+        let build = self.build;
         let style = gpui::Style {
             flex_shrink: 0.0,
             ..Default::default()
@@ -88,7 +93,8 @@ impl Hooks for BandFlow {
                 (None, AvailableSpace::Definite(w)) => {
                     let w = f32::from(w);
                     let (mn, mx) = window.with_nested_layout(|window| {
-                        let p = &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone());
+                        let p =
+                            &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone(), build);
                         (
                             intrinsic_width(&kids, false, p),
                             intrinsic_width(&kids, true, p),
@@ -98,7 +104,7 @@ impl Hooks for BandFlow {
                     mx.max(mn).min(mn.max(w))
                 }
                 (None, a) => window.with_nested_layout(|window| {
-                    let p = &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone());
+                    let p = &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone(), build);
                     intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
                 }),
             };
@@ -115,7 +121,7 @@ impl Hooks for BandFlow {
                     &kids,
                     cb,
                     contain_floats,
-                    &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone()),
+                    &mut Probe::new(window, cx, v, fragment.as_ref(), paint.clone(), build),
                 )
             });
             if let Some(f) = &fragment {
@@ -167,6 +173,7 @@ impl Hooks for BandFlow {
                         vert.is_some(),
                         self.fragment.as_ref(),
                         self.paint.clone(),
+                        self.build,
                     );
                     plan(&kids, cb, contain_floats, p)
                 })
@@ -192,6 +199,7 @@ impl Hooks for BandFlow {
         // (`shape-outside-content-box-001`: атомы шире выреза).
         let at = super::holders::Placing {
             paint: &self.paint,
+            build: &self.build,
             cb,
             height: p.height,
             vert,
@@ -229,17 +237,14 @@ impl Hooks for BandFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let owner = Some(&self.paint);
         // The host is not a stacking context (CSS 2.1 Appendix E.2): later
         // block backgrounds of the enclosing context paint before the
         // inline foreground of its runs. Paint groups keep their own
-        // boundary (`holders`).
-        crate::paint::decorations::outline_phase::flow(owner, window, cx, |window, cx| {
-            gpui::paint_reopen(|| {
-                for el in self.built.iter_mut() {
-                    el.paint(window, cx);
-                }
-            });
+        // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
+        gpui::paint_reopen(|| {
+            for el in self.built.iter_mut() {
+                el.paint(window, cx);
+            }
         });
     }
 }
