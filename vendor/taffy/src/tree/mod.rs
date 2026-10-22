@@ -7,6 +7,11 @@
 mod cache;
 mod layout;
 mod node;
+// KaminIDE patch: structured flex geometry from the solver's final pass.
+#[cfg(feature = "flexbox")]
+mod flex;
+#[cfg(feature = "flexbox")]
+pub use flex::{DetailedFlexInfo, DetailedFlexItem, DetailedFlexLine};
 pub mod traits;
 
 #[doc(hidden)]
@@ -20,7 +25,10 @@ pub use layout::{
 };
 pub use node::NodeId;
 pub(crate) use traits::LayoutPartialTreeExt;
-pub use traits::{LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
+pub use traits::{
+    LayoutContainingBlock, LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree,
+    TraverseTree,
+};
 
 #[cfg(feature = "flexbox")]
 pub use traits::LayoutFlexboxContainer;
@@ -39,10 +47,10 @@ pub use taffy_tree::{TaffyError, TaffyResult, TaffyTree};
 mod kamin_calc;
 #[cfg(feature = "taffy_tree")]
 mod kamin_output;
-#[cfg(all(feature = "taffy_tree", feature = "std"))]
-pub use kamin_calc::{CalcScope, calc_handle};
 #[cfg(feature = "taffy_tree")]
 pub use kamin_calc::calc_value;
+#[cfg(all(feature = "taffy_tree", feature = "std"))]
+pub use kamin_calc::{calc_handle, CalcScope};
 
 pub use layout::DetailedLayoutInfo;
 
@@ -191,7 +199,13 @@ mod grid_flex_fraction_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_track_sum_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox", feature = "block_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "flexbox",
+    feature = "block_layout"
+))]
 mod baseline_transport_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
@@ -200,17 +214,36 @@ mod grid_final_baseline_tests;
 #[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
 mod block_baseline_relative_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "block_layout",
+    feature = "float_layout"
+))]
 mod block_float_transfer_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "block_layout",
+    feature = "float_layout"
+))]
 mod float_context_transfer_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_outer_margin_tests;
 
-#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
+#[cfg(all(
+    test,
+    feature = "taffy_tree",
+    feature = "grid",
+    feature = "calc",
+    feature = "std"
+))]
 mod grid_calc_repeat_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_perf_contract_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_layout_info_tests;
