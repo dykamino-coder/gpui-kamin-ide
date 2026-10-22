@@ -1,5 +1,5 @@
 //! Computed::apply_border, продолжение цепочки: border-shape, corner-shape*, corner-*-shape,
-//! радиусы углов. Ветви в исходном порядке; не совпавший ключ уходит в apply_border_sides_outline.
+//! радиусы углов. Ветви в исходном порядке; не совпавший ключ — не свойство группы.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -179,7 +179,7 @@ impl Computed {
             | "border-bottom-right-radius"
             | "border-bottom-left-radius" => self.apply_radius_corner(key, v, vcx),
 
-            _ => self.apply_border_sides_outline(key, v, hit, vcx),
+            _ => *hit = false,
         }
     }
 }

@@ -115,23 +115,44 @@ impl Computed {
                 }
             }
         }
-        // Logical border shorthands/longhands go through the ordinary physical parser.
-        let borders = logical.border.clone();
-        for (raw, side) in [
-            (&borders[0], bs),
-            (&borders[1], ie),
-            (&borders[2], be),
-            (&borders[3], is),
-        ] {
-            if let Some(v) = raw {
-                self.apply_border_shorthand(v, Some(side as usize), vcx);
+        // Логическая кромка ложится на физическую сторону обработчиком
+        // физического свойства — с местом своего объявления в каскаде.
+        const NAMES: [[&str; 4]; 3] = [
+            [
+                "border-top-width",
+                "border-right-width",
+                "border-bottom-width",
+                "border-left-width",
+            ],
+            [
+                "border-top-style",
+                "border-right-style",
+                "border-bottom-style",
+                "border-left-style",
+            ],
+            [
+                "border-top-color",
+                "border-right-color",
+                "border-bottom-color",
+                "border-left-color",
+            ],
+        ];
+        let current = self.decl_order;
+        for (part, names) in NAMES.iter().enumerate() {
+            for (lside, side) in [is, ie, bs, be].into_iter().enumerate() {
+                let side = side as usize;
+                let Some((order, value)) = &logical.border[part][lside] else {
+                    continue;
+                };
+                if *order < self.side_order.border[part][side] {
+                    continue;
+                }
+                self.decl_order = *order;
+                self.apply_one(names[side], value, vcx);
             }
         }
-        let phys = [bs, ie, be, is];
-        for (side, prop, v) in &logical.border_long {
-            let name = ["top", "right", "bottom", "left"][phys[*side as usize] as usize];
-            self.apply_one(&format!("border-{name}-{prop}"), v, vcx);
-        }
+        self.decl_order = current;
+        self.settle_border_widths();
     }
 
     /// Физический размер `i` (width, height, min-width, min-height,

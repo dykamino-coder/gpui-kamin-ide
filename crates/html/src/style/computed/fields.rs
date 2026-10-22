@@ -224,13 +224,14 @@ pub struct Computed {
     /// сбрасывает цвет в прозрачный (§2.1), и подставлять поверх него
     /// служебную заливку нельзя.
     pub bg_explicit: bool,
-    /// `border: inherit` / `padding: inherit`: свойства не наследуемые, слово
-    /// копирует вычисленное значение родителя — оно известно только при
-    /// слиянии стилей.
+    /// Прежний признак `border: inherit` целиком: сокращение теперь
+    /// раскрывается разбором в длинные свойства, и признак не ставится
+    /// (его ещё читает табличный код).
     pub(crate) border_inherit: bool,
-    /// То же по СТОРОНАМ и по частям рамки: `border-width: inherit`,
-    /// `border-bottom: inherit`, `border-left-color: inherit`. Порядок сторон
-    /// всюду один: верх, право, низ, лево.
+    /// `inherit` длинных свойств рамки по СТОРОНАМ и частям:
+    /// `border-left-width`, `-style`, `-color`. Свойства не наследуемые, слово
+    /// копирует вычисленное значение родителя — оно известно только при
+    /// слиянии стилей. Порядок сторон всюду один: верх, право, низ, лево.
     pub(crate) border_inherit_w: [bool; 4],
     pub(crate) border_inherit_s: [bool; 4],
     pub(crate) border_inherit_c: [bool; 4],
@@ -347,16 +348,6 @@ pub struct Computed {
     /// вычисляется в ноль (`descendant-static-position-001`: коробка выходила
     /// шире на заданную, но не нарисованную рамку).
     pub border_visible: [Option<bool>; 4],
-    /// `border-color: currentColor` — цвет берётся из `color` того же узла.
-    ///
-    /// Внутренний флаг каскада, а не свойство отрисовки: к моменту выхода из
-    /// `resolve` он уже подставлен в `border_color`.
-    pub(crate) border_color_is_current: bool,
-    /// Сторона получила `currentColor` из БОКОВОГО сокращения без цвета
-    /// (`border-top: solid 1em`) поверх общего `border-color`, пришедшего
-    /// раньше. Внутренний флаг каскада: цвет текста в `border_colors`
-    /// подставляет `style::cascade::inherit`, когда тот известен.
-    pub(crate) border_side_current: [bool; 4],
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
     /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка

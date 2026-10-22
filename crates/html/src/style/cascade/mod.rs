@@ -65,11 +65,6 @@ impl Computed {
     ) {
         let map = CascadeMap::collect(matched, inline);
         self.apply_map(&map, vars, cx, vcx);
-        // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
-        // подставляем уже после того, как цвет стал известен.
-        if self.border_color_is_current {
-            self.border_color = self.color;
-        }
         // Окраска фильтром здесь НЕ делается: результат оседал в
         // долгоживущем стиле узла, и покадровая окраска в `style::cascade::inherit`
         // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
@@ -175,8 +170,12 @@ impl Computed {
             CssWide::Initial => false,
             CssWide::Unset | CssWide::Revert | CssWide::RevertLayer => id.inherited(),
         };
+        // Наследование — по реестру полей `inherited_value`, если свойство
+        // в нём есть, иначе признаком обработчика.
         if inherit {
-            self.apply_property(id.name(), "inherit", vcx);
+            if !inherited_value::note(self, id.name(), "inherit", vcx) {
+                self.apply_property(id.name(), "inherit", vcx);
+            }
         } else {
             self.apply_one(id.name(), id.initial(), vcx);
         }

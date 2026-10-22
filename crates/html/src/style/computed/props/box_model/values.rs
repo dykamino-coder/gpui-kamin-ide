@@ -16,7 +16,10 @@ impl Computed {
         match (id.grammar(), id.slot()) {
             (Grammar::Size, Slot::Physical(_, i)) => physical_size_ok(i, value, vcx),
             (Grammar::Size, Slot::Logical(_, i)) => logical_size_ok(i, value, vcx),
-            (grammar, _) => side_len(grammar, value, vcx).is_some(),
+            (Grammar::Margin | Grammar::Padding | Grammar::Inset, _) => {
+                side_len(id.grammar(), value, vcx).is_some()
+            }
+            _ => crate::style::computed::props::border::values::accepts(id, value, vcx),
         }
     }
 }
@@ -53,7 +56,7 @@ pub(crate) fn side_len(grammar: Grammar, value: &str, vcx: ValueCx<'_>) -> Optio
         Grammar::Margin if lower.contains("anchor(") => None,
         Grammar::Margin => fold_zero_percentage(mixed(), vcx),
         Grammar::Inset => mixed(),
-        Grammar::Size => None,
+        _ => None,
     }
 }
 
