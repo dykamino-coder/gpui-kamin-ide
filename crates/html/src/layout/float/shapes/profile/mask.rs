@@ -61,7 +61,7 @@ pub(super) fn shape_mask(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cols}" height="{rows}" viewBox="0 0 {cols} {rows}"><path d="{}" fill="#000000" fill-rule="{}"/></svg>"##,
             d.0, d.1
         );
-        let img = crate::svg::raster::rasterize(&markup, cols as f32, rows as f32)?;
+        let img = crate::svg::raster::rasterize(&markup, cols as f32, rows as f32, vcx)?;
         let bytes = img.as_bytes(0)?;
         let sz = img.size(0);
         let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
@@ -94,7 +94,7 @@ pub(super) fn shape_mask(
     }
     // Картинка или градиент: альфа в content-box.
     if let Some(image) = image {
-        let src = computed_source(image, true)?.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx)?;
+        let src = computed_source(image, true, vcx)?.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx)?;
         let bytes = src.as_bytes(0)?;
         let sz = src.size(0);
         let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);

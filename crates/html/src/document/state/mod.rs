@@ -107,6 +107,7 @@ impl DocState {
     /// Начало сборки кадра хостом: область кадра прошлого, уже покрашенного
     /// кадра больше никто не читает — сбросить.
     pub(crate) fn begin_frame(&self) {
+        self.images.borrow_mut().revalidate();
         self.vertical_measures.begin_frame();
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());

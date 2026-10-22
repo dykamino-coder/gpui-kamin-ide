@@ -20,3 +20,15 @@ pub(crate) mod vector;
 mod tests;
 #[cfg(test)]
 pub(crate) mod tests_support;
+
+pub(crate) mod identity;
+pub(crate) mod pixels;
+pub(crate) mod svg_fragment;
+pub(crate) mod svg_links;
+pub(crate) mod svg_raster;
+pub(crate) mod viewport;
+
+#[cfg(test)]
+pub(crate) mod fixtures;
+
+pub(crate) mod resample;

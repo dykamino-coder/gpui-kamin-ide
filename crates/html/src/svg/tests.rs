@@ -1,6 +1,6 @@
 //! Проверки контракта родительского модуля; вынесены для ограничения размера файлов.
 
-use super::raster::rasterize;
+use super::raster::geometry as rasterize;
 use super::serialize::serialize;
 use super::*;
 use crate::dom::parse;

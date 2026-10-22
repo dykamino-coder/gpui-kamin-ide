@@ -45,6 +45,8 @@ impl Default for DecodeOptions {
 pub(crate) enum PixelFormat {
     /// Четыре байта на точку: R, G, B, A.
     Rgba8,
+    /// Четыре байта на точку: B, G, R, A.
+    Bgra8,
 }
 
 /// Как альфа связана с цветом.
@@ -52,6 +54,8 @@ pub(crate) enum PixelFormat {
 pub(crate) enum AlphaMode {
     /// Цвет не умножен на альфу (так его отдают кодеки).
     Straight,
+    /// Цвет умножен на альфу (выход resvg).
+    Premultiplied,
 }
 
 /// В каком пространстве записаны цвета точек.

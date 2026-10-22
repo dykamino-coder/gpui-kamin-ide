@@ -8,7 +8,7 @@
 use super::len_px;
 use crate::style::computed::{Gradient, GradientShape, RadialExtent, RadialSize};
 
-pub(super) enum Geometry {
+pub(crate) enum Geometry {
     Linear {
         direction: (f32, f32),
         length: f32,
@@ -22,7 +22,7 @@ pub(super) enum Geometry {
 use crate::document::state::ValueCx;
 
 impl Geometry {
-    pub(super) fn new(
+    pub(crate) fn new(
         g: &Gradient,
         size: (f32, f32),
         angle: f32,
@@ -101,14 +101,14 @@ impl Geometry {
         Some(Self::Radial { center, radii })
     }
 
-    pub(super) fn length(&self) -> f32 {
+    pub(crate) fn length(&self) -> f32 {
         match self {
             Self::Linear { length, .. } => *length,
             Self::Radial { radii, .. } => radii.0,
         }
     }
 
-    pub(super) fn at(&self, point: (f32, f32), size: (f32, f32)) -> f32 {
+    pub(crate) fn at(&self, point: (f32, f32), size: (f32, f32)) -> f32 {
         match self {
             Self::Linear {
                 direction: (dx, dy),

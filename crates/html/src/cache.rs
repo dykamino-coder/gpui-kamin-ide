@@ -40,6 +40,7 @@ struct Store<K, V> {
 pub(crate) struct BoundedCache<K, V> {
     budget: usize,
     weigh: fn(&V) -> usize,
+    key_weight: fn(&K) -> usize,
     store: Mutex<Option<Store<K, V>>>,
 }
 
@@ -49,8 +50,15 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         Self {
             budget,
             weigh,
+            key_weight: |_| 0,
             store: Mutex::new(None),
         }
+    }
+
+    /// Учитывать выделенную память ключа (разметка, удерживаемые CPU-точки).
+    pub(crate) const fn with_key_weight(mut self, weigh: fn(&K) -> usize) -> Self {
+        self.key_weight = weigh;
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<Store<K, V>>> {
@@ -75,7 +83,9 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
 
     /// Положить запись; при превышении бюджета вытесняются самые давние записи.
     pub(crate) fn insert(&self, key: K, value: V) {
-        let weight = (self.weigh)(&value).saturating_add(ENTRY_OVERHEAD + size_of::<K>());
+        let weight = (self.weigh)(&value)
+            .saturating_add((self.key_weight)(&key))
+            .saturating_add(ENTRY_OVERHEAD + size_of::<K>());
         if weight > self.budget {
             return;
         }

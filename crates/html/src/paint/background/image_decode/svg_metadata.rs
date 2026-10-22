@@ -2,9 +2,7 @@
 //! факты самой картинки (`resources::images::vector`).
 
 use crate::document::state::ValueCx;
-pub(super) use crate::resources::images::vector::degenerate_viewbox;
 use crate::resources::images::vector::root_tag;
-pub(crate) use crate::resources::images::vector::svg_size;
 
 /// Фон КАНВЫ рисунка: `style="background: …"` на корневом `<svg>`.
 ///

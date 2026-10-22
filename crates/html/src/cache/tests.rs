@@ -70,6 +70,18 @@ fn replacing_a_key_keeps_the_byte_count_exact() {
 const MIB_TEST: usize = super::MIB;
 
 #[test]
+fn allocated_key_bytes_are_budgeted_even_for_negative_results() {
+    let cache: BoundedCache<String, Option<()>> =
+        BoundedCache::new(512, |_| 0).with_key_weight(String::len);
+    cache.insert("x".repeat(300), None);
+    cache.insert("y".repeat(300), None);
+    assert_eq!(cache.len(), 1);
+    assert_eq!(cache.bytes(), 300 + ENTRY_OVERHEAD + size_of::<String>());
+    cache.insert("z".repeat(600), None);
+    assert_eq!(cache.len(), 1);
+}
+
+#[test]
 fn borrowed_lookup_and_hinted_keys() {
     let names: BoundedCache<String, Vec<u8>> = BoundedCache::new(MIB_TEST, len);
     names.insert("a.png".to_owned(), vec![1]);

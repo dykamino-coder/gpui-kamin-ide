@@ -34,7 +34,7 @@ pub(super) fn paint_body(
         && layers.iter().all(|image| {
             matches!(image, crate::style::computed::ImageSource::Url(url)
                 if !url.contains('#') && !url.starts_with("data:") && !url.contains("://") && !url.contains('?')
-                    && group.mask_image_source(image).is_none())
+                    && group.mask_image_source(image, vcx).is_none())
         })
     {
         return;

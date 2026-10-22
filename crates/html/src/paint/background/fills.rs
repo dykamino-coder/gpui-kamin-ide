@@ -39,9 +39,9 @@ pub(crate) fn border_paint(
 /// Единственный цвет растра, если все его точки одинаковы и непрозрачны.
 pub(super) fn flat_colour(
     src: &crate::style::computed::ImageSource,
-    _vcx: ValueCx<'_>,
+    vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
-    let image = match computed_source(src, true)? {
+    let image = match computed_source(src, true, vcx)? {
         Source::Raster(image) => image,
         Source::Gradient { image } => {
             let (gradient, _) = image.gradient()?;
@@ -63,7 +63,7 @@ pub(super) fn flat_colour(
         }
         _ => return None,
     };
-    let bytes = image.as_bytes(0)?;
+    let bytes = &image.bytes;
     let first = bytes.get(0..4)?;
     if first[3] != 255 || !bytes.chunks_exact(4).all(|p| p == first) {
         return None;
@@ -80,12 +80,8 @@ pub(super) fn flat_colour(
 pub(super) use crate::style::computed::flat_background::flat_fill;
 
 impl crate::style::computed::flat_background::BackgroundImageValues for Computed {
-    fn image_available(
-        &self,
-        raw: &crate::style::computed::ImageSource,
-        _vcx: ValueCx<'_>,
-    ) -> bool {
-        computed_source(raw, self.image_orient_none != Some(true)).is_some()
+    fn image_available(&self, raw: &crate::style::computed::ImageSource, vcx: ValueCx<'_>) -> bool {
+        computed_source(raw, self.image_orient_none != Some(true), vcx).is_some()
     }
 
     fn uniform_image_color(

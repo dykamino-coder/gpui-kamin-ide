@@ -22,6 +22,7 @@ enum Locator {
     /// Адрес `data:` целиком: содержимое — в самом адресе.
     Data,
     /// Файл: `file:` с процентным декодированием или локальный путь как есть.
+    /// Исправление URI-семантики: <https://www.rfc-editor.org/rfc/rfc8089.html#section-4>.
     File(PathBuf),
     /// Схема, для которой бэкенда нет (`http:`, `blob:` …).
     Unsupported(String),
@@ -95,6 +96,21 @@ impl ResourceUrl {
     /// Канонический текст адреса (без фрагмента).
     pub(crate) fn as_str(&self) -> &str {
         &self.text
+    }
+
+    /// База ссылок внутри ресурса; локальный путь превращается в `file:`.
+    pub(crate) fn base_url(&self) -> Option<Url> {
+        match &self.locator {
+            Locator::File(path) => {
+                let absolute = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    std::env::current_dir().ok()?.join(path)
+                };
+                Url::from_file_path(absolute).ok()
+            }
+            _ => Url::parse(&self.text).ok(),
+        }
     }
 
     /// Схема адреса для политики доступа: `data`, `file` или иная.

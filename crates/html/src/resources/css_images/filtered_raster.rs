@@ -5,15 +5,24 @@
 //! `image-rendering: pixelated` — ближайшей точкой; результат кэшируется.
 
 use super::Source;
+use crate::cache::{BoundedCache, Hinted, MIB, hint};
 use crate::document::state::ValueCx;
-use crate::paint::cache::{BoundedCache, Hinted, MIB, hint, optional_image_bytes};
-use gpui::RenderImage;
+use crate::resources::images::pixels::optional_bytes as optional_image_bytes;
+use crate::resources::images::types::CpuRaster;
 use std::sync::Arc;
 
-type Key = Hinted<(usize, crate::style::computed::ImageFilter, u32, u32, bool)>;
+use crate::resources::images::identity::RasterIdentity;
+type Key = Hinted<(
+    RasterIdentity,
+    crate::style::computed::ImageFilter,
+    u32,
+    u32,
+    bool,
+)>;
 /// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
-static CACHE: BoundedCache<Key, Option<Arc<RenderImage>>> =
-    BoundedCache::new(64 * MIB, optional_image_bytes);
+static CACHE: BoundedCache<Key, Option<Arc<CpuRaster>>> =
+    BoundedCache::new(64 * MIB, optional_image_bytes)
+        .with_key_weight(|k: &Key| k.key.0.0.bytes.len());
 
 pub(super) fn raster(
     input: &Source,
@@ -21,7 +30,7 @@ pub(super) fn raster(
     tile: (f32, f32),
     pixelated: bool,
     vcx: ValueCx<'_>,
-) -> Option<Arc<RenderImage>> {
+) -> Option<Arc<CpuRaster>> {
     if tile.0 <= 0.0 || tile.1 <= 0.0 {
         return None;
     }
@@ -34,16 +43,15 @@ pub(super) fn raster(
         _ => input.sampled_raster(tile, pixelated, vcx),
     }?;
     let key = Hinted {
-        hint: hint((image.id.0, w, h, pixelated)),
-        key: (image.id.0, list.clone(), w, h, pixelated),
+        hint: hint((std::sync::Arc::as_ptr(&image) as usize, w, h, pixelated)),
+        key: (RasterIdentity(image.clone()), list.clone(), w, h, pixelated),
     };
     if list.cacheable()
         && let Some(hit) = CACHE.get(&key)
     {
         return hit;
     }
-    let size = image.size(0);
-    let (iw, ih) = (size.width.0 as u32, size.height.0 as u32);
+    let (iw, ih) = (image.width, image.height);
     // CSS Images 3 image-rendering:auto leaves sampling to the UA.
     // Integral magnification can preserve whole texels and binary coverage.
     let integral =
@@ -56,16 +64,16 @@ pub(super) fn raster(
     result
 }
 
-fn resize(image: &Arc<RenderImage>, w: u32, h: u32, nearest: bool) -> Option<Arc<RenderImage>> {
-    let s = image.size(0);
-    let (iw, ih) = (s.width.0 as usize, s.height.0 as usize);
+fn resize(image: &Arc<CpuRaster>, w: u32, h: u32, nearest: bool) -> Option<Arc<CpuRaster>> {
+    let s = image;
+    let (iw, ih) = (s.width as usize, s.height as usize);
     if (iw, ih) == (w as usize, h as usize) {
         return Some(image.clone());
     }
     if iw == 0 || ih == 0 {
         return None;
     }
-    let bytes = image.as_bytes(0)?;
+    let bytes = &image.bytes;
     let mut out = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         let fy = (y as f32 + 0.5) * ih as f32 / h as f32 - 0.5;
@@ -108,7 +116,7 @@ fn resize(image: &Arc<RenderImage>, w: u32, h: u32, nearest: bool) -> Option<Arc
             out.push(alpha.round() as u8);
         }
     }
-    gpui::bgra_bytes_to_image(w, h, out)
+    crate::resources::images::pixels::bgra(w, h, out)
 }
 
 #[cfg(test)]
@@ -120,7 +128,8 @@ mod tests {
     fn concrete_size_keeps_shadow_lengths_in_css_pixels() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let original =
+            crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
         let input = Source::Raster(original);
         let filtered = Source::Filtered {
             image: Box::new(input),
@@ -130,17 +139,18 @@ mod tests {
         let result = filtered.sampled_raster((10.0, 10.0), true, vcx).unwrap();
         assert!(
             result
-                .as_bytes(0)
-                .unwrap()
+                .bytes
+                .as_ref()
                 .chunks_exact(4)
                 .all(|p| p == [0, 128, 0, 255])
         );
     }
     #[test]
     fn smooth_scaling_preserves_color_beside_transparency() {
-        let input = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let input =
+            crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
         let result = resize(&input, 4, 1, false).unwrap();
-        let pixels = result.as_bytes(0).unwrap();
+        let pixels = result.bytes.as_ref();
         assert_eq!(&pixels[4..8], &[0, 128, 0, 191]);
         assert_eq!(&pixels[8..12], &[0, 128, 0, 64]);
     }
@@ -149,7 +159,8 @@ mod tests {
     fn allocation_limit_preserves_css_shadow_offset() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let original = gpui::bgra_bytes_to_image(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
+        let original =
+            crate::resources::images::pixels::bgra(2, 1, vec![0, 128, 0, 255, 0, 0, 0, 0]).unwrap();
         let input = Source::Raster(original);
         let result = raster(
             &input,
@@ -159,11 +170,11 @@ mod tests {
             vcx,
         )
         .unwrap();
-        assert_eq!(result.size(0).width.0, 2048);
+        assert_eq!(result.width, 2048);
         assert!(
             result
-                .as_bytes(0)
-                .unwrap()
+                .bytes
+                .as_ref()
                 .chunks_exact(4)
                 .all(|p| p == [0, 128, 0, 255])
         );
@@ -180,6 +191,7 @@ mod tests {
             )
             .unwrap(),
             true,
+            vcx,
         )
         .unwrap();
         assert!(source.intrinsic().w.is_none());
@@ -194,10 +206,10 @@ mod tests {
         )
         .unwrap();
         for (a, b) in filtered
-            .as_bytes(0)
-            .unwrap()
+            .bytes
+            .as_ref()
             .chunks_exact(4)
-            .zip(original.as_bytes(0).unwrap().chunks_exact(4))
+            .zip(original.bytes.as_ref().chunks_exact(4))
         {
             assert_eq!(a[3], b[3]);
             for c in 0..3 {

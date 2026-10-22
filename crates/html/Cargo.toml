@@ -62,6 +62,9 @@ image = { version = "0.25", default-features = false, features = [
   "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp",
 ] }
 
+# Тот же CPU-растеризатор, что у GPUI; шрифты передаёт документ.
+resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
+
 [dev-dependencies]
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
 raw-window-handle = "0.6"

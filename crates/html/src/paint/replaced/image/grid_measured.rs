@@ -63,7 +63,7 @@ pub(super) fn measured(
     {
         return None;
     }
-    let source = crate::paint::background::element_source(source, style)?;
+    let source = crate::paint::background::element_source(source, style, vcx)?;
     let natural = source.intrinsic();
     // Decorated vectors still need concrete-size rasterization in the existing
     // holder pipeline: the measured leaf does not transfer their content-box

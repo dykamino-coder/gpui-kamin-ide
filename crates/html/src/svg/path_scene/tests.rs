@@ -7,7 +7,7 @@ fn assert_pixels(scene: &Scene, body: &str) {
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}">{body}</svg>"#,
         scene.width, scene.height
     );
-    let xml = crate::svg::raster::rasterize(&text, scene.width, scene.height).unwrap();
+    let xml = crate::svg::raster::geometry(&text, scene.width, scene.height).unwrap();
     let typed = scene.rasterize().unwrap();
     let (actual, expected) = (typed.as_bytes(0).unwrap(), xml.as_bytes(0).unwrap());
     assert_eq!(actual.len(), expected.len(), "{text}");
