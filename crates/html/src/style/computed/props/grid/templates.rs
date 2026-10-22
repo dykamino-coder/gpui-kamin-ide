@@ -1,5 +1,5 @@
-//! Computed::apply_grid, продолжение цепочки: сокращения grid/grid-template, grid-lanes, пороги
-//! лунок, grid-*-gap. Ветви в исходном порядке; не совпавший ключ уходит в apply_grid_placement.
+//! Computed::apply_grid, продолжение цепочки: grid-template-columns, grid-lanes, пороги лунок
+//! (сокращения grid/grid-template и устаревшие grid-*-gap раскрыты разбором блока). Ветви в исходном порядке; не совпавший ключ уходит в apply_grid_placement.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -32,56 +32,17 @@ impl Computed {
                 self.subgrid_cols = v.contains("subgrid");
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_col_line_names = parse_line_names(v);
-                self.grid_cols = count_tracks(v);
+                // `none` — ни одной явной дорожки (начальное значение).
+                self.grid_cols = (v != "none").then(|| count_tracks(v)).flatten();
                 self.grid_tracks = tracks;
+                // Список без авто-повтора: поля повтора (ветвь `apply_grid`)
+                // принадлежат этому же свойству и сбрасываются.
+                self.grid_auto_fill_min = None;
+                self.grid_auto_fill_tracks = Vec::new();
+                self.auto_repeat_body_cols = None;
+                self.auto_repeat_cols = None;
                 if self.subgrid_cols || v == "none" {
                     self.accept_declaration();
-                }
-            }
-            // `grid: <ряды> / <колонки>` и `grid-template: <ряды> / <колонки>`
-            // — самая частая короткая запись сетки в тестах и в вёрстке.
-            // Формы с `auto-flow` описывают неявные дорожки: там сторона со
-            // словом задаёт направление автопотока, а вторая — шаблон.
-            "grid" | "grid-template" => {
-                let (rows, cols) = split_slash(v);
-                if !shorthand_tracks_valid(rows, vcx)
-                    || (!cols.is_empty() && !shorthand_tracks_valid(cols, vcx))
-                {
-                    return;
-                }
-                // `grid: subgrid / subgrid`, `grid-template: subgrid / 20% 30%`
-                // — слово стоит на СВОЕЙ стороне косой черты, и ось у него
-                // своя. Без косой черты `split_slash` кладёт всё в `rows`, что
-                // и верно: сокращение начинается с рядов. Сокращение задаёт
-                // обе оси заново (см. `grid-template-columns`).
-                self.subgrid_rows = rows.contains("subgrid");
-                self.subgrid_cols = cols.contains("subgrid");
-                self.subgrid = self.subgrid_cols || self.subgrid_rows;
-                match (rows.contains("auto-flow"), cols.contains("auto-flow")) {
-                    (true, _) => {
-                        self.grid_auto_flow = Some(if rows.contains("dense") {
-                            AutoFlow::RowDense
-                        } else {
-                            AutoFlow::Row
-                        });
-                        self.apply_one("grid-auto-rows", strip_auto_flow(rows), vcx);
-                        self.apply_one("grid-template-columns", cols, vcx);
-                    }
-                    (_, true) => {
-                        self.grid_auto_flow = Some(if cols.contains("dense") {
-                            AutoFlow::ColDense
-                        } else {
-                            AutoFlow::Col
-                        });
-                        self.apply_one("grid-template-rows", rows, vcx);
-                        self.apply_one("grid-auto-columns", strip_auto_flow(cols), vcx);
-                    }
-                    _ => {
-                        self.apply_one("grid-template-rows", rows, vcx);
-                        if !cols.is_empty() {
-                            self.apply_one("grid-template-columns", cols, vcx);
-                        }
-                    }
                 }
             }
             // Значение бывает составным: `row fill-reverse`, `column
@@ -128,9 +89,6 @@ impl Computed {
                 self.lanes_fill_reverse = v.split_whitespace().any(|w| w == "fill-reverse");
                 self.lanes_track_reverse = v.split_whitespace().any(|w| w == "track-reverse");
             }
-            "grid-gap" => self.apply_one("gap", v, vcx),
-            "grid-row-gap" => self.apply_one("row-gap", v, vcx),
-            "grid-column-gap" => self.apply_one("column-gap", v, vcx),
             _ => self.apply_grid_placement(key, v, hit, vcx),
         }
     }
@@ -142,30 +100,4 @@ pub(super) fn template_tracks(v: &str, vcx: ValueCx<'_>) -> Option<Option<Vec<Tr
     } else {
         parse_tracks(v, vcx).map(Some)
     }
-}
-
-// Сторона auto-flow без размера означает auto. Строки областей сами не дорожки.
-fn shorthand_tracks_valid(v: &str, vcx: ValueCx<'_>) -> bool {
-    let tracks = strip_auto_flow(v);
-    if tracks.is_empty() && v.contains("auto-flow") {
-        return true;
-    }
-    let mut quote = None;
-    let mut sizes = String::new();
-    let mut areas = false;
-    for c in tracks.chars() {
-        if let Some(q) = quote {
-            if c == q {
-                quote = None;
-            }
-        } else if matches!(c, '\'' | '"') {
-            quote = Some(c);
-            areas = true;
-            sizes.push(' ');
-        } else {
-            sizes.push(c);
-        }
-    }
-    quote.is_none()
-        && ((areas && sizes.trim().is_empty()) || template_tracks(&sizes, vcx).is_some())
 }

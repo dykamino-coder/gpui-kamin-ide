@@ -28,6 +28,15 @@ impl Computed {
             (Grammar::Text | Grammar::TextDecor, _) => {
                 crate::style::computed::props::text::values::accepts(id, value, vcx)
             }
+            (Grammar::Flex | Grammar::Align | Grammar::Gap, _) => {
+                crate::style::computed::props::display_flex::values::accepts(id, value, vcx)
+            }
+            (Grammar::Grid, _) => {
+                crate::style::computed::props::grid::values::accepts(id, value, vcx)
+            }
+            (Grammar::Multicol | Grammar::GapRule, _) => {
+                crate::style::computed::props::multicol::values::accepts(id, value, vcx)
+            }
             _ => crate::style::computed::props::border::values::accepts(id, value, vcx),
         }
     }

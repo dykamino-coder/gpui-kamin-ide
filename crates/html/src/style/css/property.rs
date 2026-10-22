@@ -7,13 +7,18 @@
 
 mod font_shorthands;
 mod grammar;
+mod grid_shorthands;
 mod layer_shorthands;
 #[cfg(test)]
 mod layer_tests;
 mod layer_words;
+mod layout_shorthands;
+#[cfg(test)]
+mod layout_tests;
 mod line_shorthands;
 mod longhands;
 mod mask_shorthands;
+mod rule_shorthands;
 mod shorthand_ids;
 mod shorthands;
 #[cfg(test)]
@@ -121,6 +126,31 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
         "-webkit-text-decoration-line" => "text-decoration-line",
         "-webkit-text-decoration-style" => "text-decoration-style",
         "-webkit-text-decoration-color" => "text-decoration-color",
+        // css-align-3 §8.4 / css-gaps-1: «legacy name aliases».
+        "grid-gap" => "gap",
+        "grid-row-gap" => "row-gap",
+        "grid-column-gap" => "column-gap",
+        "-webkit-flex" => "flex",
+        "-webkit-flex-basis" => "flex-basis",
+        "-webkit-flex-direction" => "flex-direction",
+        "-webkit-flex-flow" => "flex-flow",
+        "-webkit-flex-grow" => "flex-grow",
+        "-webkit-flex-shrink" => "flex-shrink",
+        "-webkit-flex-wrap" => "flex-wrap",
+        "-webkit-align-content" => "align-content",
+        "-webkit-align-items" => "align-items",
+        "-webkit-align-self" => "align-self",
+        "-webkit-justify-content" => "justify-content",
+        "-webkit-order" => "order",
+        "-webkit-column-count" => "column-count",
+        "-webkit-column-gap" => "column-gap",
+        "-webkit-column-rule" => "column-rule",
+        "-webkit-column-rule-color" => "column-rule-color",
+        "-webkit-column-rule-style" => "column-rule-style",
+        "-webkit-column-rule-width" => "column-rule-width",
+        "-webkit-column-span" => "column-span",
+        "-webkit-column-width" => "column-width",
+        "-webkit-columns" => "columns",
         _ => return None,
     })
 }

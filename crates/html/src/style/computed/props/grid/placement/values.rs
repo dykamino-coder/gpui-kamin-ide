@@ -1,6 +1,6 @@
 //! Проверка компонентов размещения сетки до записи в Computed.
 
-pub(super) fn placement_list(v: &str, max: usize) -> bool {
+pub(in crate::style::computed::props::grid) fn placement_list(v: &str, max: usize) -> bool {
     let parts: Vec<_> = v.split('/').collect();
     parts.len() <= max
         && parts.iter().all(|p| {

@@ -1,13 +1,12 @@
 //! Таблица длинных свойств реестра: имя, начальное значение (css-box-4,
 //! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3/4,
 //! css-masking-1, css-ui-4, css-fonts-4, css-inline-3, css-text-4,
-//! css-text-decor-4),
-//! наследование, грамматика и место в логической группе (css-logical-1 §4:
+//! css-text-decor-4, css-flexbox-1, css-align-3, css-grid-2, css-multicol-2,
+//! css-gaps-1), наследование, грамматика и место в логической группе (css-logical-1 §4:
 //! логическое и физическое свойство одной стороны делят вычисленное
 //! значение).
 
 use super::Grammar;
-use crate::document::state::ValueCx;
 
 /// Логическая группа (Stylo `logical_group`): физические и логические
 /// свойства одной группы делят поля стиля.
@@ -189,36 +188,51 @@ longhands! {
     TextDecorationStyle = "text-decoration-style", "solid", false, TextDecor, N;
     TextDecorationColor = "text-decoration-color", "currentcolor", false, TextDecor, N;
     TextDecorationThickness = "text-decoration-thickness", "auto", false, TextDecor, N;
+    FlexGrow = "flex-grow", "0", false, Flex, N;
+    FlexShrink = "flex-shrink", "1", false, Flex, N;
+    FlexBasis = "flex-basis", "auto", false, Flex, N;
+    FlexDirection = "flex-direction", "row", false, Flex, N;
+    FlexWrap = "flex-wrap", "nowrap", false, Flex, N;
+    AlignContent = "align-content", "normal", false, Align, N;
+    JustifyContent = "justify-content", "normal", false, Align, N;
+    AlignItems = "align-items", "normal", false, Align, N;
+    JustifyItems = "justify-items", "legacy", false, Align, N;
+    AlignSelf = "align-self", "auto", false, Align, N;
+    JustifySelf = "justify-self", "auto", false, Align, N;
+    RowGap = "row-gap", "normal", false, Gap, N;
+    ColumnGap = "column-gap", "normal", false, Gap, N;
+    GridTemplateRows = "grid-template-rows", "none", false, Grid, N;
+    GridTemplateColumns = "grid-template-columns", "none", false, Grid, N;
+    GridTemplateAreas = "grid-template-areas", "none", false, Grid, N;
+    GridAutoRows = "grid-auto-rows", "auto", false, Grid, N;
+    GridAutoColumns = "grid-auto-columns", "auto", false, Grid, N;
+    GridAutoFlow = "grid-auto-flow", "row", false, Grid, N;
+    GridRowStart = "grid-row-start", "auto", false, Grid, N;
+    GridColumnStart = "grid-column-start", "auto", false, Grid, N;
+    GridRowEnd = "grid-row-end", "auto", false, Grid, N;
+    GridColumnEnd = "grid-column-end", "auto", false, Grid, N;
+    ColumnWidth = "column-width", "auto", false, Multicol, N;
+    ColumnCount = "column-count", "auto", false, Multicol, N;
+    ColumnHeight = "column-height", "auto", false, Multicol, N;
+    ColumnWrap = "column-wrap", "auto", false, Multicol, N;
+    ColumnRuleWidth = "column-rule-width", "medium", false, GapRule, N;
+    ColumnRuleStyle = "column-rule-style", "none", false, GapRule, N;
+    ColumnRuleColor = "column-rule-color", "currentcolor", false, GapRule, N;
+    RowRuleWidth = "row-rule-width", "medium", false, GapRule, N;
+    RowRuleStyle = "row-rule-style", "none", false, GapRule, N;
+    RowRuleColor = "row-rule-color", "currentcolor", false, GapRule, N;
+    ColumnRuleBreak = "column-rule-break", "normal", false, GapRule, N;
+    RowRuleBreak = "row-rule-break", "normal", false, GapRule, N;
+    ColumnRuleVisibilityItems = "column-rule-visibility-items", "normal", false, GapRule, N;
+    RowRuleVisibilityItems = "row-rule-visibility-items", "normal", false, GapRule, N;
+    ColumnRuleInsetCapStart = "column-rule-inset-cap-start", "0", false, GapRule, N;
+    ColumnRuleInsetCapEnd = "column-rule-inset-cap-end", "0", false, GapRule, N;
+    ColumnRuleInsetJunctionStart = "column-rule-inset-junction-start", "0", false, GapRule, N;
+    ColumnRuleInsetJunctionEnd = "column-rule-inset-junction-end", "0", false, GapRule, N;
+    RowRuleInsetCapStart = "row-rule-inset-cap-start", "0", false, GapRule, N;
+    RowRuleInsetCapEnd = "row-rule-inset-cap-end", "0", false, GapRule, N;
+    RowRuleInsetJunctionStart = "row-rule-inset-junction-start", "0", false, GapRule, N;
+    RowRuleInsetJunctionEnd = "row-rule-inset-junction-end", "0", false, GapRule, N;
 }
 
-impl LonghandId {
-    pub fn name(self) -> &'static str {
-        Self::NAMES[self as usize]
-    }
-
-    /// Начальное значение (css-cascade-5 §7.3.1) — текстом той же
-    /// грамматики, что и объявление.
-    pub fn initial(self) -> &'static str {
-        Self::INITIAL[self as usize]
-    }
-
-    /// Наследуется ли по умолчанию: решает `unset` (§7.3.3).
-    pub fn inherited(self) -> bool {
-        Self::INHERITED[self as usize]
-    }
-
-    pub fn grammar(self) -> Grammar {
-        Self::GRAMMAR[self as usize]
-    }
-
-    pub fn slot(self) -> Slot {
-        Self::SLOT[self as usize]
-    }
-
-    /// Годится ли значение (не общее слово и без подстановки) этому
-    /// свойству: негодное объявление отбрасывается разбором (CSS Syntax
-    /// §4.1.7 / css-cascade-5 §4) и в каскад не попадает.
-    pub fn accepts(self, value: &str, vcx: ValueCx<'_>) -> bool {
-        crate::style::computed::Computed::accepts_longhand(self, value, vcx)
-    }
-}
+mod info;

@@ -10,6 +10,7 @@ use crate::style::values::value::{Len, StyleColor};
 
 mod gap_rules;
 mod rule_props;
+pub(crate) mod values;
 use gap_rules::{gap_color, gap_inset, gap_list, gap_style, gap_width};
 
 impl Computed {
@@ -35,50 +36,20 @@ impl Computed {
             // отбрасывает объявление целиком): `column-count: -1` после
             // `column-count: 2` оставляет двойку. Ноль и минус невалидны.
             "column-count" => {
-                if v.trim() == "auto" {
-                    self.column_count = accept_parsed!(self, None);
-                } else if let Ok(n) = v.trim().parse::<u16>()
-                    && n > 0
-                {
-                    self.column_count = accept_parsed!(self, Some(n));
-                }
+                self.column_count = parsed_value!(self, values::column_count(v));
             }
             "column-width" => {
-                if v.trim() == "auto" {
-                    self.column_width = accept_parsed!(self, None);
-                } else if let Some(l) = Len::parse(v.trim(), vcx) {
-                    // Отрицательная и нулевая ширина колонки невалидны.
-                    if !matches!(l, Len::Px(w) if w <= 0.0) {
-                        self.column_width = accept_parsed!(self, Some(l));
-                    }
-                }
+                self.column_width = parsed_value!(self, values::column_width(v, vcx));
             }
-            // `column-height: auto | <length [0,∞]>` (css-multicol-2 §ch):
-            // отрицательная невалидна и не затирает прежнее; ноль — законная
-            // высота (`columns: 2 / 0`, `column-height-021…023`).
+            // `column-height: auto | <length [0,∞]>` (css-multicol-2 §ch).
             "column-height" => {
-                if v.trim() == "auto" {
-                    self.column_height = accept_parsed!(self, None);
-                } else if let Some(l) = Len::parse(v.trim(), vcx)
-                    && !matches!(l, Len::Px(h) if h < 0.0)
-                {
-                    self.column_height = accept_parsed!(self, Some(l));
-                }
+                self.column_height = parsed_value!(self, values::column_height(v, vcx));
             }
             // `column-wrap: auto | nowrap | wrap` (css-multicol-2 §cwr);
             // `auto` — отсутствие значения, решается в укладке по
             // `column-height`.
             "column-wrap" => {
-                if matches!(v.trim(), "auto" | "wrap" | "nowrap") {
-                    self.accept_declaration();
-                } else {
-                    return;
-                }
-                self.column_wrap = match v.trim() {
-                    "wrap" => Some(true),
-                    "nowrap" => Some(false),
-                    _ => None,
-                };
+                self.column_wrap = parsed_value!(self, values::column_wrap(v));
             }
             // `page: auto | <custom-ident>` (css-page-3 §"Using named pages").
             // Имя регистрозависимо; `auto` — ключевое слово без регистра и

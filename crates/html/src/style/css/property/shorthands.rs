@@ -71,6 +71,7 @@ impl ShorthandId {
             _ => self
                 .font_longhands()
                 .or_else(|| self.text_longhands())
+                .or_else(|| self.layout_longhands())
                 .unwrap_or_else(|| self.line_longhands()),
         }
     }
@@ -109,6 +110,7 @@ impl ShorthandId {
             Self::TextWrap => super::text_shorthands::text_wrap(value)?,
             Self::TextDecoration => super::text_shorthands::text_decoration(value)?,
             Self::TextEmphasis => super::text_shorthands::text_emphasis(value)?,
+            _ if self.layout_longhands().is_some() => self.layout_parts(value, vcx)?,
             _ if self.line_parts().is_some() => self.line_components(value, vcx)?,
             _ => self.components(value)?,
         };

@@ -1,15 +1,16 @@
 //! Группа свойств `Computed::apply_one`: `display`, `flex*`,
-//! `align-*`/`justify-*`/`place-*`, `gap`, `order`. Здесь — разбор `display`
+//! `align-*`/`justify-*`, `row-gap`/`column-gap`, `order` (сокращения
+//! `flex`, `flex-flow`, `gap`, `place-*` раскрыты разбором блока). Здесь — разбор `display`
 //! во все виды коробок (флекс, сетка, лунки, табличные роли, руби, `run-in`,
 //! `flow-root`, `contents`, двухсловные записи CSS Display 3) с сопутствующими
 //! метками (`inline_display`, `ruby_role`, `col_role`…) и `flex-direction`;
-//! элементы флекса, щели и `place-*` — в подмодулях.
+//! элементы флекса и щели — в подмодулях, разбор значений реестра — `values`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::Len;
 mod flex_items;
 mod gap_place;
+pub(crate) mod values;
 
 impl Computed {
     pub(crate) fn apply_display_flex(
@@ -217,16 +218,7 @@ impl Computed {
                 self.is_caption = is_caption;
             }
             "flex-direction" => {
-                self.flex_dir = apply_parsed!(
-                    self,
-                    match v {
-                        "row" => Some(FlexDir::Row),
-                        "row-reverse" => Some(FlexDir::RowReverse),
-                        "column" => Some(FlexDir::Col),
-                        "column-reverse" => Some(FlexDir::ColReverse),
-                        _ => None,
-                    }
-                )
+                self.flex_dir = apply_parsed!(self, values::flex_direction(v));
             }
             _ => self.apply_flex_items(key, v, hit, vcx),
         }
