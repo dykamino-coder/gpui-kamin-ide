@@ -103,7 +103,8 @@ impl Hooks for DeferredPaint {
         cx: &mut App,
     ) {
         if let Some((child, mask)) = self.0.borrow_mut().as_mut() {
-            window.with_content_mask_replaced(*mask, |window| {
+            // Маска исходного слоя дополняет обрезку фрагмента, заданную при paint.
+            window.with_content_mask(Some(*mask), |window| {
                 gpui::paint_reopen(|| child.paint(window, cx));
             });
         }

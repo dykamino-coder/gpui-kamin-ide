@@ -88,7 +88,7 @@ mod marks;
 pub(super) mod pseudo;
 mod state_identity;
 pub use crate::dom::marks::Marks;
-pub(crate) use crate::dom::marks::{LeadProbe, ShapeFlow};
+pub(crate) use crate::dom::marks::{InlineCb, LeadProbe, ShapeFlow};
 pub(crate) use crate::dom::pseudo::*;
 
 /// Узел документа: либо текст, либо элемент со своими детьми.

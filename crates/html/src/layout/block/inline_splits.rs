@@ -6,6 +6,8 @@
 //! хозяина; боковые поля/рамки/отбивки хозяина делятся между первым и
 //! последним фрагментом (`box-decoration-break: slice`).
 
+mod containing;
+pub(crate) use containing::restore_containing_block;
 mod flush;
 pub(super) use flush::flush_inline;
 
@@ -102,6 +104,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 // Метка выноса: объёмный контекст и перспектива деда на блок
                 // не действуют (`Computed::hoisted_block`, `transformed`).
                 block.style.hoisted_block = true;
+                containing::hoist(&mut block, e);
                 // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
                 // Preserve inherited marker properties before hoisting the block.
                 block.style.list_style_type = block
