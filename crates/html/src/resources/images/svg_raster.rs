@@ -54,8 +54,8 @@ pub(crate) fn rasterize(
                 let bytes = images
                     .iter()
                     .find(|image| {
-                        // usvg normalizes file: URLs to platform paths before
-                        // invoking the resolver. Both spellings name one resource.
+                        // URI file: и абсолютный путь обозначают один ресурс;
+                        // декодер не должен повторно читать его по другому имени.
                         let resource = |s: &str| {
                             crate::resources::loader::ResourceUrl::resolve(s, None)
                                 .0

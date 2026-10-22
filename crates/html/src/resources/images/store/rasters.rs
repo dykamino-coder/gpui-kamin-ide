@@ -69,7 +69,9 @@ impl ImageStore {
             .into_iter()
             .filter(|(href, _)| !href.starts_with('#') && !href.starts_with("data:"))
             .map(|(href, _)| {
-                let (url, _) = self.resolve(&href);
+                // Контракт markup API не наследует базу документа. Внешний SVG
+                // привязывает href к своему адресу через svg_links::with_base.
+                let (url, _) = ResourceUrl::resolve(&href, None);
                 let allowed = self.policy.allows(&url);
                 let revision = if allowed {
                     self.services.loader.revision(&url)
