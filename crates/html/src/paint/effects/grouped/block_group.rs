@@ -49,3 +49,24 @@ pub(crate) fn block_group(
     }
     super::grouped(el, &style, vcx)
 }
+
+/// The paint group of block `e` around `container`, a container of its
+/// border box with its descendants: the same chain as a block in the flow
+/// (`position_element`): the folded shift and opacity on the container,
+/// then its transform, then the grouped effects.
+pub(crate) fn paint_group(
+    container: gpui::Div,
+    e: &Element,
+    inherited: &Computed,
+    vcx: ValueCx<'_>,
+) -> AnyElement {
+    let el = crate::paint::apply::static_shift(container, &e.style);
+    let el = crate::paint::apply::apply_opacity(el, &e.style, vcx);
+    let el = crate::paint::effects::transform::transformed(
+        gpui::IntoElement::into_any_element(el),
+        &e.style,
+        inherited,
+        vcx,
+    );
+    block_group(el, e, inherited, vcx)
+}

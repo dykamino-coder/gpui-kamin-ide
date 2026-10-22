@@ -2,13 +2,13 @@
 
 use super::{copy_kids, copy_whole_box, frag_box_div};
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::clone::clone_fragment;
 use crate::layout::grid::place_named_areas;
 use crate::layout::multicol::gap_rules::gap_rule_spec;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::transform::transformed;
-use crate::paint::stacking::fixed_cb_layer_box;
 use crate::style::cascade::inherit::inherit;
+use crate::style::computed::stacking::fixed_cb_layer_box;
 use crate::style::computed::{Computed, Display};
 use gpui::{IntoElement, ParentElement};
 
@@ -228,7 +228,10 @@ pub(super) fn build_copy(
         &mut body,
         &opts.cx,
     );
-    let el = transformed(d.children(body).into_any_element(), inner, merged, vcx);
+    let el = opts.cx.build.effects(
+        d.children(body).into_any_element(),
+        Effect::transform(inner, merged, vcx),
+    );
     // css-break-3 §5.5: graphical effects apply per fragment; clip-path and
     // masks go through the same group as on the common block path.
     if inner.clip_inset.is_some()
@@ -236,7 +239,7 @@ pub(super) fn build_copy(
         || inner.clip_polygon.is_some()
         || inner.mask_image.is_some()
     {
-        crate::paint::effects::grouped::grouped(el, inner, vcx)
+        opts.cx.build.effects(el, Effect::group(inner, vcx))
     } else {
         el
     }

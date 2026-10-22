@@ -44,6 +44,7 @@ impl BandFlow {
                         self.paint.clone(),
                         self.clamp.clone(),
                         self.positioning.clone(),
+                        self.build,
                     );
                     plan(&kids, cb, contain_floats, p)
                 })
@@ -69,6 +70,7 @@ impl BandFlow {
         // (`shape-outside-content-box-001`: атомы шире выреза).
         let at = super::holders::Placing {
             paint: &self.paint,
+            build: &self.build,
             cb,
             height: p.height,
             vert,

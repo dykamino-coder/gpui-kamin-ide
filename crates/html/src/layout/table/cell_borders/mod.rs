@@ -119,7 +119,7 @@ pub(super) fn collapsed_group_edges(
     first: bool,
     last: bool,
     inherited: &Computed,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
 ) -> gpui::Div {
@@ -168,7 +168,7 @@ pub(super) fn collapsed_group_edges(
         let side_style =
             |k: usize| g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 });
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
-        d = d.child(crate::layout::table::paint::edge_probe(
+        d = d.child(crate::layout::table::probes::edge_probe(
             table_edges.clone(),
             widths,
             colors,

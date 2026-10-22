@@ -11,6 +11,9 @@ pub(crate) mod cache;
 pub mod decorations;
 pub mod effects;
 pub mod gap_rules;
+pub(crate) mod positioned;
+pub(crate) mod replaced;
 pub mod stacking;
+pub mod table;
 
 pub mod context;

@@ -105,7 +105,7 @@ pub(super) fn table_grid_box(
 }
 
 pub(super) fn paint_table_border(
-    table_edges: Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
     e: &Element,
     bw: [f32; 4],
     outer_win: [f32; 4],
@@ -156,7 +156,7 @@ pub(super) fn paint_table_border(
             outer_win[2] / 2.0,
             outer_win[3] / 2.0,
         ];
-        outer = outer.child(crate::layout::table::paint::edge_probe(
+        outer = outer.child(crate::layout::table::probes::edge_probe(
             table_edges,
             bw,
             colors,

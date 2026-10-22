@@ -71,6 +71,16 @@ pub(crate) fn outline(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElem
     .hooked()
 }
 
+/// The phase of a formatting context around `child` (see [`flow`]).
+pub(crate) fn flow_phase(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
+    Phase {
+        owner: owner.cloned(),
+        child,
+        mode: Mode::Flow,
+    }
+    .hooked()
+}
+
 pub(crate) fn scope(child: AnyElement, owner: Option<&Rc<PaintCx>>) -> AnyElement {
     Phase {
         owner: owner.cloned(),
@@ -106,6 +116,7 @@ pub(crate) fn context(
 enum Mode {
     Outline,
     Scope,
+    Flow,
     InBand,
 }
 struct Phase {
@@ -146,6 +157,9 @@ impl Wrap for Phase {
                 scoped(self.owner.as_ref(), window, cx, |window, cx| {
                     self.child.paint(window, cx)
                 })
+            }),
+            Mode::Flow => flow(self.owner.as_ref(), window, cx, |window, cx| {
+                self.child.paint(window, cx)
             }),
             Mode::InBand => {
                 if let Some(owner) = &self.owner {

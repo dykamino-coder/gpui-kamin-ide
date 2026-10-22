@@ -1,4 +1,5 @@
 //! Значения: длины, цвета, цветовые пространства, якорные области и формы обтекания.
+pub mod basic_shape;
 pub mod color_space;
 pub(crate) mod composite;
 pub mod float_shape;

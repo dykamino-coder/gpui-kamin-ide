@@ -173,6 +173,9 @@ mod flex_fit_cross_tests;
 #[cfg(all(test, feature = "taffy_tree"))]
 mod leaf_xy_baselines_tests;
 
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod oof_borrow_tests;
+
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_abspos_fit_tests;
 
@@ -187,3 +190,27 @@ mod grid_flex_fraction_tests;
 
 #[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
 mod grid_track_sum_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "flexbox", feature = "block_layout"))]
+mod baseline_transport_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid"))]
+mod grid_final_baseline_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout"))]
+mod block_baseline_relative_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+mod block_float_transfer_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "block_layout", feature = "float_layout"))]
+mod float_context_transfer_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_outer_margin_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "grid", feature = "calc", feature = "std"))]
+mod grid_calc_repeat_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_perf_contract_tests;

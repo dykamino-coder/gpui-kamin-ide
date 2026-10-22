@@ -36,7 +36,7 @@ pub(crate) fn float_shape_of(
             Some(end) => &inner[..=end],
             None => inner,
         };
-        match crate::paint::background::shape_params(inner, bw, bh, 1.0, vcx) {
+        match crate::style::values::basic_shape::shape_params(inner, bw, bh, 1.0, vcx) {
             Some((cx, cy, rx, ry)) => {
                 // Координаты — от опорной коробки; переводим к margin-box.
                 let (cx, cy) = (cx + bx, cy + by);
@@ -100,7 +100,7 @@ pub(crate) fn float_shape_of(
             Some(crate::style::values::value::Len::Pct(k)) => (k * bw, k * bh),
             _ => (0.0, 0.0),
         };
-        let sb = crate::paint::background::ShapeBox {
+        let sb = crate::style::values::basic_shape::ShapeBox {
             mw,
             mh,
             rx: bx,
@@ -135,7 +135,7 @@ pub(crate) fn float_shape_of(
             threshold: f.style.shape_threshold.unwrap_or(0.0),
         };
         if let Some(shape) = (!vert_rl && sm <= 0.0)
-            .then(|| crate::paint::background::rounded_float(&raw, &sb, side, vcx))
+            .then(|| super::rounded_float::rounded_float(&raw, &sb, side, vcx))
             .flatten()
         {
             crate::layout::float::shapes::FloatShape::RoundedBox {
@@ -149,7 +149,7 @@ pub(crate) fn float_shape_of(
                 // правый край (так его и строит `shape_profile_block`), у
                 // `vertical-lr` — левый, то есть тот же профиль задом наперёд.
                 let pside = if line_left_bottom { -side } else { side };
-                crate::paint::background::shape_profile_block(
+                super::profile::shape_profile_block(
                     (&raw, f.style.shape_image.as_ref()),
                     &sb,
                     sm.max(0.0),
@@ -163,7 +163,7 @@ pub(crate) fn float_shape_of(
                     p
                 })
             } else {
-                crate::paint::background::shape_profile(
+                super::profile::shape_profile(
                     (&raw, f.style.shape_image.as_ref()),
                     &sb,
                     sm.max(0.0),

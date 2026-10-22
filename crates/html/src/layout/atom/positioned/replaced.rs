@@ -1,13 +1,11 @@
 //! Абсолютный замещаемый атом: держатель, слой ICB и статическое место.
 
+use super::inline_abs_paint_last;
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
-use crate::layout::replaced::image::image;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::paint::box_tree::styled::styled_div_with;
-use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
@@ -33,19 +31,25 @@ pub(super) fn replaced_abs_atom(
         copy.style.height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
+        crate::svg::element_with_html(&copy, opts)
+            .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.
         div().w_0().h_0().flex_shrink_0().into_any_element()
     } else {
-        image(&copy, &opts.cx)
+        opts.cx.build.replaced(&copy, None, &opts.cx)
     };
-    let holder = styled_div_with(e, merged, &opts.cx)
+    let holder = opts
+        .cx
+        .build
+        .styled_box(e, merged, &opts.cx)
         .child(built)
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped_replaced(holder, merged, vcx)
+        opts.cx
+            .build
+            .effects(holder, Effect::GroupReplaced { style: merged, vcx })
     } else {
         holder
     };
@@ -90,7 +94,7 @@ pub(super) fn replaced_abs_atom(
         };
     }
     let below_icb = e.style.z_index.is_some_and(|z| z < 0)
-        && !crate::paint::stacking::nested_context(inherited);
+        && !crate::style::computed::stacking::nested_context(inherited);
     // Позиционированный предок есть — слой ЕГО содержащего блока
     // (CSS 2.1 §10.1 п.4): держатель нулевого размера в строке краёв
     // блока не знает, и `bottom: 0` отсчитывался от верха строки
@@ -104,7 +108,7 @@ pub(super) fn replaced_abs_atom(
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            crate::paint::effects::underlay::Underlay::new(holder).hooked()
+            opts.cx.build.effects(holder, Effect::Underlay)
         } else {
             holder
         };

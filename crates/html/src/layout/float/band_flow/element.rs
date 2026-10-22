@@ -4,6 +4,8 @@ use super::flow_kid::intrinsic_width;
 use super::kid::Kid;
 use super::{COORD_EPS, Plan, Probe, plan};
 use crate::hooks::Hooks;
+use crate::layout::build_contracts::ChildBuild;
+use crate::layout::cx::LayoutCx;
 use crate::paint::context::PaintCx;
 use gpui::{AnyElement, App, AvailableSpace, Bounds, LayoutId, Pixels, Window, px, size};
 use std::cell::RefCell;
@@ -11,6 +13,7 @@ use std::rc::Rc;
 
 pub struct BandFlow {
     pub(super) paint: Rc<PaintCx>,
+    pub(super) build: ChildBuild,
     pub(super) kids: Rc<Vec<Kid>>,
     pub(super) plan: Rc<RefCell<Option<Plan>>>,
     pub(super) built: Vec<AnyElement>,
@@ -24,9 +27,10 @@ pub struct BandFlow {
 }
 
 impl BandFlow {
-    pub fn new(kids: Vec<Kid>, contain_floats: bool, paint: Rc<PaintCx>) -> Self {
+    pub(crate) fn new(kids: Vec<Kid>, contain_floats: bool, cx: &LayoutCx) -> Self {
         BandFlow {
-            paint,
+            paint: cx.paint.clone(),
+            build: cx.build,
             kids: Rc::new(kids),
             plan: Rc::new(RefCell::new(None)),
             built: Vec::new(),
@@ -58,6 +62,7 @@ impl Hooks for BandFlow {
         let paint = self.paint.clone();
         let clamp = self.clamp.clone();
         let positioning = self.positioning.clone();
+        let build = self.build;
         let measured = Rc::new(RefCell::new(Default::default()));
         let output = measured.clone();
         let inline_up = self.inline_up;
@@ -102,6 +107,7 @@ impl Hooks for BandFlow {
                             paint.clone(),
                             clamp.clone(),
                             positioning.clone(),
+                            build,
                         );
                         (
                             intrinsic_width(&kids, false, p),
@@ -120,6 +126,7 @@ impl Hooks for BandFlow {
                         paint.clone(),
                         clamp.clone(),
                         positioning.clone(),
+                        build,
                     );
                     intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
                 }),
@@ -146,6 +153,7 @@ impl Hooks for BandFlow {
                         paint.clone(),
                         clamp.clone(),
                         positioning.clone(),
+                        build,
                     ),
                 )
             });
@@ -184,17 +192,14 @@ impl Hooks for BandFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let owner = Some(&self.paint);
         // The host is not a stacking context (CSS 2.1 Appendix E.2): later
         // block backgrounds of the enclosing context paint before the
         // inline foreground of its runs. Paint groups keep their own
-        // boundary (`holders`).
-        crate::paint::decorations::outline_phase::flow(owner, window, cx, |window, cx| {
-            gpui::paint_reopen(|| {
-                for el in self.built.iter_mut() {
-                    el.paint(window, cx);
-                }
-            });
+        // boundary (`holders`); the outline phase wraps the host (`Effect::OutlineFlow`).
+        gpui::paint_reopen(|| {
+            for el in self.built.iter_mut() {
+                el.paint(window, cx);
+            }
         });
     }
 }

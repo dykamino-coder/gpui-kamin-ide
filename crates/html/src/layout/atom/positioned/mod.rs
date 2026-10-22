@@ -4,16 +4,15 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
-use crate::layout::replaced::image::image;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::paint::box_tree::styled::styled_div_with;
-use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
+mod paint_last;
 mod replaced;
+use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
 
 pub(super) fn static_position_atom(
@@ -52,14 +51,14 @@ pub(super) fn static_position_atom(
                     let mut unpositioned = merged.clone();
                     unpositioned.position = None;
                     svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| image(&copy, &opts.cx))
+                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
                 }
-                _ => image(&copy, &opts.cx),
+                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
             })
         }
         _ => None,
     };
-    let inner = styled_div_with(e, &merged, &opts.cx);
+    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(opts.cx.build.blocks(&e.children, &merged, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -98,9 +97,10 @@ pub(super) fn static_position_atom(
         &opts.cx,
     );
     let inner = match replaced {
-        Some(el) if merged.corner_shaped() => {
-            crate::paint::effects::grouped::grouped(el, &merged, vcx)
-        }
+        Some(el) if merged.corner_shaped() => opts.cx.build.effects(
+            el,
+            crate::layout::build_contracts::Effect::group(&merged, vcx),
+        ),
         Some(el) => el,
         None => inner.into_any_element(),
     };
@@ -171,7 +171,9 @@ pub(super) fn absolute_atom(
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place(
-        styled_div_with(e, &merged, &opts.cx)
+        opts.cx
+            .build
+            .styled_box(e, &merged, &opts.cx)
             .children(opts.cx.build.blocks(&e.children, &merged, opts))
             .into_any_element(),
         &merged,

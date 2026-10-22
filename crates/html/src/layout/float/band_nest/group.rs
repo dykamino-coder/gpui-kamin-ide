@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 /// clip that applies to the box and its descendants as one image
 /// (CSS Masking 1 §clipping-paths, §the-mask).
 pub(crate) fn paint_group(c: &Computed) -> bool {
-    crate::paint::stacking::stacking_context(c)
+    crate::style::computed::stacking::stacking_context(c)
         || c.mask_image.is_some()
         || c.clip_shape.is_some()
         || c.clip_inset.is_some()
@@ -43,20 +43,11 @@ pub(super) fn positioned_inside(nodes: &[Node]) -> bool {
 pub(super) fn group_wrap(
     c: &Element,
     inherited: &Computed,
-    vcx: crate::document::state::ValueCx<'_>,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> crate::layout::float::band_flow::GroupWrap {
-    let (c, inherited, values) = (c.clone(), inherited.clone(), vcx.keep());
+    let (c, inherited, values, build) = (c.clone(), inherited.clone(), cx.vcx().keep(), cx.build);
     std::rc::Rc::new(move |container: gpui::Div| {
-        let vcx = values.vcx();
-        let el = crate::paint::apply::static_shift(container, &c.style);
-        let el = crate::paint::apply::apply_opacity(el, &c.style, vcx);
-        let el = crate::paint::effects::transform::transformed(
-            gpui::IntoElement::into_any_element(el),
-            &c.style,
-            &inherited,
-            vcx,
-        );
-        crate::paint::effects::grouped::block_group(el, &c, &inherited, vcx)
+        build.paint_group(container, &c, &inherited, values.vcx())
     })
 }
 

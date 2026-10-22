@@ -7,7 +7,6 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -178,7 +177,7 @@ pub(crate) fn multicol_spanner_segments(
             // пути (`d.flex().flex_col()` при пустом `display`), где
             // поля детей сводит сам `blocks()` — а он с предикатом
             // `own_context_style` поле наружу больше не отдаёт.
-            let shell = styled_div_with(sp, &inner, &opts.cx);
+            let shell = opts.cx.build.styled_box(sp, &inner, &opts.cx);
             let shell =
                 if matches!(inner.display, None | Some(Display::Block)) && !inner.wm().vertical() {
                     shell.flex().flex_col()

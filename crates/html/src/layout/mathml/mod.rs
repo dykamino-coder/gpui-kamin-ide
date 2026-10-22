@@ -130,7 +130,7 @@ fn build(
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
-    let mut outer = crate::paint::box_tree::styled::styled_div_with(e, &style, &opts.cx);
+    let mut outer = opts.cx.build.styled_box(e, &style, &opts.cx);
     // The measured content owns its baseline, including an explicit zero.
     outer.style().align_items = Some(gpui::AlignItems::FlexStart);
     if e.tag == "math" && style.display == Some(crate::style::computed::Display::Block) {

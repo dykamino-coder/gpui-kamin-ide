@@ -1,6 +1,6 @@
 //! Хвост раскладки таблицы: сетка ячеек, дорожки, рамка и подписи (table_finish).
 
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::computed::Computed;
@@ -28,13 +28,19 @@ pub(super) fn table_finish(
     let vcx = opts.cx.vcx();
     let mut grid_children = std::mem::take(&mut out.under);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::CellBgPainter::new(out.cell_bgs.clone()).hooked());
+        grid_children.push(
+            opts.cx
+                .build
+                .layer(Layer::CellBackgrounds(out.cell_bgs.clone())),
+        );
     }
     grid_children.append(&mut out.cells);
     if layers.paint_layers {
-        grid_children
-            .push(crate::layout::table::paint::EdgePainter::new(out.table_edges.clone()).hooked());
+        grid_children.push(
+            opts.cx
+                .build
+                .layer(Layer::CollapsedEdges(out.table_edges.clone())),
+        );
     }
     grid_children.append(&mut out.cells_over);
     let cells = grid_children;
@@ -220,6 +226,6 @@ pub(super) fn table_finish(
         outer,
         shrink_wrap,
         &mark,
-        vcx,
+        &opts.cx,
     )
 }

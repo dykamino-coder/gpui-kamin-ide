@@ -82,7 +82,8 @@ fn clip_body(
         }
         // Хвост после функции — слово коробки (`… view-box`): отрезается.
         let func = &raw[..func_end(raw)?];
-        let (cx, cy, rx, ry) = crate::paint::background::shape_params(func, bw, bh, 1.0, vcx)?;
+        let (cx, cy, rx, ry) =
+            crate::style::values::basic_shape::shape_params(func, bw, bh, 1.0, vcx)?;
         return Some(format!(
             "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{rx}\" ry=\"{ry}\"/>",
             bx + cx,
@@ -96,7 +97,7 @@ fn clip_body(
         let (rule, body) = rest.split_once(':')?;
         (
             rule,
-            crate::paint::background::shape_to_path(body, bw, bh, vcx)?,
+            crate::style::values::basic_shape::shape_to_path(body, bw, bh, vcx)?,
         )
     } else {
         return None;
