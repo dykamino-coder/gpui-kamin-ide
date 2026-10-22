@@ -39,10 +39,6 @@ const ACCESSORS: &[(&str, &str)] = &[
     // Логические свойства ложатся на физические поля отдельным проходом
     // сборщика документа (`doc::resolve_logical`).
     ("logical", ".resolve_logical("),
-    ("side_seq", ".resolve_logical("),
-    // Каскад читает sequence при `all` reset; затем resolve_logical
-    // использует сохранённый порядок физических и логических declarations.
-    ("decl_seq", ".apply_decls("),
     // `appearance: none` is read through the form-control helper.
     ("appearance", ".appearance_none("),
     // Font-relative исходники разрешаются до создания элементов.

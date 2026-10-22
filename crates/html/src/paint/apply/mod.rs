@@ -89,7 +89,7 @@ pub fn apply_hover(d: Div, hover: &Computed) -> Div {
         if let Some(g) = &h.gradient {
             s.background = Some(gpui::Fill::Color(fill(g)));
         }
-        if let Some(bc) = h.border_color {
+        if let Some(bc) = h.used_uniform_border_color() {
             s.border_color = Some(bc.to_hsla());
         }
         if let Some(o) = h.opacity {

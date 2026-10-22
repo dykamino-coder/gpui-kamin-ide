@@ -35,15 +35,13 @@ pub(super) fn inherit_paint(
         if own.background.is_some() {
             c.background = c.background.map(|col| f.apply(col));
         }
-        if own.color.is_some() || own.filter.is_some() && parent.color.is_none() {
+        if own.declares_color() || own.filter.is_some() && parent.color.is_none() {
             c.color = c.color.map(|col| f.apply(col));
         }
-        if own.border_color.is_some() || own.border_color_is_current {
-            c.border_color = c.border_color.map(|col| f.apply(col));
-        }
-        for (side, own_side) in c.border_colors.iter_mut().zip(own.border_colors.iter()) {
-            if own_side.is_some() {
-                *side = side.map(|col| f.apply(col));
+        // `currentcolor` сторон решится уже окрашенным цветом текста.
+        for side in c.border_colors.iter_mut() {
+            if let crate::style::values::value::StyleColor::Absolute(col) = side {
+                *col = f.apply(*col);
             }
         }
         if own.gradient.is_some()
@@ -63,7 +61,9 @@ pub(super) fn inherit_paint(
         }
         if !own.shadows.is_empty() {
             for sh in c.shadows.iter_mut() {
-                sh.color = f.apply(sh.color);
+                if let crate::style::values::value::StyleColor::Absolute(col) = &mut sh.color {
+                    *col = f.apply(*col);
+                }
             }
         }
     }
@@ -77,7 +77,7 @@ pub(super) fn inherit_paint(
     // радиус = 2σ (css-backgrounds-3 §box-shadow) — в список внешних теней
     // она идёт удвоенной, чтобы после деления в `apply::apply_paint` σ
     // осталась своей.
-    if let Some(sh) = c.drop_shadow
+    if let Some(sh) = c.drop_shadow.clone()
         && c.background.is_some_and(|b| b.a >= 1.0)
     {
         let as_box = crate::style::computed::Shadow {
@@ -122,12 +122,12 @@ pub(super) fn inherit_paint(
     } else if parent.text_clip_fill.is_some() && out_of_flow {
         c.text_clip_fill = None;
         c.text_clip_raw = None;
-        if own.color.is_none() {
+        if !own.declares_color() {
             c.color = parent.text_clip_raw;
         }
     } else if let Some(fill) = parent.text_clip_fill {
         c.text_clip_fill = Some(fill);
-        if own.color.is_some() {
+        if own.declares_color() {
             c.text_clip_raw = c.color;
             c.color = Some(crate::style::values::composite::over(
                 c.color.unwrap_or(black),
@@ -148,5 +148,12 @@ pub(super) fn inherit_paint(
     c.border_collapse = own.border_collapse.or(parent.border_collapse);
     c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
     c.border_spacing = own.border_spacing.or(parent.border_spacing);
-    c.caret_color = own.caret_color.or(parent.caret_color);
+    c.caret_color = own
+        .caret_color
+        .clone()
+        .or_else(|| parent.caret_color.clone());
+    c.accent_color = own
+        .accent_color
+        .clone()
+        .or_else(|| parent.accent_color.clone());
 }

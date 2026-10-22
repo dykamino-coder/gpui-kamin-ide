@@ -1,31 +1,4 @@
-//! Разбор текста: деление по пробелам верхнего уровня, схлопывание переводов строк, экранирование в
-//! content, кавычки.
-
-/// Разбить значение по пробелам ВНЕ скобок: `rgba(0, 128, 0, .5)` —
-/// один токен, а `split_whitespace` рассыпал его, и цвет пропадал
-/// (`outline` с функциональным цветом).
-pub(in crate::style::computed) fn split_ws_top(v: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let (mut depth, mut start) = (0i32, None::<usize>);
-    for (i, ch) in v.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth = (depth - 1).max(0),
-            _ => {}
-        }
-        if ch.is_whitespace() && depth == 0 {
-            if let Some(st) = start.take() {
-                out.push(&v[st..i]);
-            }
-        } else if start.is_none() {
-            start = Some(i);
-        }
-    }
-    if let Some(st) = start {
-        out.push(&v[st..]);
-    }
-    out
-}
+//! Разбор текста: схлопывание переводов строк, экранирование в content, кавычки.
 
 /// Разрывы сегмента в строке-маркере: ряд принудительных разрывов — один
 /// пробел (css-text-3 §4.1.2, «Segment Break Transformation Rules»).

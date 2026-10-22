@@ -2,7 +2,7 @@
 
 use super::{Computed, Filter, Gradient, Len, Shadow};
 use crate::document::state::ValueCx;
-use crate::style::values::{color_space::ColorExpression, value::Color};
+use crate::style::values::{color_space::StyleColor, value::Color};
 
 mod conic;
 mod filter;
@@ -12,12 +12,12 @@ pub(crate) use conic::ConicGradient;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImageColor {
-    expression: ColorExpression,
+    expression: StyleColor,
     pub(crate) value: Color,
 }
 impl ImageColor {
     fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
-        let expression = ColorExpression::parse(raw, vcx)?;
+        let expression = StyleColor::parse(raw, vcx)?;
         let value = expression.resolve(Color {
             a: 1.0,
             ..Color::default()
@@ -55,7 +55,9 @@ pub struct ImageFilter {
     pub(crate) filter: Option<Filter>,
     pub(crate) shadow: Option<Shadow>,
     pub(crate) calls: usize,
-    pub(in crate::style::computed) shadow_current: bool,
+    /// Used color of `shadow` for the element painting the image
+    /// (`resolve_colors`; images keep used values like `ImageSource::Color`).
+    pub(crate) shadow_used: Color,
     pub(in crate::style::computed) blur_length: Option<Len>,
     pub(in crate::style::computed) shadow_value: Option<super::parse_util::ShadowValue>,
 }

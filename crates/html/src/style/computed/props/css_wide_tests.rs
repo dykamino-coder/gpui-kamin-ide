@@ -19,17 +19,7 @@ const KNOWN_GAPS: &[&str] = &[
     "align-items",
     "align-self",
     "appearance",
-    "background",
-    "background-color",
-    "background-image",
-    "border",
-    "border-bottom",
-    "border-color",
-    "border-left",
-    "border-right",
     "border-style",
-    "border-top",
-    "border-width",
     "box-shadow",
     "clip-path",
     "container-type",
@@ -46,9 +36,6 @@ const KNOWN_GAPS: &[&str] = &[
     "font-stretch",
     "grid-area",
     "list-style",
-    "mask",
-    "outline",
-    "outline-width",
     "place-items",
     "place-self",
     "text-decoration",
@@ -61,13 +48,19 @@ const KNOWN_GAPS: &[&str] = &[
 /// bookkeeping (sequence numbers and the capability-query result).
 fn fields(style: &Computed) -> Vec<String> {
     let mut style = style.clone();
-    style.decl_seq = 0;
-    style.side_seq = Default::default();
+    style.decl_order = Default::default();
+    style.side_order = Default::default();
     style.declaration_parse = Default::default();
     if let Some(logical) = style.logical.as_mut() {
-        logical.padding.seq = [0; 4];
-        logical.margin.seq = [0; 4];
-        logical.inset.seq = [0; 4];
+        logical.padding.order = [None; 4];
+        logical.margin.order = [None; 4];
+        logical.inset.order = [None; 4];
+        logical.size_order = [None; 6];
+        for part in logical.border.iter_mut() {
+            for (order, _) in part.iter_mut().flatten() {
+                *order = Default::default();
+            }
+        }
     }
     let text = format!("{style:?}");
     let inner = &text[text.find('{').unwrap_or(0) + 1..text.rfind('}').unwrap_or(text.len())];

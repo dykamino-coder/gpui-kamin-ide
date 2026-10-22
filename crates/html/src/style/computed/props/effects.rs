@@ -7,11 +7,11 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::Len;
 mod containment;
 mod filter;
 mod timing;
-mod values;
+pub(super) mod values;
 
 impl Computed {
     pub(crate) fn apply_effects(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
@@ -229,12 +229,10 @@ impl Computed {
                 }
             }
             "accent-color" => {
-                self.accent_color = parsed_value!(
-                    self,
-                    Color::parse(v, vcx)
-                        .map(Some)
-                        .or_else(|| (v == "auto").then_some(None))
-                )
+                if let Some(value) = values::inherited_color_or_auto(self, v, vcx) {
+                    self.accept_declaration();
+                    self.accent_color = value;
+                }
             }
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {

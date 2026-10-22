@@ -45,7 +45,7 @@ fn plain_span(own: &Computed) -> bool {
         && own.bg_image.is_none()
         && own.padding == none
         && own.margin == none
-        && own.border_width == none
+        && own.borders() == none
         && own.underline.is_none()
         && own.decors.is_empty()
         && own.text_shadow.is_none()

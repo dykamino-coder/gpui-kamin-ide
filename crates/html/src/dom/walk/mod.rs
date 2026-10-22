@@ -24,6 +24,7 @@ mod details_content;
 mod finish_element;
 mod pseudo_styles;
 mod style_normalization;
+mod visited_match;
 use crate::dom::walk::animation_frames::animation_frames;
 use crate::dom::walk::finish_element::finish_element;
 use crate::dom::walk::pseudo_styles::pseudo_styles;
@@ -82,7 +83,7 @@ fn build_dom_node(
                 sibs,
                 tree,
             );
-            let (mut style, own_vars, scheme, shadow) = cascade_element(
+            let (mut style, own_vars, scheme, shadow, important) = cascade_element(
                 &mut me, &attrs, &tag, handle, tree, rules, vars, path, spot, sibs, vcx,
             );
             let vcx = vcx.with_scheme(scheme);
@@ -223,7 +224,7 @@ fn build_dom_node(
                 children =
                     details_content::wrap(children, &attrs, rules, vars, &me, path, sibs, vcx);
             }
-            let anim = animation_frames(&style, frames, vars, vcx);
+            let anim = animation_frames(&style, frames, vars, important.as_ref(), vcx);
             finish_element(
                 style,
                 children,

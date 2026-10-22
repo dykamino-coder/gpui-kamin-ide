@@ -47,7 +47,7 @@ pub struct GapList<T> {
     pub tail: Vec<T>,
 }
 
-impl<T: Copy> GapList<T> {
+impl<T: Clone> GapList<T> {
     pub fn single(v: T) -> Self {
         GapList {
             lead: vec![v],
@@ -62,7 +62,7 @@ impl<T: Copy> GapList<T> {
             .first()
             .or(self.auto.first())
             .or(self.tail.first())
-            .copied()
+            .cloned()
     }
 
     /// Больше одного значения или авто-повтор: скаляра недостаточно.
@@ -74,7 +74,7 @@ impl<T: Copy> GapList<T> {
         self.lead.iter().chain(&self.auto).chain(&self.tail).any(f)
     }
 
-    pub fn map<U: Copy>(&self, f: impl Fn(&T) -> U) -> GapList<U> {
+    pub fn map<U>(&self, f: impl Fn(&T) -> U) -> GapList<U> {
         GapList {
             lead: self.lead.iter().map(&f).collect(),
             auto: self.auto.iter().map(&f).collect(),
@@ -91,23 +91,23 @@ impl<T: Copy> GapList<T> {
             }
             let i = k % m;
             return Some(if i < self.lead.len() {
-                self.lead[i]
+                self.lead[i].clone()
             } else {
-                self.tail[i - self.lead.len()]
+                self.tail[i - self.lead.len()].clone()
             });
         }
         if k < self.lead.len() {
-            return Some(self.lead[k]);
+            return Some(self.lead[k].clone());
         }
         let tail_from = n.saturating_sub(self.tail.len()).max(self.lead.len());
         if k >= tail_from {
             return self
                 .tail
                 .get(k - tail_from)
-                .copied()
-                .or(self.auto.first().copied());
+                .cloned()
+                .or(self.auto.first().cloned());
         }
-        Some(self.auto[(k - self.lead.len()) % self.auto.len()])
+        Some(self.auto[(k - self.lead.len()) % self.auto.len()].clone())
     }
 }
 

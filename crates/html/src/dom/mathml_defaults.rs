@@ -34,8 +34,9 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             sel: Selector::parse("*").expect("UA selector"),
             decls: parse_decls(css),
             order: 0,
-            origin: 0,
+            origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     if super::mathml_routing::enabled(handle) {
@@ -81,8 +82,9 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             sel: Selector::parse("*").expect("UA selector"),
             decls,
             order: 0,
-            origin: 0,
+            origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     // Core §4.1 UA sheet (Blink mathml.css:82): single-character identifiers
@@ -95,8 +97,9 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             sel: Selector::parse("*").expect("UA selector"),
             decls: parse_decls("text-transform: math-auto"),
             order: 0,
-            origin: 0,
+            origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     if hides {
@@ -105,8 +108,9 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             sel: Selector::parse("semantics > :not(:first-child)").expect("UA selector"),
             decls: parse_decls("display: none"),
             order: usize::MAX,
-            origin: 0,
+            origin: crate::style::css::Origin::UserAgent,
             layer: vec![],
+            link: crate::style::css::LinkMatch::Any,
         });
     }
     rules

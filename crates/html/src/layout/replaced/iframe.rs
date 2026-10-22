@@ -165,6 +165,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             preferred_dark: st.embedding_dark_scheme,
             owner_dark: st.dark_color_scheme,
         }),
+        &opts.cx.doc().metrics.font_context(),
     );
     // Верхний уровень вложенного документа проходит те же ортогональные
     // поправки, что и дети контейнера.

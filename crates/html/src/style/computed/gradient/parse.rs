@@ -71,7 +71,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         let words = split_outside_parens(p);
         let Some(expression) = words
             .first()
-            .and_then(|w| crate::style::values::color_space::ColorExpression::parse(w, vcx))
+            .and_then(|w| crate::style::values::color_space::StyleColor::parse(w, vcx))
         else {
             continue;
         };
@@ -79,7 +79,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
         all_legacy &= super::legacy_srgb_color(words[0].as_str())
             && !matches!(
                 expression,
-                crate::style::values::color_space::ColorExpression::Relative(_)
+                crate::style::values::color_space::StyleColor::Relative(_)
             );
         if words.len() == 1 {
             lengths.push(None);

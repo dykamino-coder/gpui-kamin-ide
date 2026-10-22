@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 macro_rules! properties {
     ($($id:ident: $name:literal => [$($field:ident $(.$part:ident)*),+];)*) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        pub(crate) enum Property { $($id,)* RowGap, ColumnGap, ImageSource, ImageSlice, ImageWidth, ImageOutset, ImageRepeat }
+        pub(crate) enum Property { $($id,)* RowGap, ColumnGap, ImageSource, ImageSlice, ImageWidth, ImageOutset, ImageRepeat, MaskBorderPart(u8) }
 
         impl Property {
             #[allow(clippy::clone_on_copy)] // One registry covers both owned and Copy fields.
@@ -21,6 +21,19 @@ macro_rules! properties {
                     Self::ColumnGap => {
                         c.column_gap = p.column_gap;
                         c.gap.get_or_insert((None, None)).1 = p.gap.and_then(|g| g.1);
+                    }
+                    Self::MaskBorderPart(part) => {
+                        let initial = crate::style::computed::initial_mask_border(vcx);
+                        let src = p.mask_border.clone().unwrap_or_else(|| initial.clone());
+                        let mut dst = c.mask_border.clone().unwrap_or_else(|| initial.clone());
+                        match part {
+                            0 => dst.src = src.src,
+                            1 => { dst.slice = src.slice; dst.fill = src.fill; }
+                            2 => dst.width = src.width,
+                            3 => dst.outset = src.outset,
+                            _ => dst.repeat = src.repeat,
+                        }
+                        c.mask_border = (dst != initial).then_some(dst);
                     }
                     Self::ImageSource | Self::ImageSlice | Self::ImageWidth | Self::ImageOutset | Self::ImageRepeat => {
                         // Initialise just this longhand; preserve source, slices and repeat.
@@ -81,6 +94,11 @@ macro_rules! properties {
                 "border-image-repeat" => &[ImageRepeat],
                 "border-image-width" => &[ImageWidth],
                 "border-image-outset" => &[ImageOutset],
+                "mask-border-source" => &[MaskBorderPart(0)],
+                "mask-border-slice" => &[MaskBorderPart(1)],
+                "mask-border-width" => &[MaskBorderPart(2)],
+                "mask-border-outset" => &[MaskBorderPart(3)],
+                "mask-border-repeat" => &[MaskBorderPart(4)],
                 _ => &[],
             }
         }
@@ -117,4 +135,13 @@ properties! {
     GridAutoRows: "grid-auto-rows" => [grid_auto_rows, grid_auto_rows_list];
     GridAutoFlow: "grid-auto-flow" => [grid_auto_flow];
     ShapeOutside: "shape-outside" => [shape_outside];
+    MaskImage: "mask-image" => [mask_image];
+    MaskMode: "mask-mode" => [mask_luminance, mask_alpha_mode];
+    MaskPosition: "mask-position" => [mask_pos, mask_pos_far, mask_pos_list];
+    MaskSize: "mask-size" => [mask_size, mask_fit];
+    MaskRepeat: "mask-repeat" => [mask_no_repeat, mask_repeat_list, mask_repeat_modes];
+    MaskOrigin: "mask-origin" => [mask_origin];
+    MaskClip: "mask-clip" => [mask_clip];
+    MaskComposite: "mask-composite" => [mask_composite];
+    MaskBorderMode: "mask-border-mode" => [mask_border_luminance];
 }

@@ -135,7 +135,7 @@ pub(super) fn expand(
     for item in items(body) {
         match item {
             Item::Decls(text) => {
-                let decls = parse_decls(text);
+                let decls = parse_decls_in(text, vcx);
                 if decls.is_empty() {
                     continue;
                 }
@@ -147,8 +147,9 @@ pub(super) fn expand(
                         sel,
                         decls: decls.clone(),
                         order: *order,
-                        origin: 0,
+                        origin: crate::style::css::Origin::UserAgent,
                         layer: cx.layer_of_rules(),
+                        link: crate::style::css::LinkMatch::Any,
                     });
                     *order += 1;
                 }

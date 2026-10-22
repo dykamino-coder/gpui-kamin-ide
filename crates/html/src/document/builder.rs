@@ -15,6 +15,7 @@ pub struct DocumentBuilder<'a> {
     base_url: Option<Url>,
     xml: bool,
     media: Media,
+    fonts: crate::text::metrics::FontContext,
 }
 
 impl<'a> DocumentBuilder<'a> {
@@ -25,7 +26,14 @@ impl<'a> DocumentBuilder<'a> {
             base_url: None,
             xml: false,
             media: Media::default(),
+            fonts: Default::default(),
         }
+    }
+
+    /// Передать платформенные шрифты до разбора и измерения CSS.
+    pub fn fonts(&mut self, fonts: &crate::text::metrics::FontContext) -> &mut Self {
+        self.fonts = fonts.clone();
+        self
     }
 
     /// Выбрать печатный носитель (иначе экранный).
@@ -60,6 +68,7 @@ impl<'a> DocumentBuilder<'a> {
             self.base_url.clone(),
             self.xml,
             self.media,
+            &self.fonts,
         )
     }
 }

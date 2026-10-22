@@ -4,32 +4,31 @@ use crate::document::state::ValueCx;
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{
-    BgListProp, Computed, ParseResult, background_layers, css_wide_keyword, font_members,
-    top_level_comma,
-};
-use crate::style::css::{DeclBlock, Rule, VarMap};
+use crate::style::computed::{Computed, ParseResult, css_wide_keyword, font_members};
+use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 use crate::style::values::value::Color;
 
 mod color_initial;
+mod compute_cx;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
-mod inline_rollback;
+pub(crate) mod key;
+pub(crate) mod map;
 mod pass;
-mod revert;
+mod phase;
 pub mod vars;
-use revert::revert_layers;
+use map::CascadeMap;
 
 impl Computed {
     /// Собрать стиль узла: правила таблицы (по специфичности), затем `style=""`.
-    pub fn resolve(matched: &mut Vec<&Rule>, inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
+    pub fn resolve(matched: &[&Rule], inline: &DeclBlock, vcx: ValueCx<'_>) -> Computed {
         Computed::resolve_with_vars(matched, inline, &VarMap::new(), vcx)
     }
 
     /// То же с переменными темы.
     pub fn resolve_with_vars(
-        matched: &mut Vec<&Rule>,
+        matched: &[&Rule],
         inline: &DeclBlock,
         vars: &VarMap,
         vcx: ValueCx<'_>,
@@ -40,92 +39,58 @@ impl Computed {
     /// То же для элемента `cx`: его атрибуты и место среди братьев видят
     /// `attr()` и `sibling-index()`.
     pub fn resolve_in(
-        matched: &mut Vec<&Rule>,
+        matched: &[&Rule],
         inline: &DeclBlock,
         vars: &VarMap,
         cx: CascadeCx,
         vcx: ValueCx<'_>,
     ) -> Computed {
-        // Слой старше специфичности (css-cascade-5 §6.4): у обычных
-        // объявлений поздний слой сильнее, у важных — ранний.
-        matched.sort_by(|a, b| {
-            (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
-                b.origin,
-                &b.layer,
-                b.sel.specificity(),
-                b.order,
-            ))
-        });
-        let inline_rollback = inline_rollback::prepare(matched, inline);
-        let inline = inline_rollback.as_ref().map_or(inline, |(_, d)| d);
-        let rollback_refs: Vec<&Rule> = inline_rollback
-            .iter()
-            .flat_map(|(rules, _)| rules.iter())
-            .collect();
-        let matched = if inline_rollback.is_some() {
-            rollback_refs.as_slice()
-        } else {
-            matched.as_slice()
-        };
-        // `revert-layer` (css-cascade-5 §revert-layer) решается ДО прохода:
-        // объявления откатываемого слоя (а у важного — и всё между его
-        // обычным и важным уровнями) снимаются с копий правил.
-        let reverted = revert_layers(matched);
-        let owned_refs: Vec<&crate::style::css::Rule> = reverted.iter().flatten().collect();
-        let matched: &mut Vec<&crate::style::css::Rule> = &mut if reverted.is_some() {
-            owned_refs
-        } else {
-            matched.to_vec()
-        };
         let mut c = Computed::default();
-        // Два прохода по ВСЕМУ каскаду, а не внутри каждого правила: важность
-        // — самый старший ключ сравнения (CSS Cascade §6.1), поэтому важное
-        // объявление раннего правила обязано пережить обычное объявление
-        // позднего. Пока проходы шли внутри правила, `!important` действовал
-        // только против соседей по тому же блоку.
-        for rule in matched.iter() {
-            c.apply_pass(&rule.decls, vars, false, cx, vcx);
-        }
-        c.apply_pass(inline, vars, false, cx, vcx);
-        // Важные идут в ОБРАТНОМ порядке происхождений: важное правило агента
-        // старше важного авторского (§6.4.4), поэтому применяется последним.
-        let mut important: Vec<&&Rule> = matched.iter().collect();
-        important.sort_by(|a, b| {
-            (
-                std::cmp::Reverse(a.origin),
-                std::cmp::Reverse(&a.layer),
-                a.sel.specificity(),
-                a.order,
-            )
-                .cmp(&(
-                    std::cmp::Reverse(b.origin),
-                    std::cmp::Reverse(&b.layer),
-                    b.sel.specificity(),
-                    b.order,
-                ))
-        });
-        for rule in important {
-            c.apply_pass(&rule.decls, vars, true, cx, vcx);
-        }
-        c.apply_pass(inline, vars, true, cx, vcx);
-        // `currentColor` в рамке и фоне значит «цвет текста этого элемента» —
-        // подставляем уже после того, как цвет стал известен.
-        if c.border_color_is_current {
-            c.border_color = c.color;
-        }
+        c.cascade_onto(matched, inline, vars, cx, vcx);
+        c
+    }
 
+    /// Каскад правил `matched` и `style=""` поверх уже стоящих значений:
+    /// один победитель на имя свойства по ключу каскада (css-cascade-5
+    /// §6.2), откаты `revert`/`revert-layer` по истории кандидатов.
+    /// Слои стиля (`::first-letter`, `:hover`) кладутся этим же путём на
+    /// копию стиля хозяина.
+    pub(crate) fn cascade_onto(
+        &mut self,
+        matched: &[&Rule],
+        inline: &DeclBlock,
+        vars: &VarMap,
+        cx: CascadeCx,
+        vcx: ValueCx<'_>,
+    ) {
+        let map = CascadeMap::collect(matched, inline);
+        self.apply_map(&map, vars, cx, vcx);
         // Окраска фильтром здесь НЕ делается: результат оседал в
         // долгоживущем стиле узла, и покадровая окраска в `style::cascade::inherit`
         // применяла фильтр ВТОРОЙ раз (grayscale темнил вдвое). Единственная
         // точка окраски — слияние при отрисовке.
-        c
     }
 
     // `pub(crate)`: `motion` синтезирует строку `transform` и кормит её тем же
     // разборщиком — отдельного конвейера под offset-трансформ нет.
     pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
-        self.decl_seq += 1;
         let v = val.trim();
+        // Сокращение реестра вне разбора блока (прямой вызов, слово `all`
+        // не в счёт: оно длинные свойства называет сами) раскрывается тем же
+        // разбором, что и в блоке.
+        if let Some(shorthand) = ShorthandId::from_name(key) {
+            for (id, _, text) in shorthand.expand(v, Some(vcx)).unwrap_or_default() {
+                self.apply_one(id.name(), &text, vcx);
+            }
+            return;
+        }
+        // Общее слово у длинного свойства реестра решается ОДНИМ путём
+        // (`apply_wide`); наблюдатель разбора ниже — для свойств вне реестра.
+        if let Some(id) = LonghandId::from_name(key)
+            && let Some(wide) = CssWide::parse(v)
+        {
+            return self.apply_wide(id, wide, vcx);
+        }
         if color_initial::apply(self, key, v, vcx) {
             return;
         }
@@ -151,8 +116,6 @@ impl Computed {
         // `display: block`, не начальное `inline`.
         if matches!(v, "initial" | "unset")
             && let Some(start) = match key {
-                "background-color" => Some("transparent"),
-                "background-image" => Some("none"),
                 "display" => Some("inline"),
                 "float" => Some("none"),
                 "position" => Some("static"),
@@ -166,29 +129,18 @@ impl Computed {
             inherit::note_flow_align(self, key, v);
             return;
         }
-        // Фон — СПИСОК слоёв (css-backgrounds-3 §2.1: «comma-separated list
-        // of values … the first value represents the top layer»). Одиночные
-        // поля стиля несут верхний слой, а список целиком хранится сырым —
-        // по нему рисуются все слои (`Computed::bg_layers`). Запись без
-        // запятой список своего свойства снимает; сокращение — все.
-        let prop = BgListProp::from_key(key);
-        if prop.is_some_and(|p| !Self::background_list_valid(p, v, vcx)) {
-            return;
-        }
+        // Наблюдатель разбора (`@supports`, запасной кандидат каскада) и
+        // общее слово для свойств ВНЕ реестра: их грамматику проверяет
+        // обработчик, а не разбор блока. Длинные свойства реестра пришли
+        // проверенными и общее слово решили выше (`apply_wide`).
         let observer = self.declaration_parse;
         self.declaration_parse = ParseResult::Invalid;
-        let list = prop.is_some() && top_level_comma(v).is_some();
-        let parsed = if list && prop != Some(BgListProp::Shorthand) {
-            background_layers(v)[0]
-        } else {
-            v
-        };
         // Каждое свойство принимает CSS-wide keyword (css-cascade-5 §7.3); не
         // покрытое таблицами выше слово сбрасывает поля свойства к пустому,
         // начальному представлению, а не отвергается грамматикой значения.
         let css_wide = css_wide_keyword(v);
         let outer = std::mem::replace(&mut self.css_wide_value, css_wide);
-        self.apply_property(key, parsed, vcx);
+        self.apply_property(key, v, vcx);
         self.css_wide_value = outer;
         let accepted = self.declaration_parse == ParseResult::Accepted || css_wide;
         self.declaration_parse = if observer == ParseResult::Inactive {
@@ -200,22 +152,44 @@ impl Computed {
         };
         if accepted {
             inherit::note_flow_align(self, key, v);
-            if let Some(prop) = prop {
-                if prop == BgListProp::Shorthand {
-                    self.bg_lists.retain(|k| k == BgListProp::BlendMode);
-                } else {
-                    self.bg_lists.remove(prop);
-                }
-                if list {
-                    self.bg_lists.set(prop, v.to_string(), vcx);
-                }
+        }
+    }
+
+    /// Общее слово у длинного свойства реестра (css-cascade-5 §7.3):
+    /// `initial` — начальное значение реестра, `inherit` — наследование
+    /// обработчиком, `unset` — по наследуемости свойства. `revert` и
+    /// `revert-layer` каскад разрешает сам; вне каскада откатывать некуда,
+    /// и они значат `unset` (§7.3.4).
+    pub(super) fn apply_wide(&mut self, id: LonghandId, wide: CssWide, vcx: ValueCx<'_>) {
+        let inherit = match wide {
+            CssWide::Inherit => true,
+            CssWide::Initial => false,
+            CssWide::Unset | CssWide::Revert | CssWide::RevertLayer => id.inherited(),
+        };
+        // Наследование — по реестру полей `inherited_value`, если свойство
+        // в нём есть, иначе признаком обработчика.
+        if inherit {
+            if !inherited_value::note(self, id.name(), "inherit", vcx) {
+                self.apply_property(id.name(), "inherit", vcx);
             }
+        } else {
+            self.apply_one(id.name(), id.initial(), vcx);
+        }
+        // Откаченное объявление — уже не авторское: признак авторского фона
+        // за ним не остаётся, и неявный фон агента у поля ввода живёт
+        // (`appearance-revert-001`).
+        if matches!(wide, CssWide::Revert | CssWide::RevertLayer)
+            && id == LonghandId::BackgroundColor
+        {
+            self.bg_explicit = false;
         }
     }
 
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
-        Self::default().apply_property(key, "", vcx)
+        ShorthandId::from_name(key).is_some()
+            || LonghandId::from_name(key).is_some()
+            || Self::default().apply_property(key, "", vcx)
     }
 
     // The temporary cascade callback borrows the current property and variable state.

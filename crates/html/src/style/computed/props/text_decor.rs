@@ -5,7 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::Color;
+use crate::style::values::value::StyleColor;
 mod emphasis_ruby;
 
 impl Computed {
@@ -31,7 +31,6 @@ impl Computed {
                 let short = key == "text-decoration";
                 let (mut lines, mut none) = (0u8, false);
                 let (mut style, mut color, mut thick) = (None, None, None);
-                let mut current = false;
                 for t in &words {
                     let t = *t;
                     match t {
@@ -47,9 +46,8 @@ impl Computed {
                         _ if style.is_none() && parse_decor_style(t).is_some() => {
                             style = parse_decor_style(t)
                         }
-                        "currentcolor" if color.is_none() && !current => current = true,
-                        _ if color.is_none() && !current && Color::parse(t, vcx).is_some() => {
-                            color = Color::parse(t, vcx)
+                        _ if color.is_none() && StyleColor::parse_value(t, vcx).is_some() => {
+                            color = StyleColor::parse_value(t, vcx)
                         }
                         _ if thick.is_none() && parse_decor_thickness(t, vcx).is_some() => {
                             thick = parse_decor_thickness(t, vcx)
@@ -60,7 +58,7 @@ impl Computed {
                 self.td_lines = accept_parsed!(self, Some(lines));
                 if short {
                     self.td_style = style;
-                    self.td_color = color;
+                    self.td_color = color.unwrap_or_default();
                     self.td_thickness = thick;
                 }
                 self.underline = Some(lines & DECOR_UNDER != 0);
@@ -73,13 +71,9 @@ impl Computed {
                 }
             }
             "text-decoration-color" | "-webkit-text-decoration-color" => {
-                let t = v.trim();
-                if t.eq_ignore_ascii_case("currentcolor") {
+                if let Some(c) = StyleColor::parse_value(v, vcx) {
                     self.accept_declaration();
-                    self.td_color = None;
-                } else if let Some(c) = Color::parse(t, vcx) {
-                    self.accept_declaration();
-                    self.td_color = Some(c);
+                    self.td_color = c;
                 }
             }
             "text-decoration-thickness" => {

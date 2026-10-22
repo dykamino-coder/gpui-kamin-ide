@@ -14,53 +14,40 @@ use expressions::{capture, math};
 pub(crate) use value::PositionExpression;
 
 impl Computed {
-    pub(crate) fn set_background_position(&mut self, raw: &str, vcx: ValueCx<'_>) {
-        self.bg_position_math = capture(raw, vcx);
-        // A valid mixed comparison cannot yet become a linear Len. Keep a
-        // placeholder for axis/edge classification; its used value comes from
-        // the retained expression, so the other axis still parses correctly.
-        let first = crate::style::css::split_args(raw)
-            .into_iter()
-            .next()
-            .unwrap_or("");
-        let words: Vec<String> = super::split_outside_parens(first)
-            .into_iter()
-            .map(|v| {
-                if Len::parse_mixed(&v, vcx).is_none() && math(&v, vcx).is_some() {
-                    "0px".into()
-                } else {
-                    v
-                }
-            })
-            .collect();
-        self.bg_pos = parse_pos_words(&words.join(" "), vcx);
-        if self.bg_pos.x.is_some() || self.bg_pos.y.is_some() {
-            self.accept_declaration();
-        }
-    }
-
     pub(crate) fn background_position_length(raw: &str, vcx: ValueCx<'_>) -> bool {
-        Len::parse_mixed(raw, vcx).is_some() || math(raw, vcx).is_some()
+        Len::parse_mixed(raw, vcx).is_some_and(|l| {
+            !matches!(
+                l,
+                Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
+            )
+        }) || math(raw, vcx).is_some()
     }
 
+    /// Ось положения верхнего слоя (`background-position-x/-y`,
+    /// css-backgrounds-4 §3.6): значение оси дополняется краем другой оси до
+    /// `<bg-position>` и разбирается тем же разбором, что положение целиком;
+    /// пишется только своя ось. Начальное `0%` хранится отсутствием значения
+    /// (вычисленное значение то же).
     pub(crate) fn set_background_position_axis(
         &mut self,
         axis: usize,
         raw: &str,
-        value: Option<Len>,
         vcx: ValueCx<'_>,
     ) {
-        let expression = math(raw, vcx);
-        if value.is_some() || expression.is_some() {
-            self.accept_declaration();
-            let value = value.or_else(|| expression.as_ref().map(|_| Len::Px(0.0)));
-            if axis == 0 {
-                self.bg_pos.x = value.or(self.bg_pos.x);
-            } else {
-                self.bg_pos.y = value.or(self.bg_pos.y);
-            }
-            self.bg_position_math[axis] = expression;
+        let full = match axis {
+            0 => format!("{raw} top"),
+            _ => format!("left {raw}"),
+        };
+        let (pos, mut math) = position_of(&full, vcx);
+        let expression = math[axis].take();
+        let value = [pos.x, pos.y][axis].filter(|v| *v != Len::Pct(0.0) || expression.is_some());
+        if axis == 0 {
+            self.bg_pos.x = value;
+        } else {
+            self.bg_pos.y = value;
         }
+        self.bg_position_math[axis] = expression;
+        self.accept_declaration();
     }
 
     /// CSS Values 4 §10.2/10.10 compares resolved lengths, not percentage
@@ -87,6 +74,27 @@ impl Computed {
     }
 }
 
+/// Положение (верхний слой) и выражения сравнения по осям. Смешанное
+/// сравнение ещё не линейная `Len`: для разбора осей и краёв стоит заглушка,
+/// используемое значение даёт сохранённое выражение.
+fn position_of(raw: &str, vcx: ValueCx<'_>) -> (super::BgPos, [Option<PositionExpression>; 2]) {
+    let first = crate::style::css::split_args(raw)
+        .into_iter()
+        .next()
+        .unwrap_or("");
+    let words: Vec<String> = super::split_outside_parens(first)
+        .into_iter()
+        .map(|v| {
+            if Len::parse_mixed(&v, vcx).is_none() && math(&v, vcx).is_some() {
+                "0px".into()
+            } else {
+                v
+            }
+        })
+        .collect();
+    (parse_pos_words(&words.join(" "), vcx), capture(raw, vcx))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,7 +103,7 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut c = Computed::default();
-        c.set_background_position("min(0%, 100%) max(0%, 100%)", vcx);
+        c.apply_one("background-position", "min(0%, 100%) max(0%, 100%)", vcx);
         assert_eq!(
             c.background_position_used((123.0, 123.0), (-50.0, -50.0), vcx),
             (-50.0, 0.0)
@@ -104,12 +112,16 @@ mod tests {
             c.background_position_used((123.0, 123.0), (50.0, 50.0), vcx),
             (0.0, 50.0)
         );
-        c.set_background_position_axis(0, "5px", Some(Len::Px(5.0)), vcx);
+        c.apply_one("background-position-x", "5px", vcx);
         assert_eq!(
             c.background_position_used((5.0, 123.0), (-50.0, -50.0), vcx),
             (5.0, 0.0)
         );
-        c.set_background_position("right min(100%, 10px) bottom max(100%, 10px)", vcx);
+        c.apply_one(
+            "background-position",
+            "right min(100%, 10px) bottom max(100%, 10px)",
+            vcx,
+        );
         assert_eq!(
             c.background_position_used((0.0, 0.0), (-50.0, -50.0), vcx),
             (0.0, -60.0)
@@ -125,7 +137,7 @@ mod tests {
             line_height: Some(Len::Pct(2.0)),
             ..Computed::default()
         };
-        parent.set_background_position("min(100%, 1em) max(100%, 1lh)", vcx);
+        parent.apply_one("background-position", "min(100%, 1em) max(100%, 1lh)", vcx);
         parent.resolve_image_lengths(vcx);
         let mut child = parent.clone();
         child.font_size = Some(Len::Px(80.0));

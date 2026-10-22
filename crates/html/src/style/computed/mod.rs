@@ -21,7 +21,6 @@ pub(crate) mod stacking;
 pub use appearance::Appearance;
 mod background_position;
 mod bidi_properties;
-mod border_color;
 pub(crate) mod box_predicates;
 pub(crate) mod font_family;
 mod font_kerning;
@@ -53,6 +52,8 @@ pub(crate) use content_functions::parse_content;
 mod outline_style;
 use crate::style::computed::outline_style::parse as outline_style_of;
 pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
+pub(crate) use props::border::values::line_style_ok;
+pub(crate) use props::mask_clip::mask_border::initial_mask_border;
 pub(super) mod props;
 mod queries;
 mod resolve;
@@ -62,6 +63,7 @@ use crate::style::values::value::Len;
 mod fields;
 pub(crate) mod scroll;
 pub(crate) mod snap;
+mod used_color;
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;
@@ -72,7 +74,6 @@ pub(crate) use crate::style::computed::gradient::*;
 pub(crate) use gradient::stops::place_stops;
 pub(super) mod grid_tracks;
 pub use crate::style::computed::grid_tracks::*;
-pub(crate) use crate::style::computed::props::border::*;
 pub(super) mod types;
 pub use crate::style::computed::types::*;
 pub(super) mod parse_util;
@@ -173,6 +174,10 @@ pub(crate) mod inh {
     pub(crate) const CORNER_SHAPE: u32 = 1 << 18;
     /// `border-radius: inherit` — радиусы углов родителя.
     pub(crate) const RADIUS: u32 = 1 << 19;
+    /// `background-position-y: inherit` (`BG_POS` — ось x).
+    pub(crate) const BG_POS_Y: u32 = 1 << 20;
+    /// `background-attachment: inherit`.
+    pub(crate) const BG_ATTACH: u32 = 1 << 21;
 }
 
 /// Разряды `will_change` (css-will-change-1 §2.1): чего ждать от коробки,
@@ -216,3 +221,5 @@ mod border_image_tests;
 mod gradient_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod used_color_tests;

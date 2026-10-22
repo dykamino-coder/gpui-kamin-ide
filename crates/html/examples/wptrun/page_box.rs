@@ -1,8 +1,9 @@
 //! Print-pair page box: `@page` declarations resolved into sheet geometry.
 
+use super::page_border::PageBorder;
 use super::page_box_values::{
-    abs_len, apply_border, apply_margin, apply_padding, apply_size, default_margin, logical_side,
-    page_font_size, rel_len,
+    abs_len, apply_margin, apply_padding, apply_size, default_margin, logical_side, page_font_size,
+    rel_len,
 };
 use kamin_html::value::ValueCx;
 
@@ -57,15 +58,8 @@ pub(super) fn page_box(
             a: 1.0,
         },
     );
-    let mut border = (
-        0.0f32,
-        Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        },
-    );
+    // Рамка — длинными свойствами: `border` раскрыт ещё при разборе.
+    let mut sides = PageBorder::new();
     // Длина: точки как есть; vw/vh — от ДЕФОЛТНОЙ страницы (по тестам
     // page-size-016/017); проценты полей — от ОБЪЯВЛЕННОГО размера
     // страницы по своей оси (page-margin-005: 10% от 300px = 30px),
@@ -102,6 +96,11 @@ pub(super) fn page_box(
                 auto_m[i] = v.trim() == "auto";
                 if auto_m[i] {
                     margin[i] = 0.0;
+                } else if v.trim() == "inherit" {
+                    // `page-margin-006`: `margin: 13px; margin: inherit` → поля
+                    // корневого элемента (0.5in), не 13px; сокращение приходит
+                    // длинными свойствами.
+                    margin[i] = root_margin[i];
                 } else if let Some(px) = px_of(v, i % 2 == 0) {
                     margin[i] = px;
                 }
@@ -159,10 +158,11 @@ pub(super) fn page_box(
             "outline-width" => outline.0 = px_of(v, false).unwrap_or(outline.0),
             "outline-offset" => outline.1 = px_of(v, false).unwrap_or(outline.1),
             "outline-color" => outline.2 = Color::parse(v.trim(), vcx).unwrap_or(outline.2),
-            "border" => apply_border(v, px_of, &mut border, vcx),
+            k if sides.apply(k, v, logical, px_of, vcx) => {}
             _ => {}
         }
     }
+    let mut border = sides.used();
     // css-page-3 §page-model: при переопределении «instead of ignoring any
     // margins, the containing block is resized to coincide with the margin
     // edges of the page box» (Blink `ResolvePageBoxGeometry`);

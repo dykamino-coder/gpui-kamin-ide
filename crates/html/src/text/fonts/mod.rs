@@ -139,8 +139,8 @@ pub fn with_css_weight(features: &gpui::FontFeatures) -> gpui::FontFeatures {
 pub(crate) type Loader = Box<dyn Fn(Vec<u8>) -> Option<String>>;
 
 /// Поставить загрузчик шрифтов. Зовут там, где живёт система шрифтов.
-pub fn install_loader(loader: impl Fn(Vec<u8>) -> Option<String> + 'static) {
-    crate::text::metrics::install_font_loader(Box::new(loader));
+pub fn install_loader(loader: impl Fn(Vec<u8>) -> Option<String> + 'static, vcx: ValueCx<'_>) {
+    crate::text::metrics::install_font_loader(Box::new(loader), vcx);
 }
 
 /// Настоящее имя семейства за именем из разметки.

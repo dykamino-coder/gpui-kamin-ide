@@ -24,13 +24,13 @@ pub(super) fn scan_style(
         .borrow()
         .iter()
         .find(|a| &*a.name.local == "style")
-        .map(|a| crate::style::css::parse_decls(&a.value))
+        .map(|a| crate::style::css::parse_decls_in(&a.value, vcx))
         .unwrap_or_default();
-    let mut matched: Vec<&Rule> = rules
+    let matched: Vec<&Rule> = rules
         .iter()
         .filter(|r| crate::style::select::matching::matches(&r.sel, me, path, sibs))
         .collect();
-    let mut style = Computed::resolve_with_vars(&mut matched, &inline_decls, vars, vcx);
+    let mut style = Computed::resolve_with_vars(&matched, &inline_decls, vars, vcx);
     crate::dom::content::inherit_generated(&mut style, path.last());
     crate::dom::apply_value_hint(&mut style, me);
     Some(style)
@@ -46,7 +46,7 @@ pub(super) fn pseudo_style(
     vars: &VarMap,
     vcx: ValueCx<'_>,
 ) -> Option<Computed> {
-    let mut matched: Vec<&Rule> = rules
+    let matched: Vec<&Rule> = rules
         .iter()
         .filter(|r| r.sel.pseudo.as_deref() == Some(which))
         .filter(|r| matches_ignoring_pseudo(&r.sel, me, path, sibs))
@@ -54,7 +54,7 @@ pub(super) fn pseudo_style(
     if matched.is_empty() {
         return None;
     }
-    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
+    let mut style = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     crate::dom::content::inherit_generated(&mut style, Some(me));
     // Без содержимого коробки нет, а значит нет и счётчиков.
     (crate::dom::host_content(&style, me, vcx).is_some() && style.display != Some(Display::None))

@@ -16,27 +16,17 @@ pub(super) fn outer_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
     // раздутой фигуры (известные ширина и высота).
     // css-backgrounds-3 §7.1: «The first shadow is on top» — paint bottom-up.
     for sh in c.shadows.iter().rev() {
-        // Тень без цвета помечена отрицательной альфой и берёт `color`
-        // (css-backgrounds-3 §7.1) — как в `apply::shadow_colour`.
+        // `currentcolor` тени — цвет текста элемента (css-backgrounds-3 §7.1).
         // У `border-shape` тени повторяют фигуру — растром под группой
         // (`grouped`, `Grouped::under`), квад здесь лёг бы прямоугольником.
+        let colour = sh.used_color(c.current_color());
         if sh.blur > 0.0
-            || sh.color.a == 0.0
+            || colour.a == 0.0
             || c.border_shape.is_some()
             || super::shaped_outset::shapes_shadows(c, vcx)
         {
             continue;
         }
-        let colour = if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            })
-        } else {
-            sh.color
-        };
         let spread = sh.spread;
         let radius = match c.radius.tl {
             // §7.1: при радиусе МЕНЬШЕ разлёта разлёт сперва домножается на
@@ -147,19 +137,10 @@ pub(super) fn inset_shadows(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: 
     for sh in c.inset_shadows.iter().rev() {
         // У `border-shape` внутренняя тень — растр по внутреннему контуру
         // (слой фигуры ниже), кольцо здесь было бы прямоугольным.
-        if sh.blur > 0.0 || sh.color.a == 0.0 || c.border_shape.is_some() {
+        let colour = sh.used_color(c.current_color());
+        if sh.blur > 0.0 || colour.a == 0.0 || c.border_shape.is_some() {
             continue;
         }
-        let colour = if sh.color.a < 0.0 {
-            c.color.unwrap_or(crate::style::values::value::Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 1.0,
-            })
-        } else {
-            sh.color
-        };
         let s = sh.spread;
         let widths = [
             (s + sh.y).max(0.0),

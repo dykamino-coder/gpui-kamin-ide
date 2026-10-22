@@ -42,8 +42,7 @@ impl BandFlow {
                         vert.is_some(),
                         self.fragment.as_ref(),
                         self.paint.clone(),
-                        self.clamp.clone(),
-                        self.positioning.clone(),
+                        self.probe_scopes(),
                         self.build,
                     );
                     plan(&kids, cb, contain_floats, p)

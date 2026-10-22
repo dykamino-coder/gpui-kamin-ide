@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::values::value::StyleColor;
 
 /// Годна ли запись `box-shadow` ЦЕЛИКОМ (css-backgrounds-3 §7.1:
 /// `none | <shadow>#`; тень — 2-4 длины, не больше одного цвета и одного
@@ -17,11 +18,7 @@ pub(in crate::style::computed) fn box_shadow_valid(v: &str, vcx: ValueCx<'_>) ->
                 Some(Len::Pct(_)) => return false,
                 Some(_) => lens += 1,
                 None if token.eq_ignore_ascii_case("inset") => insets += 1,
-                None if token.eq_ignore_ascii_case("currentcolor")
-                    || Color::parse(&token, vcx).is_some() =>
-                {
-                    colours += 1
-                }
+                None if StyleColor::parse_value(&token, vcx).is_some() => colours += 1,
                 None => return false,
             }
         }
@@ -32,7 +29,7 @@ pub(in crate::style::computed) fn box_shadow_valid(v: &str, vcx: ValueCx<'_>) ->
 #[derive(Clone, Debug, PartialEq)]
 pub(in crate::style::computed) struct ShadowValue {
     pub lengths: [Option<Len>; 4],
-    pub color: Color,
+    pub color: StyleColor,
     pub inset: bool,
 }
 
@@ -53,7 +50,7 @@ impl ShadowValue {
             y: values[1],
             blur: values[2],
             spread: values[3],
-            color: self.color,
+            color: self.color.clone(),
         })
     }
 }
@@ -74,9 +71,9 @@ pub(in crate::style::computed) fn shadow_values(v: &str, vcx: ValueCx<'_>) -> Ve
                 }
                 Some(length) => lengths.push(length),
                 None => {
-                    if let Some(c) = Color::parse(&token, vcx) {
+                    if let Some(c) = StyleColor::parse_value(&token, vcx) {
                         color = Some(c);
-                    } else if token != "currentcolor" && token != "inset" {
+                    } else if token != "inset" {
                         return vec![];
                     }
                 }
@@ -87,10 +84,7 @@ pub(in crate::style::computed) fn shadow_values(v: &str, vcx: ValueCx<'_>) -> Ve
         }
         let mut value = ShadowValue {
             lengths: [None; 4],
-            color: color.unwrap_or(Color {
-                a: -1.0,
-                ..Color::default()
-            }),
+            color: color.unwrap_or_default(),
             inset: s.contains("inset"),
         };
         for (slot, length) in value.lengths.iter_mut().zip(lengths) {

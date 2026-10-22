@@ -17,7 +17,8 @@ pub use background::{BgClip, BgPos, BgRepeat, BgSize, Tiling, parse_pos_words};
 pub use bg_lists::{BgListProp, BgLists};
 pub use blend::BlendMode;
 pub use boxes::{
-    BorderShape, Logical, Outline, Overflow, Position, PositionAnchor, SideSeq, TextEdge,
+    BorderShape, DeclOrder, Logical, Outline, Overflow, Position, PositionAnchor, SideOrder,
+    TextEdge,
 };
 pub use decor::{
     DECOR_OVER, DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen, DecorStyle, UPOS_FROM_FONT,

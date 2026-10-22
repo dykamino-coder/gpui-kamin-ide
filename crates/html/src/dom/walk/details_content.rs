@@ -20,8 +20,9 @@ fn ua_rule() -> Option<Rule> {
         sel: Selector::parse("*")?,
         decls: parse_decls(css),
         order: 0,
-        origin: 0,
+        origin: crate::style::css::Origin::UserAgent,
         layer: Vec::new(),
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 
@@ -41,7 +42,7 @@ pub(super) fn wrap(
     let Some(ua) = ua_rule() else {
         return children;
     };
-    let mut matched: Vec<&Rule> = std::iter::once(&ua)
+    let matched: Vec<&Rule> = std::iter::once(&ua)
         .chain(
             rules
                 .iter()
@@ -54,7 +55,7 @@ pub(super) fn wrap(
     let authored = matched
         .iter()
         .any(|r| r.decls.contains("content-visibility"));
-    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
+    let mut style = Computed::resolve_with_vars(&matched, &DeclBlock::new(), vars, vcx);
     if !open && !authored {
         style.apply_one("content-visibility", "hidden", vcx);
     }

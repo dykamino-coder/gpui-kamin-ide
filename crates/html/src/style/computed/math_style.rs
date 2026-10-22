@@ -91,15 +91,11 @@ mod tests {
             ..Computed::default()
         };
         for (reset, compact, size) in [("initial", false, 500.0), ("unset", true, 355.0)] {
-            let own = Computed::resolve(
-                &mut vec![],
-                &parse_decls(&format!("math-style: {reset}")),
-                vcx,
-            );
+            let own = Computed::resolve(&[], &parse_decls(&format!("math-style: {reset}")), vcx);
             let middle = inherit(&parent, &own, vcx);
             assert_eq!(middle.math_compact, Some(compact));
             let own = Computed::resolve(
-                &mut vec![],
+                &[],
                 &parse_decls("font-size: math; math-depth: auto-add"),
                 vcx,
             );

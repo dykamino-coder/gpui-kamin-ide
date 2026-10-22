@@ -1,18 +1,18 @@
-//! Группа свойств `Computed::apply_one`: `background*`, `box-shadow`,
-//! `object-fit`, `image-orientation`. Здесь `background-image` разбирается в
-//! типизированный `ImageSource` (`ImageSource::parse`): `none` гасит картинку и
-//! градиент; негодная запись сохраняет прежние поля; `light-dark()` выбирает вариант по
-//! схеме. Сокращение и списки слоёв уходят в подмодули (`shorthand`,
-//! `gradient_layer`, `layer_props`).
+//! Группа свойств `Computed::apply_one`: `background-*`, `box-shadow`,
+//! `object-fit`, `image-orientation`. Сокращения `background` и
+//! `background-position` раскрыты разбором (`style::css::property`), сюда
+//! приходят длинные свойства. Значение свойства слоёв — список (§2.1):
+//! верхний слой пишется в поля стиля, весь список — в `bg_lists` этого
+//! свойства (`lists`). `background-image` разбирается в `ImageSource`:
+//! `none` гасит картинку и градиент; `light-dark()` выбирает вариант по
+//! схеме. Грамматики — `values`.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
 
-mod gradient_layer;
-pub(super) mod layer_props;
-mod list_values;
-mod shorthand;
+mod layer_props;
+mod lists;
+pub(crate) mod values;
 
 impl Computed {
     pub(crate) fn apply_background(
@@ -22,11 +22,13 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
+        if let Some(prop) = BgListProp::from_key(key)
+            && self.apply_background_list(prop, v, vcx)
+        {
+            return;
+        }
         match key {
-            // Сокращение несёт всё сразу: `background: #fff url(a.png) no-repeat`
-            // — и цвет, и картинку, и режим повтора. Раньше побеждало что-то
-            // одно, и картинка терялась при заданном цвете.
-            "background" | "background-color" => self.apply_background_shorthand(key, v, vcx),
+            "background-color" => self.apply_background_color(v, vcx),
             "box-shadow" if has_font_units(v) => {
                 if !box_shadow_valid(v, vcx) {
                     return;
@@ -90,6 +92,7 @@ impl Computed {
                     self.inherit_bits |= inh::BG_IMAGE;
                     return;
                 }
+                self.inherit_bits &= !inh::BG_IMAGE;
                 // `none` ГАСИТ картинку (§14.2.1): ветки под него не было
                 // вовсе, и заданный ранее адрес переживал отмену.
                 if v.trim().eq_ignore_ascii_case("none") {

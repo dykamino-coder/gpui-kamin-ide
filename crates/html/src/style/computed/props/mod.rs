@@ -48,15 +48,15 @@ macro_rules! apply_parsed {
     }};
 }
 
-mod background;
+pub(super) mod background;
 pub(super) mod border;
-mod box_model;
+pub(super) mod box_model;
 mod calc_size;
 mod display_flex;
-mod effects;
+pub(super) mod effects;
 mod font;
 mod grid;
-mod mask_clip;
+pub(super) mod mask_clip;
 mod multicol;
 mod position;
 mod text;

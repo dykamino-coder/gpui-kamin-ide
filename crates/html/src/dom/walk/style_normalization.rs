@@ -1,6 +1,5 @@
 //! Нормализация стиля элемента сразу после каскада, до детей и псевдослоёв.
-//! `normalize_style`: корневые метрики `rem`/`rlh` (css-values-4 §6.1.4),
-//! размеры из атрибутов и ключевые слова `<svg>`, авто-пропорция, снятие
+//! `normalize_style`: размеры из атрибутов и ключевые слова `<svg>`, авто-пропорция, снятие
 //! `aspect-ratio` у внутренних табличных (css-sizing-4 §5.1), цвета `bgcolor`/
 //! `text`, доводка `display` (`finish_inline_display`), `audio` без
 //! `controls`, признак `plain_block_box`, применимость `will-change` и
@@ -21,38 +20,6 @@ pub(super) fn normalize_style(
     path: &[Ancestor],
     vcx: ValueCx<'_>,
 ) {
-    // Корневые метрики для `rem`/`rlh` (css-values-4 §6.1.4).
-    // Записываются ЗДЕСЬ, а не в наследовании: `Len::parse` работает
-    // на разборе объявлений, а `walk` идёт в порядке документа —
-    // корень разбирается раньше любого потомка, и его `25rem` уже
-    // читается верно. Собственные объявления корня успевают
-    // разобраться по прежней базе; на самом корне `rem` по спеке и
-    // так меряется РОДИТЕЛЬСКИМИ (начальными) метриками.
-    if tag == "html" {
-        let font = match style.font_size {
-            Some(crate::style::values::value::Len::Px(v)) => v,
-            Some(crate::style::values::value::Len::Em(k))
-            | Some(crate::style::values::value::Len::Pct(k)) => k * 16.0,
-            _ => 16.0,
-        };
-        let family = style.font_family.clone().unwrap_or_default();
-        let line = match style.line_height {
-            Some(crate::style::values::value::Len::Px(v)) => v,
-            Some(crate::style::values::value::Len::Em(k))
-            | Some(crate::style::values::value::Len::Pct(k)) => k * font,
-            _ => crate::style::values::value::root_normal_line_px(&family, font, vcx),
-        };
-        crate::style::values::value::set_root_metrics(vcx.doc, font, line);
-        crate::style::values::value::set_root_family(vcx.doc, &family);
-        crate::style::values::value::set_root_font_view(
-            vcx.doc,
-            match style.font_size {
-                Some(crate::style::values::value::Len::Vh(k)) => Some((true, k)),
-                Some(crate::style::values::value::Len::Vw(k)) => Some((false, k)),
-                _ => None,
-            },
-        );
-    }
     apply_presentational_size(&mut style, &tag, &attrs);
     resolve_svg_keywords(&mut style, &tag, &attrs);
     promote_auto_ratio(&mut style, &tag);

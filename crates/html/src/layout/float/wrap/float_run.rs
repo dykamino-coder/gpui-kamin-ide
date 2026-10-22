@@ -65,7 +65,7 @@ fn floats_alone(
         .map(|n| match n {
             Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {
                 let mut f = f.clone();
-                let font = f.style.font_cx().family.to_owned();
+                let font = f.style.font_cx(vcx).family.to_owned();
                 let font = crate::style::computed::FontCx::new(&font, em);
                 let m = &mut f.style.margin;
                 for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {

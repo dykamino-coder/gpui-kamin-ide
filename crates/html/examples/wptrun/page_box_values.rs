@@ -1,6 +1,6 @@
 //! Value helpers for the print-pair page box: lengths, sides and shorthands of `@page`.
 
-use kamin_html::value::{Color, Len, ValueCx};
+use kamin_html::value::{Len, ValueCx};
 
 /// Поля листа по умолчанию — ЗАМЕР отдельным прогоном: WPT их не
 /// оговаривает, но `monolithic-overflow-027/-028/-029` сходятся с эталоном
@@ -191,44 +191,4 @@ pub(super) fn apply_padding(
             *slot = px;
         }
     }
-}
-
-/// Сокращение `border` листа.
-pub(super) fn apply_border(
-    v: &str,
-    px_of: impl Fn(&str, bool) -> Option<f32>,
-    border: &mut (f32, Color),
-    vcx: ValueCx<'_>,
-) {
-    // Сокращение без толщины — `medium`, 3px (css-backgrounds-3
-    // §border-width); `none`/`hidden` — без рамки
-    // (`margin-boxes/auto-margins-001`: `@page { border: solid }`).
-    let mut width: Option<f32> = None;
-    let mut styled = false;
-    for t in v.split_whitespace() {
-        match t.to_ascii_lowercase().as_str() {
-            "none" | "hidden" => {
-                width = Some(0.0);
-                styled = false;
-            }
-            "solid" | "dashed" | "dotted" | "double" | "groove" | "ridge" | "inset" | "outset" => {
-                styled = true
-            }
-            "thin" => width = Some(1.0),
-            "medium" => width = Some(3.0),
-            "thick" => width = Some(5.0),
-            _ => {
-                if let Some(px) = px_of(t, false) {
-                    width = Some(px);
-                } else if let Some(c) = Color::parse(t, vcx) {
-                    border.1 = c;
-                }
-            }
-        }
-    }
-    border.0 = match width {
-        Some(w) if styled => w,
-        None if styled => 3.0,
-        _ => 0.0,
-    };
 }

@@ -100,10 +100,6 @@ impl ParsedFilter {
                         return None;
                     }
                     program.shadow_value = shadows.into_iter().next();
-                    program.shadow_current = program
-                        .shadow_value
-                        .as_ref()
-                        .is_some_and(|s| s.color.a < 0.0);
                     program.shadow = program
                         .shadow_value
                         .as_ref()
@@ -139,9 +135,12 @@ impl Computed {
         };
         self.accept_declaration();
         self.filter = parsed.program.filter;
-        self.drop_shadow = parsed.program.shadow;
+        self.drop_shadow = parsed.program.shadow.clone();
         self.filter_ref = parsed.reference;
         self.scrollbar_filter_ops = parsed.operations;
-        parsed.program
+        let mut program = parsed.program;
+        // `currentcolor` is resolved per element by `resolve_colors`.
+        program.resolve_colors(crate::style::values::value::Color::BLACK);
+        program
     }
 }

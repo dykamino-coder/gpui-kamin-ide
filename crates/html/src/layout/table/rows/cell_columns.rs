@@ -32,7 +32,7 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         column_fill_auto: s.column_fill_auto,
         column_rule_width: s.column_rule_width,
         column_rule_visible: s.column_rule_visible,
-        column_rule_color: s.column_rule_color,
+        column_rule_color: s.column_rule_color.clone(),
         column_rule_break: s.column_rule_break,
         column_rule_widths: s.column_rule_widths.clone(),
         column_rule_styles: s.column_rule_styles.clone(),

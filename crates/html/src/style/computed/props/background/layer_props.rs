@@ -1,7 +1,11 @@
-//! Computed::apply_background, хвост цепочки: background-repeat, origin/clip, size,
-//! position(-x/-y), object-position, background-attachment. Ветви в исходном порядке после
-//! box-shadow и background-image.
+//! Computed::apply_background, хвост цепочки: верхний слой длинных свойств
+//! фона (`background-repeat`, `-origin`, `-clip`, `-size`, `-position-x/-y`,
+//! `-attachment`, `-blend-mode`) и `object-position`/`object-view-box`.
+//! Разбор — функции `values` (те же, что проверяют объявление); `inherit`
+//! ставит разряд `inherit_bits`, значение его снимает. Начальное значение
+//! хранится отсутствием значения: вычисленное значение у них одно.
 
+use super::values::{attachment, bg_size, clip_box, origin_box, repeat_style};
 use super::*;
 use crate::document::state::ValueCx;
 
@@ -13,6 +17,23 @@ impl Computed {
         hit: &mut bool,
         vcx: ValueCx<'_>,
     ) {
+        let bit = match key {
+            "background-repeat" => inh::BG_REPEAT,
+            "background-origin" => inh::BG_ORIGIN,
+            "background-clip" | "-webkit-background-clip" => inh::BG_CLIP,
+            "background-size" => inh::BG_SIZE,
+            "background-position-x" => inh::BG_POS,
+            "background-position-y" => inh::BG_POS_Y,
+            "background-attachment" => inh::BG_ATTACH,
+            _ => 0,
+        };
+        if bit != 0 {
+            if v.trim().eq_ignore_ascii_case("inherit") {
+                self.inherit_bits |= bit;
+                return;
+            }
+            self.inherit_bits &= !bit;
+        }
         match key {
             "background-blend-mode" => {
                 if let Some(mode) = BlendMode::parse(v) {
@@ -21,135 +42,44 @@ impl Computed {
                     self.background_blend = None;
                 }
             }
-            // --- Фоновая картинка --------------------------------------------
-            // Запись бывает и ПОосевой: `repeat space`, `round no-repeat`.
-            // Один keyword задаёт обе оси, два — свою каждой.
+            // Запись бывает и поосевой: `repeat space`, `round no-repeat`.
             "background-repeat" => {
-                if v == "inherit" {
-                    self.inherit_bits |= inh::BG_REPEAT;
-                    return;
+                if let Some(repeat) = record_parsed!(self, repeat_style(v)) {
+                    self.bg_repeat = (repeat != BgRepeat::Axes(Tiling::Repeat, Tiling::Repeat))
+                        .then_some(repeat);
                 }
-                let word = |w: &str| match w {
-                    "no-repeat" => Some(Tiling::None),
-                    "space" => Some(Tiling::Space),
-                    "round" => Some(Tiling::Round),
-                    "repeat" => Some(Tiling::Repeat),
-                    _ => None,
-                };
-                if v.split_whitespace().count() > 2 {
-                    return;
-                }
-                let mut it = v.split_whitespace();
-                self.bg_repeat = apply_parsed!(
-                    self,
-                    match (it.next(), it.next()) {
-                        (Some("repeat-x"), None) => Some(BgRepeat::RepeatX),
-                        (Some("repeat-y"), None) => Some(BgRepeat::RepeatY),
-                        (Some(x), Some(y)) => match (word(x), word(y)) {
-                            (Some(x), Some(y)) => Some(BgRepeat::Axes(x, y)),
-                            _ => None,
-                        },
-                        (Some(x), None) => word(x).map(|t| BgRepeat::Axes(t, t)),
-                        _ => None,
-                    }
-                )
             }
-            // Область покраски фона. `border-box` — умолчание, поэтому оно
-            // же и сбрасывает признак: свойство наследуемым не является, но
-            // перебить заданное ранее в том же наборе обязано.
-            // Откуда отсчитывается картинка. Умолчание — внутренний край
-            // рамки, и `padding-box` его же и означает.
-            "background-origin" if v.trim() == "inherit" => {
-                self.inherit_bits |= inh::BG_ORIGIN;
-            }
-            "background-clip" | "-webkit-background-clip" if v.trim() == "inherit" => {
-                self.inherit_bits |= inh::BG_CLIP;
-            }
-            "background-size" if v.trim() == "inherit" => {
-                self.inherit_bits |= inh::BG_SIZE;
-            }
+            // Откуда отсчитывается картинка: умолчание — внутренний край
+            // рамки (`padding-box`).
             "background-origin" => {
-                self.bg_origin = parsed_value!(
-                    self,
-                    match v.trim() {
-                        "border-box" => Some(Some(BgClip::BorderBox)),
-                        "content-box" => Some(Some(BgClip::ContentBox)),
-                        "padding-box" => Some(None),
-                        _ => None,
-                    }
-                );
-                if v.trim() == "padding-box" {
-                    self.accept_declaration();
+                if let Some(origin) = record_parsed!(self, origin_box(v)) {
+                    self.bg_origin = origin;
                 }
             }
+            // Область покраски фона: умолчание — `border-box`.
             "background-clip" | "-webkit-background-clip" => {
-                self.bg_clip = parsed_value!(
-                    self,
-                    match v.trim() {
-                        "padding-box" => Some(Some(BgClip::PaddingBox)),
-                        "content-box" => Some(Some(BgClip::ContentBox)),
-                        "text" => Some(Some(BgClip::Text)),
-                        "border-area" => Some(Some(BgClip::BorderArea)),
-                        "border-box" => Some(None),
-                        _ => None,
-                    }
-                );
-                if v.trim() == "border-box" {
-                    self.accept_declaration();
+                if let Some(clip) = record_parsed!(self, clip_box(v)) {
+                    self.bg_clip = clip;
                 }
             }
+            // Отрицательная длина делает объявление негодным (§3.9).
+            // Процентная смесь `calc(50px + 50%)` доживает до растра.
             "background-size" => {
-                self.bg_size = match v {
-                    "cover" => accept_parsed!(self, BgSize::Cover),
-                    "contain" => accept_parsed!(self, BgSize::Contain),
-                    _ if self.css_wide_value => accept_parsed!(self, BgSize::default()),
-                    _ => {
-                        // Отрицательная длина делает декларацию невалидной
-                        // целиком (css-backgrounds-3 §3.9) — размер не трогать.
-                        let neg = |l: &Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v)) if *v < 0.0);
-                        // Резка вне скобок и процентная смесь: `calc(50px +
-                        // 50%) calc(100% - 30px)` — две длины, а не шесть слов;
-                        // `background::len_px` в растре складывает доли с
-                        // точками сам (css-values-4 §10.9).
-                        let words = split_outside_parens(v);
-                        if !(1..=2).contains(&words.len()) {
-                            return;
-                        }
-                        let sizes = words
-                            .iter()
-                            .map(|w| {
-                                size_range::parse_nonnegative_size(w, vcx).filter(|l| {
-                                    !matches!(
-                                        l,
-                                        Len::MinContent | Len::MaxContent | Len::FitContent
-                                    )
-                                })
-                            })
-                            .collect::<Option<Vec<_>>>();
-                        let sizes = parsed_value!(self, sizes);
-                        let w = sizes.first().copied();
-                        let h = sizes.get(1).copied();
-                        if neg(&w) || neg(&h) {
-                            return;
-                        }
-                        if v == "auto" {
-                            BgSize::Auto
-                        } else {
-                            BgSize::Fixed(w, h)
-                        }
-                    }
+                if let Some(size) = record_parsed!(self, bg_size(v, vcx)) {
+                    self.bg_size = size;
                 }
             }
-            "background-position" => {
-                if v == "inherit" {
-                    self.inherit_bits |= inh::BG_POS;
-                    return;
+            // Оси положения (css-backgrounds-4 §3.6): своя ось, другая не
+            // трогается.
+            "background-position-x" | "background-position-y" => {
+                self.set_background_position_axis(usize::from(key.ends_with("-y")), v.trim(), vcx);
+            }
+            // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается она от
+            // окна, а красится всё равно только внутри коробки (§3.5).
+            "background-attachment" => {
+                if let Some(fixed) = record_parsed!(self, attachment(v)) {
+                    self.bg_fixed = fixed.then_some(true);
                 }
-                css_wide_reset!(self, bg_pos, bg_position_math);
-                if !position_valid(v, vcx) {
-                    return;
-                }
-                self.set_background_position(v, vcx);
             }
             // `object-position` — та же грамматика, но для замещаемого
             // содержимого (css-images-3 §5.2).
@@ -165,55 +95,12 @@ impl Computed {
                 }
             }
             "object-position" => {
-                if !position_valid(v, vcx) {
+                if !super::values::position_ok(v, vcx) {
                     return;
                 }
                 self.object_position = accept_parsed!(self, Some(parse_pos_words(v, vcx)));
             }
-            // Пооосевые продольные свойства (css-backgrounds-4 §4.1):
-            // одна ось, вторая не трогается.
-            "background-position-x" | "background-position-y" => {
-                let val = match v {
-                    "left" | "top" => Some(Len::Pct(0.0)),
-                    "center" => Some(Len::Pct(0.5)),
-                    "right" | "bottom" => Some(Len::Pct(1.0)),
-                    other => Len::parse(other, vcx),
-                };
-                if val.is_none() {
-                    return;
-                }
-                self.note_parsed(&val);
-                self.set_background_position_axis(usize::from(key.ends_with("-y")), v, val, vcx);
-            }
-            "background-attachment" => {
-                // `fixed` привязывает плитку к ОБЛАСТИ ПРОСМОТРА: считается
-                // она от окна, а красится всё равно только внутри коробки
-                // (css-backgrounds-3 §3.10).
-                self.bg_fixed = apply_parsed!(
-                    self,
-                    matches!(v, "fixed" | "scroll" | "local").then_some(v == "fixed")
-                );
-            }
             _ => *hit = false,
         }
     }
-}
-
-pub(in crate::style::computed::props) fn position_valid(v: &str, vcx: ValueCx<'_>) -> bool {
-    let words = split_outside_parens(v);
-    (1..=4).contains(&words.len())
-        && words.iter().all(|w| {
-            matches!(w.as_str(), "left" | "right" | "top" | "bottom" | "center")
-                || (Computed::background_position_length(w, vcx)
-                    && !matches!(
-                        w.as_str(),
-                        "auto" | "min-content" | "max-content" | "fit-content"
-                    ))
-                || Len::parse_mixed(w, vcx).is_some_and(|l| {
-                    !matches!(
-                        l,
-                        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
-                    )
-                })
-        })
 }

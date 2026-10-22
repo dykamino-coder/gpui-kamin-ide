@@ -82,7 +82,9 @@ pub(crate) fn emphasis_spans(
                 // CurrentColor already carries the composited text fill;
                 // explicit emphasis colors need the same composition here.
                 color: style.text_shadow_ink.map(Color::to_hsla).or_else(|| {
-                    style.emphasis_color.map(|color| {
+                    let color = style.emphasis_color.as_ref().filter(|c| !c.is_current());
+                    color.map(|color| {
+                        let color = style.used_color(color);
                         style
                             .text_clip_fill
                             .map_or(color, |fill| {

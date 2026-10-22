@@ -1,5 +1,8 @@
 //! Логические свойства на физические поля (css-logical-1 §4, css-writing-modes-4 §6.4):
 //! `resolve_logical` раскладывает сохранённые `Logical` по унаследованному `WritingMode` коробки.
+//! Логическое и физическое свойство одной стороны делят вычисленное значение, и побеждает
+//! более сильное в каскаде объявление (Blink `StyleCascade` кладёт логическое свойство в ячейку
+//! физического по письму, Stylo `LonghandId::to_physical`): сравниваются их `DeclOrder`.
 //!
 //! Стороны (поля, отступы, вставки, рамки) переводятся точно по abstract-physical mapping через
 //! `WritingMode::{block_start, inline_start}` — единственное такое отображение в крейте.
@@ -10,7 +13,9 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::props::box_model::side_slot;
 use crate::style::computed::writing_mode::WritingMode;
+use crate::style::css::BoxGroup;
 
 impl Computed {
     /// Место под логические значения — заводится по первому обращению: у
@@ -33,13 +38,6 @@ impl Computed {
         let Some(logical) = self.logical.take() else {
             return;
         };
-        // Логическое значение ПЕРЕКРЫВАЕТ физическое, только если объявлено позже
-        // (порядок каскада, `line-box-direction-vrl-019`): `set` пишет лишь заданные значения.
-        let set = |slot: &mut Option<Len>, val: Option<Len>| {
-            if val.is_some() {
-                *slot = val;
-            }
-        };
         let set_ci = |slot: &mut Option<f32>, val: Option<f32>| {
             if val.is_some() {
                 *slot = val;
@@ -52,71 +50,143 @@ impl Computed {
             set_ci(&mut self.contain_intrinsic.0, logical.ci_inline);
             set_ci(&mut self.contain_intrinsic.1, logical.ci_block);
         }
-        if wm.vertical() && (parent_vertical || !is_cell) {
-            set(&mut self.height, logical.inline_size);
-            set(&mut self.width, logical.block_size);
-            set(&mut self.min_height, logical.min_inline);
-            set(&mut self.min_width, logical.min_block);
-            set(&mut self.max_height, logical.max_inline);
-            set(&mut self.max_width, logical.max_block);
-        } else {
-            if wm.vertical() && logical.inline_size.is_some() {
+        // Логический размер i (inline, block, min-inline, min-block,
+        // max-inline, max-block) → физический (width, height, min-width,
+        // min-height, max-width, max-height). Строчный размер ячейки в
+        // горизонтальной таблице табличный код переставляет сам.
+        let rotate = wm.vertical() && (parent_vertical || !is_cell);
+        for i in 0..6 {
+            let Some(order) = logical.size_order[i] else {
+                continue;
+            };
+            let phys = if rotate { i ^ 1 } else { i };
+            if order < self.side_order.size[phys] {
+                continue;
+            }
+            if i == 0 && wm.vertical() && !rotate {
                 self.width_from_inline = true;
             }
-            set(&mut self.width, logical.inline_size);
-            set(&mut self.height, logical.block_size);
-            set(&mut self.min_width, logical.min_inline);
-            set(&mut self.min_height, logical.min_block);
-            set(&mut self.max_width, logical.max_inline);
-            set(&mut self.max_height, logical.max_block);
+            let value = [
+                logical.inline_size,
+                logical.block_size,
+                logical.min_inline,
+                logical.min_block,
+                logical.max_inline,
+                logical.max_block,
+            ][i];
+            self.set_physical_size(phys, value, logical.size_inherit[i]);
         }
         let (b_start, i_start) = (wm.block_start(), wm.inline_start());
         let [bs, ie, be, is] =
             [b_start, i_start.opposite(), b_start.opposite(), i_start].map(|s| s.index() as u8);
-        let phys_seq = self.side_seq;
-        for (which, from, pseq) in [
-            (0, &logical.padding, phys_seq.padding),
-            (1, &logical.margin, phys_seq.margin),
-            (2, &logical.inset, phys_seq.inset),
+        for (group, from) in [
+            (BoxGroup::Padding, &logical.padding),
+            (BoxGroup::Margin, &logical.margin),
+            (BoxGroup::Inset, &logical.inset),
         ] {
-            let to = match which {
-                0 => &mut self.padding,
-                1 => &mut self.margin,
-                _ => &mut self.inset,
-            };
-            for (side, val, lseq) in [
-                (is, from.inline_start, from.seq[0]),
-                (ie, from.inline_end, from.seq[1]),
-                (bs, from.block_start, from.seq[2]),
-                (be, from.block_end, from.seq[3]),
-            ] {
-                let slot = match side {
-                    0 => &mut to.top,
-                    1 => &mut to.right,
-                    2 => &mut to.bottom,
-                    _ => &mut to.left,
+            for (lside, side) in [is, ie, bs, be].into_iter().enumerate() {
+                let side = side as usize;
+                let Some(order) = from.order[lside] else {
+                    continue;
                 };
-                if lseq >= pseq[side as usize] {
-                    set(slot, val);
+                let (sides, flags, orders) = match group {
+                    BoxGroup::Padding => (
+                        &mut self.padding,
+                        &mut self.padding_inherit_side,
+                        &self.side_order.padding,
+                    ),
+                    BoxGroup::Margin => (
+                        &mut self.margin,
+                        &mut self.margin_inherit,
+                        &self.side_order.margin,
+                    ),
+                    _ => (
+                        &mut self.inset,
+                        &mut self.inset_inherit,
+                        &self.side_order.inset,
+                    ),
+                };
+                if order < orders[side] {
+                    continue;
+                }
+                flags[side] = from.inherit[lside];
+                if let Some(v) = from.get(lside) {
+                    *side_slot(sides, side) = Some(v);
                 }
             }
         }
-        // Logical border shorthands/longhands go through the ordinary physical parser.
-        let borders = logical.border.clone();
-        for (raw, side) in [
-            (&borders[0], bs),
-            (&borders[1], ie),
-            (&borders[2], be),
-            (&borders[3], is),
-        ] {
-            if let Some(v) = raw {
-                self.apply_border_shorthand(v, Some(side as usize), vcx);
+        // Логическая кромка ложится на физическую сторону обработчиком
+        // физического свойства — с местом своего объявления в каскаде.
+        const NAMES: [[&str; 4]; 3] = [
+            [
+                "border-top-width",
+                "border-right-width",
+                "border-bottom-width",
+                "border-left-width",
+            ],
+            [
+                "border-top-style",
+                "border-right-style",
+                "border-bottom-style",
+                "border-left-style",
+            ],
+            [
+                "border-top-color",
+                "border-right-color",
+                "border-bottom-color",
+                "border-left-color",
+            ],
+        ];
+        let current = self.decl_order;
+        for (part, names) in NAMES.iter().enumerate() {
+            for (lside, side) in [is, ie, bs, be].into_iter().enumerate() {
+                let side = side as usize;
+                let Some((order, value)) = &logical.border[part][lside] else {
+                    continue;
+                };
+                if *order < self.side_order.border[part][side] {
+                    continue;
+                }
+                self.decl_order = *order;
+                self.apply_one(names[side], value, vcx);
             }
         }
-        let phys = [bs, ie, be, is];
-        for (side, prop, v) in &logical.border_long {
-            let name = ["top", "right", "bottom", "left"][phys[*side as usize] as usize];
-            self.apply_one(&format!("border-{name}-{prop}"), v, vcx);
+        self.decl_order = current;
+        self.settle_border_widths();
+    }
+
+    /// Физический размер `i` (width, height, min-width, min-height,
+    /// max-width, max-height) получает значение логического: прежние
+    /// пометки физического объявления (`stretch`, `fit-content(N)`,
+    /// `calc-size()`, `inherit`) уходят вместе с ним.
+    fn set_physical_size(&mut self, i: usize, value: Option<Len>, inherit: bool) {
+        self.stretch_size[[0, 1, 2, 4, 3, 5][i]] = false;
+        self.calc_size_basis[i] = None;
+        match i {
+            0..4 => self.calc_size[i] = None,
+            _ => self.calc_size_max[i - 4] = None,
         }
+        match i {
+            0 => self.fit_arg[0] = None,
+            2 => self.fit_arg[1] = None,
+            4 => self.fit_arg[2] = None,
+            _ => {}
+        }
+        match i {
+            0 => self.width_inherit = inherit,
+            1 => self.height_inherit = inherit,
+            _ => self.minmax_inherit[i - 2] = inherit,
+        }
+        if inherit {
+            return;
+        }
+        *match i {
+            0 => &mut self.width,
+            1 => &mut self.height,
+            2 => &mut self.min_width,
+            3 => &mut self.min_height,
+            4 => &mut self.max_width,
+            _ => &mut self.max_height,
+        } = value;
     }
 }

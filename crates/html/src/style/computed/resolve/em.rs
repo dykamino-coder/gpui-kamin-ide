@@ -17,13 +17,19 @@ impl Computed {
         // тому шрифту, которым текст в самом деле наберётся.
         let family = self.font_family.clone().unwrap_or_else(|| {
             if self.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(self.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(self.lang.as_deref(), vcx).to_string()
             } else {
                 String::new()
             }
         });
-        // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля, он к
-        // этому моменту уже разрешён вызывающим (см. ниже по функции).
+        // Свой кегль — первым: от него считается всё остальное (одна функция
+        // с фазой шрифта корня, `computed_font_px`). Вычисленный кегль —
+        // абсолютная длина, и шаг `larger`/`smaller` в нём уже учтён.
+        if let Some(px) = self.computed_font_px(&family, parent_font_px, vcx) {
+            self.font_size = Some(Len::Px(px));
+            self.font_size_step = 0;
+        }
+        // Дорожки сетки в единицах шрифта: считаются от СВОЕГО кегля.
         let own_px = match self.font_size {
             Some(Len::Px(v)) => v,
             _ => parent_font_px,
@@ -35,11 +41,7 @@ impl Computed {
             || self.shadow_raw.is_some()
             || self.text_shadow_raw.is_some()
         {
-            let own_font = match self.font_size {
-                Some(Len::Px(v)) => v,
-                Some(Len::Em(k)) => k * parent_font_px,
-                _ => parent_font_px,
-            };
+            let own_font = own_px;
             let (ch, ex) = crate::text::metrics::ch_ex_px(&family, own_font, vcx);
             if let Some(raw) = self.transform_raw.take() {
                 let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
@@ -68,23 +70,6 @@ impl Computed {
             for t in list.iter_mut() {
                 t.resolve_font(&family, own_px, vcx);
             }
-        }
-        match self.font_size {
-            Some(Len::Em(k)) => self.font_size = Some(Len::Px(k * parent_font_px)),
-            Some(Len::Ch(k)) => {
-                let (ch, _) = crate::text::metrics::ch_ex_px(&family, parent_font_px, vcx);
-                self.font_size = Some(Len::Px(k * ch));
-            }
-            Some(Len::Ex(k)) => {
-                let (_, ex) = crate::text::metrics::ch_ex_px(&family, parent_font_px, vcx);
-                self.font_size = Some(Len::Px(k * ex));
-            }
-            Some(Len::Ic(k)) => {
-                self.font_size = Some(Len::Px(
-                    k * crate::text::metrics::ic_px(&family, parent_font_px, vcx),
-                ));
-            }
-            _ => {}
         }
         let base = match self.font_size {
             Some(Len::Px(px)) => px,

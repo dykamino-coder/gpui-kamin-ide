@@ -7,12 +7,12 @@
 
 use super::{Computed, split_outside_parens};
 use crate::document::state::ValueCx;
-use crate::style::values::value::Color;
+use crate::style::values::value::StyleColor;
 
 mod inherit;
 pub(crate) use inherit::inherit;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ScrollStyle {
     pub forced: [bool; 2],
     pub width: Option<u8>,
@@ -21,14 +21,16 @@ pub struct ScrollStyle {
     pub(crate) viewport_root: bool,
     pub(crate) used: [f32; 4],
     pub(crate) native: [f32; 4],
-    pub current: [bool; 2],
-    pub colors: Option<Option<[Color; 2]>>,
+    /// `scrollbar-color` (CSS Scrollbars 1 §2), наследуемое: `None` — не
+    /// задано, `Some(None)` — `auto`; `currentcolor` остаётся словом и
+    /// решается цветом элемента (`Computed::used_scrollbar_colors`).
+    pub colors: Option<Option<[StyleColor; 2]>>,
     pub inherit_width: bool,
 }
 
 impl ScrollStyle {
     // Blink core/scroll/scrollbar_theme_aura.cc:53–57,123–130: 15px, thin 2/3.
-    pub(crate) fn thickness(self) -> f32 {
+    pub(crate) fn thickness(&self) -> f32 {
         match self.width {
             Some(1) => 10.0,
             Some(2) => 0.0,
@@ -80,32 +82,19 @@ impl Computed {
             "scrollbar-color" => {
                 if v == "inherit" {
                     self.scroll.colors = None;
-                    self.scroll.current = [false; 2];
                 } else if v == "auto" {
                     self.accept_declaration();
                     self.scroll.colors = Some(None);
-                    self.scroll.current = [false; 2];
                 } else {
                     let parts = split_outside_parens(v);
-                    if parts.len() == 2 {
-                        let current = [
-                            parts[0].eq_ignore_ascii_case("currentcolor"),
-                            parts[1].eq_ignore_ascii_case("currentcolor"),
-                        ];
-                        let color = |part: &str, current| {
-                            if current {
-                                Some(Color::default())
-                            } else {
-                                Color::parse(part, vcx)
-                            }
-                        };
-                        if let (Some(a), Some(b)) =
-                            (color(&parts[0], current[0]), color(&parts[1], current[1]))
-                        {
-                            self.accept_declaration();
-                            self.scroll.colors = Some(Some([a, b]));
-                            self.scroll.current = current;
-                        }
+                    if parts.len() == 2
+                        && let (Some(a), Some(b)) = (
+                            StyleColor::parse_value(&parts[0], vcx),
+                            StyleColor::parse_value(&parts[1], vcx),
+                        )
+                    {
+                        self.accept_declaration();
+                        self.scroll.colors = Some(Some([a, b]));
                     }
                 }
             }
@@ -136,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    fn inherited_scrollbar_current_color_keeps_the_parent_computed_color() {
+    fn inherited_scrollbar_current_color_resolves_with_the_child_color() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut declaration = Computed::default();
@@ -146,15 +135,17 @@ mod tests {
             crate::style::cascade::inherit::inherit(&Computed::default(), &declaration, vcx);
         let mut own = Computed::default();
         own.apply_one("color", "green", vcx);
+        // css-color-4 §6.4: the keyword is inherited, not the parent's color.
         let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         assert_eq!(child.scroll.colors, parent.scroll.colors);
-        own.apply_one("scrollbar-color", "currentColor blue", vcx);
-        let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         assert_eq!(
-            child.scroll.colors.flatten().unwrap()[0],
+            child.used_scrollbar_colors().unwrap()[0],
             child.color.unwrap()
         );
-        assert_ne!(child.scroll.colors, parent.scroll.colors);
+        assert_ne!(
+            child.used_scrollbar_colors(),
+            parent.used_scrollbar_colors()
+        );
     }
 
     #[test]
@@ -163,7 +154,7 @@ mod tests {
         let vcx = doc.values();
         let mut c = Computed::default();
         c.apply_one("scrollbar-color", "red blue", vcx);
-        let valid = c.scroll.colors;
+        let valid = c.scroll.colors.clone();
         for invalid in ["red", "red blue green", "red not-a-color"] {
             c.apply_one("scrollbar-color", invalid, vcx);
             assert_eq!(c.scroll.colors, valid);

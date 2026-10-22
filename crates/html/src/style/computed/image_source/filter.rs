@@ -29,21 +29,15 @@ impl ImageFilter {
             }
             if let Some(mut shadow) = value.numeric(vcx) {
                 shadow.blur *= 2.0;
+                self.shadow_used = shadow.used_color(Color::BLACK);
                 self.shadow = Some(shadow);
                 self.shadow_value = None;
             }
         }
     }
-    pub(super) fn resolve_colors(&mut self, current: Color) {
-        if let Some(shadow) = &mut self.shadow
-            && self.shadow_current
-        {
-            shadow.color = current;
-        }
-        if let Some(value) = &mut self.shadow_value
-            && self.shadow_current
-        {
-            value.color = current;
+    pub(crate) fn resolve_colors(&mut self, current: Color) {
+        if let Some(shadow) = &self.shadow {
+            self.shadow_used = shadow.used_color(current);
         }
     }
     pub(crate) fn cacheable(&self) -> bool {
@@ -76,7 +70,7 @@ mod tests {
         else {
             panic!("typed filter content");
         };
-        let shadow = program.shadow.unwrap();
+        let shadow = program.shadow.clone().unwrap();
         assert_eq!((shadow.x, shadow.y, shadow.blur), (22.0, 30.0, 0.0));
         assert!(program.cacheable());
         let before = style.content.clone();
@@ -122,16 +116,13 @@ mod tests {
                 panic!("typed filter");
             };
             assert_eq!(program.calls, 1);
-            assert_eq!(
-                program.shadow.unwrap().color,
-                Color::parse("green", vcx).unwrap()
-            );
+            assert_eq!(program.shadow_used, Color::parse("green", vcx).unwrap());
             image.resolve_colors(Color::parse("red", vcx).unwrap());
             let ImageSource::Filter { program, .. } = &image else {
                 panic!("typed filter");
             };
             assert_eq!(
-                program.shadow.unwrap().color,
+                program.shadow_used,
                 Color::parse(
                     if color == "currentcolor" {
                         "red"

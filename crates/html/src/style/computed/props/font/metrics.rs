@@ -84,12 +84,12 @@ impl Computed {
                 }
             }
             "caret-color" => {
-                self.caret_color = parsed_value!(
-                    self,
-                    Color::parse(v, vcx)
-                        .map(Some)
-                        .or_else(|| (v == "auto").then_some(None))
-                )
+                if let Some(value) =
+                    super::super::effects::values::inherited_color_or_auto(self, v, vcx)
+                {
+                    self.accept_declaration();
+                    self.caret_color = value;
+                }
             }
             _ => *hit = false,
         }

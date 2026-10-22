@@ -34,9 +34,7 @@ impl Computed {
         for image in self.image_operands() {
             image.resolve_colors(current);
         }
-        if (self.gradient.is_some()
-            || self.background_all_inherit
-            || self.inherit_bits & super::inh::BG_IMAGE != 0)
+        if (self.gradient.is_some() || self.inherit_bits & super::inh::BG_IMAGE != 0)
             && let Some(template) = self.gradient_current.as_ref()
         {
             let mut gradient = self.gradient.clone().unwrap_or_else(|| template.clone());

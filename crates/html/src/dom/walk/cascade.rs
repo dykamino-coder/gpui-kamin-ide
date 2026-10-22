@@ -11,9 +11,10 @@
 use super::presentational_hints;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
+use crate::style::cascade::map::{CascadeMap, Pick};
 use crate::style::cascade::vars::CascadeCx;
 use crate::style::computed::Computed;
-use crate::style::css::{DeclBlock, Rule, VarMap, parse_decls};
+use crate::style::css::{DeclBlock, LinkMatch, Rule, VarMap, parse_decls_in};
 use crate::style::select::matching::matches;
 use crate::style::select::{Ancestor, Sibs, Spot};
 use markup5ever_rcdom::Handle;
@@ -37,6 +38,7 @@ pub(super) fn cascade_element(
     VarMap,
     crate::style::values::value::Scheme,
     Option<Rc<crate::dom::shadow::Shadow>>,
+    Option<DeclBlock>,
 ) {
     // css-overflow-5 §scroll-target-group: links with a fragment URL inside a
     // `scroll-target-group: auto` element are its scroll markers. At the
@@ -56,11 +58,21 @@ pub(super) fn cascade_element(
     let inline_decls: DeclBlock = attrs
         .iter()
         .find(|(k, _)| k == "style")
-        .map(|(_, v)| parse_decls(v))
+        .map(|(_, v)| parse_decls_in(v, vcx))
         .unwrap_or_default();
-    let mut matched: Vec<&Rule> = rules
+    // Ограничение `:visited`: правило, совпавшее лишь при одном состоянии
+    // своей ссылки, входит в каскад копией с этим признаком.
+    let link = super::visited_match::link_matches(rules, me, path, sibs);
+    let restricted: Vec<Rule> = link
         .iter()
-        .filter(|r| matches(&r.sel, &me, path, sibs))
+        .filter(|(_, l)| *l != LinkMatch::Any)
+        .map(|&(i, l)| crate::style::css::visited::restrict(&rules[i], l))
+        .collect();
+    let mut matched: Vec<&Rule> = link
+        .iter()
+        .filter(|(_, l)| *l == LinkMatch::Any)
+        .map(|&(i, _)| &rules[i])
+        .chain(restricted.iter())
         .collect();
     let math_defaults = crate::dom::mathml::defaults(handle, spot.index);
     matched.extend(math_defaults.iter());
@@ -86,13 +98,13 @@ pub(super) fn cascade_element(
     // объявление красило ВЕСЬ документ — переключение темы классом
     // не работало в принципе.
     let registered = tree.doc.property_rules();
-    let cascaded = crate::style::css::custom_properties::cascade(
-        &matched,
-        &inline_decls,
-        vars,
-        &registered,
-        |s, v| syntax_accepts(s, v, vcx),
-    );
+    // Одна карта каскада на пользовательские свойства и `color-scheme`:
+    // подсказки и лист форм их не задают.
+    let pre = CascadeMap::collect(&matched, &inline_decls);
+    let cascaded =
+        crate::style::css::custom_properties::cascade_map(&pre, vars, &registered, |s, v| {
+            syntax_accepts(s, v, vcx)
+        });
     let own_vars =
         crate::style::css::variable_values::compute(&cascaded, vars, &registered, |s, v| {
             syntax_accepts(s, v, vcx)
@@ -102,27 +114,11 @@ pub(super) fn cascade_element(
     // своё `color-scheme` — последнее по каскаду, иначе родительская
     // (свойство наследуемое). При `light dark` берётся предпочтение
     // текущего документа, включая схему embedding element. Держится на время узла и его потомков.
-    let scheme = {
-        let mut by_cascade: Vec<&&Rule> = matched.iter().collect();
-        by_cascade.sort_by(|a, b| {
-            (a.origin, &a.layer, a.sel.specificity(), a.order).cmp(&(
-                b.origin,
-                &b.layer,
-                b.sel.specificity(),
-                b.order,
-            ))
-        });
-        let mut last: Option<String> = None;
-        for rule in by_cascade {
-            if let Some(v) = rule.decls.last("color-scheme") {
-                last = Some(v.to_string());
-            }
-        }
-        if let Some(v) = inline_decls.last("color-scheme") {
-            last = Some(v.to_string());
-        }
-        last
+    let scheme = match pre.picks("color-scheme").next() {
+        Some(Pick::Value(_, v)) => Some(v.to_string()),
+        _ => None,
     };
+    drop(pre);
     let vcx = scheme
         .as_deref()
         .map_or(vcx, |v| crate::style::values::value::resolve_scheme(v, vcx));
@@ -131,15 +127,23 @@ pub(super) fn cascade_element(
     let element = CascadeCx {
         attrs,
         sibling: (spot.index > 0).then_some((spot.index, spot.total)),
+        root: path.is_empty(),
     };
     let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
     matched.extend(hints.iter());
     let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
     matched.extend(math_hints.iter());
-    let mut style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
+    let mut style = Computed::resolve_in(&matched, &inline_decls, vars, element, vcx);
+    // Важные объявления сильнее анимаций (css-cascade-5 §6.2): кадры
+    // `@keyframes` кладутся под них. Лист форм
+    // (`appearance: base`) важных объявлений не несёт.
+    let important = style
+        .animation
+        .is_some()
+        .then(|| CascadeMap::collect(&matched, &inline_decls).important_block());
     if let Some(basic) = super::form_appearance::rule(&tag, &attrs, &style) {
         matched.push(&basic);
-        style = Computed::resolve_in(&mut matched, &inline_decls, vars, element, vcx);
+        style = Computed::resolve_in(&matched, &inline_decls, vars, element, vcx);
     }
     style.mathml = crate::dom::mathml::is_mathml(handle);
     if crate::dom::mathml_routing::enabled(handle) {
@@ -161,5 +165,5 @@ pub(super) fn cascade_element(
     });
     content::inherit_generated(&mut style, path.last());
     apply_value_hint(&mut style, &me);
-    (style, own_vars, vcx.scheme, shadow)
+    (style, own_vars, vcx.scheme, shadow, important)
 }

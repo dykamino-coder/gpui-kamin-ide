@@ -146,7 +146,7 @@ pub(super) fn run_for(
             .unwrap_or_else(|| family.clone())
             .into();
     } else if style.monospace == Some(true) {
-        font.family = crate::text::metrics::mono_family_for(style.lang.as_deref()).into();
+        font.family = crate::text::metrics::mono_family_for(style.lang.as_deref(), vcx).into();
     }
     // Вес и курсив — ВСЕГДА от стиля куска: `None` в слитом стиле — это
     // обычное начертание, а не «как у базы» (база абзаца строится по

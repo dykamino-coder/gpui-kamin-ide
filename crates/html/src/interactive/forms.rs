@@ -28,7 +28,7 @@ use crate::paint::apply::apply;
 use crate::style::computed::Computed;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
-use crate::style::values::value::{SystemColor, system_color};
+use crate::style::values::value::{Len, SystemColor, system_color};
 
 /// Native controls share the replaced-content natural measurement mechanism.
 fn control(paint: gpui::Div, natural: [f32; 2]) -> AnyElement {
@@ -97,8 +97,7 @@ fn text_field(e: &Element, style: &Computed, vcx: ValueCx<'_>) -> AnyElement {
     // где фокус объявлен разметкой, иначе каретка стояла бы в каждом поле.
     let caret = e.attr("autofocus").is_some().then(|| {
         div().w(px(1.)).h(px(14.)).ml(px(1.)).bg(style
-            .caret_color
-            .or(style.color)
+            .used_caret_color()
             .map(|c| c.to_hsla())
             .unwrap_or_else(|| native_color(style, SystemColor::FieldText)))
     });
@@ -159,7 +158,11 @@ fn field_box(style: &Computed, vcx: ValueCx<'_>) -> gpui::Div {
     if style.border_width.top.is_none() && style.border_visible[0].is_none() {
         d = d.border_1();
     }
-    if style.border_color.is_none() {
+    let b = style.borders();
+    let has_border = [b.top, b.right, b.bottom, b.left]
+        .iter()
+        .any(|w| !matches!(w, None | Some(Len::Px(0.0))));
+    if !style.border_color_declared() && !has_border {
         d = d.border_color(native_color(style, SystemColor::ButtonBorder));
     }
     // The rounded native look is part of `appearance: auto`; an author
@@ -198,5 +201,5 @@ impl Muted for gpui::Div {
 
 /// Авторский цвет акцента формы, общий для выбора и индикаторов.
 pub(super) fn control_accent(style: &Computed) -> Option<crate::style::values::value::Color> {
-    style.accent_color
+    style.used_accent_color()
 }

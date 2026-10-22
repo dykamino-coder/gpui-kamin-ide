@@ -5,9 +5,6 @@ use super::*;
 use crate::document::state::ValueCx;
 
 impl Computed {
-    /// Толщина рамки, как её видит модель коробки. Начальный `border-style`
-    /// — `none`, а рамка без рисунка вычисляется в ноль (css-backgrounds-3
-    /// §4.3), поэтому заданная, но не нарисованная толщина не занимает места.
     /// Разбор всех пяти свойств рамки-картинки в одну запись.
     ///
     /// Сокращение несёт до трёх частей через косую: `<источник> <срез> /
@@ -18,14 +15,15 @@ impl Computed {
         if name == "border-image" {
             self.border_image = None;
         }
-        let mut image = self.border_image.clone().unwrap_or(BorderImage {
+        let initial = BorderImage {
             src: None,
             slice: [BorderImageSlice::Pct(1.0); 4],
             fill: false,
             width: [BorderImageWidth::Times(1.0); 4],
             outset: [BorderImageWidth::Px(0.0); 4],
             repeat: (Tiling::None, Tiling::None),
-        });
+        };
+        let mut image = self.border_image.clone().unwrap_or(initial.clone());
         let mut accepted = false;
         let mut set = |part: &str, value: &str| match part {
             "border-image-source" => {
@@ -205,6 +203,18 @@ impl Computed {
         if accepted {
             self.accept_declaration();
         }
-        self.border_image = Some(image);
+        // Запись из одних начальных значений — то же, что её отсутствие
+        // (`border` сбрасывает части `border-image`, css-backgrounds-3 §4.4).
+        // Нулевой вылет — начальный, числом он записан или длиной.
+        let zero = |o: &BorderImageWidth| {
+            matches!(o, BorderImageWidth::Px(0.0) | BorderImageWidth::Times(0.0))
+        };
+        let initial_outset = image.outset.iter().all(zero);
+        let is_initial = initial_outset
+            && BorderImage {
+                outset: initial.outset,
+                ..image.clone()
+            } == initial;
+        self.border_image = (!is_initial).then_some(image);
     }
 }

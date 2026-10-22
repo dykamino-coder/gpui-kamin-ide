@@ -42,8 +42,8 @@ pub(super) const PROPERTIES: &[Prop] = &[
     m("clip-path", "polygon(50% 0%, 100% 100%, 0% 100%)"),
     part(
         "mask",
-        "circle(50%)",
-        "формы те же, что у `clip-path`; растровой маски из картинки нет",
+        "url(#m) no-repeat",
+        "слои маски разбираются все; `mask-border` вычисляется, но не рисуется",
     ),
     part(
         "float",

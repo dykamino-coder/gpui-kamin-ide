@@ -68,7 +68,7 @@ pub(super) fn blank_box(
         // рядом с полосой соседа (`word-spacing-characters-001`).
         let family = merged.font_family.clone().unwrap_or_else(|| {
             if merged.monospace == Some(true) {
-                crate::text::metrics::mono_family_for(merged.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(merged.lang.as_deref(), cx.vcx()).to_string()
             } else {
                 String::new()
             }

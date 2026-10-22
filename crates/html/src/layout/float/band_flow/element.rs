@@ -60,8 +60,7 @@ impl Hooks for BandFlow {
         let cache = self.plan.clone();
         let fragment = self.fragment.clone();
         let paint = self.paint.clone();
-        let clamp = self.clamp.clone();
-        let positioning = self.positioning.clone();
+        let scopes = self.probe_scopes();
         let build = self.build;
         let measured = Rc::new(RefCell::new(Default::default()));
         let output = measured.clone();
@@ -105,8 +104,7 @@ impl Hooks for BandFlow {
                             v,
                             fragment.as_ref(),
                             paint.clone(),
-                            clamp.clone(),
-                            positioning.clone(),
+                            scopes.clone(),
                             build,
                         );
                         (
@@ -124,8 +122,7 @@ impl Hooks for BandFlow {
                         v,
                         fragment.as_ref(),
                         paint.clone(),
-                        clamp.clone(),
-                        positioning.clone(),
+                        scopes.clone(),
                         build,
                     );
                     intrinsic_width(&kids, matches!(a, AvailableSpace::MaxContent), p)
@@ -151,8 +148,7 @@ impl Hooks for BandFlow {
                         v,
                         fragment.as_ref(),
                         paint.clone(),
-                        clamp.clone(),
-                        positioning.clone(),
+                        scopes.clone(),
                         build,
                     ),
                 )

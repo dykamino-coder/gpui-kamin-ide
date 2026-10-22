@@ -24,9 +24,8 @@ impl Computed {
         self.webkit_box != Some(true) || self.webkit_box_vertical == Some(true)
     }
 
-    /// Тени `box-shadow` с решённым цветом: без своего цвета — цвет текста
-    /// (css-backgrounds-3 §box-shadow, `currentColor`; метка — отрицательная
-    /// альфа, как у `apply::shadow_colour`). `inset` — внутренние.
+    /// Тени `box-shadow` с используемым цветом: `currentcolor` — цвет текста
+    /// (css-backgrounds-3 §box-shadow). `inset` — внутренние.
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {
         let list = if inset {
             &self.inset_shadows
@@ -34,19 +33,7 @@ impl Computed {
             &self.shadows
         };
         list.iter()
-            .map(|sh| {
-                let colour = if sh.color.a < 0.0 {
-                    self.color.unwrap_or(Color {
-                        r: 0.0,
-                        g: 0.0,
-                        b: 0.0,
-                        a: 1.0,
-                    })
-                } else {
-                    sh.color
-                };
-                (*sh, colour)
-            })
+            .map(|sh| (sh.clone(), sh.used_color(self.current_color())))
             .collect()
     }
 
@@ -123,9 +110,14 @@ impl Computed {
         }
     }
 
+    /// Используемые толщины рамки (css-backgrounds-3 §4.3): у стороны со
+    /// стилем `none`/`hidden` (и с начальным `none`) толщина нулевая — `None`.
+    /// Начальную `medium` видимой стороне ставит конец каскада
+    /// (`settle_border_widths`); пустая толщина после него — рамки нет
+    /// (раскладка так гасит сторону куска).
     pub fn borders(&self) -> Sides {
         let vis = self.border_visible;
-        let keep = |w, i: usize| if vis[i] == Some(true) { w } else { None };
+        let keep = |w: Option<Len>, i: usize| if vis[i] == Some(true) { w } else { None };
         Sides {
             top: keep(self.border_width.top, 0),
             right: keep(self.border_width.right, 1),

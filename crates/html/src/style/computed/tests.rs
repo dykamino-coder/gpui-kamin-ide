@@ -6,8 +6,11 @@ use crate::document::state::ValueCx;
 use crate::style::css::DeclBlock;
 use crate::style::css::parse_decls;
 
+mod background_cascade;
 mod cascade;
+mod cascade_winners;
 mod decor_inset;
+mod logical_cascade;
 
 fn computed(css: &str, vcx: ValueCx<'_>) -> Computed {
     let mut c = Computed::default();
@@ -64,7 +67,7 @@ fn border_shorthand_takes_width_and_color() {
     let vcx = doc.values();
     let c = computed("border: 2px solid #ff0000", vcx);
     assert_eq!(c.border_width.top, Some(Len::Px(2.0)));
-    assert_eq!(c.border_color.map(|c| c.r), Some(1.0));
+    assert_eq!(c.used_uniform_border_color().map(|c| c.r), Some(1.0));
 
     let c = computed("border-left: 3px solid teal", vcx);
     assert_eq!(c.border_width.left, Some(Len::Px(3.0)));
@@ -117,7 +120,7 @@ fn shadows_split_and_skip_inset() {
     assert_eq!(s.len(), 1, "inset-тень отбрасывается, её нечем рисовать");
     assert_eq!(s[0].y, 2.0);
     assert_eq!(s[0].blur, 8.0);
-    assert!((s[0].color.a - 0.4).abs() < 0.01);
+    assert!((s[0].used_color(crate::style::values::value::Color::BLACK).a - 0.4).abs() < 0.01);
 }
 
 #[test]
@@ -194,12 +197,12 @@ fn cascade_order_specificity_then_inline() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
     let rules = crate::style::css::parse_stylesheet(".a { color: red } div.a { color: blue }");
-    let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
-    let c = Computed::resolve(&mut matched, &parse_decls("color: green"), vcx);
+    let matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
+    let c = Computed::resolve(&matched, &parse_decls("color: green"), vcx);
     assert_eq!(c.color.map(|c| c.g), Some(0.5019608), "инлайн бьёт таблицу");
 
-    let mut matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
-    let c = Computed::resolve(&mut matched, &DeclBlock::new(), vcx);
+    let matched: Vec<&crate::style::css::Rule> = rules.iter().collect();
+    let c = Computed::resolve(&matched, &DeclBlock::new(), vcx);
     assert_eq!(
         c.color.map(|c| c.b),
         Some(1.0),

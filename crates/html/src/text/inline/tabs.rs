@@ -21,13 +21,13 @@ pub fn tab_stops(
     };
     let family = block.font_family.as_deref().unwrap_or_else(|| {
         if block.monospace == Some(true) {
-            metrics::mono_family_for(block.lang.as_deref())
+            metrics::mono_family_for(block.lang.as_deref(), vcx)
         } else {
             ""
         }
     });
     let font = super::strut_font(block, base, vcx);
-    let space = metrics::space_advance(&font, size)
+    let space = metrics::space_advance(&font, size, vcx)
         .unwrap_or_else(|| metrics::ch_ex_px(family, size, vcx).0)
         + metrics::spacing_px(block.letter_spacing, family, size, vcx)
         + metrics::spacing_px(block.word_spacing, family, size, vcx);
@@ -59,10 +59,13 @@ mod tests {
     fn numeric_tabs_use_shaped_spaces_with_the_block_font() {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
-        metrics::install_space_probe(|font, size| {
-            assert_eq!(font.weight, gpui::FontWeight(700.0));
-            size * 0.25
-        });
+        metrics::install_space_probe(
+            |font, size| {
+                assert_eq!(font.weight, gpui::FontWeight(700.0));
+                size * 0.25
+            },
+            vcx,
+        );
         let block = Computed {
             font_size: Some(Len::Px(20.0)),
             font_weight: Some(700),
@@ -88,7 +91,7 @@ mod tests {
     fn generic_monospace_uses_the_same_family_as_the_text_run() {
         let doc = crate::document::state::DocState::new(Default::default());
         let vcx = doc.values();
-        let expected = metrics::mono_family_for(None).to_string();
+        let expected = metrics::mono_family_for(None, vcx).to_string();
         metrics::install_probe(
             move |family, size| {
                 let ch = if family == expected { 0.75 } else { 0.25 };

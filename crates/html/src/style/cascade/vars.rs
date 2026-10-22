@@ -43,12 +43,16 @@ pub struct CascadeCx<'a> {
     pub attrs: &'a [(String, String)],
     /// `(index, count)`, index from 1.
     pub sibling: Option<(usize, usize)>,
+    /// Корневой элемент документа: его фаза шрифта задаёт базу `rem`/`rlh`
+    /// (css-values-4 §6.1.4, `compute_cx`).
+    pub root: bool,
 }
 
 impl CascadeCx<'_> {
     pub const NONE: CascadeCx<'static> = CascadeCx {
         attrs: &[],
         sibling: None,
+        root: false,
     };
 }
 

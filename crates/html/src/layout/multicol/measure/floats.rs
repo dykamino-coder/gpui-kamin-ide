@@ -46,8 +46,8 @@ fn floats_in(
                 && matches!(k.style.min_height, None | Some(Len::Auto))
                 && k.style.padding.top.is_none()
                 && k.style.padding.bottom.is_none()
-                && k.style.border_width.top.is_none()
-                && k.style.border_width.bottom.is_none()
+                && k.style.borders().top.is_none()
+                && k.style.borders().bottom.is_none()
                 && zero_m(&k.style.margin.top)
                 && zero_m(&k.style.margin.bottom)
         }

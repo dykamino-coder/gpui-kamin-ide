@@ -17,10 +17,10 @@ fn inherited_currentcolor_uses_the_descendant_color() {
     let child = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
     let shadows = shadow_list(&child);
     assert_eq!(shadows.len(), 2);
-    assert_eq!(shadows[0].color, Color::parse("green", vcx).unwrap());
+    assert_eq!(shadows[0].color, Color::parse("green", vcx).unwrap().into());
     assert_eq!((shadows[0].x, shadows[0].y), (2.0, 3.0));
-    assert_eq!(shadows[1].color, Color::parse("blue", vcx).unwrap());
-    assert!(child.text_shadow.unwrap().color.a < 0.0);
+    assert_eq!(shadows[1].color, Color::parse("blue", vcx).unwrap().into());
+    assert!(child.text_shadow.unwrap().color.is_current());
 }
 
 #[test]
@@ -31,7 +31,7 @@ fn explicit_currentcolor_defaults_to_black() {
     style.apply_one("text-shadow", "1px 2px currentcolor", vcx);
     assert_eq!(
         shadow_list(&style)[0].color,
-        Color::parse("black", vcx).unwrap()
+        Color::parse("black", vcx).unwrap().into()
     );
 }
 
@@ -76,9 +76,12 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
     let mut groups = Vec::new();
     collect_groups(&nodes, &ShadowStyle::new(&parent), &mut groups, vcx);
     assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0][0].color, Color::parse("red", vcx).unwrap());
-    assert_eq!(groups[1][0].color, Color::parse("green", vcx).unwrap());
-    assert!(parent.text_shadow.unwrap().color.a < 0.0);
+    assert_eq!(groups[0][0].color, Color::parse("red", vcx).unwrap().into());
+    assert_eq!(
+        groups[1][0].color,
+        Color::parse("green", vcx).unwrap().into()
+    );
+    assert!(parent.text_shadow.unwrap().color.is_current());
 }
 
 #[test]

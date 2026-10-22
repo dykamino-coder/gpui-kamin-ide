@@ -98,12 +98,14 @@ pub fn parse_keyframes_in(
             // `revert`/`revert-layer` in the animation origin roll back to the
             // author origin (css-cascade-5 §7.3.3, §7.3.4): the frame keeps
             // the underlying value, which is the base style it is applied over.
-            let mut decls = parse_decls(&inner[b + 1..b + c]);
+            let mut decls = parse_decls_in(&inner[b + 1..b + c], vcx);
             decls.retain(|d| {
                 !d.important
                     && !matches!(
-                        d.value.trim().to_ascii_lowercase().as_str(),
-                        "revert" | "revert-layer"
+                        d.specified,
+                        super::Specified::Wide(
+                            super::CssWide::Revert | super::CssWide::RevertLayer
+                        )
                     )
             });
             inner = &inner[b + c + 1..];

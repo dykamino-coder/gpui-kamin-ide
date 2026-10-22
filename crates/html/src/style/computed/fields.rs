@@ -1,7 +1,7 @@
 //! Тип Computed: все поля вычисленного стиля (один тип, не делится).
 
 use crate::style::computed::*;
-use crate::style::values::value::{Color, Len};
+use crate::style::values::value::{Color, ColorOrAuto, Len, StyleColor};
 
 #[derive(Clone, Debug, Default)]
 pub struct Computed {
@@ -11,12 +11,12 @@ pub struct Computed {
     pub(crate) explicit_inherit: Vec<crate::style::cascade::inherited_value::Property>,
     /// CSS Scroll Snap: container policy and descendant snap-area geometry.
     pub snap: crate::style::computed::snap::SnapStyle,
-    /// Счётчик объявлений этого узла: порядок каскада между логическими и
-    /// физическими сторонами (UA `padding-inline-start: 40px` против
-    /// авторского `padding-top: 0` в вертикальном письме —
+    /// Место в каскаде применяемого сейчас объявления: им логические и
+    /// физические стороны и размеры решают спор (UA `padding-inline-start:
+    /// 40px` против авторского `padding-top: 0` в вертикальном письме —
     /// `line-box-direction-vrl-019`).
-    pub decl_seq: u32,
-    pub side_seq: SideSeq,
+    pub(crate) decl_order: DeclOrder,
+    pub(crate) side_order: SideOrder,
     pub display: Option<Display>,
     pub flex_dir: Option<FlexDir>,
     pub flex_wrap: Option<bool>,
@@ -156,7 +156,6 @@ pub struct Computed {
     /// top margin shrank it (`clip-path-polygon-008`). Set only for `margin-box`.
     pub own_margin: Option<Sides>,
     pub border_width: Sides,
-    pub border_color: Option<Color>,
     pub radius: Corners,
 
     pub position: Option<Position>,
@@ -217,6 +216,13 @@ pub struct Computed {
     pub overflow_y: Option<Overflow>,
     pub opacity: Option<f32>,
 
+    /// USED background color (paint-time): derived from the computed
+    /// `background_color` only by `Computed::derive_background` (on the own
+    /// style for absolute values, at the merge for `currentcolor`-dependent
+    /// and inherited values). Used-value stages rewrite it afterwards: canvas
+    /// propagation (`document::canvas_background`), flat-stack compositing
+    /// (`flat_background`), `filter` painting and `::first-line`/hover/animation
+    /// styles. Never inherited, never read as a computed value.
     pub background: Option<Color>,
     /// Фон ЗАЯВЛЕН автором (`background` или `background-color`), пусть даже
     /// прозрачным. Умолчание UA у полей ввода ставится только тогда, когда
@@ -224,13 +230,14 @@ pub struct Computed {
     /// сбрасывает цвет в прозрачный (§2.1), и подставлять поверх него
     /// служебную заливку нельзя.
     pub bg_explicit: bool,
-    /// `border: inherit` / `padding: inherit`: свойства не наследуемые, слово
-    /// копирует вычисленное значение родителя — оно известно только при
-    /// слиянии стилей.
+    /// Прежний признак `border: inherit` целиком: сокращение теперь
+    /// раскрывается разбором в длинные свойства, и признак не ставится
+    /// (его ещё читает табличный код).
     pub(crate) border_inherit: bool,
-    /// То же по СТОРОНАМ и по частям рамки: `border-width: inherit`,
-    /// `border-bottom: inherit`, `border-left-color: inherit`. Порядок сторон
-    /// всюду один: верх, право, низ, лево.
+    /// `inherit` длинных свойств рамки по СТОРОНАМ и частям:
+    /// `border-left-width`, `-style`, `-color`. Свойства не наследуемые, слово
+    /// копирует вычисленное значение родителя — оно известно только при
+    /// слиянии стилей. Порядок сторон всюду один: верх, право, низ, лево.
     pub(crate) border_inherit_w: [bool; 4],
     pub(crate) border_inherit_s: [bool; 4],
     pub(crate) border_inherit_c: [bool; 4],
@@ -247,16 +254,14 @@ pub struct Computed {
     pub(crate) padding_inherit_side: [bool; 4],
     /// `box-shadow: inherit`.
     pub(crate) shadow_inherit: bool,
-    /// Относительный цвет фона (css-color-5): функция с `from currentColor`
-    /// не решается при разборе — она наследуется КАК ФУНКЦИЯ и считается от
-    /// цвета каждого элемента заново.
-    pub background_rcs: Option<crate::style::values::color_space::ColorExpression>,
+    /// COMPUTED `background-color` (css-backgrounds-3 §3.2, css-color-4
+    /// §6.4): `None` — initial `transparent`. `currentcolor` and functions of
+    /// it stay unresolved; `inherit` copies this value, never the parent's
+    /// used `background`.
+    pub background_color: Option<StyleColor>,
     /// `background-color: inherit`: фон не наследуемый, слово переносит
     /// вычисленное значение родителя (включая нерешённую функцию).
     pub(crate) background_inherit: bool,
-    /// `background: inherit` — сокращение, значит наследуется весь фон, а не
-    /// только цвет.
-    pub(crate) background_all_inherit: bool,
     /// Явное `inherit` на ненаследуемых размерах и краях: значение берётся
     /// от родителя при слиянии (`style::cascade::inherit`), как у padding/border.
     pub(crate) width_inherit: bool,
@@ -347,16 +352,6 @@ pub struct Computed {
     /// вычисляется в ноль (`descendant-static-position-001`: коробка выходила
     /// шире на заданную, но не нарисованную рамку).
     pub border_visible: [Option<bool>; 4],
-    /// `border-color: currentColor` — цвет берётся из `color` того же узла.
-    ///
-    /// Внутренний флаг каскада, а не свойство отрисовки: к моменту выхода из
-    /// `resolve` он уже подставлен в `border_color`.
-    pub(crate) border_color_is_current: bool,
-    /// Сторона получила `currentColor` из БОКОВОГО сокращения без цвета
-    /// (`border-top: solid 1em`) поверх общего `border-color`, пришедшего
-    /// раньше. Внутренний флаг каскада: цвет текста в `border_colors`
-    /// подставляет `style::cascade::inherit`, когда тот известен.
-    pub(crate) border_side_current: [bool; 4],
     /// `border-collapse: collapse` — зазор между ячейками пропадает.
     pub border_collapse: Option<bool>,
     /// `empty-cells: hide` — у ПУСТОЙ ячейки не рисуются ни фон, ни рамка
@@ -575,7 +570,7 @@ pub struct Computed {
     pub z_index: Option<i32>,
     /// Цвета рамки по сторонам. У GPUI цвет рамки один на элемент, поэтому
     /// разные цвета сторон дорисовываются полосами.
-    pub border_colors: [Option<Color>; 4],
+    pub border_colors: [StyleColor; 4],
     /// `font-size: larger` (+1) / `smaller` (−1): шаг по таблице ключевых
     /// кеглей от кегля родителя (§15.7). Разрешает `style::cascade::inherit`.
     pub(crate) font_size_step: i8,
@@ -1325,14 +1320,14 @@ pub struct Computed {
     /// `column-rule-*`: линейка между колонками.
     pub column_rule_width: Option<Len>,
     pub column_rule_visible: Option<bool>,
-    pub column_rule_color: Option<Color>,
+    pub column_rule_color: StyleColor,
     /// `row-rule-*` (css-gaps-1 §color-style-width): линейка в ПОПЕРЕЧНОМ
     /// промежутке сетки/гибкого контейнера. Начальные значения те же, что у
     /// `column-rule-*`: `currentcolor`, `none`, `medium` — то есть без
     /// заданного стиля линейки нет.
     pub row_rule_width: Option<Len>,
     pub row_rule_visible: Option<bool>,
-    pub row_rule_color: Option<Color>,
+    pub row_rule_color: StyleColor,
     /// `column-rule-break`/`row-rule-break` (css-gaps-1 §break): 0 — `none`,
     /// 1 — `normal` (начальное), 2 — `intersection`. Шаг 1 разбирает
     /// значение, но рисует всегда непрерывно: в сетке БЕЗ спанов все стыки
@@ -1340,8 +1335,7 @@ pub struct Computed {
     pub column_rule_break: Option<u8>,
     pub row_rule_break: Option<u8>,
     /// Списки значений линеек по промежуткам (css-gaps-1 §lists); `None` —
-    /// значение одно и лежит в скалярных полях выше. Цвет `None` в списке —
-    /// `currentcolor`.
+    /// значение одно и лежит в скалярных полях выше.
     pub column_rule_widths: Option<GapList<Len>>,
     pub column_rule_styles: Option<GapList<bool>>,
     /// Single `double` rule style (css-gaps-1 §color-style-width: line styles
@@ -1353,10 +1347,10 @@ pub struct Computed {
     /// (Blink `BoxBorderPainter::DrawBoxSide`).
     pub column_rule_kinds: Option<GapList<u8>>,
     pub row_rule_kinds: Option<GapList<u8>>,
-    pub column_rule_colors: Option<GapList<Option<Color>>>,
+    pub column_rule_colors: Option<GapList<StyleColor>>,
     pub row_rule_widths: Option<GapList<Len>>,
     pub row_rule_styles: Option<GapList<bool>>,
-    pub row_rule_colors: Option<GapList<Option<Color>>>,
+    pub row_rule_colors: Option<GapList<StyleColor>>,
     /// §inset: [cap-start, cap-end, junction-start, junction-end]; начальное 0.
     pub column_rule_inset: Option<[GapInset; 4]>,
     pub row_rule_inset: Option<[GapInset; 4]>,
@@ -1476,16 +1470,17 @@ pub struct Computed {
     pub emphasis_under: bool,
     /// Акцент СЛЕВА в вертикальном письме (`text-emphasis-position: … left`).
     pub emphasis_left: bool,
-    /// `text-emphasis-color` (css-text-decor-3 §5.2); пусто — `currentColor`.
-    pub emphasis_color: Option<Color>,
+    /// `text-emphasis-color` (css-text-decor-3 §5.2), наследуемое: `None` —
+    /// не задано (у слитого стиля — начальное `currentcolor`).
+    pub emphasis_color: Option<StyleColor>,
     /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
     /// задано (`none`). Не наследуется: потомкам линии достаются через
     /// `decors` (css-text-decor-3 §2 «propagated»).
     pub td_lines: Option<u8>,
     /// `text-decoration-style` (не наследуется).
     pub td_style: Option<DecorStyle>,
-    /// `text-decoration-color`; пусто — `currentColor` (не наследуется).
-    pub td_color: Option<Color>,
+    /// `text-decoration-color` (не наследуется; начальное — `currentcolor`).
+    pub td_color: StyleColor,
     /// `text-decoration-thickness` (не наследуется).
     pub td_thickness: Option<DecorLen>,
     /// `text-decoration-inset` (css-text-decor-4 §4.1, не наследуется):
@@ -1522,10 +1517,12 @@ pub struct Computed {
     /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
     /// остаются как есть, роль читается отдельно.
     pub ruby_role: Option<RubyRole>,
-    /// `caret-color` поля ввода.
-    pub caret_color: Option<Color>,
-    /// `accent-color` флажков и переключателей.
-    pub accent_color: Option<Color>,
+    /// `caret-color` поля ввода, наследуемое: `None` — не задано (у слитого
+    /// стиля — начальное `auto`).
+    pub caret_color: Option<ColorOrAuto>,
+    /// `accent-color` флажков и переключателей, наследуемое (css-ui-4
+    /// §accent-color): `None` — не задано (у слитого стиля — `auto`).
+    pub accent_color: Option<ColorOrAuto>,
     /// `appearance` (css-ui-4 §7.2); `None` is the initial `auto`.
     pub appearance: Option<crate::style::computed::Appearance>,
     /// Element used color scheme, shared by CSS system colours and native controls.
@@ -1599,4 +1596,13 @@ pub struct Computed {
     /// slots whose grammar does not resolve the keyword take their empty
     /// (initial) representation. Set only around one property dispatch.
     pub(crate) css_wide_value: bool,
+    /// `color` with a function of `currentcolor` (`color-mix()`, relative
+    /// color): computed against the PARENT's color when merged (css-color-4
+    /// §6.4, css-color-5 §2), then inherited as the absolute `color`. Own style only.
+    pub(crate) color_function: Option<crate::style::values::value::StyleColor>,
+    /// `mask-border-source/-slice/-width/-outset/-repeat` (css-masking-1 §8);
+    /// `None` — все части начальные. Not inherited.
+    pub(crate) mask_border: Option<BorderImage>,
+    /// `mask-border-mode: luminance` (§8.7); initial `alpha`. Not inherited.
+    pub(crate) mask_border_luminance: bool,
 }

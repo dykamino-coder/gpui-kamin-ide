@@ -9,7 +9,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
-use crate::style::css::{Keyframes, VarMap};
+use crate::style::css::{DeclBlock, Keyframes, VarMap};
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
@@ -17,6 +17,7 @@ pub(super) fn animation_frames(
     style: &Computed,
     frames: &HashMap<String, Keyframes>,
     vars: &VarMap,
+    important: Option<&DeclBlock>,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Computed)>> {
     // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
@@ -36,6 +37,19 @@ pub(super) fn animation_frames(
                         c.transform = None;
                     }
                     c.apply_decls_with_vars(decls, vars, vcx);
+                    // Происхождение анимаций ниже важных объявлений
+                    // (css-cascade-5 §6.2): важные победители тех свойств,
+                    // что трогает кадр, ложатся обратно поверх него.
+                    if let Some(important) = important {
+                        let over: DeclBlock = important
+                            .iter()
+                            .filter(|d| decls.iter().any(|k| related(&d.name, &k.name)))
+                            .cloned()
+                            .collect();
+                        if !over.is_empty() {
+                            c.apply_decls_with_vars(&over, vars, vcx);
+                        }
+                    }
                     (*at, c)
                 })
                 .collect();
@@ -104,6 +118,16 @@ pub(super) fn animation_frames(
     anim
 }
 
+/// Одно свойство или сокращение и его длинное свойство (`background` и
+/// `background-color`): пока сокращения не раскрыты при разборе, так
+/// узнаётся, что кадр трогает важное свойство.
+fn related(a: &str, b: &str) -> bool {
+    let part = |long: &str, short: &str| {
+        long.len() > short.len() && long.starts_with(short) && long.as_bytes()[short.len()] == b'-'
+    };
+    a == b || part(a, b) || part(b, a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,7 +147,7 @@ mod tests {
         ] {
             let decls = crate::style::css::parse_decls(&format!("{property}: {value}"));
             let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
-            let frames = animation_frames(&base, &tracks, &HashMap::new(), vcx).unwrap();
+            let frames = animation_frames(&base, &tracks, &HashMap::new(), None, vcx).unwrap();
             for (_, frame) in frames {
                 assert_eq!(frame.margin.left, expected);
                 assert_eq!(

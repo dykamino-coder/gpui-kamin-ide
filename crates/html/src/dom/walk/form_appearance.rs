@@ -66,9 +66,10 @@ pub(super) fn rule(tag: &str, attrs: &[(String, String)], style: &Computed) -> O
     Some(Rule {
         sel: Selector::parse(selector)?,
         decls: parse_decls(declarations),
-        origin: 0,
+        origin: crate::style::css::Origin::UserAgent,
         order: usize::MAX,
         layer: vec![u32::MAX],
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 
@@ -92,13 +93,13 @@ mod tests {
         let author = Rule {
             sel: Selector::parse("*").unwrap(),
             decls: parse_decls("color: red; padding: 7px"),
-            origin: 1,
+            origin: crate::style::css::Origin::Author,
             order: 0,
             layer: vec![u32::MAX],
+            link: crate::style::css::LinkMatch::Any,
         };
-        let mut rules = vec![&author, &base];
-        let style =
-            Computed::resolve_with_vars(&mut rules, &parse_decls(""), &Default::default(), vcx);
+        let rules = vec![&author, &base];
+        let style = Computed::resolve_with_vars(&rules, &parse_decls(""), &Default::default(), vcx);
         assert_eq!(
             style.color,
             crate::style::values::value::Color::parse("red", vcx)

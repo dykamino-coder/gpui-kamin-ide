@@ -33,10 +33,11 @@ pub(super) fn hint(css: &str) -> Option<Rule> {
         sel: Selector::parse("*")?,
         decls: parse_decls(css),
         order: 0,
-        origin: 1,
+        origin: crate::style::css::Origin::PresHint,
         // Below every author layer, above UA rules; part of author for revert.
         // CSS Cascade 5 §6.4: author presentational hint origin.
         layer: Vec::new(),
+        link: crate::style::css::LinkMatch::Any,
     })
 }
 
@@ -193,11 +194,14 @@ pub(super) fn colors(
             .and_then(|v| crate::style::values::value::Color::parse(&v, vcx))
     };
     if matches!(tag, "body" | "table" | "tr" | "td" | "th")
+        // Любое авторское объявление `background-color` (в том числе
+        // начальное `transparent`, которое хранится пустым) сильнее подсказки.
+        && !style.bg_explicit
         && style.background.is_none()
         && style.gradient.is_none()
         && let Some(c) = color_of("bgcolor")
     {
-        style.background = Some(c);
+        style.set_background_color(Some(c.into()));
     }
     if tag == "body"
         && style.color.is_none()

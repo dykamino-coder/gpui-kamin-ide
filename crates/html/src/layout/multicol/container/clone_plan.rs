@@ -110,13 +110,7 @@ pub(super) fn column_rule_of(
             },
             e.style
                 .column_rule_color
-                .or(merged.color)
-                .unwrap_or(crate::style::values::value::Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: 1.0,
-                })
+                .resolve(merged.current_color())
                 .to_hsla(),
         ))
     } else {

@@ -1,8 +1,9 @@
-//! Computed::apply_mask_clip, продолжение цепочки: mask-origin/clip, mask-repeat, mask-position,
-//! clip-path/mask. Ветви в исходном порядке.
+//! Computed::apply_mask_clip, продолжение цепочки: mask-image, mask-origin/clip (верхний
+//! слой), mask-repeat и mask-position (по слоям), clip-path.
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::props::background::values::coord_box;
 
 impl Computed {
     pub(super) fn apply_mask_layers(
@@ -19,25 +20,23 @@ impl Computed {
             // `svg::masked_layers` (mask-clip-2, mask-origin-3).
             "mask-origin" | "-webkit-mask-origin" => {
                 self.accept_declaration();
-                self.mask_origin = match v.trim() {
-                    "padding-box" => Some(2),
-                    "content-box" => Some(3),
-                    "fill-box" => Some(4),
-                    "stroke-box" => Some(5),
-                    "view-box" => Some(6),
-                    _ => Some(0),
-                }
+                self.mask_origin = Some(coord_box(top_layer(v)).unwrap_or(0));
             }
             "mask-clip" | "-webkit-mask-clip" => {
                 self.accept_declaration();
-                self.mask_clip = match v.trim() {
-                    "padding-box" => Some(2),
-                    "content-box" => Some(3),
-                    "fill-box" => Some(4),
-                    "stroke-box" => Some(5),
-                    "view-box" => Some(6),
-                    "no-clip" => Some(255),
-                    _ => Some(0),
+                self.mask_clip = Some(match top_layer(v) {
+                    "no-clip" => 255,
+                    b => coord_box(b).unwrap_or(0),
+                });
+            }
+            // Слои маски-изображения (css-masking-1 §7.2, `<mask-reference>#`):
+            // `none` держит место своего слоя.
+            "mask-image" => {
+                if let Some(images) = mask_shorthand::images(v, vcx) {
+                    self.mask_image = accept_parsed!(self, Some(images));
+                    if v.trim() == "none" {
+                        self.mask_image = None;
+                    }
                 }
             }
             "mask-repeat" | "-webkit-mask-repeat" => {
@@ -139,7 +138,7 @@ impl Computed {
                 }
                 self.mask_pos_list = (!list.is_empty()).then_some(list);
             }
-            "clip-path" | "mask" | "mask-image" => self.apply_clip_mask(key, v, vcx),
+            "clip-path" => self.apply_clip_mask(key, v, vcx),
             _ => *hit = false,
         }
     }

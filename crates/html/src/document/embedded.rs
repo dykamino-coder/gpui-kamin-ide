@@ -43,9 +43,19 @@ pub struct Embedded {
 /// 100x100 и `@media (width: 100px) and (height: 100px)`).
 #[cfg(test)]
 pub(crate) fn parse_embedded(html: &str, theme_css: &str, viewport: (f32, f32)) -> Embedded {
-    parse_embedded_sized(html, theme_css, viewport, false, false, true, None)
+    parse_embedded_sized(
+        html,
+        theme_css,
+        viewport,
+        false,
+        false,
+        true,
+        None,
+        &Default::default(),
+    )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn parse_embedded_sized(
     html: &str,
     theme_css: &str,
@@ -54,6 +64,7 @@ pub(crate) fn parse_embedded_sized(
     responsive: bool,
     scrolling: bool,
     scheme: Option<EmbeddingScheme>,
+    fonts: &crate::text::metrics::FontContext,
 ) -> Embedded {
     let mut media = crate::style::css::Media {
         width: viewport.0,
@@ -66,6 +77,7 @@ pub(crate) fn parse_embedded_sized(
     }
     let state = DocState::new(media);
     let vcx = state.values();
+    fonts.install(vcx);
     let mut sheets = vec![theme_css.to_string()];
     sheets.extend(crate::dom::style_sources::collect(html, false));
     for css in &sheets {

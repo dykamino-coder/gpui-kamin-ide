@@ -13,6 +13,7 @@ use crate::style::computed::box_predicates::{
 use crate::style::computed::{Computed, TextAlign};
 use crate::style::values::value::{Color, Len};
 
+mod background;
 mod containing;
 mod decorate;
 mod explicit;
@@ -65,6 +66,7 @@ fn inherit_stage(
     inherit_containing(parent, own, &mut c, vcx);
     inherit_sizes(parent, own, &mut c, vcx);
     inherit_explicit(parent, own, &mut c, vcx);
+    background::inherit_background(parent, own, &mut c);
     inherit_fonts(parent, own, &mut c);
     crate::style::computed::math_style::inherit(parent, &mut c, vcx);
     inherit_text_layout(parent, own, &mut c);
@@ -83,66 +85,9 @@ fn inherit_stage(
             _ => 16.0,
         },
     };
-    // Процент у размера шрифта — доля родительского кегля; в точках его надо
-    // получить здесь, иначе абзац уходил в запасную ветку переноса (размер
-    // «не такой, как у базового») и терял перенос по словам.
-    // `larger`/`smaller`: шаг по таблице ключевых кеглей, если кегль
-    // родителя в ней стоит (§15.7; таблица та же, что у слов в
-    // `style::computed`). Вне таблицы работает запасной `Len::Em` (1.2 и 5/6).
-    if c.font_size_step != 0 {
-        const TABLE: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
-        if let Some(i) = TABLE.iter().position(|t| (t - parent_px).abs() < 0.01) {
-            let j = i as i32 + i32::from(c.font_size_step);
-            if (0..TABLE.len() as i32).contains(&j) {
-                c.font_size = Some(Len::Px(TABLE[j as usize]));
-            }
-        }
-    }
-    if let Some(Len::Pct(k)) = c.font_size {
-        c.font_size = Some(Len::Px(k * parent_px));
-    }
+    // Кегль (в том числе процент, `larger`/`smaller` по таблице и единицы
+    // шрифта) — доля РОДИТЕЛЬСКОГО: его считает `resolve_em` первым шагом.
     c.resolve_em(parent_px, vcx);
-    // Цвет рамки по умолчанию — ЦВЕТ ТЕКСТА: `border: solid 1px` без цвета
-    // рисуется в браузере чёрной рамкой, а у нас не рисовалась вовсе —
-    // коробка выходила без рамки, и эталоны переносов выглядели сломанными.
-    // Известен цвет только здесь: он наследуемый, а рамка нет.
-    let has_border = {
-        let b = c.borders();
-        [b.top, b.right, b.bottom, b.left]
-            .iter()
-            .any(|w| !matches!(w, None | Some(Len::Px(0.0))))
-    };
-    // Сторона с `currentColor` из бокового сокращения при ОБЩЕМ цвете рамки:
-    // ей положен цвет текста, а не общий (§8.5.4; `border-shorthands-003`).
-    // Прочие стороны получают общий цвет ЯВНО: единый цвет квада
-    // (`apply::apply_paint`) смотрит только на заданные стороны и иначе
-    // выкрасил бы их цветом помеченной. Без общего цвета пустой слот и так
-    // даёт цвет текста.
-    if c.border_color.is_some() && c.border_side_current.iter().any(|f| *f) {
-        let current = c.color.unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        });
-        for i in 0..4 {
-            if c.border_colors[i].is_none() {
-                c.border_colors[i] = if c.border_side_current[i] {
-                    Some(current)
-                } else {
-                    c.border_color
-                };
-            }
-        }
-    }
-    if has_border && c.border_color.is_none() && c.border_colors.iter().all(Option::is_none) {
-        c.border_color = c.color.or(Some(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 1.0,
-        }));
-    }
     // `tab-size` в длине наследуется АБСОЛЮТНОЙ величиной: `5em` при кегле
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
     // (`tab-size-inheritance-001`).

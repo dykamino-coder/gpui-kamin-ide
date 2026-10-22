@@ -45,7 +45,7 @@ impl GradientShape {
         let head = parts.first()?.trim();
         let head = if crate::style::css::value_tokens::split_top(head)
             .first()
-            .and_then(|s| crate::style::values::color_space::ColorExpression::parse(s, vcx))
+            .and_then(|s| crate::style::values::color_space::StyleColor::parse(s, vcx))
             .is_some()
         {
             ""
