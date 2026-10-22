@@ -1,12 +1,15 @@
 //! Реализация в render контракта раскладки по сборке дочерних элементов.
 
+use crate::hooks::IntoHooked;
 use crate::layout::build_contracts::{
-    BoxBuild, ChildBuild, Effect, FlowBuild, GridPlacement, Layer, Styling,
+    BoxBuild, ChildBuild, Effect, EffectBuild, FlowBuild, GridPlacement, Layer, Styling,
 };
 use crate::layout::cx::LayoutCx;
 use crate::paint::apply;
 use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
 use crate::paint::decorations::outline_phase;
+use crate::paint::effects::{grouped, transform, underlay::Underlay};
+use crate::paint::stacking;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
 use crate::style::computed::Computed;
@@ -24,7 +27,11 @@ impl Default for ChildBuild {
             element,
             BoxBuild::new(styled_div_with, styled_div, content_sized),
             crate::paint::replaced::image::image_with,
-            effects,
+            EffectBuild::new(
+                effects,
+                crate::paint::effects::grouped::paint_group,
+                crate::paint::effects::mask::collect_mask_defs,
+            ),
             layer,
         )
     }
@@ -53,6 +60,16 @@ fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {
     match effect {
         Effect::OutlineScope(owner) => outline_phase::scope(child, Some(owner)),
         Effect::OutlineFlow(owner) => outline_phase::flow_phase(child, Some(owner)),
+        Effect::Group { style, vcx } => grouped::grouped(child, style, vcx),
+        Effect::GroupReplaced { style, vcx } => grouped::grouped_replaced(child, style, vcx),
+        Effect::Transform {
+            style,
+            parent,
+            ref_box,
+            vcx,
+        } => transform::transformed_with(child, style, parent, ref_box, vcx),
+        Effect::Underlay => Underlay::new(child).hooked(),
+        Effect::PaintLast(key) => stacking::paint_last(child, key),
     }
 }
 

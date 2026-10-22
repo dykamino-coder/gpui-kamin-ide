@@ -46,7 +46,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../render/mod.rs"),
     include_str!("../../layout/options.rs"),
     include_str!("../../layout/block/inline_splits/flush.rs"),
-    include_str!("../../paint/stacking/inline_abs.rs"),
     include_str!("../../layout/order.rs"),
     include_str!("../../render/paragraph/route/probed.rs"),
     include_str!("../../text/inline/mod.rs"),

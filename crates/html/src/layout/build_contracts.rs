@@ -16,7 +16,7 @@ pub(crate) use flow::FlowBuild;
 mod boxes;
 pub(crate) use boxes::{BoxBuild, GridPlacement, Styling};
 mod effects;
-pub(crate) use effects::{Effect, RefBox};
+pub(crate) use effects::{Effect, EffectBuild, RefBox};
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
@@ -29,7 +29,6 @@ use gpui::AnyElement;
 
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
-type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
 
 /// A paint layer over geometry that layout's probes record in prepaint of
@@ -66,17 +65,17 @@ impl<'a> Layer<'a> {
 /// the children's boundary probes and the `::first-line` routing), one
 /// element box (`element`), the childless boxes styled from computed values
 /// (`boxes`: [`BoxBuild`]), the box of a replaced element with an image
-/// source (`replaced`, paint's `image_with`), a paint effect around a built
-/// box (`effects`) and a paint layer over probed geometry (`layer`). Inputs
-/// are the inherited computed style and the options or layout context of the
-/// box being built.
+/// source (`replaced`, paint's `image_with`), the paint effects around built
+/// boxes (`effects`: [`EffectBuild`]) and a paint layer over probed geometry
+/// (`layer`). Inputs are the inherited computed style and the options or
+/// layout context of the box being built.
 #[derive(Clone, Copy)]
 pub(crate) struct ChildBuild {
     flow: FlowBuild,
     element: BuildElement,
     boxes: BoxBuild,
     replaced: BuildReplaced,
-    effects: BuildEffect,
+    effects: EffectBuild,
     layer: BuildLayer,
 }
 
@@ -86,7 +85,7 @@ impl ChildBuild {
         element: BuildElement,
         boxes: BoxBuild,
         replaced: BuildReplaced,
-        effects: BuildEffect,
+        effects: EffectBuild,
         layer: BuildLayer,
     ) -> Self {
         Self {
@@ -192,7 +191,28 @@ impl ChildBuild {
 
     /// `child` under the paint effect `effect`.
     pub(crate) fn effects(&self, child: AnyElement, effect: Effect<'_>) -> AnyElement {
-        (self.effects)(child, effect)
+        self.effects.effect(child, effect)
+    }
+
+    /// The paint group of block `e` around `container`, a container of its
+    /// border box with its descendants: the same chain as a block in the
+    /// flow — the folded shift and opacity on the container, then the
+    /// transform, then the grouped effects.
+    pub(crate) fn paint_group(
+        &self,
+        container: gpui::Div,
+        e: &Element,
+        inherited: &Computed,
+        vcx: ValueCx<'_>,
+    ) -> AnyElement {
+        self.effects.paint_group(container, e, inherited, vcx)
+    }
+
+    /// Prepares the paint resources of the document `nodes` (the `<mask>`,
+    /// `<clipPath>` and `<filter>` definitions that `url(#id)` references)
+    /// before its boxes are built: a reference may precede its definition.
+    pub(crate) fn paint_resources(&self, nodes: &[Node], vcx: ValueCx<'_>) {
+        self.effects.paint_resources(nodes, vcx)
     }
 
     /// The paint layer `layer`.

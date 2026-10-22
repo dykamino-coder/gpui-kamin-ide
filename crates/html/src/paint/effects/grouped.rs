@@ -7,7 +7,7 @@ pub(super) use bare_clip::bare_clip;
 mod block_group;
 mod replaced;
 mod wrapper;
-pub(crate) use block_group::block_group;
+pub(crate) use block_group::{block_group, paint_group};
 pub(crate) use replaced::grouped_replaced;
 pub(crate) use wrapper::grouped_wrapper;
 

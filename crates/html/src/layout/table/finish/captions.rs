@@ -1,9 +1,9 @@
 //! Подписи таблицы (caption): сбор сверху/снизу и обёртка вокруг сетки.
 
 use crate::dom::{Element, Node};
+use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::transform::transformed;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
@@ -43,7 +43,10 @@ pub(super) fn collect_captions(
             // A caption is a transformable block box (css-transforms-1
             // §transformable-element); its `transform` was dropped
             // (`transform-transformed-caption-contains-fixed-position`).
-            let built = transformed(built, &cap.style, inherited, vcx);
+            let built = opts
+                .cx
+                .build
+                .effects(built, Effect::transform(&cap.style, inherited, vcx));
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box
             // читает фрагментация (`watch::wrap`).
             let built = crate::layout::fragment::paginate::watch::wrap(cap.node_id, built, opts);

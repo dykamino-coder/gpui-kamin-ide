@@ -74,7 +74,7 @@ pub fn render_paged_select(
     let mut root = opts.root_style();
     let document_counters = page_counters::PageCounters::from_document(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
-    crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
+    opts.cx.build.paint_resources(nodes, vcx);
     let mut nodes: Vec<Node> = nodes.to_vec();
     let (mut left, mut right, mut top) = (0.0f32, 0.0f32, 0.0f32);
     let mut root_page = String::new();

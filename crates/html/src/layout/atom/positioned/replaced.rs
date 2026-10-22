@@ -1,11 +1,11 @@
 //! Абсолютный замещаемый атом: держатель, слой ICB и статическое место.
 
+use super::inline_abs_paint_last;
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
-use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
@@ -47,7 +47,9 @@ pub(super) fn replaced_abs_atom(
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
     let holder = if merged.corner_shaped() {
-        crate::paint::effects::grouped::grouped_replaced(holder, merged, vcx)
+        opts.cx
+            .build
+            .effects(holder, Effect::GroupReplaced { style: merged, vcx })
     } else {
         holder
     };
@@ -106,7 +108,7 @@ pub(super) fn replaced_abs_atom(
         && !(positioned_cb && below_icb)
     {
         let holder: AnyElement = if below_icb {
-            crate::paint::effects::underlay::Underlay::new(holder).hooked()
+            opts.cx.build.effects(holder, Effect::Underlay)
         } else {
             holder
         };

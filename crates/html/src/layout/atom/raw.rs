@@ -4,14 +4,13 @@ use super::replaced::{canvas_atom, container_atom, img_atom, svg_atom};
 use crate::dom::Element;
 use crate::layout::atom::own_box::own_box_atom;
 use crate::layout::atom::positioned::{absolute_atom, static_position_atom};
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::has_own_box;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
-use crate::paint::effects::grouped::grouped_replaced;
-use crate::paint::effects::transform::transformed;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -56,7 +55,11 @@ pub(super) fn atom_element_raw(
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(transformed(el, &e.style, inherited, vcx));
+        return Some(
+            opts.cx
+                .build
+                .effects(el, Effect::transform(&e.style, inherited, vcx)),
+        );
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
@@ -85,7 +88,7 @@ pub(super) fn atom_element_raw(
         return absolute_atom(inherited, e, opts);
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
-        return Some(crate::paint::effects::grouped::grouped(math, &e.style, vcx));
+        return Some(opts.cx.build.effects(math, Effect::group(&e.style, vcx)));
     }
     // Многоколоночная коробка В СТРОКЕ (`inline-block` с `column-count`) —
     // такой же случай, как строчная таблица ниже: своя раскладка живёт в
@@ -227,7 +230,13 @@ pub(super) fn atom_element_raw(
     // CSS Borders 4 shapes replaced content together with its CSS box.
     built.map(|el| {
         if crate::layout::box_kind::replaced_tag(e) && e.style.corner_shaped() {
-            grouped_replaced(el, &e.style, vcx)
+            opts.cx.build.effects(
+                el,
+                Effect::GroupReplaced {
+                    style: &e.style,
+                    vcx,
+                },
+            )
         } else {
             el
         }
