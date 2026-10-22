@@ -163,6 +163,7 @@ impl Hooks for PageStack {
         //    в `ColumnStack::prepaint`; видимую часть делает маска. Ширина —
         //    page area СВОЕГО листа (`page-size-004`: `width: 50%` на листе
         //    100px — 50, на листах 320px — 160).
+        plan.check_copies(|kid| self.kids[kid].frags.len() + 1);
         self.prepaint_pages(bounds, window, cx, g, aw, ah, kids, &geoms, &plan, pages);
         self.prepaint_canvas(bounds, window, cx, &geoms);
         // Марджин-боксы — после листов: `counter(pages)` знает их число.
@@ -217,6 +218,6 @@ impl Hooks for PageStack {
         // `O`); маски детей и фрагментов заданы в его непреобразованных
         // точках и едут вместе с ним (`with_transformation_masked`: поворот на
         // четверть оборота оси сохраняет).
-        self.paint_page_contents(bounds, window, cx, s, pages, k, plan, rect);
+        self.paint_page_contents(bounds, window, cx, s, pages, k, plan.fragments, rect);
     }
 }

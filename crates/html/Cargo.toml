@@ -15,7 +15,7 @@ edition.workspace = true
 
 [features]
 # Builds the Windows-only WPT reftest runner (`examples/wptrun.rs`) and its
-# capture dev-dependencies; it gates no library code. The paged-media API the
+# capture dev-dependencies and observational fragmentation probes. The paged-media API the
 # runner calls (`render::render_paged*`, `flow::PageGeom`) is public engine API.
 wpt-harness = []
 

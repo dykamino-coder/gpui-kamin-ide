@@ -1,7 +1,9 @@
 //! Планировщик фрагментации: укладка детей-`Kid` по фрагментаинерам (колонки и страницы) в план `Frag`.
 
 use crate::layout::fragment::token;
-use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::fragment::types::Kid;
+mod result;
+pub(crate) use result::{Completion, Plan};
 mod pieces;
 use pieces::fill_pieces;
 mod open;
@@ -64,7 +66,7 @@ impl Space {
 /// содержимое после него продолжается там, где кончилось переполнение,
 /// а не с верха следующей страницы — `monolithic-overflow-001`, текст
 /// «в середине второй страницы»). В колонках правило не действует.
-pub(crate) fn fill(kids: &[Kid], target: f32, space: Space) -> (usize, f32, Vec<Frag>) {
+pub(crate) fn fill(kids: &[Kid], target: f32, space: Space) -> (usize, f32, Plan) {
     fill_at(kids, &|_| target, space)
 }
 
@@ -97,7 +99,7 @@ pub(crate) fn fill_at(
     kids: &[Kid],
     target_at: &dyn Fn(usize) -> f32,
     space: Space,
-) -> (usize, f32, Vec<Frag>) {
+) -> (usize, f32, Plan) {
     let limit = space.limit;
     let paged = space.space.is_paginated();
     let not_top = space.space.not_at_start;
@@ -107,7 +109,10 @@ pub(crate) fn fill_at(
     let mut first = true;
     let mut placed = not_top > 0;
     let mut shortage = f32::MAX;
-    let mut out: Vec<Frag> = Vec::with_capacity(kids.len());
+    let mut out = Plan {
+        fragments: Vec::with_capacity(kids.len()),
+        ..Plan::default()
+    };
     let mut force_next = false;
     // Группа параллельных строк (`Par`): место начала `(col, y, placed)` и
     // самый дальний конец строки `(col, y)`.

@@ -164,6 +164,8 @@ pub(super) fn page_kids_from_groups(
             _ => None,
         };
         kids.push(crate::layout::page::page_stack::PageKid {
+            #[cfg(feature = "wpt-harness")]
+            probe: opts.frag.probe.clone(),
             repeat: vertical
                 .is_none()
                 .then(|| {

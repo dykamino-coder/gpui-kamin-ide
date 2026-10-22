@@ -58,6 +58,8 @@ impl PageKid {
 // A page shape stores height, cuts, forced breaks and monolithic intervals together.
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: crate::FragmentProbes,
     pub el: AnyElement,
     /// Recorder of the main copy: measured lines and, for a group of one block
     /// box, its block stack (`paged::kids::breaks`).

@@ -1,8 +1,9 @@
 //! Разрез ребёнка в колонке: принудительный разрыв, влезание, место разреза и его выпуск.
 
 use super::pieces::LoopStep;
+use crate::layout::fragment::plan::Plan;
 use crate::layout::fragment::plan::skip_float;
-use crate::layout::fragment::types::{Frag, Kid};
+use crate::layout::fragment::types::Kid;
 mod at;
 mod fragment;
 #[cfg(test)]
@@ -17,7 +18,7 @@ pub(super) fn forced_or_fits(
     y: &mut f32,
     not_top: usize,
     placed: &mut bool,
-    out: &mut Vec<Frag>,
+    out: &mut Plan,
     float_hold: &mut Option<(usize, usize, f32)>,
     kid: usize,
     k: &Kid,
@@ -43,6 +44,7 @@ pub(super) fn forced_or_fits(
         at.emit(out, f - *from, ft(f - *from));
         *from = nf;
         if *copy + 1 >= limit {
+            out.incomplete();
             *y = target;
             *placed = true;
             return Some(LoopStep::Break);
@@ -70,7 +72,7 @@ pub(super) fn place_cut(
     y: &mut f32,
     not_top: usize,
     placed: &mut bool,
-    out: &mut Vec<Frag>,
+    out: &mut Plan,
     float_hold: &mut Option<(usize, usize, f32)>,
     kid: usize,
     k: &Kid,

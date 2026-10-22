@@ -84,6 +84,12 @@ impl PageStack {
                 } else {
                     sz
                 };
+                #[cfg(feature = "wpt-harness")]
+                if let Some((h, ..)) = &k.shape
+                    && k.watched.is_some()
+                {
+                    k.probe.height("pages", *h, f32::from(sz.height));
+                }
                 // Мера поддерева даёт точки разреза внутри ребёнка; без неё
                 // ребёнок — цельный кусок измеренной высоты.
                 let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
@@ -123,6 +129,10 @@ impl PageStack {
                                 h = bottom;
                             }
                             let m = w.breaks(origin, laid, h + lift, self.axis, window);
+                            #[cfg(feature = "wpt-harness")]
+                            if k.shape.is_some() {
+                                k.probe.breaks("pages.breaks", &cuts, &m.cuts);
+                            }
                             (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
                             k.refresh_repeat(m.sections, ah);
                         }

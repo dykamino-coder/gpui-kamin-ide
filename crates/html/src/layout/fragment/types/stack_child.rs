@@ -18,6 +18,11 @@ pub(crate) enum BreaksAt {
 /// (схлопываются между соседями по правилам потока).
 pub struct StackChild {
     pub el: AnyElement,
+    /// Первый замер сравнивается с оценкой до замены геометрии на измеренную.
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe_pending: bool,
+    #[cfg(feature = "wpt-harness")]
+    pub(crate) probe: crate::FragmentProbes,
     /// Recorder of the main copy (`Watched::for_blocks`): measured breaks.
     pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// Высоту и параллельный поток даёт РАСКЛАДКА копии шириной в колонку
