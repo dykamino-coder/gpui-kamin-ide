@@ -5,7 +5,6 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
@@ -97,7 +96,9 @@ pub(crate) fn empty_iframe(
         copy.attrs.retain(|(name, _)| name != "src");
         return opts.cx.build.replaced(&copy, None, &opts.cx);
     }
-    crate::paint::box_tree::styled::styled_div(&copy, &opts.cx)
+    opts.cx
+        .build
+        .styled_box(&copy, &copy.style, &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -153,7 +154,9 @@ pub(crate) fn svg_replaced(
         + px_of(merged.padding.top)
         + px_of(merged.padding.bottom);
     Some(
-        styled_div_with(e, merged, &opts.cx)
+        opts.cx
+            .build
+            .styled_box(e, merged, &opts.cx)
             .w(px(bw))
             .h(px(bh))
             .flex_shrink_0()

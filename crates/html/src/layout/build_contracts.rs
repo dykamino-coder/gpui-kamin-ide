@@ -13,6 +13,8 @@
 
 mod flow;
 pub(crate) use flow::FlowBuild;
+mod boxes;
+pub(crate) use boxes::{BoxBuild, GridPlacement};
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
@@ -26,7 +28,6 @@ use gpui::AnyElement;
 use std::rc::Rc;
 
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
-type BuildStyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
@@ -75,17 +76,17 @@ impl<'a> Layer<'a> {
 /// The build requests the algorithms need: the normal-flow requests
 /// ([`FlowBuild`]: a block-level node list, one inline formatting context,
 /// the children's boundary probes and the `::first-line` routing), one
-/// element box (`element`), the styled, childless div of an element under a
-/// given style (`styled_box`, paint's `styled_div_with`), the box of a
-/// replaced element with an image source (`replaced`, paint's `image_with`),
-/// a paint effect around a built box (`effects`) and a paint layer over
-/// probed geometry (`layer`). Inputs are the inherited computed style and the
-/// options or layout context of the box being built.
+/// element box (`element`), the childless boxes styled from computed values
+/// (`boxes`: [`BoxBuild`]), the box of a replaced element with an image
+/// source (`replaced`, paint's `image_with`), a paint effect around a built
+/// box (`effects`) and a paint layer over probed geometry (`layer`). Inputs
+/// are the inherited computed style and the options or layout context of the
+/// box being built.
 #[derive(Clone, Copy)]
 pub(crate) struct ChildBuild {
     flow: FlowBuild,
     element: BuildElement,
-    styled_box: BuildStyledBox,
+    boxes: BoxBuild,
     replaced: BuildReplaced,
     effects: BuildEffect,
     layer: BuildLayer,
@@ -95,7 +96,7 @@ impl ChildBuild {
     pub(crate) const fn new(
         flow: FlowBuild,
         element: BuildElement,
-        styled_box: BuildStyledBox,
+        boxes: BoxBuild,
         replaced: BuildReplaced,
         effects: BuildEffect,
         layer: BuildLayer,
@@ -103,7 +104,7 @@ impl ChildBuild {
         Self {
             flow,
             element,
-            styled_box,
+            boxes,
             replaced,
             effects,
             layer,
@@ -139,9 +140,27 @@ impl ChildBuild {
     ) -> AnyElement {
         self.flow.paragraph(nodes, inherited, opts)
     }
-    /// The styled div of `e` under `style`, without children.
+
+    /// The styled div of `e` under `style`, without children: its box,
+    /// hover layer, scroll target and the decorations `gpui::Style` lacks.
     pub(crate) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
-        (self.styled_box)(e, style, cx)
+        self.boxes.styled_box(e, style, cx)
+    }
+
+    /// `el` sized by its content (`width`/`height: min-content | max-content
+    /// | fit-content` of `style`, css-sizing-3 §5.1): wrapped in a one-track
+    /// grid whose track measures it. `item_style` is the item's style with
+    /// inheritance applied; `placement` is its place in the parent's grid.
+    pub(crate) fn content_sized(
+        &self,
+        el: AnyElement,
+        style: &Computed,
+        item_style: &Computed,
+        placement: GridPlacement,
+        cx: &LayoutCx,
+    ) -> AnyElement {
+        self.boxes
+            .content_sized(el, style, item_style, placement, cx)
     }
 
     /// Пробы границ детей с теми же областями clamp и gap rules, что в потоке.

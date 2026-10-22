@@ -8,7 +8,6 @@ use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, wit
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -146,7 +145,7 @@ pub(super) fn canvas_atom(
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
     let merged = inherit(inherited, &e.style, vcx);
-    let d = styled_div_with(e, &merged, cx).flex_shrink_0();
+    let d = cx.build.styled_box(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда
     // соотношение несёт ВНУТРЕННЯЯ коробка, заполняющая названную

@@ -4,7 +4,6 @@
 use crate::dom::Element;
 use crate::layout::positioned::relative::relative_shift;
 use crate::layout::table::anon::html_cell;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::{Align, Computed};
 use crate::style::values::value::Len;
 use gpui::{ParentElement, Styled, px};
@@ -87,7 +86,7 @@ pub(super) fn cell_box_div(
     if bg_layered {
         box_style.background = None;
     }
-    let mut d = styled_div_with(cell, &box_style, cx);
+    let mut d = cx.build.styled_box(cell, &box_style, cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }

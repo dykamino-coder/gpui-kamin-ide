@@ -1,9 +1,14 @@
 //! Реализация в render контракта раскладки по сборке дочерних элементов.
 
-use crate::layout::build_contracts::{ChildBuild, Effect, FlowBuild, Layer};
+use crate::layout::build_contracts::{
+    BoxBuild, ChildBuild, Effect, FlowBuild, GridPlacement, Layer,
+};
+use crate::layout::cx::LayoutCx;
+use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
 use crate::paint::decorations::outline_phase;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
+use crate::style::computed::Computed;
 use gpui::AnyElement;
 
 impl Default for ChildBuild {
@@ -16,12 +21,22 @@ impl Default for ChildBuild {
                 crate::render::first_line_descendants::route,
             ),
             element,
-            crate::paint::box_tree::styled::styled_div_with,
+            BoxBuild::new(styled_div_with, content_sized),
             crate::paint::replaced::image::image_with,
             effects,
             layer,
         )
     }
+}
+
+fn content_sized(
+    el: AnyElement,
+    style: &Computed,
+    item_style: &Computed,
+    placement: GridPlacement,
+    cx: &LayoutCx,
+) -> AnyElement {
+    content_wrapper::content_sized(el, style, item_style, placement, cx.vcx())
 }
 
 fn effects(child: AnyElement, effect: Effect<'_>) -> AnyElement {

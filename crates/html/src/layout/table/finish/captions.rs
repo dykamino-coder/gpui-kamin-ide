@@ -3,7 +3,6 @@
 use crate::dom::{Element, Node};
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::transform::transformed;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -33,7 +32,10 @@ pub(super) fn collect_captions(
                 opts.cx
                     .build
                     .blocks(&cap.children, &cm, &opts.inner(|cx| cx.cell_bfc = true));
-            let built = styled_div_with(cap, &cm, &opts.cx)
+            let built = opts
+                .cx
+                .build
+                .styled_box(cap, &cm, &opts.cx)
                 .flex()
                 .flex_col()
                 .children(inside)

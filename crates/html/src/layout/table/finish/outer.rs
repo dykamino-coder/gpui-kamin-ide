@@ -4,7 +4,6 @@ use super::wrap_with_captions;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::paginate::watch::TablePart;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -81,9 +80,9 @@ pub(super) fn table_outer_box(
             }
         }
         host_style = c;
-        styled_div_with(e, &host_style, cx).flex().flex_col()
+        cx.build.styled_box(e, &host_style, cx).flex().flex_col()
     } else {
-        styled_div_with(e, inherited, cx).flex().flex_col()
+        cx.build.styled_box(e, inherited, cx).flex().flex_col()
     }
 }
 

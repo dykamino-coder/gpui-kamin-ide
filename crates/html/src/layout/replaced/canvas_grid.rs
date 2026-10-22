@@ -5,7 +5,6 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::style::{computed::Computed, values::value::Len};
 use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
 
@@ -75,7 +74,7 @@ pub(crate) fn render(
     // Grid supplies a definite percentage base at final layout. Leave the
     // percentage in the native style for intrinsic sizing to resolve as auto.
     computed.cb_height_def = true;
-    let mut painted = styled_div_with(e, &computed, cx);
+    let mut painted = cx.build.styled_box(e, &computed, cx);
     let mut native = gpui::Style::default();
     native.refine(painted.style());
     native.aspect_ratio = Some(ratio);

@@ -5,7 +5,6 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
@@ -58,7 +57,7 @@ pub(super) fn static_position_atom(
         }
         _ => None,
     };
-    let inner = styled_div_with(e, &merged, &opts.cx);
+    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(opts.cx.build.blocks(&e.children, &merged, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
@@ -170,7 +169,9 @@ pub(super) fn absolute_atom(
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place(
-        styled_div_with(e, &merged, &opts.cx)
+        opts.cx
+            .build
+            .styled_box(e, &merged, &opts.cx)
             .children(opts.cx.build.blocks(&e.children, &merged, opts))
             .into_any_element(),
         &merged,
