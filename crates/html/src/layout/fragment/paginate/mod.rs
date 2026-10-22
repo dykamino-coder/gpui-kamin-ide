@@ -93,7 +93,7 @@ fn layout_parent(s: &crate::style::computed::Computed) -> bool {
 /// fragmentation contexts). Lines remain in the measured flow geometry.
 pub(crate) fn candidates(c: &Element, vcx: ValueCx<'_>) -> Option<Vec<(u64, Cand)>> {
     let mut out = Vec::new();
-    candidates::walk(c, 8, &mut out, vcx)?;
+    candidates::walk(c, &mut out, vcx)?;
     Some(out)
 }
 

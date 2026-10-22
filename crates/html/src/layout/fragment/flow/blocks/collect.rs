@@ -31,6 +31,12 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         return BlockBox {
             id: e.node_id,
             table: Some(Box::new(TableBox::collect(e, cx, vcx))),
+            own_breaks: (
+                e.style.break_before_force,
+                e.style.break_after_force,
+                e.style.break_before_avoid,
+                e.style.break_after_avoid,
+            ),
             ..Default::default()
         };
     }

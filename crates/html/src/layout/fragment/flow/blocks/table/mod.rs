@@ -18,6 +18,7 @@ use crate::layout::fragment::clone::monolith_box;
 use crate::layout::table::grid_rows::{cell_row_span, grid_rows, table_key};
 use crate::layout::table::is_cell;
 
+mod edges;
 mod geometry;
 mod sections;
 pub(crate) use sections::TableSections;

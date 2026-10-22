@@ -27,23 +27,21 @@ pub(crate) fn refusal(
 ) -> Option<&'static str> {
     // Flex gaps adjoining a break are truncated (Blink
     // `UpdateOffsetAdjustmentForSuppressedRowGap`); struts do not model that.
-    fn gapped(e: &Element, depth: u8) -> bool {
-        (matches!(
-            e.style.computed().display,
-            Some(Display::Flex) | Some(Display::Grid)
-        ) && e.style.computed().gap.is_some()
+    fn gapped(e: &Element) -> bool {
+        (matches!(e.style.computed().display, Some(Display::Flex) | Some(Display::Grid))
+            && e.style.computed().gap.is_some()
             && super::row_gap(&e.style.computed()).is_none())
-            || (depth > 0
-                && e.children.iter().any(
-                    |n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k, depth - 1)),
-                ))
+            || (e
+                .children
+                .iter()
+                .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && gapped(k))))
     }
-    fn has_flex(e: &Element, depth: u8) -> bool {
+    fn has_flex(e: &Element) -> bool {
         e.style.computed().display == Some(Display::Flex)
-            || (depth > 0
-                && e.children.iter().any(
-                    |n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k, depth - 1)),
-                ))
+            || (e
+                .children
+                .iter()
+                .any(|n| matches!(n, Node::Element(k) if !monolith_box(k) && has_flex(k))))
     }
     if c.inline
         || out_of_flow(&c.style.computed())
@@ -62,13 +60,13 @@ pub(crate) fn refusal(
     {
         return Some("box");
     }
-    if gapped(c, 4) {
+    if gapped(c) {
         return Some("gap");
     }
     match candidates(c, vcx) {
         None => Some("subtree"),
         Some(v)
-            if !has_flex(c, 4)
+            if !has_flex(c)
                 && !v.iter().any(|x| {
                     matches!(x.1, super::Cand::Float { .. } | super::Cand::Forced { .. })
                 }) =>
@@ -145,5 +143,34 @@ mod tests {
         // CSS Break 3 section 3.1: forced breaks apply to ordinary block flow;
         // they do not require a flex or float formatting context.
         assert!(gate(parent, Some(9.0), true, tree.values()));
+    }
+    #[test]
+    fn deep_float_and_forced_candidates_keep_native_geometry() {
+        for body in [
+            "<div style='float:left;overflow:scroll;width:10px'>float</div>",
+            "<div style='break-before:column'>forced</div>",
+        ] {
+            let html = format!(
+                "<div>{}{}{}</div>",
+                "<div>".repeat(24),
+                body,
+                "</div>".repeat(24)
+            );
+            let tree = crate::dom::parse(&html, "");
+            let Node::Element(parent) = &tree[0] else {
+                panic!("block")
+            };
+            assert!(gate(parent, None, true, tree.values()));
+        }
+        let html = format!(
+            "<div>{}<div style='display:flex;gap:10%'><div>gap</div></div>{}</div>",
+            "<div>".repeat(24),
+            "</div>".repeat(24)
+        );
+        let tree = crate::dom::parse(&html, "");
+        let Node::Element(parent) = &tree[0] else {
+            panic!("block")
+        };
+        assert_eq!(refusal(parent, None, true, tree.values()), Some("gap"));
     }
 }

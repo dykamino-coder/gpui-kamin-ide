@@ -153,6 +153,7 @@ impl BlockBox {
                     .flat_map(|g| &g.items)
                     .filter_map(|i| i.inner.as_ref()),
             )
+            .chain(self.table.iter().flat_map(|t| t.flows()))
         {
             inner.flexes(out);
         }

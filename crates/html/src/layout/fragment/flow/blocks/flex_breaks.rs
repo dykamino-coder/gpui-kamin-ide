@@ -176,12 +176,18 @@ impl BlockBox {
                 }
             }
         }
-        for b in self.kids.iter().filter_map(|i| i.inner.as_ref()).chain(
-            self.grid
-                .iter()
-                .flat_map(|g| &g.items)
-                .filter_map(|i| i.inner.as_ref()),
-        ) {
+        for b in self
+            .kids
+            .iter()
+            .filter_map(|i| i.inner.as_ref())
+            .chain(
+                self.grid
+                    .iter()
+                    .flat_map(|g| &g.items)
+                    .filter_map(|i| i.inner.as_ref()),
+            )
+            .chain(self.table.iter().flat_map(|t| t.flows()))
+        {
             b.flex_flows(laid, out);
         }
     }

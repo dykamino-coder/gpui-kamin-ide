@@ -67,7 +67,9 @@ pub(crate) fn table_tree(e: &Element) -> bool {
             {
                 k.children.iter().all(part)
             }
-            Node::Element(k) => plain_tree(k) || table_tree(k) || super::grid_tree(k),
+            Node::Element(k) => {
+                stacked_tree(k) || table_tree(k) || super::grid_tree(k) || super::flex_tree(k)
+            }
             _ => true,
         }
     }
