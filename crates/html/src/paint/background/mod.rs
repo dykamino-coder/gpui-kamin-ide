@@ -24,6 +24,8 @@ pub use fills::paint_area;
 
 mod filtered_raster;
 mod source_types;
+pub use crate::layout::replaced::natural::Intrinsic;
+pub(crate) use crate::layout::replaced::natural::default_size;
 pub use source_types::Source;
 
 use crate::paint::cache::{BoundedCache, MIB};
@@ -66,7 +68,7 @@ pub use crate::paint::background::shape_profile::*;
 pub(super) mod raster;
 pub(crate) use crate::paint::background::raster::*;
 pub(super) mod image_decode;
-pub use crate::paint::background::image_decode::*;
+pub(crate) use crate::paint::background::image_decode::*;
 pub(super) mod tiles;
 pub use crate::paint::background::tiles::*;
 
