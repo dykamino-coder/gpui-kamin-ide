@@ -17,6 +17,7 @@ pub(super) fn element_style(
     vcx: ValueCx<'_>,
 ) -> (Computed, bool) {
     let mut merged = inherit(inherited, &e.style, vcx);
+    merged.self_node = e.node_id;
     let viewport = vcx.viewport;
     merged.resolve_decor_inset_viewport(viewport, vcx);
     // Относительный сдвиг строчного КОПИТСЯ вниз: вложенные
