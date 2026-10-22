@@ -15,7 +15,7 @@ pub(crate) fn cut_at(
     holds: impl Fn(f32, f32) -> bool,
     overflow_to: Option<f32>,
 ) -> Option<(f32, f32)> {
-    if let Some(b) = overflow_to {
+    let cut = if let Some(b) = overflow_to {
         Some(at(b))
     } else if mono || room <= 0.01 {
         None
@@ -73,5 +73,23 @@ pub(crate) fn cut_at(
         if a > from + 0.01 { Some(at(a)) } else { None }
     } else {
         Some(at(edge))
+    };
+    let (mut point, mut next) = cut?;
+    for _ in 0..k.keep.len() {
+        let start = k
+            .keep
+            .iter()
+            .filter(|&&(a, b)| a < point - 0.01 && point < b - 0.01 && a >= from - 0.01)
+            .map(|p| p.0)
+            .min_by(f32::total_cmp);
+        let Some(start) = start else { break };
+        if start <= from + 0.01 {
+            if placed {
+                return None;
+            }
+            break;
+        }
+        (point, next) = at(start);
     }
+    Some((point, next))
 }

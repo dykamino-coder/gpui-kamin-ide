@@ -1,25 +1,9 @@
 //! Предикаты флекс-элементов: ограничение внутри, ширина в ряду, класс A, контейнер.
 
-use crate::dom::whitespace::is_blank;
-use crate::dom::{Element, Node};
+use crate::dom::Element;
 use crate::layout::box_kind::out_of_flow;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-
-/// В поддереве (до `depth`) — коробка с заданной высотой и содержимым: свой
-/// параллельный поток (css-break-3 §3), которого раскрытый элемент ряда не
-/// выражает (`flex_row_lines_of`).
-pub(super) fn constrained_inside(c: &Element, depth: u8) -> bool {
-    depth > 0
-        && c.children.iter().any(|n| match n {
-            Node::Element(k) => {
-                (matches!(k.style.height, Some(Len::Px(_)) | Some(Len::Pct(_)))
-                    && k.children.iter().any(|n| !is_blank(n)))
-                    || constrained_inside(k, depth - 1)
-            }
-            _ => false,
-        })
-}
 
 /// Главный размер элемента многострочного ряда для `flex_row_lines_of`:
 /// `flex-basis` (точки/проценты) при `flex-grow: 0`, иначе `width`; проценты —

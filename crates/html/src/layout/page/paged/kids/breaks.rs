@@ -9,7 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::ShapeCx;
-use crate::layout::fragment::flow::blocks::{BlockBox, table_tree};
+use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
 use crate::style::computed::Position;
@@ -34,14 +34,18 @@ pub(super) fn recorder(
                     Some(Position::Absolute) | Some(Position::Fixed)
                 )
                 && shaped
-                && (plain_block_tree(e, 4) || table_tree(e, 4)) =>
+                && (plain_block_tree(e, 4) || table_tree(e, 4) || flex_tree(e, 4)) =>
         {
             let blocks = BlockBox::collect(e, cx, vcx);
             // Without block children the copy keeps its measured lines alone.
             if blocks.is_empty() {
                 Watched::new(&[])
             } else {
-                Watched::for_blocks(blocks)
+                if crate::layout::fragment::flow::flow_lines(e) {
+                    Watched::for_blocks(blocks)
+                } else {
+                    Watched::for_blocks_only(blocks)
+                }
             }
         }
         _ => Watched::new(&[]),

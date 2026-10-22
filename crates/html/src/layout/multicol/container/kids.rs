@@ -3,7 +3,6 @@
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::fragment::breaks::edge_break;
-use crate::layout::fragment::flex_lines::split_flex_lines;
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::push::{avoid_only_monolith, grow_pushed, measured_push};
 use crate::layout::multicol::measure::kid_layout_w;
@@ -16,10 +15,10 @@ use crate::style::values::value::Len;
 // Child records keep their layout and paint callbacks with measured geometry.
 #[allow(clippy::type_complexity)]
 pub(super) fn column_kids(
-    merged: &Computed,
+    _merged: &Computed,
     kids: Vec<(Element, crate::layout::fragment::Shape)>,
     cols: u16,
-    used_gap: f32,
+    _used_gap: f32,
     col_vert: bool,
     rows: Option<crate::layout::fragment::types::Rows>,
     copies: usize,
@@ -32,24 +31,12 @@ pub(super) fn column_kids(
     Vec<crate::layout::fragment::types::Par>,
     Vec<(Element, crate::layout::fragment::Shape)>,
 ) {
-    let (kids, kid_par, kid_parent, kid_starts) = if fixed.is_some() && rows.is_none() && !col_vert
-    {
-        let col_w = match merged.width {
-            Some(Len::Px(w)) if merged.border_box != Some(true) && cols > 0 => {
-                Some((w - used_gap * (cols as f32 - 1.0)) / cols as f32)
-            }
-            _ => None,
-        };
-        split_flex_lines(kids, col_w, merged, vcx)
-    } else {
-        let n = kids.len();
-        (
-            kids,
-            vec![crate::layout::fragment::types::Par::default(); n],
-            vec![None; n],
-            (0..=n).collect(),
-        )
-    };
+    // Линии остаются в Taffy-дереве контейнера; копия сохраняет flex sizing,
+    // фон и static position. Regrow читает их после layout.
+    let n = kids.len();
+    let kid_parent = vec![None; n];
+    let kid_starts = (0..=n).collect();
+    let kid_par = vec![crate::layout::fragment::types::Par::default(); n];
     // `break-inside: avoid` без настоящего монолита — у любого
     // ребёнка колонок (`flow::Par::avoid_only`): с верха колонки
     // коробка выше колонки рвётся, а не переполняет её.

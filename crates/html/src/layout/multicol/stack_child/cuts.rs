@@ -184,6 +184,7 @@ pub(super) fn stack_child_of(
         forced,
         solid,
         avoid: Vec::new(),
+        keep: Vec::new(),
         h,
         mt,
         mb,

@@ -139,6 +139,7 @@ pub(crate) fn nested_rows_shape(
                             forced: sh.forced,
                             solid: sh.solid,
                             avoid: Vec::new(),
+                            keep: Vec::new(),
                             span: false,
                             over: sh.height,
                             clone_dec: None,

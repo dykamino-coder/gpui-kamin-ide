@@ -43,6 +43,12 @@ impl Hooks for Watch {
         let lid = self.inner.request_layout(window, cx);
         match self.slot {
             Slot::Box(id) => {
+                if let Some(growth) = self.rec.flex_growth.borrow().get(&id) {
+                    window.set_flex_line_fragmentation_growth(lid, growth);
+                }
+                if let Some(offset) = self.rec.flex_offsets.borrow().get(&id) {
+                    window.set_flex_item_fragmentation_offset(lid, *offset);
+                }
                 self.rec.seen.borrow_mut().insert(id, lid);
             }
             Slot::Table(key, part) => self.rec.record_part(key, part, lid),

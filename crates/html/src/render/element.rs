@@ -30,16 +30,14 @@ use gpui::AnyElement;
 pub(crate) fn element(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     // Строки внутри коробки другого контекста фрагментации рекордеру потока
     // не пишутся (`flow::flow_lines`).
-    let nested = opts
-        .frag
-        .watch
-        .as_ref()
-        .filter(|w| w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e))
-        .map(|w| {
-            let mut o = opts.clone();
-            o.frag.watch = Some(w.nested());
-            o
-        });
+    let nested = opts.frag.watch.as_ref().and_then(|w| {
+        let watch = w.for_flex_item(e.node_id).or_else(|| {
+            (w.takes_lines() && !crate::layout::fragment::flow::flow_lines(e)).then(|| w.nested())
+        })?;
+        let mut inner = opts.clone();
+        inner.frag.watch = Some(watch);
+        Some(inner)
+    });
     crate::layout::fragment::paginate::watch::wrap(
         e.node_id,
         element_inner(e, inherited, nested.as_ref().unwrap_or(opts)),

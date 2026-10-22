@@ -6258,6 +6258,29 @@ impl Window {
         self.layout_engine.as_ref()?.grid_item_rows(child)
     }
 
+    /// KaminIDE patch: реальные линии родителя-flex и начало его border box.
+    pub fn parent_flex_layout(&mut self, child: LayoutId) -> Option<(Point<Pixels>, crate::FlexLayout)> {
+        let scale = self.scale_factor();
+        let (origin, layout) = self.layout_engine.as_mut()?.parent_flex_layout(child, scale)?;
+        Some((origin + self.element_offset(), layout))
+    }
+
+    /// KaminIDE patch: consumed block space before a column flex item.
+    pub fn set_flex_item_fragmentation_offset(&mut self, id: LayoutId, offset: f32) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_offset(id, offset, scale);
+        }
+    }
+
+    /// KaminIDE patch: пространство, занятое фрагментацией после flex-линий.
+    pub fn set_flex_line_fragmentation_growth(&mut self, id: LayoutId, growth: &[f32]) {
+        let scale = self.scale_factor();
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_line_fragmentation_growth(id, growth, scale);
+        }
+    }
+
     /// KaminIDE patch: дорожки родителя-сетки (см.
     /// `TaffyLayoutEngine::parent_grid_tracks`); начало родителя — в окне,
     /// со смещением текущего элемента.

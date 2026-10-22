@@ -65,6 +65,7 @@ pub(super) fn clone_plan_of(
                         forced,
                         solid,
                         avoid: Vec::new(),
+                        keep: Vec::new(),
                         span: c.style.column_span == Some(true) && !c.inline,
                         over,
                         clone_dec: clone_dec(c),

@@ -33,6 +33,7 @@ impl ColumnStack {
                 c.cuts.clear();
                 c.forced.clear();
                 c.solid.clear();
+                c.keep.clear();
             }
             let sections = c.measure_breaks(sz, axis, window);
             c.refresh_repeat(sections, fixed);
@@ -79,6 +80,15 @@ impl ColumnStack {
         }
         if let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) {
             r.laid = w.laid(point(px(0.0), px(0.0)), window);
+            if !r.laid.flexes.is_empty()
+                && let Some(blocks) = w.blocks()
+            {
+                let (before, after) = (blocks.edge(false, &r.laid), blocks.edge(true, &r.laid));
+                c.force_before = before.0;
+                c.force_after = after.0;
+                c.avoid_before = before.1;
+                c.avoid_after = after.1;
+            }
         }
     }
 
@@ -94,15 +104,39 @@ impl ColumnStack {
             // коробки выше, и разложенные border box прохода остаются верны.
             grows.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
             let mut dirty = vec![false; self.children.len()];
-            for (kid, at, grow, forced) in grows {
-                let c = &mut self.children[kid];
+            let mut local_grows = vec![Vec::new(); self.children.len()];
+            let (_, lines, plan, _) = self.balance(&kids);
+            for f in &plan {
+                let c = &mut self.children[f.kid];
                 let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) else {
                     continue;
                 };
-                if let Some(blocks) = w.blocks()
-                    && r.push(blocks, at, grow, forced)
-                {
-                    dirty[kid] = true;
+                let Some(blocks) = w.blocks() else { continue };
+                let Some(&(_, height)) = lines.get(f.col / self.count) else {
+                    continue;
+                };
+                let edge = f.from + height - f.y;
+                let local = crate::layout::fragment::push::flex_flow::growths(
+                    blocks,
+                    &r.laid,
+                    f.from,
+                    f.from + f.h,
+                    edge,
+                );
+                local_grows[f.kid].extend(local);
+            }
+            for (kid, at, grow, forced) in grows {
+                let c = &mut self.children[kid];
+                let (Some(_r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) else {
+                    continue;
+                };
+                if let Some(blocks) = w.blocks() {
+                    local_grows[kid].push((blocks.clone(), at, grow, forced));
+                }
+            }
+            for (index, grows) in local_grows.into_iter().enumerate() {
+                if let Some(r) = self.children[index].regrow.as_mut() {
+                    dirty[index] = r.push_many(grows);
                 }
             }
             if !dirty.contains(&true) {

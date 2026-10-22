@@ -9,7 +9,7 @@
 //! (`DetailedLayoutInfo::Grid` разложенной сетки, читается у её элемента) и таблицы стопки
 //! кадрами (`table`: коробка таблицы, сетка и дорожки рядов).
 
-use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, Laid, MeasuredBreaks};
+use crate::layout::fragment::flow::blocks::{BlockBox, BlockBreaks, MeasuredBreaks};
 use crate::layout::fragment::types::StackAxis;
 use gpui::{LayoutId, Pixels, Point, Size, Window};
 use std::cell::RefCell;
@@ -19,6 +19,10 @@ use std::rc::Rc;
 mod hook;
 pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
+mod flex;
+mod flex_flows;
+mod geometry;
+mod grid;
 mod table;
 use table::TableNodes;
 pub(crate) use table::{TablePart, table_part};
@@ -37,6 +41,9 @@ pub(crate) struct Watched {
     tables: Rc<HashSet<u64>>,
     /// Layout nodes of the watched tables' parts by the last layout.
     table_nodes: Rc<RefCell<HashMap<u64, TableNodes>>>,
+    flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
+    flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
+    item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasurements>>>,
 }
 
 impl Watched {
@@ -81,6 +88,7 @@ impl Watched {
             seen: Rc::default(),
             tables: Rc::new(blocks.table_keys().into_iter().collect()),
             flow,
+            item_flows: Self::flex_item_flows(&blocks),
             blocks: Some(blocks),
             ..Self::default()
         })
@@ -113,53 +121,6 @@ impl Watched {
         blocks.finish(lines, end)
     }
 
-    /// Laid-out geometry of the copy relative to `origin`, read before the
-    /// layout engine is released: border boxes `(top, bottom)` of the watched
-    /// boxes and frames of the watched tables.
-    pub(crate) fn laid(&self, origin: Point<Pixels>, window: &mut Window) -> Laid {
-        let boxes = self
-            .seen
-            .borrow()
-            .iter()
-            .map(|(&id, &lid)| {
-                let top = f32::from(window.layout_origin_unrounded(lid).y - origin.y);
-                let h = f32::from(window.layout_size_unrounded(lid).height);
-                (id, (top, top + h))
-            })
-            .collect();
-        Laid {
-            boxes,
-            tables: self.table_frames(origin, window),
-            grids: self.rows(origin, window),
-        }
-    }
-
-    /// Row tracks `(start, end)` of the watched grids relative to `origin`,
-    /// read from the laid-out grid (taffy `DetailedLayoutInfo::Grid`) through
-    /// its first recorded item, before the layout engine is released.
-    pub(crate) fn rows(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> HashMap<u64, Vec<(f32, f32)>> {
-        let mut grids = Vec::new();
-        if let Some(b) = &self.blocks {
-            b.grids(&mut grids);
-        }
-        let mut out = HashMap::new();
-        for (grid, items) in grids {
-            let Some(lid) = items.iter().find_map(|&id| self.seen(id)) else {
-                continue;
-            };
-            let Some((o, _, rows)) = window.parent_grid_tracks(lid) else {
-                continue;
-            };
-            let off = f32::from(o.y - origin.y);
-            out.insert(grid, rows.iter().map(|r| (r.0 + off, r.1 + off)).collect());
-        }
-        out
-    }
-
     /// Block stack watched by the recorder (`for_blocks`).
     pub(crate) fn blocks(&self) -> Option<&BlockBox> {
         self.blocks.as_ref()
@@ -185,6 +146,9 @@ impl Watched {
             // recorder: their nodes belong to the watched flow's tables.
             tables: self.tables.clone(),
             table_nodes: self.table_nodes.clone(),
+            flex_growth: self.flex_growth.clone(),
+            flex_offsets: self.flex_offsets.clone(),
+            item_flows: self.item_flows.clone(),
         })
     }
 
@@ -198,6 +162,9 @@ impl Watched {
         self.seen.borrow_mut().clear();
         self.table_nodes.borrow_mut().clear();
         self.flow.reset();
+        for flow in self.item_flows.values() {
+            flow.reset();
+        }
     }
 
     /// Layout node recorded for `id` by the last layout.

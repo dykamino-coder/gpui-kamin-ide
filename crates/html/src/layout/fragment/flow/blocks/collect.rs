@@ -4,7 +4,7 @@
 
 use super::table::TableBox;
 use super::trees::{holds_blocks, stacks_blocks};
-use super::{BlockBox, BlockKid, grid, grid_container};
+use super::{BlockBox, BlockKid, flex, flex_container, grid, grid_container};
 use crate::document::state::ValueCx;
 use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
@@ -43,6 +43,10 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         out.grid = Some(grid::collect_grid(e, depth - 1, cx, vcx));
         return out;
     }
+    if flex_container(e) {
+        out.flex = Some(flex::collect_flex(e, depth - 1, cx, vcx));
+        return out;
+    }
     let stacks = stacks_blocks(e) || (blockified && e.style.display == Some(Display::InlineBlock));
     if !stacks {
         return out;
@@ -59,10 +63,19 @@ pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
     let b = e.style.borders();
     BlockBox {
         id: e.node_id,
+        own_breaks: (
+            e.style.break_before_force,
+            e.style.break_after_force,
+            e.style.break_before_avoid,
+            e.style.break_after_avoid,
+        ),
+        inside_avoid: e.style.break_inside_avoid,
+        edge_kids: edges(e),
         head: px(e.style.padding.top) + px(b.top),
         tail: px(e.style.padding.bottom) + px(b.bottom),
         end_margin: crate::layout::box_kind::bfc_root(e)
             && !grid_container(e)
+            && !flex_container(e)
             && matches!(
                 e.style.height,
                 None | Some(crate::style::values::value::Len::Auto)
@@ -70,6 +83,7 @@ pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
         kids: Vec::new(),
         table: None,
         grid: None,
+        flex: None,
     }
 }
 
@@ -112,10 +126,23 @@ pub(super) fn push_kids(
             avoid_before: edge_avoid(k, false, vcx),
             avoid_after: edge_avoid(k, true, vcx),
             monolith,
-            inner: (!monolith && (stacks_blocks(k) || table_box(k) || grid_container(k)))
-                .then(|| collect(k, depth - 1, false, cx, vcx)),
+            inner: (!monolith
+                && (stacks_blocks(k) || table_box(k) || grid_container(k) || flex_container(k)))
+            .then(|| collect(k, depth - 1, false, cx, vcx)),
             page: (cx.paged && class_a_box(k)).then(|| page_names(k, "")),
         });
         *adjoins = true;
     }
+}
+
+/// Крайние поточные узлы; текст и строчная коробка не передают блочный break.
+fn edges(e: &Element) -> (Option<u64>, Option<u64>) {
+    let nodes: Vec<_> = e.children.iter().filter(|n| !is_blank(n)).filter(|n| {
+        !matches!(n, Node::Element(k) if out_of_flow(&k.style) || k.style.display == Some(Display::None))
+    }).collect();
+    let block = |n: &&Node| match n {
+        Node::Element(k) if !k.inline => Some(k.node_id),
+        _ => None,
+    };
+    (nodes.first().and_then(block), nodes.last().and_then(block))
 }

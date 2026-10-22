@@ -19,7 +19,8 @@ pub(super) fn gate(c: &Element, fits: bool, line_col_w: Option<f32>) -> bool {
         && c.style.column_span != Some(true)
         && matches!(c.style.position, None | Some(Position::Relative))
         && c.style.float.unwrap_or(0) == 0
-        && crate::layout::fragment::flow::blocks::grid_tree(c, 4)
+        && (crate::layout::fragment::flow::blocks::grid_tree(c, 4)
+            || crate::layout::fragment::flow::blocks::flex_tree(c, 4))
 }
 
 /// Запись ребёнка, чью высоту меряет раскладка копии; поля не в точках —

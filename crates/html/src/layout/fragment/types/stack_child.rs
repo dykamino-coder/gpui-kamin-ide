@@ -74,6 +74,8 @@ pub struct StackChild {
     /// Диапазоны запрета `break-*: avoid`, достижимые только переносом
     /// (`MeasuredBreaks::avoid`, `Kid::avoid`).
     pub(crate) avoid: Vec<(f32, f32)>,
+    /// Пожелания break-inside: avoid: перенос до начала, с пустого фрагмента допускается разрыв.
+    pub(crate) keep: Vec<(f32, f32)>,
     pub h: f32,
     pub mt: f32,
     pub mb: f32,
@@ -222,6 +224,7 @@ impl StackChild {
             forced: self.forced.clone(),
             solid: self.solid.clone(),
             avoid: self.avoid.clone(),
+            keep: self.keep.clone(),
             span: self.span,
             over: self.over,
             clone_dec: self.clone_dec,

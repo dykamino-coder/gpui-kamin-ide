@@ -22,6 +22,9 @@ pub(crate) struct Laid {
     pub(crate) boxes: HashMap<u64, (f32, f32)>,
     pub(crate) tables: HashMap<u64, TableFrame>,
     pub(crate) grids: HashMap<u64, Vec<(f32, f32)>>,
+    pub(crate) flexes: HashMap<u64, super::FlexFrame>,
+    pub(crate) lines: HashMap<u64, Vec<super::super::LinePush>>,
+    pub(crate) flows: HashMap<u64, super::super::FlowGeometry>,
 }
 
 impl Laid {
@@ -47,6 +50,9 @@ impl Laid {
             boxes: boxes.iter().map(|&(id, t, b)| (id, (t, b))).collect(),
             tables: HashMap::new(),
             grids: HashMap::new(),
+            flexes: HashMap::new(),
+            flows: HashMap::new(),
+            lines: HashMap::new(),
         }
     }
 }

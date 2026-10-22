@@ -138,6 +138,7 @@ fn hidden_and_oof_are_absent_and_relative_insets_do_not_move_flow() {
     let relative = tree
         .new_leaf(Style {
             size: Size::from_lengths(30.0, 20.0),
+            position: Position::Relative,
             inset: Rect {
                 left: LengthPercentageAuto::length(9.0),
                 top: LengthPercentageAuto::length(7.0),
@@ -163,10 +164,10 @@ fn hidden_and_oof_are_absent_and_relative_insets_do_not_move_flow() {
 #[test]
 fn intrinsic_height_recomputed_at_new_fragmentainer_width() {
     let mut tree = TaffyTree::new();
-    let item = tree.new_leaf(Style::DEFAULT).unwrap();
+    let item = tree.new_leaf(Style { min_size: Size { width: LengthPercentageAuto::length(0.0), height: LengthPercentageAuto::length(0.0) }, ..Style::DEFAULT }).unwrap();
     let root = tree.new_with_children(Style::DEFAULT, &[item]).unwrap();
     for (width, height) in [(100.0, 20.0), (50.0, 40.0)] {
-        tree.mark_dirty(root).unwrap();
+        tree.set_style(root, Style { size: Size { width: Dimension::length(width), height: Dimension::auto() }, ..Style::DEFAULT }).unwrap();
         tree.compute_layout_with_measure(
             root,
             Size {

@@ -16,7 +16,7 @@ impl Paragraph {
     /// кусков после выравнивания. На каждую строку своя пара: абзац с
     /// надстрочным знаком в одной строке не должен раздувать остальные.
     pub(crate) fn line_padding(&self) -> Vec<(f32, f32)> {
-        self.padding_for(&self.lines)
+        self.fragment_padding(self.padding_for(&self.lines))
     }
 
     pub(super) fn padding_for(&self, lines: &[Line]) -> Vec<(f32, f32)> {

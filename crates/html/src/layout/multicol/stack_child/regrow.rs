@@ -62,7 +62,11 @@ impl Measured {
                 let mut inner = inherit(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
-                opts.frag.watch = (part == 0).then(|| watched.clone());
+                opts.frag.watch = Some(if part == 0 {
+                    watched.clone()
+                } else {
+                    watched.constraints_only()
+                });
                 let el = build_copy(
                     &opts,
                     col_vert,
@@ -90,6 +94,7 @@ impl Measured {
                 opts: opts.clone(),
                 laid: Default::default(),
                 laid_h: self.laid_h,
+                watched: self.watched.clone(),
             });
         }
         child.watched = Some(self.watched);

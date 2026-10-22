@@ -31,6 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
+        "Expose final Taffy flex line/item geometry and typed fragmentation growth constraints.",
         "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",
@@ -66,6 +67,7 @@ FIXES = {
         "Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.",
     ],
     "taffy": [
+        "Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space.",
         "Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.",
         "CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.",
         "Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.",

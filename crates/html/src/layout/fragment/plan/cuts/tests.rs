@@ -61,3 +61,17 @@ fn monolith_moves_to_empty_column_without_leaking_previous_cursor() {
         (1, 0, 1, 0.0, 0.0, 80.0)
     );
 }
+
+#[test]
+fn flex_inside_avoid_moves_then_relaxes_and_keeps_forced_breaks() {
+    let mut item = kid(120.0);
+    item.keep = vec![(0.0, 120.0)];
+    item.cuts = vec![(40.0, 40.0), (80.0, 80.0)];
+    let (_, _, plan) = fill(&[kid(30.0), item.clone()], 100.0, Space::columns(4));
+    assert_eq!((plan[1].col, plan[1].y, plan[1].from), (1, 0.0, 0.0));
+    assert_eq!(plan[1].h, 100.0);
+    item.forced = vec![40.0];
+    let (_, _, plan) = fill(&[item], 100.0, Space::columns(4));
+    assert_eq!((plan[0].col, plan[0].h), (0, 40.0));
+    assert_eq!((plan[1].col, plan[1].from), (1, 40.0));
+}

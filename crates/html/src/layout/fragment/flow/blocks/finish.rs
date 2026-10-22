@@ -90,6 +90,7 @@ impl BlockBreaks {
             forced,
             solid: g.solid,
             avoid,
+            keep: self.keep,
             sections: self.sections,
         }
     }
