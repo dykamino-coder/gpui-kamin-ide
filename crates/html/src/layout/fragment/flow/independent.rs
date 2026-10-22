@@ -16,7 +16,7 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
     let Some(logical) = logical_copy(c, rl) else {
         return false;
     };
-    use super::blocks::{grid_tree, stacked_tree, table_tree};
+    use super::blocks::{flex_tree, grid_tree, stacked_tree, table_tree};
     !c.inline
         && !c.marks.paginate
         && c.style.column_span != Some(true)
@@ -25,7 +25,8 @@ pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
         && ((crate::layout::fragment::probe::plain_block_tree(&logical, 4)
             && stacked_tree(&logical, 4))
             || table_tree(&logical, 4)
-            || grid_tree(&logical, 4))
+            || grid_tree(&logical, 4)
+            || flex_tree(&logical, 4))
 }
 
 /// Только метаданные рекордера: физическое дерево рисуется без поворота.

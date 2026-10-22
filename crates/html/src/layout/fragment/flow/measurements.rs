@@ -94,14 +94,6 @@ impl FlowMeasurements {
         }
     }
 
-    pub(crate) fn line_pushes(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> Vec<super::LinePush> {
-        self.line_pushes_axis(origin, Size::default(), StackAxis::Horizontal, window)
-    }
-
     /// Строки и их распорки в той же логической оси, что геометрия потока.
     pub(crate) fn line_pushes_axis(
         &self,

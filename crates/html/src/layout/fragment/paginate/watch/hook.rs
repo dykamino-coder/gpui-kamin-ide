@@ -3,8 +3,9 @@
 
 use super::{TablePart, Watched};
 use crate::hooks::{Hooks, IntoHooked};
+use crate::layout::fragment::types::StackAxis;
 use crate::layout::options::RenderOpts;
-use gpui::{AnyElement, App, Bounds, ContentMask, LayoutId, Pixels, Window, px};
+use gpui::{AnyElement, App, Bounds, ContentMask, LayoutId, Pixels, Window};
 use std::rc::Rc;
 
 /// Wrap `el` when the build's recorder watches `id` (identity otherwise).
@@ -43,6 +44,16 @@ impl Hooks for Watch {
         let lid = self.inner.request_layout(window, cx);
         match self.slot {
             Slot::Box(id) => {
+                let axis = self.rec.axis();
+                window.set_flex_fragmentation_axis(
+                    lid,
+                    if axis.is_vertical() {
+                        gpui::Axis::Horizontal
+                    } else {
+                        gpui::Axis::Vertical
+                    },
+                    axis == StackAxis::VerticalRl,
+                );
                 if let Some(growth) = self.rec.flex_growth.borrow().get(&id) {
                     window.set_flex_line_fragmentation_growth(lid, growth);
                 }
@@ -72,16 +83,13 @@ impl Hooks for Watch {
                 .borrow()
                 .get(&id)
                 .map(|&(consumed, complete)| {
-                    let mut mask = window.content_mask();
-                    let bottom = mask.bounds.bottom();
-                    let top = if complete {
-                        bottom
-                    } else {
-                        mask.bounds.origin.y.max(bounds.origin.y + px(consumed))
-                    };
-                    mask.bounds.origin.y = top;
-                    mask.bounds.size.height = (bottom - top).max(px(0.));
-                    mask
+                    super::axis::consumed_mask(
+                        self.rec.axis(),
+                        window.content_mask(),
+                        bounds,
+                        consumed,
+                        complete,
+                    )
                 })
         } else {
             None

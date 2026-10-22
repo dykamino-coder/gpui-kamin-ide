@@ -237,5 +237,6 @@ pub(super) fn build_copy(
     } else {
         el
     };
+    let el = crate::layout::fragment::paginate::watch::wrap(copy.node_id, el, opts);
     super::vertical::wrap(el, copy, col_vert, col_rl, line_col_w)
 }

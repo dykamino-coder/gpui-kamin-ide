@@ -40,14 +40,6 @@ impl FlowMeasurements {
         }
     }
 
-    pub(crate) fn content_lines(
-        &self,
-        origin: Point<Pixels>,
-        window: &mut Window,
-    ) -> Vec<ContentLine> {
-        self.content_lines_axis(origin, Size::default(), StackAxis::Horizontal, window)
-    }
-
     /// Адреса содержимого используют ту же проекцию, что cuts и распорки.
     pub(crate) fn content_lines_axis(
         &self,

@@ -48,11 +48,13 @@ pub(super) fn recorder(
             if blocks.is_empty() && !measured {
                 Watched::new(&[])
             } else {
-                if crate::layout::fragment::flow::flow_lines(e) {
-                    Watched::for_blocks(blocks)
-                } else {
-                    Watched::for_blocks_only(blocks)
-                }
+                use crate::layout::fragment::types::StackAxis;
+                let axis = match vertical {
+                    None => StackAxis::Horizontal,
+                    Some(false) => StackAxis::VerticalLr,
+                    Some(true) => StackAxis::VerticalRl,
+                };
+                Watched::for_blocks_axis(blocks, axis, crate::layout::fragment::flow::flow_lines(e))
             }
         }
         _ => Watched::new(&[]),

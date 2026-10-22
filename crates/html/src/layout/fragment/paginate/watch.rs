@@ -44,6 +44,7 @@ pub(crate) struct Watched {
     table_nodes: Rc<RefCell<HashMap<u64, TableNodes>>>,
     copies: RefCell<HashMap<usize, Rc<Self>>>,
     independent: bool,
+    axis: Option<StackAxis>,
     flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
     flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
@@ -60,26 +61,13 @@ impl Watched {
         })
     }
 
-    /// Recorder of a stack child's main copy: measured line edges plus the
-    /// border boxes of its block stack `blocks`.
-    pub(crate) fn for_blocks(blocks: BlockBox) -> Rc<Self> {
-        Self::with_blocks(
-            blocks,
-            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
-        )
-    }
-
-    /// Recorder of a copy root of another context (a grid or a table,
-    /// `flow::flow_lines` false): the border boxes and rows of its block
-    /// stack, without line boxes — they are not lines of the stack flow.
-    pub(crate) fn for_blocks_only(blocks: BlockBox) -> Rc<Self> {
-        Self::with_blocks(blocks, Rc::default())
-    }
-
-    fn with_blocks(
-        blocks: BlockBox,
-        flow: Rc<crate::layout::fragment::flow::FlowMeasurements>,
-    ) -> Rc<Self> {
+    /// Ось копии задаёт направление native flex growth и consumed-space clipping.
+    pub(crate) fn for_blocks_axis(blocks: BlockBox, axis: StackAxis, lines: bool) -> Rc<Self> {
+        let flow = if lines {
+            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines())
+        } else {
+            Rc::default()
+        };
         Rc::new(Watched {
             // With the growth struts before them (`STRUT_ID`).
             ids: Rc::new(
@@ -94,8 +82,13 @@ impl Watched {
             flow,
             item_flows: Self::flex_item_flows(&blocks),
             blocks: Some(blocks),
+            axis: Some(axis),
             ..Self::default()
         })
+    }
+
+    pub(super) fn axis(&self) -> StackAxis {
+        self.axis.unwrap_or(StackAxis::Horizontal)
     }
 
     /// Whether the recorder watches a block stack (`for_blocks`).
@@ -155,6 +148,7 @@ impl Watched {
             item_flows: self.item_flows.clone(),
             copies: RefCell::default(),
             independent: self.independent,
+            axis: self.axis,
         })
     }
 

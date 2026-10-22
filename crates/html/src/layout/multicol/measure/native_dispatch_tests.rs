@@ -29,7 +29,7 @@ fn opts() -> RenderOpts {
 }
 
 #[test]
-fn grid_table_and_plain_groups_bypass_estimates_before_and_after_width_is_known() {
+fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
     for rtl in [false, true] {
         for (mode, vertical, rl) in [
             ("horizontal-tb", false, false),
@@ -37,6 +37,10 @@ fn grid_table_and_plain_groups_bypass_estimates_before_and_after_width_is_known(
             ("vertical-rl", true, true),
         ] {
             for body in [
+                "<div style='display:flex;flex-direction:row;flex-wrap:wrap'><div style='width:70px;height:50px'>first</div><div style='width:70px;height:50px'>second</div></div>",
+                "<div style='display:flex;flex-direction:row-reverse;flex-wrap:wrap-reverse'><div style='width:70px;height:50px'></div><div style='width:70px;height:50px'></div></div>",
+                "<div style='display:flex;flex-direction:column;flex-wrap:wrap'><div style='width:70px;height:50px'></div><div style='width:70px;height:50px'></div></div>",
+                "<div style='display:flex;flex-direction:column-reverse;flex-wrap:wrap-reverse'><div style='width:70px;height:50px'></div><div style='width:70px;height:50px'></div></div>",
                 "<div style='margin:calc(10% + 3px);height:20px;width:30px'>text</div>",
                 "<div style='display:grid;grid-template-rows:auto 1fr 10%'></div>",
                 "<div style='display:grid;height:150px;width:150px;align-content:center;grid-template-rows:20px 30px'></div>",

@@ -11,7 +11,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::flow::blocks::{BlockBox, flex_tree, grid_tree, table_tree};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::probe::plain_block_tree;
-use crate::layout::fragment::types::BreaksAt;
+use crate::layout::fragment::types::{BreaksAt, StackAxis};
 use crate::layout::options::RenderOpts;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -66,6 +66,13 @@ pub(super) fn recorder(
     // A box of another context without recorded parts keeps its own
     // estimate; its line boxes are not lines of the stack flow
     // (`flow::flow_lines`).
+    let axis = if !col_vert {
+        StackAxis::Horizontal
+    } else if col_rl {
+        StackAxis::VerticalRl
+    } else {
+        StackAxis::VerticalLr
+    };
     match recorded(
         blocks.is_empty() && !independent,
         measured,
@@ -73,8 +80,8 @@ pub(super) fn recorder(
     ) {
         Recorded::Estimate => (Watched::new(&[]), None),
         Recorded::Lines => (Watched::for_lines(), breaks_w),
-        Recorded::Blocks => (Watched::for_blocks(blocks), breaks_w),
-        Recorded::BlocksOnly => (Watched::for_blocks_only(blocks), breaks_w),
+        Recorded::Blocks => (Watched::for_blocks_axis(blocks, axis, true), breaks_w),
+        Recorded::BlocksOnly => (Watched::for_blocks_axis(blocks, axis, false), breaks_w),
     }
 }
 

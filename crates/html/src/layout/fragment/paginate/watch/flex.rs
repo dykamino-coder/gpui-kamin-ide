@@ -1,7 +1,7 @@
 //! Реальные flex-линии, нормальные позиции и ограничения роста между фрагментами.
-use super::Watched;
+use super::{Watched, axis::BlockAxis};
 use crate::layout::fragment::flow::blocks::{FlexFrame, FlexLine};
-use gpui::{Pixels, Point, Window};
+use gpui::{Window, point, px, size};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -62,6 +62,7 @@ impl Watched {
                     .collect(),
             ),
             independent: true,
+            axis: self.axis,
             ..Self::default()
         });
         self.copies.borrow_mut().insert(part, rec.clone());
@@ -76,6 +77,7 @@ impl Watched {
             flow: Rc::new(self.flow.constraints_only()),
             flex_growth: self.flex_growth.clone(),
             flex_offsets: self.flex_offsets.clone(),
+            axis: self.axis,
             item_flows: Rc::new(
                 self.item_flows
                     .iter()
@@ -88,7 +90,7 @@ impl Watched {
 
     pub(super) fn flex_frames(
         &self,
-        origin: Point<Pixels>,
+        projection: BlockAxis,
         window: &mut Window,
         boxes: &mut HashMap<u64, (f32, f32)>,
     ) -> FlexFrames {
@@ -107,7 +109,8 @@ impl Watched {
             let Some((o, flex)) = window.parent_flex_layout(lid) else {
                 continue;
             };
-            let off = f32::from(o.y - origin.y) + shifts.get(&id).copied().unwrap_or(0.0);
+            let shift = shifts.get(&id).copied().unwrap_or(0.0);
+            let column = flex.is_column != projection.axis.is_vertical();
             let mut lines = Vec::new();
             for (index, line) in flex.lines.into_iter().enumerate() {
                 let mut members = Vec::new();
@@ -117,27 +120,41 @@ impl Watched {
                     let Some(&id) = items.iter().find(|id| seen.get(id) == Some(&item.id)) else {
                         continue;
                     };
-                    let (start, size) = if flex.is_column {
-                        (item.main_offset, item.main_size)
+                    let (x, y, width, height) = if flex.is_column {
+                        (
+                            item.cross_offset,
+                            item.main_offset,
+                            item.cross_size,
+                            item.main_size,
+                        )
                     } else {
-                        (item.cross_offset, item.cross_size)
+                        (
+                            item.main_offset,
+                            item.cross_offset,
+                            item.main_size,
+                            item.cross_size,
+                        )
                     };
-                    let normal = off + start;
+                    let (start, end) = projection
+                        .span(point(o.x + px(x), o.y + px(y)), size(px(width), px(height)));
+                    let normal = start + shift;
+                    let length = end - start;
                     let delta = boxes.get(&id).map_or(0.0, |p| normal - p.0);
                     if let Some(blocks) = &self.blocks {
                         blocks.shift_flex_item(id, delta, boxes, &mut shifts, &mut tables);
                     }
-                    boxes.insert(id, (normal, normal + size));
-                    top = top.min(off + start);
-                    bottom = bottom.max(off + start + size);
+                    boxes.insert(id, (normal, normal + length));
+                    top = top.min(normal);
+                    bottom = bottom.max(normal + length);
                     members.push(id);
                 }
                 if members.is_empty() {
                     continue;
                 }
-                if !flex.is_column {
-                    top = off + line.cross_offset;
-                    bottom = top + line.cross_size;
+                if !column {
+                    let (a, b) = projection.relative_span(o, line.cross_offset, line.cross_size);
+                    top = a + shift;
+                    bottom = b + shift;
                 }
                 lines.push(FlexLine {
                     index,
@@ -146,16 +163,10 @@ impl Watched {
                     items: members,
                 });
             }
-            if !flex.is_column {
+            if !column {
                 lines.sort_by(|a, b| a.start.total_cmp(&b.start));
             }
-            out.insert(
-                id,
-                FlexFrame {
-                    column: flex.is_column,
-                    lines,
-                },
-            );
+            out.insert(id, FlexFrame { column, lines });
         }
         FlexFrames {
             flexes: out,
