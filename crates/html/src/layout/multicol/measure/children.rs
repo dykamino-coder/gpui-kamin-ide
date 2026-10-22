@@ -1,7 +1,7 @@
 //! ADR P-19 F2-1/F2-3: preplan clone, вложенных рядов и trim требует состояния продолжения.
-//! F1: пустая grid и vertical flex ещё требуют native adapter; не объявлены F2.
+//! F1: vertical flex ещё требует native adapter; не объявлен F2.
+//! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
 //! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.
-//! Измерение блочных детей и вложенных многоколоночников.
 
 use super::grid_kid;
 use crate::dom::whitespace::is_blank;

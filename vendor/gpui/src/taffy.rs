@@ -18,6 +18,9 @@ mod root_origin_tests;
 #[cfg(test)]
 mod native_sizing_tests;
 
+#[cfg(test)]
+mod grid_tracks_tests;
+
 use crate::{
     AbsoluteLength, App, Bounds, DefiniteLength, Edges, GridTemplate, Length, Pixels, Point, Size,
     Style, Window, point, size,
@@ -475,6 +478,18 @@ impl TaffyLayoutEngine {
         scale_factor: f32,
     ) -> Option<((f32, f32), Vec<(f32, f32)>, Vec<(f32, f32)>)> {
         let parent = self.taffy.parent(child.0)?;
+        self.grid_tracks(parent.into(), scale_factor)
+    }
+
+    /// KaminIDE patch: готовые дорожки самой сетки, в том числе без элементов.
+    #[allow(clippy::type_complexity)]
+    pub fn grid_tracks(
+        &mut self,
+        grid: LayoutId,
+        scale_factor: f32,
+    ) -> Option<((f32, f32), Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let parent = grid.0;
+        self.taffy.computed_layout_output(parent).ok()??;
         let taffy::DetailedLayoutInfo::Grid(info) = self.taffy.detailed_layout_info(parent) else {
             return None;
         };

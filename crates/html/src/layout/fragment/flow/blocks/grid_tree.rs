@@ -48,15 +48,7 @@ fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
         return lines && super::table_tree(e, depth);
     }
     if grid_container(e) {
-        // F1-6: у пустой сетки дорожки рассчитаны native layout, но API
-        // parent_grid_tracks требует ребёнка. Нужен reader по LayoutId
-        // самой сетки в vendor/gpui (сейчас вне scope); это НЕ F2-блокер.
-        let items = e.children.iter().any(|n| {
-            matches!(n, Node::Element(k)
-                if !out_of_flow(&k.style.computed()) && !matches!(k.style.computed().display, Some(Display::None)))
-        });
         return depth > 0
-            && items
             && e.children.iter().all(|n| match n {
                 Node::Element(k) if out_of_flow(&k.style.computed()) => false,
                 Node::Element(k) if matches!(k.style.computed().display, Some(Display::None)) => {

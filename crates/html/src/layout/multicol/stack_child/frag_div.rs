@@ -2,17 +2,15 @@
 
 use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Layer;
-use crate::layout::fragment::grid_bands::grid_rows_px;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-use gpui::{Styled, px};
+use gpui::Styled;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn frag_box_div(
     col_vert: bool,
     col_rl: bool,
     copy: &Element,
-    h: f32,
     src: &Element,
     src_inner: &BoxStyle,
     frag_gap_rules: Option<crate::layout::multicol::gap_rules::GapRuleSpec>,
@@ -90,24 +88,6 @@ pub(super) fn frag_box_div(
         )
     {
         d = d.w_full();
-    }
-    // Пустая сетка: taffy раскладывает бездетный
-    // узел ЛИСТОМ (vendor/taffy/src/tree/
-    // taffy_tree.rs: `(_, false) =>
-    // compute_leaf_layout`), явные дорожки ему
-    // не видны, и копия выходила нулевой при
-    // мере 200 (`grid-container-fragmentation-
-    // 002`: `grid-template-rows: 200px`). Дорожка
-    // существует без элементов (css-grid-1
-    // §7.1) — высота копии та же, что в мере.
-    if kids.is_empty()
-        && matches!(
-            copy.style.computed().display,
-            Some(Display::Grid) | Some(Display::InlineGrid)
-        )
-        && grid_rows_px(&copy.style.computed()).is_some()
-    {
-        d = d.min_h(px(h));
     }
     if let (Some(items), Some(spec)) = (frag_gap_items, frag_gap_rules) {
         // Копия кладётся `layout_as_root(Definite(col_w), …)`

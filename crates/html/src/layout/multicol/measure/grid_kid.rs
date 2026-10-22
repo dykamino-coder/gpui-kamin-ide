@@ -55,6 +55,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn empty_grid_uses_measured_copy_at_known_and_deferred_widths() {
+        use crate::dom::Node;
+        use crate::layout::fragment::types::StackAxis;
+        use crate::layout::multicol::deferred::Recipe;
+        use crate::layout::options::RenderOpts;
+        let tree = crate::dom::parse(
+            "<div><div style='display:grid;grid-template-rows:20px 30px'></div></div>",
+            "",
+        );
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let opts = RenderOpts {
+            text: Default::default(),
+            viewport: (800.0, 600.0),
+            normal_line_height: 1.2,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        let host = find(&tree).unwrap();
+        let recipe = Recipe::new(
+            host,
+            &Computed::default(),
+            &opts,
+            2,
+            0.0,
+            Some(100.0),
+            StackAxis::Horizontal,
+            None,
+        )
+        .unwrap();
+        for width in [100.0, 120.0] {
+            let kids = recipe.children(width);
+            assert_eq!(kids.len(), 1);
+            assert_eq!(kids[0].measure, Some(width));
+            let Node::Element(grid) = &host.children[0] else {
+                panic!("grid")
+            };
+            assert!(gate(grid, true, Some(width)));
+            assert!(kids[0].watched.as_ref().is_some_and(|w| w.has_blocks()));
+        }
+        #[cfg(feature = "wpt-harness")]
+        assert!(
+            opts.frag
+                .probe
+                .take()
+                .values()
+                .all(|p| p.estimate_calls == 0)
+        );
+    }
+
+    #[test]
     fn percent_margins_use_the_copy_inline_size() {
         let tree = crate::dom::parse(
             "<div style='display:grid;margin-top:10%;margin-bottom:5%'><div>x</div></div>",

@@ -6321,6 +6321,20 @@ impl Window {
         Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
     }
 
+    /// KaminIDE patch: готовые дорожки самой сетки без поиска её ребёнка.
+    #[allow(clippy::type_complexity)]
+    pub fn grid_tracks(
+        &mut self,
+        grid: LayoutId,
+    ) -> Option<(Point<Pixels>, Vec<(f32, f32)>, Vec<(f32, f32)>)> {
+        let scale_factor = self.scale_factor();
+        let ((x, y), cols, rows) = self
+            .layout_engine
+            .as_mut()?
+            .grid_tracks(grid, scale_factor)?;
+        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
+    }
+
     /// After calling it, you can request the bounds of the given layout node id or any descendant.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
