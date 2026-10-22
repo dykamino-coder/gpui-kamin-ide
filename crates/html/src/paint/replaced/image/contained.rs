@@ -31,7 +31,9 @@ pub(super) fn contained_image(
         let ready =
             crate::paint::background::element_source(src, &e.style, vcx).and_then(|s| match s {
                 crate::paint::background::Source::Vector { markup, .. } => {
-                    crate::svg::raster::rasterize(&markup, cw, ch, vcx)
+                    let viewport =
+                        crate::resources::images::viewport::with_viewport(&markup, (cw, ch));
+                    crate::svg::raster::rasterize(&viewport, cw, ch, vcx)
                 }
                 _ => s.raster((cw, ch), vcx),
             });

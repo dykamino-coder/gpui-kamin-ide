@@ -53,7 +53,17 @@ pub(crate) fn rasterize(
             resolve_string: Box::new(move |href, opts| {
                 let bytes = images
                     .iter()
-                    .find(|image| image.href == href)?
+                    .find(|image| {
+                        // usvg normalizes file: URLs to platform paths before
+                        // invoking the resolver. Both spellings name one resource.
+                        let resource = |s: &str| {
+                            crate::resources::loader::ResourceUrl::resolve(s, None)
+                                .0
+                                .base_url()
+                        };
+                        image.href == href
+                            || resource(&image.href).is_some_and(|u| Some(u) == resource(href))
+                    })?
                     .bytes
                     .clone()?;
                 usvg::ImageHrefResolver::default_data_resolver()("text/plain", bytes, opts)
@@ -61,13 +71,20 @@ pub(crate) fn rasterize(
         },
         ..usvg::Options::default()
     };
-    let tree = usvg::Tree::from_str(markup, &options).ok()?;
     let (w, h) = (request.width, request.height);
     if w > 4096 || h > 4096 || request.pad > 4096 {
         return None;
     }
     let (pw, ph) = (w.checked_add(request.pad)?, h.checked_add(request.pad)?);
     let mut pixmap = Pixmap::new(pw, ph)?;
+    // SVG 2 §8.6: a zero viewBox disables rendering without making the
+    // image a failed resource. Preserve its transparent concrete viewport.
+    if super::vector::degenerate_viewbox(markup) {
+        return (request.pad == 0)
+            .then(|| super::pixels::bgra(pw, ph, pixmap.take()))
+            .flatten();
+    }
+    let tree = usvg::Tree::from_str(markup, &options).ok()?;
     let size = tree.size();
     resvg::render(
         &tree,

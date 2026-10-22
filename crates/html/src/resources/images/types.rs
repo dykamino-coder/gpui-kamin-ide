@@ -147,8 +147,6 @@ pub(crate) enum ImageError {
     InvalidData,
     /// Кодек распознал формат, но данные повреждены.
     Decode,
-    /// Нулевая ось `viewBox`: рисунок не рисуется вовсе (SVG intrinsic sizing).
-    EmptyViewBox,
     /// Размеры за пределами ограничений кодека.
     LimitExceeded,
 }

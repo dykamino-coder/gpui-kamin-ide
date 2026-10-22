@@ -141,10 +141,9 @@ fn svg_natural_size_ratio_and_degenerate_view_box() {
     );
     let (_, meta) = decoded("<svg/>").unwrap();
     assert_eq!(meta.natural, super::natural::Intrinsic::default());
-    assert_eq!(
-        decoded("<svg viewBox='0 0 0 10'/>").unwrap_err(),
-        ImageError::EmptyViewBox
-    );
+    let (image, meta) = decoded("<svg viewBox='0 0 0 10'/>").unwrap();
+    assert!(matches!(image, DecodedImage::Vector(_)));
+    assert_eq!(meta.natural, super::natural::Intrinsic::default());
 }
 
 #[test]
