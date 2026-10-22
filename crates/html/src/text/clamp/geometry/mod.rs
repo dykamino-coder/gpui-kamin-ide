@@ -11,5 +11,5 @@ mod tests;
 
 use super::ClampEntry;
 pub(crate) use boxes::ClampBox;
-pub(super) use boxes::{chain_end, chain_extra, chain_sizes};
+use boxes::{chain_end, chain_extra, chain_sizes};
 pub(crate) use geometry::ClampGeometry;
