@@ -32,7 +32,7 @@ pub(super) fn recorder(
         if own_plan || !crate::layout::fragment::flow::vertical_copy(copy, col_rl) {
             return (Watched::new(&[]), None);
         }
-        crate::layout::fragment::line_shape::transpose_tree(copy, col_rl)
+        crate::layout::fragment::flow::logical_copy(copy, col_rl)
     } else {
         None
     };

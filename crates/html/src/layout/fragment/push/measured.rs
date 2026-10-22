@@ -98,7 +98,9 @@ impl Regrow {
                 spacer_before(&mut self.dom, id, grow, self.opts.cx.vcx())
             }
             Some(Pushed::Box(id)) => grow_before(&mut self.dom, id, grow),
-            Some(Pushed::Row(row)) => super::grid_row::push_row(&mut self.dom, &row, grow),
+            Some(Pushed::Row(row)) => {
+                super::grid_row::push_row(&mut self.dom, &row, grow, self.axis)
+            }
             Some(Pushed::Flex(line)) => {
                 self.watched.grow_flex_line(line.container, line.line, grow)
             }

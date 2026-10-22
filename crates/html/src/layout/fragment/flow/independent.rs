@@ -10,13 +10,39 @@ pub(crate) fn independent_copy(c: &Element) -> bool {
     !c.inline && measured_tree(c) && !separate(c, false)
 }
 
-/// Обычные блоки одного вертикального потока; ортогональные продолжения — F2-3.
+/// Блоки, сетки и таблицы одного вертикального потока.
+/// Ортогональные продолжения требуют ADR P-19 F2-3.
 pub(crate) fn vertical_copy(c: &Element, rl: bool) -> bool {
+    let Some(logical) = logical_copy(c, rl) else {
+        return false;
+    };
+    use super::blocks::{grid_tree, stacked_tree, table_tree};
     !c.inline
-        && crate::layout::fragment::probe::plain_block_tree(c, 4)
-        && crate::layout::fragment::flow::blocks::stacked_tree(c, 4)
-        && crate::layout::fragment::line_shape::transpose_tree(c, rl).is_some()
+        && !c.marks.paginate
+        && c.style.column_span != Some(true)
+        && crate::layout::fragment::clone::clone_dec(c).is_none()
         && !separate(c, true)
+        && ((crate::layout::fragment::probe::plain_block_tree(&logical, 4)
+            && stacked_tree(&logical, 4))
+            || table_tree(&logical, 4)
+            || grid_tree(&logical, 4))
+}
+
+/// Только метаданные рекордера: физическое дерево рисуется без поворота.
+pub(crate) fn logical_copy(c: &Element, rl: bool) -> Option<Element> {
+    fn horizontal(e: &mut Element) {
+        use crate::style::computed::writing_mode::WritingModeKw::HorizontalTb;
+        e.style.writing_mode = Some(HorizontalTb);
+        e.style.flat_mode = Some(HorizontalTb);
+        for n in &mut e.children {
+            if let Node::Element(k) = n {
+                horizontal(k);
+            }
+        }
+    }
+    let mut logical = crate::layout::fragment::line_shape::transpose_tree(c, rl)?;
+    horizontal(&mut logical);
+    Some(logical)
 }
 
 fn separate(e: &Element, vertical: bool) -> bool {
@@ -33,3 +59,6 @@ fn separate(e: &Element, vertical: bool) -> bool {
             .iter()
             .any(|n| matches!(n, Node::Element(k) if separate(k, vertical)))
 }
+
+#[cfg(test)]
+mod tests;

@@ -16,6 +16,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+mod axis;
 mod hook;
 pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
