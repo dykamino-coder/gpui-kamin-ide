@@ -1,10 +1,10 @@
 //! Матрицы преобразования пространств (CSS Color 4, приложение) и кривые sRGB.
 
 /// Точка белого D50 в XYZ — от неё считаются `lab`, `lch` и ProPhoto.
-pub(super) const D50: [f32; 3] = [0.964_295_7, 1.0, 0.825_104_6];
+pub(crate) const D50: [f32; 3] = [0.964_295_7, 1.0, 0.825_104_6];
 
 /// XYZ (D65) → линейный sRGB.
-pub(super) const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
+pub(crate) const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
     3.240_97,
     -1.537_383_2,
     -0.498_610_76,
@@ -17,7 +17,7 @@ pub(super) const XYZ_TO_LINEAR_SRGB: [f32; 9] = [
 ];
 
 /// Линейный sRGB → XYZ (D65).
-pub(super) const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
+pub(crate) const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
     0.412_390_8,
     0.357_584_33,
     0.180_480_8,
@@ -32,7 +32,7 @@ pub(super) const LINEAR_SRGB_TO_XYZ: [f32; 9] = [
 /// XYZ D50 → XYZ D65 (преобразование Брэдфорда).
 /// XYZ D65 → XYZ D50 по Брэдфорду — обратная к `D50_TO_D65`. Нужна прямому
 /// переводу sRGB → Lab: сам Lab определён при D50 (css-color-4 §10.3).
-pub(super) const D65_TO_D50: [f32; 9] = [
+pub(crate) const D65_TO_D50: [f32; 9] = [
     1.047_931,
     0.022_949_2,
     -0.050_147_1,
@@ -44,7 +44,7 @@ pub(super) const D65_TO_D50: [f32; 9] = [
     0.751_739_3,
 ];
 
-pub(super) const D50_TO_D65: [f32; 9] = [
+pub(crate) const D50_TO_D65: [f32; 9] = [
     0.955_473_4,
     -0.023_098_537,
     0.063_259_31,
@@ -57,7 +57,7 @@ pub(super) const D50_TO_D65: [f32; 9] = [
 ];
 
 /// Линейный Display P3 → XYZ (D65).
-pub(super) const P3_TO_XYZ: [f32; 9] = [
+pub(crate) const P3_TO_XYZ: [f32; 9] = [
     0.486_570_95,
     0.265_667_7,
     0.198_217_28,
@@ -70,7 +70,7 @@ pub(super) const P3_TO_XYZ: [f32; 9] = [
 ];
 
 /// Линейный Adobe RGB (1998) → XYZ (D65).
-pub(super) const A98_TO_XYZ: [f32; 9] = [
+pub(crate) const A98_TO_XYZ: [f32; 9] = [
     0.576_669,
     0.185_558_24,
     0.188_228_65,
@@ -83,7 +83,7 @@ pub(super) const A98_TO_XYZ: [f32; 9] = [
 ];
 
 /// Линейный ProPhoto → XYZ (D50).
-pub(super) const PROPHOTO_TO_XYZ: [f32; 9] = [
+pub(crate) const PROPHOTO_TO_XYZ: [f32; 9] = [
     0.797_760_5,
     0.135_185_84,
     0.031_349_35,
@@ -96,7 +96,7 @@ pub(super) const PROPHOTO_TO_XYZ: [f32; 9] = [
 ];
 
 /// Линейный Rec. 2020 → XYZ (D65).
-pub(super) const REC2020_TO_XYZ: [f32; 9] = [
+pub(crate) const REC2020_TO_XYZ: [f32; 9] = [
     0.636_958,
     0.144_616_9,
     0.168_881,
@@ -108,7 +108,7 @@ pub(super) const REC2020_TO_XYZ: [f32; 9] = [
     1.060_985_1,
 ];
 
-pub(super) fn mul(m: [f32; 9], v: [f32; 3]) -> [f32; 3] {
+pub(crate) fn mul(m: [f32; 9], v: [f32; 3]) -> [f32; 3] {
     [
         m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
         m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
@@ -117,7 +117,7 @@ pub(super) fn mul(m: [f32; 9], v: [f32; 3]) -> [f32; 3] {
 }
 
 /// Кривая sRGB: линейная величина → величина записи.
-pub(super) fn srgb_gamma(v: f32) -> f32 {
+pub(crate) fn srgb_gamma(v: f32) -> f32 {
     let sign = v.signum();
     let v = v.abs();
     sign * if v <= 0.003_130_8 {
@@ -128,7 +128,7 @@ pub(super) fn srgb_gamma(v: f32) -> f32 {
 }
 
 /// Обратная кривая sRGB: величина записи → линейная.
-pub(super) fn srgb_linear(v: f32) -> f32 {
+pub(crate) fn srgb_linear(v: f32) -> f32 {
     let sign = v.signum();
     let v = v.abs();
     sign * if v <= 0.040_45 {
