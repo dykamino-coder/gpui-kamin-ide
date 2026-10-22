@@ -55,7 +55,7 @@ impl Computed {
     /// Контекст шрифта вычисленного стиля: кегль в точках (до `resolve_em` —
     /// запасные 16), семейство (моноширинное — по языку), высота строки,
     /// если она уже в точках или кратна кеглю.
-    pub fn font_cx(&self) -> FontCx<'_> {
+    pub fn font_cx(&self, vcx: ValueCx<'_>) -> FontCx<'_> {
         let font_px = match self.font_size {
             Some(Len::Px(v)) => v,
             _ => 16.0,
@@ -63,7 +63,7 @@ impl Computed {
         let family = match self.font_family.as_deref() {
             Some(f) => f,
             None if self.monospace == Some(true) => {
-                crate::text::metrics::mono_family_for(self.lang.as_deref())
+                crate::text::metrics::mono_family_for(self.lang.as_deref(), vcx)
             }
             None => "",
         };
@@ -191,14 +191,16 @@ mod tests {
 
     #[test]
     fn computed_font_context_reads_size_family_and_line() {
+        let doc = crate::document::state::DocState::new(Default::default());
+        let vcx = doc.values();
         let c = Computed {
             font_size: Some(Len::Px(10.0)),
             font_family: Some("Ahem".into()),
             line_height: Some(Len::Pct(2.0)),
             ..Default::default()
         };
-        let f = c.font_cx();
+        let f = c.font_cx(vcx);
         assert_eq!((f.family, f.font_px, f.line_px), ("Ahem", 10.0, Some(20.0)));
-        assert_eq!(Computed::default().font_cx().font_px, 16.0);
+        assert_eq!(Computed::default().font_cx(vcx).font_px, 16.0);
     }
 }

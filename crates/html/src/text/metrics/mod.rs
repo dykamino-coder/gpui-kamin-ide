@@ -11,8 +11,10 @@
 
 mod families;
 mod font_loader;
+mod platform;
 mod state;
 use crate::document::state::ValueCx;
+pub use platform::FontContext;
 pub(crate) use state::Metrics;
 #[cfg(test)]
 mod tests;
@@ -29,8 +31,6 @@ mod spacing;
 pub use crate::text::metrics::spacing::spacing_px;
 mod space;
 pub use crate::text::metrics::space::{install_space_probe, space_advance};
-
-use std::cell::RefCell;
 
 /// Щуп: по имени семейства и кеглю отдаёт ширину нуля и высоту строчной.
 type Probe = Box<dyn Fn(&str, f32) -> (f32, f32, f32, f32)>;
@@ -67,17 +67,24 @@ pub use normal_px::{content_px, normal_px};
 /// при ширине `width`. `\n` — принудительный разрыв.
 type WrapProbe = Box<dyn Fn(&gpui::Font, f32, &str, f32) -> usize>;
 
-thread_local! {
-    static WRAP: RefCell<Option<WrapProbe>> = const { RefCell::new(None) };
-}
-
 /// Число строк текста при сборке дерева — для фрагментации ПО СТРОКАМ
 /// (css-break-3 §4.3: «Between line boxes» — законная точка разрыва). Перенос
 /// тот же, что у текстового пути колонок (`float.rs` `measure_columns`):
 /// переносчик GPUI, аварийный разрыв внутри слова отбрасывается (строка его не
 /// рвёт, `overflow-wrap: normal`). `None` — щуп не поставлен.
-pub fn line_count(font: &gpui::Font, size: f32, text: &str, width: f32) -> Option<usize> {
-    WRAP.with(|w| w.borrow().as_ref().map(|f| f(font, size, text, width)))
+pub fn line_count(
+    font: &gpui::Font,
+    size: f32,
+    text: &str,
+    width: f32,
+    vcx: ValueCx<'_>,
+) -> Option<usize> {
+    vcx.doc
+        .metrics
+        .wrap
+        .borrow()
+        .as_ref()
+        .map(|f| f(font, size, text, width))
 }
 
 /// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
@@ -110,7 +117,7 @@ pub fn vmetrics_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32, f
             .borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
-            .or_else(|| text_system::vertical(family, PROBE_SIZE))
+            .or_else(|| text_system::vertical(family, PROBE_SIZE, vcx))
             .map(|(a, d, c)| (a / PROBE_SIZE, d / PROBE_SIZE, c / PROBE_SIZE))
     };
     let f = got.unwrap_or(V_FALLBACK);
@@ -124,10 +131,10 @@ pub fn vmetrics_px(family: &str, size_px: f32, vcx: ValueCx<'_>) -> (f32, f32, f
 /// вот стенды и чужие машины его не несут: подстановка системой даёт
 /// пропорциональный шрифт, и всё, что держится на равной ширине знака,
 /// разъезжается. Поэтому семейство выбирается из НАЛИЧНЫХ.
-pub fn mono_family() -> &'static str {
+pub fn mono_family(vcx: ValueCx<'_>) -> &'static str {
     MONO_FAMILIES
         .into_iter()
-        .find(|name| font_installed(name))
+        .find(|name| font_installed(name, vcx))
         .unwrap_or(MONO_FAMILIES[0])
 }
 
@@ -138,15 +145,15 @@ pub fn mono_family() -> &'static str {
 /// Consolas давала пропорциональную кану в 0.82 кегля
 /// (`hanging-punctuation-block-bound-001`: пять знаков в строке вместо
 /// четырёх).
-pub fn mono_family_for(lang: Option<&str>) -> &'static str {
+pub fn mono_family_for(lang: Option<&str>, vcx: ValueCx<'_>) -> &'static str {
     let ja = lang.is_some_and(|l| {
         let l = l.trim().to_ascii_lowercase();
         l == "ja" || l.starts_with("ja-")
     });
-    if ja && font_installed("MS Gothic") {
+    if ja && font_installed("MS Gothic", vcx) {
         return "MS Gothic";
     }
-    mono_family()
+    mono_family(vcx)
 }
 
 /// Override this document's measurements and invalidate its horizontal cache.
@@ -196,5 +203,3 @@ pub fn adjust_aspect(family: &str, metric: u8, vcx: ValueCx<'_>) -> Option<f32> 
         _ => return None,
     })
 }
-
-use crate::text::metrics::families::INSTALLED;

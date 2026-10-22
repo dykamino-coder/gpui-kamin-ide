@@ -47,7 +47,7 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
             .borrow()
             .as_ref()
             .map(|probe| probe(family, PROBE_SIZE))
-            .or_else(|| super::text_system::horizontal(family, PROBE_SIZE))
+            .or_else(|| super::text_system::horizontal(family, PROBE_SIZE, vcx))
             .map(|(ch, ex, line, ic)| {
                 (
                     ch / PROBE_SIZE,
@@ -86,21 +86,16 @@ pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) 
     out
 }
 
-thread_local! {
-    pub(super) static INSTALLED: std::cell::RefCell<std::collections::HashSet<String>> =
-        std::cell::RefCell::new(std::collections::HashSet::new());
-}
-
 /// Есть ли такое семейство в системе шрифтов. До `use_text_system` список пуст,
 /// и ответ отрицательный для всех — разбор тогда работает как раньше.
-pub fn font_installed(name: &str) -> bool {
+pub fn font_installed(name: &str, vcx: ValueCx<'_>) -> bool {
     let lower = name.to_ascii_lowercase();
-    INSTALLED.with(|i| i.borrow().contains(&lower))
+    vcx.doc.metrics.platform.borrow().installed.contains(&lower)
 }
 
 /// Снят ли список установленных семейств (`use_text_system`). До него
 /// `font_installed` отрицателен для всех, и судить о «недоступности» имени
 /// нельзя.
-pub fn fonts_known() -> bool {
-    INSTALLED.with(|i| !i.borrow().is_empty())
+pub fn fonts_known(vcx: ValueCx<'_>) -> bool {
+    !vcx.doc.metrics.platform.borrow().installed.is_empty()
 }

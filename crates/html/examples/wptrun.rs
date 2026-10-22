@@ -156,26 +156,8 @@ fn main() {
         }
         // Щуп метрик ставится ПОСЛЕ регистрации: до неё `Ahem` ещё не найден,
         // и `ch` мерился бы по шрифту-подмене.
-        kamin_html::metrics::use_text_system(cx.text_system().clone());
-        // Свои шрифты страницы (`@font-face`): файл отдаётся системе, а её имя
-        // семейства запоминается под тем, которым шрифт зовут в разметке.
-        let fonts = cx.text_system().clone();
-        kamin_html::fonts::install_loader(move |bytes| {
-            // Имя — из name-таблицы файла: разность общего списка имён
-            // пуста, когда система уже знает такое семейство, и алиас
-            // терялся (FontWithFancyFeatures — весь кластер OpenType-фич).
-            let named = kamin_html::fonts::sfnt_family(&bytes);
-            let before: std::collections::HashSet<String> =
-                fonts.all_font_names().into_iter().collect();
-            fonts.add_fonts(vec![bytes.into()]).ok()?;
-            named.or_else(|| {
-                fonts
-                    .all_font_names()
-                    .into_iter()
-                    .find(|name| !before.contains(name))
-            })
-        });
-        let empty = Rc::new(Document::builder("", BROWSER_CSS).build());
+        let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
+        let empty = Rc::new(Document::builder("", BROWSER_CSS).fonts(&fonts).build());
         if capture::offscreen() || capture::first_frame() {
             gpui::frame_capture::enable();
         }

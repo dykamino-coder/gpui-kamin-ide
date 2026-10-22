@@ -48,12 +48,17 @@ impl Stage {
         let _ = cx.update_window(window, |view, window, cx| {
             if let Ok(page) = view.downcast::<Page>() {
                 page.update(cx, |page, cx| {
+                    let fonts = page.doc.font_context();
                     page.doc = Rc::new(match source {
                         Some(path) => Document::builder(&html, BROWSER_CSS)
+                            .fonts(&fonts)
                             .path(std::path::Path::new(path))
                             .print(print)
                             .build(),
-                        None => Document::builder(&html, BROWSER_CSS).print(print).build(),
+                        None => Document::builder(&html, BROWSER_CSS)
+                            .fonts(&fonts)
+                            .print(print)
+                            .build(),
                     });
                     page.select = reftest_pages(&html);
                     cx.notify();

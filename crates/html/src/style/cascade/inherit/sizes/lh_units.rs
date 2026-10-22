@@ -22,7 +22,7 @@ pub(super) fn inherit_lh_units(
     };
     let parent_family = parent.font_family.clone().unwrap_or_else(|| {
         if parent.monospace == Some(true) {
-            crate::text::metrics::mono_family_for(parent.lang.as_deref()).to_string()
+            crate::text::metrics::mono_family_for(parent.lang.as_deref(), vcx).to_string()
         } else {
             String::new()
         }
@@ -73,7 +73,7 @@ pub(super) fn inherit_lh_units(
         .or_else(|| parent.font_family.clone())
         .unwrap_or_else(|| {
             if c.monospace.or(parent.monospace) == Some(true) {
-                crate::text::metrics::mono_family_for(c.lang.as_deref()).to_string()
+                crate::text::metrics::mono_family_for(c.lang.as_deref(), vcx).to_string()
             } else {
                 String::new()
             }

@@ -11,12 +11,14 @@ fn font_loading_resolves_the_first_html_base_before_parsing() {
     std::fs::create_dir_all(&assets).unwrap();
     let font = assets.join("base.ttf");
     std::fs::write(&font, b"\0\x01\0\0\x31").unwrap();
-    fonts::install_loader(|bytes| Some(format!("BaseFont{}", bytes.last().unwrap())));
+    let fonts = crate::text::metrics::FontContext::default()
+        .with_loader(|bytes| Some(format!("BaseFont{}", bytes.last().unwrap())));
     let source = url::Url::from_file_path(dir.join("page.html")).unwrap();
     let html = "<base href='шрифты assets/'><base href='ignored/'>\
         <style>@font-face {font-family: BaseTest; src: url(base.ttf)}</style>\
         <p style='font-family: BaseTest'>text</p>";
     let doc = Document::builder(html, "")
+        .fonts(&fonts)
         .base_uri(source.as_str())
         .build();
     assert_eq!(
@@ -43,7 +45,8 @@ fn absolute_html_base_works_without_a_source_url() {
 
 #[test]
 fn resources_come_from_stylesheets_instead_of_markup_substrings() {
-    fonts::install_loader(|_| Some("ParsedResourceFont".to_string()));
+    let fonts = crate::text::metrics::FontContext::default()
+        .with_loader(|_| Some("ParsedResourceFont".to_string()));
     let face = "@font-face {font-family: RealResource; src: url(data:font/ttf;base64,AAEAAHJlc291cmNlLVMxNA==)}";
     let fake = face.replace("RealResource", "FakeResource");
     let html = format!(
@@ -51,7 +54,7 @@ fn resources_come_from_stylesheets_instead_of_markup_substrings() {
         <template><style>{fake}</style></template><style>{face}</style>"
     );
     let theme = face.replace("RealResource", "ThemeResource");
-    let doc = Document::builder(&html, &theme).build();
+    let doc = Document::builder(&html, &theme).fonts(&fonts).build();
     assert_eq!(
         fonts::alias("RealResource", doc.state.values()).as_deref(),
         Some("ParsedResourceFont")
@@ -65,15 +68,20 @@ fn resources_come_from_stylesheets_instead_of_markup_substrings() {
 
 #[test]
 fn interleaved_documents_keep_their_font_face_descriptors() {
-    fonts::install_loader(|bytes| Some(format!("Face{}", bytes.last().unwrap())));
+    let fonts = crate::text::metrics::FontContext::default()
+        .with_loader(|bytes| Some(format!("Face{}", bytes.last().unwrap())));
     let page = |data: &str, adjust: u32, range: &str| {
         format!(
             "<style>@font-face {{font-family: Shared; src: url(data:font/ttf;base64,{data}); \
          size-adjust: {adjust}%; unicode-range: {range}}}</style><p>text</p>"
         )
     };
-    let first = Document::builder(&page("AAEAADE=", 150, "U+41"), "").build();
-    let second = Document::builder(&page("AAEAADI=", 75, "U+20-7F"), "").build();
+    let first = Document::builder(&page("AAEAADE=", 150, "U+41"), "")
+        .fonts(&fonts)
+        .build();
+    let second = Document::builder(&page("AAEAADI=", 75, "U+20-7F"), "")
+        .fonts(&fonts)
+        .build();
     let a = first.state.values();
     let b = second.state.values();
     assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));

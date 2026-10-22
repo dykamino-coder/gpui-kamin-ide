@@ -6,12 +6,14 @@ use crate::text::fonts;
 
 #[test]
 fn update_reloads_resources_and_matches_a_fresh_document() {
-    fonts::install_loader(|bytes| Some(format!("UpdateFont{}", bytes.last().unwrap())));
+    let fonts = crate::text::metrics::FontContext::default()
+        .with_loader(|bytes| Some(format!("UpdateFont{}", bytes.last().unwrap())));
     let old = "<style>@font-face {font-family: OldUpdate;\
         src: url(data:font/ttf;base64,AAEAADE=)}</style><p>old</p>";
     let new = "<style>@font-face {font-family: NewUpdate;\
         src: url(data:font/ttf;base64,AAEAADI=)}</style><p>new</p>";
     let mut updated = Document::builder(old, "")
+        .fonts(&fonts)
         .base_uri("file:///tests/page.html")
         .build();
     assert_eq!(
@@ -27,6 +29,7 @@ fn update_reloads_resources_and_matches_a_fresh_document() {
         Some("UpdateFont50")
     );
     let fresh = Document::builder(new, "p {color: red}")
+        .fonts(&fonts)
         .base_uri("file:///tests/page.html")
         .build();
     assert_eq!(updated.salt(), fresh.salt());

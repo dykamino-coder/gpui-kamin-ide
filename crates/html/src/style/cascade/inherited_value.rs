@@ -62,7 +62,7 @@ pub(crate) fn settle(nodes: &mut [Node], vcx: ValueCx<'_>) {
             own.resolve_viewport((media.width, media.height), vcx);
             let mut computed = super::inherit::inherit_unpainted(parent, &own, vcx);
             if let Some(mut length) = computed.svg_path_length {
-                let font = computed.font_cx();
+                let font = computed.font_cx(vcx);
                 length.resolve_line_height(font.line_px.unwrap_or(1.2 * font.font_px), vcx);
                 if let Some(value) = length.to_px(None, font, vcx) {
                     computed.svg_path_length = Some(Len::Px(value.max(0.0)));

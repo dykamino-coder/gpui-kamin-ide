@@ -22,7 +22,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     if !v.split(',').all(|part| family_name_ok(part.trim())) {
         return;
     }
-    style.font_families = accept_parsed!(style, Some(families(v)));
+    style.font_families = accept_parsed!(style, Some(families(v, vcx)));
     let lower = v.to_ascii_lowercase();
     // Моноширинный запрос несёт смысл (код) и решает выбор
     // встроенного шрифта, если названного в системе нет.
@@ -90,7 +90,8 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // настоящему имени доли кегля брались с ЧУЖОГО
     // файла — `first-available-font-002/007`, `ex-unit-004`.
     let available = |f: &str| {
-        (crate::text::metrics::font_installed(f) || crate::text::fonts::alias(f, vcx).is_some())
+        (crate::text::metrics::font_installed(f, vcx)
+            || crate::text::fonts::alias(f, vcx).is_some())
             && crate::text::fonts::covers_space(f, vcx)
     };
     let installed = v
@@ -115,7 +116,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
     // не наследует, `-017`), а меряется и набирается как `None`.
     // Пока список установленных не снят (`fonts_known`), о
     // доступности судить нечем — ниже прежняя ветка.
-    if crate::text::metrics::fonts_known() && lower.trim() != "inherit" {
+    if crate::text::metrics::fonts_known(vcx) && lower.trim() != "inherit" {
         style.font_family = match first_generic.as_deref() {
             Some("monospace" | "ui-monospace") => None,
             Some(_) => generic.map(str::to_string),
@@ -145,7 +146,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::document::state::
         .or_else(|| generic.map(str::to_string));
 }
 
-fn families(value: &str) -> Vec<String> {
+fn families(value: &str, vcx: crate::document::state::ValueCx<'_>) -> Vec<String> {
     value
         .split(',')
         .map(str::trim)
@@ -153,7 +154,7 @@ fn families(value: &str) -> Vec<String> {
             if !name.starts_with(['\'', '"']) {
                 let lower = name.to_ascii_lowercase();
                 if matches!(lower.as_str(), "monospace" | "ui-monospace") {
-                    return crate::text::metrics::mono_family_for(None).to_string();
+                    return crate::text::metrics::mono_family_for(None, vcx).to_string();
                 }
                 if let Some(family) = generic_family(&lower) {
                     return family.to_string();
@@ -200,7 +201,7 @@ pub(crate) fn fallbacks(
         .iter()
         .filter(|name| Some(name.as_str()) != style.font_family.as_deref())
         .filter(|name| {
-            crate::text::metrics::font_installed(name)
+            crate::text::metrics::font_installed(name, vcx)
                 || crate::text::fonts::alias(name, vcx).is_some()
         })
         .map(|name| crate::text::fonts::alias_for(name, style, vcx).unwrap_or_else(|| name.clone()))

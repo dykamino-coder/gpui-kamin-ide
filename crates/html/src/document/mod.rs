@@ -75,6 +75,7 @@ impl Document {
         base_url: Option<url::Url>,
         xml: bool,
         media: Media,
+        fonts: &crate::text::metrics::FontContext,
     ) -> Self {
         let effective_base = if xml {
             base_url.clone()
@@ -82,7 +83,7 @@ impl Document {
             base_url::document_base(html, base_url.as_ref())
         };
         let (state, nodes, root) =
-            parse_document(html, theme_css, effective_base.as_ref(), xml, media);
+            parse_document(html, theme_css, effective_base.as_ref(), xml, media, fonts);
         Document {
             state,
             nodes,
@@ -91,6 +92,11 @@ impl Document {
             base_url,
             xml,
         }
+    }
+
+    /// Платформенная конфигурация для нового документа того же хоста.
+    pub fn font_context(&self) -> crate::text::metrics::FontContext {
+        self.state.metrics.font_context()
     }
 
     /// Текстовый стиль страницы (`html`/`body`): им набирается текст, у
@@ -110,7 +116,15 @@ impl Document {
             return false;
         }
         let media = self.state.media();
-        *self = Self::build(html, theme_css, self.base_url.clone(), self.xml, media);
+        let fonts = self.state.metrics.font_context();
+        *self = Self::build(
+            html,
+            theme_css,
+            self.base_url.clone(),
+            self.xml,
+            media,
+            &fonts,
+        );
         true
     }
 
@@ -160,9 +174,11 @@ fn parse_document(
     base: Option<&url::Url>,
     xml: bool,
     media: Media,
+    fonts: &crate::text::metrics::FontContext,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
     let state = DocState::new(media);
     let vcx = state.values();
+    fonts.install(vcx);
     let mut sheets = vec![theme_css.to_string()];
     sheets.extend(crate::dom::style_sources::collect(html, xml));
     crate::text::fonts::load_faces_sheets(&sheets, base, vcx);

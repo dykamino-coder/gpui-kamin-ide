@@ -52,6 +52,7 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         false,
         false,
         None,
+        &opts.cx.doc().metrics.font_context(),
     );
     let kids = super::iframe::build_embedded(embedded, (w, h), opts, |nodes| nodes);
     Some(

@@ -77,7 +77,7 @@ pub(super) fn fit_own_layout(
         0.0
     } else {
         let merged = crate::style::cascade::inherit::inherit(inherited, c, vcx);
-        let font = merged.font_cx();
+        let font = merged.font_cx(vcx);
         let px = |l: Option<Len>| l.and_then(|l| l.to_px(Some(cb), font, vcx)).unwrap_or(0.0);
         let b = c.borders();
         px(b.left) + px(b.right) + px(c.padding.left) + px(c.padding.right)
