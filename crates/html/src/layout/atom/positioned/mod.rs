@@ -11,6 +11,7 @@ use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 mod paint_last;
+mod children;
 mod replaced;
 use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
@@ -73,7 +74,7 @@ pub(super) fn absolute_atom(
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place_in_context(
         opts.cx.build.styled_box(e, &merged, &opts.cx)
-            .children(opts.cx.build.blocks(&e.children, &merged, opts))
+            .children(children::children(e, &merged, opts))
             .into_any_element(),
         &merged,
         inherited,

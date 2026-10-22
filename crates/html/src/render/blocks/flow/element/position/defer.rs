@@ -28,7 +28,7 @@ pub(super) fn defer(
     out: &mut Vec<AnyElement>,
     rest: &[crate::dom::Node],
 ) -> bool {
-    if !geometry_ok || opts.paged_build().is_some() || !resolve::needs_deferred(&e.style) {
+    if !geometry_ok || opts.paged_build().is_some() || !resolve::needs_host(&e.style, &opts.cx) {
         return false;
     }
     let fixed = e.style.position == Some(Position::Fixed);

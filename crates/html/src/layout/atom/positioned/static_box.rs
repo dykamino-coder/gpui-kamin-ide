@@ -58,7 +58,7 @@ pub(in crate::layout::atom) fn static_position_atom(
         _ => None,
     };
     let inner = styled_div_with(e, &merged, &opts.cx);
-    let inner = inner.children(opts.cx.build.blocks(&e.children, &merged, opts));
+    let inner = inner.children(super::children::children(e, &positioned, opts));
     // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
     // линию, и содержимое уезжает под неё — абсолютный блок оказывался
     // ниже своей строки, а не на её месте (видно на `static-position`:

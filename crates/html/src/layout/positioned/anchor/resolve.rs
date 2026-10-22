@@ -7,7 +7,7 @@ use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 
 mod current;
 mod insets;
-pub(crate) use current::{SizeInputs, current_inputs, needs_deferred, prepare};
+pub(crate) use current::{SizeInputs, current_inputs, needs_host, prepare};
 mod try_rule;
 use insets::fill_anchor_pairs;
 pub(crate) use try_rule::apply_try_rule;
@@ -111,10 +111,13 @@ fn resolve_with(
     c.height = one(c.height, true);
     c.min_height = one(c.min_height, true);
     c.max_height = one(c.max_height, true);
-    if c.position_area.is_none() {
+    // §position-area: без default anchor box область не действует;
+    // явные anchor()-вставки продолжают задавать обычный IMCB.
+    let area_active = c.position_area.is_some()
+        && default_anchor.is_some()
+        && current.is_none_or(|v| v.cell.is_some());
+    if !area_active {
         fill_anchor_pairs(c, Some(is_grid(inherited)), current.and_then(|v| v.area));
-    }
-    if c.position_area.is_none() || default_anchor.is_none() {
         return;
     }
     let Some((w, h)) = current.and_then(|v| v.area) else {

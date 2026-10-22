@@ -38,6 +38,14 @@ pub(crate) fn needs_deferred(c: &Computed) -> bool {
             .any(|l| matches!(l, Some(Len::Anchor(_)))))
 }
 
+/// Потомки построенного на prepaint OOF используют тот же протокол CB:
+/// нулевая строчная обёртка не может разрешать их процентные размеры.
+pub(crate) fn needs_host(c: &Computed, cx: &crate::layout::cx::LayoutCx) -> bool {
+    needs_deferred(c)
+        || (cx.oof_sizes.is_some()
+            && matches!(c.position, Some(Position::Absolute | Position::Fixed)))
+}
+
 pub(crate) fn current_inputs(
     c: &Computed,
     inherited: &Computed,

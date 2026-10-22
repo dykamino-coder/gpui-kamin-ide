@@ -37,12 +37,13 @@ pub(crate) fn atom_piece(
     atom_cx: &inline::atom_parent::AtomCx,
     ruby: &AtomRuby,
 ) -> Option<inline::Piece> {
-    // Атом внутри строчного предка наследует от НЕГО (`atom_parent`).
-    // Пока только атомы В ПОТОКЕ: абсолют внутри `rtl`-спана, унаследовав
-    // его направление, ставит статическую позицию от правого края, а наш
-    // расчёт этого не умеет (`static-position/htb-ltr-rtl.tentative`
-    // краснел) — внепоточным прежний путь.
-    let parent_style = atom_cx.parent.as_ref().filter(|_| !out_of_flow(&e.style));
+    // Отложенным якорным коробкам нужна цепочка настоящего строчного предка.
+    // Остальным OOF сохраняем прежний путь статической позиции, пока он
+    // не поддерживает направление позиционированного строчного предка.
+    let parent_style = atom_cx.parent.as_ref().filter(|_| {
+        !out_of_flow(&e.style)
+            || crate::layout::positioned::anchor::resolve::needs_host(&e.style, &opts.cx)
+    });
     let inherited = parent_style.unwrap_or(inherited);
     let child_opts = opts.inner(|cx| {
         cx.clamp_atom_depth = if e.style.clamp_lines().is_some() || e.style.clamp_by_height() {

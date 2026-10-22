@@ -199,7 +199,7 @@ pub(super) fn collect_element(
     if cb_here {
         cx.inline_cb_depth += 1;
     }
-    crate::text::inline::atom_parent::open(&mut cx.inline_parents, &e.style, inherited, vcx);
+    crate::text::inline::atom_parent::open(&mut cx.inline_parents, e, inherited, vcx);
     let kids = list_item::children(e, &merged, atom, has_text, cx);
     cx.inline_parents.pop();
     let kids = if cb_here {
