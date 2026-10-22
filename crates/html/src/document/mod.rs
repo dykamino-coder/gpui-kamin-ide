@@ -177,6 +177,7 @@ fn parse_document(
     fonts: &crate::text::metrics::FontContext,
 ) -> (Rc<DocState>, Vec<Node>, crate::style::computed::Computed) {
     let state = DocState::new(media);
+    state.images.borrow_mut().set_base(base.cloned());
     let vcx = state.values();
     fonts.install(vcx);
     let mut sheets = vec![theme_css.to_string()];
