@@ -13,7 +13,6 @@ pub mod balance;
 pub mod element;
 mod gap_geometry;
 mod paginate;
-mod regrow;
 
 pub struct ColumnStack {
     pub(crate) paint: std::rc::Rc<crate::paint::context::PaintCx>,
