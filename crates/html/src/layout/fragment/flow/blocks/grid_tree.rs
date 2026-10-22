@@ -12,7 +12,7 @@ use crate::style::computed::Display;
 /// и рост которого даёт раскладка копии (`flow::blocks`, `push::Regrow`):
 /// блочные стопки, сетки, чьи элементы — такие же поддеревья или монолиты.
 /// Не входят: внепоточные потомки (их продолжение — отдельный поток
-/// фрагментации), многоколоночники, таблицы, flex-контейнеры, коробки со
+/// фрагментации), многоколоночники, flex-контейнеры, коробки со
 /// своим планом фрагментов (`box-decoration-break: clone`) или обрезающие
 /// переполнение, и строчное содержимое внутри элементов сетки: строку,
 /// перенесённую в следующий фрагментаинер, распорка в дереве копии не
@@ -37,15 +37,20 @@ fn holds_grid(e: &Element, depth: u8) -> bool {
 fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
     if crate::layout::multicol::spanner::multicol_container(&e.style.computed())
         || e.style.computed().webkit_box == Some(true)
-        || crate::layout::fragment::table_bands::table_box(e)
         || crate::layout::fragment::clone::clone_dec(e).is_some()
         || !crate::layout::page::paged::visible_overflow(&e.style.computed())
     {
         return false;
     }
+    if crate::layout::fragment::table_bands::table_box(e) {
+        // Внутри элемента сетки строки таблицы — отдельные параллельные
+        // потоки (F2-4/F2-5); вне него таблицу уже читает TableBox.
+        return lines && super::table_tree(e, depth);
+    }
     if grid_container(e) {
-        // Дорожки рядов читаются у разложенного элемента: у сетки без
-        // элементов их взять не у кого.
+        // F1-6: у пустой сетки дорожки рассчитаны native layout, но API
+        // parent_grid_tracks требует ребёнка. Нужен reader по LayoutId
+        // самой сетки в vendor/gpui (сейчас вне scope); это НЕ F2-блокер.
         let items = e.children.iter().any(|n| {
             matches!(n, Node::Element(k)
                 if !out_of_flow(&k.style.computed()) && !matches!(k.style.computed().display, Some(Display::None)))

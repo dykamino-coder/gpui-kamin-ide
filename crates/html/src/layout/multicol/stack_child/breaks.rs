@@ -54,6 +54,10 @@ pub(super) fn recorder(
     }
     let blocks = BlockBox::collect(copy, ShapeCx::COLUMNS, opts.cx.vcx());
     let breaks_w = (!measured).then(|| line_col_w.map_or(BreaksAt::Column, BreaksAt::Width));
+    // Независимая измеренная копия сохраняет и корневую коробку: она нужна
+    // для пересборки дополнительных видов после реальной меры рядов.
+    let independent =
+        measured && (col_vert || crate::layout::fragment::flow::independent_copy(copy));
     // A measured box without block children keeps its measured lines alone
     // (css-break-3 §4.3 class B, orphans/widows by `Paragraph`); a box whose
     // estimate is replaced keeps its own border and padding edges too.
@@ -61,7 +65,7 @@ pub(super) fn recorder(
     // estimate; its line boxes are not lines of the stack flow
     // (`flow::flow_lines`).
     match recorded(
-        blocks.is_empty(),
+        blocks.is_empty() && !independent,
         measured,
         crate::layout::fragment::flow::flow_lines(copy),
     ) {

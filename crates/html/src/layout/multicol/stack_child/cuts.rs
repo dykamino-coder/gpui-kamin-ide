@@ -155,9 +155,10 @@ pub(super) fn stack_child_of(
     span: bool,
     kid_copies: usize,
     measured_table: Option<(bool, bool)>,
+    shape_cx: crate::layout::fragment::ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::StackChild {
-    let repeat = repeat_bands(copy, fixed, rows, measured_table, vcx);
+    let repeat = repeat_bands(copy, fixed, rows, measured_table, shape_cx, vcx);
     crate::layout::fragment::types::StackChild {
         #[cfg(feature = "wpt-harness")]
         probe_pending: measure.is_none(),

@@ -60,16 +60,14 @@ mod tests {
             "<div style='display:grid;margin-top:10%;margin-bottom:5%'><div>x</div></div>",
             "",
         );
-        let crate::dom::Node::Element(c) = &tree[0] else {
-            panic!("grid")
-        };
-        let mut c = c;
-        while c.tag != "div" {
-            let crate::dom::Node::Element(child) = &c.children[0] else {
-                panic!("grid ancestor")
-            };
-            c = child;
+        fn find(nodes: &[crate::dom::Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
+                crate::dom::Node::Element(e) => find(&e.children),
+                _ => None,
+            })
         }
+        let c = find(&tree).expect("authored grid");
         let registry = RefCell::default();
         let (_, shape) =
             measured(c, &Computed::default(), tree.values(), 120.0, &registry).expect("copy");

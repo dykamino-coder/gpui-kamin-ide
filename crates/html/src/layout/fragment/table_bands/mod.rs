@@ -94,6 +94,7 @@ pub(crate) fn repeat_bands(
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
     measured: Option<(bool, bool)>,
+    cx: ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> Option<RepeatSpec> {
     let per = fixed.filter(|_| rows.is_none() && table_box(c))?;
@@ -102,7 +103,7 @@ pub(crate) fn repeat_bands(
             let band = |on: bool| on.then_some((0.0, 0.0));
             (band(head), band(foot), Default::default())
         }),
-        None => repeat_bands_in(c, per, ShapeCx::COLUMNS, vcx),
+        None => repeat_bands_in(c, per, cx, vcx),
     }
 }
 
@@ -187,9 +188,10 @@ pub(crate) fn repeat_leads(
     c: &Element,
     fixed: Option<f32>,
     rows: Option<crate::layout::fragment::types::Rows>,
+    cx: ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> crate::layout::fragment::types::RepeatGeom {
-    repeat_bands(c, fixed, rows, None, vcx).map_or_else(Default::default, |r| r.2)
+    repeat_bands(c, fixed, rows, None, cx, vcx).map_or_else(Default::default, |r| r.2)
 }
 
 #[cfg(test)]

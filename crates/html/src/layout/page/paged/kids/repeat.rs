@@ -9,6 +9,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
 use crate::layout::fragment::{ShapeCx, table_bands::repeat_bands_in, types::Repeat};
+use crate::style::computed::LenCx;
 use gpui::AnyElement;
 
 pub(super) fn sections(
@@ -28,7 +29,9 @@ pub(super) fn sections(
         return None;
     }
     let folded_margin = if lead > 0.0 || e.style.computed().float.unwrap_or(0) != 0 {
-        crate::layout::fragment::fragment_size::shape_full(e, 4, cx, vcx)?.margin_top
+        // Поле — значение стиля с базой страницы; геометрия содержимого
+        // таблицы не участвует в разрешении этого поля (CSS 2.1 §8.3).
+        LenCx::box_viewport(cx.viewport, &e.style.computed()).px_lossy_zero(e.style.computed().margin.top, vcx)
     } else {
         0.0
     };

@@ -184,9 +184,9 @@ pub(crate) fn stack_plan(
         })
         .map(|n| n as *const Node);
     let laid = line_col_w
-        .filter(|_| !col_vert && rows.is_none() && nest_rows.is_none())
+        .filter(|_| !col_vert && nest_rows.is_none())
         .and_then(|w| super::laid::children(ge, merged, opts.cx.vcx(), w, &measured_kids));
-    let pending = (line_col_w.is_none() && rows.is_none() && nest_rows.is_none())
+    let pending = (line_col_w.is_none() && nest_rows.is_none())
         .then(|| {
             if col_vert {
                 super::laid::pending_vertical(ge, merged, opts.cx.vcx(), col_rl)
@@ -196,7 +196,7 @@ pub(crate) fn stack_plan(
         })
         .flatten();
     let vertical = line_col_w
-        .filter(|_| col_vert && rows.is_none() && nest_rows.is_none())
+        .filter(|_| col_vert && nest_rows.is_none())
         .and_then(|w| {
             super::laid::vertical_children(ge, merged, opts.cx.vcx(), w, col_rl, &measured_kids)
         });

@@ -74,10 +74,14 @@ mod tests {
     use super::*;
 
     fn host(nodes: &[Node]) -> &Element {
-        let Node::Element(e) = &nodes[0] else {
-            panic!("host")
-        };
-        if e.tag == "div" { e } else { host(&e.children) }
+        fn find(nodes: &[Node]) -> Option<&Element> {
+            nodes.iter().find_map(|n| match n {
+                Node::Element(e) if e.tag == "div" => Some(e),
+                Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        find(nodes).expect("authored div")
     }
 
     #[test]

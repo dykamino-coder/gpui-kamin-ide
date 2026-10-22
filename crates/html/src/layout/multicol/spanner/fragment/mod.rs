@@ -90,6 +90,7 @@ pub(super) fn spanner_fragment(
 pub(super) fn spanner_height_share(
     c: &Element,
     bodies: &[Vec<Node>],
+    shape_cx: ShapeCx<'_>,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<Option<f32>>> {
     let Some(Len::Px(total)) = c.style.computed().height else {
@@ -127,7 +128,7 @@ pub(super) fn spanner_height_share(
             continue;
         }
         let f = spanner_fragment(c, b.clone(), i == 0, false, false, i);
-        let h = shape_full(&f, 4, ShapeCx::COLUMNS, vcx)?.height;
+        let h = shape_full(&f, 4, shape_cx, vcx)?.height;
         let own = (h - if i == 0 { edge } else { 0.0 }).max(0.0);
         let take = own.min(left);
         out.push((own > left + COORD_EPS).then_some(take));

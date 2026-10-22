@@ -19,6 +19,7 @@ impl BlockBox {
                     .map(|k| k.inner.as_ref()),
             )
             .flatten()
+            .chain(self.table.iter().flat_map(|t| t.flows()))
         {
             inner.descendants(out);
         }

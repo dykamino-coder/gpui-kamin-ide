@@ -4,6 +4,7 @@ use super::fragment::spanner_parts;
 use super::{SpanPart, has_deep_spanner, passes_spanner, splits_for_spanner};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::layout::fragment::ShapeCx;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -22,7 +23,11 @@ use crate::style::values::value::Len;
 /// нас раскладка колонок принимает спаннера ТОЛЬКО прямым ребёнком
 /// (`render::generic_box::multicol` `is_span`, `StackChild::span`), поэтому тот же разрез
 /// делается в дереве до неё.
-pub(crate) fn hoist_spanners(kids: &[Node], vcx: ValueCx<'_>) -> Option<Vec<Node>> {
+pub(crate) fn hoist_spanners(
+    kids: &[Node],
+    shape_cx: ShapeCx<'_>,
+    vcx: ValueCx<'_>,
+) -> Option<Vec<Node>> {
     if !kids.iter().any(|n| {
         matches!(n, Node::Element(c)
             if (passes_spanner(c) || splits_for_spanner(c)) && has_deep_spanner(c))
@@ -30,7 +35,7 @@ pub(crate) fn hoist_spanners(kids: &[Node], vcx: ValueCx<'_>) -> Option<Vec<Node
         return None;
     }
     let mut out: Vec<Node> = Vec::with_capacity(kids.len() + 2);
-    for p in spanner_parts(kids, vcx) {
+    for p in spanner_parts(kids, shape_cx, vcx) {
         match p {
             SpanPart::Body(b) => out.extend(b),
             SpanPart::Span(s) => out.push(s),

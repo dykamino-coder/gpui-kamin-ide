@@ -78,7 +78,8 @@ pub(crate) fn multicol_box(
     let span_prev: Option<Option<u64>> = None;
     let seg_open = false;
     let hoisted;
-    let e = match hoist_spanners(&e.children, vcx) {
+    let shape_cx = crate::layout::fragment::ShapeCx::COLUMNS.observed(opts);
+    let e = match hoist_spanners(&e.children, shape_cx, vcx) {
         Some(kids) => {
             let mut c = e.clone();
             c.children = kids;
@@ -91,7 +92,7 @@ pub(crate) fn multicol_box(
     let unified = rows.is_some_and(|r| r.wrap && r.h.is_some()) && !opts.frag.in_stack_copy;
     // Высота хвостового ряда после единственного спаннера
     // (`tail_rest_height`, css-multicol-1 §column-fill).
-    let rest_h: Option<f32> = tail_rest_height(e, &merged, box_h, rows, vcx);
+    let rest_h: Option<f32> = tail_rest_height(e, &merged, box_h, rows, shape_cx, vcx);
     if e.children.iter().any(&is_span) && !unified {
         return Err(multicol_spanner_segments(
             d, e, merged, opts, col_w_px, want, lone_span, rest_h, span_prev, seg_open, is_span,

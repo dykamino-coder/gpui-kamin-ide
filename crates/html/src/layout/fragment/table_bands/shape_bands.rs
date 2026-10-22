@@ -19,6 +19,14 @@ pub(super) fn table_shape_bands(
     bands: &mut TableBands,
     vcx: ValueCx<'_>,
 ) -> Option<Shape> {
+    // Повтор секций вызывает оценку напрямую, минуя fragment_size::measure.
+    #[cfg(feature = "wpt-harness")]
+    if let Some(probe) = cx
+        .probe
+        .or_else(|| vcx.lines.map(|lines| &lines.opts.frag.probe))
+    {
+        probe.estimate("table.estimate");
+    }
     let px_of = |l: &Option<Len>| match l {
         None => Some(0.0),
         Some(Len::Px(v)) => Some(*v),
