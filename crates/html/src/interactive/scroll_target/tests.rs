@@ -39,7 +39,10 @@ fn native_scroll_target_preserves_css_box_and_isolates_nested_context() {
         }
         assert!(!child.applied());
         let mut d = attach(div(), &e, &c, &cx);
-        assert_eq!(gpui::Element::id(&d), Some(ElementId::Integer(8)));
+        assert_eq!(
+            gpui::Element::id(&d),
+            Some(e.state_id("html-scroll-content", cx.vcx()))
+        );
         assert_eq!(d.style().overflow.x, Some(Overflow::Hidden));
         assert_eq!(
             d.style().sizing_keywords,

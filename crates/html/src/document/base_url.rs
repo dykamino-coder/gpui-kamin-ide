@@ -1,6 +1,6 @@
 //! Базовый URL документа: разрешение ссылок на ресурсы один раз при сборке.
 //!
-//! Вход — разметка, запасной URL (файл или `new_with_base`) и собранное дерево;
+//! Вход — разметка, запасной URL (файл или `DocumentBuilder::base_uri`) и собранное дерево;
 //! выход — база с учётом `<base href>`, переписанные `href` у SVG `<use>`
 //! (с `xml:base` по цепочке; локальные `#id` не трогаются) и ключ документа
 //! `key`, в который база входит вместе с хэшем разметки и темы. Селекторы
@@ -94,11 +94,15 @@ mod tests {
     #[test]
     fn source_base_persists_across_update_and_changes_document_identity() {
         let html = "<svg><use href='sprite.svg#green'/></svg>";
-        let mut doc = super::super::Document::new_with_base(html, "", "file:///tests/page.html");
+        let mut doc = super::super::Document::builder(html, "")
+            .base_uri("file:///tests/page.html")
+            .build();
         let mut links = Vec::new();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/sprite.svg#green"]);
-        let other = super::super::Document::new_with_base(html, "", "file:///elsewhere/page.html");
+        let other = super::super::Document::builder(html, "")
+            .base_uri("file:///elsewhere/page.html")
+            .build();
         assert_ne!(doc.salt(), other.salt());
         assert!(doc.update("<svg><use href='new.svg#blue'/></svg>", ""));
         links.clear();
@@ -108,7 +112,9 @@ mod tests {
     #[test]
     fn html_base_and_xml_base_resolve_without_rewriting_local_fragments() {
         let html = "<base href='assets/'><svg xml:base='icons/'><use href='sprite.svg#x'/><use href='#local'/></svg>";
-        let doc = super::super::Document::new_with_base(html, "", "file:///tests/page.html");
+        let doc = super::super::Document::builder(html, "")
+            .base_uri("file:///tests/page.html")
+            .build();
         let mut links = Vec::new();
         hrefs(doc.nodes(), &mut links);
         assert_eq!(links, ["file:///tests/assets/icons/sprite.svg#x", "#local"]);

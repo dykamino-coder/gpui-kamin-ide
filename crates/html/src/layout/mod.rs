@@ -16,6 +16,7 @@ pub(crate) mod options;
 pub(crate) mod order;
 pub(crate) mod page;
 pub(crate) mod positioned;
+pub(crate) mod probe;
 pub(crate) mod replaced;
 pub(crate) mod table;
 // Writing-mode algorithms keep their explicit per-axis predicates.

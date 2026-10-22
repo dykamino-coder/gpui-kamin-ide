@@ -2,11 +2,13 @@
 
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
+use crate::layout::box_kind::replaced_tag;
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
+use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
+use crate::paint::box_tree::content_wrapper;
 use crate::paint::effects::grouped::grouped;
-use crate::render::{RenderOpts, content_wrapper, element, replaced_tag};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
@@ -80,7 +82,7 @@ pub(super) fn build_band_kid(
         if crate::layout::float::band_nest::paint_group(&copy.style) {
             crate::layout::float::band_nest::group_shell(&mut copy.style);
         }
-        return element(&copy, inherited, opts);
+        return opts.cx.build.element(&copy, inherited, opts);
     }
     // Доля ширины — от СОДЕРЖАЩЕГО БЛОКА (§10.2), а каркас пробы
     // шириной в окно: решаем её здесь.
@@ -215,7 +217,7 @@ pub(super) fn build_band_kid(
         // Общий путь отрисовки узла — тот же, что в потоке:
         // таблица, замещаемый, список строятся своими ветками
         // `element`.
-        let el = element(&copy, inherited, opts);
+        let el = opts.cx.build.element(&copy, inherited, opts);
         // Эффекты группы (`clip-path`, маска, фильтр, смешивание)
         // `element` не накладывает — их кладёт поток (`blocks`:
         // `grouped(transformed(animated(..)))`). Вертикальный флоат

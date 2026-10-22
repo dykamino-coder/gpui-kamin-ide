@@ -86,6 +86,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                     });
                     loose_level = true;
                 }
+                // !loose_level выше открывает уровень; иначе он сохранён с предыдущего rt.
                 cur.levels
                     .last_mut()
                     .expect("уровень только что открыт")
@@ -165,6 +166,7 @@ pub(super) fn ruby_segments(children: &[Node]) -> Vec<RubySegment> {
                 }
                 // Межаннотационный (п.6) — только между двумя `<rt>` контейнера.
                 (Some(Kind::Rt), Some(Kind::Rt)) if loose_level => {
+                    // loose_level устанавливается только после push уровня и сбрасывается при close.
                     cur.levels
                         .last_mut()
                         .expect("уровень открыт")

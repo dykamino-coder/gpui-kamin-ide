@@ -1,7 +1,7 @@
 //! Жёсткие разрывы отделяют завершённые строки от строки, предшествующей float.
 
 use crate::dom::Node;
-use crate::render::{atomic_inline, inline_level, out_of_flow, replaced_tag};
+use crate::layout::box_kind::{atomic_inline, inline_level, out_of_flow, replaced_tag};
 
 /// The same paragraph probes serve top-level and nested floats. Their ranges
 /// refer to node positions before the non-painting probes are appended.

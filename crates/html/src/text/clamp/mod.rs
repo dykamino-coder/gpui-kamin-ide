@@ -4,6 +4,10 @@
 //! доступ — `line_state`) и применяется на следующем кадре потолком высоты и бюджетом строк
 //! абзаца; `extent` оставляет видимым переполнение содержимого ДО точки. Отдельный модуль:
 //! состояние живёт между кадрами и не принадлежит ни одному элементу дерева.
+mod plan;
+pub(crate) use plan::{ClampInput, ClampPlan, ClampPlans};
+mod measure;
+pub(crate) use measure::ClampMeasure;
 mod build;
 mod cut_element;
 pub(crate) use build::ClampBuild;
@@ -19,7 +23,6 @@ pub use crate::text::clamp::cut_element::ClampCut;
 pub use crate::text::clamp::line_state::BoxEnds;
 pub use crate::text::clamp::line_state::ClampEntry;
 pub use crate::text::clamp::line_state::ClampLines;
-pub use crate::text::clamp::line_state::clamp_box_height;
 pub use crate::text::clamp::line_state::clamp_context;
 pub use crate::text::clamp::line_state::clamp_cut;
 pub use crate::text::clamp::line_state::clamp_extent;

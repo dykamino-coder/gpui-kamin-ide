@@ -26,7 +26,7 @@ impl Computed {
                 self.color = if v == "inherit" {
                     None
                 } else {
-                    record_parsed!(self, Color::parse(v, vcx)).or(self.color)
+                    apply_parsed!(self, Color::parse(v, vcx)).or(self.color)
                 }
             }
             "line-height" => {
@@ -70,7 +70,12 @@ impl Computed {
                 };
                 self.line_height = match parsed {
                     Some(l) if neg(&l) => self.line_height,
-                    other => record_parsed!(self, other),
+                    other => parsed_value!(
+                        self,
+                        other
+                            .map(Some)
+                            .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                    ),
                 };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
@@ -143,6 +148,12 @@ impl Computed {
                 ) {
                     self.accept_declaration();
                 }
+                if !matches!(
+                    v,
+                    "auto" | "center" | "right" | "left" | "start" | "end" | "justify" | "inherit"
+                ) {
+                    return;
+                }
                 if v != "auto" && v != "inherit" {
                     self.text_align_match_parent &= 1;
                 }
@@ -157,7 +168,12 @@ impl Computed {
                 }
             }
             "letter-spacing" => {
-                self.letter_spacing = record_parsed!(self, Len::parse_spacing(v, vcx))
+                self.letter_spacing = parsed_value!(
+                    self,
+                    Len::parse_spacing(v, vcx)
+                        .map(Some)
+                        .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                )
             }
             _ => self.apply_text_overflow_case(key, v, hit, vcx),
         }

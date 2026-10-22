@@ -18,10 +18,10 @@ pub struct PageSel {
 #[derive(Clone, Debug, Default)]
 pub struct PageRule {
     pub sels: Vec<PageSel>,
-    pub decls: Vec<(String, String)>,
+    pub decls: DeclBlock,
     /// Вложенные правила марджин-боксов (`@top-left { … }`, css-page-3
     /// §margin-at-rules): имя коробки в нижнем регистре → объявления.
-    pub margins: Vec<(String, Vec<(String, String)>)>,
+    pub margins: Vec<(String, DeclBlock)>,
     /// Путь каскадного слоя правила (как `Rule::layer`; неслойное —
     /// `[u32::MAX]`): слой старше специфичности (`layers-002..004`).
     pub layer: Vec<u32>,
@@ -106,16 +106,9 @@ pub(super) fn parse_page_selectors(head: &str) -> Option<Vec<PageSel>> {
 /// направлению прогрессии страниц: при ltr первый лист ПРАВЫЙ
 /// (§page-selectors: «if the root element's direction is ltr, then the first
 /// page is a right page»), при rtl — левый.
-pub fn page_decls_in(
-    rules: &[PageRule],
-    index: usize,
-    name: &str,
-    rtl: bool,
-) -> Vec<(String, String)> {
-    matching_rules(rules, index, name, rtl)
-        .into_iter()
-        .flat_map(|i| rules[i].decls.clone())
-        .collect()
+pub fn page_decls_in(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> DeclBlock {
+    let hits = matching_rules(rules, index, name, rtl);
+    in_cascade_order(&hits, |i| vec![&rules[i].decls])
 }
 
 /// Марджин-боксы листа: каскад тот же, что у объявлений листа
@@ -126,32 +119,62 @@ pub fn page_margins_in(
     index: usize,
     name: &str,
     rtl: bool,
-) -> Vec<(String, Vec<(String, String)>)> {
+) -> Vec<(String, DeclBlock)> {
     let hits = matching_rules(rules, index, name, rtl);
     MARGIN_BOXES
         .iter()
         .filter_map(|b| {
-            let list: Vec<(String, String)> = hits
-                .iter()
-                .flat_map(|&i| {
-                    rules[i]
-                        .margins
-                        .iter()
-                        .filter(|(n, _)| n == b)
-                        .flat_map(|(_, d)| d.clone())
-                })
-                .collect();
+            let list = in_cascade_order(&hits, |i| {
+                rules[i]
+                    .margins
+                    .iter()
+                    .filter(|(n, _)| n == b)
+                    .map(|(_, d)| d)
+                    .collect()
+            });
             (!list.is_empty()).then(|| (b.to_string(), list))
         })
         .collect()
 }
 
-/// Номера совпавших с листом правил по возрастанию (слой, специфичность,
+/// Совпавшее правило: (слой, специфичность (f, g, h)) и номер правила.
+type PageHit<'r> = ((&'r [u32], (u8, u8, u8)), usize);
+
+/// Объявления совпавших правил В ПОРЯДКЕ ПРИМЕНЕНИЯ, последнее побеждает:
+/// сперва обычные по возрастанию (слой, специфичность, порядок), затем
+/// важные — у них слой сравнивается в обратную сторону (css-cascade-5
+/// §cascade-sort).
+fn in_cascade_order<'d>(
+    hits: &[PageHit<'_>],
+    blocks: impl Fn(usize) -> Vec<&'d DeclBlock>,
+) -> DeclBlock {
+    let mut important: Vec<&PageHit<'_>> = hits.iter().collect();
+    important.sort_by(|((la, sa), ia), ((lb, sb), ib)| {
+        (std::cmp::Reverse(*la), sa, ia).cmp(&(std::cmp::Reverse(*lb), sb, ib))
+    });
+    let normal = hits.iter().map(|(_, i)| (*i, false));
+    let mut out = DeclBlock::new();
+    for (i, imp) in normal.chain(important.into_iter().map(|(_, i)| (*i, true))) {
+        for block in blocks(i) {
+            for d in block.iter().filter(|d| d.important == imp) {
+                out.push(d.name.clone(), d.value.clone(), imp);
+            }
+        }
+    }
+    out
+}
+
+/// Совпавшие с листом правила по возрастанию (слой, специфичность,
 /// порядок): css-cascade-5 §cascade-sort — каскадный слой решает раньше
 /// специфичности, и `@page` внутри `@layer` подчиняется ему же.
-fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Vec<usize> {
+fn matching_rules<'r>(
+    rules: &'r [PageRule],
+    index: usize,
+    name: &str,
+    rtl: bool,
+) -> Vec<PageHit<'r>> {
     let right = index.is_multiple_of(2) != rtl;
-    let mut hits: Vec<((&[u32], (u8, u8, u8)), usize)> = Vec::new();
+    let mut hits: Vec<PageHit<'r>> = Vec::new();
     for (order, r) in rules.iter().enumerate() {
         let spec = r
             .sels
@@ -170,14 +193,18 @@ fn matching_rules(rules: &[PageRule], index: usize, name: &str, rtl: bool) -> Ve
         }
     }
     hits.sort();
-    hits.into_iter().map(|(_, i)| i).collect()
+    hits
 }
 
 /// Записать правило `@position-try <dashed-ident> { … }`
 /// (css-anchor-position-1 §fallback-rule) в реестр текущего документа:
 /// имя → объявления, читается на сборке кадра (`anchor::place`). Повтор
 /// имени перекрывает — «the last one in document order wins».
-pub(crate) fn insert_try_rule(doc: &crate::document::state::DocState, name: &str, decls: Decls) {
+pub(crate) fn insert_try_rule(
+    doc: &crate::document::state::DocState,
+    name: &str,
+    decls: DeclBlock,
+) {
     doc.try_rules.borrow_mut().insert(name.to_string(), decls);
 }
 

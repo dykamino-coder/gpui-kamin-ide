@@ -47,6 +47,8 @@ fn parse_svg_text_element_impl<'input>(
     for node in parent.children() {
         if node.is_text() {
             let text = trim_text(node.text().unwrap(), space);
+            // KaminIDE patch: text nodes consume the same typed-node budget as elements.
+            doc.check_node_budget()?;
             doc.append(parent_id, NodeKind::Text(text));
             continue;
         }
@@ -89,6 +91,7 @@ fn parse_svg_text_element_impl<'input>(
             if let Some(href) = link_value {
                 if let Some(text) = resolve_tref_text(node.document(), href) {
                     let text = trim_text(&text, space);
+                    doc.check_node_budget()?;
                     doc.append(node_id, NodeKind::Text(text));
                 }
             }

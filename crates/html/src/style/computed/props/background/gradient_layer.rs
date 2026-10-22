@@ -63,7 +63,7 @@ impl Computed {
             }
             tiled |= self.bg_repeat.is_some();
         }
-        self.gradient = record_parsed!(self, parse_gradient(top, vcx));
+        self.gradient = apply_parsed!(self, parse_gradient(top, vcx));
         self.gradient_current = self
             .gradient
             .as_ref()

@@ -627,9 +627,10 @@ fn apply_drop_shadow(
         *p = color.premultiply().to_color_u8();
     }
 
-    // KaminIDE: the shadow colour is an sRGB value; it only needs converting when
-    // the primitive works in linearRGB. `into_srgb()` for sRGB treated it as linear
-    // and lightened it (green 128 -> 188, `svg-shorthand-drop-shadow-001`).
+    // KaminIDE patch: feDropShadow uses the computed flood-color (an sRGB colour).
+    // Convert it only when the primitive operates in linearRGB; interpreting sRGB
+    // components as linear and encoding them again incorrectly brightens the colour.
+    // Filter Effects 1, feDropShadow: https://drafts.csswg.org/filter-effects-1/#feDropShadowElement
     if cs == usvg::filter::ColorInterpolation::LinearRGB {
         shadow_pixmap.into_linear_rgb();
     }

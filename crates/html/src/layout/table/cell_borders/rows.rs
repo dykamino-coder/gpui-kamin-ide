@@ -9,6 +9,8 @@ use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::ParentElement;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn collapsed_row_edges(
@@ -19,7 +21,7 @@ pub(crate) fn collapsed_row_edges(
     row_style: &Computed,
     table_style: &Computed,
     last_row: Option<&Element>,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
     vcx: ValueCx<'_>,

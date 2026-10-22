@@ -5,6 +5,8 @@
 //! (CSS 2.1 §17.6.2.1) по рангу источника и порядку в документе.
 
 use gpui::{Bounds, Pixels};
+use std::cell::RefCell;
+use std::rc::Rc;
 mod clipped;
 mod clipped_paint;
 pub use clipped::CellsClipped;
@@ -41,7 +43,7 @@ pub use cell_bg::grid_probe;
 /// тот же прямоугольник без округления к точке устройства: от него
 /// считается область позиционирования (CSS 2.1 §17.5.1, Blink — по
 /// неокруглённой геометрии ячеек), маски остаются округлёнными.
-pub type RowRects = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, bool, Bounds<Pixels>)>>>;
+pub type RowRects = Rc<RefCell<Vec<(Bounds<Pixels>, bool, Bounds<Pixels>)>>>;
 
 /// Сросшиеся кромки таблицы: ячейка без собственных рамок отдаёт их
 /// отдельному слою — кромки рисуются НА ЛИНИЯХ сетки поверх фонов
@@ -63,4 +65,4 @@ pub struct EdgeCell {
 
 /// Буфер кромок сросшейся таблицы: пробы ячеек пишут в prepaint, `EdgePainter`
 /// забирает в paint того же кадра (см. `RowRects`).
-pub type CellEdges = std::rc::Rc<std::cell::RefCell<Vec<EdgeCell>>>;
+pub type CellEdges = Rc<RefCell<Vec<EdgeCell>>>;

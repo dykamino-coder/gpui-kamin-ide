@@ -3,26 +3,27 @@
 use crate::dom::{Element, Node};
 use crate::layout::table::columns::track_list_collapsed;
 use crate::layout::table::is_cell;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn table_tracks(
-    e: &Element,
-    inherited: &Computed,
-    row_elements: &Vec<&Element>,
-    win_edges: std::collections::HashMap<u64, [f32; 4]>,
-    table_font: f32,
-    table_family: &str,
-    spacing: (f32, f32),
-    cols: u16,
-    from_cols: &[Option<f32>],
-    mut col_widths: Vec<(Option<f32>, Option<f32>)>,
-    cols_collapsed: Vec<bool>,
-    cols_pct: Vec<Option<f32>>,
-    cb_px: Option<f32>,
-    vcx: crate::document::state::ValueCx<'_>,
+    geom: &super::super::context::TableGeom<'_>,
+    opts: &crate::layout::options::RenderOpts,
 ) -> (Vec<Option<f32>>, Vec<gpui::GridTrack>, bool) {
+    let e = geom.e;
+    let inherited = geom.inherited;
+    let row_elements = &geom.row_elements;
+    let win_edges = &geom.win_edges;
+    let table_font = geom.table_font;
+    let table_family = geom.table_family.as_str();
+    let spacing = geom.spacing;
+    let cols = geom.cols;
+    let from_cols = &geom.from_cols;
+    let col_widths = &geom.col_widths;
+    let cols_collapsed = &geom.cols_collapsed;
+    let cols_pct = &geom.cols_pct;
+    let cb_px = opts.cx.cb_width;
+    let vcx = opts.cx.vcx();
+    let mut col_widths = col_widths.to_vec();
     let vertical = e.style.wm().vertical();
     let inline_size = if vertical {
         e.style.height
@@ -59,8 +60,8 @@ pub(super) fn table_tracks(
         e.style.table_fixed == Some(true),
         &first_row_widths,
         &col_widths,
-        &cols_collapsed,
-        &cols_pct,
+        cols_collapsed,
+        cols_pct,
         // Место под КОЛОНКИ, а не вся ширина стола: §17.5.2.1 считает долю
         // от ширины таблицы БЕЗ её рамок и без зазоров между ячейками
         // (`fixed-table-layout-022` расписывает это прямо в тексте: 533 − 58
@@ -120,7 +121,7 @@ pub(super) fn table_tracks(
 pub(super) fn first_row_widths_of(
     e: &Element,
     row_elements: &Vec<&Element>,
-    win_edges: std::collections::HashMap<u64, [f32; 4]>,
+    win_edges: &std::collections::HashMap<u64, [f32; 4]>,
     (table_font, table_family): (f32, &str),
     spacing: (f32, f32),
     cols: u16,

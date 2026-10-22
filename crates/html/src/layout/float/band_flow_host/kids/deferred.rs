@@ -1,7 +1,7 @@
 //! Стабильная явная идентичность clamp для потомков, перестраиваемых при измерении band.
 
 use crate::layout::float::band_flow::{Build, Shapes};
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::text::clamp::DeferredClamp;
 use gpui::AnyElement;
 use std::rc::Rc;

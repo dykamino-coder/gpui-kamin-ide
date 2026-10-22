@@ -14,10 +14,11 @@ impl Computed {
     ) {
         match key {
             "text-overflow" => {
-                self.text_overflow_inherit = v.trim().eq_ignore_ascii_case("inherit");
-                if self.text_overflow_inherit {
+                if v.trim().eq_ignore_ascii_case("inherit") {
+                    self.text_overflow_inherit = true;
                     return;
                 }
+                css_wide_reset!(self, ellipsis, overflow_marker, text_overflow_inherit);
                 // css-overflow-4 §5: clip | ellipsis | <строка>, до двух
                 // сторон. Наша обрезка — конец строки: берётся последнее
                 // не-clip значение.
@@ -49,6 +50,16 @@ impl Computed {
                 if !cur.is_empty() {
                     tokens.push(cur);
                 }
+                if quote.is_some()
+                    || tokens.is_empty()
+                    || tokens.len() > 2
+                    || !tokens.iter().all(|t| {
+                        t.starts_with('\u{0}') || matches!(t.as_str(), "clip" | "ellipsis")
+                    })
+                {
+                    return;
+                }
+                self.text_overflow_inherit = false;
                 for t in tokens {
                     if let Some(text) = t.strip_prefix('\u{0}') {
                         on = true;
@@ -99,7 +110,14 @@ impl Computed {
                 _ => {}
             },
             "white-space" => white_space::apply(self, v),
-            "word-spacing" => self.word_spacing = record_parsed!(self, Len::parse_spacing(v, vcx)),
+            "word-spacing" => {
+                self.word_spacing = parsed_value!(
+                    self,
+                    Len::parse_spacing(v, vcx)
+                        .map(Some)
+                        .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
+                )
+            }
             "text-transform" => {
                 // Свойство наследуемое: `inherit` очищает свой слот, иначе
                 // прежнее объявление того же правила его переживало.
@@ -124,7 +142,7 @@ impl Computed {
                         "full-size-kana" => flags |= TT_KANA,
                         "math-auto" => flags |= TT_MATH,
                         "none" => {}
-                        _ => continue,
+                        _ => return,
                     }
                     any = true;
                 }

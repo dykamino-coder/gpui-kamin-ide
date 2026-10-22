@@ -30,7 +30,7 @@ pub(super) struct PageBox {
 }
 
 pub(super) fn page_box(
-    decls: Vec<(String, String)>,
+    decls: kamin_html::css::DeclBlock,
     root_margin: [f32; 4],
     wm: (bool, bool, bool),
     vcx: ValueCx<'_>,
@@ -72,7 +72,7 @@ pub(super) fn page_box(
     // поэтому размер считается первым проходом.
     let fs = page_font_size(&decls, vcx);
     let px_abs = |t: &str| -> Option<f32> { abs_len(t, fs, vcx) };
-    for (k, v) in &decls {
+    for (k, v) in decls.iter().map(|d| (&d.name, &d.value)) {
         match k.as_str() {
             "size" => apply_size(v, fs, &mut w, &mut h, vcx),
             "width" => explicit_w = px_abs(v).or(explicit_w),
@@ -84,7 +84,7 @@ pub(super) fn page_box(
     let mut turn = 0u8;
     let px_of =
         move |t: &str, axis_h: bool| -> Option<f32> { rel_len(t, axis_h, fs, (pw, ph), vcx) };
-    for (k, v) in &decls {
+    for (k, v) in decls.iter().map(|d| (&d.name, &d.value)) {
         match k.as_str() {
             "margin" if v.trim() == "inherit" => {
                 // `page-margin-006`: `margin: 13px; margin: inherit` → поля
@@ -195,8 +195,8 @@ pub(super) fn page_box(
     if decls
         .iter()
         .rev()
-        .find(|(k, _)| k == "visibility")
-        .is_some_and(|(_, v)| matches!(v.trim(), "hidden" | "collapse"))
+        .find(|d| d.name == "visibility")
+        .is_some_and(|d| matches!(d.value.trim(), "hidden" | "collapse"))
     {
         border.1.a = 0.0;
         bg = None;

@@ -37,20 +37,23 @@ impl Computed {
                     self.inherit_bits |= inh::DISPLAY;
                     return;
                 }
-                self.inline_display = None;
-                self.math_layout = match v {
+                let mut lanes_inline = self.lanes_inline;
+                let mut flow_root = self.flow_root;
+                let mut is_caption = self.is_caption;
+                let mut inline_display = None;
+                let math_layout = match v {
                     "math" | "inline math" => Some(Display::InlineBlock),
                     "block math" => Some(Display::Block),
                     _ => None,
                 };
                 // Каскад мог поставить группу выше по важности, а ниже —
                 // обычный блок: метка рода не переживает своё значение.
-                self.row_group_kind = None;
-                self.col_role = None;
+                let mut row_group_kind = None;
+                let mut col_role = None;
                 // Роль руби живёт вместе со значением `display`: более
                 // важное `display: block` на `span.rt` снимает её.
-                self.ruby_role = None;
-                self.display = record_parsed!(
+                let mut ruby_role = None;
+                self.display = apply_parsed!(
                     self,
                     match v {
                         "flex" => Some(Display::Flex),
@@ -64,7 +67,7 @@ impl Computed {
                         // вся укладка шла столбиком (`*-subgrid-grid-gap-*`).
                         "grid-lanes" | "masonry" => Some(Display::GridLanes),
                         "inline-grid-lanes" | "inline-masonry" => {
-                            self.lanes_inline = true;
+                            lanes_inline = true;
                             Some(Display::GridLanes)
                         }
                         // CSS Display 3 separates the outer inline mode from
@@ -78,9 +81,11 @@ impl Computed {
                             // Метка «настоящий строчный»: блокификация под
                             // float/abspos (§9.7) и запрет width/height на
                             // незамещаемом (§10.2) решаются после каскада.
-                            self.inline_display = Some(true);
+                            inline_display = Some(true);
                             Some(Display::InlineBlock)
                         }
+                        "math" | "inline math" => Some(Display::InlineBlock),
+                        "block math" => Some(Display::Block),
                         "inline-grid" => Some(Display::InlineGrid),
                         // Элемент исчезает, дети встают на его место.
                         "contents" => Some(Display::Contents),
@@ -95,7 +100,7 @@ impl Computed {
                                     || parts == ["flow", "inline", "list-item"]
                             } =>
                         {
-                            self.inline_display = Some(true);
+                            inline_display = Some(true);
                             Some(Display::ListItem)
                         }
                         // Табличные роли: своей табличной раскладки у нас нет,
@@ -117,22 +122,22 @@ impl Computed {
                         | "ruby-text"
                         | "ruby-base-container"
                         | "ruby-text-container" => {
-                            self.ruby_role = Some(match v {
+                            ruby_role = Some(match v {
                                 "ruby-base" => RubyRole::Base,
                                 "ruby-text" => RubyRole::Text,
                                 "ruby-base-container" => RubyRole::BaseContainer,
                                 "ruby-text-container" => RubyRole::TextContainer,
                                 _ => RubyRole::Container,
                             });
-                            self.inline_display = Some(true);
+                            inline_display = Some(true);
                             Some(Display::InlineBlock)
                         }
                         "block ruby" => {
-                            self.ruby_role = Some(RubyRole::Container);
+                            ruby_role = Some(RubyRole::Container);
                             Some(Display::Block)
                         }
                         "table-row-group" | "table-header-group" | "table-footer-group" => {
-                            self.row_group_kind = Some(match v {
+                            row_group_kind = Some(match v {
                                 "table-header-group" => 0,
                                 "table-footer-group" => 2,
                                 _ => 1,
@@ -149,7 +154,7 @@ impl Computed {
                         "flow-root" => {
                             // Коробка блочная, но признак не теряется: это
                             // свой контекст форматирования (css-display-3).
-                            self.flow_root = Some(true);
+                            flow_root = Some(true);
                             Some(Display::Block)
                         }
                         "table-row" => Some(Display::TableRow),
@@ -159,7 +164,7 @@ impl Computed {
                         "table-caption" => {
                             // Заголовок — блочная коробка с МЕТКОЙ: таблица ищет
                             // его по ней, а не только по тегу caption.
-                            self.is_caption = Some(true);
+                            is_caption = Some(true);
                             Some(Display::Block)
                         }
                         // Колонка коробки НЕ порождает (§17.2.1): `Display`
@@ -167,7 +172,7 @@ impl Computed {
                         // переживает разбор дерева, и только по ней его находит
                         // таблица.
                         "table-column" | "table-column-group" => {
-                            self.col_role = Some(u8::from(v == "table-column-group"));
+                            col_role = Some(u8::from(v == "table-column-group"));
                             Some(Display::None)
                         }
                         // Блочный пункт списка со своим контекстом (css-display-3
@@ -183,7 +188,7 @@ impl Computed {
                                 || w == ["block", "flow-root", "list-item"]
                         } =>
                         {
-                            self.flow_root = Some(true);
+                            flow_root = Some(true);
                             Some(Display::ListItem)
                         }
                         // Grid-lanes and masonry share the inner layout;
@@ -193,17 +198,26 @@ impl Computed {
                             .any(|w| w == "grid-lanes" || w == "masonry") =>
                         {
                             if two.split_whitespace().any(|w| w == "inline") {
-                                self.lanes_inline = true;
+                                lanes_inline = true;
                             }
                             Some(Display::GridLanes)
                         }
                         _ => None,
                     }
                 )
-                .or(self.display)
+                .filter(|_| math_layout.is_none())
+                .or(self.display);
+                self.inline_display = inline_display;
+                self.math_layout = math_layout;
+                self.row_group_kind = row_group_kind;
+                self.col_role = col_role;
+                self.ruby_role = ruby_role;
+                self.lanes_inline = lanes_inline;
+                self.flow_root = flow_root;
+                self.is_caption = is_caption;
             }
             "flex-direction" => {
-                self.flex_dir = record_parsed!(
+                self.flex_dir = apply_parsed!(
                     self,
                     match v {
                         "row" => Some(FlexDir::Row),
@@ -213,7 +227,6 @@ impl Computed {
                         _ => None,
                     }
                 )
-                .or(self.flex_dir)
             }
             _ => self.apply_flex_items(key, v, hit, vcx),
         }

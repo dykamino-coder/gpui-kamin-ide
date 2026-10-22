@@ -4,15 +4,17 @@ use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::ParentElement;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_col_edges(
+pub(in crate::layout::table) fn collapsed_col_edges(
     cell_cols: &std::ops::Range<usize>,
-    col_els: &[Option<&crate::dom::Element>],
+    col_els: &[crate::layout::table::context::ColumnLayer<'_>],
     row_ix: i16,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     d: gpui::Div,
 ) -> gpui::Div {
@@ -30,13 +32,13 @@ pub(crate) fn collapsed_col_edges(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn collapsed_colgroup_edges(
+pub(in crate::layout::table) fn collapsed_colgroup_edges(
     cell_cols: std::ops::Range<usize>,
-    grp_els: &[Option<&Element>],
+    grp_els: &[crate::layout::table::context::ColumnLayer<'_>],
     row_ix: i16,
     row_elements: &[&Element],
     inherited: &Computed,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     d: gpui::Div,
 ) -> gpui::Div {
@@ -56,17 +58,17 @@ pub(crate) fn collapsed_colgroup_edges(
 #[allow(clippy::too_many_arguments)]
 fn collapsed_column_edges(
     cell_cols: std::ops::Range<usize>,
-    col_els: &[Option<&crate::dom::Element>],
+    col_els: &[crate::layout::table::context::ColumnLayer<'_>],
     row_ix: i16,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
-    table_edges: &std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: &Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
     origin: u8,
 ) -> gpui::Div {
     for i in cell_cols {
-        let Some(el) = col_els.get(i).copied().flatten() else {
+        let Some(el) = col_els.get(i).and_then(|layer| layer.element) else {
             continue;
         };
         let b = el.style.borders();
@@ -79,8 +81,7 @@ fn collapsed_column_edges(
             j >= 0
                 && col_els
                     .get(j as usize)
-                    .copied()
-                    .flatten()
+                    .and_then(|layer| layer.element)
                     .is_some_and(|o| o.node_id == el.node_id)
         };
         let left_edge = !same(i as i64 - 1);

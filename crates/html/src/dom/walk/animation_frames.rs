@@ -9,14 +9,14 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::Computed;
-use crate::style::css::{Decls, Keyframes};
+use crate::style::css::{Keyframes, VarMap};
 use std::collections::HashMap;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn animation_frames(
     style: &Computed,
     frames: &HashMap<String, Keyframes>,
-    vars: &Decls,
+    vars: &VarMap,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Computed)>> {
     // Кадры разрешаются здесь же: к моменту отрисовки таблицы стилей
@@ -32,7 +32,7 @@ pub(super) fn animation_frames(
                     // Кадр ЗАМЕНЯЕТ `transform`, а разбор свойства
                     // дописывает функции к уже стоящим (ветка
                     // `"transform"`: `self.transform.unwrap_or_default()`).
-                    if decls.contains_key("transform") {
+                    if decls.contains("transform") {
                         c.transform = None;
                     }
                     c.apply_decls_with_vars(decls, vars, vcx);
@@ -80,9 +80,9 @@ pub(super) fn animation_frames(
                 .chain(std::iter::once(&spec.name))
                 .any(|name| {
                     frames.get(name).is_some_and(|track| {
-                        track.iter().any(|(_, decls)| {
-                            decls.contains_key("margin") || decls.contains_key(key)
-                        })
+                        track
+                            .iter()
+                            .any(|(_, decls)| decls.contains("margin") || decls.contains(key))
                     })
                 })
         });
@@ -121,7 +121,7 @@ mod tests {
             ("margin-left", "0px", Some(Len::Px(0.0))),
             ("margin", "20px", Some(Len::Px(20.0))),
         ] {
-            let decls = HashMap::from([(property.into(), value.into())]);
+            let decls = crate::style::css::parse_decls(&format!("{property}: {value}"));
             let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
             let frames = animation_frames(&base, &tracks, &HashMap::new(), vcx).unwrap();
             for (_, frame) in frames {

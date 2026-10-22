@@ -79,7 +79,7 @@ pub struct BoxEnds {
     pub node: u64,
 }
 
-pub type ClampLines = std::rc::Rc<std::cell::RefCell<Vec<ClampEntry>>>;
+pub type ClampLines = crate::layout::probe::Sink<ClampEntry>;
 
 pub fn clamp_lines_for(key: u64, vcx: ValueCx<'_>) -> ClampLines {
     vcx.doc
@@ -138,11 +138,6 @@ pub fn clamp_cut(key: u64, vcx: ValueCx<'_>) -> Option<f32> {
 /// оставить). Считает `ClampCut::paint` прошлого кадра.
 pub fn clamp_para(key: u64, vcx: ValueCx<'_>) -> Option<(u32, usize)> {
     vcx.doc.clamp.para.borrow().get(&key).copied()
-}
-
-/// Used border-box height of a box fragmented at a clamp point.
-pub fn clamp_box_height(node: u64, vcx: ValueCx<'_>) -> Option<f32> {
-    vcx.doc.clamp.boxes.borrow().get(&node).copied()
 }
 
 /// First paragraph after a clamp point between blocks (see `CLAMP_NEXT`).

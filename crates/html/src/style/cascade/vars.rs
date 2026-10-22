@@ -7,7 +7,7 @@
 use crate::document::state::ValueCx;
 
 use crate::style::computed::top_level_comma;
-use crate::style::css::Decls;
+use crate::style::css::VarMap;
 use crate::style::values::value::{Color, Len};
 
 /// Подстановка `var(--x)` и `var(--x, запасное)`.
@@ -196,7 +196,7 @@ pub(super) fn resolve_attrs(key: &str, value: &str, cx: CascadeCx, vcx: ValueCx<
     out
 }
 
-pub(super) fn resolve_vars(value: &str, vars: &Decls) -> String {
+pub(super) fn resolve_vars(value: &str, vars: &VarMap) -> String {
     let mut out = value.to_string();
     for _ in 0..VAR_DEPTH {
         let Some(next) = crate::style::css::variable_values::substitute(&out, &mut |name| {

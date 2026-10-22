@@ -102,6 +102,7 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
             continue;
         }
         let Node::Element(mut run) = nodes.remove(i) else {
+            // runs_in выше истинно только для Element; до remove дерево не менялось.
             unreachable!()
         };
         run.inline = true;
@@ -113,6 +114,7 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         // неправильно — хвост не решён.
         let _ = parent;
         let Node::Element(target) = &mut nodes[j - 1] else {
+            // target_ok проверил Element в j; remove(i), i < j, сдвинул его в j - 1.
             unreachable!()
         };
         target.children.insert(0, Node::Element(run));

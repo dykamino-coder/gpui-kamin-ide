@@ -36,10 +36,7 @@ fn monolith_overflows_a_fragmentainer_it_starts() {
 
 #[test]
 fn monolith_is_pushed_from_a_fragmentainer_not_at_its_start() {
-    let space = Space {
-        not_at_start: 1,
-        ..Space::columns(3)
-    };
+    let space = Space::columns(3).with_not_at_start(1);
     let (_, _, plan) = fill(&[monolith(80.0, 10.0)], 50.0, space);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].col, 1);
@@ -48,6 +45,7 @@ fn monolith_is_pushed_from_a_fragmentainer_not_at_its_start() {
 #[test]
 fn page_and_column_spaces_differ_only_in_kind() {
     let (c, p) = (Space::columns(4), Space::pages(4));
-    assert_eq!((c.limit, c.not_at_start, c.paged), (4, 0, false));
-    assert_eq!((p.limit, p.not_at_start, p.paged), (4, 0, true));
+    let parts = |s: Space| (s.limit, s.space.not_at_start, s.space.is_paginated());
+    assert_eq!(parts(c), (4, 0, false));
+    assert_eq!(parts(p), (4, 0, true));
 }

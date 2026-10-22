@@ -4,7 +4,7 @@
 //! Разобрать один раз, рисовать каждый кадр:
 //!
 //! ```ignore
-//! let doc = kamin_html::Document::new(html, theme_css); // разбор + каскад
+//! let doc = kamin_html::Document::builder(html, theme_css).build(); // разбор + каскад
 //! let elements = doc.render(&RenderOpts { text, ..Default::default() });
 //! ```
 //!
@@ -65,7 +65,7 @@ pub(crate) mod text;
 /// подчинена окну переписки. Страница же обязана выглядеть так, как её задумал
 /// автор разметки, а он рассчитывал на браузерные умолчания: поле `body` в 8
 /// точек, отступы абзацев и заголовков в долях кегля, отбивка списка в 40
-/// точек. Передаётся вторым доводом в [`Document::new`] — он идёт после
+/// точек. Передаётся вторым доводом в [`Document::builder`] — он идёт после
 /// таблицы движка и до `<style>` самого документа.
 // Отступы потоковых тегов — ЛОГИЧЕСКИЕ (margin-block/margin-inline), как в
 // таблице HTML Rendering, Flow content: поля следуют блочной/строчной оси
@@ -155,6 +155,6 @@ pub const BROWSER_CSS: &str = r#"
                border-radius: 0; padding: 2px; margin: 0 }
 "#;
 
-pub use document::Document;
+pub use document::{Document, DocumentBuilder};
 pub use dom::{Element, Node, parse};
 pub use render::{RenderOpts, render, render_block};

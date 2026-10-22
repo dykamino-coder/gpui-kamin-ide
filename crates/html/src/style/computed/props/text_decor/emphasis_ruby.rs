@@ -21,6 +21,14 @@ impl Computed {
                 // заливка) или строкой; `none` его снимает. Цвет знака —
                 // свой (`emphasis_color`), по умолчанию цвет текста.
                 if key == "text-emphasis-position" {
+                    let words: Vec<_> = v.split_whitespace().collect();
+                    if words.is_empty()
+                        || words
+                            .iter()
+                            .any(|w| !matches!(*w, "auto" | "over" | "under" | "left" | "right"))
+                    {
+                        return;
+                    }
                     self.accept_declaration();
                     self.emphasis_position_auto = Some(v.trim() == "auto");
                     self.emphasis_under = v.split_whitespace().any(|w| w == "under");
@@ -39,6 +47,26 @@ impl Computed {
                     return;
                 }
                 let v = v.trim();
+                if !v.starts_with(['"', '\''])
+                    && !split_outside_parens(v).iter().all(|w| {
+                        matches!(
+                            w.as_str(),
+                            "none"
+                                | "open"
+                                | "filled"
+                                | "dot"
+                                | "circle"
+                                | "double-circle"
+                                | "triangle"
+                                | "sesame"
+                                | "currentcolor"
+                        ) || (key == "text-emphasis"
+                            && (w.eq_ignore_ascii_case("currentcolor")
+                                || Color::parse(w, vcx).is_some()))
+                    })
+                {
+                    return;
+                }
                 self.emphasis_auto_shape = false;
                 // Сокращение `text-emphasis` несёт и цвет (§5.3): слово,
                 // которое разбирается как цвет, в стиль знака не идёт.
@@ -113,6 +141,14 @@ impl Computed {
                 self.text_emphasis = accept_parsed!(self, Some(mark.to_string()));
             }
             "ruby-position" => {
+                let words: Vec<_> = v.split_whitespace().collect();
+                if words.is_empty()
+                    || words
+                        .iter()
+                        .any(|w| !matches!(*w, "over" | "under" | "alternate" | "inter-character"))
+                {
+                    return;
+                }
                 self.accept_declaration();
                 // css-ruby-1 §4.1: `under` — под базой; `over`, `alternate`
                 // (первый уровень) и `inter-character` (в горизонтали — пока
@@ -120,7 +156,7 @@ impl Computed {
                 self.ruby_under = Some(v.split_whitespace().any(|w| w == "under"));
             }
             "ruby-align" => {
-                self.ruby_align = record_parsed!(
+                self.ruby_align = apply_parsed!(
                     self,
                     match v.trim() {
                         "start" => Some(RubyAlign::Start),
@@ -129,11 +165,10 @@ impl Computed {
                         "space-around" => Some(RubyAlign::SpaceAround),
                         _ => None,
                     }
-                )
-                .or(self.ruby_align);
+                );
             }
             "ruby-overhang" => {
-                self.ruby_overhang = record_parsed!(
+                self.ruby_overhang = apply_parsed!(
                     self,
                     match v.trim() {
                         "auto" => Some(RubyOverhang::Auto),
@@ -141,8 +176,7 @@ impl Computed {
                         "spaces" => Some(RubyOverhang::Spaces),
                         _ => None,
                     }
-                )
-                .or(self.ruby_overhang);
+                );
             }
             "ruby-merge" => {
                 if matches!(v, "separate" | "merge" | "auto") {
@@ -161,13 +195,26 @@ impl Computed {
             // эталона `box-shadow-multiple-001-ref` пропадала, пока тест после
             // `shadow_raw` уже рисовал свою `box-shadow` в `em`.
             "text-shadow" if has_font_units(v) => {
+                if !box_shadow_valid(v, vcx) || v.split_whitespace().any(|w| w == "inset") {
+                    return;
+                }
                 self.text_shadow_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "text-shadow" => {
+                css_wide_reset!(
+                    self,
+                    text_shadow,
+                    text_shadow_raw,
+                    text_shadow_none,
+                    text_shadow_rest
+                );
+                if !box_shadow_valid(v, vcx) || v.split_whitespace().any(|w| w == "inset") {
+                    return;
+                }
                 self.text_shadow_raw = None;
                 self.text_shadow_none = v.trim().eq_ignore_ascii_case("none");
                 let mut list = parse_shadows(v, vcx).into_iter();
-                self.text_shadow = record_parsed!(self, list.next());
+                self.text_shadow = accept_parsed!(self, list.next());
                 if self.text_shadow_none {
                     self.accept_declaration();
                 }

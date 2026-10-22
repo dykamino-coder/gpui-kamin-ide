@@ -84,6 +84,7 @@ pub(super) mod walk;
 use crate::dom::scroll_markers::*;
 mod marks;
 pub(super) mod pseudo;
+mod state_identity;
 pub use crate::dom::marks::Marks;
 pub(crate) use crate::dom::marks::{LeadProbe, ShapeFlow};
 pub(crate) use crate::dom::pseudo::*;
@@ -101,11 +102,8 @@ pub enum Node {
 pub struct Element {
     /// Номер пункта списка из счётчика `list-item`; `None` — не пункт.
     pub list_item: Option<i64>,
-    /// Устойчивый номер узла в документе.
-    ///
-    /// Нужен анимации: GPUI хранит её состояние по идентификатору элемента, а
-    /// он обязан совпадать от кадра к кадру, иначе анимация каждый раз
-    /// начинается заново.
+    /// Устойчивый номер авторского узла; ноль обозначает синтетическую коробку.
+    /// Идентичность состояния GPUI для неё хранится отдельно в Marks.
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
     pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
@@ -125,7 +123,7 @@ pub struct Element {
     /// Инлайн ли элемент по своей природе (`<span>`, `<code>`, `<a>`): от
     /// этого зависит, попадёт ли он в строку текста или станет блоком.
     pub inline: bool,
-    /// Internal layout marks (`Marks`): set only by layout, never by markup.
+    /// Внутренние layout-метки и идентичность коробки; не задаются разметкой.
     pub marks: Marks,
 }
 

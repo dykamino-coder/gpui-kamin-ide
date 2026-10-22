@@ -30,6 +30,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
             };
         }
         rules.push(Rule {
+            // Универсальный селектор — допустимый литерал без зависимостей от документа.
             sel: Selector::parse("*").expect("UA selector"),
             decls: parse_decls(css),
             order: 0,
@@ -42,7 +43,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
         if let NodeData::Element { name, .. } = &handle.data
             && &*name.local == "math"
         {
-            decls.extend(parse_decls(
+            decls.merge(parse_decls(
                 "math-style: compact; math-depth: 0; math-shift: normal",
             ));
             if let NodeData::Element { attrs, .. } = &handle.data
@@ -51,7 +52,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
                     .iter()
                     .any(|a| &*a.name.local == "display" && a.value.eq_ignore_ascii_case("block"))
             {
-                decls.extend(parse_decls("math-style: normal"));
+                decls.merge(parse_decls("math-style: normal"));
             }
         }
         let parent = handle.parent.take();
@@ -72,10 +73,11 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
                 }
                 _ => "",
             };
-            decls.extend(parse_decls(css));
+            decls.merge(parse_decls(css));
         }
         handle.parent.set(parent);
         rules.push(Rule {
+            // Универсальный селектор — допустимый литерал без зависимостей от документа.
             sel: Selector::parse("*").expect("UA selector"),
             decls,
             order: 0,
@@ -89,6 +91,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
         && matches!(&handle.data, NodeData::Element { name, .. } if &*name.local == "mi")
     {
         rules.push(Rule {
+            // Универсальный селектор — допустимый литерал без зависимостей от документа.
             sel: Selector::parse("*").expect("UA selector"),
             decls: parse_decls("text-transform: math-auto"),
             order: 0,
@@ -98,6 +101,7 @@ pub(super) fn defaults(handle: &Handle, index: usize) -> Vec<Rule> {
     }
     if hides {
         rules.push(Rule {
+            // Оба псевдокласса и комбинатор входят в поддерживаемую грамматику Selectors.
             sel: Selector::parse("semantics > :not(:first-child)").expect("UA selector"),
             decls: parse_decls("display: none"),
             order: usize::MAX,

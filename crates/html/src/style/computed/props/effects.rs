@@ -11,67 +11,50 @@ use crate::style::values::value::{Color, Len};
 mod containment;
 mod filter;
 mod timing;
+mod values;
 
 impl Computed {
     pub(crate) fn apply_effects(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
+        if self.apply_paint_value(key, v, vcx) {
+            return;
+        }
         match key {
-            // `pre` сохраняет переводы строк — это не то же самое, что запрет
-            // переноса: раньше `pre` помечался как `nowrap`, и текст склеивался
-            // в одну строку.
-            "cursor" => self.cursor = accept_parsed!(self, Some(v.to_string())),
-            // Заливка SVG-геометрии: свойство презентации доезжает до
-            // разметки при растеризации (SVG 2 §presentation attributes).
-            "fill" => self.svg_fill = accept_parsed!(self, Some(v.to_string())),
-            // Обводка — то же семейство. Значение уходит в разметку как есть:
-            // разбирать цвет здесь незачем, его знает usvg.
-            "stroke" => self.svg_stroke = accept_parsed!(self, Some(v.to_string())),
-            // Вычисленное `stroke-width` — «the absolute length, or percentage»
-            // (fill-stroke-3 §stroke-width): `calc()` из точек сворачивается
-            // здесь. usvg его не понимает и рисовал толщину по умолчанию 1
-            // (`zoom/stroke`: эталон `calc(6px * var(--scale))`). В Blink —
-            // `UnzoomedLength` через `ConvertUnzoomedLength`
-            // (css_properties.json5:6150-6159).
-            "stroke-width" => {
-                self.svg_stroke_width = accept_parsed!(
-                    self,
-                    Some(match crate::style::values::value::calc_pct_px(v, vcx) {
-                        Some((0.0, px)) => format!("{px}"),
-                        _ => v.to_string(),
-                    })
-                );
-            }
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
             // разметку они уходят только внутри SVG-поддерева (гейт в svg.rs).
             "x" => {
-                self.svg_x = record_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+                self.svg_x = apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
             "y" => {
-                self.svg_y = record_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
+                self.svg_y = apply_parsed!(self, crate::style::values::value::Len::parse(v, vcx))
             }
             "cx" | "cy" | "r" | "rx" | "ry" | "d" | "path-length" => {
                 crate::svg::geometry_property(self, key, v, vcx);
             }
             "caption-side" => {
-                self.caption_bottom = accept_parsed!(self, Some(v.eq_ignore_ascii_case("bottom")))
+                self.caption_bottom =
+                    apply_parsed!(self, matches!(v, "top" | "bottom").then_some(v == "bottom"))
             }
             "list-style-position" => {
-                self.list_style_inside = accept_parsed!(self, Some(v.trim() == "inside"));
+                self.list_style_inside = apply_parsed!(
+                    self,
+                    matches!(v, "inside" | "outside").then_some(v == "inside")
+                );
             }
             "list-style" | "list-style-type" => list_style::apply(self, key, v),
             "backdrop-filter" => {
                 // Тот же `<filter-value-list>`, что у `filter`
                 // (filter-effects-2 §BackdropFilterProperty): разбор общий,
                 // размытие идёт своим проходом, цветовые функции — матрицей.
-                let mut tmp = Self {
-                    declaration_parse: self.declaration_parse,
-                    ..Default::default()
+                let Some(parsed) = apply_parsed!(self, filter::ParsedFilter::parse(v, None, vcx))
+                else {
+                    self.backdrop_blur = None;
+                    self.backdrop_color = None;
+                    self.backdrop_filter_set = false;
+                    self.backdrop_ref = None;
+                    return;
                 };
-                tmp.apply_one("filter", v, vcx);
-                if tmp.declaration_parse == ParseResult::Accepted {
-                    self.accept_declaration();
-                }
-                let f = tmp.filter.unwrap_or_else(Filter::neutral);
+                let f = parsed.program.filter.unwrap_or_else(Filter::neutral);
                 self.backdrop_blur = (f.blur > 0.0).then_some(f.blur);
                 self.backdrop_color = f.color_matrix().map(|_| Filter { blur: 0.0, ..f });
                 // Корень подложки — любое значение, кроме `none`
@@ -81,13 +64,16 @@ impl Computed {
                 // (`backdrop-filter-backdrop-root-backdrop-filter`).
                 self.backdrop_filter_set = !v.trim().eq_ignore_ascii_case("none");
                 // `url(#id)` — SVG `<filter>` (`render::svg_filter_matrix`).
-                self.backdrop_ref = tmp.filter_ref;
+                self.backdrop_ref = parsed.reference;
             }
             // `view-transition-name` не `none` — корень подложки
             // (css-view-transitions-1 Overview.bs:577-582 «Form a backdrop
             // root»; Blink paint_property_tree_builder.cc:1858-1862
             // `NeedsEffectForViewTransition`).
             "view-transition-name" => {
+                if !crate::style::css::selector_tokens::ident(v) {
+                    return;
+                }
                 self.vt_name = accept_parsed!(self, !v.trim().eq_ignore_ascii_case("none"));
             }
             // css-will-change-1 §2.1: обещанное свойство даёт коробке то, что
@@ -107,6 +93,9 @@ impl Computed {
                 let mut root = false;
                 for part in v.split(',') {
                     let name = part.trim().to_ascii_lowercase();
+                    if !crate::style::css::selector_tokens::ident(&name) {
+                        return;
+                    }
                     root |= matches!(
                         name.as_str(),
                         "opacity"
@@ -176,11 +165,39 @@ impl Computed {
             }
 
             // --- Прочее ------------------------------------------------------
-            "pointer-events" => self.pointer_events_none = accept_parsed!(self, Some(v == "none")),
-            "table-layout" => self.table_fixed = accept_parsed!(self, Some(v == "fixed")),
+            "pointer-events" => {
+                self.pointer_events_none = apply_parsed!(
+                    self,
+                    matches!(
+                        v,
+                        "auto"
+                            | "none"
+                            | "visiblePainted"
+                            | "visibleFill"
+                            | "visibleStroke"
+                            | "visible"
+                            | "painted"
+                            | "fill"
+                            | "stroke"
+                            | "all"
+                            | "bounding-box"
+                    )
+                    .then_some(v == "none")
+                )
+            }
+            "table-layout" => {
+                self.table_fixed =
+                    apply_parsed!(self, matches!(v, "auto" | "fixed").then_some(v == "fixed"))
+            }
 
             // --- Псевдоэлементы и шрифт ---------------------------------------
             "counter-reset" | "counter-increment" | "counter-set" => {
+                if self.css_wide_value && v != "inherit" {
+                    return counters::reset(self, key);
+                }
+                if !values::counter_value(v, key == "counter-reset") {
+                    return;
+                }
                 counters::apply(self, key, v, vcx)
             }
             "quotes" => quotes::apply(self, v),
@@ -211,7 +228,14 @@ impl Computed {
                     }
                 }
             }
-            "accent-color" => self.accent_color = record_parsed!(self, Color::parse(v, vcx)),
+            "accent-color" => {
+                self.accent_color = parsed_value!(
+                    self,
+                    Color::parse(v, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "auto").then_some(None))
+                )
+            }
             "appearance" | "-webkit-appearance" => {
                 if let Some(a) = crate::style::computed::Appearance::parse(v) {
                     self.appearance = accept_parsed!(self, Some(a));

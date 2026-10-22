@@ -27,6 +27,7 @@ pub(crate) fn transitioned(
 ) -> Option<AnyElement> {
     let seconds = e.style.transition?;
     let hover = e.hover.clone()?;
+    let id = e.state_id("html-transition", opts.cx.vcx());
     let node = e.clone();
     let inherited = inherited.clone();
     let opts = opts.clone();
@@ -39,14 +40,7 @@ pub(crate) fn transitioned(
         mixed.style.transition = None;
         opts.cx.build.element(&mixed, &inherited, &opts)
     });
-    Some(
-        crate::animation::transition::Transition::new(
-            gpui::ElementId::Integer(e.node_id),
-            seconds,
-            build,
-        )
-        .into_any_element(),
-    )
+    Some(crate::animation::transition::Transition::new(id, seconds, build).into_any_element())
 }
 
 /// Интерполяция стиля между кадрами анимации.

@@ -5,6 +5,7 @@
 //! `clear`, `opacity`, `visibility`. Разбор якорных значений — в `style::values::position_area`.
 
 use crate::document::state::ValueCx;
+mod clip_margin;
 mod z_index;
 use crate::style::computed::*;
 use crate::style::values::position_area::{
@@ -16,7 +17,7 @@ impl Computed {
     pub(crate) fn apply_position(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             "position" => {
-                self.position = record_parsed!(
+                self.position = apply_parsed!(
                     self,
                     match v {
                         "absolute" => Some(Position::Absolute),
@@ -29,21 +30,21 @@ impl Computed {
                         _ => None,
                     }
                 )
-                .or(self.position)
             }
             // css-anchor-position-1 §anchor-name: `none | <dashed-ident>#`.
             "anchor-name" => {
-                self.anchor_name = (v != "none")
-                    .then(|| {
-                        v.split(',')
-                            .map(|n| n.trim().to_string())
-                            .filter(|n| n.starts_with("--"))
-                            .collect::<Vec<_>>()
-                    })
-                    .filter(|names| !names.is_empty());
-                if self.anchor_name.is_some() || v == "none" {
-                    self.accept_declaration();
-                }
+                let names = if v == "none" {
+                    None
+                } else {
+                    let names: Vec<_> = v.split(',').map(str::trim).collect();
+                    if !names.iter().all(|n| {
+                        n.starts_with("--") && crate::style::css::selector_tokens::ident(n)
+                    }) {
+                        return;
+                    }
+                    Some(names.into_iter().map(str::to_owned).collect())
+                };
+                self.anchor_name = accept_parsed!(self, names);
             }
             // §position-anchor: значение хранится как есть, решается при
             // сборке (`anchor::AnchorPlan::of`) и в `anchor::settle_static`.
@@ -63,14 +64,23 @@ impl Computed {
             // §position-area: сетка 3×3 от якоря и содержащего блока; разбор
             // и физическое разрешение — в `anchor`.
             "position-area" => {
-                self.position_area = record_parsed!(self, parse_area(v));
+                self.position_area = parsed_value!(
+                    self,
+                    parse_area(v)
+                        .map(Some)
+                        .or_else(|| (v == "none").then_some(None))
+                );
                 if v == "none" {
                     self.accept_declaration();
                 }
             }
             // §position-try-fallbacks: список вариантов, разбор — в `anchor`.
             "position-try-fallbacks" => {
-                self.position_try_fallbacks = parse_try_fallbacks(v);
+                let parsed = parse_try_fallbacks(v);
+                if parsed.is_empty() && v != "none" {
+                    return;
+                }
+                self.position_try_fallbacks = parsed;
                 if !self.position_try_fallbacks.is_empty() || v == "none" {
                     self.accept_declaration();
                 }
@@ -94,8 +104,12 @@ impl Computed {
                     }
                     _ => (0, v),
                 };
+                let parsed = parse_try_fallbacks(rest);
+                if parsed.is_empty() && rest != "none" {
+                    return;
+                }
                 self.position_try_order = order;
-                self.position_try_fallbacks = parse_try_fallbacks(rest);
+                self.position_try_fallbacks = parsed;
                 if !self.position_try_fallbacks.is_empty() || rest == "none" {
                     self.accept_declaration();
                 }
@@ -103,12 +117,19 @@ impl Computed {
             // §position-visibility; легаси `anchors-valid`/`anchors-visible` —
             // псевдонимы (спека разрешает их узнавать).
             "position-visibility" => {
-                self.position_visibility = accept_parsed!(self, parse_visibility(v));
+                css_wide_reset!(self, position_visibility);
+                let Some(bits) = parse_visibility(v) else {
+                    return;
+                };
+                self.position_visibility = accept_parsed!(self, bits);
             }
             "top" | "right" | "bottom" | "left" => {
-                let parsed = record_parsed!(
+                let parsed = parsed_value!(
                     self,
-                    Len::parse(v, vcx).or_else(|| Len::parse_mixed(v, vcx))
+                    Len::parse(v, vcx)
+                        .or_else(|| Len::parse_mixed(v, vcx))
+                        .map(Some)
+                        .or_else(|| (v == "inherit").then_some(None))
                 );
                 let (side, slot) = match key {
                     "top" => (0, &mut self.inset.top),
@@ -122,78 +143,54 @@ impl Computed {
                 self.side_seq.inset[side] = self.decl_seq;
             }
             "inset" => {
-                self.inset = Sides::shorthand(v, vcx);
-                if self.inset.top.is_some()
-                    && self.inset.right.is_some()
-                    && self.inset.bottom.is_some()
-                    && self.inset.left.is_some()
-                {
-                    self.accept_declaration();
-                }
+                self.inset =
+                    parsed_value!(self, super::box_model::sides::parsed_sides(v, true, vcx));
                 self.side_seq.inset = [self.decl_seq; 4];
             }
             "overflow" => {
                 // Запись из двух слов — оси по отдельности
                 // (css-overflow-3 §3): `overflow: clip visible`.
-                let mut it = v.split_whitespace();
-                let x = it.next().and_then(parse_overflow);
-                let y = it.next().and_then(parse_overflow).or(x);
+                let words: Vec<_> = v.split_whitespace().collect();
+                if !(1..=2).contains(&words.len()) {
+                    return;
+                }
+                let pair = apply_parsed!(
+                    self,
+                    parse_overflow(words[0]).zip(parse_overflow(words[words.len() - 1]))
+                );
+                let (x, y) = (pair.map(|p| p.0), pair.map(|p| p.1));
                 self.scroll.forced = [
                     v.split_whitespace().next() == Some("scroll"),
                     v.split_whitespace().nth(1).or(v.split_whitespace().next()) == Some("scroll"),
                 ];
-                self.overflow_x = record_parsed!(self, x);
+                self.overflow_x = x;
                 self.overflow_y = y;
             }
             "overflow-x" => {
-                self.overflow_x = record_parsed!(self, parse_overflow(v));
+                self.overflow_x = apply_parsed!(self, parse_overflow(v));
                 self.scroll.forced[0] = v == "scroll";
             }
             "overflow-y" => {
-                self.overflow_y = record_parsed!(self, parse_overflow(v));
+                self.overflow_y = apply_parsed!(self, parse_overflow(v));
                 self.scroll.forced[1] = v == "scroll";
             }
-            "opacity" => self.opacity = record_parsed!(self, v.parse().ok()),
+            "opacity" => self.opacity = apply_parsed!(self, v.parse().ok()),
             // Поле обрезки: край, по которому режется вылезшее содержимое,
             // отодвигается наружу (css-overflow-3 §5). Запись допускает и
             // указание коробки отсчёта — её мы не различаем, край один.
             "overflow-clip-margin" => {
-                // `inherit` у НЕнаследуемого свойства — вычисленное значение
-                // родителя целиком (css-cascade-4 §inherit). Ветка длины ниже
-                // слово не понимала, и объявление пропадало
-                // (`overflow-clip-margin-009`: поле 20 родителя не доезжало).
-                if v.trim() == "inherit" {
-                    self.inherit_bits |= inh::CLIP_MARGIN;
-                    return;
-                }
-                // `<visual-box> || <length>`: коробка отсчёта и поле, в любом
-                // порядке, любая часть может отсутствовать (умолчание —
-                // padding-box, поле 0).
-                let mut margin = None;
-                let mut bx = None;
-                for w in v.split_whitespace() {
-                    match w {
-                        "border-box" => bx = Some(2u8),
-                        "padding-box" => bx = Some(1),
-                        "content-box" => bx = Some(0),
-                        t => {
-                            // Отрицательная длина — ВТЯЖКА внутрь коробки
-                            // (css-overflow-4 §overflow-clip-margin:
-                            // «Negative values indicate insets»), а не
-                            // негодное объявление.
-                            if let Some(Len::Px(px)) = Len::parse(t, vcx) {
-                                margin = Some(px);
-                            }
-                        }
-                    }
-                }
-                if margin.is_some() || bx.is_some() {
-                    self.clip_margin = accept_parsed!(self, Some(margin.unwrap_or(0.0)));
-                    self.clip_margin_box = bx;
-                }
+                self.apply_clip_margin(v, vcx);
             }
+
             "visibility" => {
-                self.hidden = accept_parsed!(self, Some(v == "hidden" || v == "collapse"));
+                self.hidden = apply_parsed!(
+                    self,
+                    match v {
+                        "hidden" | "collapse" => Some(true),
+                        "visible" => Some(false),
+                        _ => None,
+                    }
+                );
                 self.collapsed = Some(v == "collapse");
             }
             "z-index" => {
@@ -201,32 +198,40 @@ impl Computed {
                     self.inherit_bits |= inh::Z_INDEX;
                     return;
                 }
-                self.z_index = record_parsed!(self, z_index::integer(v, vcx));
+                self.z_index = parsed_value!(
+                    self,
+                    z_index::integer(v, vcx)
+                        .map(Some)
+                        .or_else(|| (v == "auto").then_some(None))
+                );
                 if v == "auto" {
                     self.accept_declaration();
                 }
             }
             "float" => {
-                self.float = accept_parsed!(
+                self.float = apply_parsed!(
                     self,
                     match v {
                         "left" => Some(-1),
                         "right" => Some(1),
-                        _ => Some(0),
+                        "none" => Some(0),
+                        _ => None,
                     }
                 )
             }
             "clear" => {
+                let parsed = parsed_value!(
+                    self,
+                    match v {
+                        "left" => Some(Some(-1)),
+                        "right" => Some(Some(1)),
+                        "both" => Some(Some(0)),
+                        "none" | "inherit" => Some(None),
+                        _ => None,
+                    }
+                );
                 self.clear_inherit = v == "inherit";
-                self.clear = match v {
-                    "left" => Some(-1),
-                    "right" => Some(1),
-                    "both" => Some(0),
-                    _ => None,
-                };
-                if self.clear.is_some() || v == "none" {
-                    self.accept_declaration();
-                }
+                self.clear = parsed;
             }
             _ => *hit = false,
         }

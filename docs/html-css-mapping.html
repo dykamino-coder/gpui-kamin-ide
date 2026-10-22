@@ -156,8 +156,8 @@
 
 // 1. Разбор: HTML + таблица стилей приложения (тема). `Document` живёт между
 //    кадрами; `update` пересобирает дерево только при смене разметки.
-let doc = Document::new(html, theme_css);          // чатовые умолчания тегов
-let page = Document::new(html, BROWSER_CSS);       // браузерные умолчания — для страницы
+let doc = Document::builder(html, theme_css).build();          // чатовые умолчания тегов
+let page = Document::builder(html, BROWSER_CSS).build();       // браузерные умолчания — для страницы
 
 // 2. Отрисовка: базовый стиль текста и размер окна задаёт приложение.
 let opts = RenderOpts {

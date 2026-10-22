@@ -1595,4 +1595,8 @@ pub struct Computed {
     pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
     /// Experimental CSS path-length; Auto represents none. Not inherited.
     pub(crate) svg_path_length: Option<Len>,
+    /// The declaration being applied is a CSS-wide keyword (css-cascade-5 §7.3):
+    /// slots whose grammar does not resolve the keyword take their empty
+    /// (initial) representation. Set only around one property dispatch.
+    pub(crate) css_wide_value: bool,
 }

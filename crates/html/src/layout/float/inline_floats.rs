@@ -76,7 +76,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             && e.style.keep_spaces.or(parent.keep_spaces) != Some(true)
             && e.children
                 .iter()
-                .all(|n| crate::render::is_blank(n) || floated(n))
+                .all(|n| crate::layout::box_kind::is_blank(n) || floated(n))
     } else {
         false
     };
@@ -125,7 +125,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
         output.push(fragment(Vec::new()));
     }
     for child in children {
-        if margin_fragment && crate::render::is_blank(&child) {
+        if margin_fragment && crate::layout::box_kind::is_blank(&child) {
             continue;
         }
         if floated(&child) {
@@ -133,6 +133,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
                 output.push(fragment(std::mem::take(&mut pending)));
             }
             let Node::Element(mut float) = child else {
+                // floated возвращает true только для Node::Element.
                 unreachable!()
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing

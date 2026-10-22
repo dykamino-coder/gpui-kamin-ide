@@ -148,8 +148,9 @@ pub(super) fn apply(
             text_box_line_style(nodes, inherited, false, inherited.self_node, vcx)
     {
         let trim = text_box_trim_px(&line_style, false, opts);
-        if trim > 0.0 {
-            let last = out.pop().expect("список не пуст");
+        if trim > 0.0
+            && let Some(last) = out.pop()
+        {
             // Блок-конец вертикали: правый край у `vertical-lr`, левый у
             // `vertical-rl`.
             let holder = match (vertical, rl) {

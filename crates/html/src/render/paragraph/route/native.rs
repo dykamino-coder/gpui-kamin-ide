@@ -32,11 +32,8 @@ pub(crate) fn native_paragraph(
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
 ) -> AnyElement {
-    let inherited = if native {
-        native_request.unwrap().style
-    } else {
-        inherited
-    };
+    let native_request = native_request.filter(|_| native);
+    let inherited = native_request.map_or(inherited, |request| request.style);
     // Edge-aligned pieces protrude from the block strut (CSS 2.1 §10.8.1).
     // Their size must not enlarge the central inline content's strut.
     // Per-run boxes below retain that strut alongside the legacy fallback.
@@ -225,8 +222,8 @@ pub(crate) fn native_paragraph(
     } else {
         para
     };
-    if native {
-        native_request.unwrap().built.set(true);
+    if let Some(request) = native_request {
+        request.built.set(true);
     }
     let projection = crate::interactive::scroll_extent::projection(
         opts.cx.scroll_frame.as_ref(),

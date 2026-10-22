@@ -3,6 +3,7 @@
 //! в `AnimSpec`. Токены режутся вне скобок, чтобы аргументы функций
 //! (`steps()`, `cubic-bezier()`) не распадались и не принимались за имена.
 
+mod grammar;
 use crate::animation::easing::Easing;
 use crate::style::computed::split_outside_parens;
 use crate::style::computed::{AnimSpec, Computed};
@@ -34,6 +35,21 @@ fn fill(value: &str) -> Option<u8> {
 
 impl Computed {
     pub(super) fn apply_animation(&mut self, key: &str, value: &str) {
+        if key == "animation" {
+            css_wide_reset!(self, animation, animation_easing);
+        }
+        if !grammar::valid(key, value) {
+            return;
+        }
+        let tokens = split_outside_parens(value);
+        if tokens.is_empty()
+            || tokens
+                .iter()
+                .any(|t| t.contains('(') && Easing::parse(t).is_none())
+        {
+            return;
+        }
+        let mut easing = self.animation_easing;
         let mut spec = self.animation.clone().unwrap_or_else(initial);
         if key == "animation-fill-mode" {
             if let Some(mode) = fill(value) {
@@ -44,7 +60,7 @@ impl Computed {
         } else {
             if key == "animation" {
                 spec = initial();
-                self.animation_easing = Some(Easing::default());
+                easing = Some(Easing::default());
             }
             let mut times = 0;
             for token in split_outside_parens(value) {
@@ -64,8 +80,8 @@ impl Computed {
                     times += 1;
                 } else if key == "animation-name" {
                     spec.name = token.into();
-                } else if let Some(easing) = Easing::parse(token) {
-                    self.animation_easing = Some(easing);
+                } else if let Some(parsed_easing) = Easing::parse(token) {
+                    easing = Some(parsed_easing);
                 } else if let Some(mode) = fill(token) {
                     spec.fill = mode;
                 } else {
@@ -102,6 +118,7 @@ impl Computed {
             }
         }
         self.animation = accept_parsed!(self, Some(spec));
+        self.animation_easing = easing;
     }
 }
 

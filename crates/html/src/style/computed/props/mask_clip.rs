@@ -11,6 +11,8 @@ use crate::style::values::value::Len;
 mod basic_shape;
 mod clip_mask;
 mod mask_layers;
+pub(super) mod shape_value;
+use shape_value::shape_valid;
 
 impl Computed {
     pub(crate) fn apply_mask_clip(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
@@ -19,14 +21,17 @@ impl Computed {
             // рядом с `backdrop-filter`: вторая арма того же ключа в этом
             // `match` недостижима.
             "shape-outside" => {
-                self.accept_declaration();
                 let t = v.trim();
+                if t != "none" && !shape_valid(t) && ImageSource::parse(t, vcx).is_none() {
+                    return;
+                }
+                self.accept_declaration();
                 self.shape_outside = (t != "none").then(|| t.to_string());
                 self.shape_image = ImageSource::parse(t, vcx);
             }
-            "shape-margin" => self.shape_margin = record_parsed!(self, Len::parse(v.trim(), vcx)),
+            "shape-margin" => self.shape_margin = apply_parsed!(self, Len::parse(v.trim(), vcx)),
             "shape-image-threshold" => {
-                self.shape_threshold = record_parsed!(
+                self.shape_threshold = apply_parsed!(
                     self,
                     v.trim().parse::<f32>().ok().map(|t| t.clamp(0.0, 1.0))
                 );
@@ -34,73 +39,70 @@ impl Computed {
             // Устаревшее `clip` (CSS 2.1): rect с запятыми или пробелами;
             // `auto` в позиции — соответствующий край коробки.
             "clip" => {
-                if v == "auto" {
-                    self.accept_declaration();
-                }
                 if v == "inherit" {
                     self.inherit_bits |= inh::CLIP;
                     return;
                 }
-                if let Some(rest) = v.trim().strip_prefix("rect(") {
-                    let rest = rest.trim_end_matches(')');
-                    // Разделители — ЛИБО три запятые, ЛИБО одни пробелы:
-                    // смешанная запись невалидна, свойство игнорируется
-                    // (clip-rect-comma-002..004).
-                    let commas = rest.matches(',').count();
-                    if commas != 0 && commas != 3 {
-                        return;
-                    }
-                    let parts: Vec<&str> = rest
-                        .split([',', ' '])
-                        .map(str::trim)
-                        .filter(|t| !t.is_empty())
-                        .collect();
-                    if parts.len() == 4 {
-                        self.accept_declaration();
-                        let side = |t: &str| match t {
-                            "auto" => None,
-                            // Нулевая длина есть ноль в любой единице, и
-                            // `rect(-0em, …)` обязан обрезать, а не читаться
-                            // как `auto` (`visufx/clip-076…102`). Кегель на
-                            // этом шаге ещё не известен, поэтому ненулевые
-                            // относительные единицы по-прежнему мимо.
-                            _ => match Len::parse(t, vcx) {
-                                Some(Len::Px(v)) => Some(v),
-                                Some(
-                                    Len::Em(v)
-                                    | Len::Ex(v)
-                                    | Len::Ch(v)
-                                    | Len::Ic(v)
-                                    | Len::Lh(v)
-                                    | Len::Vh(v)
-                                    | Len::Vw(v),
-                                ) if v == 0.0 => Some(0.0),
-                                _ => None,
-                            },
-                        };
-                        self.clip_rect = Some([
-                            side(parts[0]),
-                            side(parts[1]),
-                            side(parts[2]),
-                            side(parts[3]),
-                        ]);
-                        let raw = |t: &str| match t {
-                            "auto" => None,
-                            _ => Len::parse(t, vcx),
-                        };
-                        self.clip_len =
-                            Some([raw(parts[0]), raw(parts[1]), raw(parts[2]), raw(parts[3])]);
-                    }
-                }
+                let raw = parsed_value!(self, shape_value::clip_rect(v, vcx));
+                self.clip_len = raw;
+                self.clip_rect = raw.map(|sides| {
+                    sides.map(|side| match side {
+                        Some(Len::Px(n)) => Some(n),
+                        Some(
+                            Len::Em(n)
+                            | Len::Ex(n)
+                            | Len::Ch(n)
+                            | Len::Ic(n)
+                            | Len::Lh(n)
+                            | Len::Vh(n)
+                            | Len::Vw(n),
+                        ) if n == 0.0 => Some(0.0),
+                        _ => None,
+                    })
+                });
             }
             "mask-size" | "-webkit-mask-size" => mask_size::apply(self, v, vcx),
             "mask-mode" => {
+                if !matches!(v, "luminance" | "alpha" | "match-source") {
+                    return;
+                }
                 self.accept_declaration();
                 self.mask_luminance = Some(v.trim() == "luminance");
                 self.mask_alpha_mode = Some(v.trim() == "alpha");
             }
-            "mask-type" => self.mask_type_alpha = accept_parsed!(self, Some(v.trim() == "alpha")),
+            "mask-type" => {
+                self.mask_type_alpha = apply_parsed!(
+                    self,
+                    match v {
+                        "alpha" => Some(true),
+                        "luminance" => Some(false),
+                        _ => None,
+                    }
+                )
+            }
             "mask-composite" | "-webkit-mask-composite" => {
+                if v.split(',').any(|w| {
+                    !matches!(
+                        w.trim(),
+                        "add"
+                            | "subtract"
+                            | "intersect"
+                            | "exclude"
+                            | "source-over"
+                            | "source-in"
+                            | "source-out"
+                            | "source-atop"
+                            | "destination-over"
+                            | "destination-in"
+                            | "destination-out"
+                            | "destination-atop"
+                            | "xor"
+                            | "copy"
+                            | "clear"
+                    )
+                }) {
+                    return;
+                }
                 self.accept_declaration();
                 self.mask_composite = Some(
                     v.split(',')

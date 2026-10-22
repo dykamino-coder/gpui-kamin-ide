@@ -160,8 +160,13 @@ impl crate::Tree {
 
     /// Parses `Tree` from an SVG string.
     pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
+        // KaminIDE patch: reject the primary source before allocating its XML arena.
+        if text.len() > svgtree::SOURCE_BYTE_LIMIT {
+            return Err(Error::ElementsLimitReached);
+        }
         let xml_opt = roxmltree::ParsingOptions {
             allow_dtd: true,
+            nodes_limit: svgtree::NODE_LIMIT as u32,
             ..Default::default()
         };
 
@@ -173,8 +178,10 @@ impl crate::Tree {
 
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
+        let source_bytes = doc.input_text().len();
+        let source_nodes = doc.descendants().count();
         let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
-        doc.import_external(opt);
+        doc.import_external(opt, source_bytes, source_nodes);
         self::converter::convert_doc(&doc, opt)
     }
 }

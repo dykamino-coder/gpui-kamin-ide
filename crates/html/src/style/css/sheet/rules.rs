@@ -137,26 +137,22 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         let flat = strip_nested_blocks(body);
         let decls = parse_decls(&flat);
         // Марджин-боксы — вложенные at-правила с известным именем.
-        let margins: Vec<(String, Vec<(String, String)>)> = nested_blocks(body)
+        let margins: Vec<(String, DeclBlock)> = nested_blocks(body)
             .into_iter()
             .filter(|(n, _)| MARGIN_BOXES.contains(&n.as_str()))
-            .map(|(n, b)| (n, ordered_decls(&parse_decls(&b))))
+            .map(|(n, b)| (n, parse_decls(&b)))
             .collect();
         if !decls.is_empty() || !margins.is_empty() {
-            // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства —
-            // отдельной парой на своём месте: `Decls` склеивает повторы
-            // через `DECL_SEP`, а `page_box` применяет пары по очереди:
-            // `margin: 0; margin-top: 20vw`
-            // (`page-size-016`) давал разный лист от прогона к прогону,
-            // а `margin: 13px; margin: inherit` (`page-margin-006`) —
-            // значение «13px\u{1}inherit», которое не разбиралось вовсе.
-            let list = ordered_decls(&decls);
+            // Объявления листа — В ПОРЯДКЕ ЗАПИСИ, повтор свойства — на
+            // своём месте, и `page_box` применяет их по очереди:
+            // `margin: 0; margin-top: 20vw` (`page-size-016`),
+            // `margin: 13px; margin: inherit` (`page-margin-006`).
             if let Some(sels) = parse_page_selectors(&head[5..]) {
                 push_page_rule(
                     cx.doc,
                     PageRule {
                         sels,
-                        decls: list,
+                        decls,
                         margins,
                         layer: layer_of_rules(),
                     },
@@ -170,14 +166,18 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         // ещё и `initial-value`. Имя — с исходным регистром.
         let ident = head["@property".len()..].trim();
         let decls = parse_decls(body);
-        let syntax = decls.get("syntax").map(|s| {
+        let syntax = decls.descriptor("syntax").map(|s| {
             s.trim()
                 .trim_matches(|c| c == '"' || c == '\'')
                 .trim()
                 .to_string()
         });
-        let inherits = decls.get("inherits").map(|s| s.trim().to_ascii_lowercase());
-        let initial = decls.get("initial-value").map(|s| s.trim().to_string());
+        let inherits = decls
+            .descriptor("inherits")
+            .map(|s| s.trim().to_ascii_lowercase());
+        let initial = decls
+            .descriptor("initial-value")
+            .map(|s| s.trim().to_string());
         if ident.starts_with("--")
             && let (Some(syntax), Some(inherits)) = (syntax, inherits)
             && matches!(inherits.as_str(), "true" | "false")
@@ -202,15 +202,10 @@ fn at_rule_inner(name: &str, head: &str, body: &str, media: &Media, cx: &SheetCx
         // документа, повторы — по порядку записи (последнее
         // действительное побеждает). Имя — с исходным регистром.
         let decls = parse_decls(body);
-        let descs: Vec<(String, Vec<String>)> = decls
-            .iter()
-            .filter(|(k, _)| k.as_str() != ORDER_KEY)
-            .map(|(k, v)| (k.clone(), v.split(DECL_SEP).map(str::to_string).collect()))
-            .collect();
         crate::style::generated::counter_style_rules::register(
             cx.doc,
             &head["@counter-style".len()..],
-            &descs,
+            &decls,
         );
         false
     } else if name.starts_with("@position-try") {

@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn mask_orientation_inherits_through_unwrapped_ancestors_and_resets() {
-        let doc = Document::new(
+        let doc = Document::builder(
             r#"<style>
         html { image-orientation: none }
         .mask { mask-image: url(unused.jpg) }
@@ -155,7 +155,8 @@ mod tests {
         <section><div class="mask" style="image-orientation:from-image"></div></section>
         </body>"#,
             "",
-        );
+        )
+        .build();
         fn collect(nodes: &[Node], flags: &mut Vec<Option<bool>>) {
             for node in nodes {
                 if let Node::Element(e) = node {
@@ -174,12 +175,13 @@ mod tests {
     #[test]
     fn logical_sides_map_by_the_inherited_mode_without_touching_own_styles() {
         use crate::style::values::value::Len;
-        let doc = Document::new(
+        let doc = Document::builder(
             r#"<body><div style="writing-mode: sideways-lr; direction: rtl">
             <p id="a" style="margin-inline-start: 15px; padding-block-start: 5px"></p>
             </div></body>"#,
             "",
-        );
+        )
+        .build();
         fn find(nodes: &[Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|n| match n {
                 Node::Element(e) if e.attrs.iter().any(|(k, v)| k == "id" && v == "a") => Some(e),

@@ -191,7 +191,7 @@ fn url_function_names_keep_css_case_and_escape_rules() {
     for raw in ["UrL(MixedCase.png)", r#"U\r\4c ("MixedCase.png")"#] {
         let decls = crate::style::css::parse_decls(&format!("background: {raw}"));
         let mut style = Computed::default();
-        style.apply_one("background", &decls["background"], vcx);
+        style.apply_one("background", decls.last("background").unwrap(), vcx);
         assert_eq!(
             style.bg_image,
             Some(ImageSource::Url("MixedCase.png".into()))

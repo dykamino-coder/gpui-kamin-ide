@@ -23,19 +23,8 @@ pub(super) mod generic_box;
 pub(crate) mod paragraph;
 pub use crate::layout::options::RenderOpts;
 
-// Compatibility names for layout/float, which still reaches these through the
-// render path until its own migration; every other domain imports the
-// defining modules (`layout::box_kind`, `layout::build_contracts`,
-// `paint::box_tree`, `dom::text_content`, ...) directly.
-pub(crate) use crate::dom::pseudo_line_layers;
-pub(crate) use crate::layout::box_kind::{
-    atomic_inline, block_level_in_flow, holds_line_box, in_flow, inline_level, inline_level_box,
-    inline_marked_block, is_blank, out_of_flow, own_context, phantom_inline, replaced_tag,
-};
-pub(crate) use crate::paint::box_tree::content_wrapper;
-pub(crate) use crate::paint::box_tree::styled::styled_div_with;
+pub(crate) use crate::layout::box_kind::{inline_level, inline_level_box};
 pub(crate) use blocks::blocks;
-pub(crate) use element::element;
 
 /// Отрисовать корневые узлы документа.
 ///

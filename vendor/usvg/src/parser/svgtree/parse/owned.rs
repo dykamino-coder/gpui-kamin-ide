@@ -33,6 +33,34 @@ impl Snapshot {
         })
     }
 
+    // KaminIDE patch: select fragments from the single owned post-cascade document.
+    pub(super) fn target(&self, fragment: &str) -> Option<&Self> {
+        if fragment.is_empty() {
+            return self.children.first();
+        }
+        self.find_id(fragment)
+    }
+
+    fn find_id(&self, id: &str) -> Option<&Self> {
+        // Typed-tree links select the last occurrence of a duplicate id.
+        self.children.iter().rev().find_map(|child| child.find_id(id)).or_else(|| {
+            self.attrs.iter().any(|(name, value, _)| *name == AId::Id && value == id)
+                .then_some(self)
+        })
+    }
+
+    // KaminIDE patch: reserve owned strings, including prefixes added to references.
+    // Counting every '#' is conservative for values that are not local references.
+    pub(super) fn copy_bytes(&self, prefix_len: usize, ids: bool) -> u64 {
+        let attrs = self.attrs.iter().filter(|(name, _, _)| ids || *name != AId::Id)
+            .map(|(name, value, _)| {
+                let prefixes = if *name == AId::Id { 1 } else { value.matches('#').count() };
+                (value.len() + prefixes * prefix_len) as u64
+            }).sum::<u64>();
+        self.text.len() as u64 + attrs
+            + self.children.iter().map(|n| n.copy_bytes(prefix_len, ids)).sum::<u64>()
+    }
+
     pub(super) fn count(&self) -> usize {
         1 + self.children.iter().map(Self::count).sum::<usize>()
     }

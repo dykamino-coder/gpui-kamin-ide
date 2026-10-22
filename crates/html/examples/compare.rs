@@ -85,7 +85,7 @@ fn main() {
                 .into_iter()
                 .find(|name| !before.contains(name))
         });
-        let doc = Rc::new(Document::new(&html, BROWSER_CSS));
+        let doc = Rc::new(Document::builder(&html, BROWSER_CSS).build());
         cx.open_window(
             WindowOptions {
                 // Точка в углу экрана и точный размер: снимок сравнивается с

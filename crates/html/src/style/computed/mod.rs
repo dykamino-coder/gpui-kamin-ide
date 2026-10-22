@@ -8,7 +8,7 @@
 use crate::document::state::ValueCx;
 #[macro_use]
 mod declaration_parse;
-pub(crate) use declaration_parse::ParseResult;
+pub(crate) use declaration_parse::{ParseResult, css_wide_keyword};
 mod calc_basis;
 pub use calc_basis::CalcSizeBasis;
 mod appearance;
@@ -56,7 +56,7 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(super) mod props;
 mod queries;
 mod resolve;
-pub use resolve::FontCx;
+pub use resolve::{FontCx, LenCx, ViewportCx};
 
 use crate::style::values::value::Len;
 mod fields;

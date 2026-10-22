@@ -24,48 +24,45 @@ impl Computed {
             // `change-rotate-property`, `change-scale-property` ждут КОНЕЧНОЕ
             // состояние анимации, и без запекания рукав рисует начальное.
             "rotate" => {
-                let mut t = self.transform.unwrap_or_default();
                 let raw = v.trim();
-                let value = raw
-                    .trim_end_matches("deg")
-                    .trim_end_matches("rad")
-                    .trim()
-                    .parse::<f32>()
-                    .unwrap_or(0.0);
-                t.rotate_rad = if raw.contains("rad") {
-                    value
-                } else {
-                    value.to_radians()
-                };
+                let (angle, flat) = parsed_value!(
+                    self,
+                    if raw == "none" {
+                        Some((0.0, false))
+                    } else {
+                        super::values::rotate_value(raw, vcx)
+                    }
+                );
+                let mut t = self.transform.unwrap_or_default();
+                t.rotate_rad = if flat { angle.to_radians() } else { 0.0 };
                 self.transform = Some(t);
                 // Угол вокруг оси z — ещё и отдельным полем: в матрицу
                 // отрисовки его приставляет `transformed()` СЛЕВА от списка
                 // `transform` (css-transforms-2 §ctm п.4). Рукав держится на
                 // запекании остановленных кадров (заметка выше); оставшиеся
                 // красные пары семьи — скриптовые, вне цели.
-                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима.
-                let angle_only = raw.split_whitespace().count() == 1
-                    && raw
-                        .trim_end_matches("deg")
-                        .trim_end_matches("rad")
-                        .trim()
-                        .parse::<f32>()
-                        .is_ok();
-                self.rotate_prop = angle_only.then_some(t.rotate_rad);
-                if angle_only || v == "none" {
-                    self.accept_declaration();
-                }
+                // Ось (`x 45deg`, `0 1 0 44deg`) плоскому пути не выразима;
+                // ось z (`z 45deg`, `0 0 1 45deg`) — тот же плоский поворот.
+                self.rotate_prop = flat.then_some(t.rotate_rad);
             }
             "scale" => {
                 let mut t = self.transform.unwrap_or_default();
                 // Процент — это доля: `scale: 150%` равно 1.5, а не 150.
-                let nums: Vec<f32> = v
+                let nums = v
                     .split_whitespace()
-                    .filter_map(|n| match n.strip_suffix('%') {
+                    .map(|n| match n.strip_suffix('%') {
                         Some(p) => p.parse::<f32>().ok().map(|v| v / 100.0),
                         None => n.parse::<f32>().ok(),
                     })
-                    .collect();
+                    .collect::<Option<Vec<_>>>();
+                let nums = parsed_value!(
+                    self,
+                    if v == "none" {
+                        Some(Vec::new())
+                    } else {
+                        nums.filter(|n| (1..=3).contains(&n.len()))
+                    }
+                );
                 let x = nums.first().copied().unwrap_or(1.0);
                 if !nums.is_empty() || v == "none" {
                     self.accept_declaration();
@@ -86,6 +83,9 @@ impl Computed {
                 });
             }
             "transform-origin" => {
+                if !super::origin_valid(v, vcx) {
+                    return;
+                }
                 // Точка отсчёта хранится ДОЛЯМИ коробки. Точечная запись
                 // (`transform-origin: 0 0`, `20px 40px`) до неё не доводилась
                 // и молча превращалась в центр — скос и поворот шли вокруг

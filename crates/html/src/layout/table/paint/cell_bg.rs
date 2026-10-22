@@ -3,6 +3,8 @@
 use super::{CellEdges, EdgeCell};
 use crate::hooks::Hooks;
 use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Фоны ячеек сросшейся модели: прямоугольник и цвет, снятые пробой ячейки
 /// на ПОДГОТОВКЕ кадра; красит их `CellBgPainter` — слой, лежащий в сетке
@@ -12,7 +14,7 @@ use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Windo
 /// «Collapsed borders paint *after* children have painted their
 /// backgrounds»), а строчное, плавающее и позиционированное содержимое
 /// ячеек — в более поздних фазах, то есть поверх кромок.
-pub type CellBgs = std::rc::Rc<std::cell::RefCell<Vec<(Bounds<Pixels>, gpui::Hsla)>>>;
+pub type CellBgs = Rc<RefCell<Vec<(Bounds<Pixels>, gpui::Hsla)>>>;
 
 /// Проба фона ячейки: холст во всю коробку ячейки записывает её рамку и
 /// цвет на подготовке кадра (та же механика, что `edge_probe`).

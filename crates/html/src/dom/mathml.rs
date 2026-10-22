@@ -2,7 +2,7 @@
 
 pub(crate) use super::mathml_lengths::parse_mathml_length;
 use crate::document::state::ValueCx;
-use crate::style::css::{Rule, Selector, parse_decls};
+use crate::style::css::{DeclBlock, Rule, Selector};
 use markup5ever_rcdom::{Handle, NodeData};
 
 pub(super) fn is_mathml(handle: &Handle) -> bool {
@@ -17,8 +17,9 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
         return vec![];
     }
     let mut rule = Rule {
+        // Литеральный универсальный селектор всегда допустим в грамматике Selectors.
         sel: Selector::parse("*").expect("universal selector"),
-        decls: parse_decls(""),
+        decls: DeclBlock::new(),
         order: 0,
         origin: 1,
         layer: vec![],
@@ -33,24 +34,24 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
                 if value.eq_ignore_ascii_case("normal")
                     && matches!(&handle.data, NodeData::Element { name, .. } if &*name.local == "mi") =>
             {
-                rule.decls.insert("text-transform".into(), "none".into());
+                rule.decls.set("text-transform", "none");
                 continue;
             }
             _ => continue,
         };
-        rule.decls.insert(property.to_string(), value.clone());
+        rule.decls.set(property, value);
     }
     if super::mathml_routing::enabled(handle)
         && let NodeData::Element { name, .. } = &handle.data
     {
         if &*name.local == "mspace" {
-            rule.decls.extend(super::mathml_lengths::hints(attrs, vcx));
+            rule.decls.merge(super::mathml_lengths::hints(attrs, vcx));
         } else if &*name.local == "mpadded"
             && let Some((_, value)) = attrs
                 .iter()
                 .find(|(k, v)| k == "width" && parse_mathml_length(v, vcx).is_some())
         {
-            rule.decls.insert("width".into(), value.clone());
+            rule.decls.set("width", value);
         }
     }
     for (name, value) in attrs
@@ -58,9 +59,9 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
         .filter(|_| super::mathml_routing::enabled(handle))
     {
         if name == "displaystyle" && matches!(value.as_str(), "true" | "false") {
-            rule.decls.insert(
-                "math-style".into(),
-                if value == "true" { "normal" } else { "compact" }.into(),
+            rule.decls.set(
+                "math-style",
+                if value == "true" { "normal" } else { "compact" },
             );
         } else if name == "scriptlevel" && value.parse::<i32>().is_ok() {
             let depth = if value.starts_with(['+', '-']) {
@@ -68,7 +69,7 @@ pub(super) fn hints(handle: &Handle, attrs: &[(String, String)], vcx: ValueCx<'_
             } else {
                 value.clone()
             };
-            rule.decls.insert("math-depth".into(), depth);
+            rule.decls.set("math-depth", &depth);
         }
     }
     vec![rule]

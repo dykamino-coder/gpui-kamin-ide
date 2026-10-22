@@ -6,11 +6,13 @@
 //! (`tail`), вложенные блоки с флоатами (`nested`).
 
 use crate::dom::{Element, Node};
+use crate::layout::box_kind::{
+    block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag,
+};
 use crate::layout::float::FloatCb;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::band_orthogonal;
 use crate::layout::float::band_host::{BandPiece, band_margins, band_piece};
-use crate::render::{block_level_in_flow, is_blank, out_of_flow, own_context, replaced_tag};
 use crate::style::computed::Display;
 use crate::style::computed::writing_mode::WritingMode;
 mod lead;

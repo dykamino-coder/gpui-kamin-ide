@@ -33,7 +33,9 @@ impl PageKid {
 #[allow(clippy::type_complexity)]
 pub struct PageKid {
     pub el: AnyElement,
-    pub(crate) flow: Option<std::rc::Rc<crate::layout::fragment::flow::FlowMeasurements>>,
+    /// Recorder of the main copy: measured lines and, for a group of one block
+    /// box, its block stack (`paged::kids::breaks`).
+    pub(crate) watched: Option<std::rc::Rc<crate::layout::fragment::paginate::watch::Watched>>,
     /// A root float contributes its measured border box even outside normal flow.
     pub(crate) float_id: Option<u64>,
     /// Repeated table sections reserved by the common fragmentation planner.

@@ -7,7 +7,7 @@ mod stationary;
 use crate::dom::Element;
 use crate::style::computed::{Computed, Sides};
 use gpui::{
-    Div, ElementId, InteractiveElement, Interactivity, IntoElement, ParentElement, ScrollHandle,
+    Div, InteractiveElement, Interactivity, IntoElement, ParentElement, ScrollHandle,
     StatefulInteractiveElement, Styled,
 };
 use std::cell::Cell;
@@ -117,7 +117,7 @@ pub(crate) fn attach(
     );
     div = crate::paint::apply::margins(div, &margin, vcx);
     div.style().sizing_keywords = Some(crate::paint::apply::intrinsic_size::keywords(c));
-    div.interactivity().element_id = Some(ElementId::Integer(e.node_id + 1));
+    div.interactivity().element_id = Some(e.state_id("html-scroll-content", vcx));
     let mut stateful = NativeScrollBox(div).track_scroll(&handle);
     if horizontal {
         stateful = stateful.overflow_x_scroll();

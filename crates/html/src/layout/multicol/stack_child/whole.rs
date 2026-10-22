@@ -79,10 +79,7 @@ pub(super) fn copy_whole_box(
         // кончается на сбалансированном хвосте.
         if matches!(mc.style.height, None | Some(Len::Auto)) {
             let b = mc.style.borders();
-            let px = |l: &Option<Len>| match l {
-                Some(Len::Px(v)) => *v,
-                _ => 0.0,
-            };
+            let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
             let bot = px(&mc.style.padding.bottom) + px(&b.bottom);
             mc.style.height = Some(Len::Px((h - bot).max(0.0)));
             mc.style.border_box = None;

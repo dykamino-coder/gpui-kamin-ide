@@ -64,10 +64,10 @@ mod tests {
     fn with(css: &[(&str, &[(&str, &str)])], f: impl FnOnce(ValueCx<'_>)) {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         for (name, descs) in css {
-            let d: Vec<(String, Vec<String>)> = descs
-                .iter()
-                .map(|(k, v)| (k.to_string(), vec![v.to_string()]))
-                .collect();
+            let mut d = crate::style::css::DeclBlock::new();
+            for (k, v) in descs.iter() {
+                d.push(*k, *v, false);
+            }
             register(&doc, name, &d);
         }
         f(doc.values());

@@ -62,11 +62,12 @@ pub fn apply_text(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(relative(mult)),
-            Len::Em(k) => d.line_height(px(k * 16.0)),
-            l @ (Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => {
+            l @ (Len::Em(_) | Len::EmPx(..) | Len::Ch(_) | Len::Ic(_) | Len::Ex(_)) => {
                 d.line_height(px(l.to_px(None, FontCx::FALLBACK, vcx).unwrap_or(16.0)))
             }
             Len::Lh(k) | Len::LhPx(k, _) => d.line_height(relative(k)),
+            // Окно на этом шаге неизвестно (узел вне сборщика дерева):
+            // запасная трактовка — доля, как у `len_to_gpui`.
             Len::Vw(k) | Len::Vh(k) => d.line_height(relative(k)),
             // `anchor()` в `line-height` не бывает (css-anchor-position-1 §anchor-fn:
             // только вставки) — как незнакомая длина, без сдвига.

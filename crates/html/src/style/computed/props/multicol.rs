@@ -71,6 +71,8 @@ impl Computed {
             "column-wrap" => {
                 if matches!(v.trim(), "auto" | "wrap" | "nowrap") {
                     self.accept_declaration();
+                } else {
+                    return;
                 }
                 self.column_wrap = match v.trim() {
                     "wrap" => Some(true),
@@ -83,51 +85,109 @@ impl Computed {
             // хранится отсутствием значения.
             "page" => {
                 let t = v.trim();
-                if !t.is_empty() {
-                    self.accept_declaration();
+                if !crate::style::css::selector_tokens::ident(t) {
+                    return;
                 }
+                self.accept_declaration();
                 self.page =
                     (!t.is_empty() && !t.eq_ignore_ascii_case("auto")).then(|| t.to_string());
             }
             // `column-fill`: балансировать ли колонки (дефолт balance).
-            "column-fill" => self.column_fill_auto = accept_parsed!(self, Some(v.trim() == "auto")),
+            "column-fill" => {
+                self.column_fill_auto = apply_parsed!(
+                    self,
+                    match v {
+                        "auto" => Some(true),
+                        "balance" | "balance-all" => Some(false),
+                        _ => None,
+                    }
+                )
+            }
             // `scroll-marker-group: none | [before|after] || [links|tabs]`
             // (css-overflow-5): нужна только сторона, `links`/`tabs` — роль.
             "scroll-target-group" => {
+                if !matches!(v, "auto" | "none") {
+                    return;
+                }
                 self.scroll_target_group =
                     accept_parsed!(self, Some(v.trim().eq_ignore_ascii_case("auto")));
             }
             "scroll-marker-group" => {
-                let words: Vec<&str> = v.split_whitespace().collect();
-                self.scroll_marker_group = record_parsed!(
+                let words: Vec<_> = v.split_whitespace().collect();
+                if words.is_empty()
+                    || words
+                        .iter()
+                        .any(|w| !matches!(*w, "before" | "after" | "links" | "tabs" | "none"))
+                {
+                    return;
+                }
+                self.scroll_marker_group = parsed_value!(
                     self,
-                    if words.contains(&"before") {
-                        Some(true)
+                    if v == "none" {
+                        Some(None)
+                    } else if words.contains(&"before") {
+                        Some(Some(true))
                     } else if words.contains(&"after") {
-                        Some(false)
+                        Some(Some(false))
                     } else {
                         None
                     }
                 );
-                if v.trim() == "none" {
-                    self.accept_declaration();
-                }
             }
+
             // `column-span: all` — растяжка на все колонки.
-            "column-span" => self.column_span = accept_parsed!(self, Some(v.trim() == "all")),
+            "column-span" => {
+                self.column_span = apply_parsed!(
+                    self,
+                    match v {
+                        "all" => Some(true),
+                        "none" => Some(false),
+                        _ => None,
+                    }
+                )
+            }
             // `avoid`, `avoid-column`, `avoid-page`, `avoid-region` — все
             // запрещают разрыв ВНУТРИ коробки; `auto` разрешает.
             // `page-break-inside` — устаревшее написание того же (css-break-3
             // §6.4 требует считать их одним свойством).
             "break-inside" | "page-break-inside" => {
+                if !matches!(
+                    v,
+                    "auto" | "avoid" | "avoid-column" | "avoid-page" | "avoid-region"
+                ) {
+                    return;
+                }
                 self.break_inside_avoid = accept_parsed!(self, v.trim().starts_with("avoid"))
             }
             // Префиксное написание — то же свойство (`border-image-000`,
             // `-webkit-box-decoration-break: clone`).
             "box-decoration-break" | "-webkit-box-decoration-break" => {
+                css_wide_reset!(self, bdb_clone);
+                if !matches!(v, "slice" | "clone") {
+                    return;
+                }
                 self.bdb_clone = accept_parsed!(self, v.trim().eq_ignore_ascii_case("clone"))
             }
             "break-before" | "page-break-before" => {
+                if !matches!(
+                    v,
+                    "auto"
+                        | "avoid"
+                        | "avoid-column"
+                        | "avoid-page"
+                        | "avoid-region"
+                        | "column"
+                        | "page"
+                        | "always"
+                        | "left"
+                        | "right"
+                        | "recto"
+                        | "verso"
+                        | "region"
+                        | "all"
+                ) {
+                    return;
+                }
                 self.break_before_force = matches!(
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"
@@ -142,6 +202,25 @@ impl Computed {
                 self.accept_declaration();
             }
             "break-after" | "page-break-after" => {
+                if !matches!(
+                    v,
+                    "auto"
+                        | "avoid"
+                        | "avoid-column"
+                        | "avoid-page"
+                        | "avoid-region"
+                        | "column"
+                        | "page"
+                        | "always"
+                        | "left"
+                        | "right"
+                        | "recto"
+                        | "verso"
+                        | "region"
+                        | "all"
+                ) {
+                    return;
+                }
                 self.break_after_force = matches!(
                     v.trim(),
                     "column" | "page" | "always" | "left" | "right" | "recto" | "verso" | "region"

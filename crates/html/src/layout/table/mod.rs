@@ -14,6 +14,7 @@ mod axes;
 pub mod columns;
 pub mod paint;
 
+mod context;
 mod finish;
 mod table_border_widths;
 mod table_clipped_content;
@@ -97,8 +98,8 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // не трогается. Прошлая попытка ломала css-position — она сдвигала
     // ряды и там, где группы уже стояли по порядку.
     let fixed = table_rows_fixed(fixed);
-    let mut rows: Vec<(&Element, RowCarry)> = vec![];
-    collect_rows(&fixed, Some(e), (0.0, 0.0, None, None), &mut rows);
+    let mut rows: Vec<anon::TableRow> = vec![];
+    collect_rows(&fixed, Some(e), RowCarry::default(), &mut rows);
     // Сколько рядов от i-го до конца ЕГО группы (включая сам ряд): охват
     // ячейки по рядам урезается этим числом, а `rowspan=0` его и берёт (HTML
     // table model: «span all the remaining rows in the row group»). Без
@@ -144,7 +145,6 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // collapse` — ровно там, где ниже кладётся `EdgePainter` (у легаси
     // `rules=` без `border-collapse` кромки живут на коробках, и проба фона
     // без своего слоя потеряла бы цвет ячейки).
-    let paint_layers = e.style.border_collapse == Some(true);
     // Ячейки, чьё содержимое Blink красит ПОЗЖЕ сросшихся кромок (строчный
     // уровень, флоаты, позиционированные, контексты наложения — фазы после
     // `kDescendantBlockBackgroundsOnly`), идут в сетку ПОСЛЕ слоя кромок;
@@ -164,7 +164,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     // С первого раза правка была в минус (ломалась арабская вязь) — но ломал
     // её свой замер ширин, который мерил текст ячейки отдельно от раскладки.
     // Со снятым замером она проходит чисто.
-    let row_elements: Vec<&Element> = rows.iter().map(|(r, _)| *r).collect();
+    let row_elements: Vec<&Element> = rows.iter().map(|r| r.element).collect();
     // Заявленные ширины ячеек по КОЛОНКАМ: ширина ячейки в таблице задаёт
     // колонку, а не свою коробку (CSS 2.1 §17.5.2.2) — колонка не уже
     // содержимого (пол min-content), процентная забирает долю остатка.
@@ -187,7 +187,7 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
     let (win_edges, outer_win) = table_border_widths::resolve(
         e,
         &row_elements,
-        &rows.iter().map(|(_, carry)| carry.3).collect::<Vec<_>>(),
+        &rows.iter().map(|r| r.carry.group).collect::<Vec<_>>(),
         &rows_left,
         cols,
         (table_font, &table_family),
@@ -209,28 +209,18 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         &win_edges,
         vcx,
     );
-    // Слой ГРУПП КОЛОНОК и слой КОЛОНОК — две полосы, снизу вверх (§17.5.1:
-    // «the next layer contains the column groups… on top of the column groups
-    // are the areas representing the column boxes»). У каждой свой буфер
-    // проб: площадь группы шире колоночной, и `background-position` у них
-    // разный. Обе идут ПЕРЕД рядами: колонка рисуется ниже ряда
-    // (css-tables-3 §layers).
-    table_rows_with_bands(
+    // Группы колонок и колонки красятся отдельными слоями перед рядами (§17.5.1).
+    let geom = context::TableGeom {
         e,
-        opts,
         inherited,
         spacing,
-        rows,
         rows_left,
         cols,
-        cells,
-        under,
-        cell_bgs,
-        paint_layers,
-        cells_over,
         row_elements,
         col_widths,
         table_font,
+        table_em: 16.0,
+        table_family: inherited.font_family.clone().unwrap_or_default(),
         from_cols,
         cols_collapsed,
         cols_pct,
@@ -238,7 +228,19 @@ pub(crate) fn table(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Any
         win_edges,
         outer_win,
         table_is_vertical,
-    )
+        bw: [0.0; 4],
+        have_rows: !rows.is_empty(),
+        collapse_cells: e.style.border_collapse == Some(true)
+            || (e.style.border_collapse.is_none() && e.attr("rules").is_some()),
+    };
+    let mut out = context::RowsOut {
+        cells,
+        under,
+        cell_bgs,
+        cells_over,
+        ..Default::default()
+    };
+    table_rows_with_bands(geom, rows, &mut out, opts)
 }
 
 pub(super) fn is_cell(e: &Element) -> bool {

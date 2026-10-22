@@ -72,7 +72,9 @@ pub(super) fn shaped_height(
             // после ребёнка законен, и поле на нём усекается (css-break-3
             // §5.2) — Blink `block_layout_algorithm.cc` кончает коробку в
             // этом фрагментаинере (`trailing-child-margin-000/002`).
-            Some((end, _, last_mb)) if bfc_root(c) && bot == 0.0 && last_mb > 0.0 => {
+            Some((end, _, last_mb))
+                if crate::layout::box_kind::bfc_root(c) && bot == 0.0 && last_mb > 0.0 =>
+            {
                 cuts.push((end, end + last_mb));
                 (end + last_mb, mt, mb)
             }
@@ -175,18 +177,6 @@ pub(super) fn shaped_height(
         },
     };
     Ok((h, mt, mb))
-}
-
-/// Блочный контейнер — корень своего блочного контекста: поля детей через
-/// его край не схлопываются (CSS 2.1 §8.3.1; `fieldset` — HTML §15.3.13
-/// «establishes a new block formatting context»).
-pub(super) fn bfc_root(c: &Element) -> bool {
-    use crate::style::computed::Display;
-    matches!(
-        c.style.display,
-        None | Some(Display::Block) | Some(Display::ListItem)
-    ) && !c.inline
-        && (crate::layout::box_kind::own_context(c) || c.tag == "fieldset")
 }
 
 /// `max-height` ниже содержимого отделяет нижнее поле последнего ребёнка от

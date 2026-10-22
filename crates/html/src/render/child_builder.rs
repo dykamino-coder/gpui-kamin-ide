@@ -10,6 +10,8 @@ impl Default for ChildBuild {
             element,
             paragraph,
             crate::paint::box_tree::styled::styled_div_with,
+            crate::render::generic_box::child_probes,
+            crate::render::first_line_descendants::route,
         )
     }
 }

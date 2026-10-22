@@ -4,7 +4,7 @@
 //! наследуется детям с `clear_inherit`.
 
 use crate::dom::Node;
-use crate::render::{inline_level_box, out_of_flow};
+use crate::layout::box_kind::{inline_level_box, out_of_flow};
 use crate::style::computed::Computed;
 
 pub(super) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {

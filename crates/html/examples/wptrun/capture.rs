@@ -114,6 +114,13 @@ pub(super) fn offscreen() -> bool {
     *ON.get_or_init(|| std::env::var("WPT_OFFSCREEN").is_ok_and(|v| v == "1"))
 }
 
+/// Снимок первого GPU-кадра после подмены документа, без ожидания сходимости.
+/// Диагностический режим работает и при видимом окне стенда.
+pub(super) fn first_frame() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("WPT_FIRST_FRAME").is_ok_and(|v| v == "1"))
+}
+
 /// Park the runner window off-screen (`WPT_OFFSCREEN`) and drop its taskbar
 /// button: tool-window ex-style, applied while hidden so the taskbar notices,
 /// then shown again without activation at an off-screen origin. The window
@@ -147,6 +154,21 @@ pub(super) fn park_offscreen(hwnd: isize) {
 #[cfg(test)]
 mod tests {
     use super::CaptureCursor;
+
+    #[test]
+    fn first_frame_survives_later_draws_and_rearms_for_the_next_document() {
+        use gpui::frame_capture::{arm_first, store, take_first};
+        arm_first();
+        assert!(take_first().is_none());
+        store(1, 1, vec![1, 2, 3, 255]);
+        store(1, 1, vec![4, 5, 6, 255]);
+        assert_eq!(take_first().unwrap().bgra, [1, 2, 3, 255]);
+        assert!(take_first().is_none());
+        arm_first();
+        assert!(take_first().is_none());
+        store(1, 1, vec![7, 8, 9, 255]);
+        assert_eq!(take_first().unwrap().bgra, [7, 8, 9, 255]);
+    }
 
     #[test]
     fn only_new_draws_cross_the_document_fence() {

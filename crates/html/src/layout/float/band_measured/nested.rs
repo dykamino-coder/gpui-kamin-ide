@@ -4,11 +4,11 @@ use super::{band_piece_m, has_flow_float, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::zero_len;
+use crate::layout::box_kind::is_blank;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
 use crate::layout::float::band_flow_host::{band_flow_block, band_flow_rest};
 use crate::layout::float::band_host::band_em;
 use crate::layout::float::band_nest::{band_nest_block, band_seq};
-use crate::render::is_blank;
 use crate::style::computed::writing_mode::WritingMode;
 
 /// Измеряемый хост, начатый блоком потока с флоатами внутри (шаг F7): сам

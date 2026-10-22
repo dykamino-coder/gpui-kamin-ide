@@ -3,7 +3,7 @@
 //! строки в `ParagraphRows` документа, откуда их забирает `ClampCut` своего контейнера.
 
 use super::{ClampEntry, ClampLines};
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
+use gpui::AnyElement;
 
 use std::{cell::RefCell, collections::HashMap};
 
@@ -49,33 +49,23 @@ pub fn clamp_probe(
     bt_before: f32,
     positioned: bool,
 ) -> AnyElement {
-    gpui::canvas(
-        move |bounds: Bounds<Pixels>, _, _| {
-            lines.borrow_mut().push(ClampEntry {
-                bounds,
-                line,
-                skip_count,
-                fixed_height,
-                bp_after,
-                end_margin: ends.margin,
-                min_end: ends.min_end,
-                capped: ends.capped,
-                node: ends.node,
-                seq,
-                clamped,
-                empty: false,
-                span: span.as_ref().map(|s| s.get()),
-                bt_before,
-                positioned,
-            });
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    lines.record(move |bounds| ClampEntry {
+        bounds,
+        line,
+        skip_count,
+        fixed_height,
+        bp_after,
+        end_margin: ends.margin,
+        min_end: ends.min_end,
+        capped: ends.capped,
+        node: ends.node,
+        seq,
+        clamped,
+        empty: false,
+        span: span.as_ref().map(|s| s.get()),
+        bt_before,
+        positioned,
+    })
 }
 
 /// Проба пустой поточной блочной коробки клэмп-контейнера: только её
@@ -83,33 +73,23 @@ pub fn clamp_probe(
 /// block-level sibling boxes») отделяет предыдущую строку от точки, и знака
 /// обрыва на той строке нет (`line-clamp-auto-039/032`).
 pub fn clamp_empty_probe(lines: ClampLines) -> AnyElement {
-    gpui::canvas(
-        move |bounds: Bounds<Pixels>, _, _| {
-            lines.borrow_mut().push(ClampEntry {
-                bounds,
-                line: 0.0,
-                skip_count: false,
-                fixed_height: false,
-                bp_after: 0.0,
-                end_margin: 0.0,
-                min_end: 0.0,
-                capped: false,
-                node: 0,
-                seq: None,
-                clamped: None,
-                empty: true,
-                span: None,
-                bt_before: 0.0,
-                positioned: false,
-            });
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    lines.record(move |bounds| ClampEntry {
+        bounds,
+        line: 0.0,
+        skip_count: false,
+        fixed_height: false,
+        bp_after: 0.0,
+        end_margin: 0.0,
+        min_end: 0.0,
+        capped: false,
+        node: 0,
+        seq: None,
+        clamped: None,
+        empty: true,
+        span: None,
+        bt_before: 0.0,
+        positioned: false,
+    })
 }
 
 #[cfg(test)]

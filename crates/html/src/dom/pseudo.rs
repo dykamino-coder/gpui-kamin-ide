@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 
@@ -74,7 +74,7 @@ pub(crate) fn content_image_src(image: &crate::style::computed::ImageSource) -> 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box(
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
@@ -106,7 +106,7 @@ pub(super) fn pseudo_box(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn pseudo_box_named(
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     counters: &mut crate::style::generated::counters::Counters,
     me: &Ancestor,
     path: &[Ancestor],
@@ -125,7 +125,7 @@ pub(super) fn pseudo_box_named(
     if matched.is_empty() {
         return None;
     }
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
+    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
     content::inherit_generated(&mut style, Some(me));
     // Псевдоэлемент — ребёнок хозяина: блочный `::before` внутри руби
     // инлайнизируется так же, как элемент (css-ruby-1 §2.2 п.1,

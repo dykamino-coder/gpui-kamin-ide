@@ -5,15 +5,15 @@
 //! подстановка `var()` с запасным аргументом (CSS Variables §3), пробелы вокруг
 //! подстановки берегут границы токенов.
 
-use super::{Decls, Registered};
+use super::{Registered, VarMap};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) fn compute(
-    raw: &Decls,
-    parent: &Decls,
+    raw: &VarMap,
+    parent: &VarMap,
     registered: &HashMap<String, Registered>,
     accepts: impl Fn(&str, &str) -> bool,
-) -> Decls {
+) -> VarMap {
     let mut resolver = Resolver {
         raw,
         parent,
@@ -30,8 +30,8 @@ pub(crate) fn compute(
 }
 
 struct Resolver<'a, F> {
-    raw: &'a Decls,
-    parent: &'a Decls,
+    raw: &'a VarMap,
+    parent: &'a VarMap,
     registered: &'a HashMap<String, Registered>,
     accepts: F,
     stack: Vec<String>,

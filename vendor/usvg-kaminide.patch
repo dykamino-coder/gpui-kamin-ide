@@ -162,7 +162,7 @@ index dd9ab33e361a8787c9ee4c054358f7f903eb2a77..a8f4888d7dc231bab753b486b3794a0f
 +        return None;
 +    }
 diff --git a/vendor/usvg/src/parser/mod.rs b/vendor/usvg/src/parser/mod.rs
-index 41d1b2d04d5e8213b75f5354c48c69279f9785ef..34f4b9e5d10621f9abc09dfdada6154fcb05c38a
+index 41d1b2d04d5e8213b75f5354c48c69279f9785ef..2c2c971b2e7fcb79089ccb0fee80ca87ca60ca93
 --- a/vendor/usvg/src/parser/mod.rs
 +++ b/vendor/usvg/src/parser/mod.rs
 @@ -0,0 +1 @@
@@ -170,10 +170,19 @@ index 41d1b2d04d5e8213b75f5354c48c69279f9785ef..34f4b9e5d10621f9abc09dfdada6154f
 @@ -24,0 +26,2 @@
 +// KaminIDE patch: share SVG path simplification with typed geometry callers.
 +pub use shapes::parse_path;
-@@ -173 +176,2 @@
+@@ -159,0 +163,4 @@
++        // KaminIDE patch: reject the primary source before allocating its XML arena.
++        if text.len() > svgtree::SOURCE_BYTE_LIMIT {
++            return Err(Error::ElementsLimitReached);
++        }
+@@ -161,0 +169 @@
++            nodes_limit: svgtree::NODE_LIMIT as u32,
+@@ -173 +181,4 @@
 -        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
++        let source_bytes = doc.input_text().len();
++        let source_nodes = doc.descendants().count();
 +        let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
-+        doc.import_external(opt);
++        doc.import_external(opt, source_bytes, source_nodes);
 diff --git a/vendor/usvg/src/parser/paint_server.rs b/vendor/usvg/src/parser/paint_server.rs
 index 5d5bc4c0191708ca7d13c1bc72080314af0f7de9..3457a65dce40f6ff32c802889ad59164f2e4059d
 --- a/vendor/usvg/src/parser/paint_server.rs
@@ -470,28 +479,38 @@ index 0000000000000000000000000000000000000000..16564783a1955a8190fff5f9515ce712
 +    }
 +}
 diff --git a/vendor/usvg/src/parser/svgtree/mod.rs b/vendor/usvg/src/parser/svgtree/mod.rs
-index dd0bdf78d012cbbf2e4a9cb75c10db476f506a91..1ce6ce639538bebfd685bc9bdf4247c0ce64216e
+index dd0bdf78d012cbbf2e4a9cb75c10db476f506a91..1e97919762416cb7aa7c7d468bb0e780c9bd8a6d
 --- a/vendor/usvg/src/parser/svgtree/mod.rs
 +++ b/vendor/usvg/src/parser/svgtree/mod.rs
-@@ -8,0 +9 @@
+@@ -0,0 +1 @@
++//! SVG XML arenas, typed nodes and resource links.
+@@ -2,0 +4,4 @@
++
++// KaminIDE patch: total source and allocation limits for one SVG parse session.
++pub(crate) const SOURCE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
++pub(crate) const NODE_LIMIT: usize = 1_000_000;
+@@ -8,0 +14 @@
 +mod cycles;
-@@ -491,0 +493 @@
+@@ -25,0 +32,2 @@
++    // KaminIDE patch: bound typed nodes, including local use expansion and text.
++    node_limit: usize,
+@@ -491,0 +500 @@
 +            visited: Vec::new(),
-@@ -616,0 +619,4 @@
+@@ -616,0 +626,4 @@
 +    /// KaminIDE: elements already yielded. Upstream only stopped on a link
 +    /// back to the origin or to the current element, so `a -> b -> c -> b`
 +    /// looped forever.
 +    visited: Vec<NodeId>,
-@@ -633 +639,4 @@
+@@ -633 +646,4 @@
 -            if link.id() == self.curr || link.id() == self.origin {
 +            if link.id() == self.curr
 +                || link.id() == self.origin
 +                || self.visited.contains(&link.id())
 +            {
-@@ -641,0 +651 @@
+@@ -641,0 +658 @@
 +            self.visited.push(self.curr);
 diff --git a/vendor/usvg/src/parser/svgtree/parse.rs b/vendor/usvg/src/parser/svgtree/parse.rs
-index 524654a790d12df2fcf93df5e69872aff5436419..84ec27dc89f1480427ffe170a1adf117fc826387
+index 524654a790d12df2fcf93df5e69872aff5436419..24eeaf3d1df9b89a86e60002c04532d854de8b84
 --- a/vendor/usvg/src/parser/svgtree/parse.rs
 +++ b/vendor/usvg/src/parser/svgtree/parse.rs
 @@ -0,0 +1 @@
@@ -509,7 +528,7 @@ index 524654a790d12df2fcf93df5e69872aff5436419..84ec27dc89f1480427ffe170a1adf117
 +use css::{XmlNode, resolve_css};
 +pub(crate) use elements::parse_svg_element;
 +use uses::parse_svg_use_element;
-@@ -22,40 +35 @@
+@@ -22,44 +35,12 @@
 -        parse(xml, injected_stylesheet)
 -    }
 -
@@ -550,10 +569,32 @@ index 524654a790d12df2fcf93df5e69872aff5436419..84ec27dc89f1480427ffe170a1adf117
 -            value,
 -            important,
 -        });
-+        parse(xml, injected_stylesheet, false)
-@@ -67,0 +42 @@
+-    }
+-}
+-
+-fn parse<'input>(
++        // KaminIDE patch: count the original XML arena as part of the same session.
++        if xml.input_text().len() > super::SOURCE_BYTE_LIMIT {
++            return Err(Error::NodesLimitReached);
++        }
++        let remaining = super::NODE_LIMIT.checked_sub(xml.descendants().count())
++            .ok_or(Error::NodesLimitReached)?;
++        parse_with_limit(xml, injected_stylesheet, false, remaining)
++    }
++}
++
++// KaminIDE patch: external resources share the session's remaining node budget.
++fn parse_with_limit<'input>(
+@@ -67,0 +49,2 @@
 +    resource: bool,
-@@ -95,10 +70,29 @@
++    node_limit: usize,
+@@ -68,0 +52,3 @@
++    if node_limit == 0 {
++        return Err(Error::NodesLimitReached);
++    }
+@@ -69,0 +56 @@
++        node_limit,
+@@ -95,10 +82,29 @@
 -    parse_xml_node_children(
 -        xml.root(),
 -        xml.root(),
@@ -593,10 +634,10 @@ index 524654a790d12df2fcf93df5e69872aff5436419..84ec27dc89f1480427ffe170a1adf117
 +            &id_map,
 +        )?;
 +    }
-@@ -109 +103 @@
+@@ -109 +115 @@
 -            if child.tag_name() != Some(EId::Svg) {
 +            if !resource && child.tag_name() != Some(EId::Svg) {
-@@ -125,5 +119,5 @@
+@@ -125,5 +131,5 @@
 -    fix_recursive_patterns(&mut doc);
 -    fix_recursive_links(EId::ClipPath, AId::ClipPath, &mut doc);
 -    fix_recursive_links(EId::Mask, AId::Mask, &mut doc);
@@ -607,7 +648,7 @@ index 524654a790d12df2fcf93df5e69872aff5436419..84ec27dc89f1480427ffe170a1adf117
 +    // (fix_recursive_patterns/links/fe_image), which let longer chains
 +    // overflow the stack.
 +    super::cycles::fix_resource_cycles(&mut doc);
-@@ -221,626 +214,0 @@
+@@ -221,626 +226,0 @@
 -
 -pub(crate) fn parse_svg_element<'input>(
 -    xml_node: roxmltree::Node<'_, 'input>,
@@ -1436,10 +1477,10 @@ index 0000000000000000000000000000000000000000..05c7a8cedc491c0cecc69d3de6af6f85
 +}
 diff --git a/vendor/usvg/src/parser/svgtree/parse/elements.rs b/vendor/usvg/src/parser/svgtree/parse/elements.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c309a26327b5f835663a1561e436e8a22bfbcfca
+index 0000000000000000000000000000000000000000..0792e1bafd9b31a2b51c6d2af62e5a388f13a776
 --- /dev/null
 +++ b/vendor/usvg/src/parser/svgtree/parse/elements.rs
-@@ -0,0 +1,253 @@
+@@ -0,0 +1,251 @@
 +//! SVG typed-tree elements; source cascade remains in its resource scope.
 +use super::*;
 +pub(crate) fn parse_svg_element<'input>(
@@ -1450,6 +1491,8 @@ index 0000000000000000000000000000000000000000..c309a26327b5f835663a1561e436e8a2
 +    ignore_ids: bool,
 +    doc: &mut Document<'input>,
 +) -> Result<NodeId, Error> {
++    // KaminIDE patch: reject before copying attributes or allocating a typed node.
++    doc.check_node_budget()?;
 +    let attrs_start_idx = doc.attrs.len();
 +    let mut href_idx: Option<usize> = None;
 +
@@ -1643,10 +1686,6 @@ index 0000000000000000000000000000000000000000..c309a26327b5f835663a1561e436e8a2
 +        }
 +    }
 +
-+    if doc.nodes.len() > 1_000_000 {
-+        return Err(Error::NodesLimitReached);
-+    }
-+
 +    let node_id = doc.append(
 +        parent_id,
 +        NodeKind::Element {
@@ -1695,10 +1734,10 @@ index 0000000000000000000000000000000000000000..c309a26327b5f835663a1561e436e8a2
 +}
 diff --git a/vendor/usvg/src/parser/svgtree/parse/external.rs b/vendor/usvg/src/parser/svgtree/parse/external.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8bf787ffe6
+index 0000000000000000000000000000000000000000..e26bd0ffc75c11b54081ea828fd74e7305c9891c
 --- /dev/null
 +++ b/vendor/usvg/src/parser/svgtree/parse/external.rs
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,182 @@
 +//! External use resolves a separate resource cascade before importing typed nodes.
 +use super::owned::Snapshot;
 +use super::*;
@@ -1708,23 +1747,30 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +};
 +use url::Url;
 +
++mod budget;
++use budget::Budget;
++
 +#[derive(Default)]
 +struct Session {
 +    active: HashSet<String>,
-+    cache: HashMap<String, Arc<Resource>>,
++    cache: HashMap<String, Option<Arc<Resource>>>,
++    budget: Budget,
 +}
 +struct Resource {
++    file: String,
 +    definitions: Snapshot,
-+    target: Snapshot,
 +}
 +
 +impl Document<'_> {
-+    pub(crate) fn import_external(&mut self, opt: &crate::Options) {
++    pub(crate) fn import_external(&mut self, opt: &crate::Options, source_bytes: usize, source_nodes: usize) {
 +        let base = opt
 +            .resources_dir
 +            .as_ref()
 +            .and_then(|p| Url::from_directory_path(p).ok());
-+        Session::default().expand(self, base.as_ref(), 0);
++        let mut session = Session::default();
++        if session.budget.bytes(source_bytes as u64) && session.budget.nodes(source_nodes + self.nodes.len()) {
++            session.expand(self, base.as_ref(), 0);
++        }
 +        super::super::cycles::fix_resource_cycles(self);
 +    }
 +}
@@ -1734,42 +1780,49 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +        if depth >= 32 {
 +            return;
 +        }
-+        let uses: Vec<_> = doc
-+            .descendants()
++        normalize_hrefs(doc, base);
++        self.expand_from(doc, depth, 0);
++    }
++
++    fn expand_from(&mut self, doc: &mut Document, depth: usize, start: usize) {
++        if depth >= 32 {
++            return;
++        }
++        let uses: Vec<_> = (start..doc.nodes.len())
++            .map(|i| doc.get(NodeId::from(i)))
 +            .filter(|n| n.tag_name() == Some(EId::Use))
 +            .filter_map(|n| n.attribute::<&str>(AId::Href).map(|h| (n.id, h.to_owned())))
 +            .collect();
-+        // Images retain the resource base even after their nodes are imported.
-+        for attr in &mut doc.attrs {
-+            if attr.name == AId::Href && !attr.value.starts_with('#') {
-+                if let Some(uri) = resolve(&attr.value, base) {
-+                    let text = if uri.fragment().is_none() {
-+                        uri.to_file_path()
-+                            .ok()
-+                            .map(|p| p.to_string_lossy().into_owned())
-+                            .unwrap_or(uri.to_string())
-+                    } else {
-+                        uri.to_string()
-+                    };
-+                    attr.value = roxmltree::StringStorage::new_owned(&text);
-+                }
-+            }
-+        }
 +        for (parent, href) in uses {
 +            if href.starts_with('#') || doc.get(parent).has_children() {
 +                continue;
 +            }
-+            let Some(uri) = resolve(&href, base) else {
++            let Some(uri) = resolve(&href, None) else {
 +                continue;
 +            };
++            let fragment = uri.fragment().unwrap_or("").to_owned();
 +            let Some(resource) = self.load(uri, depth + 1) else {
 +                continue;
 +            };
-+            if doc.nodes.len() + resource.definitions.count() + resource.target.count() > 1_000_000
-+            {
++            let Some(target) = resource.definitions.target(&fragment) else {
++                continue;
++            };
++            // KaminIDE patch: instance cycles concern a target, not the whole file.
++            // The file cache remains independent of the active fragment/depth.
++            let key = format!("{}#{fragment}", resource.file);
++            if self.active.contains(&key) {
 +                continue;
 +            }
++            // KaminIDE patch: reserve both copies and the defs wrapper before importing.
 +            let prefix = format!("__kamin_resource_{}_", doc.nodes.len());
++            let count = 1 + resource.definitions.count() + target.count();
++            let bytes = resource.definitions.copy_bytes(prefix.len(), true)
++                + target.copy_bytes(prefix.len(), false);
++            if !self.budget.nodes(count) || !self.budget.bytes(bytes) {
++                continue;
++            }
++            self.active.insert(key.clone());
++            let start = doc.nodes.len();
 +            let empty = doc.attrs.len() as u32;
 +            let defs = doc.append(
 +                doc.root_element().id,
@@ -1779,50 +1832,66 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +                },
 +            );
 +            resource.definitions.append(doc, defs, &prefix, true);
-+            resource.target.append(doc, parent, &prefix, false);
++            target.append(doc, parent, &prefix, false);
++            self.expand_from(doc, depth + 1, start);
++            self.active.remove(&key);
 +        }
 +    }
 +
 +    fn load(&mut self, uri: Url, depth: usize) -> Option<Arc<Resource>> {
-+        let fragment = uri.fragment().unwrap_or("").to_owned();
 +        let path = std::fs::canonicalize(uri.to_file_path().ok()?).ok()?;
-+        let mut canonical = Url::from_file_path(&path).ok()?;
-+        canonical.set_fragment(Some(&fragment));
++        let canonical = Url::from_file_path(&path).ok()?;
++        // KaminIDE patch: the parsed document belongs to the file, not a fragment.
 +        let key = canonical.to_string();
-+        if let Some(resource) = self.cache.get(&key) {
-+            return Some(resource.clone());
++        if depth >= 32 {
++            return None;
 +        }
-+        if depth >= 32 || !self.active.insert(key.clone()) {
++        if let Some(resource) = self.cache.get(&key) {
++            return resource.clone();
++        }
++        // Reserve cache metadata even for a file that will be rejected.
++        if !self.budget.bytes(key.len() as u64) || !self.budget.nodes(1) {
 +            return None;
 +        }
 +        let result = (|| {
-+            let bytes = read_resource(&path)?;
++            let bytes = self.budget.read_resource(&path)?;
 +            let text = std::str::from_utf8(&bytes).ok()?;
-+            let xml = roxmltree::Document::parse_with_options(
-+                text,
-+                roxmltree::ParsingOptions {
-+                    allow_dtd: true,
-+                    ..Default::default()
-+                },
-+            )
-+            .ok()?;
-+            let mut source = parse(&xml, None, true).ok()?;
-+            self.expand(&mut source, Some(&canonical), depth);
-+            let target = if fragment.is_empty() {
-+                source.root_element()
-+            } else {
-+                source.element_by_id(&fragment)?
-+            };
++            let xml = self.budget.parse_xml(text)?;
++            let mut source = self.budget.parse_tree(&xml)?;
++            // Keep the parsed file independent of the first instance's context.
++            normalize_hrefs(&mut source, Some(&canonical));
++            // Reserve the owned cache representation before capturing it.
++            let bytes = source.attrs.iter().map(|a| a.value.len() as u64).sum::<u64>()
++                + source.descendants().filter(|n| n.is_text()).map(|n| n.text().len() as u64).sum::<u64>();
++            if !self.budget.nodes(source.nodes.len()) || !self.budget.bytes(bytes) {
++                return None;
++            }
 +            Some(Arc::new(Resource {
-+                target: Snapshot::capture(target, 0)?,
++                file: key.clone(),
 +                definitions: Snapshot::capture(source.root(), 0)?,
 +            }))
 +        })();
-+        self.active.remove(&key);
-+        if let Some(resource) = &result {
-+            self.cache.insert(key, resource.clone());
-+        }
++        // Remember failures too: different fragments must not retry a rejected file.
++        self.cache.insert(key, result.clone());
 +        result
++    }
++}
++
++// KaminIDE patch: preserve resource bases in the cached file and every instance.
++fn normalize_hrefs(doc: &mut Document, base: Option<&Url>) {
++    for attr in &mut doc.attrs {
++        if attr.name == AId::Href && !attr.value.starts_with('#') {
++            if let Some(uri) = resolve(&attr.value, base) {
++                let text = if uri.fragment().is_none() {
++                    uri.to_file_path().ok()
++                        .map(|p| p.to_string_lossy().into_owned())
++                        .unwrap_or(uri.to_string())
++                } else {
++                    uri.to_string()
++                };
++                attr.value = roxmltree::StringStorage::new_owned(&text);
++            }
++        }
 +    }
 +}
 +
@@ -1842,14 +1911,6 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +// as well: metadata alone cannot protect against a file growing after open.
 +const RESOURCE_BYTE_LIMIT: u64 = 16 * 1024 * 1024;
 +
-+fn read_resource(path: &std::path::Path) -> Option<Vec<u8>> {
-+    let file = std::fs::File::open(path).ok()?;
-+    if file.metadata().ok()?.len() > RESOURCE_BYTE_LIMIT {
-+        return None;
-+    }
-+    read_bounded(file, RESOURCE_BYTE_LIMIT)
-+}
-+
 +fn read_bounded(reader: impl std::io::Read, limit: u64) -> Option<Vec<u8>> {
 +    use std::io::Read;
 +    let mut bytes = Vec::new();
@@ -1858,8 +1919,93 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +}
 +
 +#[cfg(test)]
++mod tests;
+diff --git a/vendor/usvg/src/parser/svgtree/parse/external/budget.rs b/vendor/usvg/src/parser/svgtree/parse/external/budget.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3019274ca48d241dd63f67cdad7d20b19a162899
+--- /dev/null
++++ b/vendor/usvg/src/parser/svgtree/parse/external/budget.rs
+@@ -0,0 +1,70 @@
++//! Shared byte and node allocation limits for one external-use session.
++// KaminIDE patch: reservations cover source reads, XML, typed nodes and owned copies.
++use super::*;
++use super::super::super::{NODE_LIMIT, SOURCE_BYTE_LIMIT};
++
++pub(super) struct Budget {
++    pub(super) bytes_left: u64,
++    pub(super) nodes_left: usize,
++}
++
++impl Default for Budget {
++    fn default() -> Self {
++        Self {
++            bytes_left: SOURCE_BYTE_LIMIT as u64,
++            nodes_left: NODE_LIMIT,
++        }
++    }
++}
++
++impl Budget {
++    pub(super) fn bytes(&mut self, count: u64) -> bool {
++        if count > self.bytes_left {
++            return false;
++        }
++        self.bytes_left -= count;
++        true
++    }
++
++    pub(super) fn nodes(&mut self, count: usize) -> bool {
++        if count > self.nodes_left {
++            return false;
++        }
++        self.nodes_left -= count;
++        true
++    }
++
++    pub(super) fn read_resource(&mut self, path: &std::path::Path) -> Option<Vec<u8>> {
++        let file = std::fs::File::open(path).ok()?;
++        let limit = RESOURCE_BYTE_LIMIT.min(self.bytes_left);
++        if file.metadata().ok()?.len() > limit {
++            return None;
++        }
++        // Reserve before reading. A failed/growing read consumes its allowance too.
++        self.bytes_left -= limit;
++        let bytes = read_bounded(file, limit)?;
++        self.bytes_left += limit - bytes.len() as u64;
++        Some(bytes)
++    }
++
++    pub(super) fn parse_xml<'a>(&mut self, text: &'a str) -> Option<roxmltree::Document<'a>> {
++        let limit = std::mem::take(&mut self.nodes_left);
++        let xml = roxmltree::Document::parse_with_options(
++            text,
++            roxmltree::ParsingOptions {
++                allow_dtd: true,
++                nodes_limit: limit.min(u32::MAX as usize) as u32,
++                ..Default::default()
++            },
++        ).ok()?;
++        self.nodes_left = limit.checked_sub(xml.descendants().count())?;
++        Some(xml)
++    }
++
++    pub(super) fn parse_tree<'a>(&mut self, xml: &roxmltree::Document<'a>) -> Option<Document<'a>> {
++        let limit = std::mem::take(&mut self.nodes_left);
++        let doc = super::super::parse_with_limit(xml, None, true, limit).ok()?;
++        self.nodes_left = limit.checked_sub(doc.nodes.len())?;
++        Some(doc)
++    }
++}
+diff --git a/vendor/usvg/src/parser/svgtree/parse/external/tests.rs b/vendor/usvg/src/parser/svgtree/parse/external/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a95203b5e92c59127264bd8a31fd97a1597ad2ca
+--- /dev/null
++++ b/vendor/usvg/src/parser/svgtree/parse/external/tests.rs
+@@ -0,0 +1,187 @@
++//! Regression tests for bounded external resource sessions.
++// KaminIDE patch: bounded file reads and shared resource session regressions.
 +mod byte_limit_tests {
-+    use super::read_bounded;
++    use super::super::read_bounded;
 +    use std::cell::Cell;
 +    use std::io::{self, Read};
 +
@@ -1884,12 +2030,171 @@ index 0000000000000000000000000000000000000000..08744d5eda546a4dda1ac04e4da69b8b
 +        assert_eq!(count.get(), 5);
 +    }
 +}
++
++mod cache_regression_tests {
++    use super::super::*;
++    #[test]
++    fn fragments_share_one_parsed_file() {
++        let path = std::env::temp_dir().join(format!("usvg-cache-{}.svg", std::process::id()));
++        std::fs::write(&path, r#"<svg xmlns="http://www.w3.org/2000/svg"><g id="a"/><g id="b"/></svg>"#).unwrap();
++        let mut uri = Url::from_file_path(&path).unwrap();
++        let mut session = Session::default();
++        uri.set_fragment(Some("a"));
++        let a = session.load(uri.clone(), 1).unwrap();
++        let remaining = (session.budget.bytes_left, session.budget.nodes_left);
++        // A cached parse survives source changes, including another target fragment.
++        std::fs::write(&path, "not XML").unwrap();
++        uri.set_fragment(Some("b"));
++        let b = session.load(uri, 1).unwrap();
++        std::fs::remove_file(path).unwrap();
++        assert!(Arc::ptr_eq(&a, &b), "fragments must reuse the parsed document");
++        assert!(b.definitions.target("b").is_some());
++        assert_eq!((session.budget.bytes_left, session.budget.nodes_left), remaining);
++    }
++}
++
++// KaminIDE patch: exercise session limits with small budgets, without large allocations.
++mod session_limits {
++    use super::super::*;
++
++    struct File(std::path::PathBuf);
++    impl File {
++        fn new(name: &str, text: &str) -> Self {
++            let path = std::env::temp_dir().join(format!("usvg-{}-{name}.svg", std::process::id()));
++            std::fs::write(&path, text).unwrap();
++            Self(path)
++        }
++        fn url(&self) -> Url { Url::from_file_path(&self.0).unwrap() }
++    }
++    impl Drop for File {
++        fn drop(&mut self) { std::fs::remove_file(&self.0).unwrap(); }
++    }
++    const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" id="a"/>"#;
++
++    #[test]
++    fn byte_budget_is_shared_by_distinct_files_and_failed_fragments() {
++        let a = File::new("bytes-a", SVG);
++        let b = File::new("bytes-b", SVG);
++        let mut session = Session::default();
++        let mut probe = Session::default();
++        probe.load(a.url(), 1).unwrap();
++        session.budget.bytes_left = Budget::default().bytes_left - probe.budget.bytes_left;
++        assert!(session.load(a.url(), 1).is_some());
++        assert_eq!(session.budget.bytes_left, 0);
++        assert!(session.load(b.url(), 1).is_none());
++        let nodes = session.budget.nodes_left;
++        let mut fragment = b.url();
++        fragment.set_fragment(Some("other"));
++        assert!(session.load(fragment, 1).is_none());
++        assert_eq!(session.budget.nodes_left, nodes, "failed file must not be retried");
++        assert!(session.load(a.url(), 1).is_some(), "cache hit needs no source bytes");
++    }
++
++    #[test]
++    fn invalid_file_is_cached_across_fragments() {
++        let file = File::new("invalid", "not XML");
++        let mut session = Session::default();
++        assert!(session.load(file.url(), 1).is_none());
++        let remaining = (session.budget.bytes_left, session.budget.nodes_left);
++        std::fs::write(&file.0, SVG).unwrap();
++        let mut fragment = file.url();
++        fragment.set_fragment(Some("a"));
++        assert!(session.load(fragment, 1).is_none());
++        assert_eq!((session.budget.bytes_left, session.budget.nodes_left), remaining);
++    }
++
++    #[test]
++    fn owned_cache_is_reserved_before_capture() {
++        let file = File::new("nodes", SVG);
++        let mut session = Session::default();
++        // One cache slot, two XML nodes, two typed nodes, two owned nodes.
++        session.budget.nodes_left = 6;
++        assert!(session.load(file.url(), 1).is_none());
++        assert!(session.cache.values().all(Option::is_none));
++        let mut session = Session::default();
++        session.budget.nodes_left = 7;
++        assert!(session.load(file.url(), 1).is_some());
++        assert_eq!(session.budget.nodes_left, 0);
++    }
++
++    #[test]
++    fn import_is_atomic_when_copies_do_not_fit() {
++        let file = File::new("import", SVG);
++        let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
++        let xml = roxmltree::Document::parse(&text).unwrap();
++        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
++        let mut session = Session::default();
++        session.load(file.url(), 1).unwrap();
++        session.budget.nodes_left = 0;
++        let before = (doc.nodes.len(), doc.attrs.len());
++        session.expand(&mut doc, None, 0);
++        assert_eq!((doc.nodes.len(), doc.attrs.len()), before);
++    }
++
++    #[test]
++    fn copied_attribute_bytes_are_reserved_before_import() {
++        let file = File::new("copy-bytes", SVG);
++        let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
++        let xml = roxmltree::Document::parse(&text).unwrap();
++        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
++        let mut session = Session::default();
++        session.load(file.url(), 1).unwrap();
++        session.budget.bytes_left = 0;
++        let before = (doc.nodes.len(), doc.attrs.len());
++        session.expand(&mut doc, None, 0);
++        assert_eq!((doc.nodes.len(), doc.attrs.len()), before);
++    }
++
++    #[test]
++    fn nested_resources_share_the_parent_byte_budget() {
++        let child = File::new("nested-child", SVG);
++        let parent_text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, child.url());
++        let parent = File::new("nested-parent", &parent_text);
++        let mut session = Session::default();
++        let mut probe = Session::default();
++        probe.load(parent.url(), 1).unwrap();
++        session.budget.bytes_left = Budget::default().bytes_left - probe.budget.bytes_left;
++        assert!(session.load(parent.url(), 1).is_some());
++        let xml = roxmltree::Document::parse(&parent_text).unwrap();
++        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
++        session.expand(&mut doc, Some(&parent.url()), 0);
++        assert_eq!(session.budget.bytes_left, 0);
++        assert_eq!(session.cache.values().filter(|v| v.is_some()).count(), 1);
++        assert!(session.load(child.url(), 1).is_none());
++    }
++
++    #[test]
++    fn a_different_fragment_in_the_same_file_is_not_a_file_cycle() {
++        let file = File::new("same-file", SVG);
++        let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><g id="a"><use href="{}#b"/></g><g id="b"><rect width="1" height="1"/></g></svg>"#, file.url());
++        std::fs::write(&file.0, text).unwrap();
++        let text = format!(r#"<svg xmlns="http://www.w3.org/2000/svg"><use href="{}#a"/></svg>"#, file.url());
++        let xml = roxmltree::Document::parse(&text).unwrap();
++        let mut doc = super::super::super::parse_with_limit(&xml, None, false, 20).unwrap();
++        let instance = doc.descendants().find(|n| n.tag_name() == Some(EId::Use)).unwrap().id;
++        let mut session = Session::default();
++        session.expand(&mut doc, None, 0);
++        assert_eq!(session.cache.len(), 1, "all fragments share one parsed file");
++        assert!(doc.get(instance).descendants().any(|n| n.tag_name() == Some(EId::Rect)));
++    }
++
++    #[test]
++    fn xml_and_typed_text_are_bounded_before_insertion() {
++        let mut budget = Budget { nodes_left: 2, ..Default::default() };
++        assert!(budget.parse_xml("<svg><g/></svg>").is_none());
++        assert_eq!(budget.nodes_left, 0);
++        let xml = roxmltree::Document::parse(r#"<svg xmlns="http://www.w3.org/2000/svg"><text>a<tspan>b</tspan>c</text></svg>"#).unwrap();
++        let mut budget = Budget { nodes_left: 4, ..Default::default() };
++        assert!(budget.parse_tree(&xml).is_none());
++        assert_eq!(budget.nodes_left, 0);
++    }
++}
 diff --git a/vendor/usvg/src/parser/svgtree/parse/owned.rs b/vendor/usvg/src/parser/svgtree/parse/owned.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9bf60f22583ae44785f958524e2949d1d21eb1c4
+index 0000000000000000000000000000000000000000..4ae5a4424bd23461775c7ec672577bee245b79f4
 --- /dev/null
 +++ b/vendor/usvg/src/parser/svgtree/parse/owned.rs
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,134 @@
 +//! Owned post-cascade resource nodes and collision-free instance import.
 +use super::*;
 +
@@ -1923,6 +2228,34 @@ index 0000000000000000000000000000000000000000..9bf60f22583ae44785f958524e2949d1
 +                .map(|n| Self::capture(n, depth + 1))
 +                .collect::<Option<_>>()?,
 +        })
++    }
++
++    // KaminIDE patch: select fragments from the single owned post-cascade document.
++    pub(super) fn target(&self, fragment: &str) -> Option<&Self> {
++        if fragment.is_empty() {
++            return self.children.first();
++        }
++        self.find_id(fragment)
++    }
++
++    fn find_id(&self, id: &str) -> Option<&Self> {
++        // Typed-tree links select the last occurrence of a duplicate id.
++        self.children.iter().rev().find_map(|child| child.find_id(id)).or_else(|| {
++            self.attrs.iter().any(|(name, value, _)| *name == AId::Id && value == id)
++                .then_some(self)
++        })
++    }
++
++    // KaminIDE patch: reserve owned strings, including prefixes added to references.
++    // Counting every '#' is conservative for values that are not local references.
++    pub(super) fn copy_bytes(&self, prefix_len: usize, ids: bool) -> u64 {
++        let attrs = self.attrs.iter().filter(|(name, _, _)| ids || *name != AId::Id)
++            .map(|(name, value, _)| {
++                let prefixes = if *name == AId::Id { 1 } else { value.matches('#').count() };
++                (value.len() + prefixes * prefix_len) as u64
++            }).sum::<u64>();
++        self.text.len() as u64 + attrs
++            + self.children.iter().map(|n| n.copy_bytes(prefix_len, ids)).sum::<u64>()
 +    }
 +
 +    pub(super) fn count(&self) -> usize {
@@ -1998,13 +2331,22 @@ index 0000000000000000000000000000000000000000..9bf60f22583ae44785f958524e2949d1
 +}
 diff --git a/vendor/usvg/src/parser/svgtree/parse/storage.rs b/vendor/usvg/src/parser/svgtree/parse/storage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c4c14ad90588f15c7419e0f1810e9a5f20cdabf6
+index 0000000000000000000000000000000000000000..8a0dddf9ff88e15b8f556165f0a85ba6b458bbff
 --- /dev/null
 +++ b/vendor/usvg/src/parser/svgtree/parse/storage.rs
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,51 @@
 +//! Typed-tree arena insertion and attribute storage.
 +use super::*;
 +impl<'input> Document<'input> {
++    // KaminIDE patch: every fallible parser insertion checks the arena budget.
++    pub(crate) fn check_node_budget(&self) -> Result<(), Error> {
++        if self.nodes.len() >= self.node_limit {
++            Err(Error::NodesLimitReached)
++        } else {
++            Ok(())
++        }
++    }
++
 +    pub(crate) fn append(&mut self, parent_id: NodeId, kind: NodeKind) -> NodeId {
 +        let new_child_id = NodeId::from(self.nodes.len());
 +        self.nodes.push(NodeData {
@@ -2172,6 +2514,15 @@ index 0000000000000000000000000000000000000000..1c163996027009dde2b1899159a46a52
 +    }
 +    false
 +}
+diff --git a/vendor/usvg/src/parser/svgtree/text.rs b/vendor/usvg/src/parser/svgtree/text.rs
+index cef703b0b779d9250a9c90f5e3136d6c57dbdcfa..2226c32b7f1062ea41839108438eeeb77382ba9f
+--- a/vendor/usvg/src/parser/svgtree/text.rs
++++ b/vendor/usvg/src/parser/svgtree/text.rs
+@@ -49,0 +50,2 @@
++            // KaminIDE patch: text nodes consume the same typed-node budget as elements.
++            doc.check_node_budget()?;
+@@ -91,0 +94 @@
++                    doc.check_node_budget()?;
 diff --git a/vendor/usvg/src/parser/text.rs b/vendor/usvg/src/parser/text.rs
 index 1cac7a4ad37361826b77517e9c1a2be444dcd971..9e1ab1a7a25e7dce1916f15f61cdc4398b2f8589
 --- a/vendor/usvg/src/parser/text.rs

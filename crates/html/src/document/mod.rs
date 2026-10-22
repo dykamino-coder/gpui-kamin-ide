@@ -11,6 +11,8 @@
 //! проверяется по хэшу, а не по строке целиком.
 
 mod base_url;
+mod builder;
+pub use builder::DocumentBuilder;
 mod canvas_background;
 mod embedded;
 mod logical_properties;
@@ -62,50 +64,9 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(html: &str, theme_css: &str) -> Self {
-        Self::new_media(html, theme_css, false)
-    }
-
-    /// Parse a document for the screen (`print == false`) or the print
-    /// medium (`@media print` matches, viewport = the 5in x 3in page box).
-    /// The medium belongs to the view showing the document (Blink
-    /// `LocalFrameView::MediaType`), so the host passes it here.
-    pub fn new_media(html: &str, theme_css: &str, print: bool) -> Self {
-        Self::build(html, theme_css, None, false, Media::for_medium(print))
-    }
-
-    /// Parse a document with the URL used to resolve its external resources.
-    pub fn new_with_base(html: &str, theme_css: &str, base_uri: &str) -> Self {
-        Self::build(
-            html,
-            theme_css,
-            url::Url::parse(base_uri).ok(),
-            false,
-            Media::default(),
-        )
-    }
-
-    /// Parse a local document, resolving relative resources against its source file.
-    /// A `.svg` file is `image/svg+xml` (the file URL's type comes from its
-    /// extension) and is parsed as an XML document.
-    pub fn new_with_path(html: &str, theme_css: &str, path: &std::path::Path) -> Self {
-        Self::new_with_path_media(html, theme_css, path, false)
-    }
-
-    /// `new_with_path` for the screen or the print medium (`new_media`).
-    pub fn new_with_path_media(
-        html: &str,
-        theme_css: &str,
-        path: &std::path::Path,
-        print: bool,
-    ) -> Self {
-        let base = std::path::absolute(path)
-            .ok()
-            .and_then(|p| url::Url::from_file_path(p).ok());
-        let xml = path
-            .extension()
-            .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
-        Self::build(html, theme_css, base, xml, Media::for_medium(print))
+    /// Настроить источник и носитель до единственного разбора документа.
+    pub fn builder<'a>(html: &'a str, theme_css: &'a str) -> DocumentBuilder<'a> {
+        DocumentBuilder::new(html, theme_css)
     }
 
     fn build(
@@ -153,7 +114,7 @@ impl Document {
         true
     }
 
-    /// Документ разобран для печатного носителя (`new_media`).
+    /// Документ разобран для печатного носителя (`DocumentBuilder::print`).
     pub fn is_print(&self) -> bool {
         self.state.media().print
     }

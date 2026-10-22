@@ -1,5 +1,10 @@
+//! SVG XML arenas, typed nodes and resource links.
 // Copyright 2021 the Resvg Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
+
+// KaminIDE patch: total source and allocation limits for one SVG parse session.
+pub(crate) const SOURCE_BYTE_LIMIT: usize = 64 * 1024 * 1024;
+pub(crate) const NODE_LIMIT: usize = 1_000_000;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
@@ -24,6 +29,8 @@ pub use names::{AId, EId};
 /// Text nodes are present only inside the `text` element.
 pub struct Document<'input> {
     nodes: Vec<NodeData>,
+    // KaminIDE patch: bound typed nodes, including local use expansion and text.
+    node_limit: usize,
     attrs: Vec<Attribute<'input>>,
     links: HashMap<String, NodeId>,
 }

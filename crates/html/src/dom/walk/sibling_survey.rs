@@ -8,7 +8,7 @@
 use super::build_dom_node;
 use crate::dom::tree_index::TreeIndex;
 use crate::dom::*;
-use crate::style::css::{Decls, Keyframes, Rule};
+use crate::style::css::{Keyframes, Rule, VarMap};
 use crate::style::select::{Ancestor, Sibs, census_of};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
@@ -20,7 +20,7 @@ pub(crate) fn walk_children(
     handle: &Handle,
     tree: &TreeIndex,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     frames: &HashMap<String, Keyframes>,
     counter: &mut u64,
     counters: &mut crate::style::generated::counters::Counters,

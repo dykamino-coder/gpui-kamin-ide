@@ -86,10 +86,7 @@ pub(super) fn grow_before(c: &mut Element, id: u64, grow: f32) -> bool {
             continue;
         };
         if k.node_id == id {
-            let old = match &k.style.margin.top {
-                Some(Len::Px(v)) => *v,
-                _ => 0.0,
-            };
+            let old = crate::style::values::value::px_lossy_zero(k.style.margin.top);
             k.style.margin.top = Some(Len::Px(old + grow));
             return true;
         }

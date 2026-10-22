@@ -3,6 +3,24 @@
 use super::*;
 use crate::dom::Node;
 
+fn constrained(
+    natural: f32,
+    style: &Computed,
+    decoration: f32,
+    viewport: Option<(f32, f32)>,
+    overflow_extent: bool,
+) -> f32 {
+    let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
+    constrain(
+        natural,
+        style,
+        decoration,
+        viewport,
+        overflow_extent,
+        doc.values(),
+    )
+}
+
 fn element(style: Computed, children: Vec<Node>) -> Element {
     Element {
         marks: Default::default(),
@@ -91,8 +109,8 @@ fn visible_overflow_does_not_remove_the_box_maximum() {
         max_height: Some(Len::Px(160.0)),
         ..Default::default()
     };
-    assert_eq!(constrain(206.0, &style, 0.0, None, false), 160.0);
-    assert_eq!(constrain(206.0, &style, 0.0, None, true), 206.0);
+    assert_eq!(constrained(206.0, &style, 0.0, None, false), 160.0);
+    assert_eq!(constrained(206.0, &style, 0.0, None, true), 206.0);
 }
 
 #[test]
@@ -103,8 +121,8 @@ fn minimum_wins_over_maximum_in_both_flow_modes() {
         overflow_y: Some(Overflow::Clip),
         ..Default::default()
     };
-    assert_eq!(constrain(300.0, &style, 0.0, None, false), 200.0);
-    assert_eq!(constrain(300.0, &style, 0.0, None, true), 200.0);
+    assert_eq!(constrained(300.0, &style, 0.0, None, false), 200.0);
+    assert_eq!(constrained(300.0, &style, 0.0, None, true), 200.0);
 }
 
 #[test]
@@ -144,8 +162,8 @@ fn viewport_constraints_use_the_actual_page_area() {
         ..Default::default()
     };
     assert_eq!(
-        constrain(400.0, &style, 0.0, Some((800.0, 600.0)), false),
+        constrained(400.0, &style, 0.0, Some((800.0, 600.0)), false),
         200.0
     );
-    assert_eq!(constrain(400.0, &style, 0.0, None, false), 400.0);
+    assert_eq!(constrained(400.0, &style, 0.0, None, false), 400.0);
 }

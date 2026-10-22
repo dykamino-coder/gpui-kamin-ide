@@ -1,92 +1,89 @@
-//! Разбор `calc-size()` в `width`/`height`/`min-*`/`max-*`: базис и выражение хранятся
-//! вместе, чтобы пройти каскад и наследование одной парой.
+//! Типизированные размеры: все компоненты проверяются до изменения полей стиля.
 
+use crate::document::state::ValueCx;
 use crate::style::computed::*;
 
-pub(super) fn apply(
-    c: &mut Computed,
-    key: &str,
-    value: &str,
-    vcx: crate::document::state::ValueCx<'_>,
-) -> bool {
-    let i = match key {
-        "width" => 0,
-        "height" => 1,
-        "min-width" => 2,
-        "min-height" => 3,
-        "max-width" => 4,
-        "max-height" => 5,
-        _ => return false,
-    };
-    let parsed = calc_size_arg(value);
-    if parsed.is_none() && value.starts_with("calc-size(") {
-        return true;
-    }
-    let expression = if i < 4 {
-        c.calc_size[i]
-    } else {
-        c.calc_size_max[i - 4]
-    };
-    if parsed.is_none() && expression.is_none() {
-        return false;
-    }
-    if parsed.is_none()
-        && super::super::size_range::parse_nonnegative_size(value, vcx).is_none()
-        && fit_content_arg(value, vcx).is_none()
-        && !matches!(value, "inherit" | "none")
-        && !stretch_keyword(value)
-    {
-        return true;
-    }
-    c.calc_size_basis[i] = None;
-    if i < 4 {
-        c.calc_size[i] = None;
-    } else {
-        c.calc_size_max[i - 4] = None;
-    }
-    let Some(parsed) = parsed else { return false };
-    match i {
-        0 => {
-            c.width_inherit = false;
-            c.stretch_size[0] = false;
-            c.fit_arg[0] = None;
+impl Computed {
+    pub(super) fn apply_physical_size(&mut self, i: usize, value: &str, vcx: ValueCx<'_>) {
+        let parsed = parsed_value!(self, ParsedSize::parse(value, i >= 4, vcx));
+        match i {
+            0 => self.width_inherit = value == "inherit",
+            1 => self.height_inherit = value == "inherit",
+            _ => self.minmax_inherit[i - 2] = value == "inherit",
         }
-        1 => {
-            c.height_inherit = false;
-            c.stretch_size[1] = false;
+        self.stretch_size[[0, 1, 2, 4, 3, 5][i]] = parsed.stretch;
+        if let Some(fit_index) = match i {
+            0 => Some(0),
+            2 => Some(1),
+            4 => Some(2),
+            _ => None,
+        } {
+            self.fit_arg[fit_index] = parsed.fit;
         }
-        _ => {
-            c.minmax_inherit[i - 2] = false;
-            c.stretch_size[[2, 4, 3, 5][i - 2]] = false;
-            if i == 2 {
-                c.fit_arg[1] = None;
+        self.calc_size_basis[i] = None;
+        let expression = if i < 4 {
+            &mut self.calc_size[i]
+        } else {
+            &mut self.calc_size_max[i - 4]
+        };
+        *expression = None;
+        let slot = match i {
+            0 => &mut self.width,
+            1 => &mut self.height,
+            2 => &mut self.min_width,
+            3 => &mut self.min_height,
+            4 => &mut self.max_width,
+            _ => &mut self.max_height,
+        };
+        *slot = parsed.length;
+        match parsed.calc {
+            Some(CalcSize::Fixed(px)) => *slot = Some(Len::Px(px)),
+            Some(CalcSize::Over(f, basis)) => {
+                *slot = if i < 2 { Some(Len::Auto) } else { None };
+                self.calc_size_basis[i] = Some(basis);
+                *expression = Some(f);
             }
-            if i == 4 {
-                c.fit_arg[2] = None;
-            }
+            None => {}
         }
     }
-    let slot = match i {
-        0 => &mut c.width,
-        1 => &mut c.height,
-        2 => &mut c.min_width,
-        3 => &mut c.min_height,
-        4 => &mut c.max_width,
-        _ => &mut c.max_height,
-    };
-    match parsed {
-        CalcSize::Fixed(px) => *slot = Some(Len::Px(px)),
-        CalcSize::Over(f, basis) => {
-            *slot = if i < 2 { Some(Len::Auto) } else { None };
-            c.calc_size_basis[i] = Some(basis);
-            if i < 4 {
-                c.calc_size[i] = Some(f);
-            } else {
-                c.calc_size_max[i - 4] = Some(f);
-            }
+}
+
+#[derive(Default)]
+pub(super) struct ParsedSize {
+    pub(super) length: Option<Len>,
+    fit: Option<Len>,
+    stretch: bool,
+    calc: Option<CalcSize>,
+}
+
+impl ParsedSize {
+    pub(super) fn parse(value: &str, allow_none: bool, vcx: ValueCx<'_>) -> Option<Self> {
+        let lower = value.to_ascii_lowercase();
+        if let Some(arg) = lower.strip_prefix("fit-content(") {
+            size_range::parse_nonnegative_size(arg.strip_suffix(')')?, vcx).filter(|l| {
+                !matches!(
+                    l,
+                    Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent
+                )
+            })?;
         }
+        let length = size_range::parse_nonnegative_size(value, vcx);
+        let fit = fit_content_arg(value, vcx);
+        let stretch = stretch_keyword(value);
+        let calc = calc_size_arg(value);
+        (length.is_some()
+            || fit.is_some()
+            || stretch
+            || calc.is_some()
+            || value == "inherit"
+            || (allow_none && value.eq_ignore_ascii_case("none")))
+        .then_some(Self {
+            length,
+            fit,
+            stretch,
+            calc,
+        })
     }
-    true
 }
 
 #[cfg(test)]

@@ -11,24 +11,33 @@ use crate::style::values::value::Len;
 mod functions;
 mod functions_3d;
 mod individual;
+mod values;
 use functions::transform_function;
 use functions_3d::transform_function_3d;
+use values::{origin_valid, transform_value_valid};
 
 impl Computed {
     pub(crate) fn apply_transform(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
             // --- Сдвиг и тень текста ------------------------------------------
             "translate" => {
-                let mut it = v.split_whitespace();
-                let x = it
-                    .next()
-                    .and_then(|s| Len::parse(s, vcx))
-                    .unwrap_or(Len::Px(0.0));
-                let y = it
-                    .next()
-                    .and_then(|s| Len::parse(s, vcx))
-                    .unwrap_or(Len::Px(0.0));
-                self.translate = accept_parsed!(self, Some((x, y)));
+                if v == "none" {
+                    self.translate = accept_parsed!(self, None);
+                    return;
+                }
+                let words = split_outside_parens(v);
+                if !(1..=3).contains(&words.len()) {
+                    return;
+                }
+                let lengths: Vec<_> = parsed_value!(
+                    self,
+                    words
+                        .iter()
+                        .map(|w| Len::parse_mixed(w, vcx))
+                        .collect::<Option<Vec<_>>>()
+                );
+                self.translate =
+                    Some((lengths[0], lengths.get(1).copied().unwrap_or(Len::Px(0.0))));
             }
 
             // --- Преобразования -----------------------------------------------
@@ -36,6 +45,12 @@ impl Computed {
             // после каскада (`dom::walk`), когда известны и путь, и точка
             // отсчёта, и авторский `transform` — раньше собрать нечего.
             "offset-path" => {
+                if v != "none"
+                    && !super::mask_clip::shape_value::shape_valid(v)
+                    && !v.starts_with("ray(")
+                {
+                    return;
+                }
                 self.offset_path =
                     accept_parsed!(self, (v.trim() != "none").then(|| v.trim().to_string()))
             }
@@ -43,15 +58,42 @@ impl Computed {
             // индексом арены — доля решается длиной пути во втором проходе
             // (`motion::path_css`; offset-path-shape-xywh-002).
             "offset-distance" => {
-                self.offset_distance = record_parsed!(self, Len::parse_mixed(v.trim(), vcx))
+                self.offset_distance = apply_parsed!(self, Len::parse_mixed(v.trim(), vcx))
             }
             "offset-rotate" => {
+                // motion-1 §offset-rotate: `[auto | reverse] || <angle>`.
+                let words = split_outside_parens(v);
+                let keywords = words
+                    .iter()
+                    .filter(|w| matches!(w.as_str(), "auto" | "reverse"))
+                    .count();
+                let angles = words
+                    .iter()
+                    .filter(|w| {
+                        crate::style::values::value::angle::degrees(w, vcx, false).is_some()
+                    })
+                    .count();
+                if words.is_empty()
+                    || keywords > 1
+                    || angles > 1
+                    || keywords + angles != words.len()
+                {
+                    return;
+                }
                 self.offset_rotate = accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-anchor" => {
+                if !matches!(v, "auto") && !super::background::layer_props::position_valid(v, vcx) {
+                    return;
+                }
                 self.offset_anchor = accept_parsed!(self, Some(v.trim().to_string()))
             }
             "offset-position" => {
+                if !matches!(v, "auto" | "normal")
+                    && !super::background::layer_props::position_valid(v, vcx)
+                {
+                    return;
+                }
                 self.offset_position = accept_parsed!(self, Some(v.trim().to_string()))
             }
             "transform" if v.trim() == "inherit" => self.inherit_bits |= inh::TRANSFORM,
@@ -59,12 +101,21 @@ impl Computed {
                 self.inherit_bits |= inh::TRANSFORM_ORIGIN
             }
             "transform" if has_font_units(v) => {
+                if !transform_value_valid(v, vcx) {
+                    return;
+                }
                 self.transform_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "transform-origin" if has_font_units(v) => {
+                if !origin_valid(v, vcx) {
+                    return;
+                }
                 self.transform_origin_raw = accept_parsed!(self, Some(v.to_string()))
             }
             "transform" => {
+                if v != "none" && !transform_value_valid(v, vcx) {
+                    return;
+                }
                 let mut t = self.transform.unwrap_or_default();
                 // Невалидный аргумент отбрасывает ВСЁ объявление (CSS-каскад),
                 // а не превращается в ноль (`scale(invalid)` схлопывал фигуру,

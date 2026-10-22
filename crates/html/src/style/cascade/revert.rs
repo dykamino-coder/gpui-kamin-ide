@@ -1,7 +1,18 @@
-//! revert-layer (css-cascade-5): снятие откатанных объявлений с копий правил; распознавание
-//! !important.
+//! revert-layer (css-cascade-5): снятие откатанных объявлений с копий правил.
 
-/// Помечено ли объявление как важное.
+use crate::style::css::Rule;
+
+type NormalKey = (u8, Vec<u32>, (u32, u32, u32), usize);
+
+/// Ключ обычного каскада правила: происхождение, слой, специфичность, порядок.
+fn normal_key(r: &Rule) -> NormalKey {
+    (r.origin, r.layer.clone(), r.sel.specificity(), r.order)
+}
+
+fn is_rl(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case("revert-layer")
+}
+
 /// Снять с копий правил объявления, откатанные `revert-layer`
 /// (css-cascade-5 §revert-layer): «as if no rules were specified in the
 /// current cascade layer — or between its normal and important levels».
@@ -9,63 +20,39 @@
 /// важные в L и в слоях после него (у важных они слабее) и обычные в L и
 /// после него. `all: revert-layer` откатывает каждое свойство, чьё
 /// объявление в том же слое стоит до него. `None` — откатывать нечего.
-// Reversion uses the same property-application callback as ordinary cascading.
-#[allow(clippy::type_complexity)]
-pub(super) fn revert_layers(
-    matched: &[&crate::style::css::Rule],
-) -> Option<Vec<crate::style::css::Rule>> {
-    use crate::style::css::DECL_SEP;
-    let is_rl = |part: &str| {
-        strip_important(part)
-            .trim()
-            .eq_ignore_ascii_case("revert-layer")
-    };
+pub(super) fn revert_layers(matched: &[&Rule]) -> Option<Vec<Rule>> {
     if !matched
         .iter()
-        .any(|r| r.decls.values().any(|v| v.split(DECL_SEP).any(is_rl)))
+        .any(|r| r.decls.iter().any(|d| is_rl(&d.value)))
     {
         return None;
     }
-    let mut rules: Vec<crate::style::css::Rule> = matched.iter().map(|r| (*r).clone()).collect();
-    // Порядки каскада: обычный — по возрастанию, важный — слой по убыванию.
-    let normal_key =
-        |r: &crate::style::css::Rule| (r.origin, r.layer.clone(), r.sel.specificity(), r.order);
+    let mut rules: Vec<Rule> = matched.iter().map(|r| (*r).clone()).collect();
     let mut keys: Vec<String> = rules
         .iter()
-        .flat_map(|r| r.decls.keys().cloned())
-        .filter(|k| !k.starts_with("--") && k != crate::style::css::ORDER_KEY)
+        .flat_map(|r| r.decls.iter().map(|d| d.name.clone()))
+        .filter(|k| !k.starts_with("--"))
         .collect();
     keys.sort();
     keys.dedup();
-    // Снять части свойства `key` важности `imp` у правил, прошедших фильтр.
-    let strip = |rules: &mut Vec<crate::style::css::Rule>,
-                 key: &str,
-                 imp: bool,
-                 keep: &dyn Fn(&crate::style::css::Rule) -> bool| {
+    // Снять объявления свойства `key` важности `imp` у правил, не прошедших
+    // фильтр `keep`.
+    let strip = |rules: &mut Vec<Rule>, key: &str, imp: bool, keep: &dyn Fn(&Rule) -> bool| {
         for r in rules.iter_mut().filter(|r| !keep(r)) {
-            if let Some(v) = r.decls.get(key) {
-                let rest: Vec<&str> = v
-                    .split(DECL_SEP)
-                    .filter(|p| is_important(p) != imp)
-                    .collect();
-                if rest.is_empty() {
-                    r.decls.remove(key);
-                } else {
-                    let joined = rest.join(&DECL_SEP.to_string());
-                    r.decls.insert(key.to_string(), joined);
-                }
-            }
+            r.decls.retain(|d| d.name != key || d.important != imp);
         }
     };
-    // Победитель свойства: (индекс правила, слой, значение) по порядку каскада.
-    let winner = |rules: &Vec<crate::style::css::Rule>,
-                  key: &str,
-                  imp: bool|
-     -> Option<(u8, Vec<u32>, String)> {
-        let mut best: Option<(&crate::style::css::Rule, String)> = None;
+    // Победитель свойства: (происхождение, слой, значение) по порядку каскада;
+    // внутри правила — последнее объявление нужной важности.
+    let winner = |rules: &Vec<Rule>, key: &str, imp: bool| -> Option<(u8, Vec<u32>, String)> {
+        let mut best: Option<(&Rule, &str)> = None;
         for r in rules {
-            let Some(v) = r.decls.get(key) else { continue };
-            let Some(part) = v.split(DECL_SEP).rfind(|p| is_important(p) == imp) else {
+            let Some(d) = r
+                .decls
+                .iter()
+                .rev()
+                .find(|d| d.name == key && d.important == imp)
+            else {
                 continue;
             };
             let better = match &best {
@@ -86,21 +73,21 @@ pub(super) fn revert_layers(
                 Some((b, _)) => normal_key(r) >= normal_key(b),
             };
             if better {
-                best = Some((r, part.to_string()));
+                best = Some((r, &d.value));
             }
         }
-        best.map(|(r, v)| (r.origin, r.layer.clone(), v))
+        best.map(|(r, v)| (r.origin, r.layer.clone(), v.to_string()))
     };
     // `all: revert-layer` (обычный): каждое свойство слоя, объявленное в
     // правиле НЕ позже правила с `all`, снимается в этом слое.
-    let alls: Vec<(Vec<u32>, (u8, Vec<u32>, (u32, u32, u32), usize))> = rules
+    let alls: Vec<(Vec<u32>, NormalKey)> = rules
         .iter()
         .filter(|r| {
-            r.decls.get("all").is_some_and(|v| {
-                v.split(DECL_SEP)
-                    .rfind(|p| !is_important(p))
-                    .is_some_and(is_rl)
-            })
+            r.decls
+                .iter()
+                .rev()
+                .find(|d| d.name == "all" && !d.important)
+                .is_some_and(|d| is_rl(&d.value))
         })
         .map(|r| (r.layer.clone(), normal_key(r)))
         .collect();
@@ -109,28 +96,11 @@ pub(super) fn revert_layers(
             .iter_mut()
             .filter(|r| r.layer == layer && normal_key(r) <= at)
         {
-            let props: Vec<String> = r
-                .decls
-                .keys()
-                .filter(|k| {
-                    !k.starts_with("--")
-                        && *k != crate::style::css::ORDER_KEY
-                        && *k != "direction"
-                        && *k != "unicode-bidi"
-                })
-                .cloned()
-                .collect();
-            for k in props {
-                if let Some(v) = r.decls.get(&k) {
-                    let rest: Vec<&str> = v.split(DECL_SEP).filter(|p| is_important(p)).collect();
-                    if rest.is_empty() {
-                        r.decls.remove(&k);
-                    } else {
-                        let joined = rest.join(&DECL_SEP.to_string());
-                        r.decls.insert(k, joined);
-                    }
-                }
-            }
+            r.decls.retain(|d| {
+                d.important
+                    || d.name.starts_with("--")
+                    || matches!(d.name.as_str(), "direction" | "unicode-bidi")
+            });
         }
     }
     for key in keys {
@@ -165,18 +135,4 @@ pub(super) fn revert_layers(
         }
     }
     Some(rules)
-}
-
-pub(super) fn is_important(v: &str) -> bool {
-    v.to_ascii_lowercase()
-        .replace(' ', "")
-        .ends_with("!important")
-}
-
-/// Значение без пометки важности; пробел перед `!` тоже допустим.
-pub(super) fn strip_important(v: &str) -> &str {
-    match v.to_ascii_lowercase().rfind('!') {
-        Some(at) if v[at..].to_ascii_lowercase().replace(' ', "") == "!important" => v[..at].trim(),
-        _ => v,
-    }
 }

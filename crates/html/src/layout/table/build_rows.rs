@@ -5,68 +5,39 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::columns::{col_elements, colgroup_elements, push_col_bands};
 use crate::layout::table::rows::*;
-use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
-#[allow(clippy::too_many_arguments)]
-// Row construction returns its elements and row/column band metadata together.
-#[allow(clippy::type_complexity)]
+use super::context::{ColumnLayer, GroupEdge, RowCursor, RowsOut, TableGeom, TableLayers};
+
 pub(super) fn table_rows_with_bands(
-    e: &Element,
+    mut geom: TableGeom<'_>,
+    rows: Vec<super::anon::TableRow<'_>>,
+    out: &mut RowsOut,
     opts: &RenderOpts,
-    inherited: &Computed,
-    spacing: (f32, f32),
-    rows: Vec<(
-        &Element,
-        (
-            f32,
-            f32,
-            Option<crate::style::values::value::Color>,
-            Option<&Element>,
-        ),
-    )>,
-    rows_left: Vec<usize>,
-    cols: u16,
-    cells: Vec<AnyElement>,
-    mut under: Vec<AnyElement>,
-    cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
-    paint_layers: bool,
-    cells_over: Vec<AnyElement>,
-    row_elements: Vec<&Element>,
-    col_widths: Vec<(Option<f32>, Option<f32>)>,
-    table_font: f32,
-    from_cols: Vec<Option<f32>>,
-    cols_collapsed: Vec<bool>,
-    cols_pct: Vec<Option<f32>>,
-    zero_cols: Vec<bool>,
-    win_edges: std::collections::HashMap<u64, [f32; 4]>,
-    outer_win: [f32; 4],
-    table_is_vertical: bool,
 ) -> AnyElement {
+    let e = geom.e;
+    let inherited = geom.inherited;
     let vcx = opts.cx.vcx();
-    let (grp_els, col_els, grp_rects, col_rects, have_rows) =
-        column_bands(e, cols, &mut under, &row_elements, vcx);
+    let mut layers = column_bands(e, geom.cols, &mut out.under, geom.have_rows, vcx);
     // Ширины рамки самой таблицы: крайние ячейки расползаются фоном на её
     // половину в сросшейся модели.
     // Кегль СВОЙ, а не жёсткие 16 точек: `border: 0.5em` у таблицы с крупным
     // шрифтом давал вчетверо тоньше линию (`border-conflict-element-001d/e`).
-    let table_em = match inherited.font_size {
+    geom.table_em = match inherited.font_size {
         Some(Len::Px(v)) => v,
         _ => 16.0,
     };
-    let table_family = inherited.font_family.clone().unwrap_or_default();
-    let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &table_family, table_em, vcx);
+
+    let px_of = |l: Option<Len>| geom.px_of(l, opts);
     let table_border = e.style.borders();
-    let bw = [
+    geom.bw = [
         px_of(table_border.top),
         px_of(table_border.right),
         px_of(table_border.bottom),
         px_of(table_border.left),
     ];
-    let table_edges = crate::layout::table::paint::CellEdges::default();
-    let collapse_cells = e.style.border_collapse == Some(true)
-        || (e.style.border_collapse.is_none() && e.attr("rules").is_some());
+
     // Легаси-атрибут `rules` (HTML rendering §15.3.10): `groups` даёт
     // группам рядов тонкие кромки по умолчанию.
     let rules_groups = e
@@ -80,7 +51,7 @@ pub(super) fn table_rows_with_bands(
     // (`border-*-width-applies-to-001/002/003`). Первым и последним рядом
     // группы считаются края её НЕПРЕРЫВНОГО куска в собранном порядке —
     // после перестановки §17.5.3 он уже правильный.
-    let mut group_of: std::collections::HashMap<u64, (&Element, bool, bool)> =
+    let mut group_of: std::collections::HashMap<u64, GroupEdge<'_>> =
         std::collections::HashMap::new();
     collect_group_edges(&rows, &mut group_of);
     // Не подавать ряды в обратном порядке для vertical-rl (ряды-колонки от
@@ -92,109 +63,79 @@ pub(super) fn table_rows_with_bands(
     // схлопнутые колонки и пробы фона приписывались не тем колонкам.
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
-    let occupied: Vec<u16> = vec![0; cols as usize];
+    let occupied: Vec<u16> = vec![0; geom.cols as usize];
     let group_refs: std::collections::HashMap<
         u64,
         crate::paint::effects::transformed_element::RefBox,
     > = std::collections::HashMap::new();
-    let tbl_style: &Computed = inherited;
-    table_rows(
-        rows,
+    layers.group_of = group_of;
+    layers.rules_groups = rules_groups;
+    let mut cursor = RowCursor {
         row_ix,
+        col_ix: 0,
         occupied,
-        opts,
-        under,
-        group_of,
-        inherited,
-        e,
-        cols,
-        cells,
-        zero_cols,
-        rows_left,
-        cols_collapsed,
-        collapse_cells,
-        win_edges,
-        table_is_vertical,
-        table_font,
-        &table_family,
-        paint_layers,
-        cell_bgs,
-        row_elements,
-        table_edges,
-        col_rects,
-        col_els,
-        grp_rects,
-        grp_els,
-        rules_groups,
         group_refs,
-        tbl_style,
-        cells_over,
-        spacing,
-        from_cols,
-        col_widths,
-        cols_pct,
-        bw,
-        outer_win,
-        have_rows,
-        px_of,
-    )
+        group_bands: Default::default(),
+    };
+    table_rows(&rows, &geom, &layers, &mut cursor, out, opts)
 }
 
-// Column groups retain their original elements alongside measured band geometry.
-#[allow(clippy::type_complexity)]
+// Одна запись связывает элемент дорожки и его буфер проб.
 pub(super) fn column_bands<'a>(
     e: &'a Element,
     cols: u16,
     under: &mut Vec<AnyElement>,
-    row_elements: &[&Element],
+    have_rows: bool,
     vcx: ValueCx<'_>,
-) -> (
-    Vec<Option<&'a Element>>,
-    Vec<Option<&'a Element>>,
-    Vec<Option<crate::layout::table::paint::RowRects>>,
-    Vec<Option<crate::layout::table::paint::RowRects>>,
-    bool,
-) {
-    let grp_els = colgroup_elements(&e.children);
-    let col_els = col_elements(&e.children);
-    let mut grp_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
-        vec![None; cols as usize];
-    let mut col_rects: Vec<Option<crate::layout::table::paint::RowRects>> =
-        vec![None; cols as usize];
-    let have_rows = !row_elements.is_empty();
-    push_col_bands(&grp_els, have_rows, &mut grp_rects, under, vcx);
-    push_col_bands(&col_els, have_rows, &mut col_rects, under, vcx);
-    (grp_els, col_els, grp_rects, col_rects, have_rows)
+) -> TableLayers<'a> {
+    let groups = colgroup_elements(&e.children);
+    let columns = col_elements(&e.children);
+    let bands = |elements: Vec<Option<&'a Element>>, under: &mut Vec<AnyElement>| {
+        let mut layers: Vec<_> = (0..elements.len().max(cols as usize))
+            .map(|i| ColumnLayer {
+                element: elements.get(i).copied().flatten(),
+                rects: None,
+            })
+            .collect();
+        push_col_bands(&mut layers, cols as usize, have_rows, under, vcx);
+        layers
+    };
+    TableLayers {
+        groups: bands(groups, under),
+        columns: bands(columns, under),
+        group_of: Default::default(),
+        paint_layers: e.style.border_collapse == Some(true),
+        rules_groups: false,
+    }
 }
 
-// Group edges consume the same element/band records as column construction.
-#[allow(clippy::type_complexity)]
-// Row indices also address the independently accumulated edge arrays.
 pub(super) fn collect_group_edges<'a>(
-    rows: &[(
-        &'a Element,
-        (
-            f32,
-            f32,
-            Option<crate::style::values::value::Color>,
-            Option<&'a Element>,
-        ),
-    )],
-    group_of: &mut std::collections::HashMap<u64, (&'a Element, bool, bool)>,
+    rows: &[crate::layout::table::anon::TableRow<'a>],
+    group_of: &mut std::collections::HashMap<u64, GroupEdge<'a>>,
 ) {
     let mut i = 0usize;
     while i < rows.len() {
-        let Some(g) = rows[i].1.3 else {
+        let Some(g) = rows[i].carry.group else {
             i += 1;
             continue;
         };
         let mut j = i;
-        while j < rows.len() && rows[j].1.3.map(|o| o.node_id) == Some(g.node_id) {
+        while j < rows.len() && rows[j].carry.group.map(|o| o.node_id) == Some(g.node_id) {
             j += 1;
         }
         for k in i..j {
-            group_of.insert(rows[k].0.node_id, (g, k == i, k + 1 == j));
+            group_of.insert(
+                rows[k].element.node_id,
+                GroupEdge {
+                    element: g,
+                    first: k == i,
+                    last: k + 1 == j,
+                },
+            );
         }
         i = j;
     }
 }
+
+#[cfg(test)]
+mod tests;

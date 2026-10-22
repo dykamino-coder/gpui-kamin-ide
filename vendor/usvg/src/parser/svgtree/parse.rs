@@ -32,16 +32,28 @@ impl<'input> Document<'input> {
         xml: &roxmltree::Document<'input>,
         injected_stylesheet: Option<&'input str>,
     ) -> Result<Document<'input>, Error> {
-        parse(xml, injected_stylesheet, false)
+        // KaminIDE patch: count the original XML arena as part of the same session.
+        if xml.input_text().len() > super::SOURCE_BYTE_LIMIT {
+            return Err(Error::NodesLimitReached);
+        }
+        let remaining = super::NODE_LIMIT.checked_sub(xml.descendants().count())
+            .ok_or(Error::NodesLimitReached)?;
+        parse_with_limit(xml, injected_stylesheet, false, remaining)
     }
 }
 
-fn parse<'input>(
+// KaminIDE patch: external resources share the session's remaining node budget.
+fn parse_with_limit<'input>(
     xml: &roxmltree::Document<'input>,
     injected_stylesheet: Option<&'input str>,
     resource: bool,
+    node_limit: usize,
 ) -> Result<Document<'input>, Error> {
+    if node_limit == 0 {
+        return Err(Error::NodesLimitReached);
+    }
     let mut doc = Document {
+        node_limit,
         nodes: Vec::new(),
         attrs: Vec::new(),
         links: HashMap::new(),

@@ -1,26 +1,26 @@
 //! Размеры mspace из MathML Core: CSS-подсказки и независимо запрошенный ascent.
 
 use crate::document::state::ValueCx;
-use crate::style::css::{Decls, parse_decls};
+use crate::style::css::DeclBlock;
 use crate::style::values::value::Len;
 
-pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> Decls {
+pub(super) fn hints(attrs: &[(String, String)], vcx: ValueCx<'_>) -> DeclBlock {
     let attr = |name| {
         attrs
             .iter()
             .find(|(k, _)| k == name)
             .and_then(|(_, v)| parse_mathml_length(v, vcx).map(|_| v.as_str()))
     };
-    let mut hints = parse_decls("");
+    let mut hints = DeclBlock::new();
     if let Some(width) = attr("width") {
-        hints.insert("width".into(), width.into());
+        hints.set("width", width);
     }
     let height = match (attr("height"), attr("depth")) {
         (Some(h), Some(d)) => format!("calc({h} + {d})"),
         (Some(v), None) | (None, Some(v)) => v.to_string(),
         (None, None) => "0px".into(),
     };
-    hints.insert("height".into(), height);
+    hints.set("height", &height);
     hints
 }
 
@@ -60,15 +60,15 @@ mod tests {
             ("depth".into(), "30px".into()),
         ];
         assert_eq!(
-            Len::parse(&hints(&attrs, vcx)["height"], vcx),
+            Len::parse(hints(&attrs, vcx).last("height").unwrap(), vcx),
             Some(Len::Px(50.0))
         );
         let attrs = vec![
             ("height".into(), "20%".into()),
             ("depth".into(), "2em".into()),
         ];
-        assert_eq!(hints(&attrs, vcx)["height"], "2em");
-        assert_eq!(hints(&[], vcx)["height"], "0px");
+        assert_eq!(hints(&attrs, vcx).last("height"), Some("2em"));
+        assert_eq!(hints(&[], vcx).last("height"), Some("0px"));
     }
     #[test]
     fn length_attributes_reject_percentages_bare_numbers_and_keywords() {

@@ -6,7 +6,7 @@ use crate::layout::float::band_flow::Kind;
 use crate::layout::float::band_host::px_margin_box;
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::band_nest::band_nest;
-use crate::render::RenderOpts;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;

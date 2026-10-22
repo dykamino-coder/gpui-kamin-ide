@@ -19,21 +19,11 @@ pub(super) fn border_spacing_of(
     table_spacing(e, opts, inherited, e.style.border_spacing)
 }
 
-// Table setup returns row elements with the corresponding column bands.
-#[allow(clippy::type_complexity)]
 pub(super) fn rows_left_and_cols(
-    rows: &Vec<(
-        &Element,
-        (
-            f32,
-            f32,
-            Option<crate::style::values::value::Color>,
-            Option<&Element>,
-        ),
-    )>,
+    rows: &[crate::layout::table::anon::TableRow<'_>],
 ) -> (Vec<usize>, u16) {
     let rows_left: Vec<usize> = {
-        let key = |i: usize| rows[i].1.3.map(|g| g.node_id);
+        let key = |i: usize| rows[i].carry.group.map(|g| g.node_id);
         let mut out = vec![1usize; rows.len()];
         let mut end = rows.len();
         for i in (0..rows.len()).rev() {
@@ -49,8 +39,9 @@ pub(super) fn rows_left_and_cols(
     // выталкивалось в неявные ряды.
     let cols = rows
         .iter()
-        .map(|(r, _)| {
-            r.children
+        .map(|r| {
+            r.element
+                .children
                 .iter()
                 .filter_map(|c| match c {
                     Node::Element(e) if is_cell(e) => Some(

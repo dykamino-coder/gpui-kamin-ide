@@ -1,4 +1,4 @@
-//! Внутренние метки элемента для layout: протокол между проходами layout.
+//! Внутренние метки layout и идентичность синтетической коробки между кадрами.
 //!
 //! Layout переписывает отрисовываемое дерево (строки float и band-хосты, дочерние
 //! элементы multicol-стека, подъём spanner-ов, анонимные ячейки таблиц) и должен
@@ -7,12 +7,14 @@
 //! разметка (`dom/walk`) заполняет только атрибуты и тег, поэтому документ не может
 //! подделать метку, а метка не попадает в селекторы атрибутов и сериализацию SVG.
 
-/// Typed internal flags set by layout on the boxes it synthesizes or rewrites.
+/// Типизированные флаги layout и ключ состояния коробки, принадлежащий документу.
 ///
 /// The fields are crate-private: outside the engine an element can only carry
 /// the default (no marks).
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Marks {
+    /// Общий для клонов ключ синтетической коробки; node_id остаётся layout-меткой.
+    pub(crate) state_id: std::rc::Rc<std::cell::OnceCell<String>>,
     /// Document root/body eligible for the quirks-mode block-size fill rules.
     pub(crate) quirks_fill: bool,
     /// A column-wide float lifted into the multicol stack as a block; set by

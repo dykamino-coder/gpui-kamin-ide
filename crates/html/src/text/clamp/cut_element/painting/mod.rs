@@ -35,7 +35,7 @@ impl ClampCut {
         _cx: &mut App,
     ) {
         let vcx = self.values.vcx();
-        let all_entries = std::mem::take(&mut *self.lines.borrow_mut());
+        let all_entries = self.lines.take();
         let para_rows = self.rows.take(self.key);
         let prev_para = clamp_para(self.key, vcx);
         let plan = ClampGeometry {

@@ -81,8 +81,17 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "corner-shape" => "round",
         "border-shape" => "none",
         "color" => "black",
+        "cursor" => "auto",
+        // css-backgrounds-3 §4.3: the initial border width is `medium`.
+        "border-top-width" | "border-right-width" | "border-bottom-width" | "border-left-width" => {
+            "medium"
+        }
+        "hyphens" => "manual",
+        "text-shadow" => "none",
         "margin" => "0",
-        "padding" => "0",
+        // css-box-4 §4.1: a padding side starts at 0 — an explicit value, so the
+        // author keyword also beats a form control's default padding.
+        "padding" | "padding-top" | "padding-right" | "padding-bottom" | "padding-left" => "0",
         "direction" => "ltr",
         "font-family" => "serif",
         "font-size" => "medium",

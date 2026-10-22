@@ -15,11 +15,15 @@ use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
+use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
 
 type BuildNodes = fn(&[Node], &Computed, &RenderOpts) -> Vec<AnyElement>;
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildParagraph = fn(&[Node], &Computed, &RenderOpts) -> AnyElement;
+type BuildProbes =
+    fn(&Element, &Computed, &RenderOpts, &mut Vec<AnyElement>, bool, bool, Option<ClampSpan>);
+type FirstLineRoute = fn(Vec<Node>, &Computed) -> Vec<Node>;
 type BuildStyledBox = fn(&Element, &Computed, &LayoutCx) -> gpui::Div;
 
 /// The build requests the algorithms need: a block-level node list
@@ -33,6 +37,8 @@ pub(crate) struct ChildBuild {
     element: BuildElement,
     paragraph: BuildParagraph,
     styled_box: BuildStyledBox,
+    probes: BuildProbes,
+    first_line_route: FirstLineRoute,
 }
 
 impl ChildBuild {
@@ -41,12 +47,16 @@ impl ChildBuild {
         element: BuildElement,
         paragraph: BuildParagraph,
         styled_box: BuildStyledBox,
+        probes: BuildProbes,
+        first_line_route: FirstLineRoute,
     ) -> Self {
         Self {
             blocks,
             element,
             paragraph,
             styled_box,
+            probes,
+            first_line_route,
         }
     }
 
@@ -82,5 +92,25 @@ impl ChildBuild {
     /// The styled div of `e` under `style`, without children.
     pub(crate) fn styled_box(&self, e: &Element, style: &Computed, cx: &LayoutCx) -> gpui::Div {
         (self.styled_box)(e, style, cx)
+    }
+
+    /// Пробы границ детей с теми же областями clamp и gap rules, что в потоке.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn probes(
+        &self,
+        e: &Element,
+        merged: &Computed,
+        opts: &RenderOpts,
+        kids: &mut Vec<AnyElement>,
+        makes_bfc: bool,
+        is_clamp: bool,
+        span: Option<ClampSpan>,
+    ) {
+        (self.probes)(e, merged, opts, kids, makes_bfc, is_clamp, span)
+    }
+
+    /// Слой первой строки передаётся первому блочному потомку в потоке.
+    pub(crate) fn first_line_route(&self, nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
+        (self.first_line_route)(nodes, parent)
     }
 }

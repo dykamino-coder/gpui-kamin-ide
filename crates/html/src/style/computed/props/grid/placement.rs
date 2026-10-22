@@ -5,6 +5,9 @@
 use super::*;
 use crate::document::state::ValueCx;
 
+mod values;
+use values::placement_list;
+
 impl Computed {
     pub(super) fn apply_grid_placement(
         &mut self,
@@ -15,10 +18,11 @@ impl Computed {
     ) {
         match key {
             "grid-template-rows" => {
+                let tracks = parsed_value!(self, super::templates::template_tracks(v, vcx));
                 self.subgrid_rows = v.contains("subgrid");
                 self.subgrid = self.subgrid_cols || self.subgrid_rows;
                 self.grid_row_line_names = parse_line_names(v);
-                self.grid_rows = record_parsed!(self, parse_tracks(v, vcx));
+                self.grid_rows = tracks;
                 if self.subgrid_rows || v == "none" {
                     self.accept_declaration();
                 }
@@ -28,7 +32,7 @@ impl Computed {
                 // и раскладка их циклит. Пока бралась первая, вторая колонка
                 // получала ширину первой (`grid-support-grid-auto-columns-
                 // rows-002`, `grid-floats-no-intrude-002`).
-                let all = record_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
+                let all = apply_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
                 self.grid_auto_cols_list = if all.len() > 1 {
                     all.clone()
                 } else {
@@ -37,7 +41,7 @@ impl Computed {
                 self.grid_auto_cols = all.into_iter().next();
             }
             "grid-auto-rows" => {
-                let all = record_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
+                let all = apply_parsed!(self, parse_tracks(v, vcx)).unwrap_or_default();
                 self.grid_auto_rows_list = if all.len() > 1 {
                     all.clone()
                 } else {
@@ -46,6 +50,16 @@ impl Computed {
                 self.grid_auto_rows = all.into_iter().next();
             }
             "grid-auto-flow" => {
+                let words: Vec<_> = v.split_whitespace().collect();
+                if words.is_empty()
+                    || words.len() > 2
+                    || !words
+                        .iter()
+                        .all(|w| matches!(*w, "row" | "column" | "dense"))
+                    || (words.len() == 2 && (words[0] == words[1] || !words.contains(&"dense")))
+                {
+                    return;
+                }
                 self.accept_declaration();
                 let dense = v.contains("dense");
                 self.grid_auto_flow = Some(match (v.contains("column"), dense) {
@@ -56,32 +70,50 @@ impl Computed {
                 })
             }
             "grid-column" => {
-                self.grid_col = record_parsed!(self, parse_span(v));
+                if !placement_list(v, 2) {
+                    return;
+                }
+                self.grid_col = accept_parsed!(self, parse_span(v));
                 self.grid_col_named = parse_named_pair(v);
             }
             "grid-row" => {
-                self.grid_row = record_parsed!(self, parse_span(v));
+                if !placement_list(v, 2) {
+                    return;
+                }
+                self.grid_row = accept_parsed!(self, parse_span(v));
                 self.grid_row_named = parse_named_pair(v);
             }
             "grid-column-start" => {
+                if !placement_list(v, 1) {
+                    return;
+                }
                 self.accept_declaration();
                 let end = self.grid_col.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_col = Some((parse_placement(v), end));
                 self.grid_col_named[0] = parse_named_placement(v);
             }
             "grid-column-end" => {
+                if !placement_list(v, 1) {
+                    return;
+                }
                 self.accept_declaration();
                 let start = self.grid_col.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_col = Some((start, parse_placement(v)));
                 self.grid_col_named[1] = parse_named_placement(v);
             }
             "grid-row-start" => {
+                if !placement_list(v, 1) {
+                    return;
+                }
                 self.accept_declaration();
                 let end = self.grid_row.map(|c| c.1).unwrap_or(Placement::Auto);
                 self.grid_row = Some((parse_placement(v), end));
                 self.grid_row_named[0] = parse_named_placement(v);
             }
             "grid-row-end" => {
+                if !placement_list(v, 1) {
+                    return;
+                }
                 self.accept_declaration();
                 let start = self.grid_row.map(|c| c.0).unwrap_or(Placement::Auto);
                 self.grid_row = Some((start, parse_placement(v)));
@@ -92,19 +124,25 @@ impl Computed {
                 // `doc::settle_explicit_inherit`): прежде слово само шло в
                 // область `inherit`, а `grid-area: a` у детей не находил
                 // области (`grid-placement-using-named-grid-lines-008`).
+                if v != "inherit" && v != "none" && area_rows(v).is_empty() {
+                    return;
+                }
                 self.grid_areas_inherit = v.trim().eq_ignore_ascii_case("inherit");
                 if self.grid_areas_inherit {
                     return;
                 }
                 // Каждая строка записи — ряд сетки: `"head head" "side main"`.
                 let rows = area_rows(v);
-                self.grid_areas = record_parsed!(self, (!rows.is_empty()).then_some(rows));
+                self.grid_areas = accept_parsed!(self, (!rows.is_empty()).then_some(rows));
                 if v == "none" {
                     self.accept_declaration();
                 }
             }
             // `grid-area: строка / колонка / конец строки / конец колонки`.
             "grid-area" => {
+                if !placement_list(v, 4) {
+                    return;
+                }
                 let parts: Vec<&str> = v.split('/').map(str::trim).collect();
                 let at = |i: usize| {
                     parts
@@ -166,9 +204,7 @@ fn area_rows(v: &str) -> Vec<Vec<String>> {
     while let Some(quote) = rest.chars().next() {
         if quote != '"' && quote != '\'' {
             // Не строка — не ряд (`none` и мусор рядов не дают).
-            let skip = rest.find(['"', '\'']).unwrap_or(rest.len());
-            rest = rest[skip..].trim_start();
-            continue;
+            return Vec::new();
         }
         let len = crate::style::css::skip_string(&rest[1..], quote);
         let body = rest[1..1 + len]

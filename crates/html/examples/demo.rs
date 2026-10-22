@@ -166,7 +166,7 @@ const DOC: &str = r##"
 <div class="card">
   <p class="title">Блок кода</p>
   <pre>fn main() {
-    let doc = Document::new(html, theme);
+    let doc = Document::builder(html, theme).build();
     render_block(doc.nodes(), i, &amp;opts);
 }</pre>
 </div>
@@ -197,7 +197,7 @@ impl Demo {
             ));
         }
         Demo {
-            doc: Rc::new(Document::new(&html, "")),
+            doc: Rc::new(Document::builder(&html, "").build()),
             scroll: ScrollHandle::new(),
         }
     }

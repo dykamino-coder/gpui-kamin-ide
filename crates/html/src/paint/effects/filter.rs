@@ -3,7 +3,7 @@
 //! область фильтра (по умолчанию −10 %/120 % border-box, заданная — любую) с краями на точках
 //! устройства; растры кэшируются по разметке и размеру.
 
-use crate::hooks::Hooks;
+use crate::hooks::Painter;
 use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 
 /// Слой `filter: url(#id)`: SVG с прямоугольником цвета фона под этим
@@ -17,12 +17,11 @@ pub struct FilterLayer {
     pub fill: String,
 }
 
-impl Hooks for FilterLayer {
-    type Layout = ();
+impl Painter for FilterLayer {
     type Prepaint = ();
 
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let style = gpui::Style {
+    fn style(&self) -> gpui::Style {
+        gpui::Style {
             position: gpui::Position::Absolute,
             inset: gpui::Edges {
                 top: gpui::px(0.0).into(),
@@ -31,23 +30,13 @@ impl Hooks for FilterLayer {
                 left: gpui::px(0.0).into(),
             },
             ..Default::default()
-        };
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Self::Prepaint {
+        }
     }
 
     fn paint(
         &mut self,
         bounds: Bounds<Pixels>,
-        _state: &mut Self::Layout,
+        _state: &mut LayoutId,
         _prepaint: &mut Self::Prepaint,
         window: &mut Window,
         _cx: &mut App,

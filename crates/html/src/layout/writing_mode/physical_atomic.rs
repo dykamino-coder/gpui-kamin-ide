@@ -86,6 +86,7 @@ impl Wrap for PhysicalAtomic {
     }
 
     fn prepaint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        // GPUI вызывает prepaint после request_layout, который сохраняет root безусловно.
         let root = self.root.expect("physical child requested layout");
         window.compute_layout(
             root,

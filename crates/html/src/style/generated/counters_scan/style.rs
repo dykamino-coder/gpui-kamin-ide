@@ -2,7 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::style::computed::{Computed, Display};
-use crate::style::css::{Decls, Rule};
+use crate::style::css::{DeclBlock, Rule, VarMap};
 use crate::style::select::matching::matches_ignoring_pseudo;
 use crate::style::select::{Ancestor, Sibs};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -14,13 +14,13 @@ pub(super) fn scan_style(
     path: &[Ancestor],
     sibs: Sibs,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     vcx: ValueCx<'_>,
 ) -> Option<Computed> {
     let NodeData::Element { attrs, .. } = &h.data else {
         return None;
     };
-    let inline_decls: Decls = attrs
+    let inline_decls: DeclBlock = attrs
         .borrow()
         .iter()
         .find(|a| &*a.name.local == "style")
@@ -43,7 +43,7 @@ pub(super) fn pseudo_style(
     sibs: Sibs,
     which: &str,
     rules: &[Rule],
-    vars: &Decls,
+    vars: &VarMap,
     vcx: ValueCx<'_>,
 ) -> Option<Computed> {
     let mut matched: Vec<&Rule> = rules
@@ -54,7 +54,7 @@ pub(super) fn pseudo_style(
     if matched.is_empty() {
         return None;
     }
-    let mut style = Computed::resolve_with_vars(&mut matched, &Decls::new(), vars, vcx);
+    let mut style = Computed::resolve_with_vars(&mut matched, &DeclBlock::new(), vars, vcx);
     crate::dom::content::inherit_generated(&mut style, Some(me));
     // Без содержимого коробки нет, а значит нет и счётчиков.
     (crate::dom::host_content(&style, me, vcx).is_some() && style.display != Some(Display::None))

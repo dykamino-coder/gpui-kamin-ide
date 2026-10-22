@@ -16,7 +16,9 @@ fn font_loading_resolves_the_first_html_base_before_parsing() {
     let html = "<base href='шрифты assets/'><base href='ignored/'>\
         <style>@font-face {font-family: BaseTest; src: url(base.ttf)}</style>\
         <p style='font-family: BaseTest'>text</p>";
-    let doc = Document::new_with_base(html, "", source.as_str());
+    let doc = Document::builder(html, "")
+        .base_uri(source.as_str())
+        .build();
     assert_eq!(
         fonts::alias("BaseTest", doc.state.values()).as_deref(),
         Some("BaseFont49")
@@ -49,7 +51,7 @@ fn resources_come_from_stylesheets_instead_of_markup_substrings() {
         <template><style>{fake}</style></template><style>{face}</style>"
     );
     let theme = face.replace("RealResource", "ThemeResource");
-    let doc = Document::new(&html, &theme);
+    let doc = Document::builder(&html, &theme).build();
     assert_eq!(
         fonts::alias("RealResource", doc.state.values()).as_deref(),
         Some("ParsedResourceFont")
@@ -70,8 +72,8 @@ fn interleaved_documents_keep_their_font_face_descriptors() {
          size-adjust: {adjust}%; unicode-range: {range}}}</style><p>text</p>"
         )
     };
-    let first = Document::new(&page("AAEAADE=", 150, "U+41"), "");
-    let second = Document::new(&page("AAEAADI=", 75, "U+20-7F"), "");
+    let first = Document::builder(&page("AAEAADE=", 150, "U+41"), "").build();
+    let second = Document::builder(&page("AAEAADI=", 75, "U+20-7F"), "").build();
     let a = first.state.values();
     let b = second.state.values();
     assert_eq!(fonts::alias("Shared", a).as_deref(), Some("Face49"));

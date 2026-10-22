@@ -26,14 +26,8 @@ impl Computed {
                     self.margin_inherit = [true; 4];
                     return;
                 }
-                self.margin = Sides::shorthand(v, vcx);
-                if self.margin.top.is_some()
-                    && self.margin.right.is_some()
-                    && self.margin.bottom.is_some()
-                    && self.margin.left.is_some()
-                {
-                    self.accept_declaration();
-                }
+                self.margin = parsed_value!(self, parsed_sides(v, true, vcx));
+                self.margin_inherit = [false; 4];
                 self.side_seq.margin = [self.decl_seq; 4];
             }
             "margin-top" => {
@@ -41,7 +35,10 @@ impl Computed {
                     self.margin_inherit[0] = true;
                     return;
                 }
-                self.margin.top = record_parsed!(self, Len::parse(v, vcx));
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
+                    return;
+                }
+                self.margin.top = apply_parsed!(self, Len::parse(v, vcx));
                 self.side_seq.margin[0] = self.decl_seq;
             }
             "margin-right" => {
@@ -49,11 +46,14 @@ impl Computed {
                     self.margin_inherit[1] = true;
                     return;
                 }
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
+                    return;
+                }
                 // Смесь «доля ± точки» доживает индексом: раскладка складывает
                 // её сама (css-values-4 §10.9), а вклад решает долю от нуля
                 // (css-sizing-3 §5.2.1, `calc-margins-*`). Вертикальные поля
                 // — по-прежнему `parse`: смесь там закрыла бы схлопывание.
-                self.margin.right = record_parsed!(
+                self.margin.right = apply_parsed!(
                     self,
                     crate::style::values::value::fold_zero_percentage(
                         Len::parse_mixed(v, vcx),
@@ -67,7 +67,10 @@ impl Computed {
                     self.margin_inherit[2] = true;
                     return;
                 }
-                self.margin.bottom = record_parsed!(self, Len::parse(v, vcx));
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
+                    return;
+                }
+                self.margin.bottom = apply_parsed!(self, Len::parse(v, vcx));
                 self.side_seq.margin[2] = self.decl_seq;
             }
             "margin-left" => {
@@ -75,8 +78,11 @@ impl Computed {
                     self.margin_inherit[3] = true;
                     return;
                 }
+                if !self.css_wide_value && side_length(v, true, vcx).is_none() {
+                    return;
+                }
                 // Смесь «доля ± точки» доживает (см. `margin-right`).
-                self.margin.left = record_parsed!(
+                self.margin.left = apply_parsed!(
                     self,
                     crate::style::values::value::fold_zero_percentage(
                         Len::parse_mixed(v, vcx),
@@ -103,16 +109,12 @@ impl Computed {
             self.padding_inherit_side[index] = true;
             return;
         }
-        // CSS 2.1 §8.4: a negative padding leaves the previous slot intact.
-        if matches!(
-            Len::parse(value, vcx),
-            Some(Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n)) if n < 0.0
-        ) {
+        if !self.css_wide_value && side_length(value, false, vcx).is_none() {
             return;
         }
-        let parsed = record_parsed!(
+        let parsed = apply_parsed!(
             self,
-            crate::style::values::value::fold_zero_percentage(Len::parse(value, vcx), vcx)
+            crate::style::values::value::fold_zero_percentage(side_length(value, false, vcx), vcx)
         );
         match index {
             0 => self.padding.top = parsed,
@@ -126,3 +128,54 @@ impl Computed {
 
 #[cfg(test)]
 mod tests;
+
+/// Сокращение годно только при успехе разбора каждого компонента.
+pub(in crate::style::computed::props) fn parsed_sides(
+    v: &str,
+    auto: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Sides> {
+    let words = split_outside_parens(v);
+    if words.is_empty() || words.len() > 4 {
+        return None;
+    }
+    let lengths = words
+        .iter()
+        .map(|w| side_length(w, auto, vcx))
+        .collect::<Option<Vec<_>>>()?;
+    let top = Some(lengths[0]);
+    let right = Some(*lengths.get(1).unwrap_or(&lengths[0]));
+    let bottom = Some(*lengths.get(2).unwrap_or(&lengths[0]));
+    let left = Some(
+        *lengths
+            .get(3)
+            .unwrap_or(&lengths[if lengths.len() > 1 { 1 } else { 0 }]),
+    );
+    Some(Sides {
+        top,
+        right,
+        bottom,
+        left,
+    })
+}
+
+pub(in crate::style::computed::props) fn side_length(
+    v: &str,
+    auto: bool,
+    vcx: ValueCx<'_>,
+) -> Option<Len> {
+    if stretch_keyword(v) {
+        return None;
+    }
+    let len = if auto {
+        Len::parse_mixed(v, vcx)?
+    } else {
+        size_range::parse_nonnegative_size(v, vcx)?
+    };
+    match len {
+        Len::Auto if auto => Some(len),
+        Len::Auto | Len::MinContent | Len::MaxContent | Len::FitContent => None,
+        Len::Px(n) | Len::Pct(n) | Len::Em(n) | Len::Ex(n) | Len::Ch(n) if !auto && n < 0.0 => None,
+        _ => Some(len),
+    }
+}

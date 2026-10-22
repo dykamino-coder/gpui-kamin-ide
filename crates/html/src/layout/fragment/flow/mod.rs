@@ -5,6 +5,7 @@
 //! монолитный бокс (CSS Break 3, разделы 4.1 и 4.3). Деревья layout остаются
 //! временными.
 
+pub(crate) mod blocks;
 mod measurements;
 mod stack;
 pub(crate) use measurements::{FlowMeasurements, FlowNode};

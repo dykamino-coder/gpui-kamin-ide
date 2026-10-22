@@ -1,15 +1,13 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
+use crate::dom::Node;
 use crate::dom::text_content::gather_text;
-use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::table::{is_cell, table_finish};
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
-use crate::style::values::value::Len;
 use gpui::AnyElement;
 mod row_setup;
-use row_setup::{push_empty_row_track, row_band_probes};
+use row_setup::{RowBands, push_empty_row_track, row_band_probes};
 mod cell;
 mod cell_alignment;
 mod cell_box;
@@ -22,72 +20,37 @@ mod edge_probes;
 mod emit;
 use cell::table_cell;
 
-#[allow(clippy::too_many_arguments, clippy::unnecessary_cast)]
-// Rows carry their elements and associated row/column band records.
-#[allow(clippy::type_complexity)]
+use super::context::{RowCursor, RowState, RowsOut, TableGeom, TableLayers};
+
 pub(super) fn table_rows(
-    rows: Vec<(
-        &Element,
-        (
-            f32,
-            f32,
-            Option<crate::style::values::value::Color>,
-            Option<&Element>,
-        ),
-    )>,
-    mut row_ix: i16,
-    mut occupied: Vec<u16>,
+    rows: &[super::anon::TableRow<'_>],
+    geom: &TableGeom<'_>,
+    layers: &TableLayers<'_>,
+    cursor: &mut RowCursor,
+    out: &mut RowsOut,
     opts: &RenderOpts,
-    mut under: Vec<AnyElement>,
-    group_of: std::collections::HashMap<u64, (&Element, bool, bool)>,
-    inherited: &Computed,
-    e: &Element,
-    cols: u16,
-    mut cells: Vec<AnyElement>,
-    zero_cols: Vec<bool>,
-    rows_left: Vec<usize>,
-    cols_collapsed: Vec<bool>,
-    collapse_cells: bool,
-    win_edges: std::collections::HashMap<u64, [f32; 4]>,
-    table_is_vertical: bool,
-    table_font: f32,
-    table_family: &str,
-    paint_layers: bool,
-    cell_bgs: std::rc::Rc<std::cell::RefCell<Vec<(gpui::Bounds<gpui::Pixels>, gpui::Hsla)>>>,
-    row_elements: Vec<&Element>,
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
-    col_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
-    col_els: Vec<Option<&Element>>,
-    grp_rects: Vec<Option<crate::layout::table::paint::RowRects>>,
-    grp_els: Vec<Option<&Element>>,
-    rules_groups: bool,
-    mut group_refs: std::collections::HashMap<
-        u64,
-        crate::paint::effects::transformed_element::RefBox,
-    >,
-    tbl_style: &Computed,
-    mut cells_over: Vec<AnyElement>,
-    spacing: (f32, f32),
-    from_cols: Vec<Option<f32>>,
-    col_widths: Vec<(Option<f32>, Option<f32>)>,
-    cols_pct: Vec<Option<f32>>,
-    bw: [f32; 4],
-    outer_win: [f32; 4],
-    have_rows: bool,
-    px_of: impl Fn(Option<Len>) -> f32,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     // Буфер полосы группы рядов — общий для всех её рядов (`RowRects`).
-    let mut group_bands = std::collections::HashMap::new();
-    for (row, carry) in rows {
-        row_ix += 1;
+    for record in rows {
+        let row = record.element;
+        let carry = record.carry;
+        cursor.row_ix += 1;
         let row_ref: crate::paint::effects::transformed_element::RefBox = Default::default();
-        for slot in occupied.iter_mut() {
+        for slot in cursor.occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }
-        let (row_rects, grp_band) =
-            row_band_probes(&mut group_bands, &mut under, &group_of, row, carry, vcx);
-        let shift = (carry.0, carry.1);
+        let RowBands {
+            row_rects,
+            grp_band,
+        } = row_band_probes(
+            &mut cursor.group_bands,
+            &mut out.under,
+            &layers.group_of,
+            row,
+            carry,
+            vcx,
+        );
         // Письмо к строкам НЕ ПРИМЕНЯЕТСЯ (раскладку ряда ведёт таблица,
         // CSS Writing Modes §3.1) — но ВЫЧИСЛЕННОЕ значение наследуется в
         // ячейки как у любого свойства: `tr { writing-mode; line-height: 5ch }`
@@ -97,17 +60,17 @@ pub(super) fn table_rows(
         // Слой ГРУППЫ строк между таблицей и рядом: наследуемое с `<tbody>`
         // течёт вниз, как у любого предка.
         let group_layer;
-        let inherited = match carry.3 {
+        let inherited = match carry.group {
             Some(g) => {
-                group_layer = inherit(inherited, &g.style, vcx);
+                group_layer = inherit(geom.inherited, &g.style, vcx);
                 &group_layer
             }
-            None => inherited,
+            None => geom.inherited,
         };
         // Направление на строке ОСТАЁТСЯ: его обнуление сдвигает ячейки в
         // `position-relative-table-*-left`.
         // Не доводить до ячеек наследуемые свойства САМОЙ таблицы
-        // (`inherit(inherited, &e.style)` как основа). Дыра настоящая —
+        // (`inherit(geom.inherited, &e.style)` как основа). Дыра настоящая —
         // `white-space` и шрифт с тега таблицы до ячейки не доходят, — но
         // `ws-break-spaces-applies-to` это не чинит (сохранённые пробелы в
         // ячейке теряются НЕ здесь), а css-text ломает
@@ -118,85 +81,38 @@ pub(super) fn table_rows(
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
         let row_style = inherit(inherited, &own, vcx);
-        push_empty_row_track(row_ix, &occupied, e, cols, &mut cells, row);
-        let mut col_ix = 0usize;
+        push_empty_row_track(
+            cursor.row_ix,
+            &cursor.occupied,
+            geom.e,
+            geom.cols,
+            &mut out.cells,
+            row,
+        );
+        cursor.col_ix = 0;
+        let row_state = RowState {
+            row,
+            carry,
+            row_ref,
+            row_rects,
+            grp_band,
+            inherited,
+            row_style,
+        };
         for child in &row.children {
             let Node::Element(cell) = child else { continue };
             if !is_cell(cell) {
                 continue;
             }
-            while col_ix < occupied.len() && occupied[col_ix] > 0 {
-                col_ix += 1;
+            while cursor.col_ix < cursor.occupied.len() && cursor.occupied[cursor.col_ix] > 0 {
+                cursor.col_ix += 1;
             }
-            table_cell(
-                row_ix,
-                &mut occupied,
-                opts,
-                &group_of,
-                e,
-                cols,
-                &mut cells,
-                &zero_cols,
-                &rows_left,
-                &cols_collapsed,
-                collapse_cells,
-                &win_edges,
-                table_is_vertical,
-                table_font,
-                table_family,
-                paint_layers,
-                &cell_bgs,
-                &row_elements,
-                &table_edges,
-                &col_rects,
-                &col_els,
-                &grp_rects,
-                &grp_els,
-                rules_groups,
-                &mut group_refs,
-                tbl_style,
-                &mut cells_over,
-                &px_of,
-                row,
-                carry,
-                &row_ref,
-                &row_rects,
-                &grp_band,
-                shift,
-                inherited,
-                &row_style,
-                &mut col_ix,
-                cell,
-            );
+            table_cell(geom, layers, cursor, out, opts, &row_state, cell);
         }
     }
 
     // Порядок слоёв сетки: полосы дорожек/рядов → фоны ячеек → сросшиеся
     // кромки → коробки ячеек с содержимым (см. `under`, `cell_bgs`). Прежде
     // слой кромок шёл ПОСЛЕДНИМ и накрывал всё содержимое ячеек.
-    table_finish(
-        under,
-        paint_layers,
-        cell_bgs,
-        cells,
-        table_edges,
-        cells_over,
-        e,
-        inherited,
-        opts,
-        row_elements,
-        win_edges,
-        table_font,
-        table_family,
-        spacing,
-        cols,
-        from_cols,
-        col_widths,
-        cols_collapsed,
-        cols_pct,
-        bw,
-        outer_win,
-        have_rows,
-        px_of,
-    )
+    table_finish(geom, layers, out, opts)
 }

@@ -14,6 +14,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
+use std::cell::RefCell;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_children(
@@ -24,10 +25,10 @@ pub(crate) fn measure_children(
     last_flow: Option<*const Node>,
     outer_frag: Option<f32>,
     line_col_w: Option<f32>,
-    nested_auto: &std::cell::RefCell<Vec<u64>>,
+    nested_auto: &RefCell<Vec<u64>>,
     whole_ok: bool,
-    nested_whole: &std::cell::RefCell<Vec<u64>>,
-    measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
+    nested_whole: &RefCell<Vec<u64>>,
+    measured_kids: &RefCell<Vec<(u64, f32)>>,
     col_vert: bool,
     col_rl: bool,
     measure_ok: bool,
@@ -91,23 +92,7 @@ pub(crate) fn measure_children(
                 // внутренний многоколоночник балансирует себя сам, и мера
                 // `shape_full` его колонок не видит (сумма детей).
                 let c = resolved_lengths(c, merged, vcx);
-                let w = line_col_w?;
-                let m = |l: &Option<Len>| match l {
-                    Some(Len::Px(v)) => Some(*v),
-                    None | Some(Len::Auto) => Some(0.0),
-                    _ => None,
-                };
-                let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
-                nested_whole.borrow_mut().push(c.node_id);
-                measured_kids.borrow_mut().push((c.node_id, w));
-                Some((
-                    c,
-                    Shape {
-                        margin_top: mt,
-                        margin_bottom: mb,
-                        ..Shape::default()
-                    },
-                ))
+                measured_nested(&c, line_col_w?, measured_kids, nested_whole)
             }
             // Pagination by the child's own layout (`fragment::paginate`):
             // break decisions on the laid-out copy, not on this estimate.
@@ -122,12 +107,7 @@ pub(crate) fn measure_children(
                     ) =>
             {
                 let mut c = resolved_lengths(c, merged, vcx);
-                let m = |l: &Option<Len>| match l {
-                    Some(Len::Px(v)) => Some(*v),
-                    None | Some(Len::Auto) => Some(0.0),
-                    _ => None,
-                };
-                let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                let (mt, mb) = measured_margins(&c)?;
                 c.marks.paginate = true;
                 measured_kids.borrow_mut().push((c.node_id, line_col_w?));
                 Some((
@@ -201,12 +181,7 @@ pub(crate) fn measure_children(
                                 return None;
                             }
                             let w = line_col_w?;
-                            let m = |l: &Option<Len>| match l {
-                                Some(Len::Px(v)) => Some(*v),
-                                None | Some(Len::Auto) => Some(0.0),
-                                _ => None,
-                            };
-                            let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+                            let (mt, mb) = measured_margins(c)?;
                             measured_kids.borrow_mut().push((c.node_id, w));
                             Some((
                                 (*c).clone(),
@@ -228,15 +203,10 @@ pub(crate) fn measure_children(
 fn measured_nested(
     c: &Element,
     w: f32,
-    measured_kids: &std::cell::RefCell<Vec<(u64, f32)>>,
-    nested_whole: &std::cell::RefCell<Vec<u64>>,
+    measured_kids: &RefCell<Vec<(u64, f32)>>,
+    nested_whole: &RefCell<Vec<u64>>,
 ) -> Option<(Element, Shape)> {
-    let m = |l: &Option<Len>| match l {
-        Some(Len::Px(v)) => Some(*v),
-        None | Some(Len::Auto) => Some(0.0),
-        _ => None,
-    };
-    let (mt, mb) = (m(&c.style.margin.top)?, m(&c.style.margin.bottom)?);
+    let (mt, mb) = measured_margins(c)?;
     nested_whole.borrow_mut().push(c.node_id);
     measured_kids.borrow_mut().push((c.node_id, w));
     Some((
@@ -248,3 +218,16 @@ fn measured_nested(
         },
     ))
 }
+
+/// Мера копии принимает только разрешённые отступы; auto равен нулю.
+fn measured_margins(c: &Element) -> Option<(f32, f32)> {
+    let m = |l: &Option<Len>| match l {
+        Some(Len::Px(v)) => Some(*v),
+        None | Some(Len::Auto) => Some(0.0),
+        _ => None,
+    };
+    Some((m(&c.style.margin.top)?, m(&c.style.margin.bottom)?))
+}
+
+#[cfg(test)]
+mod tests;

@@ -6,11 +6,13 @@ use crate::layout::table::is_cell;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 use gpui::{ParentElement, Styled, div, px};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub(super) fn table_grid_box(
     e: &Element,
     inherited: &Computed,
-    row_elements: Vec<&Element>,
+    row_elements: &[&Element],
     tracks: Vec<gpui::GridTrack>,
     table_tall: bool,
     vcx: ValueCx<'_>,
@@ -103,7 +105,7 @@ pub(super) fn table_grid_box(
 }
 
 pub(super) fn paint_table_border(
-    table_edges: std::rc::Rc<std::cell::RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
+    table_edges: Rc<RefCell<Vec<crate::layout::table::paint::EdgeCell>>>,
     e: &Element,
     bw: [f32; 4],
     outer_win: [f32; 4],
@@ -176,14 +178,14 @@ fn collapsed_tracks(e: &Element, vcx: ValueCx<'_>) -> Option<(bool, Vec<u16>)> {
     crate::layout::table::anon::collect_rows(
         &fixed,
         Some(e),
-        (0.0, 0.0, None, None),
+        crate::layout::table::anon::RowCarry::default(),
         &mut logical_rows,
     );
     let collapsed: Vec<u16> = logical_rows
         .iter()
         .enumerate()
-        .filter_map(|(i, (row, carry))| {
-            let collapse = crate::layout::table::anon::row_collapsed(row, carry.3);
+        .filter_map(|(i, row)| {
+            let collapse = crate::layout::table::anon::row_collapsed(row.element, row.carry.group);
             collapse.then_some(if e.style.wm().vertical() && e.style.wm().block_rl() {
                 (logical_rows.len() - i - 1) as u16
             } else {
