@@ -40,11 +40,11 @@ pub(super) fn measure(
         );
         trial.layout_as_root(space, window, cx);
         let batch = records.collect(key, point(px(0.), px(0.)), window);
-        let mut plan = Rc::new(geometry.compute(batch.entries, &batch.rows, content_top, None));
+        let mut plan = Rc::new(geometry.compute(batch.entries, &batch.rows, content_top));
         // Балансировка после выбора точки может увеличить высоту строк
         // (css-text-4 §5.4). Уточнение уменьшает бюджет того же абзаца либо
         // однократно задаёт конечный срез, если строчный путь не смог
-        // применить бюджет. Обе ступени конечны без прежнего ClampState.
+        // применить бюджет. Обе ступени конечны в пределах текущей раскладки.
         // Размер берётся из применения плана, а не из n * line-height.
         loop {
             let applied_records = ClampMeasure::default();
@@ -56,7 +56,7 @@ pub(super) fn measure(
             );
             let measured = applied.layout_as_root(space, window, cx);
             let batch = applied_records.collect(key, point(px(0.), px(0.)), window);
-            let next = geometry.compute(batch.entries, &batch.rows, content_top, None);
+            let next = geometry.compute(batch.entries, &batch.rows, content_top);
             if refines(&plan, &next) {
                 plan = Rc::new(next);
                 continue;
@@ -110,11 +110,11 @@ mod tests {
             bt_before: 0.,
             positioned: false,
         };
-        let trial = geometry.compute(vec![paragraph.clone()], &HashMap::new(), 0., None);
+        let trial = geometry.compute(vec![paragraph.clone()], &HashMap::new(), 0.);
         assert_eq!(trial.para, Some((0, 4)));
         assert_eq!(trial.cut, f32::INFINITY);
         paragraph.clamped = Some(4);
-        let applied = geometry.compute(vec![paragraph], &HashMap::new(), 0., None);
+        let applied = geometry.compute(vec![paragraph], &HashMap::new(), 0.);
         assert_eq!(applied.para, trial.para);
         assert_eq!(applied.cut, 128.);
         assert!(refines(&trial, &applied));

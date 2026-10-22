@@ -67,18 +67,7 @@ impl Paragraph {
         }
         self.lines = self.split(Some(limit), window);
         self.publish_scroll_overflow(bounds, *state, window);
-        self.measure_clamp_steps(Some(limit), window);
         self.place_atoms(*state, window, _cx);
-        // Paint consumers also use paragraph rows in document coordinates.
-        if !self.vertical && !self.paint_context.is_rotated() {
-            let pads = self.line_padding();
-            let lh = self.line_height;
-            let step = |i: usize| -> Pixels {
-                let (a, b) = pads.get(i).copied().unwrap_or((0.0, 0.0));
-                lh + px(a + b)
-            };
-            self.publish_rows(bounds, self.lines.len(), &step);
-        }
         // Куски вне потока встают на своё место в строке: раскладываются
         // по содержимому и подготавливаются от угла своего знака.
         if !self.overlays.is_empty() {

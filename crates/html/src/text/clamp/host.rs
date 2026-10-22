@@ -1,6 +1,6 @@
 //! ClampHost: проба полной раскладки и применение её плана в текущем кадре.
 
-use super::cut_element::ClampGeometry;
+use super::geometry::ClampGeometry;
 use super::{ClampInput, ClampMeasure, ClampPlan};
 use crate::hooks::Hooks;
 use gpui::{
@@ -123,22 +123,6 @@ impl Hooks for ClampHost {
                 )
                 .1
             });
-        #[cfg(feature = "wpt-harness")]
-        {
-            let actual = measure(
-                self.key,
-                &self.geometry,
-                &self.build,
-                used_box,
-                self.border_box,
-                size(Some(extent.width), Some(extent.height)),
-                space,
-                window,
-                cx,
-            )
-            .1;
-            super::ClampCut::check(&plan, &actual);
-        }
         let mut el = (self.build)(ClampInput::Apply(plan), Some(extent.width), used_box, true);
         el.layout_as_root_at(origin, space, window, cx);
         el.prepaint_at(point(px(0.), px(0.)), window, cx);

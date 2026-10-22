@@ -14,7 +14,7 @@ pub struct Paragraph {
     pub(super) anchor_values: Option<crate::document::state::ValueDoc>,
     pub(super) inline_measure: Option<crate::text::vertical::InlineMeasure>,
     pub(super) paint_context: std::rc::Rc<crate::text::vertical::VerticalPaint>,
-    pub(super) clamp_rows: std::rc::Rc<crate::text::clamp::ParagraphRows>,
+    pub(super) clamp_rows: Option<crate::text::clamp::ClampMeasure>,
     pub(super) measures: std::rc::Rc<super::MeasureCache>,
     /// Scroll owner and the shift chain the paragraph is built in.
     pub(super) scroll_owner: Option<super::scroll_overflow::ScrollOwner>,

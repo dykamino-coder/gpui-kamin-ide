@@ -18,7 +18,6 @@ impl ClampGeometry {
         all_entries: Vec<ClampEntry>,
         para_rows: &HashMap<u32, Vec<(f32, f32)>>,
         top: f32,
-        prev_para: Option<(u32, usize)>,
     ) -> ClampPlan {
         let empties: Vec<ClampEntry> = all_entries.iter().filter(|e| e.empty).cloned().collect();
         let mut entries: Vec<ClampEntry> = all_entries.into_iter().filter(|e| !e.empty).collect();
@@ -92,7 +91,7 @@ impl ClampGeometry {
         // верх пересечённой строки) к ней не применяются: после `c2 -= bp`
         // точка уходила внутрь N-й строки, и строка пропадала
         // (`line-clamp-012/022`, `webkit-line-clamp-050`). Абзацу N-й строки
-        // отдаётся бюджет строк — тот же `CLAMP_PARA`, что у авто-режима, и
+        // отдаётся бюджет строк — как и у авто-режима, и
         // «…» ставит строчный слой. Высоту даёт УКОРОЧЕННОЕ содержимое — с
         // полями, схлопыванием и заданной высотой предков (Blink: всё за
         // точкой `is_hidden_for_paint`, размер — по видимому); потолок нужен,
@@ -104,16 +103,7 @@ impl ClampGeometry {
         cut = self.automatic_cut(cut, by_count, &blocks, &rows, trim_end);
 
         let para = paragraph::automatic_para(cut, by_count, &entries, &empties, fit, trim_end);
-        // Бюджет одного и того же абзаца только УЖИМАЕТСЯ: рост числа
-        // строк на следующем кадре — это отражение нашей же правки, а не
-        // новое измерение. Правило конечно (бюджет строго убывает и не
-        // меньше единицы), поэтому кадр не может просить себя без конца.
-        // Счётный режим несёт свой бюджет (см. выше); авто-режим — свой.
         let para = if by_count { num_para } else { para };
-        let para = match (prev_para, para) {
-            (Some((ps, pk)), Some((s, k))) if ps == s && k > pk => Some((ps, pk)),
-            (_, v) => v,
-        };
         // A clamp point between blocks: the first paragraph after it, so
         // that what follows is hidden in box-tree order and what precedes
         // keeps its overflow.

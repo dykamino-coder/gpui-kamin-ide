@@ -30,7 +30,7 @@ pub(super) fn build(
     style.refine(d.style());
     // Native leaf layout разрешает padding от исходного содержащего блока
     // и прибавляет его к измеренному размеру содержимого ровно один раз.
-    let geometry = crate::text::clamp::cut_element::ClampGeometry {
+    let geometry = crate::text::clamp::geometry::ClampGeometry {
         limit: e.style.clamp_lines(),
         max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_auto == Some(true)),
         trim_end: if c.text_box_trim_end {
