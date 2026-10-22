@@ -144,6 +144,9 @@ struct NodeData {
     /// KaminIDE patch: consumed border-box cross extent in a row continuation.
     #[cfg(feature = "flexbox")]
     pub(crate) flex_item_consumed: f32,
+    /// KaminIDE patch: physical block axis and block-start direction of fragmentation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_fragmentation_axis: (crate::geometry::AbsoluteAxis, bool),
 }
 
 impl NodeData {
@@ -168,6 +171,8 @@ impl NodeData {
             flex_item_offset: 0.0,
             #[cfg(feature = "flexbox")]
             flex_item_consumed: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_fragmentation_axis: (crate::geometry::AbsoluteAxis::Vertical, false),
         }
     }
 
@@ -219,6 +224,17 @@ impl Default for TaffyTree {
 
 #[cfg(feature = "flexbox")]
 impl<NodeContext> TaffyTree<NodeContext> {
+    /// KaminIDE patch: fragmentation follows the writing-mode block axis (CSS Writing Modes 3 §6).
+    /// Reversal affects consumed-space placement, never flex sizing or line membership.
+    pub fn set_flex_fragmentation_axis(&mut self, node: NodeId, axis: crate::geometry::AbsoluteAxis, reversed: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_fragmentation_axis != (axis, reversed) {
+            data.flex_fragmentation_axis = (axis, reversed);
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
     /// KaminIDE patch: content extent already consumed by a row flex item.
     /// The item retains its main size and full contents; only its remaining
     /// cross contribution and final cross position change (CSS Flexbox 1 §10).
@@ -648,6 +664,10 @@ where
     fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
         self.taffy.nodes[node_id.into()].detailed_layout_info =
             DetailedLayoutInfo::Flex(Box::new(info));
+    }
+
+    fn flex_fragmentation_axis(&self, node: NodeId) -> (crate::geometry::AbsoluteAxis, bool) {
+        self.taffy.nodes[node.into()].flex_fragmentation_axis
     }
 
     fn flex_item_fragmentation_consumed(&self, node: NodeId) -> f32 {

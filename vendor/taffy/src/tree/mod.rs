@@ -226,3 +226,9 @@ mod flex_layout_info_tests;
 // KaminIDE patch: fragmentation constraints preserve completed item geometry.
 #[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
 mod flex_fragmentation_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_axis_tests;
+
+#[cfg(all(test, feature = "taffy_tree", feature = "flexbox"))]
+mod flex_fragmentation_continuation_tests;

@@ -39,6 +39,15 @@ pub struct FlexItemLayout {
 }
 
 impl TaffyLayoutEngine {
+    /// KaminIDE patch: consumed-space constraints follow the writing-mode block axis.
+    pub fn set_flex_fragmentation_axis(&mut self, id: LayoutId, axis: crate::Axis, reversed: bool) -> bool {
+        let axis = match axis {
+            crate::Axis::Horizontal => taffy::geometry::AbsoluteAxis::Horizontal,
+            crate::Axis::Vertical => taffy::geometry::AbsoluteAxis::Vertical,
+        };
+        self.taffy.set_flex_fragmentation_axis(id.into(), axis, reversed).is_ok()
+    }
+
     /// KaminIDE patch: consumed cross extent of a row flex continuation.
     pub fn set_flex_item_fragmentation_consumed(&mut self, id: LayoutId, consumed: f32, scale: f32) -> bool {
         self.taffy.set_flex_item_fragmentation_consumed(id.into(), consumed * scale).is_ok()
