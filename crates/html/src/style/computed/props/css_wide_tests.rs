@@ -31,16 +31,10 @@ const KNOWN_GAPS: &[&str] = &[
     "flex-grow",
     "flex-shrink",
     "flex-wrap",
-    "font",
-    "font-feature-settings",
-    "font-stretch",
     "grid-area",
     "list-style",
     "place-items",
     "place-self",
-    "text-decoration",
-    "text-decoration-line",
-    "text-wrap",
     "zoom",
 ];
 

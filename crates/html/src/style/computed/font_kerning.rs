@@ -5,17 +5,6 @@
 use super::Computed;
 
 impl Computed {
-    pub(super) fn set_font_kerning(&mut self, value: &str) {
-        let value = match value.trim() {
-            "none" => Some(0),
-            "normal" => Some(1),
-            "auto" | "initial" => Some(2),
-            "inherit" | "unset" => None,
-            _ => return,
-        };
-        self.font_kerning = accept_parsed!(self, value);
-    }
-
     pub(super) fn add_kerning_feature(&self, features: &mut Vec<(String, u32)>) {
         if let Some(value @ 0..=1) = self.font_kerning {
             features.push(("kern".into(), value as u32));
@@ -86,7 +75,7 @@ mod tests {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
         let mut style = computed("font-kerning: normal", vcx);
-        style.set_font_kerning("invalid");
+        style.apply_one("font-kerning", "invalid", vcx);
         assert_eq!(kern(&style, vcx), Some(1));
         assert!(!style.font_features.iter().any(|(tag, _)| tag == "kern"));
     }

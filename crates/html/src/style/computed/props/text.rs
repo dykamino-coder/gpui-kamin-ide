@@ -1,22 +1,31 @@
-//! Группа свойств `Computed::apply_one`: текст — `color`, `line-height`
-//! (число множителем, доля в точках по §10.8.1, `normal` меткой `Len::Auto`),
-//! `text-justify`, `text-align`/`-all`/`-last` с `match-parent`,
-//! `letter-spacing`; `text-indent`/`-transform`/`-wrap`, `white-space`,
-//! `word-*`, `hyphens`, `vertical-align`, `line-clamp`, `text-box*` и режимы
-//! письма — в подмодулях.
+//! Группа свойств `Computed::apply_one`: текст — `color`, `text-justify`,
+//! `text-align`/`-all`/`-last` с `match-parent`, `letter-spacing`; длинные
+//! свойства текста и оформления реестра (`white-space-collapse`,
+//! `text-wrap-*`, `text-emphasis-style/-color`, `text-decoration-*`) — в
+//! `longhands` с разбором `values`; `text-indent`/`-transform`, `word-*`,
+//! `hyphens`, `vertical-align`, `line-clamp`, `text-box*` и режимы письма — в
+//! подмодулях.
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
+use crate::style::css::{Grammar, LonghandId};
 use crate::style::values::value::{Len, StyleColor};
 
 mod breaking;
 mod hyphen_limits;
+mod longhands;
 mod overflow_case;
 mod text_box_values;
+pub(crate) mod values;
 mod vertical_clamp;
 
 impl Computed {
     pub(crate) fn apply_text(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
+        if let Some(id) = LonghandId::from_name(key)
+            .filter(|id| matches!(id.grammar(), Grammar::Text | Grammar::TextDecor))
+        {
+            return self.apply_text_longhand(id, v, vcx);
+        }
         match key {
             // Неразборный цвет делает объявление недействительным (§4.2):
             // прежнее значение живёт, а не сменяется умолчанием. Пустой слот
@@ -46,55 +55,6 @@ impl Computed {
                     }
                     None => {}
                 }
-            }
-            "line-height" => {
-                // Голое число в line-height — множитель, а не пиксели, и
-                // наследуется оно множителем: у потомка своя высота строки.
-                //
-                // Доля — наоборот: §10.8.1 «Computed value: for <length> and
-                // <percentage> the absolute value», то есть `200%` считается
-                // от СВОЕГО кегля и наследуется уже точками. У нас обе записи
-                // давали `Len::Pct`, доля доживала до потомка и множилась на
-                // его кегль (`c548-ln-ht-003` против зелёной `-004` — та же
-                // разметка, разная запись). `Len::Em` сводится к точкам до
-                // наследования, поэтому доля тегируется им.
-                // `normal` — ЗАДАННОЕ значение, а не «не задано»: незаданное
-                // поле у нас берётся от родителя, и `p { line-height: normal }`
-                // молча наследовал `:root { line-height: 50px }` — документ
-                // уезжал вниз на полулидинг (`rlh-unit-001`: зелёный квадрат
-                // ниже эталона на 30 точек). Меткой служит `Len::Auto`: у всех
-                // потребителей высоты строки уже есть для неё запасная ветка
-                // «по метрикам шрифта», а применение к GPUI на
-                // `Len::Auto` явно ничего не задаёт.
-                if v.eq_ignore_ascii_case("normal") {
-                    self.line_height = accept_parsed!(self, Some(Len::Auto));
-                    return;
-                }
-                let parsed = match v.parse::<f32>() {
-                    Ok(mult) if !v.ends_with("px") => Some(Len::Pct(mult)),
-                    _ => match Len::parse(v, vcx) {
-                        Some(Len::Pct(k)) if v.trim_end().ends_with('%') => Some(Len::Em(k)),
-                        other => other,
-                    },
-                };
-                // Отрицательная высота строки недействительна (§10.8.1):
-                // объявление отбрасывается целиком, прежнее значение живёт.
-                let neg = |l: &Len| {
-                    matches!(
-                        l,
-                        Len::Px(v) | Len::Em(v) | Len::Pct(v) | Len::Ex(v) | Len::Ch(v)
-                            if *v < 0.0
-                    )
-                };
-                self.line_height = match parsed {
-                    Some(l) if neg(&l) => self.line_height,
-                    other => parsed_value!(
-                        self,
-                        other
-                            .map(Some)
-                            .or_else(|| v.eq_ignore_ascii_case("inherit").then_some(None))
-                    ),
-                };
             }
             // `text-justify: none` запрещает выключку целиком: строка с
             // `text-align: justify` прижимается к началу, как `start`

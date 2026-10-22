@@ -1,9 +1,7 @@
-//! Computed::apply_text_decor, хвост цепочки: text-emphasis*, ruby-*, text-shadow. Ветви в исходном
-//! порядке после text-decoration*.
+//! Computed::apply_text_decor, хвост цепочки: text-emphasis-position, ruby-*, text-shadow.
 
 use super::*;
 use crate::document::state::ValueCx;
-use crate::style::values::value::StyleColor;
 
 impl Computed {
     pub(super) fn apply_text_decor_emphasis_ruby(
@@ -14,126 +12,21 @@ impl Computed {
         vcx: ValueCx<'_>,
     ) {
         match key {
-            "text-emphasis"
-            | "text-emphasis-style"
-            | "text-emphasis-color"
-            | "text-emphasis-position" => {
-                // css-text-decor-3 §5: знак задаётся словом (форма +
-                // заливка) или строкой; `none` его снимает. Цвет знака —
-                // свой (`emphasis_color`), по умолчанию цвет текста.
-                if key == "text-emphasis-position" {
-                    let words: Vec<_> = v.split_whitespace().collect();
-                    if words.is_empty()
-                        || words
-                            .iter()
-                            .any(|w| !matches!(*w, "auto" | "over" | "under" | "left" | "right"))
-                    {
-                        return;
-                    }
-                    self.accept_declaration();
-                    self.emphasis_position_auto = Some(v.trim() == "auto");
-                    self.emphasis_under = v.split_whitespace().any(|w| w == "under");
-                    self.emphasis_left = v.split_whitespace().any(|w| w == "left");
-                    return;
-                }
-                if key == "text-emphasis-color" {
-                    if let Some(c) = StyleColor::parse_value(v, vcx) {
-                        self.accept_declaration();
-                        self.emphasis_color = Some(c);
-                    }
-                    return;
-                }
-                let v = v.trim();
-                if !v.starts_with(['"', '\''])
-                    && !split_outside_parens(v).iter().all(|w| {
-                        matches!(
-                            w.as_str(),
-                            "none"
-                                | "open"
-                                | "filled"
-                                | "dot"
-                                | "circle"
-                                | "double-circle"
-                                | "triangle"
-                                | "sesame"
-                                | "currentcolor"
-                        ) || (key == "text-emphasis"
-                            && (w.eq_ignore_ascii_case("currentcolor")
-                                || crate::style::values::value::Color::parse(w, vcx).is_some()))
-                    })
+            // css-text-decor-4 §3.2: сторона знака; в сокращение
+            // `text-emphasis` не входит.
+            "text-emphasis-position" => {
+                let words: Vec<_> = v.split_whitespace().collect();
+                if words.is_empty()
+                    || words
+                        .iter()
+                        .any(|w| !matches!(*w, "auto" | "over" | "under" | "left" | "right"))
                 {
                     return;
                 }
-                self.emphasis_auto_shape = false;
-                // Сокращение `text-emphasis` несёт и цвет (§5.3): слово,
-                // которое разбирается как цвет, в стиль знака не идёт.
-                let style_words: Vec<&str> =
-                    if key == "text-emphasis" && !v.starts_with(['"', '\'']) {
-                        let mut kept = Vec::new();
-                        for w in v.split_whitespace() {
-                            if !matches!(
-                                w,
-                                "none"
-                                    | "open"
-                                    | "filled"
-                                    | "dot"
-                                    | "circle"
-                                    | "double-circle"
-                                    | "triangle"
-                                    | "sesame"
-                            ) && let Some(c) = StyleColor::parse_value(w, vcx)
-                            {
-                                self.emphasis_color = Some(c);
-                            } else {
-                                kept.push(w);
-                            }
-                        }
-                        kept
-                    } else {
-                        v.split_whitespace().collect()
-                    };
-                let joined = style_words.join(" ");
-                let v = joined.as_str();
-                if v == "none" || v.is_empty() {
-                    self.accept_declaration();
-                    self.text_emphasis = Some(String::new());
-                    return;
-                }
-                // Строка в кавычках — первый её знак (§5.1: «only the first
-                // character is used»).
-                if let Some(q) = v.chars().next().filter(|c| *c == '"' || *c == '\'') {
-                    self.accept_declaration();
-                    let body =
-                        crate::style::computed::parse_util::unescape_content(v.trim_matches(q));
-                    self.text_emphasis = Some(
-                        body.chars()
-                            .next()
-                            .map_or_else(String::new, |c| c.to_string()),
-                    );
-                    return;
-                }
-                let open = v.split_whitespace().any(|w| w == "open");
-                let shape = v.split_whitespace().find(|w| {
-                    matches!(
-                        *w,
-                        "dot" | "circle" | "double-circle" | "triangle" | "sesame"
-                    )
-                });
-                self.emphasis_auto_shape = shape.is_none();
-                let shape = shape.unwrap_or("circle");
-                let mark = match (shape, open) {
-                    ("dot", false) => '\u{2022}',
-                    ("dot", true) => '\u{25E6}',
-                    ("circle", false) => '\u{25CF}',
-                    ("circle", true) => '\u{25CB}',
-                    ("double-circle", false) => '\u{25C9}',
-                    ("double-circle", true) => '\u{25CE}',
-                    ("triangle", false) => '\u{25B2}',
-                    ("triangle", true) => '\u{25B3}',
-                    ("sesame", false) => '\u{FE45}',
-                    _ => '\u{FE46}',
-                };
-                self.text_emphasis = accept_parsed!(self, Some(mark.to_string()));
+                self.accept_declaration();
+                self.emphasis_position_auto = Some(v.trim() == "auto");
+                self.emphasis_under = v.split_whitespace().any(|w| w == "under");
+                self.emphasis_left = v.split_whitespace().any(|w| w == "left");
             }
             "ruby-position" => {
                 let words: Vec<_> = v.split_whitespace().collect();

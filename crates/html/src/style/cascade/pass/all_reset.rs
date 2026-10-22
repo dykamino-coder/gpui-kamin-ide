@@ -29,15 +29,13 @@ impl Computed {
         if initial {
             // Наследуемые свойства: пустое поле у нас значит «от
             // родителя», поэтому начальное значение ставится явно.
+            // Наследуемые длинные свойства реестра — их начальным значением.
+            for id in LonghandId::ALL.iter().filter(|id| id.inherited()) {
+                self.apply_one(id.name(), "initial", vcx);
+            }
             for key in [
                 "color",
-                "font-family",
-                "font-size",
-                "font-style",
-                "font-variant",
-                "font-weight",
                 "letter-spacing",
-                "line-height",
                 "list-style-position",
                 "list-style-type",
                 "quotes",
@@ -45,7 +43,6 @@ impl Computed {
                 "text-indent",
                 "text-transform",
                 "visibility",
-                "white-space",
                 "word-spacing",
             ] {
                 if let Some(start) = initial_value(key) {

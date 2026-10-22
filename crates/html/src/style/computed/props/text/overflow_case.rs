@@ -1,5 +1,4 @@
-//! Computed::apply_text, продолжение цепочки: text-overflow, white-space(-collapse), word-spacing,
-//! text-transform. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_breaking.
+//! Computed::apply_text, продолжение цепочки: text-overflow, word-spacing, text-transform. Ветви в исходном порядке; не совпавший ключ уходит в apply_text_breaking.
 
 use super::*;
 use crate::document::state::ValueCx;
@@ -78,38 +77,6 @@ impl Computed {
                 self.ellipsis = accept_parsed!(self, Some(on));
                 self.overflow_marker = marker;
             }
-            // Долгая запись `white-space-collapse` (css-text-4 §3.1) трогает
-            // ТОЛЬКО схлопывание; перенос (`nowrap`) остаётся за
-            // `text-wrap-mode`. У `preserve-spaces` и `discard` своего пути в
-            // сборке текста нет — не трогаем.
-            "white-space-collapse" => match v {
-                "collapse" => {
-                    self.accept_declaration();
-                    self.keep_spaces = Some(false);
-                    self.preserve_newlines = Some(false);
-                    self.break_after_spaces = Some(false);
-                }
-                "preserve" => {
-                    self.accept_declaration();
-                    self.keep_spaces = Some(true);
-                    self.preserve_newlines = Some(true);
-                    self.break_after_spaces = Some(false);
-                }
-                "preserve-breaks" => {
-                    self.accept_declaration();
-                    self.keep_spaces = Some(false);
-                    self.preserve_newlines = Some(true);
-                    self.break_after_spaces = Some(false);
-                }
-                "break-spaces" => {
-                    self.accept_declaration();
-                    self.keep_spaces = Some(true);
-                    self.preserve_newlines = Some(true);
-                    self.break_after_spaces = Some(true);
-                }
-                _ => {}
-            },
-            "white-space" => white_space::apply(self, v),
             "word-spacing" => {
                 self.word_spacing = parsed_value!(
                     self,

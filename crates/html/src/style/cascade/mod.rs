@@ -4,7 +4,7 @@ use crate::document::state::ValueCx;
 
 use crate::style::cascade::defaults::{inherited_property, initial_value};
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{Computed, ParseResult, css_wide_keyword, font_members};
+use crate::style::computed::{Computed, ParseResult, css_wide_keyword};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
 use crate::style::values::value::Color;
 
@@ -75,6 +75,9 @@ impl Computed {
     // разборщиком — отдельного конвейера под offset-трансформ нет.
     pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
         let v = val.trim();
+        // Устаревшее имя — то же свойство (css-cascade-5 §2.1), как при
+        // разборе блока.
+        let key = crate::style::css::legacy_name_alias(key).unwrap_or(key);
         // Сокращение реестра вне разбора блока (прямой вызов, слово `all`
         // не в счёт: оно длинные свойства называет сами) раскрывается тем же
         // разбором, что и в блоке.
@@ -187,6 +190,7 @@ impl Computed {
 
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
+        let key = crate::style::css::legacy_name_alias(key).unwrap_or(key);
         ShorthandId::from_name(key).is_some()
             || LonghandId::from_name(key).is_some()
             || Self::default().apply_property(key, "", vcx)

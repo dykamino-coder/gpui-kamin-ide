@@ -1,53 +1,13 @@
 //! Таблица длинных свойств реестра: имя, начальное значение (css-box-4,
 //! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3/4,
-//! css-masking-1, css-ui-4),
+//! css-masking-1, css-ui-4, css-fonts-4, css-inline-3, css-text-4,
+//! css-text-decor-4),
 //! наследование, грамматика и место в логической группе (css-logical-1 §4:
 //! логическое и физическое свойство одной стороны делят вычисленное
 //! значение).
 
+use super::Grammar;
 use crate::document::state::ValueCx;
-
-/// Грамматика значения длинного свойства; проверка — тем же разбором, что
-/// у применения (`Computed::accepts_longhand`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Grammar {
-    /// `<length-percentage> | auto | <anchor-size()>` (css-box-4 §3.1).
-    Margin,
-    /// `<length-percentage [0,∞]>` (css-box-4 §4.1).
-    Padding,
-    /// `auto | <length-percentage> | <anchor()> | <anchor-size()>`
-    /// (css-position-3 §3.1, css-anchor-position-1 §4).
-    Inset,
-    /// Размеры коробки (css-sizing-3 §3.1-3.2, css-sizing-4, css-values-5
-    /// `calc-size()`).
-    Size,
-    /// `<line-width>` (css-backgrounds-3 §4.3): `thin | medium | thick |
-    /// <length [0,∞]>`; у `outline-width` та же (css-ui-4 §outline-width).
-    LineWidth,
-    /// `<line-style>` (css-backgrounds-3 §4.2).
-    LineStyle,
-    /// `<color>`, в том числе `currentcolor` (css-backgrounds-3 §4.1).
-    LineColor,
-    /// `auto | <outline-line-style>`: `<line-style>` без `hidden` (css-ui-4
-    /// §outline-style).
-    OutlineStyle,
-    /// `auto | <color>` (css-ui-4 §outline-color).
-    OutlineColor,
-    /// `<length>` (css-ui-4 §outline-offset) и `inset` (WPT
-    /// `outline-offset-inset-*`).
-    OutlineOffset,
-    /// Части `border-image` (css-backgrounds-3 §5): `-source`, `-slice`,
-    /// `-width`, `-outset`, `-repeat`.
-    BorderImage,
-    /// Свойства фона (css-backgrounds-3 §3, css-backgrounds-4 §3.6): у
-    /// каждого своя грамматика слоя, значение — список слоёв, у
-    /// `background-color` — один цвет.
-    Background,
-    /// Слои маски (css-masking-1 §7): список слоёв по свойству.
-    Mask,
-    /// Части `mask-border` (css-masking-1 §8).
-    MaskBorder,
-}
 
 /// Логическая группа (Stylo `logical_group`): физические и логические
 /// свойства одной группы делят поля стиля.
@@ -200,6 +160,35 @@ longhands! {
     MaskBorderOutset = "mask-border-outset", "0", false, MaskBorder, N;
     MaskBorderRepeat = "mask-border-repeat", "stretch", false, MaskBorder, N;
     MaskBorderMode = "mask-border-mode", "alpha", false, MaskBorder, N;
+    FontStyle = "font-style", "normal", true, Font, N;
+    FontVariantLigatures = "font-variant-ligatures", "normal", true, Font, N;
+    FontVariantCaps = "font-variant-caps", "normal", true, Font, N;
+    FontVariantAlternates = "font-variant-alternates", "normal", true, Font, N;
+    FontVariantNumeric = "font-variant-numeric", "normal", true, Font, N;
+    FontVariantEastAsian = "font-variant-east-asian", "normal", true, Font, N;
+    FontVariantPosition = "font-variant-position", "normal", true, Font, N;
+    FontVariantEmoji = "font-variant-emoji", "normal", true, Font, N;
+    FontWeight = "font-weight", "normal", true, Font, N;
+    FontWidth = "font-width", "normal", true, Font, N;
+    FontSize = "font-size", "medium", true, Font, N;
+    LineHeight = "line-height", "normal", true, Font, N;
+    FontFamily = "font-family", "serif", true, Font, N;
+    FontKerning = "font-kerning", "auto", true, Font, N;
+    FontSizeAdjust = "font-size-adjust", "none", true, Font, N;
+    FontFeatureSettings = "font-feature-settings", "normal", true, Font, N;
+    FontSynthesisWeight = "font-synthesis-weight", "auto", true, Font, N;
+    FontSynthesisStyle = "font-synthesis-style", "auto", true, Font, N;
+    FontSynthesisSmallCaps = "font-synthesis-small-caps", "auto", true, Font, N;
+    FontSynthesisPosition = "font-synthesis-position", "auto", true, Font, N;
+    WhiteSpaceCollapse = "white-space-collapse", "collapse", true, Text, N;
+    TextWrapMode = "text-wrap-mode", "wrap", true, Text, N;
+    TextWrapStyle = "text-wrap-style", "auto", true, Text, N;
+    TextEmphasisStyle = "text-emphasis-style", "none", true, Text, N;
+    TextEmphasisColor = "text-emphasis-color", "currentcolor", true, Text, N;
+    TextDecorationLine = "text-decoration-line", "none", false, TextDecor, N;
+    TextDecorationStyle = "text-decoration-style", "solid", false, TextDecor, N;
+    TextDecorationColor = "text-decoration-color", "currentcolor", false, TextDecor, N;
+    TextDecorationThickness = "text-decoration-thickness", "auto", false, TextDecor, N;
 }
 
 impl LonghandId {
