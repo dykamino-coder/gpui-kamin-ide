@@ -83,7 +83,7 @@ pub(super) fn trims_at_breaks(copy: &Element, merged: &crate::style::computed::C
 pub(super) fn repeatable(
     watched: &Watched,
     copy: &Element,
-    breaks_w: Option<f32>,
+    breaks_w: Option<BreaksAt>,
     measured_kids: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<(bool, bool)> {
     let laid_out = breaks_w.is_some()
