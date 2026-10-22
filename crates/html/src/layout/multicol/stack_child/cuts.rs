@@ -228,9 +228,7 @@ pub(super) fn stack_child_of(
         },
         laid_w: Default::default(),
         paginate: None,
-        // Повтор шапки/подвала таблицы — полосы своими
-        // копиями (`flow::Repeat`); та же мера, что у
-        // щупов (`repeat_leads`).
+        // Повтор шапки/подвала — копии flow::Repeat с мерой repeat_leads.
         repeat: repeat
             .filter(|_| !span && !col_vert)
             .map(
