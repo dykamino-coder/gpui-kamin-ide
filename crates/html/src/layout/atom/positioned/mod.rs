@@ -10,10 +10,10 @@ use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
-mod paint_last;
 mod children;
+mod paint_last;
 mod replaced;
-use paint_last::inline_abs_paint_last;
+pub(crate) use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
 
 mod static_box;
@@ -73,7 +73,9 @@ pub(super) fn absolute_atom(
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
     let inner = anchor::place::place_in_context(
-        opts.cx.build.styled_box(e, &merged, &opts.cx)
+        opts.cx
+            .build
+            .styled_box(e, &merged, &opts.cx)
             .children(children::children(e, &merged, opts))
             .into_any_element(),
         &merged,

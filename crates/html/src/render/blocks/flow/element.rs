@@ -41,7 +41,7 @@ pub(crate) fn paint_element(
 ) {
     let vcx = opts.cx.vcx();
     // Ключ краски шага 8 — до сборки детей (см. `next_paint_key`).
-    let paint_key = opts.cx.next_paint_key();
+    let paint_key = opts.cx.paint_key_for(e);
     // CSS2 Appendix E: descendants paint within their nearest stacking context.
     let layer_ok = !opts.cx.paint_depth.inside();
     let geometry_layer_ok = !opts.cx.paint_depth.deferred();

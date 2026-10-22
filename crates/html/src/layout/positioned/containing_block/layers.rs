@@ -20,6 +20,7 @@ mod scope;
 pub(crate) use scope::LayerScope;
 
 use super::oof::{OofQueue, Pending};
+mod probe_scope;
 mod retained;
 pub(crate) use retained::Escaped;
 
