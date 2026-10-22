@@ -2,10 +2,10 @@
 //! переопределение параметров корня, кодированные пробелы и сегмент `t=`, отказ от испорченной
 //! спецификации, проценты от исходного размера и правило последней валидной записи `xywh=`.
 
-use super::super::rewrite_svg_fragment;
+use super::apply_view;
 
 fn resolved(markup: &str, fragment: &str) -> String {
-    String::from_utf8(rewrite_svg_fragment(markup.as_bytes().to_vec(), fragment)).unwrap()
+    String::from_utf8(apply_view(markup.as_bytes().to_vec(), fragment)).unwrap()
 }
 
 fn root_attr(markup: &str, name: &str) -> Option<String> {

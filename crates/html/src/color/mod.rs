@@ -6,8 +6,9 @@
 
 mod gamut;
 mod icc;
+mod icc_profile;
 mod matrices;
 
 pub(crate) use gamut::{gamut_map, linear_srgb_to_oklab, oklab_to_srgb};
-pub(crate) use icc::{curve_at, icc_curve, icc_matrix};
+pub(crate) use icc_profile::{IccProfile, clamp_near_gamut};
 pub(crate) use matrices::*;

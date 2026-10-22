@@ -3,24 +3,21 @@
 //! элемент-цель фрагмента помечается атрибутом, на который переписываются селекторы `:target`
 //! в `<style>` (Selectors 4 §8.3), потому что у usvg нет адреса документа.
 
-mod view;
+use crate::resources::images::svg_view::markup::{apply, opening_end, xml_text};
+use crate::resources::images::svg_view::{edits, parsing_options};
 
 pub(super) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
     let Ok(text) = std::str::from_utf8(&bytes) else {
         return bytes;
     };
-    let options = roxmltree::ParsingOptions {
-        allow_dtd: true,
-        ..Default::default()
-    };
-    let Ok(doc) = roxmltree::Document::parse_with_options(text, options) else {
+    let Ok(doc) = roxmltree::Document::parse_with_options(text, parsing_options()) else {
         return bytes;
     };
     let decoded = super::percent_decode(id);
     let Ok(id) = std::str::from_utf8(&decoded) else {
         return bytes;
     };
-    let mut edits = view::edits(text, &doc, id);
+    let mut edits = edits(text, &doc, id);
     let Some(target) = doc
         .descendants()
         .find(|n| n.is_element() && n.attribute("id") == Some(id))
@@ -70,39 +67,6 @@ pub(super) fn rewrite_svg_fragment(bytes: Vec<u8>, id: &str) -> Vec<u8> {
         edits.push((at..at, format!(" {marker}=\"\"")));
     }
     apply(text, edits)
-}
-
-fn apply(text: &str, mut edits: Vec<(std::ops::Range<usize>, String)>) -> Vec<u8> {
-    edits.sort_by_key(|(range, _)| range.start);
-    let mut result = text.to_string();
-    for (range, value) in edits.into_iter().rev() {
-        result.replace_range(range, &value);
-    }
-    result.into_bytes()
-}
-
-fn xml_text(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-fn opening_end(text: &str, start: usize) -> Option<usize> {
-    let mut quote = None;
-    for (i, c) in text[start..].char_indices() {
-        if quote == Some(c) {
-            quote = None;
-        } else if quote.is_none() {
-            if c == '>' {
-                return Some(start + i);
-            }
-            if c == '\'' || c == '"' {
-                quote = Some(c);
-            }
-        }
-    }
-    None
 }
 
 /// Rewrite selector tokens only: comments, strings, attributes and declarations

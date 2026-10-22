@@ -1,40 +1,10 @@
-//! Размер и фон SVG для декодирования фоновых изображений.
+//! Фон канвы рисунка-картинки для покраски; размер и вырожденный `viewBox` рисунка —
+//! факты самой картинки (`resources::images::vector`).
 
-use super::Intrinsic;
 use crate::document::state::ValueCx;
-
-/// Своя величина рисунка: `width`/`height` корневого тега, иначе `viewBox`.
-///
-/// Разбирается по тексту, а не деревом: дерево документа рисунка нам не нужно
-/// нигде больше, а растеризатору всё равно идёт исходная разметка.
-/// Нулевая ось `viewBox`: соотношение вырождено, рисовать нечего.
-pub(super) fn degenerate_viewbox(markup: &str) -> bool {
-    let head = match markup.find("<svg") {
-        Some(at) => {
-            &markup[at..markup[at..]
-                .find('>')
-                .map(|e| at + e)
-                .unwrap_or(markup.len())]
-        }
-        None => return false,
-    };
-    let Some(at) = head.find("viewBox=") else {
-        return false;
-    };
-    let rest = head[at + 8..].trim_start();
-    let Some(quote) = rest.chars().next() else {
-        return false;
-    };
-    let Some(vb) = rest[1..].split(quote).next() else {
-        return false;
-    };
-    let nums: Vec<f32> = vb
-        .split([' ', ','])
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    nums.len() == 4 && (nums[2] <= 0.0 || nums[3] <= 0.0)
-}
+pub(super) use crate::resources::images::vector::degenerate_viewbox;
+use crate::resources::images::vector::root_tag;
+pub(crate) use crate::resources::images::vector::svg_size;
 
 /// Фон КАНВЫ рисунка: `style="background: …"` на корневом `<svg>`.
 ///
@@ -44,15 +14,7 @@ pub(crate) fn svg_root_background(
     markup: &str,
     vcx: ValueCx<'_>,
 ) -> Option<crate::style::values::value::Color> {
-    let head = match markup.find("<svg") {
-        Some(at) => {
-            &markup[at..markup[at..]
-                .find('>')
-                .map(|e| at + e)
-                .unwrap_or(markup.len())]
-        }
-        None => return None,
-    };
+    let head = root_tag(markup)?;
     let at = head.find("style=")?;
     let rest = head[at + 6..].trim_start();
     let quote = rest.chars().next()?;
@@ -61,52 +23,4 @@ pub(crate) fn svg_root_background(
     // `background` раскрыт разбором: цвет — в `background-color`.
     let v = decls.last("background-color")?;
     crate::style::values::value::Color::parse(v.split_whitespace().next()?, vcx)
-}
-
-pub(crate) fn svg_size(markup: &str) -> Intrinsic {
-    let head = match markup.find("<svg") {
-        Some(at) => {
-            &markup[at..markup[at..]
-                .find('>')
-                .map(|e| at + e)
-                .unwrap_or(markup.len())]
-        }
-        None => markup,
-    };
-    let raw = |name: &str| -> Option<&str> {
-        let at = head.find(&format!("{name}="))?;
-        let rest = head[at + name.len() + 1..].trim_start();
-        let quote = rest.chars().next()?;
-        Some(rest[1..].split(quote).next()?.trim())
-    };
-    // Доля СВОЕЙ величиной не является: она считается от места под фон, то
-    // есть сторона у рисунка отсутствует (SVG §7.2 и css-images-3 §4.1).
-    let side = |name: &str| -> Option<f32> {
-        let v = raw(name)?;
-        if v.ends_with('%') {
-            return None;
-        }
-        v.trim_end_matches("px")
-            .parse()
-            .ok()
-            .filter(|n: &f32| *n > 0.0)
-    };
-    let ratio = raw("viewBox").and_then(|vb| {
-        let nums: Vec<f32> = vb
-            .split([' ', ','])
-            .filter(|s| !s.is_empty())
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        (nums.len() == 4 && nums[2] > 0.0 && nums[3] > 0.0).then(|| nums[2] / nums[3])
-    });
-    let (w, h) = (side("width"), side("height"));
-    Intrinsic {
-        w,
-        h,
-        // Обе стороны заданы — соотношение из них, иначе из `viewBox`.
-        ratio: match (w, h) {
-            (Some(w), Some(h)) => Some(w / h),
-            _ => ratio,
-        },
-    }
 }
