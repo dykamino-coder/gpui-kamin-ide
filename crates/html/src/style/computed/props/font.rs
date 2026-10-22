@@ -86,7 +86,10 @@ impl Computed {
                     };
                     return;
                 }
-                self.font_size = match Len::parse(v, vcx) {
+                // `<length-percentage [0,∞]>` (css-fonts-4 §font-size-prop):
+                // смесь доли и длины в `calc()` годна и считается от кегля
+                // родителя (`computed_font_px`).
+                self.font_size = match Len::parse_mixed(v, vcx) {
                     Some(l) if neg(&l) => self.font_size,
                     other => {
                         self.font_size_step = 0;

@@ -11,12 +11,14 @@ use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMa
 use crate::style::values::value::Color;
 
 mod color_initial;
+mod compute_cx;
 pub mod defaults;
 pub mod inherit;
 pub(crate) mod inherited_value;
 pub(crate) mod key;
 pub(crate) mod map;
 mod pass;
+mod phase;
 pub mod vars;
 use map::CascadeMap;
 

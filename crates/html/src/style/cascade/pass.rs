@@ -1,9 +1,13 @@
 //! Computed::apply_map: применение победителей карты каскада ([`CascadeMap`])
-//! с подстановкой var()/attr(), `all` и порядком сокращений и их длинных
-//! свойств внутри одного блока. Длинные свойства реестра приходят
-//! проверенными разбором; их значение с подстановкой разбирается здесь.
+//! по фазам вычисления ([`Phase`]) с подстановкой var()/attr(), `all` и
+//! порядком сокращений и их длинных свойств внутри одного блока. Итоги
+//! ранних фаз доходят до поздних явным входом [`ComputeCx`]. Длинные
+//! свойства реестра приходят проверенными разбором; их значение с
+//! подстановкой разбирается здесь.
 
+use super::compute_cx::ComputeCx;
 use super::map::{CascadeMap, Pick, Picks};
+use super::phase::Phase;
 use super::*;
 use crate::document::state::ValueCx;
 use crate::style::computed::ParseResult;
@@ -53,7 +57,7 @@ impl Computed {
             self.reset_for_all(v.eq_ignore_ascii_case("initial"), vcx);
             reset = Some(c.decl);
         }
-        let mut winners: Vec<(&str, Pick<'_>, Picks<'_, '_>)> = map
+        let mut winners: Vec<(Phase, &str, Pick<'_>, Picks<'_, '_>)> = map
             .names()
             .iter()
             .filter(|k| !k.starts_with("--"))
@@ -66,10 +70,12 @@ impl Computed {
                 {
                     return None;
                 }
-                Some((k, first, picks))
+                Some((Phase::of(k), k, first, picks))
             })
             .collect();
-        // Порядок применения: по ключу победителя, а внутри одного блока —
+        // Порядок применения: по фазе вычисления (свойства, от которых
+        // зависят другие, — раньше; `phase`), затем по ключу победителя, а
+        // внутри одного блока —
         // семьями. Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ вне
         // реестра и его длинным свойством (`background` и `background-color`):
         // `background-color: red; background: green` обязано дать зелёный, а
@@ -83,13 +89,14 @@ impl Computed {
         // зависимость (`textarea-pre-wrap-*`). Семьи идут «сперва общее»:
         // общность меряется числом дефисов. Порядок уходит вместе с
         // раскрытием остальных сокращений при разборе.
-        winners.sort_by_cached_key(|(k, pick, _)| {
+        winners.sort_by_cached_key(|(phase, k, pick, _)| {
             let (block, pos) = match pick {
                 Pick::Value(c, _) => (Some(c.block), c.key.decl_index()),
                 Pick::Unset(key) => (None, key.decl_index()),
             };
             let root = family(k, block);
             (
+                *phase,
                 pick.key().block_key(),
                 root.matches('-').count(),
                 root,
@@ -97,8 +104,14 @@ impl Computed {
                 k.to_string(),
             )
         });
-        for (k, first, rest) in winners {
-            self.apply_winner(k, first, rest, vars, cx, vcx);
+        let mut compute = ComputeCx::new(cx, vcx);
+        let mut winners = winners.into_iter().peekable();
+        for phase in Phase::ALL {
+            compute.before(phase);
+            while let Some((_, k, first, rest)) = winners.next_if(|w| w.0 == phase) {
+                self.apply_winner(k, first, rest, vars, &compute);
+            }
+            compute.after(phase, self);
         }
         self.settle_border_widths();
         // Прямая запись после карты — позже любого её объявления.
@@ -112,9 +125,9 @@ impl Computed {
         first: Pick<'_>,
         mut rest: Picks<'_, '_>,
         vars: &VarMap,
-        cx: CascadeCx,
-        vcx: ValueCx<'_>,
+        compute: &ComputeCx<'_>,
     ) {
+        let (cx, vcx) = (compute.element, compute.vcx);
         let mut pick = first;
         loop {
             self.decl_order.key = pick.key();
@@ -140,7 +153,7 @@ impl Computed {
             if fallback {
                 self.declaration_parse = ParseResult::Invalid;
             }
-            self.apply_resolved(k, value, vars, cx, vcx);
+            self.apply_resolved(k, value, vars, compute);
             if !fallback {
                 return;
             }
@@ -156,14 +169,8 @@ impl Computed {
         }
     }
 
-    fn apply_resolved(
-        &mut self,
-        k: &str,
-        value: &str,
-        vars: &VarMap,
-        cx: CascadeCx,
-        vcx: ValueCx<'_>,
-    ) {
+    fn apply_resolved(&mut self, k: &str, value: &str, vars: &VarMap, compute: &ComputeCx<'_>) {
+        let (cx, vcx) = (compute.element, compute.vcx);
         // Типизированный `attr()` подставляется тем же шагом, что и `var()`
         // (css-values-5 §7.7): после него значение разбирается как обычное.
         let resolved = resolve_sibling(resolve_attrs(k, &resolve_vars(value, vars), cx, vcx), cx);
@@ -175,6 +182,10 @@ impl Computed {
             && !is_wide(&resolved)
         {
             self.apply_one(k, "unset", vcx);
+        } else if is_side_radius(k) && !is_wide(&resolved) {
+            // Логическая сторона сопоставляется по письму — итогу фазы
+            // письма (css-logical-1 §4), а не по полям стиля на этот миг.
+            self.apply_side_radius(k, &resolved, compute.wm.rtl(), vcx);
         } else {
             self.apply_one(k, &resolved, vcx);
         }
@@ -183,6 +194,17 @@ impl Computed {
 
 fn is_wide(v: &str) -> bool {
     CssWide::parse(v).is_some()
+}
+
+/// Логические сокращения радиусов стороны (css-borders-4, tentative).
+fn is_side_radius(k: &str) -> bool {
+    matches!(
+        k,
+        "border-block-start-radius"
+            | "border-block-end-radius"
+            | "border-inline-start-radius"
+            | "border-inline-end-radius"
+    )
 }
 
 /// Семья имени внутри блока: НАСТОЯЩЕЕ сокращение со своими длинными
