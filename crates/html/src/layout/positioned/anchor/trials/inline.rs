@@ -21,7 +21,6 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     if !super::super::resolve::needs_deferred(&e.style)
         || is_root(e, opts)
         || opts.paged_build().is_some()
-        || !crate::layout::order::hoists_inline_abs(e, &opts.cx)
     {
         return None;
     }
@@ -30,8 +29,16 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);
-    if !opts.cx.positioning.can_defer(fixed, nearest, to_icb) {
-        return None;
+    let hoist = crate::layout::order::hoists_inline_abs(e, &opts.cx)
+        && opts.cx.positioning.can_defer(fixed, nearest, to_icb);
+    let inline_cb = !hoist
+        && opts.cx.inline_cb.as_ref().is_some_and(|o| o.take())
+        && !fixed
+        && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
+        && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
+        && e.style.z_index.unwrap_or(0) >= 0;
+    if inline_cb && let Some(offer) = &opts.cx.inline_cb {
+        offer.note_taken();
     }
     let spot: SpotCell = Default::default();
     let block = !crate::layout::positioned::static_position::hypothetical_inline_level(e);
@@ -62,6 +69,13 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     let retained = opts.cx.positioning.retain();
     let source = e.clone();
     let inherited = inherited.clone();
+    let vcx = opts.cx.vcx();
+    let mut own = inherit(&inherited, &source.style, vcx);
+    own.self_node = source.node_id;
+    own.anchor_key = super::super::key_of(&source);
+    own.anchor_seq = build_opts.cx.anchor_seq_for(&source);
+    let cb_node = own.cb_node;
+    let dependencies = super::super::Dependencies::of(&own, &inherited, vcx);
     let kid = OofKid::Trials(
         Box::new(move |bounds, spot, place, window, cx| {
             let vcx = build_opts.cx.vcx();
@@ -105,10 +119,30 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         }),
         None,
     );
-    opts.cx
-        .positioning
-        .defer(spot, kid, fixed, nearest, to_icb)
-        .ok()?;
+    let kid = OofKid::Waiting(dependencies, Box::new(kid));
     use gpui::{ParentElement, Styled};
-    Some(gpui::div().w_0().h_0().child(probe).into_any_element())
+    if hoist {
+        opts.cx
+            .positioning
+            .defer(spot, kid, fixed, nearest, to_icb)
+            .ok()?;
+        Some(gpui::div().w_0().h_0().child(probe).into_any_element())
+    } else {
+        let host = opts
+            .cx
+            .positioning
+            .local_oof(spot, kid, cb_node, opts.cx.vcx().keep());
+        if inline_cb {
+            Some(host)
+        } else {
+            Some(
+                gpui::div()
+                    .w_0()
+                    .h_0()
+                    .child(probe)
+                    .child(host)
+                    .into_any_element(),
+            )
+        }
+    }
 }

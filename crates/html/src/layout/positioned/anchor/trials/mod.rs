@@ -29,16 +29,6 @@ pub(crate) struct Chosen {
     signature: Option<Signature>,
 }
 
-impl Chosen {
-    pub(super) fn legacy(index: usize) -> Self {
-        Self {
-            index,
-            accepted: None,
-            signature: None,
-        }
-    }
-}
-
 pub(crate) struct Options {
     key: u64,
     order: u8,

@@ -19,8 +19,7 @@ use std::cell::RefCell;
 mod scope;
 pub(crate) use scope::LayerScope;
 
-
-use super::oof::OofQueue;
+use super::oof::{OofQueue, Pending};
 mod retained;
 pub(crate) use retained::Escaped;
 
@@ -35,22 +34,23 @@ struct CbLayer {
     /// boxes whose NEAREST containing block is its owner — the CB-ancestor
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
-    taken: OofHost,
+    taken: OofQueue,
 }
 
 #[derive(Default)]
 pub struct Positioning {
     /// Layers of the nearest containing blocks (positioned boxes).
     cb: RefCell<Vec<CbLayer>>,
+    pending: RefCell<Vec<Pending>>,
     /// Layers of the INITIAL containing block: the document, a scroll strip
     /// block, a nested document. By §10.1 an out-of-flow box without a
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
-    icb: RefCell<Vec<OofHost>>,
+    icb: RefCell<Vec<OofQueue>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
-    late: RefCell<Vec<OofHost>>,
+    late: RefCell<Vec<OofQueue>>,
     /// Content boxes of flex containers measured in this pass's prepaint
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
@@ -99,7 +99,9 @@ impl Positioning {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
-            taken: OofHost::default(),
+            taken: OofQueue::with_pending(
+                self.pending.borrow().last().cloned().unwrap_or_default(),
+            ),
         });
     }
 
@@ -150,11 +152,14 @@ impl Positioning {
     /// Open an initial-containing-block layer: the document, a strip block or
     /// a nested document.
     pub fn icb_open(&self) {
-        self.icb.borrow_mut().push(OofHost::default());
+        let queue = OofQueue::initial();
+        self.pending.borrow_mut().push(queue.pending());
+        self.icb.borrow_mut().push(queue);
     }
 
     /// Take what the top ICB layer collected and close it.
     pub fn icb_close(&self) -> Vec<AnyElement> {
+        self.pending.borrow_mut().pop();
         let layer = self.icb.borrow_mut().pop();
         layer.unwrap_or_default().place(icb_place)
     }
@@ -181,7 +186,9 @@ impl Positioning {
 
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
-        self.late.borrow_mut().push(OofHost::default());
+        self.late.borrow_mut().push(OofQueue::with_pending(
+            self.pending.borrow().last().cloned().unwrap_or_default(),
+        ));
     }
 
     /// Take what the top paint layer collected and close it.

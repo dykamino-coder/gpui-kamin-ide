@@ -1,8 +1,7 @@
 //! Единое размещение OOF по якорю и прозрачный адаптер готовой коробки.
 
 use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
-use super::{AnchorPlan, PlacementPlans, geometry, reframe_if_stale, request_rebuild};
-use crate::document::state::ValueCx;
+use super::{AnchorPlan, PlacementPlans, geometry};
 use crate::hooks::{Hooks, IntoHooked};
 use crate::style::computed::Computed;
 
@@ -14,53 +13,24 @@ pub(crate) fn place_in_context(
     inherited: &Computed,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
-    if let Some((key, probe)) = &cx.oof_trial
-        && *key == own.anchor_key
-        && let Some(mut plan) = AnchorPlan::of(own, inherited, cx.vcx())
-    {
-        plan.history = false;
-        return probe.wrap(el, plan, own.position_visibility, own.anchor_key);
-    }
-    place(el, own, inherited, cx.vcx())
-}
-
-/// Обернуть готовую коробку заместителем; без `anchor()`-вставок, области,
-/// `anchor-center`, списка вариантов и `position-visibility` — как есть.
-///
-/// Кандидаты §fallback строятся от БАЗОВЫХ стилей (`try_base` — стиль до
-/// наложения выбранного варианта, `apply_chosen`): [0] — база, дальше по
-/// одному на элемент списка: правило `@position-try` накладывается на копию
-/// базы, `<position-area>` подменяет область, тактика преобразует свойства
-/// до построения плана. Правило без определения — «does nothing»: варианта нет.
-pub fn place(el: AnyElement, own: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> AnyElement {
-    let base = own.try_base.as_deref().unwrap_or(own);
-    let Some(first) = AnchorPlan::of(base, inherited, vcx) else {
+    let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {
         return el;
     };
-    let mut plans = vec![first];
-    let mut indices = vec![0];
-    for (index, fb) in base.position_try_fallbacks.iter().enumerate() {
-        let mut c = base.clone();
-        if let Some(n) = &fb.name {
-            let Some(decls) = vcx.doc.try_rule(n) else {
-                continue;
-            };
-            super::resolve::apply_try_rule(&mut c, &decls, vcx);
-        }
-        if let Some(area) = fb.area {
-            c.position_area = Some(area);
-        }
-        super::trials::tactics::apply(&mut c, inherited, fb.tactics, vcx);
-        let Some(p) = AnchorPlan::of(&c, inherited, vcx) else {
-            continue;
-        };
-        plans.push(p);
-        indices.push(index + 1);
+    if let Some((key, inputs)) = cx.oof_sizes
+        && key == own.anchor_key
+    {
+        first.refs_default |= inputs.refs_default;
     }
+    if let Some((key, probe)) = &cx.oof_trial
+        && *key == own.anchor_key
+    {
+        return probe.wrap(el, first, own.position_visibility, own.anchor_key);
+    }
+    let vcx = cx.vcx();
     let plans = PlacementPlans {
-        plans,
-        indices,
-        order: base.position_try_order,
+        plans: vec![first],
+        indices: vec![0],
+        order: 0,
         key: own.anchor_key,
         visibility: own.position_visibility,
         values: vcx.keep(),
@@ -122,38 +92,7 @@ pub(crate) fn place_one(
     let own = geometry::logical_own(layout, bounds, window);
     let (k, p) = plans.choose(own, window, plans.values.vcx());
     let plan = &plans.plans[k];
-    // IMCB нужен и клетке `position-area`, и паре вставок с `anchor()`
-    // при `auto`-размере (`resolve::fill_anchor_pairs`).
-    {
-        vcx.doc
-            .anchor_frame
-            .area_now
-            .borrow_mut()
-            .insert(plans.key, p.imcb);
-        vcx.doc
-            .anchor_frame
-            .cell_now
-            .borrow_mut()
-            .insert(plans.key, p.cell);
-        let stale = vcx.doc.anchor_frame.area_last.borrow().get(&plans.key) != Some(&p.imcb)
-            || vcx.doc.anchor_frame.cell_last.borrow().get(&plans.key) != Some(&p.cell);
-        if stale && vcx.doc.anchor_frame.used_last.get() {
-            reframe_if_stale(window, vcx);
-        }
-    }
-    if plans.plans.len() > 1 {
-        let prev = vcx
-            .doc
-            .anchor_frame
-            .chosen
-            .borrow_mut()
-            .insert(plans.key, super::trials::Chosen::legacy(plans.indices[k]));
-        // Объявления выбранного правила лягут в стиль на следующей
-        // сборке (`apply_chosen`) — попросить её.
-        if prev.map(|p| p.index) != Some(plans.indices[k]) {
-            request_rebuild(window);
-        }
-    }
+    vcx.doc.anchor_frame.present.borrow_mut().insert(plans.key);
     let mut hidden = false;
     // §position-visibility. anchor-valid: якорь по умолчанию нужен, но не
     // разрешается. anchor-visible: якорь невидим либо целиком обрезан

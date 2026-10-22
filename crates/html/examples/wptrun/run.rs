@@ -64,6 +64,7 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
         window,
         hwnd,
         trace: trace.clone(),
+        frame_errors: Default::default(),
     };
     // Время на пару: страница, у которой один кадр считается
     // секундами, выглядит на экране долгой пустотой и неотличима от
@@ -151,7 +152,12 @@ pub(super) async fn run(cx: &mut AsyncApp, window: AnyWindowHandle, cfg: RunConf
                 }
             });
         }
-        let verdict = first_failure.unwrap_or(final_verdict);
+        let errors = stage.frame_errors.take();
+        let verdict = if errors.is_empty() {
+            first_failure.unwrap_or(final_verdict)
+        } else {
+            format!("ERROR first-frame != settled: {}", errors.join(", "))
+        };
         report.push_str(&format!("{test}|{reference}|{verdict}\n"));
         // Отчёт пишется после каждой пары: падение на одном файле не
         // должно стирать результат всего прогона.
