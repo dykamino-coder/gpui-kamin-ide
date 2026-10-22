@@ -9,6 +9,8 @@ use std::rc::Rc;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FragmentProbe {
     pub estimate_calls: u64,
+    /// Реальные входы оценки; суммарное число вызовов остаётся estimate_calls.
+    pub estimate_sites: BTreeMap<String, u64>,
     pub height_comparisons: u64,
     pub height_mismatches: u64,
     pub underestimated: u64,
@@ -28,12 +30,16 @@ impl FragmentProbes {
         std::mem::take(&mut *self.0.borrow_mut())
     }
 
+    #[track_caller]
     pub(crate) fn estimate(&self, site: &str) {
-        self.0
-            .borrow_mut()
-            .entry(site.into())
-            .or_default()
-            .estimate_calls += 1;
+        let caller = std::panic::Location::caller();
+        let mut counters = self.0.borrow_mut();
+        let probe = counters.entry(site.into()).or_default();
+        probe.estimate_calls += 1;
+        *probe
+            .estimate_sites
+            .entry(format!("{}:{}", caller.file(), caller.line()))
+            .or_default() += 1;
     }
 
     pub(crate) fn height(&self, site: &str, estimate: f32, laid: f32) {
@@ -98,6 +104,8 @@ mod tests {
         let clone = a.clone();
         let p = clone.take();
         assert_eq!(p["test"].estimate_calls, 2);
+        assert_eq!(p["test"].estimate_sites.len(), 2);
+        assert_eq!(p["test"].estimate_sites.values().sum::<u64>(), 2);
         assert_eq!(p["test"].break_comparisons, 1);
         assert_eq!(p["test"].break_mismatches, 1);
         assert!(a.take().is_empty());

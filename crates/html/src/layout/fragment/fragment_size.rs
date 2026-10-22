@@ -17,6 +17,7 @@ use crate::layout::fragment::{Shape, ShapeCx};
 use crate::style::computed::{Computed, LenCx, Overflow};
 use crate::style::values::value::Len;
 
+#[cfg_attr(feature = "wpt-harness", track_caller)]
 pub(crate) fn shape_full(
     element: &Element,
     depth: u8,
@@ -28,6 +29,7 @@ pub(crate) fn shape_full(
 
 /// Мера фрагментации коробки (`shape_full`) вместе с её внепоточной
 /// досягаемостью и собственным размером (`Measure`).
+#[cfg_attr(feature = "wpt-harness", track_caller)]
 pub(crate) fn measure(
     element: &Element,
     depth: u8,
