@@ -74,6 +74,7 @@ FIXES = {
         "Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.",
         "Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.",
         "Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.",
+        "Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.",
         "Packaging: retain the selected source/examples; omit the upstream generated test module.",
         "calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.",
     ],
