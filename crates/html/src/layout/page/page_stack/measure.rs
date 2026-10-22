@@ -38,6 +38,12 @@ pub(super) fn measure(
     };
     // Мера поддерева даёт точки разреза внутри ребёнка; без неё
     // ребёнок — цельный кусок измеренной высоты.
+    #[cfg(feature = "wpt-harness")]
+    if let Some((h, ..)) = &k.shape
+        && k.watched.is_some()
+    {
+        k.probe.height("pages", *h, f32::from(sz.height));
+    }
     let mut avoid = Vec::new();
     let mut keep = Vec::new();
     let (mut h, mut cuts, mut forced, mut solid) = match &k.shape {
@@ -84,6 +90,10 @@ pub(super) fn measure(
                 if flex {
                     avoid = m.avoid;
                     keep = m.keep;
+                }
+                #[cfg(feature = "wpt-harness")]
+                if k.shape.is_some() {
+                    k.probe.breaks("pages.breaks", &cuts, &m.cuts);
                 }
                 (cuts, forced, solid) = (m.cuts, m.forced, m.solid);
                 k.refresh_repeat(m.sections, ah);
