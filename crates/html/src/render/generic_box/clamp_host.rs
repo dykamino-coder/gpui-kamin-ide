@@ -5,9 +5,9 @@ use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::style::computed::Computed;
-use crate::style::values::value::px_lossy_zero;
 use crate::text::clamp::{ClampHost, ClampInput};
 use gpui::{AnyElement, Refineable, Styled};
+mod frame;
 use std::rc::Rc;
 
 pub(super) fn active(e: &Element, c: &Computed) -> bool {
@@ -28,41 +28,40 @@ pub(super) fn build(
 ) -> AnyElement {
     let mut style = gpui::Style::default();
     style.refine(d.style());
-    // Внешняя коробка участвует в родительском layout. Весь её внутренний
-    // каркас, включая border/padding, строится одной функцией ниже.
-    style.border_widths = Default::default();
-    style.padding = Default::default();
-    let side = px_lossy_zero;
-    let b = c.borders();
-    let bp = side(b.top) + side(b.bottom) + side(c.padding.top) + side(c.padding.bottom);
-    let bb = if c.border_box == Some(true) { bp } else { 0.0 };
+    // Native leaf layout разрешает padding от исходного содержащего блока
+    // и прибавляет его к измеренному размеру содержимого ровно один раз.
     let geometry = crate::text::clamp::cut_element::ClampGeometry {
         limit: e.style.clamp_lines(),
-        max_h: auto_clamp_limit(&c)
-            .filter(|_| e.style.clamp_auto == Some(true))
-            .map(|v| (v - bb).max(0.0)),
+        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_auto == Some(true)),
         trim_end: if c.text_box_trim_end {
             crate::text::text_box::text_box_trim_px(&c, false, opts)
         } else {
             0.0
         },
     };
-    let (key, top) = (e.node_id, side(b.top) + side(c.padding.top));
+    let key = e.node_id;
+    let border_box = c.border_box == Some(true);
     let paint = opts.cx.paint.clone();
     let e = e.clone();
     let inherited = inherited.clone();
     let positioning = opts.cx.positioning.defer();
     let opts = opts.clone();
-    let build = Rc::new(move |input: ClampInput, width, publish| {
+    let build = Rc::new(move |input: ClampInput, width, used_box, publish| {
         let opts = opts.inner(|cx| {
             cx.clamp_build = cx.clamp_build.container(key);
             cx.clamp_input = Some(input);
             cx.positioning = positioning.fork(publish);
             cx.clamp_frame = Some((key, width));
         });
-        super::generic_box(&e, c.clone(), &inherited, &opts, outer_row)
+        super::generic_box(
+            &e,
+            frame::resolved_style(&c, used_box, opts.cx.vcx()),
+            &inherited,
+            &opts,
+            outer_row,
+        )
     });
-    ClampHost::new(key, style, geometry, build, top, paint).hooked()
+    ClampHost::new(key, style, geometry, build, border_box, paint).hooked()
 }
 
 pub(super) fn frame(d: &mut gpui::Div, width: Option<gpui::Pixels>) {

@@ -2,6 +2,8 @@ mod alignment_adapter;
 mod measurement;
 mod line_baselines;
 mod measured_content;
+mod measured_box;
+pub use measured_box::MeasuredBox;
 pub use measured_content::MeasuredContent;
 pub use measurement::LayoutMeasurement;
 
@@ -36,6 +38,7 @@ type StackSafe<T> = T;
 type MeasureFn = dyn FnMut(
     Size<Option<Pixels>>,
     Size<AvailableSpace>,
+    MeasuredBox,
     &mut Window,
     &mut App,
 ) -> MeasuredContent;

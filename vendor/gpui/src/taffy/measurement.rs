@@ -148,7 +148,8 @@ pub(super) fn leaf(
             taffy::AvailableSpace::MaxContent => AvailableSpace::MaxContent,
         };
         let available = size(from_native(available.width), from_native(available.height));
-        let measured = (context.measure.borrow_mut())(known, available, window, cx);
+        let geometry = super::MeasuredBox::from_native(input.parent_size, style, scale);
+        let measured = (context.measure.borrow_mut())(known, available, geometry, window, cx);
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {

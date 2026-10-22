@@ -3,6 +3,26 @@
 use super::*;
 
 impl Window {
+    /// Measure content with the actual containing block and native resolved padding/border.
+    /// The callback returns content size; native layout adds the supplied edges exactly once.
+    pub fn request_measured_layout_with_box(
+        &mut self,
+        style: Style,
+        mut measure: impl FnMut(
+            Size<Option<Pixels>>, Size<AvailableSpace>, crate::MeasuredBox, &mut Window, &mut App,
+        ) -> Size<Pixels> + 'static,
+    ) -> LayoutId {
+        self.invalidator.debug_assert_prepaint();
+        let rem_size = self.rem_size();
+        let scale_factor = self.scale_factor();
+        self.layout_engine.as_mut().unwrap().request_measured_layout_with_box(
+            style, rem_size, scale_factor,
+            move |known, available, geometry, window, cx| crate::MeasuredContent::new(
+                measure(known, available, geometry, window, cx)
+            ),
+        )
+    }
+
     /// Copy a subtree for independent measurement during the current layout phase.
     pub fn snapshot_layout_measurement(&self, layout_id: LayoutId) -> crate::LayoutMeasurement {
         self.layout_engine
