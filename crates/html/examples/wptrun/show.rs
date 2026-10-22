@@ -23,6 +23,7 @@ pub(super) struct Stage {
     /// Без этого «пара идёт 27 секунд» и «пара пустая» — два разных
     /// наблюдения без связи между ними.
     pub(super) trace: Rc<RefCell<String>>,
+    pub(super) frame_errors: Rc<RefCell<Vec<String>>>,
 }
 
 impl Stage {
@@ -78,6 +79,7 @@ impl Stage {
         // скачет между прогонами (`css-flexbox-height-animation-stretch`:
         // то 1.13 %, то 0.03 %).
         let has_anim = lower.contains("animation") || lower.contains("transition");
+        let mut first_shot = None;
         let mut last: Option<(u32, u32, Vec<u8>)> = None;
         let mut same = 0u32;
         let mut steady = 0u32;
@@ -97,7 +99,7 @@ impl Stage {
             // Напоминание раз в полсекунды выводит его из этого
             // состояния; на здоровых показах до него не доходит —
             // кадр устаивается раньше.
-            if !first && step % 30 == 29 {
+            if step % 30 == 29 {
                 let _ = cx.update_window(window, |view, window, cx| {
                     if let Ok(page) = view.downcast::<Page>() {
                         page.update(cx, |_, cx| cx.notify());
@@ -105,15 +107,18 @@ impl Stage {
                     window.refresh();
                 });
             }
-            let shot = if first {
+            let shot = if first && first_shot.is_none() {
                 gpui::frame_capture::take_first().map(|f| (f.width, f.height, f.bgra))
             } else {
                 captures.next(hwnd)
             };
             let Some(now) = shot else { continue };
-            if first {
+            if first && first_shot.is_none() {
                 note.borrow_mut().push('f');
-                return Some(now);
+                if has_anim || has_image {
+                    return Some(now);
+                }
+                first_shot = Some(now.clone());
             }
             let changed = prev.as_ref().is_none_or(|before| *before != now.2);
             let settled = last.as_ref().is_some_and(|before| before.2 == now.2);
@@ -146,7 +151,7 @@ impl Stage {
             // (`css-position/multicol/static-position/*`).
             if changed && steady + 1 >= need && (!want_flat || flat(&now.2)) {
                 note.borrow_mut().push('s');
-                return Some(now);
+                return self.checked(first_shot, Some(now), source);
             }
             // Страница, которая НЕ нарисовалась, равна разделителю, и
             // «сменился» на ней не наступает никогда — стенд вырабатывал
@@ -170,7 +175,7 @@ impl Stage {
             // выходили пустыми, а по одной рисуются).
             if same >= 120 {
                 note.borrow_mut().push('b');
-                return Some(now);
+                return self.checked(first_shot, Some(now), source);
             }
             last = Some(now);
             // A cached readback is not another settled frame. Drive a fresh
@@ -187,6 +192,25 @@ impl Stage {
         }
         note.borrow_mut()
             .push(if last.is_some() { 'o' } else { 'n' });
-        last
+        self.checked(first_shot, last, source)
+    }
+
+    fn checked(
+        &self,
+        first: Option<Shot>,
+        settled: Option<Shot>,
+        source: Option<&str>,
+    ) -> Option<Shot> {
+        let Some(first) = first else { return settled };
+        let equal = settled
+            .as_ref()
+            .and_then(|last| super::pixel_compare::compare(&first, last))
+            .is_some_and(|difference| difference.pixels == 0);
+        if !equal && let Some(source) = source {
+            self.frame_errors.borrow_mut().push(source.to_owned());
+            let stem = format!("{}--first-frame", super::capture_name::stem(0, source));
+            super::capture_dump::pair(&stem, &[Some(first.clone()), settled], None);
+        }
+        Some(first)
     }
 }

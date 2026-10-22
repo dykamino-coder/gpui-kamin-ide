@@ -68,7 +68,24 @@ impl AnchorPlan {
         // `position-area: block-end`, имени нет) не пряталась никогда.
         let refs_default = own.position_area.is_some()
             || anchor_center
-            || sides.iter().flatten().any(|s| s.f.name.is_none());
+            || [
+                own.width,
+                own.height,
+                own.min_width,
+                own.min_height,
+                own.max_width,
+                own.max_height,
+                own.inset.top,
+                own.inset.right,
+                own.inset.bottom,
+                own.inset.left,
+            ]
+            .into_iter()
+            .flatten()
+            .any(|l| match l {
+                Len::Anchor(i) => anchor_get(i, vcx).is_some_and(|f| f.name.is_none()),
+                _ => false,
+            });
         if sides.iter().all(Option::is_none)
             && area.is_none()
             && !(anchor_center && default_anchor.is_some())
@@ -78,6 +95,7 @@ impl AnchorPlan {
             return None;
         }
         Some(AnchorPlan {
+            key: own.anchor_key,
             values: vcx.keep(),
             sides,
             default_anchor,

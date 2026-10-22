@@ -4,6 +4,19 @@ use super::Positioning;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
+impl Positioning {
+    pub(crate) fn local_oof(
+        &self,
+        spot: super::SpotCell,
+        kid: super::super::OofKid,
+        cb: u64,
+        values: crate::document::state::ValueDoc,
+    ) -> AnyElement {
+        super::OofQueue::with_pending(self.pending.borrow().last().cloned().unwrap_or_default())
+            .local(spot, kid, cb, values)
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Layer {
     Containing,
@@ -75,6 +88,7 @@ impl Drop for LayerScope<'_> {
             }
             Layer::Initial => {
                 self.positioning.icb.borrow_mut().pop();
+                self.positioning.pending.borrow_mut().pop();
             }
             Layer::Late => {
                 self.positioning.late.borrow_mut().pop();
@@ -89,11 +103,12 @@ mod tests {
 
     use super::*;
 
-    fn depths(positioning: &Positioning) -> [usize; 3] {
+    fn depths(positioning: &Positioning) -> [usize; 4] {
         [
             positioning.cb.borrow().len(),
             positioning.icb.borrow().len(),
             positioning.late.borrow().len(),
+            positioning.pending.borrow().len(),
         ]
     }
 
@@ -116,9 +131,10 @@ mod tests {
         assert!(fixed.finish().is_empty());
         assert_eq!(depths(&positioning)[0], before[0] + 1);
         assert!(outer.finish().is_empty());
-        assert!(LayerScope::icb(&positioning).finish().is_empty());
+        assert_eq!(LayerScope::icb(&positioning).finish().len(), 1);
         assert!(LayerScope::late(&positioning).finish().is_empty());
         assert_eq!(depths(&positioning), before);
+        assert!(positioning.pending.borrow().is_empty());
     }
 
     #[test]
