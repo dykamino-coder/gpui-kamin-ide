@@ -4,6 +4,7 @@
 
 mod children;
 mod floats;
+mod grid_kid;
 mod rows;
 mod stack_plan;
 mod tail;

@@ -44,7 +44,14 @@ fn measured_tree(e: &Element, depth: u8, item: bool, lines: bool) -> bool {
         return false;
     }
     if grid_container(e) {
+        // Дорожки рядов читаются у разложенного элемента: у сетки без
+        // элементов их взять не у кого.
+        let items = e.children.iter().any(|n| {
+            matches!(n, Node::Element(k)
+                if !out_of_flow(&k.style) && !matches!(k.style.display, Some(Display::None)))
+        });
         return depth > 0
+            && items
             && e.children.iter().all(|n| match n {
                 Node::Element(k) if out_of_flow(&k.style) => false,
                 Node::Element(k) if matches!(k.style.display, Some(Display::None)) => true,
