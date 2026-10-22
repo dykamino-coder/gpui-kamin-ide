@@ -42,6 +42,11 @@ pub fn style_first_line(
                     // вопреки `font-synthesis-*: none`. Дописываются ПОСЛЕ
                     // своих: при повторе тега побеждает первая строка.
                     c.font_features.extend(style.font_features.iter().cloned());
+                    c.font_synth = (
+                        style.font_synth.0.or(base.font_synth.0),
+                        style.font_synth.1.or(base.font_synth.1),
+                        style.font_synth.2.or(base.font_synth.2),
+                    );
                     c.font_kerning = style.font_kerning.or(base.font_kerning);
                     c.font_alternates = style
                         .font_alternates

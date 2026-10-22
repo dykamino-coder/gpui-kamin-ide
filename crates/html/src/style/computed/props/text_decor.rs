@@ -1,11 +1,11 @@
-//! Группа свойств `Computed::apply_one`: оформление текста —
-//! `text-decoration*` (сокращение css-text-decor-4 §2 и longhand: линии, стиль,
-//! цвет, толщина, `-inset`, `-skip-*`), `text-underline-offset`/`-position`;
-//! `text-emphasis*`, `text-shadow`, `ruby-*` — в подмодуле `emphasis_ruby`.
+//! Группа свойств `Computed::apply_one`: оформление текста вне реестра —
+//! `text-decoration-inset`, `-skip-*`, `text-underline-offset`/`-position`;
+//! `text-emphasis-position`, `text-shadow`, `ruby-*` — в подмодуле
+//! `emphasis_ruby`. Линии, стиль, цвет и толщина оформления — длинные
+//! свойства реестра (`props::text::longhands`).
 
 use crate::document::state::ValueCx;
 use crate::style::computed::*;
-use crate::style::values::value::StyleColor;
 mod emphasis_ruby;
 
 impl Computed {
@@ -17,71 +17,6 @@ impl Computed {
         vcx: ValueCx<'_>,
     ) {
         match key {
-            "text-decoration" | "text-decoration-line" | "-webkit-text-decoration-line" => {
-                // css-text-decor-4 §2: сокращение — `<line> || <style> ||
-                // <color> || <thickness>`, все подсвойства сбрасываются.
-                // Недействительный токен делает объявление НЕВАЛИДНЫМ целиком
-                // (§4.2): `text-decoration: diagonal` оставляет прежнее
-                // значение (`c71-fwd-parsing-003`).
-                let lower = v.trim().to_ascii_lowercase();
-                let words = crate::style::css::value_tokens::split_top(&lower);
-                if words.is_empty() {
-                    return;
-                }
-                let short = key == "text-decoration";
-                let (mut lines, mut none) = (0u8, false);
-                let (mut style, mut color, mut thick) = (None, None, None);
-                for t in &words {
-                    let t = *t;
-                    match t {
-                        "none" if lines == 0 && !none => none = true,
-                        "underline" if lines & DECOR_UNDER == 0 && !none => lines |= DECOR_UNDER,
-                        "overline" if lines & DECOR_OVER == 0 && !none => lines |= DECOR_OVER,
-                        "line-through" if lines & DECOR_THROUGH == 0 && !none => {
-                            lines |= DECOR_THROUGH
-                        }
-                        // Мигание и пометки правописания линий не рисуют.
-                        "blink" | "spelling-error" | "grammar-error" if !none => {}
-                        _ if !short => return,
-                        _ if style.is_none() && parse_decor_style(t).is_some() => {
-                            style = parse_decor_style(t)
-                        }
-                        _ if color.is_none() && StyleColor::parse_value(t, vcx).is_some() => {
-                            color = StyleColor::parse_value(t, vcx)
-                        }
-                        _ if thick.is_none() && parse_decor_thickness(t, vcx).is_some() => {
-                            thick = parse_decor_thickness(t, vcx)
-                        }
-                        _ => return,
-                    }
-                }
-                self.td_lines = accept_parsed!(self, Some(lines));
-                if short {
-                    self.td_style = style;
-                    self.td_color = color.unwrap_or_default();
-                    self.td_thickness = thick;
-                }
-                self.underline = Some(lines & DECOR_UNDER != 0);
-                self.line_through = Some(lines & DECOR_THROUGH != 0);
-            }
-            "text-decoration-style" | "-webkit-text-decoration-style" => {
-                if let Some(s) = parse_decor_style(&v.trim().to_ascii_lowercase()) {
-                    self.accept_declaration();
-                    self.td_style = Some(s);
-                }
-            }
-            "text-decoration-color" | "-webkit-text-decoration-color" => {
-                if let Some(c) = StyleColor::parse_value(v, vcx) {
-                    self.accept_declaration();
-                    self.td_color = c;
-                }
-            }
-            "text-decoration-thickness" => {
-                if let Some(t) = parse_decor_thickness(&v.trim().to_ascii_lowercase(), vcx) {
-                    self.accept_declaration();
-                    self.td_thickness = Some(t);
-                }
-            }
             "text-underline-offset" => {
                 let t = v.trim().to_ascii_lowercase();
                 if t == "auto" {

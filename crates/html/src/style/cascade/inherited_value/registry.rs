@@ -121,6 +121,9 @@ properties! {
     Filter: "filter" => [filter, filter_ref];
     ZIndex: "z-index" => [z_index];
     VerticalAlign: "vertical-align" => [vertical_align, vertical_align_text, vertical_shift, vertical_shift_pct, vertical_shift_px, vertical_shift_len];
+    DecorationLine: "text-decoration-line" => [td_lines, underline, line_through];
+    DecorationStyle: "text-decoration-style" => [td_style];
+    DecorationColor: "text-decoration-color" => [td_color];
     DecorationThickness: "text-decoration-thickness" => [td_thickness];
     DecorationInset: "text-decoration-inset" => [td_inset];
     BorderSpacing: "border-spacing" => [border_spacing];

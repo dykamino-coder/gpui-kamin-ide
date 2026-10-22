@@ -9,17 +9,9 @@ pub(super) fn inherited_property(key: &str) -> bool {
         key,
         "scrollbar-color"
             | "color"
-            | "font"
-            | "font-family"
-            | "font-size"
-            | "font-style"
             | "math-style"
-            | "font-variant"
-            | "font-weight"
-            | "font-stretch"
             | "letter-spacing"
             | "word-spacing"
-            | "line-height"
             | "text-align"
             | "text-align-all"
             | "image-rendering"
@@ -27,7 +19,6 @@ pub(super) fn inherited_property(key: &str) -> bool {
             | "text-indent"
             | "text-transform"
             | "visibility"
-            | "white-space"
             | "list-style"
             | "list-style-type"
             | "list-style-position"
@@ -84,16 +75,10 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "hyphens" => "manual",
         "text-shadow" => "none",
         "direction" => "ltr",
-        "font-family" => "serif",
-        "font-size" => "medium",
-        "font-style" => "normal",
         // MathML Core §4.2: initial must stop inheriting compact style.
         "math-style" => "normal",
-        "font-variant" => "normal",
-        "font-weight" => "normal",
         "letter-spacing" => "normal",
         "line-break" => "auto",
-        "line-height" => "normal",
         "list-style-position" => "outside",
         "list-style-type" => "disc",
         "quotes" => "auto",
@@ -109,7 +94,6 @@ pub(super) fn initial_value(key: &str) -> Option<&'static str> {
         "text-transform" => "none",
         "vertical-align" => "baseline",
         "visibility" => "visible",
-        "white-space" => "normal",
         "word-break" => "normal",
         "word-spacing" => "normal",
         "writing-mode" => "horizontal-tb",
