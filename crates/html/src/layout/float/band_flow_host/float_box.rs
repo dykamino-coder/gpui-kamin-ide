@@ -20,6 +20,8 @@ pub(super) fn float_box(
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
+    merged.anchor_seq = opts.cx.anchor_seq_for(copy);
+    merged.anchor_key = crate::layout::positioned::anchor::key_of(copy);
     merged.margin = Default::default();
     // Like element(), resolve viewport units before the box's native layout.
     merged.resolve_viewport(opts.viewport, vcx);
@@ -31,9 +33,20 @@ pub(super) fn float_box(
     } else if copy.tag == "img" {
         image(copy, &opts.cx)
     } else {
+        // The independent float contents retain the same positioned containing
+        // block as an ordinary box; its OOF host follows the in-flow anchors.
+        let cb_scope = crate::text::inline::establishes_cb(&merged).then(|| {
+            crate::layout::positioned::layer_scope::LayerScope::cb(
+                &opts.cx.positioning,
+                crate::paint::stacking::fixed_cb_layer_box(&merged),
+            )
+        });
         let span = open_clamp_span(&opts.cx);
         let mut kids = blocks(&copy.children, &merged, opts);
         close_clamp_span(span.clone(), &opts.cx);
+        if let Some(scope) = cb_scope {
+            kids.extend(scope.finish());
+        }
         // CSS Overflow 4 section 5.3: its lines belong to an independent BFC,
         // but a float intersecting the clamp point keeps its border-box extent.
         let mut probed = merged.clone();

@@ -13389,7 +13389,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9ce0fd7031
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..da1c02f56aaa25385015b6aaae2912678a49a568
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -13449,11 +13449,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +    /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
 +    /// Поднимается на Tab-переходах, гаснет на любом mouse-down.
 +    pub(crate) focus_visible: bool,
-@@ -1519,0 +1569,26 @@
+@@ -1519,0 +1569,27 @@
 +}
 +
 +/// KaminIDE patch: снимок контекста краски окна (см. `Window::paint_ctx`).
-+pub(crate) struct PaintCtx {
++#[derive(Clone)]
++pub struct PaintCtx {
 +    element_id_stack: SmallVec<[ElementId; 32]>,
 +    text_style_stack: Vec<TextStyleRefinement>,
 +    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
@@ -13476,13 +13477,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +    glyph_offset: Point<Pixels>,
 +    css_text_backgrounds: Vec<(Bounds<Pixels>, Point<Pixels>, TransformationMatrix)>,
 +    css_exact_bounds: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
-@@ -1837,0 +1913,3 @@
+@@ -1837,0 +1914,3 @@
 +                                // KaminIDE patch: стоимость кадра — в счётчики
 +                                // `frame_perf`, приложение печатает сводку.
 +                                let t0 = std::time::Instant::now();
-@@ -1843,0 +1922 @@
+@@ -1843,0 +1923 @@
 +                                let t1 = std::time::Instant::now();
-@@ -1844,0 +1924,8 @@
+@@ -1844,0 +1925,8 @@
 +                                {
 +                                    use crate::frame_perf::*;
 +                                    use std::sync::atomic::Ordering::Relaxed;
@@ -13491,9 +13492,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +                                    FRAMES.fetch_add(1, Relaxed);
 +                                }
 +                                // drop the arena elements after present to reduce latency
-@@ -2082,0 +2170 @@
+@@ -2082,0 +2171 @@
 +            render_contexts: Default::default(),
-@@ -2084,0 +2173,9 @@
+@@ -2084,0 +2174,9 @@
 +            exact_element_offset_depth: 0,
 +            glyph_offset: Point::default(),
 +            css_text_backgrounds: Vec::new(),
@@ -13503,35 +13504,35 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2129,0 +2227,2 @@
+@@ -2129,0 +2228,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2315,0 +2415,2 @@
+@@ -2315,0 +2416,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2419 @@
+@@ -2317,0 +2420 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2378,0 +2481,5 @@
+@@ -2378,0 +2482,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2493,2 @@
+@@ -2385,0 +2494,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2506,2 @@
+@@ -2396,0 +2507,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2649,0 +2761,2 @@
+@@ -2649,0 +2762,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +2764 @@
+@@ -2650,0 +2765 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +2784,2 @@
+@@ -2669,0 +2785,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2884,2 +3000,52 @@
+@@ -2884,2 +3001,52 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -13586,7 +13587,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3053,71 @@
+@@ -2887 +3054,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -13659,44 +13660,44 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3187,5 +3422,0 @@
+@@ -3187,5 +3423,0 @@
 -    }
 -
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
-@@ -3578,0 +3810,2 @@
+@@ -3578,0 +3811,2 @@
 +        // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
 +        let _phase_started = std::time::Instant::now();
-@@ -3586,0 +3820,4 @@
+@@ -3586,0 +3821,4 @@
 +        crate::frame_perf::PREPAINT_US.fetch_add(
 +            _phase_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3615,0 +3853 @@
+@@ -3615,0 +3854 @@
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +3855,4 @@
+@@ -3616,0 +3856,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3619,0 +3862 @@
+@@ -3619,0 +3863 @@
 +        let _paint_started = std::time::Instant::now();
-@@ -3620,0 +3864,4 @@
+@@ -3620,0 +3865,4 @@
 +        crate::frame_perf::PAINT_US.fetch_add(
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +4011,3 @@
+@@ -3763,0 +4012,3 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
-@@ -3817,0 +4068,2 @@
+@@ -3817,0 +4069,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3901,0 +4154 @@
+@@ -3901,0 +4155 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
-@@ -3972,0 +4226,19 @@
+@@ -3972,0 +4227,19 @@
 +    /// KaminIDE patch: read the host context of type `T` for this traversal.
 +    /// Values belong to this window; callers retain ownership through `Rc`.
 +    pub fn render_context<T: 'static>(&self) -> Option<Rc<T>> {
@@ -13716,7 +13717,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        f(self)
 +    }
 +
-@@ -4036 +4308,10 @@
+@@ -4036 +4309,10 @@
 -            let mask = mask.intersect(&self.content_mask());
 +            // KaminIDE patch: под `with_transformation_masked` маска ребёнка
 +            // задана в его НЕпреобразованных точках, а шейдер сравнивает её с
@@ -13728,14 +13729,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +                None => self.scaled_mask(mask),
 +            }
 +            .intersect(&self.content_mask());
-@@ -4043,0 +4325,208 @@
+@@ -4043,0 +4326,208 @@
 +    }
 +
 +    /// KaminIDE patch: снимок контекста краски — всё, что `paint` предков
 +    /// кладёт в окно вокруг ребёнка (маски, прозрачность, стиль текста,
 +    /// преобразования, путь id). Перенесённый ребёнок (`PaintLast` в
 +    /// собирателе) рисуется позже ровно в том окружении, где стоял.
-+    pub(crate) fn paint_ctx(&self) -> PaintCtx {
++    pub fn paint_ctx(&self) -> PaintCtx {
 +        PaintCtx {
 +            element_id_stack: self.element_id_stack.clone(),
 +            text_style_stack: self.text_style_stack.clone(),
@@ -13754,7 +13755,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +
 +    /// KaminIDE patch: выполнить `f` в снятом `paint_ctx` окружении и вернуть
 +    /// прежнее.
-+    pub(crate) fn with_paint_ctx<R>(
++    pub fn with_paint_ctx<R>(
 +        &mut self,
 +        mut ctx: PaintCtx,
 +        f: impl FnOnce(&mut Self) -> R,
@@ -13937,7 +13938,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        let result = f(self);
 +        self.mask_scale = prev;
 +        result
-@@ -4060,0 +4550,19 @@
+@@ -4060,0 +4551,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -13957,7 +13958,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        let result = self.with_absolute_element_offset(abs_offset, f);
 +        self.exact_element_offset_depth -= 1;
 +        result
-@@ -4147 +4655,10 @@
+@@ -4147 +4656,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -13969,7 +13970,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +4675,66 @@
+@@ -4157,0 +4676,66 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -14036,9 +14037,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        result
 +    }
 +
-@@ -4383,0 +4967 @@
+@@ -4383,0 +4968 @@
 +            render_contexts: self.render_contexts.snapshot(),
-@@ -4405,3 +4989,40 @@
+@@ -4405,3 +4990,40 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -14082,7 +14083,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +                };
 +            }
 +            self.next_frame.scene.push_layer(scaled);
-@@ -4415,0 +5037,48 @@
+@@ -4415,0 +5038,48 @@
 +        result
 +    }
 +
@@ -14131,7 +14132,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        if pushed {
 +            self.next_frame.scene.pop_depth_plane();
 +        }
-@@ -4554,2 +5223,8 @@
+@@ -4554,2 +5224,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -14142,24 +14143,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5232 @@
+@@ -4556,0 +5233 @@
 +            transformation,
-@@ -4558,2 +5234,2 @@
+@@ -4558,2 +5235,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5238,2 @@
+@@ -4562,2 +5239,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567 +5243,3 @@
+@@ -4567 +5244,3 @@
 -        if !quad.background.is_transparent() {
 +        // The strip split below restricts screen-space content masks, which
 +        // only matches the quad's own coordinates without a transformation.
 +        if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-@@ -4678,0 +5357,9 @@
+@@ -4678,0 +5358,9 @@
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
 +    /// painted afterwards and return the previous one. Layout snaps a box's
 +    /// edges to device pixels, but text inside it belongs at the box's exact
@@ -14169,7 +14170,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        std::mem::replace(&mut self.glyph_offset, offset)
 +    }
 +
-@@ -4699,13 +5386,31 @@
+@@ -4699,13 +5387,31 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -14214,7 +14215,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +                },
 +            )
 +        };
-@@ -4738 +5443,6 @@
+@@ -4738 +5444,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -14222,13 +14223,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4748 +5458 @@
+@@ -4748 +5459 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4758 +5468 @@
+@@ -4758 +5469 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4798,0 +5509,14 @@
+@@ -4798,0 +5510,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -14243,11 +14244,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5527,2 @@
+@@ -4803 +5528,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,3 +5554,4 @@
+@@ -4829,3 +5555,4 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -14255,14 +14256,14 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            let opacity = self.element_opacity() * alpha;
 +
 +            let transformation = self.current_transformation();
-@@ -4832,0 +5559 @@
+@@ -4832,0 +5560 @@
 +                transformation,
-@@ -5003,0 +5731,2 @@
+@@ -5003,0 +5732,2 @@
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
-@@ -5004,0 +5734 @@
+@@ -5004,0 +5735 @@
 +            transformation,
-@@ -5016,0 +5747,71 @@
+@@ -5016,0 +5748,71 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -14334,7 +14335,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        Ok(())
 +    }
 +
-@@ -5018,0 +5820,230 @@
+@@ -5018,0 +5821,230 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -14565,7 +14566,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        result
 +    }
 +
-@@ -5114,0 +6146,55 @@
+@@ -5114,0 +6147,55 @@
 +    /// То же, что `request_measured_layout`, но замер отдаёт ещё и первую
 +    /// базовую линию содержимого — от верха коробки содержимого вниз.
 +    ///
@@ -14621,7 +14622,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            .request_measured_layout_with_baselines(style, rem_size, scale_factor, measure)
 +    }
 +
-@@ -5116,0 +6203,68 @@
+@@ -5116,0 +6204,68 @@
 +    /// KaminIDE patch: вложенная раскладка на ОТДЕЛЬНОМ движке.
 +    ///
 +    /// Замерное замыкание (`request_measured_layout`) зовётся, когда основной
@@ -14690,7 +14691,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
 +    }
 +
-@@ -5132,0 +6287,48 @@
+@@ -5132,0 +6288,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -14739,7 +14740,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6349,6 @@
+@@ -5147,2 +6350,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -14748,7 +14749,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5209,0 +6416,16 @@
+@@ -5209,0 +6417,16 @@
 +    }
 +
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
@@ -14765,7 +14766,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..b7397ba47fba100a6c283c2799443f9c
 +    pub(crate) fn asset_subscriber(&self) -> Option<EntityId> {
 +        self.current_view_opt()
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
-@@ -5792,0 +7015,5 @@
+@@ -5792,0 +7016,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
