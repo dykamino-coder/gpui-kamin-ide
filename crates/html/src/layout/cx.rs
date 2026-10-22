@@ -146,7 +146,7 @@ impl LayoutCx {
 
     pub(crate) fn clamp_plan(&self, key: u64) -> Option<&crate::text::clamp::ClampPlan> {
         if let Some(input) = &self.clamp_input {
-            if !crate::text::clamp::clamp_context(self).is_some_and(|(own, _)| own == key) {
+            if crate::text::clamp::clamp_context(self).is_none_or(|(own, _)| own != key) {
                 return None;
             }
             return match input {
