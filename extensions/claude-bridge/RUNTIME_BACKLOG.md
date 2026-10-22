@@ -25,6 +25,24 @@ Private storage IDs INC-0030/0035/0036 не создают дополнител�
 обновлять затронутые строки этого обзора вместе с canonical карточкой; дата/база
 показывают предел актуальности. При расхождении сначала проверить merged PR и evidence.
 
+## Уточнение hook/permission handoff — 2026-10-23
+
+Source: `f819b57b`; это дополнение только к BR-07/10/11 и новому INC-0077,
+не полный пересчёт backlog и не новая execution-пачка. Числа и остальные строки
+сохраняют свои исторические даты.
+
+- [BR-11](RUNTIME_RELIABILITY.md#br-11--inventory-native-cli-only-blocking-states):
+  maintainer начинает с [конкретной матрицы](../../docs/HOOK_PERMISSION_ACCEPTANCE.md),
+  искусственного hook и существующего private INC-0035 packet; исходный hook
+  владельца не prerequisite. Следующий artifact — versioned CLI protocol decision.
+- [BR-07](RUNTIME_RELIABILITY.md#br-07--surface-native-claude-attention-in-chat):
+  после decision — поддерживаемое отображение/ответ в Chat; баннер Console не
+  означает готовые Allow/Deny. BR-10 отдельно проверяет declaration approval.
+- [INC-0077](runtime-issues/INC-2026-0077.md): `confirmed`, следующий шаг `change`.
+  Синтетически подтверждена ложная причина `User denied permission` при policy
+  deny / callback отмены без нажатия. Source fix независим от BR-11; владелец —
+  maintainer. Историческая причина пользовательского случая не установлена.
+
 ## Выборочная сверка compact — 2026-10-20
 
 Source до решения: `9c965ea8` (включает accepted fix INC-0069/#380); остальные строки
