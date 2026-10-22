@@ -51,7 +51,7 @@ fn exhausted_copy_caps_report_incomplete_and_keep_the_same_prefix() {
     for limit in [12, 48, 16] {
         for space in [Space::columns(limit), Space::pages(limit)] {
             let kid = slice((limit + 1) as f32 * 10.0);
-            let (_, _, plan) = fill(&[kid.clone()], 10.0, space);
+            let (_, _, plan) = fill(std::slice::from_ref(&kid), 10.0, space);
             let (_, _, full) = fill(&[kid], 10.0, Space::columns(limit + 1));
             assert_eq!(plan.completion, super::Completion::Incomplete);
             assert_eq!(plan.len(), limit);
@@ -87,7 +87,7 @@ fn forced_break_and_cloned_decoration_report_incomplete() {
             ..slice(30.0)
         },
     ] {
-        let (_, _, plan) = fill(&[kid.clone()], 10.0, Space::columns(2));
+        let (_, _, plan) = fill(std::slice::from_ref(&kid), 10.0, Space::columns(2));
         let (_, _, full) = fill(&[kid], 10.0, Space::columns(8));
         assert_eq!(plan.completion, super::Completion::Incomplete);
         assert_eq!(plan.len(), 2);
