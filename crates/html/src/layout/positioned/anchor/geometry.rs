@@ -46,8 +46,13 @@ impl PlacementPlans {
         if places.len() == 1 {
             return (0, places[0]);
         }
-        if let Some(k) = vcx.doc.anchor_frame.chosen.borrow().get(&self.key).copied()
-            && k < places.len()
+        if let Some(k) = vcx
+            .doc
+            .anchor_frame
+            .chosen
+            .borrow()
+            .get(&self.key)
+            .and_then(|c| self.indices.iter().position(|i| *i == c.index))
             && !places[k].overflow
         {
             return (k, places[k]);

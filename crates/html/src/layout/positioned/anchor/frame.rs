@@ -77,6 +77,11 @@ pub fn reset(vcx: ValueCx<'_>) {
     vcx.doc.anchor_frame.cb.borrow_mut().clear();
     vcx.doc.anchor_frame.cb_parent.borrow_mut().clear();
     let area = std::mem::take(&mut *vcx.doc.anchor_frame.area_now.borrow_mut());
+    vcx.doc
+        .anchor_frame
+        .chosen
+        .borrow_mut()
+        .retain(|key, _| area.contains_key(key));
     *vcx.doc.anchor_frame.area_last.borrow_mut() = area;
     let cell = std::mem::take(&mut *vcx.doc.anchor_frame.cell_now.borrow_mut());
     *vcx.doc.anchor_frame.cell_last.borrow_mut() = cell;
@@ -100,6 +105,17 @@ pub fn next_seq(vcx: ValueCx<'_>) -> u32 {
 mod tests {
     use super::{REFRAME_BUDGET, note_checked, reset, take_reframe};
     use crate::document::state::DocState;
+
+    #[test]
+    fn box_absence_discards_last_successful_option() {
+        let doc = DocState::new(Default::default());
+        doc.anchor_frame
+            .chosen
+            .borrow_mut()
+            .insert(17, super::super::trials::Chosen::legacy(2));
+        reset(doc.frame_values());
+        assert!(doc.anchor_frame.chosen.borrow().is_empty());
+    }
 
     #[test]
     fn stale_records_of_one_frame_share_one_budget_step() {

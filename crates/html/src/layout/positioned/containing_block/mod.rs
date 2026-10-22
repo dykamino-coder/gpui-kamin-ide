@@ -8,12 +8,14 @@ mod spot;
 pub use spot::Spot;
 mod late;
 pub use late::LatePlace;
+pub(crate) use late::placed_bounds;
 pub use late::spot_place;
 pub use late::spot_probe;
 mod hang;
 pub use hang::InlineStartHang;
 mod layers;
 mod oof;
+pub(crate) use layers::Escaped;
 pub(crate) use layers::LayerScope;
 pub use layers::Positioning;
 

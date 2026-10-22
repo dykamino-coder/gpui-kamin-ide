@@ -44,13 +44,13 @@ pub(super) fn build(
     let paint = opts.cx.paint.clone();
     let e = e.clone();
     let inherited = inherited.clone();
-    let positioning = opts.cx.positioning.defer();
+    let positioning = opts.cx.positioning.retain();
     let opts = opts.clone();
     let build = Rc::new(move |input: ClampInput, width, used_box, publish| {
         let opts = opts.inner(|cx| {
             cx.clamp_build = cx.clamp_build.container(key);
             cx.clamp_input = Some(input);
-            cx.positioning = positioning.fork(publish);
+            cx.positioning = if publish { positioning.resume() } else { positioning.isolate().0 };
             cx.clamp_frame = Some((key, width));
         });
         super::generic_box(

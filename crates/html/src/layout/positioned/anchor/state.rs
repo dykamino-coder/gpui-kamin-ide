@@ -54,7 +54,7 @@ pub(crate) struct AnchorState {
     /// (§fallback: «the element keeps those styles until it overflows again»):
     /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
     /// чистится на сборке документа (`settle_static`).
-    pub(super) chosen: RefCell<HashMap<u64, usize>>,
+    pub(super) chosen: RefCell<HashMap<u64, super::trials::Chosen>>,
     /// This frame's build sized a box from the PREVIOUS frame's anchor
     /// registry (`anchor-size()`, `position-area` cell percentages).
     pub(super) used_last: Cell<bool>,

@@ -18,9 +18,11 @@ use std::cell::RefCell;
 
 mod scope;
 pub(crate) use scope::LayerScope;
-mod deferred;
 
-use super::oof::OofHost;
+
+use super::oof::OofQueue;
+mod retained;
+pub(crate) use retained::Escaped;
 
 /// Which boxes a nearest-containing-block layer takes.
 const ABS: u8 = 1;
