@@ -36,7 +36,7 @@ pub(super) fn table_rows(
         let row = record.element;
         let carry = record.carry;
         cursor.row_ix += 1;
-        let row_ref: crate::paint::effects::transformed_element::RefBox = Default::default();
+        let row_ref: crate::layout::build_contracts::RefBox = Default::default();
         for slot in cursor.occupied.iter_mut() {
             *slot = slot.saturating_sub(1);
         }

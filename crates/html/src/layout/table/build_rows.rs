@@ -63,10 +63,8 @@ pub(super) fn table_rows_with_bands(
     // Алгоритм тот же, что у авторазмещения сетки: занятые клетки
     // пропускаются.
     let occupied: Vec<u16> = vec![0; geom.cols as usize];
-    let group_refs: std::collections::HashMap<
-        u64,
-        crate::paint::effects::transformed_element::RefBox,
-    > = std::collections::HashMap::new();
+    let group_refs: std::collections::HashMap<u64, crate::layout::build_contracts::RefBox> =
+        std::collections::HashMap::new();
     layers.group_of = group_of;
     layers.rules_groups = rules_groups;
     let mut cursor = RowCursor {

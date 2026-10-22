@@ -48,7 +48,7 @@ pub(crate) fn transformed_with(
     el: AnyElement,
     c: &Computed,
     parent: &Computed,
-    ref_box: Option<crate::paint::effects::transformed_element::RefBox>,
+    ref_box: Option<crate::layout::build_contracts::RefBox>,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> AnyElement {
     // `transform: inherit` / `transform-origin: inherit` (css-cascade-4

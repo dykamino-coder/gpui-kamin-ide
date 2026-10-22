@@ -13,16 +13,16 @@
 
 mod boxes;
 pub(crate) use boxes::{BoxBuild, GridPlacement, Styling};
+mod effects;
+pub(crate) use effects::{Effect, RefBox};
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::probes::{CellBgs, CellEdges, RowRects};
-use crate::paint::context::PaintCx;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
-use std::rc::Rc;
 
 type BuildNodes = fn(&[Node], &Computed, &RenderOpts) -> Vec<AnyElement>;
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
@@ -30,18 +30,6 @@ type BuildParagraph = fn(&[Node], &Computed, &RenderOpts) -> AnyElement;
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildEffect = fn(AnyElement, Effect<'_>) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
-
-/// A paint effect around a box the algorithm has built. The box keeps its
-/// layout; the effect only changes how and when it is painted.
-pub(crate) enum Effect<'a> {
-    /// The outline phase (CSS 2.1 Appendix E, step 10) isolated inside the
-    /// box: a float is painted atomically (E.2 step 5), so its outlines are
-    /// painted with it rather than with the enclosing phase.
-    OutlineScope(&'a Rc<PaintCx>),
-    /// The outline phase of a formatting context, which is no stacking
-    /// context: the enclosing phase is reused when one is collecting.
-    OutlineFlow(&'a Rc<PaintCx>),
-}
 
 /// A paint layer over geometry that layout's probes record in prepaint of
 /// the same frame (`layout::table::probes`). The layer is laid out of flow

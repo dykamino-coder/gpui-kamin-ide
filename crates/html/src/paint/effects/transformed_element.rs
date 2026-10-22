@@ -7,6 +7,7 @@
 mod lifecycle;
 mod painting;
 
+use crate::layout::build_contracts::RefBox;
 use gpui::{AnyElement, Pixels};
 
 pub struct Transformed {
@@ -69,9 +70,6 @@ pub struct Transformed {
     /// on prepaint, and paint resolves origin/percentages against it.
     pub ref_box: Option<RefBox>,
 }
-
-/// Union of unrounded boxes, filled on prepaint (see `Transformed::ref_box`).
-pub type RefBox = std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<Pixels>>>>;
 
 /// Сплющивание плоскости z=0 в аффинную матрицу экрана
 /// (css-transforms-2 §3d-transform-rendering).
