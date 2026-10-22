@@ -5,13 +5,14 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::paint::stacking::inline_abs::inline_abs_paint_last;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
+mod paint_last;
 mod replaced;
+use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
 
 pub(super) fn static_position_atom(
@@ -96,9 +97,10 @@ pub(super) fn static_position_atom(
         &opts.cx,
     );
     let inner = match replaced {
-        Some(el) if merged.corner_shaped() => {
-            crate::paint::effects::grouped::grouped(el, &merged, vcx)
-        }
+        Some(el) if merged.corner_shaped() => opts.cx.build.effects(
+            el,
+            crate::layout::build_contracts::Effect::group(&merged, vcx),
+        ),
         Some(el) => el,
         None => inner.into_any_element(),
     };

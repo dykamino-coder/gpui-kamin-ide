@@ -1,10 +1,11 @@
-//! Обёртка шага 8 для строчного абсолютного бокса: решение порядка раскладки выбирает
-//! бокс, а этот адаптер оборачивает его в `PaintLast` со следующим ключом отрисовки.
+//! Обёртка шага 8 для строчного абсолютного бокса: решение порядка раскладки
+//! (`layout::order::hoists_inline_abs`) выбирает бокс, а эффект `PaintLast` контракта
+//! сборки ставит его в собиратель со следующим ключом отрисовки.
 
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::cx::LayoutCx;
-use crate::layout::order::hoists_inline_abs;
-use gpui::{AnyElement, IntoElement};
+use gpui::AnyElement;
 
 /// Строчный абсолют с `z-index: auto | 0` в позднем слое (`late_push`): шаг 8
 /// приложения E CSS 2.1 — позиционированные рисуются ПОСЛЕ строчного
@@ -14,11 +15,9 @@ use gpui::{AnyElement, IntoElement};
 /// (`ch-unit-001`, `ic-unit-001`). `PaintLast` ставит коробку в собиратель по
 /// ключу в порядке разметки. Узел вне обхода (порождённый сборщиком) остаётся
 /// на прежнем пути.
-pub(crate) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
-    if hoists_inline_abs(e, cx) {
-        gpui::PaintLast::new(el)
-            .key(cx.next_paint_key())
-            .into_any_element()
+pub(super) fn inline_abs_paint_last(e: &Element, el: AnyElement, cx: &LayoutCx) -> AnyElement {
+    if crate::layout::order::hoists_inline_abs(e, cx) {
+        cx.build.effects(el, Effect::PaintLast(cx.next_paint_key()))
     } else {
         el
     }

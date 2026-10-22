@@ -135,7 +135,7 @@ pub(super) fn band_nest(
     )?;
     trim::route_end(&mut seq, &merged);
     let kids = band_kids(&seq, 0, &merged, opts, inner_em, top_edge_open(c), wm);
-    let group = group_key.map(|key| (group_wrap(c, inherited, vcx), key));
+    let group = group_key.map(|key| (group_wrap(c, inherited, &opts.cx), key));
     Some(crate::layout::float::band_flow::Nest {
         group,
         kids,

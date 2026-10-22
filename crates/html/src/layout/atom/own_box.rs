@@ -2,8 +2,8 @@
 
 use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::grouped::grouped;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
@@ -154,9 +154,8 @@ pub(super) fn own_box_atom(
     if let Some(layer) = cb_layer {
         kids.extend(layer.finish());
     }
-    Some(grouped(
+    Some(opts.cx.build.effects(
         box_.children(kids).into_any_element(),
-        &e.style,
-        vcx,
+        Effect::group(&e.style, vcx),
     ))
 }

@@ -4,9 +4,9 @@ use super::cell_div::{cell_box_div, ortho_cell_box};
 use super::cell_inside::{cell_contents, place_cell_in_grid};
 use super::edge_probes::{CellProbe, cell_edge_probes};
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::cell_paints_over;
-use crate::paint::effects::transform::{transformed, transformed_with};
 use gpui::{AnyElement, IntoElement, ParentElement};
 
 use crate::layout::table::context::{
@@ -106,7 +106,11 @@ fn push_cell_wrapped(
     let mut built = d.children(inside).into_any_element();
     // Also without own transform: a `preserve-3d` cell or one under a
     // 3D row needs its wrapper for the context chain.
-    built = transformed(built, &cell.style, &row_state.row_style, vcx);
+    let build = &opts.cx.build;
+    built = build.effects(
+        built,
+        Effect::transform(&cell.style, &row_state.row_style, vcx),
+    );
     let pure_shift = |t: &crate::style::computed::Transform| {
         !t.has_3d
             && t.lin == [[1.0, 0.0], [0.0, 1.0]]
@@ -117,7 +121,7 @@ fn push_cell_wrapped(
     };
     // Any other row/group transform resolves its origin and
     // percentages against the row/group box: the union of its cells'
-    // boxes, shared by their wrappers (`paint::effects::transformed_element::Transformed::ref_box`;
+    // boxes, shared by their wrappers (`Effect::Transform::ref_box`;
     // `transform-transformed-tr-contains-fixed-position`: `rotate(45deg)`
     // with `transform-origin: left` on the `<tr>`).
     // The wrappers also carry a `preserve-3d` chain through the
@@ -131,7 +135,15 @@ fn push_cell_wrapped(
         .as_ref()
         .is_some_and(|t| !pure_shift(t))
         .then(|| row_state.row_ref.clone());
-    built = transformed_with(built, &row_state.row.style, row_state.inherited, rb, vcx);
+    built = build.effects(
+        built,
+        Effect::Transform {
+            style: &row_state.row.style,
+            parent: row_state.inherited,
+            ref_box: rb,
+            vcx,
+        },
+    );
     if let Some(g) = row_state.carry.group {
         let rb = g
             .style
@@ -139,7 +151,15 @@ fn push_cell_wrapped(
             .as_ref()
             .is_some_and(|t| !pure_shift(t))
             .then(|| cursor.group_refs.entry(g.node_id).or_default().clone());
-        built = transformed_with(built, &g.style, geom.inherited, rb, vcx);
+        built = build.effects(
+            built,
+            Effect::Transform {
+                style: &g.style,
+                parent: geom.inherited,
+                ref_box: rb,
+                vcx,
+            },
+        );
     }
     if layers.paint_layers && cell_paints_over(&cell.children, 24) {
         out.cells_over.push(built);
