@@ -141,17 +141,29 @@ mod tests {
         );
         let mut layer = Computed::default();
         layer.apply_one("content", "none", vcx);
-        li.style.used_mut().marker_layer = Some(Box::new(layer));
-        li.style.used_mut().no_marker = Some(true);
+        li.style.cascaded_mut().marker_layer = Some(Box::new(layer));
+        li.style.cascaded_mut().no_marker = Some(true);
+        // Как в dom/walk: содержимое псевдоэлемента задаётся до наследования.
+        // После смены деклараций прежний снимок merged остаётся неизменным.
+        let merged = inherit(
+            &BoxStyle::shared(parent.style.used()),
+            li.style.cascaded(),
+            vcx,
+        );
         assert!(super::super::resolve(&li, &parent.style.used(), &merged, vcx).is_none());
         li.style
-            .used_mut()
+            .cascaded_mut()
             .marker_layer
             .as_mut()
             .unwrap()
             .apply_one("content", "'custom'", vcx);
-        li.style.used_mut().no_marker = Some(false);
-        li.style.used_mut().marker_text = Some("custom".into());
+        li.style.cascaded_mut().no_marker = Some(false);
+        li.style.cascaded_mut().marker_text = Some("custom".into());
+        let merged = inherit(
+            &BoxStyle::shared(parent.style.used()),
+            li.style.cascaded(),
+            vcx,
+        );
         let marker = super::super::resolve(&li, &parent.style.used(), &merged, vcx).unwrap();
         assert!(marker.image.is_none());
         assert_eq!(marker.text, "custom");
