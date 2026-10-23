@@ -11,7 +11,7 @@
 //! значение, когда направление lanes контейнера известно: content/items — по
 //! своему направлению, self — по родительскому (контейнеру выравнивания).
 
-use crate::style::computed::{Align, Computed, Display, Justify};
+use crate::style::computed::{Align, BoxStyle, Computed, Display, Justify};
 
 /// `align_flow` bits, one per alignment property.
 pub(crate) const JUSTIFY_CONTENT: u8 = 1;
@@ -81,7 +81,7 @@ fn flip_justify(j: &mut Option<Justify>) {
 
 /// Resolves the flow keywords of `c` against its own and its parent's lanes
 /// direction.
-pub(super) fn resolve(parent: &Computed, c: &mut crate::style::computed::BoxStyle) {
+pub(super) fn resolve(parent: &Computed, c: &mut BoxStyle) {
     if c.align_flow == 0 {
         return;
     }
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn track_reverse_flips_inline_flow_keywords_of_column_lanes() {
-        let mut c = crate::style::computed::BoxStyle::new(lanes(true, false));
+        let mut c = BoxStyle::new(lanes(true, false));
         note(&mut c, "justify-content", "flow-start");
         note(&mut c, "align-content", "flow-start");
         c.justify_content = Some(Justify::WmStart);
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn self_alignment_follows_the_parent_lanes() {
         let parent = lanes(false, true);
-        let mut c = crate::style::computed::BoxStyle::default();
+        let mut c = BoxStyle::default();
         note(&mut c, "align-self", "flow-end");
         c.align_self = Some(Align::End);
         resolve(&parent, &mut c);

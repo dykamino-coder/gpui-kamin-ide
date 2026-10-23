@@ -14,7 +14,7 @@ mod tests;
 use super::{AnchorPlan, Placement, PlacementPlans};
 use crate::document::state::ValueCx;
 use crate::hooks::{Hooks, IntoHooked};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
 use signature::Signature;
 use snapshot::Accepted;
@@ -35,11 +35,11 @@ pub(crate) struct Options {
     vertical: bool,
     remembered: bool,
     signature: Signature,
-    pub(crate) styles: Vec<(usize, Computed)>,
+    pub(crate) styles: Vec<(usize, BoxStyle)>,
 }
 
 impl Options {
-    pub(crate) fn new(base: &Computed, inherited: &Computed, vcx: ValueCx<'_>) -> Self {
+    pub(crate) fn new(base: &BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) -> Self {
         let signature = Signature::of(base, vcx);
         let previous = vcx
             .doc

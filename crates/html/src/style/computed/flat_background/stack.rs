@@ -14,7 +14,11 @@ use crate::style::values::value::Color;
 
 mod blend;
 
-pub(crate) fn collapse(c: &mut super::super::BoxStyle, vcx: ValueCx<'_>, images: &dyn BackgroundImageValues) {
+pub(crate) fn collapse(
+    c: &mut super::super::BoxStyle,
+    vcx: ValueCx<'_>,
+    images: &dyn BackgroundImageValues,
+) {
     let Some(stack) = evaluate(c, vcx, images) else {
         return;
     };
@@ -29,7 +33,11 @@ pub(crate) fn collapse(c: &mut super::super::BoxStyle, vcx: ValueCx<'_>, images:
     c.background_blend = None;
 }
 
-fn evaluate(c: &Computed, vcx: ValueCx<'_>, images: &dyn BackgroundImageValues) -> Option<[Color; 3]> {
+fn evaluate(
+    c: &Computed,
+    vcx: ValueCx<'_>,
+    images: &dyn BackgroundImageValues,
+) -> Option<[Color; 3]> {
     let layers = match c.bg_layers(vcx) {
         Some(layers) => layers,
         // Один слой — сам стиль: копия нужна только стопке, которую есть что сворачивать.
@@ -108,12 +116,13 @@ fn contains(clip: Option<BgClip>, region: usize) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
 
     #[test]
     fn text_blends_with_lower_backgrounds_but_not_the_page() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = crate::style::computed::BoxStyle::default();
+        let mut c = BoxStyle::default();
         c.apply_one(
             "background-image",
             "linear-gradient(red, red), linear-gradient(yellow, yellow)",
@@ -132,7 +141,7 @@ mod tests {
     fn a_tiled_constant_gradient_still_only_colors_glyphs() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = crate::style::computed::BoxStyle::default();
+        let mut c = BoxStyle::default();
         c.apply_one("background-image", "linear-gradient(green, green)", vcx);
         c.apply_one("background-color", "red", vcx);
         c.apply_one("background-clip", "text", vcx);
@@ -145,7 +154,7 @@ mod tests {
     fn unavailable_lower_image_keeps_the_background_color() {
         let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
         let vcx = doc.values();
-        let mut c = crate::style::computed::BoxStyle::default();
+        let mut c = BoxStyle::default();
         c.apply_one(
             "background-image",
             "linear-gradient(lime, lime), url(data:,invalid-image)",
@@ -154,7 +163,12 @@ mod tests {
         c.apply_one("background-color", "cyan", vcx);
         c.apply_one("background-clip", "text, border-box", vcx);
         c.apply_one("background-blend-mode", "difference, lighten", vcx);
-        let node = crate::dom::Element::synthetic("div", c.clone(), Default::default(), vec![]);
+        let node = crate::dom::Element::synthetic(
+            "div",
+            c.clone().into_computed(),
+            Default::default(),
+            vec![],
+        );
         crate::document::image_values::prepare(&[crate::dom::Node::Element(node)], vcx);
         collapse(&mut c, vcx, &vcx.background_images());
         assert_eq!(c.background, Color::parse("cyan", vcx));

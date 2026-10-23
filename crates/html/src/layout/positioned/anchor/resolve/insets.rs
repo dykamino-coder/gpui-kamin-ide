@@ -1,5 +1,6 @@
 //! Растяжение (stretch-fit) автоматических размеров, ограниченных парами inset-ов якоря.
 
+use crate::style::computed::BoxStyle;
 use crate::style::computed::Position;
 use crate::style::values::value::{Len, px_lossy_zero};
 
@@ -9,7 +10,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 /// растянула бы коробку на весь содержащий блок, поэтому размер берётся из
 /// IMCB текущей layout-пробы после публикации её якорей.
 pub(super) fn fill_anchor_pairs(
-    c: &mut crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
     grid_parent: Option<bool>,
     current: Option<(f32, f32)>,
 ) {

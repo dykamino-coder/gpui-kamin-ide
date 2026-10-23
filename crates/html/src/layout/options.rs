@@ -5,7 +5,7 @@
 //! которые бокс передаёт боксам внутри себя. Точки входа render потребляют его;
 //! домены layout, text и paint читают его, не завися от render.
 
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{TextStyle, px};
 
@@ -56,8 +56,8 @@ impl RenderOpts {
     /// навязывал постоянную долю, она наследовалась ВСЕМ, и замер шрифта не
     /// работал ни разу: коробка с `line-height: normal` выходила выше коробки
     /// с `line-height: 1em` при одном и том же шрифте.
-    pub(crate) fn root_style(&self) -> crate::style::computed::BoxStyle {
-        crate::style::computed::BoxStyle::new(Computed {
+    pub(crate) fn root_style(&self) -> BoxStyle {
+        BoxStyle::new(Computed {
             icb: true,
             ..Computed::default()
         })

@@ -9,7 +9,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
 use crate::paint::box_tree::content_wrapper;
 use crate::paint::effects::grouped::grouped;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -17,7 +17,7 @@ use gpui::AnyElement;
 pub(super) fn build_band_kid(
     float: bool,
     node: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     is_nest: bool,
     vertical: bool,
@@ -236,11 +236,7 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(
-                el,
-                &crate::style::computed::BoxStyle::shared(copy.style.computed()),
-                vcx,
-            )
+            grouped(el, &BoxStyle::shared(copy.style.computed()), vcx)
         } else {
             content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
         }

@@ -12,7 +12,7 @@ use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::text::ruby::container::ruby_container_atom;
 use crate::text::ruby::ruby_role;
@@ -20,7 +20,7 @@ use gpui::AnyElement;
 
 pub(super) fn atom_element_raw(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();

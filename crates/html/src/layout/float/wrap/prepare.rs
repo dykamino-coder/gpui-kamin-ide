@@ -9,7 +9,7 @@ use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 pub(super) fn unfloated_flow(
@@ -48,7 +48,7 @@ pub(super) fn unfloated_flow(
 
 pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     cb_top_open: bool,
     cb_px: Option<f32>,
     vcx: ValueCx<'_>,

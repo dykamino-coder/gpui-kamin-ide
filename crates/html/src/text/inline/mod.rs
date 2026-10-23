@@ -27,6 +27,7 @@ mod first_line;
 pub(crate) mod inline_box;
 #[cfg(test)]
 mod tests;
+use crate::style::computed::BoxStyle;
 pub(crate) use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
 pub use crate::text::inline::collapse::collapse_across_pieces;
 pub(crate) use crate::text::inline::containing_block::InlineCbOffer;
@@ -78,7 +79,7 @@ pub use crate::text::inline::runs::*;
 pub enum Piece {
     Text {
         text: String,
-        style: crate::style::computed::BoxStyle,
+        style: BoxStyle,
     },
     Atom(AnyElement),
     /// Элемент ВНЕ потока строки: места не занимает, но рисуется там, где
@@ -165,7 +166,7 @@ pub struct InlineCb {
 /// долей полей и отступов строчных коробок.
 pub fn collect(
     children: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     atom: &mut dyn FnMut(&Element, &atom_parent::AtomCx) -> Option<Piece>,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Vec<Piece> {

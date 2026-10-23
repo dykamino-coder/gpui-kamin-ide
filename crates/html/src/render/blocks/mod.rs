@@ -21,7 +21,7 @@ use crate::layout::float::initial_letter::initial_letter_float;
 use crate::layout::float::wrap::wrap_floats;
 use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 pub(super) mod canvas;
@@ -36,11 +36,7 @@ pub(crate) use positioned::inset_holder_box;
 // (`text-emphasis-line-height-004a..d`, `text-emphasis-punctuation-1/2`).
 // Вернуть можно только вместе с настоящей надстрочной аннотацией (сдвиг
 // базовой линии без атома).
-pub(crate) fn blocks(
-    nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> Vec<AnyElement> {
+pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
     // Only the cell's own content list is the BFC root's (see `LayoutCx::cell_bfc`).
     let cell_bfc = opts.cx.cell_bfc;

@@ -49,8 +49,12 @@ fn view_boxed(
     let vcx = cx.vcx();
     let src = e.attr("src")?;
     let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
-    let source = crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
-        .map(crate::paint::background::Source::from_cpu)?;
+    let source = crate::resources::css_images::element_source(
+        local.unwrap_or(src),
+        &e.style.computed(),
+        vcx,
+    )
+    .map(crate::paint::background::Source::from_cpu)?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {

@@ -9,7 +9,7 @@ use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::multicol::container::multicol_spanner_segments;
 use crate::layout::multicol::measure::{RowPlan, row_plan, tail_rest_height};
 use crate::layout::multicol::spanner::{hoist_spanners, spanner_box};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 
@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
 pub(crate) fn multicol_box(
     mut d: gpui::Div,
     e: &Element,
-    merged: crate::style::computed::BoxStyle,
+    merged: BoxStyle,
     inherited: &Computed,
     opts: &RenderOpts,
     column_width: Option<Len>,
@@ -29,7 +29,7 @@ pub(crate) fn multicol_box(
     col_inline_size: Option<Len>,
     outer_row: Option<(f32, f32)>,
     lone_span: bool,
-) -> Result<(gpui::Div, crate::style::computed::BoxStyle), AnyElement> {
+) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let vcx = opts.cx.vcx();
     // Сплошной текст режется на колонки по строкам, а не по детям:
     // один длинный абзац иначе оставался в первой колонке целиком.

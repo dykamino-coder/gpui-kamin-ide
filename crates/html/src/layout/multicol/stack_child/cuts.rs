@@ -12,6 +12,7 @@ use crate::layout::fragment::table_bands::{repeat_bands, table_box};
 use crate::layout::fragment::{ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{multicol_inside, parallel_items_inside};
 use crate::layout::options::RenderOpts;
+use crate::style::computed::BoxStyle;
 
 #[allow(clippy::too_many_arguments)]
 // Fragment copies carry cuts, heights and continuation flags together.
@@ -28,7 +29,7 @@ pub(super) fn copy_cuts_and_height(
     col_rl: bool,
     line_col_w: Option<f32>,
     fixed: Option<f32>,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     copy: &Element,
 ) -> (Vec<(f32, f32)>, Vec<f32>, Vec<(f32, f32)>, f32, f32, bool) {
     let copy_m = if col_vert {
@@ -70,7 +71,7 @@ pub(super) fn line_cuts(
     opts: &RenderOpts,
     line_col_w: Option<f32>,
     fixed: Option<f32>,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     copy: &Element,
     copy_m: Option<Element>,
 ) -> (

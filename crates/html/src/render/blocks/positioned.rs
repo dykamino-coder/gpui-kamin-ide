@@ -1,5 +1,6 @@
 //! Позиционированные дети потока блоков: держатель краёв и слой статической позиции.
 use crate::layout::order::paint_last_ok;
+use crate::style::computed::BoxStyle;
 mod holder;
 pub(crate) use holder::inset_holder_box;
 
@@ -12,7 +13,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn static_position_layer(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     built: AnyElement,
     layer_ok: bool,
     under_tf: bool,

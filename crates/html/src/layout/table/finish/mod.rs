@@ -3,6 +3,7 @@
 use crate::layout::build_contracts::Layer;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, Styled};
 mod outer;
 use outer::{finish_table_outer, table_outer_box};
@@ -116,8 +117,7 @@ pub(super) fn table_finish(
         c.z_index = None;
         c
     });
-    let inherited: &crate::style::computed::BoxStyle =
-        grid_style.as_ref().unwrap_or(geom.inherited);
+    let inherited: &BoxStyle = grid_style.as_ref().unwrap_or(geom.inherited);
     let needs_clone = collapse
         || table_border_box
         || min_h != geom.e.style.computed().min_height

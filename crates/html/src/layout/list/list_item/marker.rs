@@ -8,17 +8,17 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::anon::anon_element;
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 
 pub(crate) struct Marker {
     pub text: String,
-    pub style: Option<crate::style::computed::BoxStyle>,
+    pub style: Option<BoxStyle>,
 }
 
 pub(crate) fn resolve(
     li: &Element,
     inherited: &Computed,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Marker> {
     let idx = li.list_item.unwrap_or(0);
@@ -99,7 +99,7 @@ pub(crate) fn resolve(
 pub(crate) fn inline_marker(
     li: &Element,
     inherited: &Computed,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<Node> {
     Some(node(li, merged, resolve(li, inherited, merged, vcx)?))

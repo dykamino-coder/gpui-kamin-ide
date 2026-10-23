@@ -6,8 +6,7 @@ use crate::dom::{Element, Node};
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::BoxStyle;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 
 /// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
 /// бесхозные ячейки и непустой текст завернуть в анонимный ряд.

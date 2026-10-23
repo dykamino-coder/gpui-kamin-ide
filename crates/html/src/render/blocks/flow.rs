@@ -2,6 +2,7 @@
 
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::route::paint_inline_step7;
+use crate::style::computed::BoxStyle;
 mod inline_node;
 pub(super) use inline_node::inline_node;
 
@@ -20,7 +21,7 @@ pub(super) fn blocks_flow(
     mut pending: Vec<Node>,
     mut out: Vec<AnyElement>,
     mut letter_scope: crate::render::first_letter_scope::Scope,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
     under_tf: bool,

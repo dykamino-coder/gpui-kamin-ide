@@ -2,7 +2,7 @@
 
 use super::settle::default_anchor_of;
 use crate::document::state::ValueCx;
-use crate::style::computed::{Align, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
 
 mod current;
@@ -13,13 +13,13 @@ use insets::fill_anchor_pairs;
 pub(crate) use try_rule::apply_try_rule;
 
 /// Размеры разрешаются только из реестра текущего кадра.
-pub fn resolve_sizes(c: &mut crate::style::computed::BoxStyle, inherited: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) {
+pub fn resolve_sizes(c: &mut BoxStyle, inherited: &BoxStyle, vcx: ValueCx<'_>) {
     resolve_with(c, inherited, None, vcx);
 }
 
 fn resolve_with(
-    c: &mut crate::style::computed::BoxStyle,
-    inherited: &crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
+    inherited: &BoxStyle,
     current: Option<SizeInputs>,
     vcx: ValueCx<'_>,
 ) {

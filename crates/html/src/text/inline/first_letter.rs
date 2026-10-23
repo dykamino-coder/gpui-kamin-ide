@@ -5,7 +5,7 @@
 //! блочная коробка, её подложка во всю высоту строки.
 
 use super::{Piece, SPACER, ZWSP, bidi_format};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 
 /// CSS 2.1 §5.12.2 and CSS Pseudo §first-letter-tree permit a first letter
 /// spanning multiple elements, including generated punctuation. Select the
@@ -83,10 +83,10 @@ pub fn split_first_letter(
 }
 
 fn letter_style(
-    own: &crate::style::computed::BoxStyle,
+    own: &BoxStyle,
     style: &Computed,
     vcx: crate::document::state::ValueCx<'_>,
-) -> crate::style::computed::BoxStyle {
+) -> BoxStyle {
     let mut letter = own.clone();
     letter.font_size = style.font_size.or(own.font_size);
     letter.line_height = style.line_height.or(own.line_height);

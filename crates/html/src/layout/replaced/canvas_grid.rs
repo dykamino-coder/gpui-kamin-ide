@@ -5,12 +5,13 @@
 
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
+use crate::style::computed::BoxStyle;
 use crate::style::{computed::Computed, values::value::Len};
 use gpui::{AnyElement, IntoElement, Refineable, Styled, px, size};
 
 pub(crate) fn render(
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     parent: &Computed,
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {

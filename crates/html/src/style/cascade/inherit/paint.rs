@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 mod gradient_filter;
 
@@ -10,7 +11,7 @@ pub(super) fn inherit_paint(
     parent: &Computed,
     declared: &Computed,
     own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) {

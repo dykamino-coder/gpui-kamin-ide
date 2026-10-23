@@ -2,6 +2,7 @@
 
 use crate::layout::options::RenderOpts;
 use crate::layout::order::paint_last_ok;
+use crate::style::computed::BoxStyle;
 mod route;
 pub(super) use route::layer_route;
 
@@ -16,7 +17,7 @@ use gpui::{AnyElement, IntoElement};
 pub(crate) fn place_element(
     e: &crate::dom::Element,
     under_tf: bool,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     ordered_context: bool,
     geometry_layer_ok: bool,
     nodes: &[crate::dom::Node],

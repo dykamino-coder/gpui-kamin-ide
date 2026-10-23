@@ -2,6 +2,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 /// Клон поддерева с длинами коробки в ТОЧКАХ: `em`/`ch`/`ex`/`rem` в
@@ -11,11 +12,7 @@ use crate::style::values::value::Len;
 /// нулём (нестрогий `px_or`), а `height: 4em` — отказом всей стопки, хотя
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
-pub(crate) fn resolved_lengths(
-    c: &Element,
-    parent: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> Element {
+pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: ValueCx<'_>) -> Element {
     let m = crate::style::cascade::materialize::box_style(parent, &c.style, vcx);
     let mut t = c.clone();
     // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее

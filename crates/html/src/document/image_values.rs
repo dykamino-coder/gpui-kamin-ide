@@ -26,11 +26,13 @@ fn publish(urls: HashSet<String>, vcx: ValueCx<'_>) {
 fn collect(nodes: &[Node], urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        style(&e.style, urls, vcx);
+        style(e.style.cascaded(), urls, vcx);
         for c in [
-            e.hover.as_deref(),
-            e.first_line.as_deref(),
-            e.first_letter.as_deref(),
+            e.hover.as_ref().map(crate::dom::SharedStyle::cascaded),
+            e.first_line.as_ref().map(crate::dom::SharedStyle::cascaded),
+            e.first_letter
+                .as_ref()
+                .map(crate::dom::SharedStyle::cascaded),
         ]
         .into_iter()
         .flatten()

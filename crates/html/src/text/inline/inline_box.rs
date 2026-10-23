@@ -12,6 +12,7 @@
 
 use super::{InlineCb, OverlayAt, Piece};
 use crate::dom::Element;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use gpui::IntoElement;
 use std::rc::Rc;
@@ -46,7 +47,7 @@ fn px4(t: Option<Len>, r: Option<Len>, b: Option<Len>, l: Option<Len>) -> [f32; 
 pub(super) fn mark_inline_box(
     pieces: Vec<Piece>,
     e: &Element,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     vcx: crate::document::state::ValueCx<'_>,
 ) -> Vec<Piece> {
     if e.node_id == 0 {

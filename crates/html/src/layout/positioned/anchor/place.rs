@@ -3,14 +3,14 @@
 use super::parse::{VIS_NO_OVERFLOW, VIS_VALID, VIS_VISIBLE};
 use super::{AnchorPlan, PlacementPlans, geometry};
 use crate::hooks::{Hooks, IntoHooked};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window, px};
 
 pub(crate) fn place_in_context(
     el: AnyElement,
-    own: &crate::style::computed::BoxStyle,
-    inherited: &crate::style::computed::BoxStyle,
+    own: &BoxStyle,
+    inherited: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let Some(mut first) = AnchorPlan::of(own, inherited, cx.vcx()) else {

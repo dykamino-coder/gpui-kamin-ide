@@ -13,14 +13,14 @@ use super::{paragraph, paragraph_routed};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
 use crate::layout::writing_mode::native_vertical;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn vertical_paragraph(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     _native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {

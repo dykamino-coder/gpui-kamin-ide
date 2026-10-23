@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::options::own_size;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::ruby::ruby_role;
 use crate::text::text_box::normal_fraction;
@@ -17,7 +17,7 @@ use crate::text::text_box::normal_fraction;
 /// (их место — щуп статической позиции), поля форм и руби остаются в ряду.
 pub(crate) fn atom_line_align(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<crate::text::paragraph::AtomAlign> {
     let vcx = opts.cx.vcx();

@@ -23,12 +23,8 @@ use crate::style::values::value::Len;
 /// (класс A); текст, строчный, флоат, абсолют — не передают, и тогда
 /// берётся используемое значение самой коробки.
 pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
-    let used = e
-        .style
-        .computed()
-        .page
-        .clone()
-        .unwrap_or_else(|| inherited.to_string());
+    let page = e.style.computed().page.clone();
+    let used = page.unwrap_or_else(|| inherited.to_string());
     // Крайняя дочерняя коробка — крайняя ПОТОЧНАЯ: абсолют и флоат в
     // точках класса A не участвуют (Blink берёт имя первого уложенного
     // поточного ребёнка, `SetPageNameIfNeeded`; `page-name-propagated-005`:
@@ -220,9 +216,7 @@ pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>, vcx: ValueCx<'_>) {
 pub(super) fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
     for n in nodes.iter().filter(|n| !is_blank(n)) {
         match n {
-            Node::Element(e) if matches!(e.style.computed().display, Some(Display::None)) => {
-                continue;
-            }
+            Node::Element(e) if e.style.computed().display == Some(Display::None) => continue,
             Node::Element(e) if class_a_box(e) => return page_names(e, root_page).0,
             Node::Element(e) if !e.inline => continue,
             _ => return root_page.to_string(),

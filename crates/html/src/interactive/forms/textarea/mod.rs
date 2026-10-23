@@ -6,13 +6,13 @@
 use super::{Muted, field_box};
 use crate::document::state::ValueCx;
 mod content;
-use crate::style::computed::FontCx;
+use crate::style::computed::{BoxStyle, FontCx};
 use crate::{dom::Element, style::computed::Computed, style::values::value::Len};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(super) fn textarea(
     e: &Element,
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();

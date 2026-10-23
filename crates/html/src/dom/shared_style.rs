@@ -117,7 +117,7 @@ mod tests {
             &Rc::new(Computed::default()),
             vcx,
         );
-        fn find<'a>(nodes: &'a [crate::dom::Node]) -> Option<&'a crate::dom::Element> {
+        fn find(nodes: &[crate::dom::Node]) -> Option<&crate::dom::Element> {
             nodes.iter().find_map(|n| match n {
                 crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
                 crate::dom::Node::Element(e) => find(&e.children),

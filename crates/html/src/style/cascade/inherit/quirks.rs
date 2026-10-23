@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 /// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме
 /// quirks содержащий блок для ДОЛИ высоты ищется циклом — предки с
@@ -14,9 +15,9 @@ use crate::document::state::ValueCx;
 /// `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
 /// (`SkipContainingBlockForPercentHeightCalculation`).
 pub(super) fn percentage_height(
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
     vcx: ValueCx<'_>,
 ) {
     if !vcx.doc.quirks() {

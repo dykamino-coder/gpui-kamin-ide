@@ -1,6 +1,7 @@
 //! Украшения коробки: тени, рамки по форме, слои градиентов.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 mod borders;
 pub(super) use borders::box_borders;
 pub(super) use borders::coloured_borders;
@@ -28,7 +29,7 @@ pub(crate) mod text_shadows;
 /// Все — абсолютные и вне потока, поэтому на раскладку не влияют и могут
 /// идти первыми детьми.
 pub(crate) fn decorations(
-    c: &crate::style::computed::BoxStyle,
+    c: &BoxStyle,
     empty: bool,
     vcx: ValueCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
@@ -137,7 +138,7 @@ pub(crate) fn decorations(
 }
 
 fn stationary(
-    c: &crate::style::computed::BoxStyle,
+    c: &BoxStyle,
     out: &mut Vec<AnyElement>,
     start: usize,
     cx: Option<&crate::layout::cx::LayoutCx>,

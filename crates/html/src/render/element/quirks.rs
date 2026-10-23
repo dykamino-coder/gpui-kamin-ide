@@ -2,15 +2,10 @@
 
 use crate::dom::Element;
 use crate::render::RenderOpts;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{BoxStyle, Computed, Display, Position};
 use crate::style::values::value::Len;
 
-pub(super) fn fill(
-    e: &Element,
-    st: &mut Computed,
-    parent: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) {
+pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &RenderOpts) {
     if !e.marks.quirks_fill
         || matches!(st.display, Some(Display::None | Display::Contents))
         || matches!(st.position, Some(Position::Absolute | Position::Fixed))
@@ -145,12 +140,7 @@ mod tests {
         let mut body = body.clone();
         body.style.used_mut().float = None;
         let mut st = Computed::default();
-        fill(
-            &body,
-            &mut st,
-            &crate::style::computed::BoxStyle::default(),
-            &opts(),
-        );
+        fill(&body, &mut st, &BoxStyle::default(), &opts());
         assert_eq!(st.min_height, None);
     }
 
@@ -176,12 +166,7 @@ mod tests {
             height: Some(Len::Px(200.0)),
             ..Default::default()
         };
-        fill(
-            &body,
-            &mut st,
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &opts(),
-        );
+        fill(&body, &mut st, &BoxStyle::from(parent), &opts());
         assert_eq!(st.min_height, Some(Len::Px(173.0)));
         assert_eq!(st.height, None);
         assert_eq!(
@@ -217,12 +202,7 @@ mod tests {
             },
         ] {
             body.style = st.clone().into();
-            fill(
-                &body,
-                &mut st,
-                &crate::style::computed::BoxStyle::default(),
-                &opts(),
-            );
+            fill(&body, &mut st, &BoxStyle::default(), &opts());
             assert_eq!(st.min_height, None);
         }
     }
@@ -241,12 +221,7 @@ mod tests {
             width: Some(Len::Px(200.0)),
             ..Default::default()
         };
-        fill(
-            &body,
-            &mut st,
-            &crate::style::computed::BoxStyle::from(parent.clone()),
-            &opts(),
-        );
+        fill(&body, &mut st, &BoxStyle::from(parent), &opts());
         assert_eq!(st.min_width, Some(Len::Px(180.0)));
         assert_eq!(st.width, None);
     }
@@ -260,12 +235,7 @@ mod tests {
             let mut st = Computed::default();
             st.apply_one("writing-mode", mode, doc.values());
             st.apply_one(property, "calc-size(auto, size)", doc.values());
-            fill(
-                &body,
-                &mut st,
-                &crate::style::computed::BoxStyle::default(),
-                &opts(),
-            );
+            fill(&body, &mut st, &BoxStyle::default(), &opts());
             assert_eq!(st.min_width, None);
             assert_eq!(st.min_height, None);
         }

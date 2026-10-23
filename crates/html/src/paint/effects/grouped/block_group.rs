@@ -3,7 +3,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::AnyElement;
 use std::rc::Rc;
 
@@ -12,7 +12,7 @@ use std::rc::Rc;
 /// and clipping.
 pub(crate) fn group_style(
     own: &crate::dom::SharedStyle,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Rc<Computed> {
     let style = own.computed();
@@ -36,7 +36,7 @@ pub(crate) fn group_style(
 pub(crate) fn block_group(
     el: AnyElement,
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let style = group_style(&e.style, inherited, vcx);
@@ -58,7 +58,7 @@ pub(crate) fn block_group(
 pub(crate) fn paint_group(
     container: gpui::Div,
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let el = crate::paint::apply::static_shift(container, &e.style.computed());

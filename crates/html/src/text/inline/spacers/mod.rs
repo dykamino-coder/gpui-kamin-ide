@@ -4,7 +4,7 @@ mod borders;
 pub use crate::text::inline::spacers::borders::sided_border;
 pub use crate::text::inline::spacers::borders::uniform_border;
 
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::inline::*;
 use gpui::AnyElement;
@@ -23,10 +23,7 @@ use gpui::AnyElement;
 /// background (CSS 2.1 sections 8.4 and 14.2), with no duplicate band extension.
 /// Empty inline boxes still use their explicit overlay for the vertical sides.
 ///
-pub(super) fn spacer_style(
-    merged: &crate::style::computed::BoxStyle,
-    advance: f32,
-) -> crate::style::computed::BoxStyle {
+pub(super) fn spacer_style(merged: &BoxStyle, advance: f32) -> BoxStyle {
     let mut style = merged.clone();
     style.letter_spacing = Some(Len::Px(advance));
     style.word_spacing = None;
@@ -36,11 +33,7 @@ pub(super) fn spacer_style(
     style
 }
 
-pub(super) fn padding_spacer_style(
-    merged: &crate::style::computed::BoxStyle,
-    advance: f32,
-    painted: bool,
-) -> crate::style::computed::BoxStyle {
+pub(super) fn padding_spacer_style(merged: &BoxStyle, advance: f32, painted: bool) -> BoxStyle {
     let mut style = spacer_style(merged, advance);
     if painted {
         style.inline_bg = merged.inline_bg;
@@ -53,10 +46,10 @@ pub(super) fn padding_spacer_style(
 /// Рамку распорке поля не даём: полосу с рамкой уже мерили дважды, обе потери
 /// в `bidi-*` (см. запись у `uniform_border`).
 pub(super) fn margin_spacer_style(
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     inherited: &Computed,
     advance: f32,
-) -> crate::style::computed::BoxStyle {
+) -> BoxStyle {
     let mut style = spacer_style(merged, advance);
     style.inline_bg = inherited.inline_bg;
     style

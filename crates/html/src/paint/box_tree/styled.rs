@@ -1,6 +1,7 @@
 //! Коробка элемента: базовый стиль div, обрезка и покраска фона за вычетом области.
 
 mod clipping;
+use crate::style::computed::BoxStyle;
 pub(crate) use clipping::clip_layer;
 use clipping::shows_inside;
 
@@ -18,16 +19,12 @@ use gpui::{ParentElement, Styled, div};
 /// `gpui::Style` нет: обводки, размытия подложки, разноцветных сторон рамки.
 /// `cx` — контекст раскладки места, где коробка строится (`LayoutCx`).
 pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
-    styled_div_with(
-        e,
-        &crate::style::computed::BoxStyle::shared(e.style.computed()),
-        cx,
-    )
+    styled_div_with(e, &BoxStyle::shared(e.style.computed()), cx)
 }
 
 pub(crate) fn styled_div_with(
     e: &Element,
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
 ) -> gpui::Div {
     let vcx = cx.vcx();

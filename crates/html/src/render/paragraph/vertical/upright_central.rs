@@ -11,13 +11,13 @@
 use crate::dom::Node;
 use crate::layout::options::RenderOpts;
 use crate::render::paragraph::{own_size, paragraph};
-use crate::style::computed::{Align, Computed, TextAlign};
+use crate::style::computed::{Align, BoxStyle, Computed, TextAlign};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 struct Glyph {
     text: String,
-    style: crate::style::computed::BoxStyle,
+    style: BoxStyle,
     size: f32,
     shift: f32,
 }
@@ -63,7 +63,7 @@ fn plain_span(own: &Computed, declared: &Computed) -> bool {
 
 fn collect(
     nodes: &[Node],
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     shift: f32,
     opts: &RenderOpts,
     out: &mut Stack,
@@ -116,7 +116,7 @@ fn collect(
 /// already exact (one size, no shifts) or the content is not plain text.
 pub(super) fn upright_central(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     if inherited.wm().rtl() {

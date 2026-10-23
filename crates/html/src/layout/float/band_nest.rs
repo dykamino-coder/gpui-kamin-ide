@@ -14,7 +14,7 @@ use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::{band_float_m, lead_probes};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::writing_mode::WritingMode;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::Len;
 
 /// Прогон-продолжение после `<br>` (`cont`, `band_flow_rest`): его первая
@@ -94,7 +94,7 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::
 /// хвост хоста (`band_seq`), со своим наследованием и кеглем.
 pub(super) fn band_nest(
     c: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     em: f32,
     wm: WritingMode,

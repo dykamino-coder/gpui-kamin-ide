@@ -12,6 +12,7 @@ use crate::document::box_style::has_box_style;
 use crate::document::state::DocState;
 use crate::document::state::ValueCx;
 use crate::dom::Node;
+use crate::style::computed::BoxStyle;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -111,7 +112,7 @@ pub(super) fn unwrap_document(
     nodes: Vec<Node>,
     vcx: ValueCx<'_>,
 ) -> (Vec<Node>, crate::style::computed::Computed) {
-    let mut root = crate::style::computed::BoxStyle::default();
+    let mut root = BoxStyle::default();
     let mut nodes = nodes;
     loop {
         let single_wrapper = match nodes.as_slice() {
@@ -132,7 +133,7 @@ pub(super) fn unwrap_document(
         // принадлежит содержимому: `body { font: 13px system-ui }` — самый
         // обычный способ задать типографику страницы, и без этого шага он
         // пропадал молча, а текст набирался умолчанием движка.
-        let wrapper = crate::style::computed::BoxStyle::from(e.style.cascaded().clone());
+        let wrapper = BoxStyle::from(e.style.cascaded().clone());
         nodes = e
             .children
             .into_iter()

@@ -6,12 +6,12 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(in crate::layout::atom) fn static_position_atom(
-    inherited: &Computed,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
@@ -19,7 +19,7 @@ pub(in crate::layout::atom) fn static_position_atom(
         return Some(child);
     }
     let vcx = opts.cx.vcx();
-    let mut merged = box_style(inherited, &e.style.computed(), vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком

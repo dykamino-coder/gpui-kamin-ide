@@ -19,7 +19,7 @@ use crate::layout::replaced::limits::auto_clamp_limit;
 use crate::layout::writing_mode::orthogonal_children::orthogonal_children;
 use crate::layout::writing_mode::vertical_hug;
 use crate::paint::stacking::fixed_cb_layer_box;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{AnyElement, IntoElement, ParentElement};
 use std::borrow::Cow;
 
@@ -27,8 +27,8 @@ use std::borrow::Cow;
 pub(crate) fn generic_children(
     e: &Element,
     d: gpui::Div,
-    merged: crate::style::computed::BoxStyle,
-    inherited: &Computed,
+    merged: BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     overflow_plan: Option<absolute_overflow::Plan>,
 ) -> AnyElement {

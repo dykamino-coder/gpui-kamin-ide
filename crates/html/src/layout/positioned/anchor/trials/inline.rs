@@ -6,8 +6,8 @@ use crate::layout::positioned::containing_block::{
     OofKid, Spot, SpotCell, nearest_cb_index, spot_probe,
 };
 use crate::layout::positioned::predicates::edge_set;
-use crate::style::cascade::inherit::inherit;
-use crate::style::computed::{Computed, Position};
+use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Position};
 use gpui::{AnyElement, IntoElement};
 
 pub(crate) fn is_root(e: &Element, opts: &RenderOpts) -> bool {
@@ -17,14 +17,14 @@ pub(crate) fn is_root(e: &Element, opts: &RenderOpts) -> bool {
         .is_some_and(|(key, _)| *key == super::super::key_of(e))
 }
 
-pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Option<AnyElement> {
-    if !super::super::resolve::needs_host(&e.style, &opts.cx)
+pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Option<AnyElement> {
+    if !super::super::resolve::needs_host(&e.style.computed(), &opts.cx)
         || is_root(e, opts)
         || opts.paged_build().is_some()
     {
         return None;
     }
-    let fixed = e.style.position == Some(Position::Fixed);
+    let fixed = e.style.computed().position == Some(Position::Fixed);
     let under_tf = inherited.transform_ancestor || inherited.transform.is_some();
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
@@ -34,9 +34,9 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     let inline_cb = !hoist
         && opts.cx.inline_cb.as_ref().is_some_and(|o| o.take())
         && !fixed
-        && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
-        && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
-        && e.style.z_index.unwrap_or(0) >= 0;
+        && (edge_set(e.style.computed().inset.left) || edge_set(e.style.computed().inset.right))
+        && (edge_set(e.style.computed().inset.top) || edge_set(e.style.computed().inset.bottom))
+        && e.style.computed().z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(offer) = &opts.cx.inline_cb {
         offer.note_taken();
     }
@@ -51,14 +51,14 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
         rtl: inherited.wm().rtl(),
         vertical: inherited.wm().vertical(),
         vertical_rl: inherited.wm().block_rl(),
-        own_vertical: e.style.wm().vertical(),
+        own_vertical: e.style.computed().wm().vertical(),
         replaced: matches!(
             e.tag.as_str(),
             "img" | "svg" | "iframe" | "canvas" | "video" | "object" | "embed"
         ),
         fixed_axes: (
-            edge_set(e.style.inset.left) || edge_set(e.style.inset.right),
-            edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom),
+            edge_set(e.style.computed().inset.left) || edge_set(e.style.computed().inset.right),
+            edge_set(e.style.computed().inset.top) || edge_set(e.style.computed().inset.bottom),
         ),
         ..Default::default()
     });
@@ -70,7 +70,7 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     let source = e.clone();
     let inherited = inherited.clone();
     let vcx = opts.cx.vcx();
-    let mut own = inherit(&inherited, &source.style, vcx);
+    let mut own = box_style(&inherited, &source.style, vcx);
     own.self_node = source.node_id;
     own.anchor_key = super::super::key_of(&source);
     own.anchor_seq = build_opts.cx.anchor_seq_for(&source);
@@ -79,7 +79,7 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
     let kid = OofKid::Trials(
         Box::new(move |bounds, spot, place, window, cx| {
             let vcx = build_opts.cx.vcx();
-            let mut base = inherit(&inherited, &source.style, vcx);
+            let mut base = box_style(&inherited, &source.style, vcx);
             base.self_node = source.node_id;
             base.anchor_key = super::super::key_of(&source);
             base.anchor_seq = build_opts.cx.anchor_seq_for(&source);
@@ -103,7 +103,7 @@ pub(crate) fn defer(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Opt
                         ),
                     ));
                     let mut candidate = source.clone();
-                    super::apply_style(&mut candidate.style, style);
+                    super::apply_style(candidate.style.used_mut(), style);
                     let child =
                         crate::layout::atom::positioned::trial(&inherited, &candidate, &opts)
                             .unwrap_or_else(|| gpui::div().into_any_element());

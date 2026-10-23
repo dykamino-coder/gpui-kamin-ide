@@ -8,12 +8,9 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 
-pub(super) fn lift(
-    nodes: Vec<Node>,
-    parent: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> Vec<Node> {
+pub(super) fn lift(nodes: Vec<Node>, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     if parent.wm().vertical() {
         return nodes;
     }
@@ -65,7 +62,7 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && e.style.cascaded().rtl.is_none()
 }
 
-fn split(node: Node, parent: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
+fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     let Node::Element(e) = &node else {
         return vec![node];
     };

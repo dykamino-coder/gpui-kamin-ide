@@ -3,7 +3,7 @@
 //! функция от него в `color` решается цветом родителя.
 
 use crate::style::cascade::inherit::inherit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::{Color, StyleColor};
 
 fn merged(parent: &Computed, decls: &[(&str, &str)]) -> Computed {
@@ -13,12 +13,7 @@ fn merged(parent: &Computed, decls: &[(&str, &str)]) -> Computed {
     for (key, value) in decls {
         own.apply_one(key, value, vcx);
     }
-    (inherit(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
-        &own,
-        vcx,
-    ))
-    .into_computed()
+    (inherit(&BoxStyle::from(parent.clone()), &own, vcx)).into_computed()
 }
 
 fn rgb(r: f32, g: f32, b: f32) -> Color {

@@ -6,6 +6,7 @@ use super::piped::piped_image;
 use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::replaced::image::{Picture, PictureSizing};
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, StyledImage, px};
 
@@ -36,7 +37,7 @@ pub(super) fn fit_local_image(
     };
     let fills_holder = holder_ratio::apply(
         &mut d,
-        &crate::style::computed::BoxStyle::shared(e.style.computed()),
+        &BoxStyle::shared(e.style.computed()),
         sizing.ratio(),
         узкая.is_some(),
         vcx,

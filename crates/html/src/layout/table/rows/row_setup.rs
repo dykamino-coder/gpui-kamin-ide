@@ -10,6 +10,7 @@ use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::{BoxStyle, Overflow};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
 
@@ -27,6 +28,7 @@ pub(super) fn cell_spans(
     col_ix: usize,
     cell: &Element,
 ) -> CellSpans {
+    let st = cell.style.computed();
     // Объединение ячеек: без него ячейка занимала одну дорожку, и всё
     // правее неё съезжало на колонку влево.
     let span_cols: u16 = cell
@@ -59,10 +61,8 @@ pub(super) fn cell_spans(
     let spans_collapsed = span_cols > 1
         && (col_ix..col_ix + span_cols as usize)
             .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
-    let clipped = cell.style.computed().overflow_x
-        == Some(crate::style::computed::Overflow::Hidden)
-        || cell.style.computed().overflow_y == Some(crate::style::computed::Overflow::Hidden)
-        || spans_collapsed;
+    let clipped =
+        [st.overflow_x, st.overflow_y].contains(&Some(Overflow::Hidden)) || spans_collapsed;
     CellSpans {
         span_cols,
         span_rows,
@@ -84,15 +84,14 @@ pub(super) fn row_band_probes(
     carry: crate::layout::table::anon::RowCarry<'_>,
     cx: &LayoutCx,
 ) -> RowBands {
+    let rs = row.style.computed();
     // Фон ряда КАРТИНКОЙ (css-tables-3 §drawing-backgrounds): рисуется в
     // ЯЧЕЙКАХ, непрерывно от начала ряда, зазоры остаются чистыми.
     // Полоса на весь ряд несёт слой фона, но обрезает его прямоугольниками
     // ячеек, снятыми пробами этого кадра (`RowRects`).
     let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
-            && (row.style.computed().bg_image.is_some()
-                || row.style.computed().gradient_raw.is_some()
-                || !row.style.computed().shadows.is_empty()))
+            && (rs.bg_image.is_some() || rs.gradient_raw.is_some() || !rs.shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
@@ -177,10 +176,11 @@ pub(super) fn push_empty_row_track(
 
 pub(super) fn cell_cascaded_style(
     e: &Element,
-    row_style: &crate::style::computed::BoxStyle,
+    row_style: &BoxStyle,
     cell: &Element,
     vcx: ValueCx<'_>,
-) -> crate::style::computed::BoxStyle {
+) -> BoxStyle {
+    let st = cell.style.computed();
     let mut cm = box_style(row_style, &cell.style, vcx);
     pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
@@ -201,11 +201,7 @@ pub(super) fn cell_cascaded_style(
     if cell.style.cascaded().wm().vertical()
         && cm.ortho_limit.is_none()
         && !matches!(cell.style.cascaded().height, Some(Len::Ch(_)))
-        && let Some(Len::Px(h)) = cell
-            .style
-            .computed()
-            .height
-            .or(cell.style.computed().max_height)
+        && let Some(Len::Px(h)) = st.height.or(st.max_height)
     {
         cm.ortho_limit = Some(h);
     }
@@ -237,7 +233,7 @@ pub(super) fn cell_cascaded_style(
 
 pub(super) fn hides_empty_cell(
     e: &Element,
-    row_style: &crate::style::computed::BoxStyle,
+    row_style: &BoxStyle,
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> bool {

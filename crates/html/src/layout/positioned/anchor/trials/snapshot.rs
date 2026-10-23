@@ -5,7 +5,7 @@ use crate::style::css::LonghandId as L;
 use crate::style::values::position_area::PositionArea;
 use crate::style::values::value::Len;
 
-const INHERITED: [L; 15] = [
+const INHERITED: [L; 16] = [
     L::Width,
     L::Height,
     L::MinWidth,
@@ -21,6 +21,7 @@ const INHERITED: [L; 15] = [
     L::Bottom,
     L::Left,
     L::JustifySelf,
+    L::AlignSelf,
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -43,8 +44,7 @@ pub(super) struct Accepted {
     flex_kw: bool,
     physical: Option<bool>,
     align_decl: Option<Option<Align>>,
-    inherit: [bool; 15],
-    align_self_inherit: bool,
+    inherit: [bool; 16],
 }
 
 impl Accepted {
@@ -76,7 +76,6 @@ impl Accepted {
             physical: c.justify_self_physical,
             align_decl: c.align_self_decl,
             inherit: INHERITED.map(|id| c.inherit_longhands.contains(id)),
-            align_self_inherit: c.align_self_inherit,
         }
     }
 
@@ -128,7 +127,6 @@ impl Accepted {
         for (id, on) in INHERITED.into_iter().zip(self.inherit) {
             c.inherit_longhands.set(id, on);
         }
-        c.align_self_inherit = self.align_self_inherit;
     }
 }
 
@@ -139,5 +137,4 @@ pub(crate) fn apply_style(target: &mut Computed, computed: &Computed) {
     for id in INHERITED {
         target.inherit_longhands.set(id, false);
     }
-    target.align_self_inherit = false;
 }

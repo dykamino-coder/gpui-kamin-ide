@@ -46,7 +46,7 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
 mod tests {
     use super::*;
     use crate::dom::Element;
-    use crate::style::computed::Position;
+    use crate::style::computed::{BoxStyle, Position};
     use crate::style::values::value::Len;
 
     #[test]
@@ -90,7 +90,7 @@ mod tests {
                 panic!("in-flow block")
             };
             let mut merged = crate::style::cascade::materialize::box_style(
-                &crate::style::computed::BoxStyle::from(inherited.clone()),
+                &BoxStyle::from(inherited.clone()),
                 &child.style,
                 doc.values(),
             );

@@ -2,7 +2,7 @@
 
 use super::owned::Owned;
 use crate::document::state::ValueCx;
-use crate::style::computed::{Computed, Display, Position};
+use crate::style::computed::{BoxStyle, Display, Position};
 use crate::style::css::DeclBlock;
 use crate::style::values::position_area::TryFallback;
 
@@ -18,7 +18,7 @@ pub(super) struct Signature {
 }
 
 impl Signature {
-    pub(super) fn of(c: &Computed, vcx: ValueCx<'_>) -> Self {
+    pub(super) fn of(c: &BoxStyle, vcx: ValueCx<'_>) -> Self {
         Self {
             accepted: Owned::of(c, vcx),
             position: c.position,

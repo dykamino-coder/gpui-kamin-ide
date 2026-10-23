@@ -13,7 +13,7 @@ use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::paint::effects::transform::transformed;
-use crate::style::computed::{AnimSpec, Computed};
+use crate::style::computed::{AnimSpec, BoxStyle, Computed};
 use gpui::{AnyElement, IntoElement};
 
 fn animation(spec: &AnimSpec) -> gpui::Animation {
@@ -30,11 +30,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
     animation
 }
 
-fn painted(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     transformed(
         opts.cx.build.element(e, inherited, opts),
         &e.style.computed(),
@@ -55,11 +51,7 @@ fn sample_live(
         .unwrap_or_else(|| source.clone())
 }
 
-pub(crate) fn animated(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(crate) fn animated(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
     let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.computed().animation.clone()) else {
         return painted(e, inherited, opts);

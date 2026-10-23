@@ -9,6 +9,7 @@ use crate::paint::effects::grouped::grouped;
 use crate::paint::replaced::image::image;
 use crate::render::blocks::blocks;
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::text::inline;
 use gpui::{IntoElement, ParentElement, Styled, div};
@@ -16,7 +17,7 @@ use gpui::{IntoElement, ParentElement, Styled, div};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn static_overlay(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     rot_block: bool,
 ) -> Option<inline::Piece> {

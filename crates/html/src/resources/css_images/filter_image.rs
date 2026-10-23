@@ -78,7 +78,7 @@ pub(crate) fn apply(
 
 #[cfg(test)]
 mod tests {
-    use crate::style::computed::Computed;
+    use crate::style::computed::{BoxStyle, Computed};
 
     #[test]
     fn element_filter_reaches_radial_samples() {
@@ -96,7 +96,7 @@ mod tests {
         let mut own = Computed::default();
         own.apply_one("background-image", raw, vcx);
         own.apply_one("filter", "invert(1)", vcx);
-        let rendered = crate::style::cascade::inherit::inherit(&crate::style::computed::BoxStyle::default(), &own, vcx);
+        let rendered = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &own, vcx);
         let image = super::super::computed_source(rendered.bg_image.as_ref().unwrap(), true, vcx)
             .unwrap()
             .raster((7.0, 5.0), vcx)

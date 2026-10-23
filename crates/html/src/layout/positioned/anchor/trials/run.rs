@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::layout::positioned::anchor::trials::{Options, Probe};
 use crate::layout::positioned::containing_block::{Escaped, SpotCell};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::{
     AnyElement, App, AvailableSpace, Bounds, IntoElement, ParentElement, Pixels, Styled, Window,
     size,
@@ -16,8 +16,8 @@ pub(crate) fn run(
     spot: SpotCell,
     place: fn(SpotCell, AnyElement) -> AnyElement,
     options: &Options,
-    inherited: &Computed,
-    mut build: impl FnMut(&Computed, Rc<Probe>, &mut Window) -> (AnyElement, Escaped),
+    inherited: &BoxStyle,
+    mut build: impl FnMut(&BoxStyle, Rc<Probe>, &mut Window) -> (AnyElement, Escaped),
     window: &mut Window,
     cx: &mut App,
     vcx: ValueCx<'_>,

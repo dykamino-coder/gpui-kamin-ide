@@ -8,6 +8,8 @@
 
 mod containing;
 pub(crate) use containing::restore_containing_block;
+mod edges;
+use edges::drop_inline_side;
 mod flush;
 pub(super) use flush::flush_inline;
 
@@ -110,28 +112,22 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 containing::hoist(&mut block, e);
                 // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
                 // Preserve inherited marker properties before hoisting the block.
-                block.style.used_mut().list_style_type = block
-                    .style
-                    .cascaded()
-                    .list_style_type
-                    .clone()
-                    .or_else(|| e.style.cascaded().list_style_type.clone());
-                block.style.used_mut().list_style_inside = block
+                let (own, host, decl) = (
+                    block.style.computed(),
+                    e.style.computed(),
+                    e.style.cascaded(),
+                );
+                let list_type = block.style.cascaded().list_style_type.clone();
+                let inside = block
                     .style
                     .cascaded()
                     .list_style_inside
-                    .or(e.style.cascaded().list_style_inside);
-                block.style.used_mut().no_marker = block
-                    .style
-                    .computed()
-                    .no_marker
-                    .or(e.style.computed().no_marker);
-                block.style.used_mut().marker_text = block
-                    .style
-                    .computed()
-                    .marker_text
-                    .clone()
-                    .or_else(|| e.style.computed().marker_text.clone());
+                    .or(decl.list_style_inside);
+                let used = block.style.used_mut();
+                used.list_style_type = list_type.or_else(|| decl.list_style_type.clone());
+                used.list_style_inside = inside;
+                used.no_marker = own.no_marker.or(host.no_marker);
+                used.marker_text = own.marker_text.clone().or_else(|| host.marker_text.clone());
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:
@@ -238,21 +234,4 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
     // `inline-box-001`, `abspos-029`, `text-indent-014`). Разница эталонов
     // лежит не в числе анонимных коробок.
     out
-}
-
-/// Remove the margin, border and padding of one physical inline side
-/// (1 = right, 3 = left) of a fragment of a split inline box.
-fn drop_inline_side(style: &mut crate::style::computed::Computed, side: usize) {
-    let zero = Some(crate::style::values::value::Len::Px(0.0));
-    let pick = |s: &mut crate::style::computed::Sides| {
-        if side == 1 {
-            s.right = zero;
-        } else {
-            s.left = zero;
-        }
-    };
-    pick(&mut style.margin);
-    pick(&mut style.padding);
-    pick(&mut style.border_width);
-    style.border_visible[side] = Some(false);
 }

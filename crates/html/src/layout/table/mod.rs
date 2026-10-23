@@ -5,6 +5,7 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::anon::{RowCarry, collect_rows, fixup_table_children};
 use crate::layout::table::columns::col_element_widths;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
 
@@ -44,11 +45,7 @@ use setup::{
 /// Это стало возможно только вместе с патчем произвольных дорожек в GPUI —
 /// короткая форма умела ровно «N равных колонок», и таблица из даты и длинного
 /// текста разъезжалась пополам.
-pub(crate) fn table(
-    e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
-    opts: &RenderOpts,
-) -> AnyElement {
+pub(crate) fn table(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
     let inherited_axes = axes::inherited(e, inherited, vcx);
     let e = inherited_axes.as_ref().unwrap_or(e);

@@ -6,8 +6,8 @@ use crate::layout::float::band_host::{band_em, band_margins};
 use crate::layout::float::band_measured::band_piece_m;
 use crate::layout::float::shape_exclusion::measured_shape;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
+use crate::style::computed::{BoxStyle, Computed};
 mod deferred;
 mod parts;
 use deferred::deferred;
@@ -19,7 +19,7 @@ pub(super) use parts::band_kid_kind;
 pub(crate) fn band_kids(
     nodes: &[Node],
     count: usize,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     em: f32,
     start_open: bool,

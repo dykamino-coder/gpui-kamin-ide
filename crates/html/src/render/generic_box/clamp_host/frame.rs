@@ -1,13 +1,10 @@
 //! Использованные края и процентные размеры каркаса из исходного CB.
 
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, calc_get};
 
-pub(super) fn resolved_style(
-    c: &crate::style::computed::BoxStyle,
-    used: gpui::MeasuredBox,
-    vcx: ValueCx<'_>,
-) -> crate::style::computed::BoxStyle {
+pub(super) fn resolved_style(c: &BoxStyle, used: gpui::MeasuredBox, vcx: ValueCx<'_>) -> BoxStyle {
     let mut frame = c.clone();
     let resolve = |value: Option<Len>, basis: Option<gpui::Pixels>| {
         value.and_then(|v| match v {
@@ -81,11 +78,7 @@ mod tests {
                 border_box: Some(border_box),
                 ..c.clone()
             };
-            let frame = resolved_style(
-                &crate::style::computed::BoxStyle::from(c.clone()),
-                used,
-                values,
-            );
+            let frame = resolved_style(&BoxStyle::from(c.clone()), used, values);
             assert_eq!(frame.width, Some(Len::Px(150.)));
             assert_eq!(frame.height, Some(Len::Px(100.)));
             assert_eq!(frame.min_height, Some(Len::Px(50.)));

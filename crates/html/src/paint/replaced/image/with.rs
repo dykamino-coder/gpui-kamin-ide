@@ -79,13 +79,16 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // Векторный источник штатный загрузчик не рисует вовсе — растрируем
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
-        let vector: Option<String> =
-            crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
-                .map(crate::paint::background::Source::from_cpu)
-                .and_then(|s| match s {
-                    crate::paint::background::Source::Vector { markup, .. } => Some(markup),
-                    _ => None,
-                });
+        let vector: Option<String> = crate::resources::css_images::element_source(
+            local.unwrap_or(src),
+            &e.style.computed(),
+            vcx,
+        )
+        .map(crate::paint::background::Source::from_cpu)
+        .and_then(|s| match s {
+            crate::paint::background::Source::Vector { markup, .. } => Some(markup),
+            _ => None,
+        });
         let vectorize = |old: gpui::Img, w: f32, h: f32| -> gpui::Img {
             let Some(m) = &vector else { return old };
             let viewport = crate::resources::images::viewport::with_viewport(m, (w, h));
@@ -113,10 +116,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // (`image.style().aspect_ratio` в `local::draw`), ни с отношением и на
         // ВНЕШНЕЙ коробке замещённого (`image_with`, после `flex_shrink_0`).
         // Автоматический минимум этим парам не корень; корень искать заново.
-        let natural =
-            crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
-                .map(crate::paint::background::Source::from_cpu)
-                .map(|s| s.intrinsic());
+        let natural = crate::resources::css_images::element_source(
+            local.unwrap_or(src),
+            &e.style.computed(),
+            vcx,
+        )
+        .map(crate::paint::background::Source::from_cpu)
+        .map(|s| s.intrinsic());
         let own = e.style.computed();
         let sizing = PictureSizing::new(&own, natural, cx.cb_width);
         return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);

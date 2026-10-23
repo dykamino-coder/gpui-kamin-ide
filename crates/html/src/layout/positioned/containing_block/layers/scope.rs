@@ -1,6 +1,7 @@
 //! Областное владение слоями позиционированного paint, пока строятся их потомки.
 
 use super::Positioning;
+use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 
 impl Positioning {
@@ -46,11 +47,7 @@ impl<'a> LayerScope<'a> {
         Self::new(positioning, Layer::Containing)
     }
 
-    pub(crate) fn strict(
-        positioning: &'a Positioning,
-        style: &crate::style::computed::BoxStyle,
-        fixed: bool,
-    ) -> Self {
+    pub(crate) fn strict(positioning: &'a Positioning, style: &BoxStyle, fixed: bool) -> Self {
         positioning.cb_open_strict(style, fixed);
         Self::new(positioning, Layer::Containing)
     }
@@ -123,7 +120,7 @@ mod tests {
         let strict = LayerScope::strict(
             &positioning,
             &{
-                let mut style = crate::style::computed::BoxStyle::default();
+                let mut style = BoxStyle::default();
                 style.cb_depth = 3;
                 style
             },

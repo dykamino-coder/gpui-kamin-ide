@@ -5,6 +5,7 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
@@ -19,7 +20,7 @@ mod static_box;
 pub(super) use static_box::static_position_atom;
 
 pub(super) fn absolute_atom(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
@@ -150,8 +151,8 @@ pub(super) fn absolute_atom(
 }
 
 /// Проба строит сам CSS-бокс, не помещая его повторно в очередь слоя.
-pub(crate) fn trial(inherited: &Computed, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
-    if crate::layout::positioned::static_position::at_static_position(&e.style) {
+pub(crate) fn trial(inherited: &BoxStyle, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+    if crate::layout::positioned::static_position::at_static_position(&e.style.computed()) {
         static_position_atom(inherited, e, opts)
     } else {
         absolute_atom(inherited, e, opts)

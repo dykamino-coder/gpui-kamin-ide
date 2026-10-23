@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::document::state::ValueCx;
+use crate::style::computed::BoxStyle;
 
 /// Украшения текста (css-text-decor-3 §2.1): линии не наследуются, а
 /// РАСПРОСТРАНЯЮТСЯ на всех потомков в потоке, кроме атомарных строчных
@@ -12,7 +13,7 @@ use crate::document::state::ValueCx;
 pub(super) fn decorate(
     parent: &Computed,
     own: &Computed,
-    c: &mut crate::style::computed::BoxStyle,
+    c: &mut BoxStyle,
     own_px: f32,
     vcx: ValueCx<'_>,
 ) {

@@ -4,7 +4,7 @@
 use crate::dom::Node;
 use crate::layout::box_kind::out_of_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_strict};
 use crate::text::line_trim::{Trim, TrimRequest};
 use crate::text::text_box::{blank_text, text_box_line_style, text_box_trim_px};
@@ -14,7 +14,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 /// владельцы получают запрос через контекст детей контейнера.
 pub(super) fn register(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     ordered_context: bool,
 ) -> Vec<TrimRequest> {
@@ -121,7 +121,7 @@ pub(super) fn rest_is_empty(rest: &[Node]) -> bool {
 pub(super) fn apply(
     out: &mut Vec<AnyElement>,
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) {
     let vcx = opts.cx.vcx();

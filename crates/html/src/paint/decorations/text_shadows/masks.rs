@@ -4,7 +4,7 @@ use super::{ShadowStyle, atomic};
 use crate::dom::Node;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Shadow;
+use crate::style::computed::{BoxStyle, Shadow};
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
 pub(super) fn transparent() -> crate::style::values::value::Color {
@@ -24,7 +24,7 @@ pub(super) fn masked_layer(
     shadow: &Shadow,
     block: &ShadowStyle,
     nodes: &[Node],
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();

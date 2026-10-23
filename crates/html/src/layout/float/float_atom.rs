@@ -8,13 +8,14 @@ use crate::layout::float::band_host::{px_margin, px_margin_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::style::cascade::materialize::box_style;
+use crate::style::computed::BoxStyle;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
 /// Атом строчного потока для `FlowRow`: инлайн-блок с margin-box в
 /// точках. Поля кладёт слот (обёртка), а не сама коробка.
 pub(super) fn band_atom(
     c: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<crate::layout::fragment::types::FlowChild> {
     let vcx = opts.cx.vcx();

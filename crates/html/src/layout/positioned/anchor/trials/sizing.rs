@@ -9,7 +9,11 @@ pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
     std::mem::swap(&mut c.width, &mut c.height);
     std::mem::swap(&mut c.min_width, &mut c.min_height);
     std::mem::swap(&mut c.max_width, &mut c.max_height);
-    for (a, b) in [(L::Width, L::Height), (L::MinWidth, L::MinHeight), (L::MaxWidth, L::MaxHeight)] {
+    for (a, b) in [
+        (L::Width, L::Height),
+        (L::MinWidth, L::MinHeight),
+        (L::MaxWidth, L::MaxHeight),
+    ] {
         let av = c.inherit_longhands.contains(a);
         let bv = c.inherit_longhands.contains(b);
         c.inherit_longhands.set(a, bv);

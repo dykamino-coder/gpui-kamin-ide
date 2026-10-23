@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::auto_clamp_limit;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::clamp::{ClampHost, ClampInput};
 use gpui::{AnyElement, Refineable, Styled};
 mod frame;
@@ -20,8 +20,8 @@ pub(super) fn active(e: &Element, c: &Computed) -> bool {
 
 pub(super) fn build(
     e: &Element,
-    c: crate::style::computed::BoxStyle,
-    inherited: &crate::style::computed::BoxStyle,
+    c: BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     outer_row: Option<(f32, f32)>,
     mut d: gpui::Div,

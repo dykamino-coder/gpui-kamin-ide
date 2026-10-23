@@ -12,7 +12,7 @@ use crate::render::paragraph::atom_piece::AtomRuby;
 use crate::render::paragraph::atom_piece::atom_piece;
 use crate::render::paragraph::edges::has_flow_text;
 use crate::render::paragraph::metrics::atoms_fit_line;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use crate::text::inline;
 use crate::text::ruby::ruby_role;
@@ -20,7 +20,7 @@ use gpui::{AnyElement, IntoElement, div};
 
 pub(crate) fn paragraph_pieces_routed(
     nodes: &[Node],
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     first_line_at: usize,
     first_line: &Computed,

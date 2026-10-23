@@ -9,7 +9,7 @@ use hoisting::hoist_from_scroll;
 use crate::dom::Element;
 use crate::layout::box_kind::in_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Display;
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 
@@ -19,7 +19,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px};
 /// это `hidden`, и подменять одно другим значило терять содержимое.
 pub(crate) fn scrollable(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
@@ -214,7 +214,7 @@ pub(crate) fn scrollable(
 /// Обернуть элемент ручкой изменения размера, если `resize` разрешает.
 pub(crate) fn resizable(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     if e.style.cascaded().pointer_events_none == Some(true) {

@@ -4,6 +4,7 @@ use super::spans::{paragraph_spans, rotate_rel_spans};
 use super::{LineAtoms, NativeRequest};
 use crate::layout::options::{RenderOpts, own_size};
 use crate::render::paragraph::metrics::flow_metrics;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::text::{
     fonts::style_font::measure_font, inline, metrics, paragraph::text_id::text_id,
@@ -15,7 +16,7 @@ use gpui::{AnyElement, IntoElement, SharedString};
 // Paragraph construction consumes the span geometry records used by the probes.
 #[allow(clippy::type_complexity)]
 pub(crate) fn native_paragraph(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
     native: bool,

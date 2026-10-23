@@ -4,6 +4,8 @@
 //! отдаваемая щупу (`line_box`). Половину рисования на исходном месте держит
 //! `paint::positioned`.
 
+use crate::style::computed::BoxStyle;
+
 mod spot;
 pub use spot::Spot;
 mod late;
@@ -28,6 +30,6 @@ pub type SpotCell = std::rc::Rc<std::cell::Cell<Spot>>;
 
 /// The CB-ancestor index of the nearest containing block of an absolute box
 /// whose parent's computed style is `parent` (see `Computed::cb_depth`).
-pub(crate) fn nearest_cb_index(parent: &crate::style::computed::BoxStyle) -> u16 {
+pub(crate) fn nearest_cb_index(parent: &BoxStyle) -> u16 {
     parent.cb_depth + u16::from(crate::text::inline::establishes_cb(parent))
 }

@@ -1,6 +1,7 @@
 //! Тесты: поля float используют вычисленные метрики шрифта до приведения к band-хосту.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn font_relative_float_margins_are_computed_without_changing_percentage_bases() {
@@ -24,7 +25,7 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
     style.margin.left = Some(Len::Ch(2.));
     style.margin.right = Some(Len::Pct(0.1));
     let resolved = crate::style::cascade::inherit::inherit_unpainted(
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent.clone()),
         &style,
         doc.values(),
     );
@@ -35,7 +36,7 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
             Default::default(),
             vec![],
         ))],
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent),
         false,
         None,
         doc.values(),
@@ -75,7 +76,7 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
     );
     let nodes = prepare_float_nodes(
         vec![Node::Element(float)],
-        &crate::style::computed::BoxStyle::from(parent.clone()),
+        &BoxStyle::from(parent.clone()),
         false,
         None,
         doc.values(),
@@ -138,7 +139,7 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
             style.keep_spaces = Some(spaces);
             let lifted = inline_floats::lift(
                 vec![Node::Element(kept)],
-                &crate::style::computed::BoxStyle::from(parent.clone()),
+                &BoxStyle::from(parent.clone()),
                 doc.values(),
             );
             assert_eq!(
@@ -155,7 +156,7 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
     }
     let nodes = prepare_float_nodes(
         vec![Node::Element(inline)],
-        &crate::style::computed::BoxStyle::default(),
+        &BoxStyle::default(),
         false,
         Some(784.),
         doc.values(),

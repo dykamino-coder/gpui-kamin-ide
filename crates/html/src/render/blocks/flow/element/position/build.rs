@@ -6,13 +6,13 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::writing_mode::vertical_hug;
 use crate::render::blocks::inset_holder_box;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn build(
     e: &crate::dom::Element,
-    inherited: &Computed,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     frame: &crate::interactive::sticky::element::StickyCell,
     layer_ok: bool,
@@ -66,8 +66,9 @@ pub(super) fn build(
     };
     // Липкая коробка сдвигает своё поддерево на подготовке: щупы внутри
     // вычитают сдвиг (`ShiftLink`), поэтому звено заводится ДО сборки.
-    let sticky_link = (e.style.computed().position == Some(crate::style::computed::Position::Sticky))
-        .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
+    let sticky_link = (e.style.computed().position
+        == Some(crate::style::computed::Position::Sticky))
+    .then(|| crate::interactive::scroll_extent::ShiftLink::inside(opts.cx.sticky.as_ref()));
     let sticky_opts = sticky_link
         .as_ref()
         .map(|link| opts.inner(|cx| cx.sticky = Some(link.clone())));
@@ -78,7 +79,7 @@ pub(super) fn build(
         crate::paint::effects::grouped::block_group(animated(e, inherited, opts), e, inherited, vcx)
     };
     let built = match root_box {
-        Some(area) if e.style.computed().root_box && e.style.used_mut().canvas_bg => {
+        Some(area) if e.style.computed().root_box && e.style.computed().canvas_bg => {
             crate::paint::background::record_root_box(
                 built,
                 area,

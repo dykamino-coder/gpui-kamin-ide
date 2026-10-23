@@ -5,13 +5,13 @@ use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::materialize::box_style;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(super) fn collect_captions(
     e: &Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     caps_top: &mut Vec<AnyElement>,
     caps_bot: &mut Vec<AnyElement>,

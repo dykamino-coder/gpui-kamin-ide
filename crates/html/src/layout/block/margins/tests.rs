@@ -4,8 +4,8 @@ use super::*;
 use crate::dom::Element;
 use crate::layout::block::margin_height::used_style;
 use crate::layout::writing_mode::orthogonal_inline;
-use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingModeKw;
+use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
@@ -35,11 +35,8 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         };
         assert_eq!(block.style.computed().height, height);
         assert!(block.marks.auto_zero_height);
-        let painted = used_style(
-            block,
-            &crate::style::computed::BoxStyle::from((*block.style.cascaded()).clone()),
-        )
-        .unwrap_or_else(|| crate::style::computed::BoxStyle::from(block.style.cascaded().clone()));
+        let painted = used_style(block, &BoxStyle::from((*block.style.cascaded()).clone()))
+            .unwrap_or_else(|| BoxStyle::from(block.style.cascaded().clone()));
         assert_eq!(painted.height, Some(Len::Px(0.0)));
         let mut child = {
             let mut with_inherited = Computed {

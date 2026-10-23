@@ -150,6 +150,7 @@ fn language(tag: &str) -> Option<hypher::Lang> {
 #[cfg(test)]
 mod tests {
     //! Dictionary and conditional-hyphenation regression tests.
+    use crate::style::computed::BoxStyle;
 
     use super::*;
 
@@ -192,7 +193,7 @@ mod tests {
             style: {
                 let mut with_inherited = Computed { ..style("en") };
                 with_inherited.hyphens_auto = Some(true);
-                crate::style::computed::BoxStyle::from(with_inherited)
+                BoxStyle::from(with_inherited)
             },
         };
         let mut pieces = [make("exam\u{ad}ple example"), make(" exam"), make("ple")];

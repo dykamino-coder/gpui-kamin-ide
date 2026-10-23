@@ -3,10 +3,10 @@
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::layer_scope::LayerScope;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 
-pub(super) fn children(e: &Element, own: &Computed, opts: &RenderOpts) -> Vec<AnyElement> {
+pub(super) fn children(e: &Element, own: &BoxStyle, opts: &RenderOpts) -> Vec<AnyElement> {
     let layer = LayerScope::strict(
         &opts.cx.positioning,
         own,

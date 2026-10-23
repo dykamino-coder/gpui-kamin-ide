@@ -25,7 +25,7 @@ use choice::toggle;
 
 use crate::dom::Element;
 use crate::paint::apply::apply;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, px};
 
 use crate::style::values::value::{Len, SystemColor, system_color};
@@ -42,7 +42,7 @@ fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
 /// Отрисовать элемент формы. `None` — тег не относится к формам.
 pub fn element(
     e: &Element,
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
@@ -60,11 +60,7 @@ fn kind(e: &Element) -> String {
     e.attr("type").unwrap_or("text").to_ascii_lowercase()
 }
 
-fn input(
-    e: &Element,
-    style: &crate::style::computed::BoxStyle,
-    opts: &crate::layout::options::RenderOpts,
-) -> AnyElement {
+fn input(e: &Element, style: &BoxStyle, opts: &crate::layout::options::RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
     let kind = kind(e);
     // `appearance: none` (css-ui-4 §7.2): a checkbox, radio, range or colour
@@ -89,11 +85,7 @@ fn input(
 }
 
 /// Текстовое поле: значение, иначе подсказка приглушённым цветом.
-fn text_field(
-    e: &Element,
-    style: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> AnyElement {
+fn text_field(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
     let used = metrics::text_style(style, vcx);
     let style = &used;
     let (text, muted) = match (e.attr("value"), e.attr("placeholder")) {
@@ -121,11 +113,7 @@ fn text_field(
 }
 
 /// `<input type="button">` — значение лежит в атрибуте, а не в детях.
-fn button_like(
-    e: &Element,
-    style: &crate::style::computed::BoxStyle,
-    vcx: ValueCx<'_>,
-) -> AnyElement {
+fn button_like(e: &Element, style: &BoxStyle, vcx: ValueCx<'_>) -> AnyElement {
     if style.appearance == Some(crate::style::computed::Appearance::Base) {
         return apply(div(), style, vcx)
             .child(SharedString::from(e.attr("value").unwrap_or("").to_owned()))
@@ -149,7 +137,7 @@ fn button_like(
 ///
 /// Умолчания ставятся ТОЛЬКО там, где документ ничего не сказал: раньше они
 /// шли безусловно и затирали фон, рамку, скругление и отступы из CSS.
-fn field_box(style: &crate::style::computed::BoxStyle, vcx: ValueCx<'_>) -> gpui::Div {
+fn field_box(style: &BoxStyle, vcx: ValueCx<'_>) -> gpui::Div {
     if style.appearance == Some(crate::style::computed::Appearance::Base) {
         return apply(div(), style, vcx);
     }

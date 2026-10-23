@@ -9,7 +9,7 @@ use crate::layout::writing_mode::upright_in_mixed;
 use crate::paint::apply::apply;
 use crate::render::paragraph::edges::edge_pieces;
 use crate::render::paragraph::metrics::line_box_spans;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
@@ -17,7 +17,7 @@ use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn route_pieces(
     pieces: Vec<inline::Piece>,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     native_request: Option<&NativeRequest<'_>>,
     indent: crate::text::paragraph::Indent,
@@ -134,13 +134,9 @@ pub(crate) fn route_pieces(
         };
         // На кусок текста идут ТОЛЬКО текстовые свойства: фон, отступы и
         // рамка принадлежат абзацу целиком, а не каждому его слову.
-        let d = apply(
-            div(),
-            &crate::style::computed::BoxStyle::new(style.text_only()),
-            vcx,
-        )
-        .max_w_full()
-        .child(SharedString::from(t));
+        let d = apply(div(), &BoxStyle::new(style.text_only()), vcx)
+            .max_w_full()
+            .child(SharedString::from(t));
         d.into_any_element()
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
@@ -189,13 +185,13 @@ mod tests {
                 let pieces = vec![
                     inline::Piece::Text {
                         text: text.into(),
-                        style: crate::style::computed::BoxStyle::from(inherited.clone()),
+                        style: BoxStyle::from(inherited.clone()),
                     },
                     inline::Piece::Overlay(div().into_any_element(), Default::default()),
                 ];
                 let mut element = route_pieces(
                     pieces,
-                    &crate::style::computed::BoxStyle::from(inherited.clone()),
+                    &BoxStyle::from(inherited.clone()),
                     &opts,
                     None,
                     Default::default(),

@@ -2,6 +2,7 @@
 mod layer_offset;
 mod stacks;
 mod unit_boxes;
+use crate::style::computed::BoxStyle;
 use crate::text::ruby::container::stacks::level_wrap;
 use crate::text::ruby::container::stacks::over_stack;
 use crate::text::ruby::container::unit_boxes::unit_box;
@@ -16,7 +17,7 @@ use crate::text::text_box::normal_fraction;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 
 pub(crate) fn ruby_container_atom(
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
@@ -75,7 +76,7 @@ pub(crate) fn ruby_container_atom(
     let mut row = div().flex().flex_row().items_baseline().flex_shrink_0();
     for seg in &segments {
         // Стиль уровня: аннотации внутри `<rtc>` наследуют от него.
-        let level_style: Vec<crate::style::computed::BoxStyle> = seg
+        let level_style: Vec<BoxStyle> = seg
             .levels
             .iter()
             .map(|l| {

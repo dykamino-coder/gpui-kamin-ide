@@ -4,14 +4,14 @@ use super::{shrink0, tabular_marker};
 use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Styling;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div};
 
 pub(crate) fn render_with_style(
     li: &Element,
     inherited: &Computed,
-    merged: &crate::style::computed::BoxStyle,
+    merged: &BoxStyle,
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
@@ -178,11 +178,7 @@ pub(crate) fn render_with_style(
 
 /// String list-style-type values inherit through ordinary block wrappers;
 /// generated marker content belongs only to the originating item.
-pub(crate) fn inherited_style(
-    e: &Element,
-    parent: &Computed,
-    merged: &mut crate::style::computed::BoxStyle,
-) {
+pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut BoxStyle) {
     if e.style.computed().marker_text.is_none()
         && e.style.cascaded().list_style_type.is_none()
         && e.style.computed().no_marker.is_none()

@@ -1,6 +1,7 @@
 //! Измерение осей `<textarea>`, заданных intrinsic-ключевыми словами (`min-content`,
 //! `max-content`, `fit-content`): тем же параграфом, которым красится редактор, с добавкой
 //! gutter полос прокрутки; остальные оси берут natural-размер из `rows`/`cols`.
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use crate::{dom::Node, layout::options::RenderOpts};
 use gpui::{AvailableSpace, px, size};
@@ -8,7 +9,7 @@ use std::rc::Rc;
 
 pub(super) fn content_measure(
     nodes: Vec<Node>,
-    style: &crate::style::computed::BoxStyle,
+    style: &BoxStyle,
     opts: &RenderOpts,
     natural: [f32; 2],
     gutter: [f32; 2],

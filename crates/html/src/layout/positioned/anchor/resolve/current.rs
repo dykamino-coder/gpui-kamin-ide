@@ -2,7 +2,7 @@
 
 use super::super::AnchorPlan;
 use crate::document::state::ValueCx;
-use crate::style::computed::{Align, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
 use gpui::{Bounds, Pixels, Window};
 
@@ -47,8 +47,8 @@ pub(crate) fn needs_host(c: &Computed, cx: &crate::layout::cx::LayoutCx) -> bool
 }
 
 pub(crate) fn current_inputs(
-    c: &Computed,
-    inherited: &Computed,
+    c: &BoxStyle,
+    inherited: &BoxStyle,
     bounds: Bounds<Pixels>,
     window: &Window,
     vcx: ValueCx<'_>,
@@ -68,8 +68,8 @@ pub(crate) fn current_inputs(
 }
 
 pub(crate) fn resolve_current(
-    c: &mut Computed,
-    inherited: &Computed,
+    c: &mut BoxStyle,
+    inherited: &BoxStyle,
     inputs: SizeInputs,
     vcx: ValueCx<'_>,
 ) {
@@ -81,7 +81,7 @@ pub(crate) fn resolve_current(
 mod tests;
 
 /// Общая подготовка размеров блочного и строчного OOF в контексте хоста.
-pub(crate) fn prepare(c: &mut Computed, inherited: &Computed, cx: &crate::layout::cx::LayoutCx) {
+pub(crate) fn prepare(c: &mut BoxStyle, inherited: &BoxStyle, cx: &crate::layout::cx::LayoutCx) {
     let vcx = cx.vcx();
     if let Some((key, inputs)) = cx.oof_sizes
         && key == c.anchor_key

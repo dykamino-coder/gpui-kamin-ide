@@ -3,6 +3,7 @@
 use super::place_element;
 use crate::layout::options::RenderOpts;
 use crate::render::blocks::flow::BelowRun;
+use crate::style::computed::BoxStyle;
 
 use gpui::AnyElement;
 mod build;
@@ -11,7 +12,7 @@ mod defer;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn position_element(
     e: &crate::dom::Element,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     opts: &RenderOpts,
     frame: &crate::interactive::sticky::element::StickyCell,
     layer_ok: bool,

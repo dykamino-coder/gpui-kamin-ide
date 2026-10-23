@@ -1,12 +1,12 @@
 //! Знаки двунаправленности и стили первой буквы и строки.
 
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use crate::text::inline;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn style_pieces(
     mut pieces: Vec<inline::Piece>,
-    inherited: &crate::style::computed::BoxStyle,
+    inherited: &BoxStyle,
     first_line_at: usize,
     first_line: &Computed,
     vcx: crate::document::state::ValueCx<'_>,

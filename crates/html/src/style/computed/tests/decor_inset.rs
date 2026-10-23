@@ -2,6 +2,7 @@
 //! (CSS Text Decoration 4 §4.1): негодная запись роняет объявление целиком.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn inset_rejects_an_entire_invalid_declaration() {
@@ -56,7 +57,7 @@ fn inset_explicitly_inherits_the_computed_parent_value() {
     let vcx = doc.values();
     use crate::style::cascade::inherit::inherit_unpainted;
     let parent = inherit_unpainted(
-        &crate::style::computed::BoxStyle::default(),
+        &BoxStyle::default(),
         &computed("font-size:40px;text-decoration-inset:1em", vcx),
         vcx,
     );

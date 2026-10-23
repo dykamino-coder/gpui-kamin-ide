@@ -1,5 +1,6 @@
 //! `StyleColor` parsing and per-element resolution tests.
 use super::*;
+use crate::style::computed::BoxStyle;
 
 #[test]
 fn relative_identity_retains_precision_and_resolves_per_element() {
@@ -104,11 +105,7 @@ fn background_expression_inherits_with_the_child_color() {
         "rgb(from currentcolor b g r / 50%)",
         vcx,
     );
-    let parent = crate::style::cascade::inherit::inherit(
-        &crate::style::computed::BoxStyle::default(),
-        &parent,
-        vcx,
-    );
+    let parent = crate::style::cascade::inherit::inherit(&BoxStyle::default(), &parent, vcx);
     assert_eq!(
         parent.background,
         Some(Color {
