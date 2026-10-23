@@ -103,10 +103,12 @@ impl FlowMeasure {
         let mut pushes = Vec::new();
         self.records.for_each(window, |bounds, record| {
             let offset = f32::from(bounds.origin.y - origin.y);
-            pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| super::LinePush {
-                at: offset + at,
-                line,
-                growth: record.growth.clone(),
+            pushes.extend(record.starts.borrow().iter().enumerate().map(|(line, at)| {
+                super::LinePush {
+                    at: offset + at,
+                    line,
+                    growth: record.growth.clone(),
+                }
             }));
         });
         pushes

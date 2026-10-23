@@ -1,7 +1,7 @@
 //! Строковые боксы flex-элемента записываются в его собственный параллельный поток.
 use super::Watched;
 use crate::layout::fragment::flow::blocks::BlockBox;
-use crate::layout::fragment::flow::{FlowGeometry, FlowMeasurements};
+use crate::layout::fragment::flow::{FlowGeometry, FlowMeasure};
 use crate::layout::fragment::types::StackAxis;
 use gpui::{Pixels, Point, Window, px, size};
 use std::collections::HashMap;
@@ -53,14 +53,14 @@ impl Watched {
         }
     }
 
-    pub(super) fn flex_item_flows(blocks: &BlockBox) -> Rc<HashMap<u64, Rc<FlowMeasurements>>> {
+    pub(super) fn flex_item_flows(blocks: &BlockBox) -> Rc<HashMap<u64, Rc<FlowMeasure>>> {
         let mut flexes = Vec::new();
         blocks.flexes(&mut flexes);
         Rc::new(
             flexes
                 .into_iter()
                 .flat_map(|(_, items)| items)
-                .map(|id| (id, Rc::new(FlowMeasurements::for_lines())))
+                .map(|id| (id, Rc::new(FlowMeasure::for_lines())))
                 .collect(),
         )
     }

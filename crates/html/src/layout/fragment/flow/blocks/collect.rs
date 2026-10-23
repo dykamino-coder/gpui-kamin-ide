@@ -47,7 +47,8 @@ pub(in crate::layout::fragment::flow::blocks) fn collect(
         out.flex = Some(flex::collect_flex(e, depth - 1, cx, vcx));
         return out;
     }
-    let stacks = stacks_blocks(e) || (blockified && e.style.computed().display == Some(Display::InlineBlock));
+    let stacks = stacks_blocks(e)
+        || (blockified && e.style.computed().display == Some(Display::InlineBlock));
     if !stacks {
         return out;
     }
@@ -147,7 +148,7 @@ pub(super) fn push_kids(
 /// Крайние поточные узлы; текст и строчная коробка не передают блочный break.
 fn edges(e: &Element) -> (Option<u64>, Option<u64>) {
     let nodes: Vec<_> = e.children.iter().filter(|n| !is_blank(n)).filter(|n| {
-        !matches!(n, Node::Element(k) if out_of_flow(&k.style) || k.style.computed().display == Some(Display::None))
+        !matches!(n, Node::Element(k) if out_of_flow(&k.style.computed()) || k.style.computed().display == Some(Display::None))
     }).collect();
     let block = |n: &&Node| match n {
         Node::Element(k) if !k.inline => Some(k.node_id),

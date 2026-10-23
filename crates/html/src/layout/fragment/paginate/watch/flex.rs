@@ -94,14 +94,14 @@ impl Watched {
             ids: self.ids.clone(),
             blocks: self.blocks.clone(),
             tables: self.tables.clone(),
-            flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+            flow: Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
             item_flows: Rc::new(
                 self.item_flows
                     .keys()
                     .map(|&id| {
                         (
                             id,
-                            Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
+                            Rc::new(crate::layout::fragment::flow::FlowMeasure::for_lines()),
                         )
                     })
                     .collect(),

@@ -47,7 +47,7 @@ pub(crate) struct Watched {
     flex_growth: Rc<RefCell<HashMap<u64, Vec<f32>>>>,
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
     flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
-    item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasurements>>>,
+    item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasure>>>,
     /// Линии элементов колонки flex, закреплённые до фрагментации (`flex`).
     flex_lines: Rc<RefCell<HashMap<u64, usize>>>,
     /// Номер копии-фрагмента, которую строит этот рекордер (`owner`).

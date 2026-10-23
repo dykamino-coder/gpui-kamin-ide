@@ -133,7 +133,7 @@ pub(crate) fn monolith_box(k: &Element) -> bool {
 /// строчной она не является, монолитом её делают только `contain: size`,
 /// `break-inside: avoid`, прокрутка и замещаемое содержимое.
 pub(crate) fn monolith_blockified(k: &Element) -> bool {
-    k.style.break_inside_avoid || content_monolith_blockified(k)
+    k.style.computed().break_inside_avoid || content_monolith_blockified(k)
 }
 
 /// Физически неделимый блокифицированный элемент; avoid остаётся пожеланием.

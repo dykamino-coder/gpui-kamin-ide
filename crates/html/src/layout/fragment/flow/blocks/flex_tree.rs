@@ -8,11 +8,11 @@ use crate::style::computed::Display;
 
 pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
     fn eligible(e: &Element, depth: u8, item: bool) -> bool {
-        if e.style.wm().vertical()
+        if e.style.computed().wm().vertical()
             || clone_dec(e).is_some()
-            || e.style.webkit_box == Some(true)
-            || crate::layout::multicol::spanner::multicol_container(&e.style)
-            || !crate::layout::page::paged::visible_overflow(&e.style)
+            || e.style.computed().webkit_box == Some(true)
+            || crate::layout::multicol::spanner::multicol_container(&e.style.computed())
+            || !crate::layout::page::paged::visible_overflow(&e.style.computed())
         {
             return false;
         }
@@ -28,21 +28,25 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
         let flex = flex_container(e);
         if !(flex
             || matches!(
-                e.style.display,
+                e.style.computed().display,
                 None | Some(Display::Block | Display::ListItem)
             )
-            || item && e.style.display == Some(Display::InlineBlock))
+            || item && e.style.computed().display == Some(Display::InlineBlock))
         {
             return false;
         }
         e.children.iter().all(|n| match n {
-            Node::Element(k) if k.style.display == Some(Display::None) => true,
+            Node::Element(k) if k.style.computed().display == Some(Display::None) => true,
             // OOF не участвует в членстве линии и не создаёт разрыв потока.
-            Node::Element(k) if out_of_flow(&k.style) => true,
+            Node::Element(k) if out_of_flow(&k.style.computed()) => true,
             // Атомарная строчная коробка блочного контейнера стоит в его
             // строке: разрыв — между строками, сама она неделима
             // (css-break-3 §4.1, §4.3 класс B).
-            Node::Element(k) if !flex && k.style.display == Some(Display::InlineBlock) => true,
+            Node::Element(k)
+                if !flex && k.style.computed().display == Some(Display::InlineBlock) =>
+            {
+                true
+            }
             Node::Element(k) if !k.inline || flex => {
                 monolith_blockified(k) || eligible(k, depth - 1, flex)
             }
@@ -51,7 +55,7 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
     }
     fn contains(e: &Element, depth: u8) -> bool {
         flex_container(e) || (depth > 0 && e.children.iter().any(|n| {
-            matches!(n, Node::Element(k) if !out_of_flow(&k.style) && contains(k, depth - 1))
+            matches!(n, Node::Element(k) if !out_of_flow(&k.style.computed()) && contains(k, depth - 1))
         }))
     }
     contains(e, depth) && eligible(e, depth, false)

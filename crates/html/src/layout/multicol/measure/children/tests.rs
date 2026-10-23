@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::Document;
+use crate::style::computed::{BoxStyle, Computed};
 
 fn element(nodes: &[Node]) -> &Element {
     nodes
@@ -64,7 +65,7 @@ fn flex_avoid_boundaries_keep_solver_line_membership() {
     let measured = RefCell::new(Vec::new());
     let result = measure_children(
         parent,
-        &Computed::default(),
+        &BoxStyle::new(Computed::default()),
         &opts,
         None,
         None,

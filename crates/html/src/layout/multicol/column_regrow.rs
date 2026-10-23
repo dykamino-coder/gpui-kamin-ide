@@ -75,10 +75,9 @@ impl ColumnStack {
                 // свой параллельный поток независимо от её border box; коробка,
                 // обрезающая блочную ось (`overflow: clip/hidden`), потока не
                 // имеет (css-break-3 §3, css-overflow-3).
-                if c.regrow
-                    .as_ref()
-                    .is_some_and(|r| crate::layout::page::paged::visible_overflow(&r.source.style))
-                {
+                if c.regrow.as_ref().is_some_and(|r| {
+                    crate::layout::page::paged::visible_overflow(&r.source.style.computed())
+                }) {
                     c.over = c.over.max(f32::from(content.height));
                 }
                 c.h = h;

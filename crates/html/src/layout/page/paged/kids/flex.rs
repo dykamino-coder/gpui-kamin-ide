@@ -6,7 +6,7 @@ use crate::hooks::{Hooks, IntoHooked};
 use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::push::Regrow;
 use crate::layout::options::RenderOpts;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 use gpui::{
     AnyElement, App, Bounds, IntoElement, LayoutId, ParentElement, Pixels, Styled, Window, div, px,
@@ -40,7 +40,7 @@ impl Hooks for Layer {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn regrow(
     opts: &RenderOpts,
-    root: &Computed,
+    root: &BoxStyle,
     group: &[Node],
     watched: &Rc<Watched>,
     (left, right, top): (f32, f32, f32),
@@ -84,19 +84,20 @@ pub(super) fn regrow(
         } else {
             rec.copy_recorder(part)
         });
-        let scope = crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.positioning);
+        let scope =
+            crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state);
         let mut wrap = div().pl(px(left)).pr(px(right)).pt(px(top));
         if matches!(dom.tag.as_str(), "html" | "body")
-            && matches!(dom.style.height, Some(Len::Pct(_)))
+            && matches!(dom.style.computed().height, Some(Len::Pct(_)))
         {
             wrap = wrap.h(px(ah));
         }
-        let el = wrap
-            .children(
-                opts.cx
-                    .build
-                    .blocks(&[Node::Element(dom.clone())], &root, &opts),
-            )
+        let el =
+            wrap.children(opts.cx.contracts.build.blocks(
+                &[Node::Element(dom.clone())],
+                &root,
+                &opts,
+            ))
             .into_any_element();
         let layer = |els| {
             div()

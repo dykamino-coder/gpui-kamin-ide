@@ -119,7 +119,7 @@ mod tests {
     }
     #[test]
     fn consumed_space_moves_only_the_continuation_and_survives_rebuild() {
-        let flow = Rc::new(FlowMeasurements::for_lines());
+        let flow = Rc::new(FlowMeasure::for_lines());
         let mut paragraph = Paragraph::new(
             "ab".into(),
             Vec::new(),
