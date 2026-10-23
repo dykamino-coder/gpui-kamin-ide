@@ -14,7 +14,6 @@ pub(super) use sizing::serialize_sized;
 mod filters;
 
 mod geometry;
-pub(crate) use crate::style::values::basic_shape::geometry_property;
 use filters::subtree_has;
 use filters::untaint_filters;
 
