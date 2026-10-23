@@ -50,7 +50,7 @@ pub struct ColumnStack {
     /// Буфер границ колонок и спаннеров для `GapRulePainter` (css-gaps-1
     /// §gap-multicol): колонки линии — элементы строки, спаннер — элемент во
     /// всю ширину. Заполняется в `prepaint`, художник забирает в `paint`.
-    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
+    pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
     pub(crate) plan: std::cell::RefCell<Vec<Frag>>,
     /// Reuse placement storage while mapping viewport static-position probes.
     pub(crate) static_places: Option<crate::layout::fragment::static_coordinates::Places>,
@@ -73,7 +73,7 @@ impl ColumnStack {
         fixed_height: Option<f32>,
         rule: Option<(f32, gpui::Hsla)>,
         rows: Option<Rows>,
-        gap_items: Option<crate::paint::gap_rules::GapItems>,
+        gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
         intrinsic: Option<Intrinsic>,
         paint: std::rc::Rc<crate::layout::cx::deferred::Deferred>,
     ) -> Self {

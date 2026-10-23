@@ -1,9 +1,10 @@
 //! Окраска одного сегмента линейки промежутка на сетке устройства.
 
-use crate::paint::gap_rules::GapRuleSpec;
+use crate::layout::multicol::gap_rules::GapRuleSpec;
 use crate::paint::gap_rules::gap_segments::segments;
 use crate::paint::gap_rules::geometry::GapRun;
-use crate::paint::gap_rules::{GapAxisRule, GapLayout, gap_fragment_runs};
+use crate::paint::gap_rules::gap_fragment_runs;
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapLayout};
 use gpui::{Bounds, Pixels, TransformationMatrix, Window};
 
 #[allow(clippy::too_many_arguments)]

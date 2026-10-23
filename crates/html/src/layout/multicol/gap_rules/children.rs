@@ -6,7 +6,8 @@
 use crate::dom::Element;
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::paint::gap_rules::{GapItems, painter::GapRulePainter};
+use crate::paint::gap_rules::painter::GapRulePainter;
+use crate::layout::multicol::gap_rules::GapItems;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 

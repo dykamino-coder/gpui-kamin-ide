@@ -4,7 +4,7 @@ use super::painting::paint_body;
 use crate::hooks::Painter;
 
 use super::GapRulePainter;
-use crate::paint::gap_rules::GapLayout;
+use crate::layout::multicol::gap_rules::GapLayout;
 use crate::paint::gap_rules::geometry::{GridTracks, uncollapsed};
 use gpui::{App, Bounds, LayoutId, Pixels, Window, px};
 

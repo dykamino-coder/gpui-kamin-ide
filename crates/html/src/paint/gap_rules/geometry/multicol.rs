@@ -7,7 +7,7 @@ mod visibility;
 use visibility::row_visible;
 
 use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
-use crate::paint::gap_rules::{GapAxisRule, GapRuleSpec, MulticolGaps};
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapRuleSpec, MulticolGaps};
 
 fn run(g0: f32, g1: f32, r0: f32, r1: f32, index: usize, count: usize) -> GapRun {
     GapRun {

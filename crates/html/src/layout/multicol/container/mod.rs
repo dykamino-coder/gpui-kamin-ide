@@ -124,7 +124,7 @@ pub(crate) fn multicol_column_stack(
         .flatten();
     let gap_items = gap_spec
         .as_ref()
-        .map(|_| crate::paint::gap_rules::GapItems::default());
+        .map(|_| crate::layout::multicol::gap_rules::GapItems::default());
     let rule = rule.filter(|_| gap_spec.is_none());
     // Где начинается ребёнок в первой внешней колонке — для
     // вложенного рядами с заданной высотой (`nest_row`): все

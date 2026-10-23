@@ -6,7 +6,7 @@
 mod lifecycle;
 mod painting;
 
-use crate::paint::gap_rules::{GapItems, GapRuleSpec};
+use crate::layout::multicol::gap_rules::{GapItems, GapRuleSpec};
 
 /// Слой линеек промежутков. Забирает буфер проб в `paint` (к этому моменту
 /// prepaint всех детей уже прошёл — так же работает `EdgePainter`), строит
