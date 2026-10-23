@@ -23,7 +23,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // SVG without a CSS layout box uses the nearest viewport by default.
     // Blink TransformHelper::ComputeReferenceBox and css-transforms-1 agree:
     // fill/stroke boxes use object bounds; view-box uses viewport dimensions.
-    let ref_box = match super::svg_box_style(e.style.cascaded()).0 {
+    let ref_box = match super::svg_box_style(&e.style.computed()).0 {
         Some(k @ (1 | 2)) => Some(reference_box(e, k == 2).unwrap_or((fx, fy, fw, fh))),
         _ => None,
     };
@@ -37,8 +37,8 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // и у атрибута, точки — от её начала при явной коробке, иначе как есть
     // (`transform-box/fill-box-*`, `svg-origin-relative-length-*`).
     let style_origin = match (
-        e.style.cascaded().transform_origin,
-        e.style.cascaded().transform_origin_px,
+        e.style.computed().transform_origin,
+        e.style.computed().transform_origin_px,
     ) {
         (_, (Some(px), Some(py))) => Some((from_box(px, bx), from_box(py, by))),
         (Some((kx, ky)), (px, py)) => Some((
@@ -63,7 +63,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // Матрица функций В ПОРЯДКЕ ЗАПИСИ (см. `computed::Transform::lin`);
     // проценты сдвига — от опорной коробки фигуры (css-transforms-1
     // §transform-box: доля — от выбранной reference box).
-    let style_t = e.style.cascaded().transform.as_ref().map(|t| {
+    let style_t = e.style.computed().transform.as_ref().map(|t| {
         let unit = t.lin == [[1.0, 0.0], [0.0, 1.0]] && t.tr == [[0.0; 3]; 2];
         if unit {
             return String::new();
@@ -96,7 +96,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
     // уже сдвигает `paint/apply/` — иначе сдвиг лёг бы дважды.
     let ind_t = e
         .style
-        .cascaded()
+        .computed()
         .translate
         .filter(|_| e.tag != "svg")
         .and_then(|(x, y)| {
@@ -130,10 +130,10 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
         prefix.push_str(&format!("translate({dx} {dy}) "));
     }
     if e.tag != "svg" {
-        if let Some(angle) = e.style.cascaded().rotate_prop {
+        if let Some(angle) = e.style.computed().rotate_prop {
             prefix.push_str(&format!("rotate({}) ", angle.to_degrees()));
         }
-        if let Some((x, y)) = e.style.cascaded().scale_prop {
+        if let Some((x, y)) = e.style.computed().scale_prop {
             prefix.push_str(&format!("scale({x} {y}) "));
         }
     }
@@ -150,7 +150,7 @@ pub(crate) fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<St
         // Сдвиг от `translate:` — такой же повод перебить презентационный
         // атрибут, как и своё свойство `transform`: без этой ветки собранная
         // строка терялась, а в разметку уходил нетронутый атрибут.
-        (None, Some(t)) if e.style.cascaded().transform.is_some() || ind_t.is_some() => Some(t),
+        (None, Some(t)) if e.style.computed().transform.is_some() || ind_t.is_some() => Some(t),
         _ => None,
     };
     (combined, attr_bad)
@@ -178,9 +178,9 @@ mod tests {
     #[test]
     fn default_percentages_use_viewport_not_shape_bounds() {
         let mut e = rect(r#"<svg><rect x="25" y="40" width="50" height="60"/></svg>"#);
-        e.style.cascaded_mut().transform = Some(Default::default());
-        e.style.cascaded_mut().transform_origin = Some((0.25, 0.5));
-        e.style.cascaded_mut().translate = Some((Len::Pct(0.5), Len::Pct(0.25)));
+        e.style.used_mut().transform = Some(Default::default());
+        e.style.used_mut().transform_origin = Some((0.25, 0.5));
+        e.style.used_mut().translate = Some((Len::Pct(0.5), Len::Pct(0.25)));
         assert_eq!(
             element_transform(&e, (200.0, 300.0)).0.as_deref(),
             Some("translate(50 150) translate(100 75)  translate(-50 -150)")
@@ -201,10 +201,10 @@ mod tests {
     #[test]
     fn individual_properties_precede_the_presentation_transform() {
         let mut e = rect(r#"<svg><rect transform="translate(10 20)"/></svg>"#);
-        e.style.cascaded_mut().transform = Some(Default::default());
-        e.style.cascaded_mut().translate = Some((Len::Px(3.0), Len::Px(4.0)));
-        e.style.cascaded_mut().rotate_prop = Some(std::f32::consts::FRAC_PI_2);
-        e.style.cascaded_mut().scale_prop = Some((2.0, 3.0));
+        e.style.used_mut().transform = Some(Default::default());
+        e.style.used_mut().translate = Some((Len::Px(3.0), Len::Px(4.0)));
+        e.style.used_mut().rotate_prop = Some(std::f32::consts::FRAC_PI_2);
+        e.style.used_mut().scale_prop = Some((2.0, 3.0));
         assert_eq!(
             element_transform(&e, (300.0, 150.0)).0.as_deref(),
             Some("translate(3 4) rotate(90) scale(2 3) translate(10 20)")

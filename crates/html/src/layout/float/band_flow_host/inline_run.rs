@@ -25,9 +25,9 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
             // are measured by the paragraph even without inline text.
             // Blink line_breaker.cc HandleAtomicInline lays them out first.
             // Ordinary inline fragments still need their own float lifting.
-            let container = c.style.cascaded().inline_display != Some(true)
+            let container = c.style.computed().inline_display != Some(true)
                 && matches!(
-                    c.style.cascaded().display,
+                    c.style.computed().display,
                     Some(
                         Display::InlineBlock
                             | Display::InlineFlex
@@ -36,7 +36,7 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
                     )
                 )
                 && band_piece(n) != Some(BandPiece::Atom);
-            out_of_flow(c.style.cascaded())
+            out_of_flow(&c.style.computed())
                 || container
                 || inline_level(c)
                 && band_piece(n) != Some(BandPiece::Atom)
@@ -63,7 +63,7 @@ pub(super) fn classify(run: &[Node]) -> (bool, bool) {
                 || (!replaced_tag(c)
                     && c.children.iter().all(is_blank)
                     && matches!(
-                        c.style.cascaded().display,
+                        c.style.computed().display,
                         Some(Display::InlineBlock)
                             | Some(Display::InlineFlex)
                             | Some(Display::InlineGrid)

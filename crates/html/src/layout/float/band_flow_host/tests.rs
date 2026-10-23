@@ -48,7 +48,7 @@ fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
     let doc = crate::document::state::DocState::new(Default::default());
     let mut span = Element::synthetic("span", Computed::default(), Default::default(), vec![]);
     span.inline = true;
-    span.style.cascaded_mut().margin.left = Some(Len::Px(40.));
+    span.style.used_mut().margin.left = Some(Len::Px(40.));
     let nodes = vec![Node::Element(span)];
     let lifted = band_flow_rest_lift(nodes, 16., None, WritingMode::default(), None, doc.values())
         .expect("empty inline fragment belongs to the paragraph");
@@ -59,7 +59,7 @@ fn empty_inline_fragment_keeps_its_margin_in_the_paragraph() {
     let Node::Element(span) = &run.children[0] else {
         panic!("inline fragment");
     };
-    assert_eq!(span.style.cascaded().margin.left, Some(Len::Px(40.)));
+    assert_eq!(span.style.computed().margin.left, Some(Len::Px(40.)));
     assert!(span.children.is_empty());
 }
 

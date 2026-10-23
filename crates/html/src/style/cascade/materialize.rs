@@ -136,13 +136,13 @@ fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             (_, None) => super::compute::compute(parent, cascaded, vcx),
         },
     };
-    let view = own.used().unwrap_or(cascaded);
-    // Заданы ли цвета — по каскаду; у коробки раскладки каскада нет.
+    let view = own.computed();
+    // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
     let declared = match own.slot().any() {
         Some(_) => cascaded,
-        None => view,
+        None => &*view,
     };
-    super::inherit::box_stage(parent, declared, view, computed, paint, vcx)
+    super::inherit::box_stage(parent, declared, &view, computed, paint, vcx)
 }
 
 #[cfg(test)]

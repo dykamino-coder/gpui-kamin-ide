@@ -108,7 +108,7 @@ pub(super) fn table_finish(
             | Some(crate::style::computed::Position::Fixed)
     ) && edge_set(geom.inherited.inset.left)
         && edge_set(geom.inherited.inset.right)
-        && geom.e.style.cascaded().width.is_none();
+        && geom.e.style.computed().width.is_none();
     // Стиль СЕТКИ — без позиционирования и краёв: их заберёт обёртка.
     let grid_style = split_wrapper.then(|| {
         let mut c = geom.inherited.clone();
@@ -120,8 +120,8 @@ pub(super) fn table_finish(
     let inherited: &Computed = grid_style.as_ref().unwrap_or(geom.inherited);
     let needs_clone = collapse
         || table_border_box
-        || min_h != geom.e.style.cascaded().min_height
-        || min_w != geom.e.style.cascaded().min_width
+        || min_h != geom.e.style.computed().min_height
+        || min_w != geom.e.style.computed().min_width
         || fixed_floor.is_some();
     let mut outer = table_outer_box(
         geom.e,
@@ -148,7 +148,7 @@ pub(super) fn table_finish(
     // отбирал у стола высоту дорожки. Метку ставит
     // `dom::grid_table_items_keep_stretch`; авторский `align-self` она же и
     // пропускает вперёд.
-    if geom.e.style.cascaded().width.is_none() && geom.e.style.cascaded().align_self.is_none() {
+    if geom.e.style.computed().width.is_none() && geom.e.style.computed().align_self.is_none() {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
     // Пол GRIDMIN (css-tables-3 §3.9): гибкая раскладка не ужимает стол по
@@ -166,7 +166,7 @@ pub(super) fn table_finish(
     // `align-self` не работает, и стол растягивался на всё окно. Гибкая
     // обёртка возвращает сжатие по содержимому и центрирование `margin: auto`.
     let root_table =
-        matches!(geom.e.tag.as_str(), "html" | "body") && geom.e.style.cascaded().width.is_none();
+        matches!(geom.e.tag.as_str(), "html" | "body") && geom.e.style.computed().width.is_none();
     // `border-spacing` задан по ЛОГИЧЕСКИМ осям таблицы: первое значение —
     // зазор между КОЛОНКАМИ (инлайн-ось), второе — между РЯДАМИ (блочная
     // ось). css-writing-modes-3 §7.2 «Dimension Mapping» переносит их на
@@ -206,17 +206,17 @@ pub(super) fn table_finish(
         outer,
     );
     let shrink_wrap = root_table
-        || (geom.e.style.cascaded().width.is_none()
+        || (geom.e.style.computed().width.is_none()
             // Заданная высота или её порог приходят от РАСКЛАДКИ родителя:
             // обёртка рвёт эту связь (без отсечки ломается
             // `min-height-table-2`).
-            && geom.e.style.cascaded().height.is_none()
-            && geom.e.style.cascaded().min_height.is_none()
+            && geom.e.style.computed().height.is_none()
+            && geom.e.style.computed().min_height.is_none()
             && !inherited.stretched
-            && geom.e.style.cascaded().flex_basis.is_none()
-            && geom.e.style.cascaded().align_self.is_none()
-            && geom.e.style.cascaded().grid_col.is_none()
-            && geom.e.style.cascaded().grid_row.is_none());
+            && geom.e.style.computed().flex_basis.is_none()
+            && geom.e.style.computed().align_self.is_none()
+            && geom.e.style.computed().grid_col.is_none()
+            && geom.e.style.computed().grid_row.is_none());
     finish_table_outer(
         geom.e,
         caps_top,

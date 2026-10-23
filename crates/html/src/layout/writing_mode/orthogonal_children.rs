@@ -23,7 +23,7 @@ pub(crate) fn orthogonal_children(
         // Внепоточные не зажимаются: абсолютный элемент меряется от своего
         // содержащего блока, а не от потока (available-size-003: зажатый
         // абсолютный маркер вылезал красным).
-        if !in_flow(ch.style.cascaded()) {
+        if !in_flow(&ch.style.computed()) {
             continue;
         }
         // Writing Modes 4 §7.3: the orthogonal child's auto block size fits
@@ -32,21 +32,21 @@ pub(crate) fn orthogonal_children(
         if matches!(
             container.display,
             None | Some(Display::Block | Display::InlineBlock | Display::TableCell)
-        ) && matches!(ch.style.cascaded().height, None | Some(Len::Auto))
-            && ch.style.cascaded().align_self.is_none()
-            && !ch.style.cascaded().float.is_some_and(|side| side != 0)
+        ) && matches!(ch.style.computed().height, None | Some(Len::Auto))
+            && ch.style.computed().align_self.is_none()
+            && !ch.style.computed().float.is_some_and(|side| side != 0)
         {
             // The child stands at the container's inline-start (§6.4).
             let from_bottom =
                 container.wm().inline_start() == crate::style::computed::writing_mode::Side::Bottom;
-            ch.style.cascaded_mut().align_self = Some(if from_bottom {
+            ch.style.used_mut().align_self = Some(if from_bottom {
                 Align::End
             } else {
                 Align::Start
             });
         }
         if let Some(il) = inline_size {
-            let margin = &mut ch.style.cascaded_mut().margin;
+            let margin = &mut ch.style.used_mut().margin;
             for side in [
                 &mut margin.top,
                 &mut margin.right,
@@ -64,12 +64,12 @@ pub(crate) fn orthogonal_children(
         // контейнере без размера считалась от сжатого по содержимому
         // родителя (two-levels-of-orthogonal-flows-percentage: 50% от
         // трёх букв вместо половины окна).
-        if let Some(Len::Pct(k)) = ch.style.cascaded().width {
+        if let Some(Len::Pct(k)) = ch.style.computed().width {
             let base = match container.width {
                 Some(Len::Px(w)) => w,
                 _ => icb_w,
             };
-            ch.style.cascaded_mut().width = Some(Len::Px(k * base));
+            ch.style.used_mut().width = Some(Len::Px(k * base));
         }
         // `width: auto`, записанный ЯВНО, разбор отдаёт как `Some(Len::Auto)`
         // (`value.rs`: `Len::parse("auto")`), и `is_none()` читал его как
@@ -78,13 +78,13 @@ pub(crate) fn orthogonal_children(
         if crate::layout::writing_mode::orthogonal_horizontal::size_auto(ch, container, icb_w) {
             continue;
         }
-        let explicit_auto = matches!(ch.style.cascaded().width, Some(Len::Auto));
-        if (ch.style.cascaded().width.is_none() || explicit_auto)
-            && ch.style.cascaded().max_width.is_none()
+        let explicit_auto = matches!(ch.style.computed().width, Some(Len::Auto));
+        if (ch.style.computed().width.is_none() || explicit_auto)
+            && ch.style.computed().max_width.is_none()
         {
             let side = px_lossy_zero;
             let margins =
-                side(ch.style.cascaded().margin.left) + side(ch.style.cascaded().margin.right);
+                side(ch.style.computed().margin.left) + side(ch.style.computed().margin.right);
             match container.width {
                 // Заданный размер контейнера — доступное место потока
                 // целиком: авто-размер блочного ортогонального ребёнка
@@ -102,25 +102,24 @@ pub(crate) fn orthogonal_children(
                 // допуска. Неявной ширине по-прежнему растяжка: потолок
                 // вместо неё ломает stretch-fit, описанный выше.
                 Some(Len::Px(w)) if explicit_auto => {
-                    let b = ch.style.cascaded().borders();
-                    let extra = side(ch.style.cascaded().padding.left)
-                        + side(ch.style.cascaded().padding.right)
+                    let b = ch.style.computed().borders();
+                    let extra = side(ch.style.computed().padding.left)
+                        + side(ch.style.computed().padding.right)
                         + side(b.left)
                         + side(b.right);
-                    ch.style.cascaded_mut().max_width =
-                        Some(Len::Px((w - margins - extra).max(0.0)));
+                    ch.style.used_mut().max_width = Some(Len::Px((w - margins - extra).max(0.0)));
                 }
                 Some(Len::Px(w)) => {
                     // Ширина здесь — то, что коробке отдаст раскладка, а
                     // рендер к ЗАДАННОЙ ширине добавит отступы и рамку (как
                     // общий разбор): их доля вычитается заранее, иначе
                     // ребёнок вылезал из контейнера на их толщину.
-                    let b = ch.style.cascaded().borders();
-                    let extra = side(ch.style.cascaded().padding.left)
-                        + side(ch.style.cascaded().padding.right)
+                    let b = ch.style.computed().borders();
+                    let extra = side(ch.style.computed().padding.left)
+                        + side(ch.style.computed().padding.right)
                         + side(b.left)
                         + side(b.right);
-                    ch.style.cascaded_mut().width = Some(Len::Px((w - margins - extra).max(0.0)));
+                    ch.style.used_mut().width = Some(Len::Px((w - margins - extra).max(0.0)));
                 }
                 _ => {
                     // css-writing-modes-4 §7.3.1: без фиксированного размера
@@ -133,12 +132,12 @@ pub(crate) fn orthogonal_children(
                     // ВНЕШНЕМУ краю; раскладке отдаётся размер содержимого
                     // (рендер доложит к нему рамку и отбивки), поэтому их доля
                     // вычитается заранее (`htb-in-vlr-016`: рамка 35).
-                    let b = ch.style.cascaded().borders();
-                    let extra = side(ch.style.cascaded().padding.left)
-                        + side(ch.style.cascaded().padding.right)
+                    let b = ch.style.computed().borders();
+                    let extra = side(ch.style.computed().padding.left)
+                        + side(ch.style.computed().padding.right)
                         + side(b.left)
                         + side(b.right);
-                    ch.style.cascaded_mut().max_width =
+                    ch.style.used_mut().max_width =
                         Some(Len::Px((icb_w - margins - extra).max(0.0)));
                 }
             }

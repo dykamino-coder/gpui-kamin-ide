@@ -36,35 +36,35 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
             Some(Len::MinContent | Len::MaxContent | Len::FitContent)
         )
     };
-    let indefinite_height = matches!(element.style.cascaded().height, Some(Len::Pct(_)))
-        && !element.style.cascaded().cb_height_def
-        && !element.style.cascaded().root_box
+    let indefinite_height = matches!(element.style.computed().height, Some(Len::Pct(_)))
+        && !element.style.computed().cb_height_def
+        && !element.style.computed().root_box
         && !matches!(
-            element.style.cascaded().position,
+            element.style.computed().position,
             Some(Position::Absolute | Position::Fixed)
         );
     let percentage_limit = containing_width.is_some()
-        && matches!(element.style.cascaded().min_width, Some(Len::Pct(_)))
+        && matches!(element.style.computed().min_width, Some(Len::Pct(_)))
         || containing_width.is_some()
-            && matches!(element.style.cascaded().max_width, Some(Len::Pct(_)));
-    if !keyword(element.style.cascaded().width)
-        && !keyword(element.style.cascaded().height)
+            && matches!(element.style.computed().max_width, Some(Len::Pct(_)));
+    if !keyword(element.style.computed().width)
+        && !keyword(element.style.computed().height)
         && !indefinite_height
         && !percentage_limit
     {
         return None;
     }
     let mut normalized = element.clone();
-    if keyword(normalized.style.cascaded().width) {
-        normalized.style.cascaded_mut().width = None;
+    if keyword(normalized.style.computed().width) {
+        normalized.style.used_mut().width = None;
     }
-    if keyword(normalized.style.cascaded().height) || indefinite_height {
-        normalized.style.cascaded_mut().height = None;
+    if keyword(normalized.style.computed().height) || indefinite_height {
+        normalized.style.used_mut().height = None;
     }
     // The outer box and its content must constrain the same intrinsic ratio.
     // Leave unresolved bases to layout, rather than substituting an ancestor size.
     if let Some(width) = containing_width {
-        let style = &mut *normalized.style.cascaded_mut();
+        let style = &mut *normalized.style.used_mut();
         for limit in [&mut style.min_width, &mut style.max_width] {
             if let Some(Len::Pct(fraction)) = *limit {
                 *limit = Some(Len::Px(width * fraction));
@@ -128,7 +128,7 @@ pub(crate) fn inline_nodes(
             && element.tag == "img"
             && crate::layout::box_kind::inline_level(element)
         {
-            inline_percentage_width(element.style.cascaded_mut(), basis);
+            inline_percentage_width(element.style.used_mut(), basis);
         }
     }
     nodes
@@ -141,11 +141,11 @@ mod tests {
     #[test]
     fn indefinite_percentage_height_transfers_max_width_through_intrinsic_ratio() {
         let mut image = crate::layout::table::anon::anon_element("img", vec![]);
-        image.style.cascaded_mut().height = Some(Len::Pct(1.0));
-        image.style.cascaded_mut().max_width = Some(Len::Pct(1.0));
+        image.style.used_mut().height = Some(Len::Pct(1.0));
+        image.style.used_mut().max_width = Some(Len::Pct(1.0));
         let normalized = normalize(&image, Some(100.0)).unwrap();
-        assert_eq!(normalized.style.cascaded().height, None);
-        assert_eq!(normalized.style.cascaded().max_width, Some(Len::Px(100.0)));
+        assert_eq!(normalized.style.computed().height, None);
+        assert_eq!(normalized.style.computed().max_width, Some(Len::Px(100.0)));
         assert_eq!(
             crate::layout::replaced::limits::css2_replaced_limits(
                 200.0,
@@ -162,12 +162,12 @@ mod tests {
     #[test]
     fn definite_and_positioned_percentage_heights_keep_their_basis() {
         let mut image = crate::layout::table::anon::anon_element("img", vec![]);
-        image.style.cascaded_mut().height = Some(Len::Pct(0.5));
-        image.style.cascaded_mut().cb_height_def = true;
+        image.style.used_mut().height = Some(Len::Pct(0.5));
+        image.style.used_mut().cb_height_def = true;
         assert!(normalize(&image, None).is_none());
-        image.style.cascaded_mut().cb_height_def = false;
+        image.style.used_mut().cb_height_def = false;
         for position in [Position::Absolute, Position::Fixed] {
-            image.style.cascaded_mut().position = Some(position);
+            image.style.used_mut().position = Some(position);
             assert!(normalize(&image, None).is_none());
         }
     }
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn unresolved_width_constraints_keep_percentage_identity() {
         let mut image = crate::layout::table::anon::anon_element("img", vec![]);
-        image.style.cascaded_mut().max_width = Some(Len::Pct(0.5));
+        image.style.used_mut().max_width = Some(Len::Pct(0.5));
         assert!(normalize(&image, None).is_none());
     }
 }

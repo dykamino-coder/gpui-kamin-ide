@@ -22,20 +22,20 @@ pub(super) fn push_row(dom: &mut Element, row: &RowPush, grow: f32) -> bool {
             _ => None,
         })
     };
-    if items().any(|k| !matches!(k.style.cascaded().margin.bottom, None | Some(Len::Px(_)))) {
+    if items().any(|k| !matches!(k.style.computed().margin.bottom, None | Some(Len::Px(_)))) {
         return false;
     }
     for n in grid.children.iter_mut() {
         if let Node::Element(k) = n
             && row.items.contains(&k.node_id)
         {
-            let old = crate::style::values::value::px_lossy_zero(k.style.cascaded().margin.bottom);
-            k.style.cascaded_mut().margin.bottom = Some(Len::Px(old + grow));
+            let old = crate::style::values::value::px_lossy_zero(k.style.computed().margin.bottom);
+            k.style.used_mut().margin.bottom = Some(Len::Px(old + grow));
         }
     }
     if let Some(TrackSize::Single(Track::Px(v))) = grid
         .style
-        .cascaded_mut()
+        .used_mut()
         .grid_rows
         .as_mut()
         .and_then(|r| r.get_mut(row.track))

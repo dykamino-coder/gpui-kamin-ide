@@ -18,10 +18,10 @@ pub(super) fn flex_lines_of(
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(f32, Vec<(Element, Shape)>)>> {
     use crate::style::computed::FlexDir;
-    if flex_gap_rules(c.style.cascaded()) {
+    if flex_gap_rules(&c.style.computed()) {
         return None;
     }
-    let s = c.style.cascaded();
+    let s = &*c.style.computed();
     if !plain_container(c) || s.flex_dir != Some(FlexDir::Col) {
         return None;
     }
@@ -37,7 +37,7 @@ pub(super) fn flex_lines_of(
     let mut items: Vec<&Element> = Vec::new();
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
-        let ks = k.style.cascaded();
+        let ks = &*k.style.computed();
         if !plain_item(k) || ks.flex_basis.is_some() {
             return None;
         }
@@ -47,32 +47,32 @@ pub(super) fn flex_lines_of(
         return None;
     }
     // Визуальный порядок (`order`, стабильно), как в `blocks()`.
-    items.sort_by_key(|k| k.style.cascaded().order.unwrap_or(0));
+    items.sort_by_key(|k| k.style.computed().order.unwrap_or(0));
     // Мера и внешний поперечный размер элемента; `None` у ширины — `auto`.
     let mut measured: Vec<(Element, Shape, Option<f32>)> = Vec::with_capacity(items.len());
     for k in items {
         let sh = shape_full(k, 4, ShapeCx::COLUMNS, vcx)?;
-        let kb = k.style.cascaded().borders();
+        let kb = k.style.computed().borders();
         let side = |l: &Option<Len>| match l {
             None => Some(0.0),
             Some(Len::Px(v)) => Some(*v),
             _ => None,
         };
-        let w = match k.style.cascaded().width {
+        let w = match k.style.computed().width {
             Some(Len::Px(w)) => {
-                let extra = if k.style.cascaded().border_box == Some(true) {
+                let extra = if k.style.computed().border_box == Some(true) {
                     0.0
                 } else {
-                    side(&k.style.cascaded().padding.left)?
-                        + side(&k.style.cascaded().padding.right)?
+                    side(&k.style.computed().padding.left)?
+                        + side(&k.style.computed().padding.right)?
                         + side(&kb.left)?
                         + side(&kb.right)?
                 };
                 Some(w + extra)
             }
             None | Some(Len::Auto)
-                if zero(&k.style.cascaded().padding.left)
-                    && zero(&k.style.cascaded().padding.right)
+                if zero(&k.style.computed().padding.left)
+                    && zero(&k.style.computed().padding.right)
                     && zero(&kb.left)
                     && zero(&kb.right)
                     && k.children.iter().all(is_blank) =>
@@ -118,7 +118,7 @@ pub(super) fn flex_lines_of(
         for (i, (mut k, mut sh, w)) in line.into_iter().enumerate() {
             // `auto` тянется на строку (§9.4 шаг 11, `align-self: stretch`).
             if w.is_none() {
-                k.style.cascaded_mut().width = Some(Len::Px(lc));
+                k.style.used_mut().width = Some(Len::Px(lc));
             }
             // Зазор между элементами строки — к полю следующего: на разрыве
             // он пропадает вместе с полем (Blink

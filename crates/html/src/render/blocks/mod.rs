@@ -157,8 +157,8 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     let collapsed: Vec<Node> = if ordered_context {
         let in_flow = |n: &Node| match n {
             Node::Element(e) => {
-                e.style.cascaded().position != Some(crate::style::computed::Position::Absolute)
-                    || e.style.cascaded().z_index.is_some_and(|z| z < 0)
+                e.style.computed().position != Some(crate::style::computed::Position::Absolute)
+                    || e.style.computed().z_index.is_some_and(|z| z < 0)
             }
             Node::Text(_) => true,
         };
@@ -193,7 +193,7 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &Computed, opts: &RenderOpts) ->
     // потому что готовит замер до отрисовки детей.
     let sticky = collapsed.iter().any(|n| match n {
         Node::Element(e) => {
-            e.style.cascaded().position == Some(crate::style::computed::Position::Sticky)
+            e.style.computed().position == Some(crate::style::computed::Position::Sticky)
         }
         _ => false,
     });

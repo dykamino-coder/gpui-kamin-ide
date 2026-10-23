@@ -75,16 +75,16 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     };
     let mut copy = e.clone();
     let mut changed = false;
-    if let Some(v) = of(e.style.cascaded().height, base_h) {
-        copy.style.cascaded_mut().height = v;
+    if let Some(v) = of(e.style.computed().height, base_h) {
+        copy.style.used_mut().height = v;
         changed = true;
     }
-    let padding = &mut copy.style.cascaded_mut().padding;
+    let padding = &mut copy.style.used_mut().padding;
     for (dst, src) in [
-        (&mut padding.top, e.style.cascaded().padding.top),
-        (&mut padding.bottom, e.style.cascaded().padding.bottom),
-        (&mut padding.left, e.style.cascaded().padding.left),
-        (&mut padding.right, e.style.cascaded().padding.right),
+        (&mut padding.top, e.style.computed().padding.top),
+        (&mut padding.bottom, e.style.computed().padding.bottom),
+        (&mut padding.left, e.style.computed().padding.left),
+        (&mut padding.right, e.style.computed().padding.right),
     ] {
         if let Some(v) = of(src, base_w) {
             *dst = v;

@@ -15,7 +15,7 @@ pub(super) fn zero(l: &Option<Len>) -> bool {
 }
 
 pub(super) fn plain_container(c: &Element) -> bool {
-    let s = c.style.cascaded();
+    let s = &c.style.computed();
     let b = s.borders();
     if c.inline
         || s.display != Some(Display::Flex)
@@ -61,7 +61,7 @@ pub(super) fn plain_container(c: &Element) -> bool {
 }
 
 pub(super) fn plain_item(k: &Element) -> bool {
-    let s = k.style.cascaded();
+    let s = &k.style.computed();
     !k.inline
         && !out_of_flow(s)
         && matches!(

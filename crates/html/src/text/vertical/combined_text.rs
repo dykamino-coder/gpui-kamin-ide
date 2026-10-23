@@ -22,7 +22,7 @@ pub(crate) fn piece(
     let vcx = opts.cx.vcx();
     if !inherited.wm().turned()
         || inherited.wm().sideways()
-        || element.style.cascaded().display.is_some()
+        || element.style.computed().display.is_some()
     {
         return None;
     }

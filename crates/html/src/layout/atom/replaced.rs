@@ -19,12 +19,12 @@ pub(super) fn container_atom(
     e: &Element,
 ) -> Option<Option<AnyElement>> {
     let vcx = opts.cx.vcx();
-    if e.style.cascaded().display == Some(Display::GridLanes) {
+    if e.style.computed().display == Some(Display::GridLanes) {
         return Some(Some(opts.cx.build.element(e, inherited, opts)));
     }
-    if multicol_container(e.style.cascaded()) {
+    if multicol_container(&e.style.computed()) {
         let merged = box_style(inherited, &e.style, vcx);
-        let gap = match e.style.cascaded().column_gap {
+        let gap = match e.style.computed().column_gap {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
                 Some(Len::Px(size)) => size,
@@ -32,23 +32,23 @@ pub(super) fn container_atom(
             },
         };
         let shrink_to_fit = match (
-            e.style.cascaded().column_count,
-            e.style.cascaded().column_width,
+            e.style.computed().column_count,
+            e.style.computed().column_width,
         ) {
             (Some(c), Some(Len::Px(w))) if w > 0.0 => Some(c as f32 * w + (c as f32 - 1.0) * gap),
             _ => None,
         };
-        if e.style.cascaded().width.is_some() || shrink_to_fit.is_some() {
+        if e.style.computed().width.is_some() || shrink_to_fit.is_some() {
             let mut copy = e.clone();
-            if copy.style.cascaded().width.is_none() {
-                copy.style.cascaded_mut().width = shrink_to_fit.map(Len::Px);
+            if copy.style.computed().width.is_none() {
+                copy.style.used_mut().width = shrink_to_fit.map(Len::Px);
             }
             return Some(Some(opts.cx.build.element(&copy, inherited, opts)));
         }
     }
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
-    if e.style.cascaded().display == Some(Display::InlineTable) {
+    if e.style.computed().display == Some(Display::InlineTable) {
         let built = table(e, &box_style(inherited, &e.style, vcx), opts);
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
@@ -72,7 +72,7 @@ pub(super) fn container_atom(
 pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
-    replaced_used_style::inline_percentage_width(copy.style.cascaded_mut(), opts.cx.avail_w);
+    replaced_used_style::inline_percentage_width(copy.style.used_mut(), opts.cx.avail_w);
     // Держатель картинки строится из СЫРОГО стиля (`image_with` →
     // `styled_div`), а признак определённого блока (CSS 2.1 §10.5)
     // ставит только `style::cascade::inherit`: без переноса `apply` выбрасывал
@@ -86,15 +86,13 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         inherited.display,
         Some(Display::TableCell) | Some(Display::GridLanes)
     ) {
-        copy.style.cascaded_mut().cb_height_def = box_style(inherited, &e.style, vcx).cb_height_def;
+        copy.style.used_mut().cb_height_def = box_style(inherited, &e.style, vcx).cb_height_def;
     }
     // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
     // строится из СЫРОГО стиля, а сворачивает их только слитый
     // (`Computed::resolve_viewport`), и `height: calc(60vh - 6px)` у
     // картинки падал в природный размер (`intrinsic-percent-replaced-009-ref`).
-    copy.style
-        .cascaded_mut()
-        .resolve_viewport(opts.viewport, vcx);
+    copy.style.used_mut().resolve_viewport(opts.viewport, vcx);
     if let Some(doc) = crate::layout::replaced::svg_document_image::render(&copy, opts) {
         return Some(doc);
     }
@@ -123,7 +121,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     let mut sized = with_inherited_font(e, inherited);
     sized
         .style
-        .cascaded_mut()
+        .used_mut()
         .resolve_em(atom_base_font(inherited, opts), vcx);
     // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
     // коробки — свой, с решёнными шрифтовыми единицами.
@@ -168,11 +166,11 @@ pub(super) fn canvas_atom(
     // Под обособлением размера холст меряется как пустой
     // (css-contain-2 §size containment) — там наполнителя быть не
     // должно, иначе он вернул бы размер, который обособление сняло.
-    let ratio = e.style.cascaded().aspect_ratio.filter(|r| {
+    let ratio = e.style.computed().aspect_ratio.filter(|r| {
         r.is_finite()
             && *r > 0.0
-            && !e.style.cascaded().contains_width()
-            && !e.style.cascaded().contains_height()
+            && !e.style.computed().contains_width()
+            && !e.style.computed().contains_height()
     });
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)) | Some(Len::Pct(_)));
@@ -186,14 +184,14 @@ pub(super) fn canvas_atom(
     let pct = |l: Option<Len>| matches!(l, Some(Len::Pct(_)));
     let d = match ratio {
         Some(r)
-            if (auto(e.style.cascaded().width) || pct(e.style.cascaded().width))
-                && named(e.style.cascaded().height) =>
+            if (auto(e.style.computed().width) || pct(e.style.computed().width))
+                && named(e.style.computed().height) =>
         {
             let mut fill = div().h(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);
             d.child(fill)
         }
-        Some(r) if auto(e.style.cascaded().height) && named(e.style.cascaded().width) => {
+        Some(r) if auto(e.style.computed().height) && named(e.style.computed().width) => {
             let mut fill = div().w(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);
             d.child(fill)

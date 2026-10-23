@@ -63,7 +63,7 @@ pub(super) fn cell_edge_probes(
     // Рамка ячейки — обратно в границы: канвас пробы лежит внутри
     // неё, а фон полосы идёт по внешним краям (§17.5.1).
     let cell_border = {
-        let b = cell.style.cascaded().borders();
+        let b = cell.style.computed().borders();
         let px_of = px_lossy_zero;
         [px_of(b.top), px_of(b.right), px_of(b.bottom), px_of(b.left)]
     };

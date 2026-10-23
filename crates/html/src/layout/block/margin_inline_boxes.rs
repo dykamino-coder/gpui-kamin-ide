@@ -32,14 +32,14 @@ pub(super) fn prepare(nodes: &mut [Node]) {
         // adjoin the column break and are truncated there (css-break-3 §5.2,
         // margin-at-break-003…005).
         if replaced_tag(element)
-            || (multicol_container(element.style.cascaded()) && floats_inside(&element.children))
+            || (multicol_container(&element.style.computed()) && floats_inside(&element.children))
         {
             continue;
         }
         prepare(&mut element.children);
         if real_inline(element)
             || matches!(
-                element.style.cascaded().display,
+                element.style.computed().display,
                 Some(Display::Flex)
                     | Some(Display::InlineFlex)
                     | Some(Display::Grid)
@@ -52,7 +52,7 @@ pub(super) fn prepare(nodes: &mut [Node]) {
         }
         if element.children.iter().any(|node| {
             matches!(node, Node::Element(child) if real_inline(child)
-                && !out_of_flow(child.style.cascaded()) && contains_block(&child.children))
+                && !out_of_flow(&child.style.computed()) && contains_block(&child.children))
         }) {
             element.children = split_block_in_inline(&wrap_anon_tables(&element.children));
         }
@@ -63,7 +63,7 @@ fn eligible(nodes: &[Node]) -> bool {
     nodes.iter().all(|node| match node {
         Node::Element(child)
             if real_inline(child)
-                && !out_of_flow(child.style.cascaded())
+                && !out_of_flow(&child.style.computed())
                 && contains_block(&child.children) =>
         {
             // Decorations, positioning and bidi need their original inline
@@ -78,7 +78,7 @@ fn eligible(nodes: &[Node]) -> bool {
 fn floats_inside(nodes: &[Node]) -> bool {
     nodes.iter().any(|node| match node {
         Node::Element(e) => {
-            e.style.cascaded().float.is_some_and(|f| f != 0) || floats_inside(&e.children)
+            e.style.computed().float.is_some_and(|f| f != 0) || floats_inside(&e.children)
         }
         Node::Text(_) => false,
     })

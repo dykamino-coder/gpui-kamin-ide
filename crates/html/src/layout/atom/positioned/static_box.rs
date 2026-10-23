@@ -19,7 +19,7 @@ pub(in crate::layout::atom) fn static_position_atom(
         return Some(child);
     }
     let vcx = opts.cx.vcx();
-    let mut merged = box_style(inherited, e.style.cascaded(), vcx);
+    let mut merged = box_style(inherited, &e.style.computed(), vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
@@ -36,12 +36,12 @@ pub(in crate::layout::atom) fn static_position_atom(
     let replaced: Option<AnyElement> = match e.tag.as_str() {
         "img" | "svg" => {
             let mut copy = e.clone();
-            copy.style.cascaded_mut().position = None;
+            copy.style.used_mut().position = None;
             // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4), а
             // копия несёт только собственный стиль элемента: без этой
             // строки `image-orientation: none`, заданный на `body`, до
             // картинки не доезжает и EXIF-разворот применяется всё равно.
-            copy.style.cascaded_mut().image_orient_none = merged.image_orient_none;
+            copy.style.used_mut().image_orient_none = merged.image_orient_none;
             Some(match copy.tag.as_str() {
                 // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
                 // позиция снята и со слитого стиля, как с копии выше.
@@ -66,7 +66,7 @@ pub(in crate::layout::atom) fn static_position_atom(
     // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
     // и держит место, и сообщает, куда потом вернуть содержимое.
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
-    let below = e.style.cascaded().z_index.is_some_and(|z| z < 0);
+    let below = e.style.computed().z_index.is_some_and(|z| z < 0);
     // Блочный элемент встал бы на НОВУЮ строку — там его статическая
     // позиция и находится: левый край содержимого родителя, верх — низ
     // текущей строки. Строчный остаётся точкой в самой строке.

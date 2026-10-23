@@ -14,7 +14,7 @@ pub(super) fn line_inner_kids(
     avoid_chains: bool,
     vcx: ValueCx<'_>,
 ) -> Vec<bool> {
-    let main_gap0 = match c.style.cascaded().gap {
+    let main_gap0 = match c.style.computed().gap {
         None | Some((_, None)) => true,
         Some((_, Some(Len::Px(v)))) => v.abs() < 0.01,
         _ => false,
@@ -25,17 +25,17 @@ pub(super) fn line_inner_kids(
         _ => false,
     };
     let pct_of = |k: &Element| -> Option<f32> {
-        let kb = k.style.cascaded().borders();
-        match k.style.cascaded().width {
+        let kb = k.style.computed().borders();
+        match k.style.computed().width {
             Some(Len::Pct(p))
                 if main_gap0
-                    && k.style.cascaded().flex_basis.is_none()
-                    && k.style.cascaded().min_width.is_none()
-                    && k.style.cascaded().max_width.is_none()
-                    && zero(&k.style.cascaded().margin.left)
-                    && zero(&k.style.cascaded().margin.right)
-                    && zero(&k.style.cascaded().padding.left)
-                    && zero(&k.style.cascaded().padding.right)
+                    && k.style.computed().flex_basis.is_none()
+                    && k.style.computed().min_width.is_none()
+                    && k.style.computed().max_width.is_none()
+                    && zero(&k.style.computed().margin.left)
+                    && zero(&k.style.computed().margin.right)
+                    && zero(&k.style.computed().padding.left)
+                    && zero(&k.style.computed().padding.right)
                     && zero(&kb.left)
                     && zero(&kb.right) =>
             {
@@ -50,7 +50,7 @@ pub(super) fn line_inner_kids(
         .iter()
         .map(|n| match n {
             // Внепоточный — не элемент (§4.1): строку не рвёт и в неё не входит.
-            Node::Element(k) if avoid_chains && out_of_flow(k.style.cascaded()) => false,
+            Node::Element(k) if avoid_chains && out_of_flow(&k.style.computed()) => false,
             Node::Element(k) if avoid_chains => {
                 let w = pct_of(k);
                 let forced = line_fa || edge_break(k, false, vcx);
@@ -75,16 +75,16 @@ pub(super) fn line_inner_kids(
 
 pub(super) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
     let is_flex = matches!(
-        c.style.cascaded().display,
+        c.style.computed().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || c.style.cascaded().webkit_box == Some(true);
+    ) || c.style.computed().webkit_box == Some(true);
     let row_nowrap = is_flex
         && matches!(
-            c.style.cascaded().flex_dir,
+            c.style.computed().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.cascaded().flex_wrap != Some(true)
+        && c.style.computed().flex_wrap != Some(true)
         && c.style.cascaded().webkit_box_vertical != Some(true);
     // Сетка в одну колонку с рядами по содержимому — стопка (`grid_stack`):
     // ряд равен одному ребёнку. Без спуска её мера уходила в `grid_rows_px`
@@ -95,7 +95,7 @@ pub(super) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
     let grid_rows_stack = grid_stack(c);
     // Зазор рядов такой сетки: `grid_stack` ручается, что он в точках.
     let row_gap = if grid_rows_stack {
-        match c.style.cascaded().gap {
+        match c.style.computed().gap {
             Some((Some(Len::Px(v)), _)) => v,
             _ => 0.0,
         }
@@ -104,7 +104,7 @@ pub(super) fn row_axis_flags(c: &Element) -> (bool, bool, f32, bool) {
     };
     // Ряд/группа рядов ВНЕ таблицы (тегом или `display`) — не стопка блоков.
     let no_descent = (matches!(
-        c.style.cascaded().display,
+        c.style.computed().display,
         Some(Display::Grid)
             | Some(Display::InlineGrid)
             | Some(Display::GridLanes)

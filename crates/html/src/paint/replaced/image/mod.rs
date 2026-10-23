@@ -49,7 +49,7 @@ fn view_boxed(
     let vcx = cx.vcx();
     let src = e.attr("src")?;
     let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
-    let source = crate::resources::css_images::element_source(local.unwrap_or(src), e.style.cascaded(), vcx)
+    let source = crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
         .map(crate::paint::background::Source::from_cpu)?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
@@ -59,13 +59,13 @@ fn view_boxed(
     let ViewBoxSize {
         view: (vx, vy, vw, vh),
         size: (bw, bh),
-    } = view_box_size(e.style.cascaded(), vb, (w0, h0))?;
+    } = view_box_size(&e.style.computed(), vb, (w0, h0))?;
     let mut boxed = e.clone();
-    boxed.style.cascaded_mut().object_view_box = None;
-    boxed.style.cascaded_mut().width = Some(Len::Px(bw));
-    boxed.style.cascaded_mut().height = Some(Len::Px(bh));
-    boxed.style.cascaded_mut().contain_size = Some(false);
-    boxed.style.cascaded_mut().contain_inline_size = Some(false);
+    boxed.style.used_mut().object_view_box = None;
+    boxed.style.used_mut().width = Some(Len::Px(bw));
+    boxed.style.used_mut().height = Some(Len::Px(bh));
+    boxed.style.used_mut().contain_size = Some(false);
+    boxed.style.used_mut().contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
     let ready = crate::paint::background::image_adapter::upload(&ready)?;
     let picture = gpui::img(ready)

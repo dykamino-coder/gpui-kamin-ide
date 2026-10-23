@@ -20,7 +20,7 @@ use crate::style::computed::{Align, Computed};
 /// якоря — как `center` (css-anchor-position-1 §anchor-center), с якорем его
 /// ведёт `anchor::place::place_one`, и сюда он не берётся.
 pub(crate) fn static_self_align(e: &Element, inherited: &Computed) -> Option<(f32, f32)> {
-    static_self_align_style(e.style.cascaded(), inherited)
+    static_self_align_style(&e.style.computed(), inherited)
 }
 
 pub(crate) fn static_self_align_style(own: &Computed, inherited: &Computed) -> Option<(f32, f32)> {
@@ -96,13 +96,13 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Opt
     if inherited.wm().vertical()
         || inherited.wm().turned()
         || inherited.wm().rtl()
-        || e.style.cascaded().inline_display == Some(true)
+        || e.style.computed().inline_display == Some(true)
     {
         return None;
     }
-    let anchorless = e.style.cascaded().position_anchor.is_none()
-        && e.style.cascaded().position_area.is_none()
-        && e.style.cascaded().implicit_anchor.is_none();
+    let anchorless = e.style.computed().position_anchor.is_none()
+        && e.style.computed().position_area.is_none()
+        && e.style.computed().implicit_anchor.is_none();
     let frac = |a: Option<Align>, last: bool| match a {
         Some(Align::Center) => Some(0.5),
         Some(Align::AnchorCenter) if anchorless => Some(0.5),
@@ -111,8 +111,8 @@ pub(crate) fn inline_static_self_align(e: &Element, inherited: &Computed) -> Opt
         Some(Align::Start) => Some(0.0),
         _ => None,
     };
-    let jx = frac(e.style.cascaded().justify_self, e.style.cascaded().justify_self_last);
-    let ky = frac(e.style.cascaded().align_self, e.style.cascaded().align_self_last);
+    let jx = frac(e.style.computed().justify_self, e.style.computed().justify_self_last);
+    let ky = frac(e.style.computed().align_self, e.style.computed().align_self_last);
     if jx.is_none() && ky.is_none() {
         return None;
     }

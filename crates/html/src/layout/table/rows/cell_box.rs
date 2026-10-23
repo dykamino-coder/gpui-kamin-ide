@@ -20,22 +20,22 @@ pub(super) fn prepare_cell_box(
     // Наследуемые отступы и рамки берутся из слитого стиля `cm`,
     // где `style::cascade::inherit` уже разрешил значения родителя.
     use crate::style::css::{BoxGroup as G, LonghandId as L};
-    let marked = cell.style.cascaded().inherit_longhands;
+    let marked = cell.style.computed().inherit_longhands;
     let inherits = |group: G| (0..4).any(|i| marked.contains(L::physical(group, i)));
     if inherits(G::Padding) {
-        cell.style.cascaded_mut().padding = cm.padding;
+        cell.style.used_mut().padding = cm.padding;
     }
-    if cell.style.cascaded().border_inherit
+    if cell.style.computed().border_inherit
         || inherits(G::BorderWidth)
         || inherits(G::BorderStyle)
         || inherits(G::BorderColor)
     {
-        cell.style.cascaded_mut().border_width = cm.border_width;
-        cell.style.cascaded_mut().border_visible = cm.border_visible;
-        cell.style.cascaded_mut().border_side_styles = cm.border_side_styles;
-        cell.style.cascaded_mut().border_colors = cm.border_colors.clone();
-        cell.style.cascaded_mut().border_dashed = cm.border_dashed;
-        cell.style.cascaded_mut().border_dotted = cm.border_dotted;
+        cell.style.used_mut().border_width = cm.border_width;
+        cell.style.used_mut().border_visible = cm.border_visible;
+        cell.style.used_mut().border_side_styles = cm.border_side_styles;
+        cell.style.used_mut().border_colors = cm.border_colors.clone();
+        cell.style.used_mut().border_dashed = cm.border_dashed;
+        cell.style.used_mut().border_dotted = cm.border_dotted;
     }
     // Не держать внутри ячейки ПОЛОВИНУ её кромки прозрачной рамкой, а
     // внутри таблицы — половину своей (§17.6.2: «row-width = (0.5 *
@@ -55,8 +55,8 @@ pub(super) fn prepare_cell_box(
         None
     };
     if spans.clipped {
-        cell.style.cascaded_mut().overflow_x = None;
-        cell.style.cascaded_mut().overflow_y = None;
+        cell.style.used_mut().overflow_x = None;
+        cell.style.used_mut().overflow_y = None;
     }
     // Ячейка схлопнутой колонки не рисуется: колонка выброшена
     // (css-tables-3 §visibility-collapse-cell-rendering), её дорожка
@@ -64,19 +64,19 @@ pub(super) fn prepare_cell_box(
     if (cursor.col_ix..cursor.col_ix + spans.span_cols as usize)
         .all(|i| geom.cols_collapsed.get(i).copied().unwrap_or(false))
     {
-        cell.style.cascaded_mut().hidden = Some(true);
+        cell.style.used_mut().hidden = Some(true);
     }
     table_spanning_size::preserve(
-        cell.style.cascaded_mut(),
+        cell.style.used_mut(),
         cm,
         spans.span_cols,
-        geom.e.style.cascaded().table_fixed == Some(true),
+        geom.e.style.computed().table_fixed == Some(true),
         geom.table_is_vertical,
         spans.spans_collapsed,
     );
     let orthogonal_inline = cell.style.cascaded().wm().vertical()
         && !geom.e.style.cascaded().wm().vertical()
-        && cell.style.cascaded().width_from_inline;
+        && cell.style.computed().width_from_inline;
     if !geom.table_is_vertical
         && !orthogonal_inline
         // A mixed percentage `calc()` is `auto` for the column (`col_measure`,
@@ -84,11 +84,11 @@ pub(super) fn prepare_cell_box(
         // are treated as auto); left on the box it widened the table alone
         // (`calc-width-table-auto-1` row 4).
         && matches!(
-            cell.style.cascaded().width,
+            cell.style.computed().width,
             Some(Len::Px(_)) | Some(Len::Pct(_)) | Some(Len::Calc(_))
         )
     {
-        cell.style.cascaded_mut().width = None;
+        cell.style.used_mut().width = None;
     }
     // Кегльная ширина уходит с коробки, как Px и доля: колонка
     // разрешает её сама (Em-ветка col_widths), а на коробке она
@@ -99,16 +99,16 @@ pub(super) fn prepare_cell_box(
     // высоту.
     if !(cell.style.cascaded().wm().vertical()
         && !geom.e.style.cascaded().wm().vertical()
-        && cell.style.cascaded().width_from_inline
+        && cell.style.computed().width_from_inline
         // У ВЕРТИКАЛЬНОЙ таблицы width остаётся коробке: дорожку
         // задаёт высота (table-cell-align-001/002).
         || geom.table_is_vertical)
         && matches!(
-            cell.style.cascaded().width,
+            cell.style.computed().width,
             Some(Len::Em(_)) | Some(Len::Ch(_)) | Some(Len::Ex(_))
         )
     {
-        cell.style.cascaded_mut().width = None;
+        cell.style.used_mut().width = None;
     }
     // The row's logical block size is physical width in a vertical table.
     // Preserve authored cell width as a minimum, then stretch to the row.
@@ -124,7 +124,7 @@ pub(super) fn prepare_cell_box(
             .font_family
             .clone()
             .unwrap_or_else(|| geom.table_family.to_string());
-        super::cell_size::vertical_block_floor(cell.style.cascaded_mut(), size, &family, vcx);
+        super::cell_size::vertical_block_floor(cell.style.used_mut(), size, &family, vcx);
     }
     // Письмо к рядам и группам рядов не применяется (css-writing-modes
     // §applies), а РАЗМЕЩЕНИЕ ячеек в решётке всегда ведёт письмо

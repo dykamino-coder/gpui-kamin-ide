@@ -47,13 +47,13 @@ pub(super) fn table_shape_bands(
         Some(Len::Px(v)) => Some(Some(*v)),
         _ => None,
     };
-    let spec_h = spec_of(&c.style.cascaded().height)?;
-    let spec_min_h = spec_of(&c.style.cascaded().min_height)?;
-    let b = c.style.cascaded().borders();
-    let mt = px_of(&c.style.cascaded().margin.top).unwrap_or(0.0);
-    let mb = px_of(&c.style.cascaded().margin.bottom).unwrap_or(0.0);
-    let top = px_of(&c.style.cascaded().padding.top)? + px_of(&b.top)?;
-    let bot = px_of(&c.style.cascaded().padding.bottom)? + px_of(&b.bottom)?;
+    let spec_h = spec_of(&c.style.computed().height)?;
+    let spec_min_h = spec_of(&c.style.computed().min_height)?;
+    let b = c.style.computed().borders();
+    let mt = px_of(&c.style.computed().margin.top).unwrap_or(0.0);
+    let mb = px_of(&c.style.computed().margin.bottom).unwrap_or(0.0);
+    let top = px_of(&c.style.computed().padding.top)? + px_of(&b.top)?;
+    let bot = px_of(&c.style.computed().padding.bottom)? + px_of(&b.bottom)?;
     let (spacing, cell_cx) = cell_settings(c, cx)?;
     // Дети чинятся ТЕМ ЖЕ `fixup_table_children`, которым их чинит рисователь
     // `layout::table::table` (css-tables-3 §3 fixup): бесхозная ячейка,
@@ -80,7 +80,7 @@ pub(super) fn table_shape_bands(
     // стороны — разметки (`sections-and-captions-mixed-order`: сверху 1 и 2,
     // снизу 14 и 15…20).
     let is_cap_kid =
-        |e: &Element| e.tag == "caption" || e.style.cascaded().is_caption == Some(true);
+        |e: &Element| e.tag == "caption" || e.style.computed().is_caption == Some(true);
     let mut caps_top: Vec<&Element> = Vec::new();
     let mut caps_bot: Vec<&Element> = Vec::new();
     // Части в порядке отрисовки: первая заголовочная группа — вперёд,
@@ -129,15 +129,15 @@ pub(super) fn table_shape_bands(
             rows.push(RowRef {
                 row: r,
                 group: gi,
-                avoid: e.style.cascaded().break_inside_avoid,
-                fb: row_force(r, false, vcx) || (i == 0 && e.style.cascaded().break_before_force),
-                fa: row_force(r, true, vcx) || (i == last && e.style.cascaded().break_after_force),
+                avoid: e.style.computed().break_inside_avoid,
+                fb: row_force(r, false, vcx) || (i == 0 && e.style.computed().break_before_force),
+                fa: row_force(r, true, vcx) || (i == last && e.style.computed().break_after_force),
                 // Край ГРУППЫ — тот же перенос, что у принудительных выше:
                 // `break-before: avoid` группы действует на её ПЕРВОМ ряду,
                 // `break-after: avoid` — на ПОСЛЕДНЕМ (css-break-4 §break-between,
                 // «Applies to: … table row groups, table rows»).
-                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.cascaded().break_before_avoid),
-                aa: row_avoid(r, true, vcx) || (i == last && e.style.cascaded().break_after_avoid),
+                ab: row_avoid(r, false, vcx) || (i == 0 && e.style.computed().break_before_avoid),
+                aa: row_avoid(r, true, vcx) || (i == last && e.style.computed().break_after_avoid),
             });
         }
     }

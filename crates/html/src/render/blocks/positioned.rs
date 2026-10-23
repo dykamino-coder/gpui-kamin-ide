@@ -45,7 +45,7 @@ pub(crate) fn static_position_layer(
     // Отрицательный `z-index` рисуется ПОД содержимым потока
     // (CSS 2.1 §9.9, шаг 3), поэтому в верхний слой он не идёт:
     // там его место — поверх всего.
-    let below = e.style.cascaded().z_index.is_some_and(|z| z < 0);
+    let below = e.style.computed().z_index.is_some_and(|z| z < 0);
     let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
     // In a vertical parent the flag means "inline-start is the bottom":
     // `direction: rtl` of `vertical-*`, `ltr` of `sideways-lr` (§6.4).
@@ -75,8 +75,13 @@ pub(crate) fn static_position_layer(
     // под нами поля у absolute без краёв не считает — сдвиг
     // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
     // эталонный зелёный стоял без своих margin: 50px).
-    let ml = margin_px(e.style.cascaded().margin.left, e.style.cascaded(), cx.vcx()).unwrap_or(0.0);
-    let mt = margin_px(e.style.cascaded().margin.top, e.style.cascaded(), cx.vcx()).unwrap_or(0.0);
+    let ml = margin_px(
+        e.style.computed().margin.left,
+        &e.style.computed(),
+        cx.vcx(),
+    )
+    .unwrap_or(0.0);
+    let mt = margin_px(e.style.computed().margin.top, &e.style.computed(), cx.vcx()).unwrap_or(0.0);
     // Под потоком (`below`) коробка остаётся абсолютной на месте
     // распорки, и поле от статической позиции ей уже даёт сама
     // раскладка (taffy: `static_position + margin`); обёртка
@@ -93,8 +98,8 @@ pub(crate) fn static_position_layer(
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
     let mr = margin_px(
-        e.style.cascaded().margin.right,
-        e.style.cascaded(),
+        e.style.computed().margin.right,
+        &e.style.computed(),
         cx.vcx(),
     )
     .unwrap_or(0.0);
@@ -110,8 +115,8 @@ pub(crate) fn static_position_layer(
     // positioned boxes (CSS 2.1 §9.9 steps 8–9), as on the
     // CB-layer path above: `scalex` — a static-position abspos
     // with `z-index: 11` painted under its `z-index: 10` sibling.
-    let built = if !below && e.style.cascaded().z_index.is_some_and(|z| z > 0) {
-        layered(built, e.style.cascaded(), inherited, layer_ok, under_tf)
+    let built = if !below && e.style.computed().z_index.is_some_and(|z| z > 0) {
+        layered(built, &e.style.computed(), inherited, layer_ok, under_tf)
     } else {
         built
     };
@@ -178,7 +183,7 @@ pub(crate) fn static_position_layer(
                     below_run_start = out.len() - 1;
                     below_zs.clear();
                 }
-                below_zs.push(e.style.cascaded().z_index.unwrap_or(0));
+                below_zs.push(e.style.computed().z_index.unwrap_or(0));
                 let mut at = below_zs.len() - 1;
                 while at > 0 && below_zs[at - 1] > below_zs[at] {
                     below_zs.swap(at - 1, at);

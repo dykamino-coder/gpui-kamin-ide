@@ -27,13 +27,13 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     let resolved;
     let e = if let Some(base) = base_font {
         let mut copy = e.clone();
-        copy.style.cascaded_mut().resolve_em(base, vcx);
+        copy.style.used_mut().resolve_em(base, vcx);
         resolved = copy;
         &resolved
     } else {
         e
     };
-    if let Some(vb) = e.style.cascaded().object_view_box
+    if let Some(vb) = e.style.computed().object_view_box
         && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;
@@ -47,7 +47,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     // и глушить его здесь значило запрещать картинке ужиматься даже при
     // явных `min-width: 0` и `flex-shrink: 1` (css-flexbox-1 §7.2).
     let mut d = d;
-    match e.style.cascaded().flex_shrink {
+    match e.style.computed().flex_shrink {
         Some(k) => d.style().flex_shrink = Some(k),
         None => d = d.flex_shrink_0(),
     }
@@ -61,7 +61,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         Ok(value) => return value,
         Err(d) => d,
     };
-    if !src.is_empty() || e.style.cascaded().content_image().is_some() {
+    if !src.is_empty() || e.style.computed().content_image().is_some() {
         // Единственный синхронный источник — сервис документа.
         let (local, d, image) = match local_image_source(src, e, d, vcx) {
             Ok(value) => value,
@@ -80,7 +80,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // сами в конечный размер; фон канвы (`style="background:…"` корня) —
         // CSS-слой, не SVG-контент, растеризатор его тоже не рисует.
         let vector: Option<String> =
-            crate::resources::css_images::element_source(local.unwrap_or(src), e.style.cascaded(), vcx)
+            crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
                 .map(crate::paint::background::Source::from_cpu)
                 .and_then(|s| match s {
                     crate::paint::background::Source::Vector { markup, .. } => Some(markup),
@@ -114,10 +114,11 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
         // ВНЕШНЕЙ коробке замещённого (`image_with`, после `flex_shrink_0`).
         // Автоматический минимум этим парам не корень; корень искать заново.
         let natural =
-            crate::resources::css_images::element_source(local.unwrap_or(src), e.style.cascaded(), vcx)
+            crate::resources::css_images::element_source(local.unwrap_or(src), &e.style.computed(), vcx)
                 .map(crate::paint::background::Source::from_cpu)
                 .map(|s| s.intrinsic());
-        let sizing = PictureSizing::new(e.style.cascaded(), natural, cx.cb_width);
+        let own = e.style.computed();
+        let sizing = PictureSizing::new(&own, natural, cx.cb_width);
         return fit_local_image(src, e, local, d, image, vectorize, &sizing, vcx);
     }
     // Картинки БЕЗ АДРЕСА вовсе (`<img>` без `src`) не существует: коробки

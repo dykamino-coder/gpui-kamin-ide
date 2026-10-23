@@ -16,7 +16,7 @@ pub(crate) fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> V
         .into_iter()
         .map(|n| match n {
             Node::Element(mut e) => {
-                let Some(name) = e.style.cascaded().grid_area_name.clone() else {
+                let Some(name) = e.style.computed().grid_area_name.clone() else {
                     return Node::Element(e);
                 };
                 // Прямоугольник имени: первая и последняя строка, первый и
@@ -34,11 +34,11 @@ pub(crate) fn place_named_areas(areas: &[Vec<String>], children: Vec<Node>) -> V
                 }
                 if r0 != usize::MAX {
                     // Линии в CSS считаются с единицы.
-                    e.style.cascaded_mut().grid_row = Some((
+                    e.style.used_mut().grid_row = Some((
                         Placement::Line(r0 as i16 + 1),
                         Placement::Line(r1 as i16 + 1),
                     ));
-                    e.style.cascaded_mut().grid_col = Some((
+                    e.style.used_mut().grid_col = Some((
                         Placement::Line(c0 as i16 + 1),
                         Placement::Line(c1 as i16 + 1),
                     ));

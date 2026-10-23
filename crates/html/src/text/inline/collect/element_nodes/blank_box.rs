@@ -50,8 +50,8 @@ pub(super) fn blank_box(
             Some(Len::Px(v)) => v,
             _ => 16.0,
         };
-        let bs = e.style.cascaded().borders();
-        let padding = e.style.cascaded().padding;
+        let bs = e.style.computed().borders();
+        let padding = e.style.computed().padding;
         let flat = physical_sides::project(
             inherited,
             [
@@ -88,21 +88,21 @@ pub(super) fn blank_box(
         // строки, а полулидинг делит остаток поровну (§10.8).
         let dy = ((line - content) / 2.0 - top).max(-line);
         let mut copy = e.clone();
-        copy.style.cascaded_mut().width = Some(Len::Px(0.0));
-        copy.style.cascaded_mut().height = Some(Len::Px(content));
-        copy.style.cascaded_mut().margin = Default::default();
-        copy.style.cascaded_mut().position = None;
-        copy.style.cascaded_mut().display = None;
+        copy.style.used_mut().width = Some(Len::Px(0.0));
+        copy.style.used_mut().height = Some(Len::Px(content));
+        copy.style.used_mut().margin = Default::default();
+        copy.style.used_mut().position = None;
+        copy.style.used_mut().display = None;
         // Размер коробки читается из СЛИТОГО стиля: без этого
         // заданные выше ширина и высота терялись, и коробка
         // выходила нулевой высоты — рамка `border-left` и фон
         // под отступом не рисовались вовсе.
         let mut sized = merged.clone();
-        sized.width = copy.style.cascaded().width;
-        sized.height = copy.style.cascaded().height;
+        sized.width = copy.style.computed().width;
+        sized.height = copy.style.computed().height;
         sized.margin = Default::default();
         sized.position = None;
-        physical_sides::project_box(inherited, copy.style.cascaded_mut());
+        physical_sides::project_box(inherited, copy.style.used_mut());
         physical_sides::project_box(inherited, &mut sized);
         let boxel = cx
             .build

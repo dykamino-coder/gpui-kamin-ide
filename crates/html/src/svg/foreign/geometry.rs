@@ -10,12 +10,12 @@ use gpui::{Pixels, Point, Size, point, px, size};
 pub(super) fn scale(e: &Element) -> f32 {
     let matrix = e
         .style
-        .cascaded()
+        .computed()
         .transform
         .map(|t| {
             t.after_individual(
-                e.style.cascaded().rotate_prop,
-                e.style.cascaded().scale_prop,
+                e.style.computed().rotate_prop,
+                e.style.computed().scale_prop,
             )
             .lin
         })
@@ -73,8 +73,8 @@ pub(super) fn expand(e: &mut Element, origin: Point<Pixels>, size: Size<Pixels>)
 // A sole SVG paint contribution can blend with the host backdrop after SVG
 // transforms/clips have been applied. Multiple contributions retain SVG order.
 pub(super) fn sole_blend(e: &Element) -> Option<u8> {
-    if e.style.cascaded().isolate == Some(true)
-        || e.style.cascaded().opacity.is_some_and(|v| v < 1.0)
+    if e.style.computed().isolate == Some(true)
+        || e.style.computed().opacity.is_some_and(|v| v < 1.0)
     {
         return None;
     }
@@ -89,7 +89,7 @@ pub(super) fn sole_blend(e: &Element) -> Option<u8> {
         return None;
     }
     if child.tag.eq_ignore_ascii_case("foreignObject") {
-        child.style.cascaded().blend.filter(|v| *v != 0)
+        child.style.computed().blend.filter(|v| *v != 0)
     } else if matches!(child.tag.as_str(), "g" | "svg") {
         sole_blend(child)
     } else {

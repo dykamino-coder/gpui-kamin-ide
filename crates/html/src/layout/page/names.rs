@@ -25,7 +25,7 @@ use crate::style::values::value::Len;
 pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
     let used = e
         .style
-        .cascaded()
+        .computed()
         .page
         .clone()
         .unwrap_or_else(|| inherited.to_string());
@@ -38,8 +38,8 @@ pub(crate) fn page_names(e: &Element, inherited: &str) -> (String, String) {
         .iter()
         .filter(|n| !is_blank(n))
         .filter(|n| {
-            !matches!(n, Node::Element(k) if matches!(k.style.cascaded().display, Some(Display::None))
-            || out_of_flow(k.style.cascaded()) || k.style.cascaded().float.unwrap_or(0) != 0)
+            !matches!(n, Node::Element(k) if matches!(k.style.computed().display, Some(Display::None))
+            || out_of_flow(&k.style.computed()) || k.style.computed().float.unwrap_or(0) != 0)
         })
         .collect();
     let via = |n: Option<&&Node>| match n {
@@ -69,10 +69,10 @@ pub type PageMarginDeclsFn = std::rc::Rc<dyn Fn(usize, &str) -> PageMarginDecls>
 pub(super) fn fill_used_page(nodes: &mut [Node], inherited: &str) {
     for n in nodes.iter_mut() {
         if let Node::Element(e) = n {
-            if e.style.cascaded().page.is_none() && !inherited.is_empty() {
-                e.style.cascaded_mut().page = Some(inherited.to_string());
+            if e.style.computed().page.is_none() && !inherited.is_empty() {
+                e.style.used_mut().page = Some(inherited.to_string());
             }
-            let used = e.style.cascaded().page.clone().unwrap_or_default();
+            let used = e.style.computed().page.clone().unwrap_or_default();
             fill_used_page(&mut e.children, &used);
         }
     }
@@ -138,7 +138,7 @@ fn breaks_inside(e: &Element, vcx: ValueCx<'_>) -> bool {
 /// раскладку детей. Снятие такой обёртки раскладку не меняет.
 fn plain_wrapper(e: &Element) -> bool {
     let zero = |l: &Option<Len>| matches!(l, None | Some(Len::Px(0.0)));
-    let st = e.style.cascaded();
+    let st = &*e.style.computed();
     let b = st.borders();
     !e.inline
         && matches!(st.display, None | Some(Display::Block))
@@ -220,7 +220,7 @@ pub(super) fn hoist_named_wrappers(nodes: &mut Vec<Node>, vcx: ValueCx<'_>) {
 pub(super) fn first_kid_page_name(nodes: &[Node], root_page: &str) -> String {
     for n in nodes.iter().filter(|n| !is_blank(n)) {
         match n {
-            Node::Element(e) if matches!(e.style.cascaded().display, Some(Display::None)) => {
+            Node::Element(e) if matches!(e.style.computed().display, Some(Display::None)) => {
                 continue;
             }
             Node::Element(e) if class_a_box(e) => return page_names(e, root_page).0,
@@ -244,7 +244,7 @@ pub fn first_page_name(nodes: &[Node]) -> String {
         if !matches!(e.tag.as_str(), "html" | "body") {
             break;
         }
-        if let Some(p) = &e.style.cascaded().page {
+        if let Some(p) = &e.style.computed().page {
             root_page = p.clone();
         }
         nodes = (*e).clone().children;

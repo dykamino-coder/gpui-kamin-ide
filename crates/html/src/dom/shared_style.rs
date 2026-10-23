@@ -51,8 +51,8 @@ impl SharedStyle {
     }
 
     /// The element's computed style with layout's used values. A style that
-    /// was never materialized (a box layout made) has no cascade: its values
-    /// are already layout's, and the style itself is returned.
+    /// was never materialized has one stage (document preparation, a box
+    /// layout made): the style itself is returned.
     pub fn computed(&self) -> Rc<Computed> {
         match &self.used {
             Some(used) => used.clone(),
@@ -60,8 +60,13 @@ impl SharedStyle {
         }
     }
 
-    /// Layout's used-value layer, copy-on-write over the computed style.
+    /// Layout's used-value layer, copy-on-write over the computed style. A
+    /// style that was never materialized has one stage, and that stage is
+    /// edited.
     pub(crate) fn used_mut(&mut self) -> &mut Computed {
+        if self.used.is_none() && self.computed.any().is_none() {
+            return Rc::make_mut(&mut self.cascaded);
+        }
         let base = match self.used.take() {
             Some(used) => used,
             None => self.base(),
@@ -86,17 +91,41 @@ mod tests {
 
     #[test]
     fn layout_edits_do_not_change_a_shared_cascade() {
-        let original = SharedStyle::from(Computed {
-            width: Some(Len::Pct(0.5)),
-            ..Computed::default()
-        });
+        let parsed = crate::dom::parse(r#"<div style="width: 50%">a</div>"#, "");
+        let vcx = parsed.values();
+        crate::style::cascade::materialize::materialize(
+            &parsed.nodes,
+            &Rc::new(Computed::default()),
+            vcx,
+        );
+        fn find<'a>(nodes: &'a [crate::dom::Node]) -> Option<&'a crate::dom::Element> {
+            nodes.iter().find_map(|n| match n {
+                crate::dom::Node::Element(e) if e.tag == "div" => Some(e),
+                crate::dom::Node::Element(e) => find(&e.children),
+                _ => None,
+            })
+        }
+        let original = &find(&parsed.nodes).unwrap().style;
         let mut copy = original.clone();
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
         copy.used_mut().width = Some(Len::Px(100.0));
         assert_eq!(original.computed().width, Some(Len::Pct(0.5)));
         assert_eq!(copy.computed().width, Some(Len::Px(100.0)));
+        // Neither the cascaded nor the materialized computed style changed.
         assert!(Rc::ptr_eq(&original.cascaded, &copy.cascaded));
+        assert!(Rc::ptr_eq(
+            &original.slot().any().unwrap(),
+            &copy.slot().any().unwrap()
+        ));
         assert_eq!(copy.cascaded().width, Some(Len::Pct(0.5)));
+    }
+
+    #[test]
+    fn a_style_without_materialization_has_one_stage() {
+        let mut style = SharedStyle::from(Computed::default());
+        style.used_mut().width = Some(Len::Px(10.0));
+        assert_eq!(style.cascaded().width, Some(Len::Px(10.0)));
+        assert!(style.used().is_none());
     }
 
     #[test]

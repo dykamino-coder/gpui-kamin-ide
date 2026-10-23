@@ -11,7 +11,7 @@ pub(crate) fn content_sized_wraps(element: &Element) -> bool {
     if native_intrinsic::eligible(element) {
         return false;
     }
-    let c = element.style.cascaded();
+    let c = &element.style.computed();
     let keyword = |l: Option<Len>| {
         matches!(
             l,

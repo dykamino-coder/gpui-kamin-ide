@@ -88,23 +88,23 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     let mut resolved = super::image::pct_height_to_px(e, inherited);
     resolved
         .style
-        .cascaded_mut()
+        .used_mut()
         .resolve_viewport(opts.viewport, vcx);
     let in_flow = !matches!(
-        e.style.cascaded().position,
+        e.style.computed().position,
         Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
     );
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.cascaded().width
+        && let Some(Len::Pct(k)) = resolved.style.computed().width
         && let Some(width) = opts.cx.avail_w
     {
-        resolved.style.cascaded_mut().width = Some(Len::Px(k * width));
+        resolved.style.used_mut().width = Some(Len::Px(k * width));
     }
     if in_flow
-        && let Some(Len::Pct(k)) = resolved.style.cascaded().height
+        && let Some(Len::Pct(k)) = resolved.style.computed().height
         && let Some(height) = opts.cx.avail_h
     {
-        resolved.style.cascaded_mut().height = Some(Len::Px(k * height));
+        resolved.style.used_mut().height = Some(Len::Px(k * height));
     }
     let e = &resolved;
     let attr_len = |k: &str| e.attr(k).and_then(|v| v.parse::<f32>().ok());
@@ -113,7 +113,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     // `box-sizing: content-box`), а раскладка меряет `w`/`h` как border-box:
     // без поправки `border: 1px` съедал 300×150 изнутри
     // (`responsive-iframe-unsized-ref`: 302×152).
-    let st = e.style.cascaded();
+    let st = &*e.style.computed();
     let px_sum = |sides: &[Option<Len>]| -> f32 {
         sides
             .iter()
@@ -180,7 +180,7 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
             let mut frame = opts
                 .cx
                 .build
-                .styled_box(e, e.style.cascaded(), &opts.cx)
+                .styled_box(e, &e.style.computed(), &opts.cx)
                 .w(px(outer_w));
             // CSS 2.2 §10.8.1 / CSS Inline 3 §A.3: a replaced iframe has no
             // baseline from its embedded document; synthesize from its own box.

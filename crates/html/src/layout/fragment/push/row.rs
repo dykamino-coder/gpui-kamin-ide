@@ -23,9 +23,9 @@ pub(super) fn pushed_row_at(
         return None;
     }
     let rows = collect_rows(c, row_main_size(c, vcx)?, depth, ShapeCx::COLUMNS, vcx)?;
-    let top = px_auto_zero(c.style.cascaded().padding.top)?
-        + px_auto_zero(c.style.cascaded().borders().top)?;
-    let gap = px_auto_zero(c.style.cascaded().gap.and_then(|g| g.0))?.max(0.0);
+    let top = px_auto_zero(c.style.computed().padding.top)?
+        + px_auto_zero(c.style.computed().borders().top)?;
+    let gap = px_auto_zero(c.style.computed().gap.and_then(|g| g.0))?.max(0.0);
     let mut y = top;
     for (ri, row) in rows.iter().enumerate() {
         if ri > 0 {
@@ -59,9 +59,9 @@ pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32, vcx: ValueCx<'_>)
     else {
         return false;
     };
-    let top = px_auto_zero(c.style.cascaded().padding.top).unwrap_or(0.0)
-        + px_auto_zero(c.style.cascaded().borders().top).unwrap_or(0.0);
-    let gap = px_auto_zero(c.style.cascaded().gap.and_then(|g| g.0))
+    let top = px_auto_zero(c.style.computed().padding.top).unwrap_or(0.0)
+        + px_auto_zero(c.style.computed().borders().top).unwrap_or(0.0);
+    let gap = px_auto_zero(c.style.computed().gap.and_then(|g| g.0))
         .unwrap_or(0.0)
         .max(0.0);
     let mut y = top;
@@ -76,12 +76,12 @@ pub(crate) fn grow_row_at(c: &mut Element, at: f32, grow: f32, vcx: ValueCx<'_>)
                 let Some(Node::Element(k)) = c.children.get_mut(item.source) else {
                     return false;
                 };
-                k.style.cascaded_mut().margin.top = Some(Len::Px(
-                    px_auto_zero(k.style.cascaded().margin.top).unwrap_or(0.0) + grow,
+                k.style.used_mut().margin.top = Some(Len::Px(
+                    px_auto_zero(k.style.computed().margin.top).unwrap_or(0.0) + grow,
                 ));
             }
-            if let Some(Len::Px(h)) = c.style.cascaded().height {
-                c.style.cascaded_mut().height = Some(Len::Px(h + grow));
+            if let Some(Len::Px(h)) = c.style.computed().height {
+                c.style.used_mut().height = Some(Len::Px(h + grow));
             }
             return true;
         }

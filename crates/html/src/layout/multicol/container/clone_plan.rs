@@ -33,8 +33,8 @@ pub(super) fn clone_plan_of(
                 .enumerate()
                 .map(|(pi, (c, s))| {
                     let mut m = c.clone();
-                    m.style.cascaded_mut().margin.top = None;
-                    m.style.cascaded_mut().margin.bottom = None;
+                    m.style.used_mut().margin.top = None;
+                    m.style.used_mut().margin.bottom = None;
                     let (over, cuts, forced, solid) = match shape_full(
                         &m,
                         4,
@@ -47,7 +47,7 @@ pub(super) fn clone_plan_of(
                     .filter(|_| {
                         fixed.is_some()
                             && plain_block_tree(&m, 4)
-                            && visible_overflow(m.style.cascaded())
+                            && visible_overflow(&m.style.computed())
                     })
                     .filter(|u| u.height > s.height + 0.01)
                     {
@@ -67,7 +67,7 @@ pub(super) fn clone_plan_of(
                         forced,
                         solid,
                         avoid: Vec::new(),
-                        span: c.style.cascaded().column_span == Some(true) && !c.inline,
+                        span: c.style.computed().column_span == Some(true) && !c.inline,
                         over,
                         clone_dec: clone_dec(c),
                         // Тот же предикат, что у `StackChild` ниже:
@@ -98,9 +98,9 @@ pub(super) fn column_rule_of(
     merged: &Computed,
     opts: &RenderOpts,
 ) -> Option<(f32, gpui::Hsla)> {
-    if e.style.cascaded().column_rule_visible == Some(true) {
+    if e.style.computed().column_rule_visible == Some(true) {
         Some((
-            match e.style.cascaded().column_rule_width {
+            match e.style.computed().column_rule_width {
                 Some(Len::Px(v)) => v,
                 Some(Len::Em(k)) => {
                     k * match e.style.cascaded().font_size {
@@ -111,7 +111,7 @@ pub(super) fn column_rule_of(
                 _ => 3.0,
             },
             e.style
-                .cascaded()
+                .computed()
                 .column_rule_color
                 .resolve(merged.current_color())
                 .to_hsla(),

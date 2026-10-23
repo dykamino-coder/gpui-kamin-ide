@@ -17,16 +17,16 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
     children.iter().any(|n| match n {
         Node::Text(t) => !blank_text(t),
         Node::Element(ch) => {
-            if ch.style.cascaded().display == Some(Display::None) {
+            if ch.style.computed().display == Some(Display::None) {
                 return false;
             }
-            if ch.style.cascaded().display == Some(Display::Contents) {
+            if ch.style.computed().display == Some(Display::Contents) {
                 return holds_line_box(&ch.children);
             }
             // Плавающий и абсолютный строчной коробки не рождают.
-            if ch.style.cascaded().float.is_some_and(|f| f != 0)
+            if ch.style.computed().float.is_some_and(|f| f != 0)
                 || matches!(
-                    ch.style.cascaded().position,
+                    ch.style.computed().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 )
@@ -36,14 +36,14 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
             // Атомарный строчный в потоке — своя строчная коробка. Проверять
             // ДО `in_flow`: он их не различает и валит в одну корзину с
             // плавающим.
-            if atomic_inline(ch.style.cascaded()) {
+            if atomic_inline(&ch.style.computed()) {
                 return true;
             }
             // `display: inline` делает строчным ЛЮБОЙ тег: своей коробки у
             // него нет, а строчную рождает его содержимое. Без этой ветки
             // `<div style="display:inline">` считался блочным ребёнком и
             // строки «не рождал», хотя текст внутри него её рождает.
-            if ch.inline || ch.style.cascaded().inline_display == Some(true) {
+            if ch.inline || ch.style.computed().inline_display == Some(true) {
                 // Блочный псевдоэлемент — блочный ребёнок: строки родителю
                 // не рождает, его содержимое разбирает `through_strut`.
                 if inline_marked_block(ch) {
@@ -54,7 +54,7 @@ pub(crate) fn holds_line_box(children: &[Node]) -> bool {
                 // §invisible-line-boxes): строка есть, схлопывание насквозь
                 // закрыто (`phantom-line-boxes-001…006`).
                 return replaced_inline(&ch.tag)
-                    || inline_axis_edges(ch.style.cascaded())
+                    || inline_axis_edges(&ch.style.computed())
                     || holds_line_box(&ch.children);
             }
             // Блочный ребёнок строки не рождает: его содержимое разбирает
@@ -72,18 +72,18 @@ pub(crate) fn phantom_inline(n: &Node) -> bool {
         && !inline_marked_block(s)
         && s.children.is_empty()
         && !replaced_inline(&s.tag)
-        && !inline_axis_edges(s.style.cascaded())
-        && !atomic_inline(s.style.cascaded()))
+        && !inline_axis_edges(&s.style.computed())
+        && !atomic_inline(&s.style.computed()))
 }
 
 /// Строчный ли элемент по своему `display`.
 pub(crate) fn inline_level(e: &Element) -> bool {
-    match e.style.cascaded().display {
-        Some(Display::ListItem) if e.style.cascaded().inline_display == Some(true) => true,
+    match e.style.computed().display {
+        Some(Display::ListItem) if e.style.computed().inline_display == Some(true) => true,
         Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid) => true,
         // Строчный контейнер лунок — атом в строке, как inline-grid
         // (grid-lanes-align-content-001: четыре сетки стоят В РЯД).
-        Some(Display::GridLanes) => e.style.cascaded().lanes_inline,
+        Some(Display::GridLanes) => e.style.computed().lanes_inline,
         Some(_) => false,
         None => e.inline,
     }
@@ -110,8 +110,8 @@ pub(crate) fn replaced_tag(e: &Element) -> bool {
 /// через него не примыкали — эталоны `flex-direction-column*` разводило на
 /// лишние 16 точек (в них разметка именно такая).
 pub(crate) fn inline_level_box(e: &Element) -> bool {
-    match e.style.cascaded().display {
-        Some(Display::ListItem) if e.style.cascaded().inline_display == Some(true) => true,
+    match e.style.computed().display {
+        Some(Display::ListItem) if e.style.computed().inline_display == Some(true) => true,
         // Строчными считаются только НАСТОЯЩИЕ строчные виды. `Some(_) =>
         // true` сюда не писать: в строчные попадают лунки сетки
         // (`column-align-items-*`, `*-dense-packing-*`).

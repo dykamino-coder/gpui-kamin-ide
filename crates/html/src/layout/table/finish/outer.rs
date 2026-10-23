@@ -117,9 +117,9 @@ pub(super) fn finish_table_outer(
     // по содержимому — тот же приём, что у корневого стола ниже.
     if split_wrapper {
         let wrap = Computed {
-            position: e.style.cascaded().position,
-            inset: e.style.cascaded().inset,
-            z_index: e.style.cascaded().z_index,
+            position: e.style.computed().position,
+            inset: e.style.computed().inset,
+            z_index: e.style.computed().z_index,
             ..Default::default()
         };
         let mut wrap = cx

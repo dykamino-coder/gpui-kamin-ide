@@ -9,12 +9,12 @@ pub(super) fn has_text(children: &[Node]) -> bool {
     children.iter().any(|node| match node {
         Node::Text(text) => text.chars().any(|c| !matches!(c, ' ' | '\t' | '\n' | '\r')),
         Node::Element(element) => {
-            element.style.cascaded().display != Some(Display::None)
+            element.style.computed().display != Some(Display::None)
                 && !matches!(
-                    element.style.cascaded().position,
+                    element.style.computed().position,
                     Some(Position::Absolute | Position::Fixed)
                 )
-                && element.style.cascaded().float.unwrap_or(0) == 0
+                && element.style.computed().float.unwrap_or(0) == 0
                 && has_text(&element.children)
         }
     })

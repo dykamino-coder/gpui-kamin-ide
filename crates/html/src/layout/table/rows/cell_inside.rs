@@ -127,11 +127,11 @@ pub(super) fn cell_contents(
         && !e.style.cascaded().wm().vertical()
         && cell.children.iter().any(|n| {
             matches!(n, Node::Element(c) if matches!(
-                c.style.cascaded().position,
+                c.style.computed().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && matches!(c.style.cascaded().inset.top, None | Some(Len::Auto))
-                && matches!(c.style.cascaded().inset.bottom, None | Some(Len::Auto)))
+            ) && matches!(c.style.computed().inset.top, None | Some(Len::Auto))
+                && matches!(c.style.computed().inset.bottom, None | Some(Len::Auto)))
         })
     {
         // CSS 2.1 §17.5.3 aligns the cell's IN-FLOW content; an

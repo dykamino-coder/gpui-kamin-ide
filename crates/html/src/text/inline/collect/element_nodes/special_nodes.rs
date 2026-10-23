@@ -24,7 +24,7 @@ pub(super) fn special_node(
     // line break, no break opportunity
     // (`display-contents-sharing-001`).
     if matches!(e.tag.as_str(), "br" | "wbr")
-        && e.style.cascaded().display == Some(crate::style::computed::Display::Contents)
+        && e.style.computed().display == Some(crate::style::computed::Display::Contents)
     {
         return true;
     }
@@ -64,7 +64,7 @@ pub(super) fn special_node(
     // а строчный сбор вёл такой элемент обычным
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
-    if e.style.cascaded().display == Some(crate::style::computed::Display::Contents) {
+    if e.style.computed().display == Some(crate::style::computed::Display::Contents) {
         let merged = box_style(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,

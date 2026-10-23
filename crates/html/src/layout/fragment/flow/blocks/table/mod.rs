@@ -64,7 +64,7 @@ impl TableBox {
         };
         for n in e.children.iter().filter(|n| !is_blank(n)) {
             let Node::Element(cap) = n else { continue };
-            if cap.tag != "caption" && cap.style.cascaded().is_caption != Some(true) {
+            if cap.tag != "caption" && cap.style.computed().is_caption != Some(true) {
                 continue;
             }
             // Сторона — с самой подписи, при пустоте — с таблицы (как
@@ -112,22 +112,22 @@ impl TableBox {
                     .collect();
                 out.rows.push(TableRowBox {
                     group,
-                    group_avoid: gs(|g| g.style.cascaded().break_inside_avoid),
+                    group_avoid: gs(|g| g.style.computed().break_inside_avoid),
                     force_before: row_force(r.row, false, vcx)
-                        || (first && gs(|g| g.style.cascaded().break_before_force)),
+                        || (first && gs(|g| g.style.computed().break_before_force)),
                     force_after: row_force(r.row, true, vcx)
-                        || (last && gs(|g| g.style.cascaded().break_after_force)),
+                        || (last && gs(|g| g.style.computed().break_after_force)),
                     avoid_before: row_avoid(r.row, false, vcx)
-                        || (first && gs(|g| g.style.cascaded().break_before_avoid)),
+                        || (first && gs(|g| g.style.computed().break_before_avoid)),
                     avoid_after: row_avoid(r.row, true, vcx)
-                        || (last && gs(|g| g.style.cascaded().break_after_avoid)),
-                    avoid_inside: r.row.style.cascaded().break_inside_avoid,
+                        || (last && gs(|g| g.style.computed().break_after_avoid)),
+                    avoid_inside: r.row.style.computed().break_inside_avoid,
                     cells,
                 });
                 let section = |slot: &mut Option<(usize, usize, bool)>| {
                     let avoid = match g {
-                        Some(g) => g.style.cascaded().break_inside_avoid,
-                        None => r.row.style.cascaded().break_inside_avoid,
+                        Some(g) => g.style.computed().break_inside_avoid,
+                        None => r.row.style.computed().break_inside_avoid,
                     };
                     *slot = Some(match *slot {
                         Some((a, _, _)) => (a, i, avoid),
@@ -211,9 +211,9 @@ pub(crate) fn row_avoid(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
 /// `break-before: column`).
 pub(crate) fn row_force(row: &Element, last: bool, vcx: ValueCx<'_>) -> bool {
     (if last {
-        row.style.cascaded().break_after_force
+        row.style.computed().break_after_force
     } else {
-        row.style.cascaded().break_before_force
+        row.style.computed().break_before_force
     }) || row
         .children
         .iter()

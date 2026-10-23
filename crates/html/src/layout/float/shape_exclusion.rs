@@ -42,14 +42,14 @@ pub(crate) fn measured_shape(
         Some(Len::Pct(k)) => k * cbw,
         _ => 0.0,
     };
-    let b = f.style.cascaded().borders();
+    let b = f.style.computed().borders();
     let (bl, br, bt, bb) = (px(&b.left), px(&b.right), px(&b.top), px(&b.bottom));
-    let p = &f.style.cascaded().padding;
+    let p = &f.style.computed().padding;
     let (pl, pr, pt, pb) = (px(&p.left), px(&p.right), px(&p.top), px(&p.bottom));
     let cw = (bw - bl - br - pl - pr).max(0.0);
     let ch = (bh - bt - bb - pt - pb).max(0.0);
     let (mw, mh) = (ml + bw + mr, mt + bh + mb);
-    let raw = f.style.cascaded().shape_outside.clone().unwrap_or_default();
+    let raw = f.style.computed().shape_outside.clone().unwrap_or_default();
     // The reference box (css-shapes-1 §3.3), margin-box by default, in
     // margin-box coordinates.
     let (bx, by, rw, rh) = if raw.contains("border-box") {
@@ -64,7 +64,7 @@ pub(crate) fn measured_shape(
     // `shape-margin` percentages resolve against the containing block's
     // inline size (css-shapes-1 §shape-margin-property).
     let vert_lr = vertical == Some(false);
-    let sm = match f.style.cascaded().shape_margin {
+    let sm = match f.style.computed().shape_margin {
         Some(Len::Px(v)) => v,
         Some(Len::Pct(k)) => k * cbw,
         _ => 0.0,

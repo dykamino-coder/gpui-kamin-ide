@@ -17,7 +17,7 @@ pub(super) fn resolve_cell_heights(
     // vertical + upright продвижение нуля — кегль (css-values-3,
     // ch-units-vrl-*). Только ch: полный resolve_em здесь двигал
     // em-высоты и ломал больше, чем чинил.
-    if let Some(Len::Ch(k)) = cell.style.cascaded().height {
+    if let Some(Len::Ch(k)) = cell.style.computed().height {
         // Флаги РЯДА, не свои: свой upright ячейки давал кегль там,
         // где эталон меряет лежачим нулём (ch-units-vrl-007/008 —
         // расхождение путей резолва div-эмуляции, вернуться при
@@ -44,7 +44,7 @@ pub(super) fn resolve_cell_heights(
             let family = inherited.font_family.clone().unwrap_or_default();
             crate::text::metrics::ch_ex_px(&family, base, opts.cx.vcx()).0
         };
-        cell.style.cascaded_mut().height = Some(Len::Px(k * ch));
+        cell.style.used_mut().height = Some(Len::Px(k * ch));
     }
     // Ортогональная ячейка (своё письмо вертикально, таблица
     // горизонтальна) живёт в НЕповёрнутой сетке: логический
@@ -54,28 +54,28 @@ pub(super) fn resolve_cell_heights(
     // обязан лечь высотой (table-cell-align-005/006).
     if cell.style.cascaded().wm().vertical()
         && !e.style.cascaded().wm().vertical()
-        && cell.style.cascaded().height.is_none()
-        && cell.style.cascaded().width_from_inline
-        && cell.style.cascaded().width.is_some()
+        && cell.style.computed().height.is_none()
+        && cell.style.computed().width_from_inline
+        && cell.style.computed().width.is_some()
     {
-        cell.style.cascaded_mut().height = cell.style.cascaded_mut().width.take();
+        cell.style.used_mut().height = cell.style.used_mut().width.take();
     }
     // `em` на высоте ячейки — тем же точечным резолвом, что и `ch`:
     // без него логическая высота `inline-size: 2em` не проходила
     // Px-ветку ниже и min-height ряда не ставился.
-    if let Some(Len::Em(k)) = cell.style.cascaded().height {
+    if let Some(Len::Em(k)) = cell.style.computed().height {
         let base = match cell.style.cascaded().font_size.or(inherited.font_size) {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
         };
-        cell.style.cascaded_mut().height = Some(Len::Px(k * base));
+        cell.style.used_mut().height = Some(Len::Px(k * base));
     }
     // Предел ортогонального потока пересчитывается ПОСЛЕ переклада
     // inline-size в высоту: блок выше (у `let mut cm`) высоты ещё
     // не видел (table-cell-align-005/006).
     if cell.style.cascaded().wm().vertical()
         && cm.ortho_limit.is_none()
-        && let Some(Len::Px(h)) = cell.style.cascaded().height
+        && let Some(Len::Px(h)) = cell.style.computed().height
     {
         cm.ortho_limit = Some(h);
     }
@@ -90,8 +90,8 @@ pub(super) fn resolve_cell_heights(
         .or(row.style.cascaded().vertical_decl())
         .or(inherited.vertical_decl())
         == Some(true)
-        && cell.style.cascaded().min_width.is_none()
-        && cell.style.cascaded().width.is_none()
+        && cell.style.computed().min_width.is_none()
+        && cell.style.computed().width.is_none()
     {
         let upright = row
             .style
@@ -121,13 +121,13 @@ pub(super) fn resolve_cell_heights(
             _ => None,
         };
         if let Some(w) = lh {
-            cell.style.cascaded_mut().min_width = Some(Len::Px(w));
+            cell.style.used_mut().min_width = Some(Len::Px(w));
         }
     }
     // Высота ячейки — МИНИМУМ (css-tables §3.6): содержимое выше
     // растит ячейку, а не режется. `height: 20px` с блоком в 300
     // прятал всё под обрезкой.
-    if let Some(Len::Px(h)) = cell.style.cascaded().height {
+    if let Some(Len::Px(h)) = cell.style.computed().height {
         // Процентная высота ПРЯМОГО ребёнка решается от ЗАДАННОЙ
         // высоты ячейки (CSS 2.1 §10.5): раскладка под нами при
         // auto-росте ячейки трактует долю как auto, и ребёнок с
@@ -135,9 +135,9 @@ pub(super) fn resolve_cell_heights(
         // прокрутки в заданных ста точках.
         for child in cell.children.iter_mut() {
             if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.cascaded().height
+                && let Some(Len::Pct(k)) = el.style.computed().height
             {
-                el.style.cascaded_mut().height = Some(Len::Px(h * k));
+                el.style.used_mut().height = Some(Len::Px(h * k));
             }
             // Пороги той же долей — от той же заданной высоты ячейки
             // (CSS 2.1 §10.7: доля `max-height`/`min-height` считается
@@ -147,22 +147,22 @@ pub(super) fn resolve_cell_heights(
             // 200×200 вместо 100×100
             // (`percent-height-replaced-in-percent-cell-002`).
             if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.cascaded().max_height
+                && let Some(Len::Pct(k)) = el.style.computed().max_height
             {
-                el.style.cascaded_mut().max_height = Some(Len::Px(h * k));
+                el.style.used_mut().max_height = Some(Len::Px(h * k));
             }
             if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.cascaded().min_height
+                && let Some(Len::Pct(k)) = el.style.computed().min_height
             {
-                el.style.cascaded_mut().min_height = Some(Len::Px(h * k));
+                el.style.used_mut().min_height = Some(Len::Px(h * k));
             }
         }
-        cell.style.cascaded_mut().height = None;
-        let floor = match cell.style.cascaded().min_height {
+        cell.style.used_mut().height = None;
+        let floor = match cell.style.computed().min_height {
             Some(Len::Px(v)) => v.max(h),
             _ => h,
         };
-        cell.style.cascaded_mut().min_height = Some(Len::Px(floor));
+        cell.style.used_mut().min_height = Some(Len::Px(floor));
     } else {
         // Высота ячейки НЕ задана: доля ребёнка решается от высоты
         // ряда, а вклад ряда меряется БЕЗ доли (двухпроходная
@@ -171,15 +171,15 @@ pub(super) fn resolve_cell_heights(
         // прокрутка держит содержимое внутри него.
         for child in cell.children.iter_mut() {
             if let Node::Element(el) = child
-                && let Some(Len::Pct(k)) = el.style.cascaded().height
+                && let Some(Len::Pct(k)) = el.style.computed().height
                 && el
                     .style
-                    .cascaded()
+                    .computed()
                     .overflow_y
                     .is_some_and(|o| o != crate::style::computed::Overflow::Visible)
-                && let Some(Len::Px(m)) = el.style.cascaded().min_height
+                && let Some(Len::Px(m)) = el.style.computed().min_height
             {
-                el.style.cascaded_mut().height = Some(Len::Px(m * k));
+                el.style.used_mut().height = Some(Len::Px(m * k));
             }
         }
     }
@@ -195,7 +195,7 @@ pub(super) fn resolve_cell_heights(
     //
     // Потолок высоты к ячейке не применяется вовсе (браузеры
     // игнорируют max-height на ячейках): содержимое выше — растит.
-    if matches!(cell.style.cascaded().max_height, Some(Len::Px(_))) {
-        cell.style.cascaded_mut().max_height = None;
+    if matches!(cell.style.computed().max_height, Some(Len::Px(_))) {
+        cell.style.used_mut().max_height = None;
     }
 }

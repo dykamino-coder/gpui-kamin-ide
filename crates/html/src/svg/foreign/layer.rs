@@ -36,8 +36,8 @@ pub(super) fn prepare(
     let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
-        let w = length(e.style.cascaded().width, e.attr("width"), viewport.0, vcx);
-        let h = length(e.style.cascaded().height, e.attr("height"), viewport.1, vcx);
+        let w = length(e.style.computed().width, e.attr("width"), viewport.0, vcx);
+        let h = length(e.style.computed().height, e.attr("height"), viewport.1, vcx);
         if w <= 0.0 || h <= 0.0 {
             e.children.clear();
             return;
@@ -62,36 +62,36 @@ pub(super) fn prepare(
             html.attrs.clear();
             html.marks = Default::default();
             html.style = merged.into();
-            html.style.cascaded_mut().width = Some(Len::Px(w));
-            html.style.cascaded_mut().height = Some(Len::Px(h));
-            html.style.cascaded_mut().display = Some(Display::Block);
-            html.style.cascaded_mut().position = Some(Position::Relative);
-            html.style.cascaded_mut().flow_root = Some(true);
-            html.style.cascaded_mut().transform = None;
-            html.style.cascaded_mut().transform_raw = None;
-            html.style.cascaded_mut().translate = None;
-            html.style.cascaded_mut().opacity = None;
-            html.style.cascaded_mut().clip_ref = None;
-            html.style.cascaded_mut().clip_inset = None;
-            html.style.cascaded_mut().clip_edges = None;
-            html.style.cascaded_mut().clip_xywh = None;
-            html.style.cascaded_mut().clip_shape = None;
-            html.style.cascaded_mut().clip_polygon = None;
-            html.style.cascaded_mut().clip_bare_box = false;
-            html.style.cascaded_mut().mask_image = None;
-            html.style.cascaded_mut().filter = None;
-            html.style.cascaded_mut().filter_ref = None;
-            html.style.cascaded_mut().rotate_prop = None;
-            html.style.cascaded_mut().scale_prop = None;
+            html.style.used_mut().width = Some(Len::Px(w));
+            html.style.used_mut().height = Some(Len::Px(h));
+            html.style.used_mut().display = Some(Display::Block);
+            html.style.used_mut().position = Some(Position::Relative);
+            html.style.used_mut().flow_root = Some(true);
+            html.style.used_mut().transform = None;
+            html.style.used_mut().transform_raw = None;
+            html.style.used_mut().translate = None;
+            html.style.used_mut().opacity = None;
+            html.style.used_mut().clip_ref = None;
+            html.style.used_mut().clip_inset = None;
+            html.style.used_mut().clip_edges = None;
+            html.style.used_mut().clip_xywh = None;
+            html.style.used_mut().clip_shape = None;
+            html.style.used_mut().clip_polygon = None;
+            html.style.used_mut().clip_bare_box = false;
+            html.style.used_mut().mask_image = None;
+            html.style.used_mut().filter = None;
+            html.style.used_mut().filter_ref = None;
+            html.style.used_mut().rotate_prop = None;
+            html.style.used_mut().scale_prop = None;
             html.style
-                .cascaded_mut()
+                .used_mut()
                 .overflow_x
                 .get_or_insert(Overflow::Hidden);
             html.style
-                .cascaded_mut()
+                .used_mut()
                 .overflow_y
                 .get_or_insert(Overflow::Hidden);
-            html.style.cascaded_mut().blend = None;
+            html.style.used_mut().blend = None;
             let root = Computed::default();
             let mut element = crate::interactive::scroll_box::scrollable(&html, &root, opts)
                 .unwrap_or_else(|| opts.cx.build.element(&html, &root, opts));

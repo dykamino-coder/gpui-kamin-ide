@@ -31,7 +31,7 @@ pub(crate) fn split_block_in_inline(nodes: &[Node]) -> Vec<Node> {
 pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec<Node> {
     let need = nodes.iter().any(|n| match n {
         Node::Element(e) => {
-            real_inline(e) && !out_of_flow(e.style.cascaded()) && contains_block(&e.children)
+            real_inline(e) && !out_of_flow(&e.style.computed()) && contains_block(&e.children)
         }
         Node::Text(_) => false,
     });
@@ -44,7 +44,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
             out.push(node.clone());
             continue;
         };
-        if !real_inline(e) || out_of_flow(e.style.cascaded()) || !contains_block(&e.children) {
+        if !real_inline(e) || out_of_flow(&e.style.computed()) || !contains_block(&e.children) {
             out.push(node.clone());
             continue;
         }
@@ -55,7 +55,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
         // отбивка или поле ненулевой толщины.
         let has_edge = |side: usize| {
             let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.0);
-            let st = e.style.cascaded();
+            let st = &*e.style.computed();
             let (b, p, m) = if side == 1 {
                 (st.borders().right, st.padding.right, st.margin.right)
             } else {
@@ -106,96 +106,96 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 };
                 // Метка выноса: объёмный контекст и перспектива деда на блок
                 // не действуют (`Computed::hoisted_block`, `transformed`).
-                block.style.cascaded_mut().hoisted_block = true;
+                block.style.used_mut().hoisted_block = true;
                 containing::hoist(&mut block, e);
                 // Box splitting does not change style ancestry (CSS 2 §9.2.1.1).
                 // Preserve inherited marker properties before hoisting the block.
-                block.style.cascaded_mut().list_style_type = block
+                block.style.used_mut().list_style_type = block
                     .style
                     .cascaded()
                     .list_style_type
                     .clone()
                     .or_else(|| e.style.cascaded().list_style_type.clone());
-                block.style.cascaded_mut().list_style_inside = block
+                block.style.used_mut().list_style_inside = block
                     .style
                     .cascaded()
                     .list_style_inside
                     .or(e.style.cascaded().list_style_inside);
-                block.style.cascaded_mut().no_marker = block
+                block.style.used_mut().no_marker = block
                     .style
-                    .cascaded()
+                    .computed()
                     .no_marker
-                    .or(e.style.cascaded().no_marker);
-                block.style.cascaded_mut().marker_text = block
+                    .or(e.style.computed().no_marker);
+                block.style.used_mut().marker_text = block
                     .style
-                    .cascaded()
+                    .computed()
                     .marker_text
                     .clone()
-                    .or_else(|| e.style.cascaded().marker_text.clone());
+                    .or_else(|| e.style.computed().marker_text.clone());
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,
                 // у блока — в точках). Сдвиг хозяина накладывается ОБЁРТКОЙ:
                 // каждый слой решает свою долю от того же содержащего блока
                 // (`position-relative-001/002`), а `fixed` едет вместе со
                 // своей статической позицией (`-003`).
-                let host_shift = e.style.cascaded().position
+                let host_shift = e.style.computed().position
                     == Some(crate::style::computed::Position::Relative)
-                    && (e.style.cascaded().inset.left.is_some()
-                        || e.style.cascaded().inset.top.is_some());
+                    && (e.style.computed().inset.left.is_some()
+                        || e.style.computed().inset.top.is_some());
                 let wrap_shift = host_shift
                     && matches!(
-                        block.style.cascaded().position,
+                        block.style.computed().position,
                         Some(crate::style::computed::Position::Relative)
                             | Some(crate::style::computed::Position::Absolute)
                             | Some(crate::style::computed::Position::Fixed)
                     );
                 if host_shift && !wrap_shift {
-                    block.style.cascaded_mut().position =
+                    block.style.used_mut().position =
                         Some(crate::style::computed::Position::Relative);
-                    if block.style.cascaded().inset.left.is_none() {
-                        block.style.cascaded_mut().inset.left = e.style.cascaded().inset.left;
+                    if block.style.computed().inset.left.is_none() {
+                        block.style.used_mut().inset.left = e.style.computed().inset.left;
                     }
-                    if block.style.cascaded().inset.top.is_none() {
-                        block.style.cascaded_mut().inset.top = e.style.cascaded().inset.top;
+                    if block.style.computed().inset.top.is_none() {
+                        block.style.used_mut().inset.top = e.style.computed().inset.top;
                     }
                 }
                 // `inherit` на размере вынесенного блока брал бы значение уже
                 // не у хозяина, а у его родителя: разрыв делает блок БРАТОМ
                 // хозяина. Значение забирается здесь, пока связь ещё видна.
                 use crate::style::css::LonghandId as L;
-                if block.style.cascaded().inherit_longhands.contains(L::Width) {
-                    block.style.cascaded_mut().width = e.style.cascaded().width;
+                if block.style.computed().inherit_longhands.contains(L::Width) {
+                    block.style.used_mut().width = e.style.computed().width;
                     block
                         .style
-                        .cascaded_mut()
+                        .used_mut()
                         .inherit_longhands
                         .set(L::Width, false);
                 }
-                if block.style.cascaded().inherit_longhands.contains(L::Height) {
-                    block.style.cascaded_mut().height = e.style.cascaded().height;
+                if block.style.computed().inherit_longhands.contains(L::Height) {
+                    block.style.used_mut().height = e.style.computed().height;
                     block
                         .style
-                        .cascaded_mut()
+                        .used_mut()
                         .inherit_longhands
                         .set(L::Height, false);
                 }
                 // Прозрачность и слой хозяина действуют на ВЕСЬ разорванный
                 // элемент, включая вынесенный блок: раньше блок был куском
                 // строки и получал их заодно с ней.
-                if e.style.cascaded().opacity.is_some() && block.style.cascaded().opacity.is_none()
+                if e.style.computed().opacity.is_some() && block.style.computed().opacity.is_none()
                 {
-                    block.style.cascaded_mut().opacity = e.style.cascaded().opacity;
+                    block.style.used_mut().opacity = e.style.computed().opacity;
                 }
-                if e.style.cascaded().z_index.is_some() && block.style.cascaded().z_index.is_none()
+                if e.style.computed().z_index.is_some() && block.style.computed().z_index.is_none()
                 {
-                    block.style.cascaded_mut().z_index = e.style.cascaded().z_index;
+                    block.style.used_mut().z_index = e.style.computed().z_index;
                 }
                 if wrap_shift {
                     let mut shifter = anon_element("anon-relshift", vec![Node::Element(block)]);
-                    shifter.style.cascaded_mut().position =
+                    shifter.style.used_mut().position =
                         Some(crate::style::computed::Position::Relative);
-                    shifter.style.cascaded_mut().inset.left = e.style.cascaded().inset.left;
-                    shifter.style.cascaded_mut().inset.top = e.style.cascaded().inset.top;
+                    shifter.style.used_mut().inset.left = e.style.computed().inset.left;
+                    shifter.style.used_mut().inset.top = e.style.computed().inset.top;
                     out.push(Node::Element(shifter));
                     continue;
                 }
@@ -218,16 +218,16 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 continue;
             };
             // `box-decoration-break: clone` keeps every side on every fragment.
-            if host.style.cascaded().bdb_clone {
+            if host.style.computed().bdb_clone {
                 continue;
             }
             // Physical sides: 1 = right, 3 = left.
             let (start, end) = if own_rtl { (1, 3) } else { (3, 1) };
             if k > 0 {
-                drop_inline_side(host.style.cascaded_mut(), start);
+                drop_inline_side(host.style.used_mut(), start);
             }
             if k + 1 < n {
-                drop_inline_side(host.style.cascaded_mut(), end);
+                drop_inline_side(host.style.used_mut(), end);
             }
         }
     }

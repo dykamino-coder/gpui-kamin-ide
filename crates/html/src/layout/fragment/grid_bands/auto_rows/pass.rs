@@ -32,8 +32,8 @@ pub(crate) fn grid_pass(
         let Node::Element(k) = n else {
             return None;
         };
-        if matches!(k.style.cascaded().display, Some(Display::None))
-            || out_of_flow(k.style.cascaded())
+        if matches!(k.style.computed().display, Some(Display::None))
+            || out_of_flow(&k.style.computed())
         {
             continue;
         }
@@ -42,7 +42,7 @@ pub(crate) fn grid_pass(
         // охват рядов сам меняет размер дорожек (css-grid-1 §12.5).
         // Колонка — css-grid-1 §8.3: `N`, `span M`, `N / span M`, `N / M`;
         // неявные колонки за краем и отрицательные линии — отказ.
-        let (line, cline, cspan) = if let Some(name) = &k.style.cascaded().grid_area_name {
+        let (line, cline, cspan) = if let Some(name) = &k.style.computed().grid_area_name {
             let areas = s.grid_areas.as_ref()?;
             let (mut r0, mut r1, mut c0, mut c1) = (usize::MAX, 0usize, usize::MAX, 0usize);
             for (r, cells) in areas.iter().enumerate() {
@@ -60,12 +60,12 @@ pub(crate) fn grid_pass(
             }
             (Some(r0), Some(c0), c1 - c0)
         } else {
-            let line = match k.style.cascaded().grid_row {
+            let line = match k.style.computed().grid_row {
                 None | Some((Placement::Auto, Placement::Auto)) => None,
                 Some((Placement::Line(a), Placement::Auto)) if a >= 1 => Some((a - 1) as usize),
                 _ => return None,
             };
-            let (cline, cspan) = match k.style.cascaded().grid_col {
+            let (cline, cspan) = match k.style.computed().grid_col {
                 None | Some((Placement::Auto, Placement::Auto)) => (None, 1usize),
                 Some((Placement::Span(m), Placement::Auto)) => (None, m.max(1) as usize),
                 Some((Placement::Line(a), Placement::Auto)) if a >= 1 => {
@@ -159,9 +159,9 @@ pub(crate) fn grid_pass(
             )
         };
         let plain = !(solid_box(k)
-            || aligned(&k.style.cascaded().align_self)
-            || k.style.cascaded().align_self.is_none() && aligned(&c.style.cascaded().align_items)
-            || matches!(k.style.cascaded().margin.top, Some(Len::Auto)));
+            || aligned(&k.style.computed().align_self)
+            || k.style.computed().align_self.is_none() && aligned(&c.style.computed().align_items)
+            || matches!(k.style.computed().margin.top, Some(Len::Auto)));
         spots.push((ix, row, ks.margin_top, ks, plain));
         if line.is_none() {
             cur_row = row;

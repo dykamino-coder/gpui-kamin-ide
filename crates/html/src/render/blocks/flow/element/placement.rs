@@ -54,8 +54,8 @@ pub(crate) fn place_element(
                     0.0
                 } else {
                     margin_px(
-                        e.style.cascaded().margin.left,
-                        e.style.cascaded(),
+                        e.style.computed().margin.left,
+                        &e.style.computed(),
                         opts.cx.vcx(),
                     )
                     .unwrap_or(0.0)
@@ -64,8 +64,8 @@ pub(crate) fn place_element(
                     0.0
                 } else {
                     margin_px(
-                        e.style.cascaded().margin.top,
-                        e.style.cascaded(),
+                        e.style.computed().margin.top,
+                        &e.style.computed(),
                         opts.cx.vcx(),
                     )
                     .unwrap_or(0.0)
@@ -111,8 +111,8 @@ pub(crate) fn place_element(
             // in-place path gets from `layered` below
             // (`shape-image-009`: `#test` z-index 2 under a z-index 1
             // failure box, both hoisted).
-            let built = if !fixed && e.style.cascaded().z_index.is_some_and(|z| z > 0) {
-                layered(built, e.style.cascaded(), inherited, layer_ok, under_tf)
+            let built = if !fixed && e.style.computed().z_index.is_some_and(|z| z > 0) {
+                layered(built, &e.style.computed(), inherited, layer_ok, under_tf)
             } else {
                 built
             };

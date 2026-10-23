@@ -42,11 +42,11 @@ pub(crate) fn atom_element(
     let vcx = opts.cx.vcx();
     // Atomic inline containers own a scrollport just like block containers
     // (CSS Overflow 3 §3). The raw atom path otherwise only clips their content.
-    if !e.style.cascaded().scroller
-        && e.style.cascaded().snap.axis != 0
+    if !e.style.computed().scroller
+        && e.style.computed().snap.axis != 0
         && !replaced_tag(e)
         && matches!(
-            e.style.cascaded().display,
+            e.style.computed().display,
             Some(
                 crate::style::computed::Display::InlineBlock
                     | crate::style::computed::Display::InlineFlex
@@ -54,7 +54,7 @@ pub(crate) fn atom_element(
                     | crate::style::computed::Display::InlineTable
             )
         )
-        && e.style.cascaded().inline_display != Some(true)
+        && e.style.computed().inline_display != Some(true)
         && let Some(scroll) = crate::interactive::scroll_box::scrollable(e, inherited, opts)
     {
         return Some(scroll);
@@ -77,17 +77,17 @@ pub(crate) fn atom_element(
     let inline_axis_only = !inherited.wm().vertical()
         && !inherited.wm().turned()
         && !e.style.cascaded().wm().vertical()
-        && keyword(e.style.cascaded().width)
-        && !keyword(e.style.cascaded().height);
+        && keyword(e.style.computed().width)
+        && !keyword(e.style.computed().height);
     let wraps = inline_axis_only
         && content_sized_wraps(e)
         && !replaced_tag(e)
-        && !at_static_position(e.style.cascaded())
+        && !at_static_position(&e.style.computed())
         && !matches!(e.tag.as_str(), "input" | "select" | "textarea" | "button");
     Some(if wraps {
         opts.cx.build.content_sized(
             el,
-            e.style.cascaded(),
+            &e.style.computed(),
             &box_style(inherited, &e.style, vcx),
             (None, None),
             &opts.cx,

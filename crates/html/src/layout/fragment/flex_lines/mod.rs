@@ -88,7 +88,7 @@ pub(crate) fn split_flex_lines(
             Some(lines) => {
                 group += 1;
                 let pm = box_style(merged, &c.style, vcx);
-                let h = px_lossy_zero(c.style.cascaded().height);
+                let h = px_lossy_zero(c.style.computed().height);
                 // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
                 // элементами (фон контейнера, `multi-line-column-flex-
                 // fragmentation-033`) и занимает свою высоту, даже когда строки
@@ -116,14 +116,14 @@ pub(crate) fn split_flex_lines(
                 let mut boxc = c.clone();
                 boxc.node_id = c.node_id ^ 0x0F1E_5BAC_E000_0001;
                 boxc.children = Vec::new();
-                boxc.style.cascaded_mut().display = Some(Display::Block);
-                boxc.style.cascaded_mut().flex_dir = None;
-                boxc.style.cascaded_mut().flex_wrap = None;
-                boxc.style.cascaded_mut().gap = None;
-                boxc.style.cascaded_mut().break_before_force = bf;
-                boxc.style.cascaded_mut().break_before_avoid = ba && !bf;
-                boxc.style.cascaded_mut().break_after_force = false;
-                boxc.style.cascaded_mut().break_after_avoid = false;
+                boxc.style.used_mut().display = Some(Display::Block);
+                boxc.style.used_mut().flex_dir = None;
+                boxc.style.used_mut().flex_wrap = None;
+                boxc.style.used_mut().gap = None;
+                boxc.style.used_mut().break_before_force = bf;
+                boxc.style.used_mut().break_before_avoid = ba && !bf;
+                boxc.style.used_mut().break_after_force = false;
+                boxc.style.used_mut().break_after_avoid = false;
                 out.push((
                     boxc,
                     crate::layout::fragment::Shape {
@@ -152,14 +152,14 @@ pub(crate) fn split_flex_lines(
                     let m = items.len();
                     for (ii, (mut e, sh)) in items.into_iter().enumerate() {
                         if li + 1 == n_lines && ii + 1 == m {
-                            e.style.cascaded_mut().break_after_force |= af;
-                            e.style.cascaded_mut().break_after_avoid |= aa && !af;
+                            e.style.used_mut().break_after_force |= af;
+                            e.style.used_mut().break_after_avoid |= aa && !af;
                         }
                         // `break-inside: avoid` без настоящего монолита
                         // (`flow::Par::avoid_only`).
-                        let avoid_only = e.style.cascaded().break_inside_avoid
+                        let avoid_only = e.style.computed().break_inside_avoid
                             && !size_monolith(&e)
-                            && visible_overflow(e.style.cascaded());
+                            && visible_overflow(&e.style.computed());
                         out.push((e, sh));
                         par.push(crate::layout::fragment::types::Par {
                             group,
@@ -190,9 +190,9 @@ pub(crate) fn split_flex_lines(
                         group += 1;
                         let m = items.len();
                         for (ii, (dx, e, sh)) in items.into_iter().enumerate() {
-                            let avoid_only = e.style.cascaded().break_inside_avoid
+                            let avoid_only = e.style.computed().break_inside_avoid
                                 && !size_monolith(&e)
-                                && visible_overflow(e.style.cascaded());
+                                && visible_overflow(&e.style.computed());
                             out.push((e, sh));
                             par.push(crate::layout::fragment::types::Par {
                                 group,

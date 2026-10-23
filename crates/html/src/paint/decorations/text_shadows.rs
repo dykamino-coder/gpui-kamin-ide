@@ -132,7 +132,7 @@ fn atomic(e: &crate::dom::Element, vcx: crate::document::state::ValueCx<'_>) -> 
         _ => 16.0,
     };
     !e.inline
-        || crate::layout::positioned::predicates::has_own_box(e.style.cascaded(), font, vcx)
+        || crate::layout::positioned::predicates::has_own_box(&e.style.computed(), font, vcx)
         || matches!(
             e.tag.as_str(),
             "img"

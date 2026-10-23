@@ -80,15 +80,15 @@ pub(super) fn first_in_flow<'a>(
                 // внутри обязан оборвать поиск — иначе отступ предыдущего
                 // блока протекает под анонимную коробку, и строка встаёт на
                 // него выше (`inline-formatting-context-002`).
-                if ch.style.cascaded().inline_display == Some(true) {
+                if ch.style.computed().inline_display == Some(true) {
                     if replaced_inline(&ch.tag) || holds_line_box(&ch.children) {
                         return None;
                     }
                     continue;
                 }
-                if ch.style.cascaded().inline_display != Some(true)
+                if ch.style.computed().inline_display != Some(true)
                     && matches!(
-                        ch.style.cascaded().display,
+                        ch.style.computed().display,
                         Some(Display::InlineBlock)
                             | Some(Display::InlineFlex)
                             | Some(Display::InlineGrid)
@@ -97,7 +97,7 @@ pub(super) fn first_in_flow<'a>(
                 {
                     return None;
                 }
-                if !in_flow(ch.style.cascaded()) {
+                if !in_flow(&ch.style.computed()) {
                     continue;
                 }
                 return Some((i, ch));
@@ -127,10 +127,10 @@ pub(crate) fn top_edge_open_at(e: &Element, width: Option<f32>) -> bool {
     // `width: 0`, поле внука уходило внутрь, и зелёная полоса ехала на 40 ниже.
     // Ширина — уровня или (в цепочке) содержимого родителя `e`.
     let pct_zero =
-        matches!(e.style.cascaded().padding.top, Some(Len::Pct(_))) && width == Some(0.0);
+        matches!(e.style.computed().padding.top, Some(Len::Pct(_))) && width == Some(0.0);
     !own_context(e)
-        && (zero_len(e.style.cascaded().padding.top) || pct_zero)
-        && zero_len(e.style.cascaded().borders().top)
+        && (zero_len(e.style.computed().padding.top) || pct_zero)
+        && zero_len(e.style.computed().borders().top)
 }
 
 /// Струна примыкающих полей (CSS 2.1 §8.3.1): больший положительный и самый

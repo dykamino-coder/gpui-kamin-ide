@@ -22,11 +22,11 @@ pub(super) fn table_grid_box(
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
                         Node::Element(cell) if is_cell(cell) => {
-                            px_strict(cell.style.cascaded().height)
+                            px_strict(cell.style.computed().height)
                         }
                         _ => None,
                     };
-                    let own = px_strict(row.style.cascaded().height);
+                    let own = px_strict(row.style.computed().height);
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))
@@ -54,11 +54,11 @@ pub(super) fn table_grid_box(
         && !e.style.cascaded().wm().vertical()
         && row_elements
             .iter()
-            .any(|r| matches!(r.style.cascaded().height, Some(Len::Px(h)) if h > 0.0)))
+            .any(|r| matches!(r.style.computed().height, Some(Len::Px(h)) if h > 0.0)))
     .then(|| {
         row_elements
             .iter()
-            .map(|row| match row.style.cascaded().height {
+            .map(|row| match row.style.computed().height {
                 Some(Len::Px(h)) if h > 0.0 => gpui::GridTrack::MinMax(Box::new((
                     gpui::GridTrack::Pixels(px(h)),
                     gpui::GridTrack::Auto,
@@ -114,7 +114,7 @@ pub(super) fn paint_table_border(
     mut outer: gpui::Div,
 ) -> gpui::Div {
     if collapse
-        && (bw.iter().any(|w| *w > 0.0) || e.style.cascaded().border_side_styles.contains(&Some(1)))
+        && (bw.iter().any(|w| *w > 0.0) || e.style.computed().border_side_styles.contains(&Some(1)))
     {
         // Рамка самой таблицы — участник разбора конфликтов: её кромки
         // уходят в тот же слой (EdgePainter), линии — внутренние края
@@ -126,7 +126,7 @@ pub(super) fn paint_table_border(
             a: 1.0,
         };
         let side_colour = |i: usize| {
-            e.style.cascaded().border_colors[i].resolve(inherited.color.unwrap_or(black))
+            e.style.computed().border_colors[i].resolve(inherited.color.unwrap_or(black))
         };
         let colors = [
             side_colour(0),
@@ -135,7 +135,7 @@ pub(super) fn paint_table_border(
             side_colour(3),
         ];
         let side_style = |i: usize| {
-            e.style.cascaded().border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 })
+            e.style.computed().border_side_styles[i].unwrap_or(if bw[i] > 0.0 { 9 } else { 0 })
         };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         // Линия рамки СТОЛА — та же ЛИНИЯ СЕТКИ, на которой стоят кромки
@@ -209,7 +209,7 @@ mod tests {
         let vcx = doc.values();
         let block = anon_element("div", vec![Node::Element(anon_element("td", vec![]))]);
         let mut group = anon_element("tbody", vec![Node::Element(block)]);
-        group.style.cascaded_mut().collapsed = Some(true);
+        group.style.used_mut().collapsed = Some(true);
         group.node_id = 1;
         let mut header = anon_element("thead", vec![Node::Element(anon_element("tr", vec![]))]);
         header.node_id = 2;
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![0])));
         table.children.push(Node::Element(header));
         assert_eq!(collapsed_tracks(&table, vcx), Some((false, vec![1])));
-        table.style.cascaded_mut().writing_mode =
+        table.style.used_mut().writing_mode =
             Some(crate::style::computed::writing_mode::WritingModeKw::new(
                 true,
                 true,
