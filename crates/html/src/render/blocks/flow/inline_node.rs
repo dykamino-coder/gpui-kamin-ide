@@ -1,11 +1,11 @@
 //! Участие узла в inline-прогоне с учётом позиционирования и flex/grid.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::contains_block;
 use crate::layout::positioned::static_position::{at_static_position, cb_padding_shifts_replaced};
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn inline_node(

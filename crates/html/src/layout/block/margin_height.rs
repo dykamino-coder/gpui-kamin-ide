@@ -4,12 +4,12 @@
 //! тянет коробку выше содержимого; `separate` обнуляет нижние поля детей. Нулевая высота блока
 //! из одних флоатов — `zero_floats`.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_margins, zero_len};
 use crate::layout::box_kind::{in_flow, inline_level_box};
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 mod zero_floats;
 pub(crate) use zero_floats::{used_style, zero_float_blocks};

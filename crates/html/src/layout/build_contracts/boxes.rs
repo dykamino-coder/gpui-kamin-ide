@@ -3,9 +3,11 @@
 //! which box it needs and under which style; the adapter from computed
 //! values to `gpui::Style` (paint's `box_tree` and `apply`) builds it.
 
+use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::layout::cx::LayoutCx;
-use crate::style::computed::{BoxStyle, Sides};
+use crate::style::computed::{Align, BoxStyle, Sides};
+use crate::style::values::value::Len;
 use gpui::AnyElement;
 
 /// Where the wrapped item sits in its parent's grid: line placement and
@@ -33,6 +35,10 @@ pub(crate) struct BoxBuild {
     styled_box: StyledBox,
     styled_div: StyledDiv,
     content_sized: ContentSized,
+    content_for_element:
+        fn(AnyElement, &Element, &BoxStyle, GridPlacement, ValueCx<'_>) -> AnyElement,
+    length: fn(Len, ValueCx<'_>) -> gpui::DefiniteLength,
+    alignment: fn(Align, bool) -> gpui::AlignItems,
 }
 
 impl BoxBuild {
@@ -40,12 +46,43 @@ impl BoxBuild {
         styled_box: StyledBox,
         styled_div: StyledDiv,
         content_sized: ContentSized,
+        content_for_element: fn(
+            AnyElement,
+            &Element,
+            &BoxStyle,
+            GridPlacement,
+            ValueCx<'_>,
+        ) -> AnyElement,
+        length: fn(Len, ValueCx<'_>) -> gpui::DefiniteLength,
+        alignment: fn(Align, bool) -> gpui::AlignItems,
     ) -> Self {
         Self {
             styled_box,
             styled_div,
             content_sized,
+            content_for_element,
+            length,
+            alignment,
         }
+    }
+
+    pub(super) fn content_for_element(
+        &self,
+        el: AnyElement,
+        e: &Element,
+        parent: &BoxStyle,
+        placement: GridPlacement,
+        vcx: ValueCx<'_>,
+    ) -> AnyElement {
+        (self.content_for_element)(el, e, parent, placement, vcx)
+    }
+
+    pub(super) fn length(&self, length: Len, vcx: ValueCx<'_>) -> gpui::DefiniteLength {
+        (self.length)(length, vcx)
+    }
+
+    pub(super) fn alignment(&self, align: Align, last: bool) -> gpui::AlignItems {
+        (self.alignment)(align, last)
     }
 
     pub(super) fn styled_box(&self, e: &Element, style: &BoxStyle, cx: &LayoutCx) -> gpui::Div {

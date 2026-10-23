@@ -31,7 +31,10 @@ pub(super) fn replaced_abs_atom(
         copy.style.used_mut().height = Some(Len::Pct(1.0));
     }
     let built = if e.tag == "svg" {
-        crate::svg::element_with_html(&copy, opts)
+        opts.cx
+            .contracts
+            .build
+            .svg(&copy, opts)
             .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.

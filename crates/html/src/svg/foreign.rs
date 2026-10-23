@@ -18,7 +18,7 @@ pub(super) fn contains(e: &Element) -> bool {
 pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
     let values = vcx.keep();
-    let (w, h) = super::size::size_of(e);
+    let (w, h) = crate::layout::replaced::svg_size::size_of(e);
     if w <= 0.0 || h <= 0.0 {
         return None;
     }
@@ -34,7 +34,8 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
             gpui::canvas(
                 move |_, window, cx| {
                     let mut tree = tree;
-                    let viewport = super::size::view_box_ratio(&tree).unwrap_or((w, h));
+                    let viewport =
+                        crate::dom::resource_facts::view_box_ratio(&tree).unwrap_or((w, h));
                     let scale = (w / viewport.0).max(h / viewport.1);
                     let mut layers = Vec::new();
                     layer::prepare(

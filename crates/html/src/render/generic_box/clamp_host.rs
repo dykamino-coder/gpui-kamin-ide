@@ -42,6 +42,7 @@ pub(super) fn build(
     let key = e.node_id;
     let border_box = c.border_box == Some(true);
     let paint = opts.cx.deferred.paint.clone();
+    let children = opts.cx.contracts.build;
     let e = e.clone();
     let inherited = inherited.clone();
     let positioning = opts.cx.position.state.retain();
@@ -65,7 +66,7 @@ pub(super) fn build(
             outer_row,
         )
     });
-    ClampHost::new(key, style, geometry, build, border_box, paint).hooked()
+    ClampHost::new(key, style, geometry, build, border_box, paint, children).hooked()
 }
 
 pub(super) fn frame(d: &mut gpui::Div, width: Option<gpui::Pixels>) {

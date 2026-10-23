@@ -1,11 +1,11 @@
 //! Переупорядочение детей, процентные инлайн-размеры, ортогональные дети.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::in_flow;
 use crate::layout::table::anon::anon_element;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
-use crate::text::text_box::blank_text;
 mod orthogonal;
 pub(crate) use orthogonal::orthogonal_vertical_children;
 

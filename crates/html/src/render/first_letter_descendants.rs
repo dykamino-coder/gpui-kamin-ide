@@ -7,10 +7,10 @@
 //! своей раскладкой и сюда не попадают.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::{block_level_in_flow, out_of_flow};
 use crate::layout::fragment::table_bands::table_box;
 use crate::style::computed::{Computed, Display};
-use crate::text::text_box::blank_text;
 
 pub(super) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
     let Some(first) = parent.first_letter_own.as_deref() else {

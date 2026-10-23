@@ -2,7 +2,8 @@
 
 use super::{MaskInput, composite_mask};
 use crate::paint::effects::grouped_element::Grouped;
-use crate::svg::path_commands::{Command, Geometry, Sink};
+use crate::style::values::basic_shape::commands::{Command, Sink};
+use crate::svg::path_commands::Geometry;
 use crate::svg::path_scene::{FillRule, Scene, coverage};
 use gpui::{Bounds, Pixels, Point, Window};
 

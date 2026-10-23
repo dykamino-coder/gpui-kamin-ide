@@ -203,7 +203,7 @@ pub(crate) fn generic_children(
     // коробка возвращается как есть.
     let child = d.children(kids).into_any_element();
     let child = match overflow_plan {
-        Some(plan) => plan.wrap(child, vcx),
+        Some(plan) => plan.wrap(child, vcx, opts.cx.contracts.build),
         None => child,
     };
     crate::layout::positioned::anchor::place::place_in_context(child, &merged, inherited, &opts.cx)

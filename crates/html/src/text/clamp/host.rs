@@ -19,6 +19,7 @@ pub(crate) struct ClampHost {
     pub(crate) build: Build,
     pub(crate) border_box: bool,
     pub(crate) paint: Rc<crate::layout::cx::deferred::Deferred>,
+    children: crate::layout::build_contracts::ChildBuild,
     plan: Cached,
     built: Option<AnyElement>,
 }
@@ -31,6 +32,7 @@ impl ClampHost {
         build: Build,
         border_box: bool,
         paint: Rc<crate::layout::cx::deferred::Deferred>,
+        children: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
         Self {
             key,
@@ -39,6 +41,7 @@ impl ClampHost {
             build,
             border_box,
             paint,
+            children,
             plan: Default::default(),
             built: None,
         }
@@ -137,17 +140,13 @@ impl Hooks for ClampHost {
         window: &mut Window,
         cx: &mut App,
     ) {
-        crate::paint::decorations::outline_phase::flow(
-            Some(&self.paint),
-            window,
-            cx,
-            |window, cx| {
+        self.children
+            .outline_flow(&self.paint, window, cx, &mut |window, cx| {
                 gpui::paint_reopen(|| {
                     if let Some(el) = &mut self.built {
                         el.paint(window, cx);
                     }
                 });
-            },
-        );
+            });
     }
 }

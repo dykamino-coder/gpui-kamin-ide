@@ -49,7 +49,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../svg/serialize/transform.rs"),
     include_str!("../../svg/clip.rs"),
     include_str!("../../svg/clip/reference.rs"),
-    include_str!("../../svg/size.rs"),
+    include_str!("../../layout/replaced/svg_size.rs"),
     include_str!("../../svg/raster.rs"),
     include_str!("../../svg/masks.rs"),
     include_str!("../../svg/masks/units.rs"),

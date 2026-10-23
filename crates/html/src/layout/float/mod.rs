@@ -1,12 +1,12 @@
 //! Флоаты: полосы обтекания, очистка, буквица, обтекание по форме.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::is_blank;
 use crate::layout::float::band_host::px_margin_box;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_strict};
-use crate::text::text_box::blank_text;
 
 pub(super) mod band_clearance;
 mod band_flow;

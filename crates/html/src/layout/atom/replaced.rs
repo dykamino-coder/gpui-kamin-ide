@@ -121,7 +121,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     };
     // Размер в единицах шрифта (`svg { width: 10ch }`) решается тем же
     // шагом, что у картинки (`image_with` → `resolve_em`): сырой стиль
-    // узла несёт `Len::Ch`, а `svg::size_of` понимает только точки —
+    // узла несёт `Len::Ch`, а `svg_size::size_of` понимает только точки —
     // рисунок молча падал в размер по `viewBox` (`ch-unit-001-ref`:
     // 150×150 вместо 10ch).
     let mut sized = with_inherited_font(e, inherited);
@@ -131,7 +131,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         .resolve_em(atom_base_font(inherited, opts), vcx);
     // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`; стиль
     // коробки — свой, с решёнными шрифтовыми единицами.
-    let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
+    let fitted = crate::layout::replaced::svg_size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
     svg_replaced(&sized, &fitted, &BoxStyle::shared(shell.computed()), opts).or_else(|| {
         Some(opts.cx.contracts.build.replaced(

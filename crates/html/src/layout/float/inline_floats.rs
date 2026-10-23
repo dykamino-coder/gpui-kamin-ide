@@ -105,7 +105,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
             .all(|n| matches!(n, Node::Text(_)) || floated(n))
         && matches!(
             children.iter().find(|n| match n {
-                Node::Text(t) => !crate::text::text_box::blank_text(t),
+                Node::Text(t) => !crate::dom::whitespace::blank_text(t),
                 _ => true,
             }),
             Some(Node::Text(_))

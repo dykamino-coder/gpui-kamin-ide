@@ -5,11 +5,12 @@
 //! осадка (`sink`), сдвиг в вертикальном письме и `text-indent`; стиль и сборка узла —
 //! в `letter`, ведущий флоат строки — в `leading`.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
-use crate::text::text_box::{blank_text, normal_fraction};
+use crate::text::text_box::normal_fraction;
 mod letter;
 use letter::{emit_initial_letter, initial_letter_style};
 mod leading;

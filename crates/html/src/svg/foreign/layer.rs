@@ -144,7 +144,7 @@ pub(super) fn prepare(
         return;
     }
     let viewport = if e.tag.eq_ignore_ascii_case("svg") {
-        super::super::size::view_box_ratio(e).unwrap_or(viewport)
+        crate::dom::resource_facts::view_box_ratio(e).unwrap_or(viewport)
     } else {
         viewport
     };

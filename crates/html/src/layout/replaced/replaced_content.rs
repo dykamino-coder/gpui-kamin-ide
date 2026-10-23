@@ -141,12 +141,12 @@ pub(crate) fn svg_replaced(
     } else {
         sized
     };
-    let raster = crate::svg::element_with_html(sized, opts);
+    let raster = opts.cx.contracts.build.svg(sized, opts);
     if !boxed {
         return raster;
     }
     let px_of = px_lossy_zero;
-    let (w, h) = crate::svg::size::size_of(sized);
+    let (w, h) = crate::layout::replaced::svg_size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
     if raster.is_none() && w > 0.0 && h > 0.0 {
         return None;

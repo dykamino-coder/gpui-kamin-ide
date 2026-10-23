@@ -11,6 +11,8 @@ use std::rc::Rc;
 /// the same frame (`layout::table::probes`). The layer is laid out of flow
 /// and only paints.
 pub(crate) enum Layer<'a> {
+    /// Source paint slot for a box published by its containing block.
+    DeferredPositioned(crate::layout::positioned::containing_block::DeferredPaint),
     /// A row, row-group or column band: its background, shadows and outline
     /// painted inside the cells of the band (css-tables-3
     /// §drawing-backgrounds), under the given style.

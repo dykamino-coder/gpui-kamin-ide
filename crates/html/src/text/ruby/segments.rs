@@ -8,7 +8,7 @@ use super::ruby_role;
 use super::segment_state::{collect_bases, kind_of};
 use super::{Kind, RubyLevel, RubySegment, RubyUnit, base_starts, close_segment, flush_run, fresh};
 use crate::dom::Node;
-use crate::text::text_box::blank_text;
+use crate::dom::whitespace::blank_text;
 
 /// Разрезать детей `<ruby>` на сегменты и единицы (css-ruby-1 §2.2 п.3-8, §2.3).
 ///

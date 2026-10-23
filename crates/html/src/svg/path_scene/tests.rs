@@ -1,6 +1,7 @@
 //! Тесты: побайтовое сравнение типизированных сцен с эквивалентным разобранным SVG.
 use super::*;
-use crate::svg::path_commands::{Geometry, Sink};
+use crate::style::values::basic_shape::commands::Sink;
+use crate::svg::path_commands::Geometry;
 
 fn assert_pixels(scene: &Scene, body: &str) {
     let text = format!(

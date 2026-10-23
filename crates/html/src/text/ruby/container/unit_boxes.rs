@@ -5,12 +5,12 @@
 //! получает распорку ради общей базовой линии.
 
 use crate::dom::Node;
+use crate::dom::whitespace::blank_text;
 use crate::layout::box_kind::replaced_tag;
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Display, Position};
 use crate::style::values::value::Len;
 use crate::text::ruby::{ruby_role, ruby_transform};
-use crate::text::text_box::blank_text;
 use gpui::{AnyElement, IntoElement, ParentElement, div};
 
 // Единица из ОДНОГО `<rb>`/`<rt>` (или элемента с ролью базы /

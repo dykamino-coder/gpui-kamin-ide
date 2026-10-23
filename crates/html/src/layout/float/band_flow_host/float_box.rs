@@ -1,9 +1,8 @@
 //! Независимое горизонтальное содержимое float, границы clamp и эффекты paint.
 
 use crate::dom::Element;
+use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
-use crate::paint::effects::grouped::grouped;
-use crate::paint::effects::transform::transformed;
 use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
@@ -39,7 +38,7 @@ pub(super) fn float_box(
         let cb_scope = crate::text::inline::establishes_cb(&merged).then(|| {
             crate::layout::positioned::layer_scope::LayerScope::cb(
                 &opts.cx.position.state,
-                crate::paint::stacking::fixed_cb_layer_box(&merged),
+                crate::style::computed::stacking::fixed_cb_layer_box(&merged),
             )
         });
         let span = open_clamp_span(&opts.cx);
@@ -76,9 +75,7 @@ pub(super) fn float_box(
             .into_any_element()
     };
     // CSS Transforms 1 section 3: placement keeps the untransformed rectangle.
-    grouped(
-        transformed(el, &merged, inherited, vcx),
-        &BoxStyle::shared(copy.style.computed()),
-        vcx,
-    )
+    let build = opts.cx.contracts.build;
+    let el = build.effects(el, Effect::transform(&merged, inherited, vcx));
+    build.effects(el, Effect::group(&copy.style.computed(), vcx))
 }

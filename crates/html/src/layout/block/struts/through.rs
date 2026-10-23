@@ -1,12 +1,12 @@
 //! Сквозные струны: коробка, через которую схлопываются поля, и обёртка из одних флоатов.
 
 use super::{Strut, margin_or_bail};
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::{holds_line_box, in_flow, inline_marked_block, own_context};
 use crate::layout::float::initial_letter::px_margin_w;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
-use crate::text::text_box::blank_text;
 
 pub(crate) fn strut_of(v: f32) -> Strut {
     (v.max(0.0), v.min(0.0))

@@ -55,7 +55,7 @@ pub(super) fn generic_box(
     let mut d = styled_div_with(e, &merged, &opts.cx);
     let overflow_plan = absolute_overflow::Plan::new(&merged, inherited, &opts.cx.position.state);
     if let Some(plan) = &overflow_plan {
-        plan.prepare(d.style());
+        plan.prepare(d.style(), opts.cx.contracts.build);
     }
     // Минимума высоты в видимую область на коробке корня НЕТ: по §10.6.3
     // высота корня `auto`, ростом с окно обязан быть начальный содержащий

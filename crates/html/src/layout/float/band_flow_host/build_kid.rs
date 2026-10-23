@@ -3,12 +3,11 @@
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::box_kind::replaced_tag;
+use crate::layout::build_contracts::Effect;
 use crate::layout::float::band_nest::cont_indent;
 use crate::layout::float::float_atom::band_atom;
 use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
-use crate::paint::box_tree::content_wrapper;
-use crate::paint::effects::grouped::grouped;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
@@ -236,9 +235,15 @@ pub(super) fn build_band_kid(
         // ничего (`shape-outside-circle-048-ref`: флоат целым
         // прямоугольником при абсолютах с вставками по обеим осям).
         if float {
-            grouped(el, &BoxStyle::shared(copy.style.computed()), vcx)
+            opts.cx
+                .contracts
+                .build
+                .effects(el, Effect::group(&copy.style.computed(), vcx))
         } else {
-            content_wrapper::for_element(el, &copy, inherited, (None, None), vcx)
+            opts.cx
+                .contracts
+                .build
+                .content_for_element(el, &copy, inherited, (None, None), vcx)
         }
     }
 }

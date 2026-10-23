@@ -1,10 +1,10 @@
 //! Ведущий флоат строки и строчный хост флоатов; ширина поля.
 
+use crate::dom::whitespace::blank_text;
 use crate::dom::{Element, Node};
 use crate::layout::float::band_host::px_margin;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::px_missing_zero;
-use crate::text::text_box::blank_text;
 
 /// Флоат, ради которого строчная коробка и существует, — и ничего кроме него.
 ///
