@@ -66,7 +66,8 @@ pub(super) fn prepare_float_nodes(
                 // Font-relative margins use the float's computed font, before
                 // the band planner takes ownership of its margin box.
                 e.style.margin =
-                    crate::style::cascade::inherit::inherit_unpainted(parent, &e.style, vcx).margin;
+                    crate::style::cascade::materialize::box_style_unpainted(parent, &e.style, vcx)
+                        .margin;
                 Node::Element(e)
             }
             n => n,

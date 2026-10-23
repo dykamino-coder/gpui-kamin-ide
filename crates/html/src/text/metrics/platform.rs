@@ -59,5 +59,6 @@ impl FontContext {
         vcx.doc.metrics.cache.borrow_mut().clear();
         vcx.doc.metrics.vcache.borrow_mut().clear();
         vcx.doc.metrics.parts.borrow_mut().clear();
+        vcx.doc.metrics.invalidate();
     }
 }

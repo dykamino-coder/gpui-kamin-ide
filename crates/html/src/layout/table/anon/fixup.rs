@@ -5,7 +5,7 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::table::columns::col_role;
 use crate::layout::table::{is_cell, table_roles};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Display;
 
 /// Починка детей таблицы (css-tables-3 §3): `display: contents` растворить,
@@ -27,7 +27,7 @@ pub(crate) fn fixup_row_children(row: &Element, vcx: ValueCx<'_>) -> Vec<Node> {
                         .cloned()
                         .map(|n| match n {
                             Node::Element(mut ge) => {
-                                ge.style = inherit(&el.style, &ge.style, vcx).into();
+                                ge.style = box_style(&el.style, &ge.style, vcx).into();
                                 Node::Element(ge)
                             }
                             // Голый текст стиля не несёт: наследуемое от
@@ -216,7 +216,7 @@ fn flatten_contents(children: &[Node], vcx: ValueCx<'_>) -> Vec<Node> {
         for g in flatten_contents(&el.children, vcx) {
             match g {
                 Node::Element(mut ge) => {
-                    ge.style = inherit(&el.style, &ge.style, vcx).into();
+                    ge.style = box_style(&el.style, &ge.style, vcx).into();
                     out.push(Node::Element(ge));
                 }
                 Node::Text(t) if !t.trim().is_empty() => {

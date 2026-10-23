@@ -7,7 +7,7 @@ use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::column_flow::column_flow;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -165,7 +165,7 @@ pub(crate) fn multicol_spanner_segments(
             }
             seg_open = true;
             span_prev = Some(key);
-            let inner = inherit(&merged, &sp.style, vcx);
+            let inner = box_style(&merged, &sp.style, vcx);
             // Спаннер — независимый контекст форматирования
             // (§column-span). Голый `styled_div_with` — блок taffy,
             // и тот схлопывал поле первого/последнего ребёнка

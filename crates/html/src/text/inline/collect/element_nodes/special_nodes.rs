@@ -5,7 +5,7 @@
 
 use super::collect_with_empty_metrics;
 use crate::dom::Element;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::text::inline::*;
 
@@ -65,7 +65,7 @@ pub(super) fn special_node(
     // `<span>`, и рамка рисовалась прогоном
     // (`display-contents-inline-001` «красное видно»).
     if e.style.display == Some(crate::style::computed::Display::Contents) {
-        let merged = inherit(inherited, &e.style, vcx);
+        let merged = box_style(inherited, &e.style, vcx);
         out.extend(collect_with_empty_metrics(
             &e.children,
             &merged,

@@ -12,7 +12,6 @@ use crate::layout::intrinsic_wrap::content_sized_wraps;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::AnyElement;
@@ -24,6 +23,7 @@ mod replaced;
 pub(super) use pct::pct_resolved_against_block;
 pub(crate) use pct::pct_resolved_for_wrapper;
 mod raw;
+use crate::style::cascade::materialize::box_style;
 use raw::atom_element_raw;
 
 /// Не-текстовые инлайн-элементы, которые в поток встроить нельзя.
@@ -88,7 +88,7 @@ pub(crate) fn atom_element(
         opts.cx.build.content_sized(
             el,
             &e.style,
-            &inherit(inherited, &e.style, vcx),
+            &box_style(inherited, &e.style, vcx),
             (None, None),
             &opts.cx,
         )

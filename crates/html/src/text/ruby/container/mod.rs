@@ -9,6 +9,7 @@ use crate::text::ruby::container::unit_boxes::unit_box;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::ruby::{RubyUnit, ruby_hiding, ruby_segments, ruby_unit_blank};
@@ -21,7 +22,7 @@ pub(crate) fn ruby_container_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     let segments = ruby_segments(&e.children);
     // Без хотя бы одной непустой аннотации руби — обычный строчный
     // (`ruby-line-breaking-001`: `<rtc><rt>` пустой; `ruby-intrinsic-isize-*`).

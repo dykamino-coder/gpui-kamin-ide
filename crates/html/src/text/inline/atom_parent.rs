@@ -12,7 +12,6 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
 /// What the piece collection tells the builder of an atom: the style of its
@@ -29,7 +28,7 @@ pub struct AtomCx {
 /// the top of the stack (or from `base`, the paragraph's style, when empty).
 pub(crate) fn open(stack: &mut Vec<Computed>, own: &Element, base: &Computed, vcx: ValueCx<'_>) {
     let parent = stack.last().unwrap_or(base);
-    let mut style = inherit(parent, &own.style, vcx);
+    let mut style = crate::style::cascade::materialize::box_style(parent, &own.style, vcx);
     style.self_node = own.node_id;
     stack.push(style);
 }

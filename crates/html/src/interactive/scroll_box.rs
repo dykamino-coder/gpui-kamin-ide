@@ -35,7 +35,7 @@ pub(crate) fn scrollable(
     {
         return None;
     }
-    let scroll_style = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
+    let scroll_style = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     let snap = scroll_style.snap.axis != 0;
     let horizontal = scroll_style.overflow_x == Some(Overflow::Scroll)
         || snap && scroll_style.overflow_x == Some(Overflow::Hidden);
@@ -155,7 +155,8 @@ pub(crate) fn scrollable(
             // ширины не резала ничего (`white-space-pre-wrap-trailing-spaces-
             // 021`: висящие пробелы `overflow: auto`-коробки шириной в `ch`
             // выходили за её край).
-            let sized = crate::style::cascade::inherit::inherit(&inherited, &inner.style, vcx);
+            let sized =
+                crate::style::cascade::materialize::box_style(&inherited, &inner.style, vcx);
             if h && let Some(Len::Px(w)) = sized.width {
                 let side = |l: Option<Len>| match l {
                     None | Some(Len::Auto) => Some(0.0),

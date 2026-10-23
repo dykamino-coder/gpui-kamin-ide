@@ -20,7 +20,7 @@ pub(crate) fn empty_iframe_size(
     let mut copy = crate::layout::replaced::image::pct_height_to_px(e, inherited);
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
-    let merged = crate::style::cascade::inherit::inherit(inherited, &copy.style, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &copy.style, vcx);
     copy.style.height = merged.height;
     copy.style.cb_height_def = merged.cb_height_def;
     copy.style.resolve_viewport(viewport, vcx);

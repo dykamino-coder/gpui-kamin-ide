@@ -9,7 +9,7 @@ use crate::layout::cx::LayoutCx;
 use crate::layout::table::anon::html_cell;
 use crate::layout::table::rows::gather_text;
 use crate::layout::table::{is_cell, row_span_in_group};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, Styled, div, px};
@@ -181,7 +181,7 @@ pub(super) fn cell_cascaded_style(
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> Computed {
-    let mut cm = inherit(row_style, &cell.style, vcx);
+    let mut cm = box_style(row_style, &cell.style, vcx);
     pseudo_line_layers::install(cell, &mut cm, vcx);
     // `vertical-align` is not inherited (CSS 2.1 §10.8.1): only `td`/
     // `th` take their row's value, through the UA rule
@@ -235,7 +235,7 @@ pub(super) fn hides_empty_cell(
     cell: &Element,
     vcx: ValueCx<'_>,
 ) -> bool {
-    inherit(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
+    box_style(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
         && e.style.border_collapse != Some(true)
         && {
             let mut текст = String::new();

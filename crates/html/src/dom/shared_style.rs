@@ -1,16 +1,33 @@
-//! Разделяет псевдо-стили между копиями DOM, изолируя последующие правки used-значений.
+//! Разделяет каскадные стили между копиями DOM, изолируя последующие правки used-значений; держит
+//! вычисленный стиль, материализованный из каскадного (`style::cascade::materialize`).
 
+use crate::style::cascade::materialize::ComputedSlot;
 use crate::style::computed::Computed;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-/// A cascaded style with copy-on-write ownership for layout adjustments.
+/// A cascaded style with copy-on-write ownership for layout adjustments, and
+/// the computed style materialized from it. Any edit through the handle drops
+/// the materialized style of that handle: it was computed from the old value.
 #[derive(Clone, Debug, Default)]
-pub struct SharedStyle(Rc<Computed>);
+pub struct SharedStyle {
+    style: Rc<Computed>,
+    computed: ComputedSlot,
+}
 
 impl From<Computed> for SharedStyle {
     fn from(style: Computed) -> Self {
-        Self(Rc::new(style))
+        Self {
+            style: Rc::new(style),
+            computed: ComputedSlot::default(),
+        }
+    }
+}
+
+impl SharedStyle {
+    /// The computed style materialized from this cascaded style.
+    pub(crate) fn computed(&self) -> &ComputedSlot {
+        &self.computed
     }
 }
 
@@ -18,13 +35,14 @@ impl Deref for SharedStyle {
     type Target = Computed;
 
     fn deref(&self) -> &Computed {
-        &self.0
+        &self.style
     }
 }
 
 impl DerefMut for SharedStyle {
     fn deref_mut(&mut self) -> &mut Computed {
-        Rc::make_mut(&mut self.0)
+        self.computed = ComputedSlot::default();
+        Rc::make_mut(&mut self.style)
     }
 }
 
@@ -40,11 +58,11 @@ mod tests {
             ..Computed::default()
         });
         let mut copy = original.clone();
-        assert!(Rc::ptr_eq(&original.0, &copy.0));
+        assert!(Rc::ptr_eq(&original.style, &copy.style));
         copy.width = Some(Len::Px(100.0));
         assert_eq!(original.width, Some(Len::Pct(0.5)));
         assert_eq!(copy.width, Some(Len::Px(100.0)));
-        assert!(!Rc::ptr_eq(&original.0, &copy.0));
+        assert!(!Rc::ptr_eq(&original.style, &copy.style));
     }
 
     #[test]

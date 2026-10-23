@@ -11,6 +11,7 @@ pub(super) type SpaceProbe = Box<dyn Fn(&Font, f32) -> f32>;
 
 pub fn install_space_probe(probe: impl Fn(&Font, f32) -> f32 + 'static, vcx: ValueCx<'_>) {
     *vcx.doc.metrics.space.borrow_mut() = Some(Box::new(probe));
+    vcx.doc.metrics.invalidate();
 }
 
 pub fn space_advance(font: &Font, size: f32, vcx: ValueCx<'_>) -> Option<f32> {

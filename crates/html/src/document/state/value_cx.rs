@@ -116,6 +116,13 @@ impl<'a> ValueCx<'a> {
         self
     }
 
+    /// The same context storing into the document arenas: values that outlive
+    /// the frame (materialized computed styles) must not hold frame records.
+    pub(crate) fn persistent(mut self) -> Self {
+        self.frame = false;
+        self
+    }
+
     pub(crate) fn with_scheme(mut self, scheme: crate::style::values::value::Scheme) -> Self {
         self.scheme = scheme;
         self

@@ -37,10 +37,14 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     crate::document::image_values::prepare(nodes, vcx);
-    let stripped = without_inert_clear(nodes);
-    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
     let root = opts.root_style();
+    // Вычисленные стили элементов — до сборки коробок: семейство документа
+    // (шрифтовые единицы) известно только отсюда; на неизменном документе
+    // проход только сверяет входы.
+    crate::style::cascade::materialize::materialize(nodes, &std::rc::Rc::new(root.clone()), vcx);
+    let stripped = without_inert_clear(nodes);
+    let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::interactive::frame::frame_sanitize(vcx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     // Корень документа получает ширину области просмотра: от неё цепочка

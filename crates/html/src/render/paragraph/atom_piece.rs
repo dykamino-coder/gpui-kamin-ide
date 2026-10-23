@@ -20,7 +20,6 @@ use crate::layout::atom::atom_element;
 use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
 use crate::layout::writing_mode::rotated_atom;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -142,7 +141,7 @@ fn atom_piece_in(
         if alphabetic && let Some(physical) = rotated_atom::physical(e, inherited, opts) {
             return Some(inline::Piece::Atom(physical));
         }
-        let mut merged = inherit(inherited, &e.style, vcx);
+        let mut merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
         merged.turned_line = false;
         let em = match merged.width {
             Some(Len::Px(v)) => v,

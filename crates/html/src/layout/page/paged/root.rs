@@ -3,7 +3,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::dom::whitespace::is_blank;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -89,7 +89,7 @@ pub(super) fn resolve_root_page(
         if let Some(p) = &e.style.page {
             *root_page = p.clone();
         }
-        *root = inherit(&*root, &e.style, vcx);
+        *root = box_style(&*root, &e.style, vcx);
         *nodes = e.children;
     }
 }

@@ -41,7 +41,7 @@ pub(crate) fn for_element(
         content_sized(
             el,
             &element.style,
-            &crate::style::cascade::inherit::inherit(parent, &element.style, vcx),
+            &crate::style::cascade::materialize::box_style(parent, &element.style, vcx),
             placement,
             vcx,
         )

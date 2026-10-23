@@ -7,7 +7,7 @@ use crate::dom::Element;
 use crate::layout::float::band_host::{px_margin, px_margin_box};
 use crate::layout::options::RenderOpts;
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use gpui::{IntoElement, ParentElement, Styled, div, px};
 
@@ -24,7 +24,7 @@ pub(super) fn band_atom(
         px_margin(&c.style.margin.left).unwrap_or(0.0),
         px_margin(&c.style.margin.top).unwrap_or(0.0),
     );
-    let mut merged = inherit(inherited, &c.style, vcx);
+    let mut merged = box_style(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
     merged.self_node = c.node_id;
     // CSS 2.1 sections 9.4.2 and 10.6.6: the outer holder already

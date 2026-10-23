@@ -22,7 +22,7 @@ use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::svg_percentage_size;
 use crate::layout::writing_mode::orthogonal_inline;
 use crate::paint::effects::transform::transformed;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -59,7 +59,7 @@ fn element_inner(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyEle
     // Высота ряда от внешней колонки — только ЭТОМУ элементу (`FragCx::outer_row`).
     let (outer_row, inner_opts) = opts.take_outer_row();
     let opts = inner_opts.as_ref().unwrap_or(opts);
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
     list_item::inherited_style(e, inherited, &mut merged);
     // Ключи реестров и размеры из опубликованной геометрии текущего кадра.

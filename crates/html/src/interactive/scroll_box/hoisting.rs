@@ -25,7 +25,7 @@ pub(super) fn hoist_from_scroll(e: &mut Element, inherited: &Computed, opts: &Re
     if !opts.cx.positioning.icb_active() || opts.cx.paint_depth.inside() {
         return;
     }
-    let merged = crate::style::cascade::inherit::inherit(inherited, &e.style, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     // Лента внутри позиционированного предка не выносит ничего: у её потомков
     // содержащий блок есть.
     if merged.cb_ancestor || crate::text::inline::establishes_cb(&merged) {

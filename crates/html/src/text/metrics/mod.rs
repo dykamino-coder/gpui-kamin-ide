@@ -92,6 +92,7 @@ pub fn install_vprobe(probe: impl Fn(&str, f32) -> (f32, f32, f32) + 'static, vc
     *vcx.doc.metrics.vprobe.borrow_mut() = Some(Box::new(probe));
     vcx.doc.metrics.vcache.borrow_mut().clear();
     vcx.doc.metrics.parts.borrow_mut().clear();
+    vcx.doc.metrics.invalidate();
 }
 
 /// Подъём, спуск и высота прописной в ТОЧКАХ для семейства и кегля.
@@ -164,6 +165,7 @@ pub fn install_probe(
     *vcx.doc.metrics.probe.borrow_mut() = Some(Box::new(probe));
     vcx.doc.metrics.cache.borrow_mut().clear();
     vcx.doc.metrics.parts.borrow_mut().clear();
+    vcx.doc.metrics.invalidate();
 }
 
 /// Длина `1ch` и `1ex` в точках для семейства и кегля.

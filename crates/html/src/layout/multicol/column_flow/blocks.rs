@@ -6,7 +6,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::line_shape::nested_rows_box;
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -48,7 +48,7 @@ pub(super) fn non_inline_columns(
         if nested_rows_box(only) {
             return Some(None);
         }
-        let inside = inherit(inherited, &only.style, vcx);
+        let inside = box_style(inherited, &only.style, vcx);
         return Some(column_flow_in(
             only,
             &inside,

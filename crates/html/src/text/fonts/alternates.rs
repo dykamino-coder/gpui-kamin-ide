@@ -19,6 +19,13 @@ pub struct Alternates {
     values: Arc<HashMap<Key, Definition>>,
 }
 
+impl PartialEq for Alternates {
+    fn eq(&self, other: &Self) -> bool {
+        self.requests == other.requests
+            && (Arc::ptr_eq(&self.values, &other.values) || self.values == other.values)
+    }
+}
+
 fn snapshot(requests: Vec<(String, Vec<String>)>, vcx: ValueCx<'_>) -> Alternates {
     Alternates {
         requests,

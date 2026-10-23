@@ -4,7 +4,7 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::effects::transform::transformed;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::text::clamp::{close_clamp_span, open_clamp_span};
 use gpui::{AnyElement, IntoElement, ParentElement};
@@ -17,7 +17,7 @@ pub(super) fn float_box(
     opts: &RenderOpts,
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &copy.style, vcx);
+    let mut merged = box_style(inherited, &copy.style, vcx);
     merged.self_node = copy.node_id;
     merged.anchor_seq = opts.cx.anchor_seq_for(copy);
     merged.anchor_key = crate::layout::positioned::anchor::key_of(copy);

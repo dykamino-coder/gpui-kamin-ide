@@ -10,7 +10,7 @@ use crate::layout::fragment::paginate::watch::Watched;
 use crate::layout::fragment::push::{Regrow, measured_push};
 use crate::layout::fragment::types::{BreaksAt, StackChild};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use std::rc::Rc;
 
@@ -59,7 +59,7 @@ impl Measured {
             let (h, over) = sizes;
             let build = move |dom: &Element, part: usize| {
                 let vcx = opts_b.cx.vcx();
-                let mut inner = inherit(&merged, &dom.style, vcx);
+                let mut inner = box_style(&merged, &dom.style, vcx);
                 inner.fragment_clip_ancestor = false;
                 let mut opts = opts_b.in_stack_copy();
                 opts.frag.watch = (part == 0).then(|| watched.clone());

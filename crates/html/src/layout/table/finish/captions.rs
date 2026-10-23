@@ -4,7 +4,7 @@ use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Effect;
 use crate::layout::fragment::paginate::watch::TablePart;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -21,7 +21,7 @@ pub(super) fn collect_captions(
         if let Node::Element(cap) = c
             && (cap.tag == "caption" || cap.style.is_caption == Some(true))
         {
-            let cm = inherit(inherited, &cap.style, vcx);
+            let cm = box_style(inherited, &cap.style, vcx);
             // Сторона — с самого заголовка, при пустоте — от таблицы
             // (наследование caption-side).
             let cap_side_bottom = cap.style.caption_bottom.or(e.style.caption_bottom) == Some(true);
