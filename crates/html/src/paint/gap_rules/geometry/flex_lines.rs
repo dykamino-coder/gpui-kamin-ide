@@ -1,20 +1,66 @@
-//! Восстановление поперечных краёв растянутых строк гибкого контейнера (`align-content:
-//! stretch`) по началам строк и полю содержимого: конец строки доводится до начала следующей
-//! минус зазор; выравнивание по центру/концу и переполнение оставляют измеренную геометрию.
+//! Полосы и состав строк flex из завершённой раскладки, без восстановления по пересечениям.
 
-use super::GAP_RULE_EPS;
+use super::GapItem;
+use gpui::{FlexLayout, LayoutId};
+use std::collections::HashMap;
 
-pub(super) fn stretch(lines: &mut [(f32, f32)], gap: f32, start: f32, end: f32) {
-    let Some(first) = lines.first() else { return };
-    // Center/end alignment or overflowing content cannot be reconstructed
-    // from item starts. Keep its measured geometry instead.
-    if (first.0 - start).abs() > GAP_RULE_EPS
-        || lines.last().is_some_and(|l| l.1 > end + GAP_RULE_EPS)
-    {
-        return;
-    }
-    for k in 0..lines.len() {
-        let next = lines.get(k + 1).map_or(end, |l| l.0 - gap);
-        lines[k].1 = lines[k].1.max(next);
+#[derive(Default)]
+pub(in crate::paint::gap_rules) struct FlexLines {
+    pub(in crate::paint::gap_rules) lines: Vec<(f32, f32)>,
+    pub(in crate::paint::gap_rules) members: Vec<Vec<GapItem>>,
+}
+
+impl FlexLines {
+    pub(in crate::paint::gap_rules) fn from_layout(
+        origin: (f32, f32),
+        layout: &FlexLayout,
+        carried: &HashMap<LayoutId, f32>,
+    ) -> Self {
+        let (a, b) = if layout.is_column {
+            origin
+        } else {
+            (origin.1, origin.0)
+        };
+        let mut rows: Vec<_> = layout
+            .lines
+            .iter()
+            .map(|line| {
+                // TRANSITIONAL(F2-4): пагинация переносит остаток row-gap в поля
+                // всех элементов ряда. Зазор предшествует строке, но входит в
+                // её полосу Taffy. Удалить преобразование после поддержки
+                // усечения зазора отдельной строки ограничением раскладки.
+                let carry = if layout.is_column {
+                    0.0
+                } else {
+                    line.items
+                        .iter()
+                        .filter_map(|i| carried.get(&i.id))
+                        .copied()
+                        .fold(0.0, f32::max)
+                };
+                let band = (
+                    a + line.cross_offset + carry,
+                    a + line.cross_offset + line.cross_size,
+                );
+                let members = line
+                    .items
+                    .iter()
+                    .map(|item| GapItem {
+                        a0: a + item.cross_offset,
+                        a1: a + item.cross_offset + item.cross_size,
+                        b0: b + item.main_offset,
+                        b1: b + item.main_offset + item.main_size,
+                        margin_end: 0.0,
+                    })
+                    .collect::<Vec<_>>();
+                (band, members)
+            })
+            .collect();
+        rows.sort_by(|x, y| x.0.0.total_cmp(&y.0.0));
+        let (lines, members) = rows.into_iter().unzip();
+        Self { lines, members }
     }
 }
+
+#[cfg(test)]
+mod tests;

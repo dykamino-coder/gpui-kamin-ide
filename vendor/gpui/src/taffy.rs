@@ -464,6 +464,11 @@ impl TaffyLayoutEngine {
         grid_item_rows::grid_item_rows(&self.taffy, child.into())
     }
 
+    /// KaminIDE patch: parent identity for joining completed layout metadata.
+    pub fn parent_layout_id(&self, child: LayoutId) -> Option<LayoutId> {
+        self.taffy.parent(child.into()).map(Into::into)
+    }
+
     /// KaminIDE patch: дорожки РОДИТЕЛЯ-сетки узла `child` — `(начало
     /// рамочного бокса родителя без округления, дорожки по x, дорожки по y)`,
     /// дорожки — `(начало, конец)` в логических точках от рамочного бокса
