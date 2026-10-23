@@ -14,7 +14,7 @@ pub(crate) fn empty_floats(e: &Element) -> bool {
         {
             return None;
         }
-        // ADR P-19 F2-1: переполнение ограниченного блока имеет свой resume.
+        // ADR P-19 TRANSITIONAL(F2-1): переполнение ограниченного блока имеет свой resume.
         if super::parallel_overflow(e) {
             return None;
         }

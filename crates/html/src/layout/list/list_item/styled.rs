@@ -89,6 +89,9 @@ pub(crate) fn render_with_style(
             // левым краем (`list-style-type-string-003`: строка
             // маркера уходила за левый край окна).
             {
+                // TRANSITIONAL(F2-1): top_0 ещё не привязан к первой строке.
+                // Продолжению нужен её baseline и владение внешним маркером;
+                // удалять маркер в копии вместо этой привязки нельзя.
                 let m = crate::paint::apply::apply_text(div(), &mark_style, vcx)
                     .absolute()
                     .top_0();

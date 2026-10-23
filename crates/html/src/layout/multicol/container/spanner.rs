@@ -1,4 +1,4 @@
-//! ADR P-19 F2-3: оценка остаётся у внешнего плана рядов и спаннеров до вложенных Space.
+//! ADR P-19 TRANSITIONAL(F2-3): оценка остаётся у внешнего плана рядов и спаннеров до вложенных Space.
 //! Сегменты многоколоночника между охватывающими элементами (column-span: all).
 
 use crate::dom::whitespace::is_blank;
@@ -135,7 +135,7 @@ pub(crate) fn multicol_spanner_segments(
                                 if !k.inline
                                     && (crate::layout::fragment::flow::independent_copy(k)
                                         || crate::layout::fragment::flow::empty_floats(k)
-                                        // ADR P-19 F2-3: хвост со своим вложенным
+                                        // ADR P-19 TRANSITIONAL(F2-3): хвост со своим вложенным
                                         // планом ещё зависит от consumed внешнего ряда.
                                         || shape_full(k, 4, ShapeCx::COLUMNS.observed(opts), vcx).is_some()))
                     })

@@ -129,11 +129,13 @@ pub(super) fn build_copy(
     // `table()` его не вешает (в `element()`
     // таблица идёт мимо него), а копия обязана
     // нести трансформ на каждом фрагменте.
+    // css-break-3 §4.4: общий рисователь тоже получает коробку ФРАГМЕНТА,
+    // а не исходную: clone_fragment уже задал её высоту, декорацию и тело.
     if let Some(value) = copy_whole_box(
         opts,
         line_col_w,
         merged,
-        copy,
+        src,
         h,
         nest_row,
         nest_phase_k,
