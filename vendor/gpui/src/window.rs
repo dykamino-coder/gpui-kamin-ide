@@ -6283,6 +6283,13 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: flex-линия элемента, закреплённая до фрагментации.
+    pub fn set_flex_item_fragmentation_line(&mut self, id: LayoutId, line: Option<usize>) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_flex_item_fragmentation_line(id, line);
+        }
+    }
+
     /// KaminIDE patch: пространство, занятое фрагментацией после flex-линий.
     pub fn set_flex_line_fragmentation_growth(&mut self, id: LayoutId, growth: &[f32]) {
         let scale = self.scale_factor();

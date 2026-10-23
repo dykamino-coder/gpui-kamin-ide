@@ -144,6 +144,9 @@ struct NodeData {
     /// KaminIDE patch: consumed border-box cross extent in a row continuation.
     #[cfg(feature = "flexbox")]
     pub(crate) flex_item_consumed: f32,
+    /// KaminIDE patch: flex line of this item fixed before fragmentation.
+    #[cfg(feature = "flexbox")]
+    pub(crate) flex_item_line: Option<usize>,
 }
 
 impl NodeData {
@@ -168,6 +171,8 @@ impl NodeData {
             flex_item_offset: 0.0,
             #[cfg(feature = "flexbox")]
             flex_item_consumed: 0.0,
+            #[cfg(feature = "flexbox")]
+            flex_item_line: None,
         }
     }
 
@@ -239,6 +244,18 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
         if data.flex_item_offset != offset {
             data.flex_item_offset = offset;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: the flex line of an item, fixed before fragmentation.
+    /// Line breaking precedes fragmentation (css-flexbox-1 §10): growth imposed
+    /// by fragmentation inside an item must not move it to another line.
+    pub fn set_flex_item_fragmentation_line(&mut self, node: NodeId, line: Option<usize>) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.flex_item_line != line {
+            data.flex_item_line = line;
             self.mark_dirty(node)?;
         }
         Ok(())
@@ -660,6 +677,10 @@ where
 
     fn flex_line_fragmentation_growth(&self, node: NodeId, line: usize) -> f32 {
         self.taffy.nodes[node.into()].flex_line_growth.get(line).copied().unwrap_or(0.0)
+    }
+
+    fn flex_item_fragmentation_line(&self, node: NodeId) -> Option<usize> {
+        self.taffy.nodes[node.into()].flex_item_line
     }
 }
 

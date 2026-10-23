@@ -336,6 +336,11 @@ pub trait LayoutFlexboxContainer: LayoutPartialTree {
     /// Applied after item sizing/alignment: completed items retain their used size.
     /// Values are physical line indices as returned by `DetailedFlexInfo`.
     fn flex_line_fragmentation_growth(&self, _node_id: NodeId, _line: usize) -> f32 { 0.0 }
+
+    /// KaminIDE patch: the item's line index fixed before fragmentation, if any.
+    /// When every item of a wrapping container has one, in non-decreasing order,
+    /// lines are taken from it instead of being re-collected.
+    fn flex_item_fragmentation_line(&self, _node_id: NodeId) -> Option<usize> { None }
 }
 
 #[cfg(feature = "grid")]
