@@ -59,7 +59,6 @@ fn style(c: &Computed, urls: &mut HashSet<String>, vcx: ValueCx<'_>) {
     }
     for c in [
         c.marker_layer.as_deref(),
-        c.try_base.as_deref(),
         c.first_line.as_deref(),
         c.first_line_own.as_deref(),
         c.first_letter.as_deref(),
@@ -160,7 +159,6 @@ mod tests {
         );
         own.first_letter_own = Some(Box::new(with_url(3)));
         own.marker_layer = Some(Box::new(with_url(9)));
-        own.try_base = Some(Rc::new(with_url(10)));
         let mut node = crate::dom::Element::synthetic("div", own, Default::default(), vec![]);
         node.hover = Some(with_url(4).into());
         node.first_line = Some(with_url(5).into());
@@ -193,7 +191,7 @@ mod tests {
             )));
         prepare(&[Node::Element(node)], vcx);
         let facts = vcx.background_images();
-        for n in 1..=10 {
+        for n in 1..=9 {
             assert_eq!(
                 facts.image_available(&ImageSource::Url(raw(n)), true),
                 ImageAvailability::Failed,

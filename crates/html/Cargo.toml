@@ -67,7 +67,7 @@ resvg = { version = "0.48.0", default-features = false, features = ["text", "ras
 
 [dev-dependencies]
 # Идентичности узлов для проверки областей измерения без окна.
-taffy = { path = "../../vendor/taffy" }
+taffy = "0.14.0"
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [
