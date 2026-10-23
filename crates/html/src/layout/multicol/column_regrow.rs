@@ -98,11 +98,6 @@ impl ColumnStack {
     /// Распорки роста детей с `regrow` по плану этой стопки.
     pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
         if self.axis.is_vertical() || !self.children.iter().any(|c| c.regrow.is_some()) {
-            if f13_trace() {
-                for (i, c) in self.children.iter().enumerate() {
-                    eprintln!("F13 NOREGROW {i} h={} over={} measure={:?} breaks_w={} mono={} forced={:?} solid={:?} cuts={:?}", c.h, c.over, c.measure, c.breaks_w.is_some(), c.monolith, c.forced, c.solid, c.cuts);
-                }
-            }
             return;
         }
         for _ in 0..PASSES {
@@ -174,13 +169,6 @@ impl ColumnStack {
                         .map(|g| g.1),
                 );
             }
-            if f13_trace() {
-                let pl: Vec<_> = plan.iter().map(|f| (f.kid, f.col, f.y, f.from, f.h)).collect();
-                eprintln!("F13 PASS lines={lines:?} plan={pl:?} outer={grows:?} local={local_grows:?}");
-                for (i, c) in self.children.iter().enumerate() {
-                    eprintln!("F13 KID {i} h={} over={} measure={:?} mono={} forced={:?} solid={:?} keep={:?} cuts={:?} laid={:?}", c.h, c.over, c.measure, c.monolith, c.forced, c.solid, c.keep, c.cuts, c.regrow.as_ref().map(|r| &r.laid));
-                }
-            }
             for (index, grows) in local_grows.into_iter().enumerate() {
                 if let Some(r) = self.children[index].regrow.as_mut() {
                     dirty[index] = r.push_many(grows);
@@ -195,11 +183,6 @@ impl ColumnStack {
             }
         }
     }
-}
-
-/// F13 диагностика (временная).
-pub(crate) fn f13_trace() -> bool {
-    std::env::var_os("KAMIN_F13_TRACE").is_some()
 }
 
 impl ColumnStack {
