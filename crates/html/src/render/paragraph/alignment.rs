@@ -142,7 +142,9 @@ pub(crate) fn atom_line_align(
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),
     };
-    Some(match st.vertical_align {
+    // The atom's own `vertical-align` (not inherited, CSS 2.1 §10.8.1): the
+    // computed style also carries an inline ancestor's value for its text.
+    Some(match e.style.own_vertical_align() {
         Some(crate::style::computed::Align::Start) => AtomAlign::Top,
         Some(crate::style::computed::Align::End) => AtomAlign::Bottom,
         Some(crate::style::computed::Align::Center) => AtomAlign::Middle,
@@ -181,3 +183,6 @@ pub(crate) fn atom_line_align(
         },
     })
 }
+
+#[cfg(test)]
+mod tests;
