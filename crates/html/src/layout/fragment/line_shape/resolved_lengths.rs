@@ -13,7 +13,7 @@ use crate::style::values::value::Len;
 /// рисунок кладёт их в точках. Наследуемые (`font-size`, `line-height`) не
 /// трогаются: число в `line-height` наследуется множителем.
 pub(crate) fn resolved_lengths(c: &Element, parent: &Computed, vcx: ValueCx<'_>) -> Element {
-    let m = crate::style::cascade::inherit::inherit(parent, &c.style, vcx);
+    let m = crate::style::cascade::materialize::box_style(parent, &c.style, vcx);
     let mut t = c.clone();
     // Подменяются ТОЛЬКО шрифтовые единицы, разрешённые в точки: прочее
     // (`None`, `auto`, доли, точки) остаётся как было — `inherit` дописывает

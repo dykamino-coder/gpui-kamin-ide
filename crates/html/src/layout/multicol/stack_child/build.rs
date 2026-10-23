@@ -7,7 +7,7 @@ use crate::layout::fragment::clone::clone_fragment;
 use crate::layout::grid::place_named_areas;
 use crate::layout::multicol::gap_rules::gap_rule_spec;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::stacking::fixed_cb_layer_box;
 use crate::style::computed::{Computed, Display};
 use gpui::{IntoElement, ParentElement};
@@ -72,7 +72,7 @@ pub(super) fn build_copy(
         }
         _ => None,
     };
-    let frag_inner = frag.as_ref().map(|f| inherit(merged, &f.style, vcx));
+    let frag_inner = frag.as_ref().map(|f| box_style(merged, &f.style, vcx));
     let src: &Element = frag.as_ref().unwrap_or(copy);
     let src_inner: &Computed = frag_inner.as_ref().unwrap_or(inner);
     let mut kids = copy_kids(copy, first, src, band);

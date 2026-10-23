@@ -7,7 +7,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 
 pub(super) fn lift(nodes: Vec<Node>, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
@@ -83,7 +83,7 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
     if (!transparent(e) && !margin_fragment) || !e.children.iter().any(contains_float) {
         return vec![node];
     }
-    let style = inherit(parent, &e.style, vcx);
+    let style = box_style(parent, &e.style, vcx);
     let children = lift(e.children.clone(), &style, vcx);
     if !children.iter().any(floated) {
         return vec![node];
@@ -138,8 +138,8 @@ fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {
             };
             // CSS 2 sections 9.5 and 10.1: the block remains the containing
             // block, while inherited text properties come through the inline.
-            let containing = inherit(parent, &float.style, vcx);
-            float.style = inherit(&style, &float.style, vcx).into();
+            let containing = box_style(parent, &float.style, vcx);
+            float.style = box_style(&style, &float.style, vcx).into();
             float.style.cb_height_def = containing.cb_height_def;
             float.style.quirk_pct_base = containing.quirk_pct_base;
             output.push(Node::Element(float));

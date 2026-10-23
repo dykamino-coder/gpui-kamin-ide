@@ -13,7 +13,6 @@ use crate::layout::float::band_flow_host::{band_flow_rest, band_kids, band_ortho
 use crate::layout::float::band_host::{band_edge, band_em, band_margins};
 use crate::layout::float::band_measured::{band_float_m, lead_probes};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -108,7 +107,7 @@ pub(super) fn band_nest(
     let group_key = paint_group(&c.style).then(|| opts.cx.next_paint_key());
     let cb = opts.cx.cb_width;
     let inner_em = band_em(&c.style, em)?;
-    let mut merged = inherit(inherited, &c.style, vcx);
+    let mut merged = box_style(inherited, &c.style, vcx);
     let height = crate::layout::block::available_height::inner(
         &merged,
         opts.cx.avail_h,
@@ -215,5 +214,6 @@ mod group;
 #[cfg(test)]
 mod tests;
 mod trim;
+use crate::style::cascade::materialize::box_style;
 pub(crate) use group::{group_shell, paint_group};
 use group::{group_wrap, positioned_inside};

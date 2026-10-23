@@ -8,7 +8,7 @@ use crate::layout::replaced::limits::{atom_base_font, canvas_limit_keywords, wit
 use crate::layout::replaced::replaced_content::svg_replaced;
 use crate::layout::replaced::replaced_used_style;
 use crate::layout::table::table;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
@@ -23,7 +23,7 @@ pub(super) fn container_atom(
         return Some(Some(opts.cx.build.element(e, inherited, opts)));
     }
     if multicol_container(&e.style) {
-        let merged = inherit(inherited, &e.style, vcx);
+        let merged = box_style(inherited, &e.style, vcx);
         let gap = match e.style.column_gap {
             Some(Len::Px(v)) => v,
             _ => match merged.font_size {
@@ -46,7 +46,7 @@ pub(super) fn container_atom(
     // Таблица в строке — атомарная коробка со своей табличной раскладкой:
     // путь блока строил бы детей-ряды как обычные блоки, без решётки.
     if e.style.display == Some(Display::InlineTable) {
-        let built = table(e, &inherit(inherited, &e.style, vcx), opts);
+        let built = table(e, &box_style(inherited, &e.style, vcx), opts);
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
         // собственный `align-self`.
@@ -83,7 +83,7 @@ pub(super) fn img_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
         inherited.display,
         Some(Display::TableCell) | Some(Display::GridLanes)
     ) {
-        copy.style.cb_height_def = inherit(inherited, &e.style, vcx).cb_height_def;
+        copy.style.cb_height_def = box_style(inherited, &e.style, vcx).cb_height_def;
     }
     // Единицы окна (`vw`/`vh`, в том числе внутри `calc`) — в точки: держатель
     // строится из СЫРОГО стиля, а сворачивает их только слитый
@@ -144,7 +144,7 @@ pub(super) fn canvas_atom(
     // при высоте блока в `Px` и блочном `display` (оговорки там же).
     let converted = pct_height_to_px(&canvas_limit_keywords(e), inherited);
     let e = &converted;
-    let merged = inherit(inherited, &e.style, vcx);
+    let merged = box_style(inherited, &e.style, vcx);
     let d = cx.build.styled_box(e, &merged, cx).flex_shrink_0();
     // Перенос размера через соотношение сторон (css-sizing-4 §4.1)
     // у АТОМАРНОЙ строчной коробки срабатывает лишь тогда, когда

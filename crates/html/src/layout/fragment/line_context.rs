@@ -47,7 +47,7 @@ impl LineCx {
     pub(crate) fn child(c: &Element, vcx: ValueCx<'_>) -> Option<Rc<Self>> {
         let parent = vcx.lines?;
         let top = parent.frames.last()?;
-        let inh = crate::style::cascade::inherit::inherit(&top.inh, &c.style, vcx);
+        let inh = crate::style::cascade::materialize::box_style(&top.inh, &c.style, vcx);
         let w = top.w.and_then(|pw| match top.items {
             2 if !matches!(c.style.width, Some(Len::Px(_))) => None,
             1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,

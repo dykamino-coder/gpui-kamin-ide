@@ -11,7 +11,7 @@ use crate::layout::block::struts::{margin_or_bail, margin_px, pin_inherited_marg
 use crate::layout::box_kind::{
     in_flow, inline_level_box, out_of_flow, own_context, replaced_inline,
 };
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::blank_text;
@@ -165,7 +165,7 @@ fn zero_inflow(e: &Element, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
     {
         return false;
     }
-    let merged = inherit(inherited, &e.style, vcx);
+    let merged = box_style(inherited, &e.style, vcx);
     !merged.wm().vertical() && e.children.iter().all(|node| zero_child(node, &merged, vcx))
 }
 
@@ -187,7 +187,7 @@ fn zero_child(node: &Node, inherited: &Computed, vcx: ValueCx<'_>) -> bool {
         return true;
     }
     let b = e.style.borders();
-    let merged = inherit(inherited, &e.style, vcx);
+    let merged = box_style(inherited, &e.style, vcx);
     !merged.wm().vertical()
         && !inline_level_box(e)
         && matches!(e.style.display, None | Some(Display::Block))

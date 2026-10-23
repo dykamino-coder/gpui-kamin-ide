@@ -8,7 +8,7 @@ use crate::paint::box_tree::styled::styled_div_with;
 use crate::paint::effects::grouped::grouped;
 use crate::paint::replaced::image::image;
 use crate::render::blocks::blocks;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -22,7 +22,7 @@ pub(crate) fn static_overlay(
     rot_block: bool,
 ) -> Option<inline::Piece> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();

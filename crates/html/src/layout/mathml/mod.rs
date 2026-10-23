@@ -18,7 +18,7 @@ mod stretch;
 
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::px_strict;
 use content::Content;
@@ -39,7 +39,7 @@ fn build(
     if !e.style.mathml || e.style.math_layout.is_none() {
         return None;
     }
-    let mut style = inherit(inherited, &e.style, vcx);
+    let mut style = box_style(inherited, &e.style, vcx);
     style.resolve_viewport(opts.viewport, vcx);
     let token = matches!(
         e.tag.as_str(),
@@ -100,7 +100,7 @@ fn build(
                         });
                         (op.flags, factory)
                     }));
-                    margins.push(margins_px(&inherit(&style, &child.style, vcx), opts));
+                    margins.push(margins_px(&box_style(&style, &child.style, vcx), opts));
                     let forwarded = if core.is_some() { target } else { None };
                     Some(
                         build(child, &style, opts, forwarded)

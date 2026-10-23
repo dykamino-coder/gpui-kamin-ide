@@ -5,7 +5,7 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::Element;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::ParentElement;
@@ -55,7 +55,7 @@ pub(crate) fn collapsed_row_edges(
         let computed = if std::ptr::eq(source, row) {
             row_style
         } else {
-            end_style = inherit(table_style, &source.style, vcx);
+            end_style = box_style(table_style, &source.style, vcx);
             &end_style
         };
         let black = crate::style::values::value::Color {

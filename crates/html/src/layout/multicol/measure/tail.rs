@@ -6,7 +6,7 @@ use crate::dom::{Element, Node};
 use crate::layout::fragment::ShapeCx;
 use crate::layout::fragment::fragment_size::shape_full;
 use crate::layout::multicol::spanner::spanner_box;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 
@@ -54,7 +54,7 @@ pub(crate) fn tail_rest_height(
                     return None;
                 }
                 spans += 1;
-                let st = inherit(merged, &sp.style, vcx);
+                let st = box_style(merged, &sp.style, vcx);
                 used += shape_full(sp, 4, ShapeCx::COLUMNS, vcx)?.height
                     + px(&st.margin.top)?
                     + px(&st.margin.bottom)?;

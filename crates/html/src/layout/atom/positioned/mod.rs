@@ -5,13 +5,13 @@ use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::replaced_content::svg_replaced;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 mod paint_last;
 mod replaced;
+use crate::style::cascade::materialize::box_style;
 use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
 
@@ -21,7 +21,7 @@ pub(super) fn static_position_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     let positioned = merged.clone();
     // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
@@ -126,7 +126,7 @@ pub(super) fn absolute_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от

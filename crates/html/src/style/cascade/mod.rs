@@ -14,6 +14,7 @@ pub mod inherit;
 pub(crate) mod inherited_value;
 pub(crate) mod key;
 pub(crate) mod map;
+pub mod materialize;
 mod pass;
 mod phase;
 pub mod vars;

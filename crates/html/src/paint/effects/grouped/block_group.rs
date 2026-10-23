@@ -11,15 +11,15 @@ use std::borrow::Cow;
 /// inherited computed value; the wrapper keeps the box's own positioning
 /// and clipping.
 pub(crate) fn group_style<'a>(
-    own: &'a Computed,
+    own: &'a crate::dom::SharedStyle,
     inherited: &Computed,
     vcx: ValueCx<'_>,
 ) -> Cow<'a, Computed> {
     if own.mask_image.is_none() {
         return Cow::Borrowed(own);
     }
-    let computed = crate::style::cascade::inherit::inherit(inherited, own, vcx);
-    let mut style = own.clone();
+    let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
+    let mut style = (**own).clone();
     style.mask_image = computed.mask_image;
     Cow::Owned(style)
 }

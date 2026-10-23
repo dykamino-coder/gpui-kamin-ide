@@ -8,7 +8,7 @@ use crate::dom::text_content::gather_text;
 use crate::dom::{Element, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, TextTransform};
 use crate::style::values::value::Len;
 use crate::text::inline;
@@ -23,7 +23,7 @@ pub(crate) fn piece(
     if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
         return None;
     }
-    let mut merged = inherit(inherited, &element.style, vcx);
+    let mut merged = box_style(inherited, &element.style, vcx);
     let count = merged.combine_upright.flatten()?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);

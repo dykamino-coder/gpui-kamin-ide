@@ -9,7 +9,7 @@ use crate::layout::box_kind::{
     breaks_inline, contains_block, holds_line_box, out_of_flow, real_inline,
 };
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
@@ -55,7 +55,7 @@ pub(crate) fn text_box_line_style(
         if e.style.display == Some(Display::Contents) {
             return text_box_line_style(
                 &e.children,
-                &inherit(inherited, &e.style, vcx),
+                &box_style(inherited, &e.style, vcx),
                 start,
                 owner,
                 vcx,
@@ -73,7 +73,7 @@ pub(crate) fn text_box_line_style(
             ) {
                 return None;
             }
-            let merged = inherit(inherited, &e.style, vcx);
+            let merged = box_style(inherited, &e.style, vcx);
             let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {

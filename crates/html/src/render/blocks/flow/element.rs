@@ -21,7 +21,7 @@ use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::replaced::limits::content_limit_swapped;
 use crate::paint::stacking::{defers, layered, stacking_context};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use gpui::AnyElement;
@@ -72,7 +72,7 @@ pub(crate) fn paint_element(
     // `display: contents` — своей коробки у элемента нет: дети
     // становятся детьми родителя, и стиль самого элемента исчезает.
     if e.style.display == Some(Display::Contents) {
-        let mut merged = inherit(inherited, &e.style, vcx);
+        let mut merged = box_style(inherited, &e.style, vcx);
         // Своей коробки нет — значит и объёмный контекст она не
         // обрывает: дети берут ячейки ДЕДА (css-display-3
         // §box-generation; transform3d-preserve3d-014 — `rotateX(90)`

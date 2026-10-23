@@ -6,7 +6,7 @@
 use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display, Overflow, Position};
 use crate::style::values::value::Len;
 use gpui::{AnyElement, App, AvailableSpace, Pixels, Size, Window, px};
@@ -33,7 +33,7 @@ pub(super) fn prepare(
     layers: &mut Vec<Layer>,
 ) {
     let vcx = opts.cx.vcx();
-    let merged = inherit(inherited, &e.style, vcx);
+    let merged = box_style(inherited, &e.style, vcx);
     let scale = scale * super::geometry::scale(e);
     if e.tag.eq_ignore_ascii_case("foreignObject") {
         let w = length(e.style.width, e.attr("width"), viewport.0, vcx);

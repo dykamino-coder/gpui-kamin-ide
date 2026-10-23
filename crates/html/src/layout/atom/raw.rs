@@ -11,7 +11,7 @@ use crate::layout::positioned::static_position::at_static_position;
 use crate::layout::replaced::iframe::{iframe, object_is_document};
 use crate::layout::replaced::limits::{atom_base_font, with_inherited_font};
 use crate::layout::replaced::{replaced_content, svg_percentage_size};
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::ruby::container::ruby_container_atom;
@@ -51,7 +51,7 @@ pub(super) fn atom_element_raw(
     // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
     // да и наследуемое до поля иначе не доходит.
     if let Some(el) =
-        crate::interactive::forms::element(e, &inherit(inherited, &e.style, vcx), opts)
+        crate::interactive::forms::element(e, &box_style(inherited, &e.style, vcx), opts)
     {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).

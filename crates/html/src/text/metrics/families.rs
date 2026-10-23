@@ -20,7 +20,10 @@ use crate::document::state::ValueCx;
 // значит другой файл, а имя семейства в системе одно на всех.
 /// Set the default family used by this document's measurements.
 pub fn set_doc_family(family: &str, vcx: ValueCx<'_>) {
-    vcx.doc.metrics.family.replace(family.to_owned());
+    if *vcx.doc.metrics.family.borrow() != family {
+        vcx.doc.metrics.family.replace(family.to_owned());
+        vcx.doc.metrics.invalidate();
+    }
 }
 
 pub(super) fn fractions(family: &str, vcx: ValueCx<'_>) -> (f32, f32, f32, f32) {

@@ -45,7 +45,7 @@ pub(super) fn paginate_of(
                 return None;
             }
             // The root's own style may carry struts too (row gaps).
-            let mut inner = crate::style::cascade::inherit::inherit(&merged, &c2.style, vcx);
+            let mut inner = crate::style::cascade::materialize::box_style(&merged, &c2.style, vcx);
             inner.fragment_clip_ancestor = false;
             {
                 let b = |first: bool, part: usize| {

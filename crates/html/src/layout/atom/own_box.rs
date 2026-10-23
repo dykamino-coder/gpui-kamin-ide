@@ -4,7 +4,7 @@ use crate::dom::pseudo_line_layers;
 use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Effect;
 use crate::layout::options::RenderOpts;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Align, Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::text_box::{has_text, line_height_px};
@@ -16,7 +16,7 @@ pub(super) fn own_box_atom(
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
     let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
+    let mut merged = box_style(inherited, &e.style, vcx);
     // Viewport units resolve against the viewport (css-values-4 §6.1.2), as in
     // `element()`: the atom path skipped it and `height: 350vh` on an
     // `inline-block` with `vertical-align: top` collapsed to its content

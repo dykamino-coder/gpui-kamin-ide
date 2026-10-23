@@ -13,7 +13,7 @@ use crate::layout::fragment::{Shape, ShapeCx, with_lines};
 use crate::layout::multicol::spanner::{has_deep_spanner, multicol_container};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::carries_abspos;
-use crate::style::cascade::inherit::inherit;
+use crate::style::cascade::materialize::box_style;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 
@@ -78,7 +78,7 @@ pub(crate) fn nested_rows_shape(
     opts: &RenderOpts,
 ) -> Option<Shape> {
     let vcx = opts.cx.vcx();
-    let m = inherit(parent, &c.style, vcx);
+    let m = box_style(parent, &c.style, vcx);
     let w = nested_box_w(c, cw)?;
     let n = match m.column_count {
         Some(n) if n > 1 => n as usize,

@@ -46,7 +46,6 @@ pub(crate) fn route(mut nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
 mod tests {
     use super::*;
     use crate::dom::Element;
-    use crate::style::cascade::inherit::inherit;
     use crate::style::computed::Position;
     use crate::style::values::value::Len;
 
@@ -87,7 +86,11 @@ mod tests {
             let Node::Element(child) = &nodes[1] else {
                 panic!("in-flow block")
             };
-            let mut merged = inherit(&inherited, &child.style, doc.values());
+            let mut merged = crate::style::cascade::materialize::box_style(
+                &inherited,
+                &child.style,
+                doc.values(),
+            );
             crate::dom::pseudo_line_layers::install(child, &mut merged, doc.values());
             assert_eq!(
                 merged.first_line.as_ref().unwrap().font_size,

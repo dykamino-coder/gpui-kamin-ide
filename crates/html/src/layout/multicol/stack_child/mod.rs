@@ -8,7 +8,6 @@ use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::shape_contents::strip_through_top;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::relative::hoist_relative;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 mod finish;
@@ -23,6 +22,7 @@ use whole::{copy_kids, copy_whole_box};
 mod frag_div;
 mod paginate;
 mod regrow;
+use crate::style::cascade::materialize::box_style;
 use frag_div::frag_box_div;
 
 #[allow(clippy::too_many_arguments)]
@@ -158,7 +158,7 @@ pub(super) fn multicol_stack_child(
         &copy,
     );
     let nest_phase_k = nest_at.get(ix).copied().flatten().unwrap_or(0.0);
-    let mut inner = inherit(&merged, &copy.style, opts.cx.vcx());
+    let mut inner = box_style(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
     inner.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,

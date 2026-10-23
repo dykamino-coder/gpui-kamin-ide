@@ -12,7 +12,6 @@ use crate::layout::fragment::Shape;
 use crate::layout::fragment::breaks::{edge_avoid, edge_break};
 use crate::layout::fragment::probe::size_monolith;
 use crate::layout::page::paged::visible_overflow;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::px_lossy_zero;
 mod column;
@@ -23,6 +22,7 @@ mod row;
 use row::flex_row_lines_of;
 pub(crate) use row::{geometry as row_geometry, measure_rows, row_break_edge, row_main_size};
 mod items;
+use crate::style::cascade::materialize::box_style;
 pub(crate) use items::class_a_box;
 pub(crate) use items::inline_display;
 pub(crate) use items::item_container;
@@ -87,7 +87,7 @@ pub(crate) fn split_flex_lines(
         match flex_lines_of(&c, col_w, vcx) {
             Some(lines) => {
                 group += 1;
-                let pm = inherit(merged, &c.style, vcx);
+                let pm = box_style(merged, &c.style, vcx);
                 let h = px_lossy_zero(c.style.height);
                 // Коробка контейнера — ПЕРВОЙ «строкой» группы: рисуется под
                 // элементами (фон контейнера, `multi-line-column-flex-
@@ -185,7 +185,7 @@ pub(crate) fn split_flex_lines(
                 // `flex_layout_algorithm.cc:2167-2213`: элемент ряда — свой
                 // поток, конец ряда — самый дальний конец его элементов).
                 Some(lines) => {
-                    let pm = inherit(merged, &c.style, vcx);
+                    let pm = box_style(merged, &c.style, vcx);
                     for items in lines {
                         group += 1;
                         let m = items.len();

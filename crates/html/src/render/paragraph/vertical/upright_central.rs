@@ -90,7 +90,7 @@ fn collect(
                 if !crate::layout::box_kind::real_inline(e) || !plain_span(&e.style) {
                     return None;
                 }
-                let child = crate::style::cascade::inherit::inherit(style, &e.style, vcx);
+                let child = crate::style::cascade::materialize::box_style(style, &e.style, vcx);
                 let size = own_size(&child, opts);
                 // `middle`: the box midpoint — its central baseline here —
                 // sits on the parent's central baseline raised by half the

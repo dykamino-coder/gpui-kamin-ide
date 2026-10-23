@@ -22,8 +22,11 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
                 if crate::layout::box_kind::real_inline(element)
                     || element.style.display == Some(crate::style::computed::Display::Contents) =>
             {
-                let child =
-                    crate::style::cascade::inherit::inherit_unpainted(style, &element.style, vcx);
+                let child = crate::style::cascade::materialize::box_style_unpainted(
+                    style,
+                    &element.style,
+                    vcx,
+                );
                 visit(&element.children, &child, seen, vcx)
             }
             _ => true,

@@ -6,7 +6,7 @@ use crate::dom::whitespace::is_blank;
 use crate::dom::{Element, Node};
 use crate::layout::box_kind::real_inline;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::style::cascade::inherit::inherit_unpainted;
+use crate::style::cascade::materialize::box_style_unpainted;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, px_strict};
 
@@ -49,7 +49,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed, vcx: ValueCx
             && !crate::text::inline::establishes_cb(&e.style)
     }
     fn take(e: &mut Element, out: &mut Vec<Node>, inherited: &Computed, vcx: ValueCx<'_>) {
-        let parent = inherit_unpainted(inherited, &e.style, vcx);
+        let parent = box_style_unpainted(inherited, &e.style, vcx);
         let kids = std::mem::take(&mut e.children);
         for n in kids {
             match n {
@@ -57,7 +57,7 @@ pub(crate) fn hoist_inset_abs(nodes: &[Node], inherited: &Computed, vcx: ValueCx
                     // Hoisting changes the layout parent, never the CSS
                     // inheritance parent (CSS Cascade 4 §7). Resolve inherited
                     // values before passing through the inline ancestor.
-                    k.style = inherit_unpainted(&parent, &k.style, vcx).into();
+                    k.style = box_style_unpainted(&parent, &k.style, vcx).into();
                     out.push(Node::Element(k));
                 }
                 Node::Element(mut k) if passable(&k) => {

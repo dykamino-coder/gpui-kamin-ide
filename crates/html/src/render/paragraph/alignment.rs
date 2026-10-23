@@ -4,7 +4,6 @@ use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::layout::options::own_size;
 use crate::layout::positioned::static_position::at_static_position;
-use crate::style::cascade::inherit::inherit;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
 use crate::text::ruby::ruby_role;
@@ -137,7 +136,7 @@ pub(crate) fn atom_line_align(
     }
     // Сдвиги — как у текстового куска (`inline::shift_spans`), но от кегля
     // САМОГО атома; ось подъёма смотрит вверх.
-    let merged = inherit(inherited, st, vcx);
+    let merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
     let size = match merged.font_size {
         Some(Len::Px(v)) => v,
         _ => own_size(inherited, opts),

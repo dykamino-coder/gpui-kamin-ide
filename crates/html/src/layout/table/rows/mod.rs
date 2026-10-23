@@ -21,6 +21,7 @@ mod emit;
 use cell::table_cell;
 
 use super::context::{RowCursor, RowState, RowsOut, TableGeom, TableLayers};
+use crate::style::cascade::materialize::box_style;
 
 pub(super) fn table_rows(
     rows: &[super::anon::TableRow<'_>],
@@ -62,7 +63,7 @@ pub(super) fn table_rows(
         let group_layer;
         let inherited = match carry.group {
             Some(g) => {
-                group_layer = inherit(geom.inherited, &g.style, vcx);
+                group_layer = box_style(geom.inherited, &g.style, vcx);
                 &group_layer
             }
             None => geom.inherited,
