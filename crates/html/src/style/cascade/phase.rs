@@ -13,13 +13,14 @@
 //! * [`Phase::CascadeAffecting`] — `writing-mode`, `direction`,
 //!   `text-orientation` (сопоставление логических свойств с физическими,
 //!   css-writing-modes-4 §6, css-logical-1 §4; замер `ch`/`ic` в
-//!   вертикальном письме, css-values-4 §6.1.1) и `zoom` (css-viewport-1:
-//!   множитель всех длин).
+//!   вертикальном письме, css-values-4 §6.1.1), `zoom` (css-viewport-1:
+//!   множитель всех длин) и `color-scheme` — используемая схема решает
+//!   `light-dark()` и системные цвета всех цветовых свойств
+//!   (css-color-adjust-1 §2, css-color-5 §light-dark).
 //! * [`Phase::Font`] — шрифт: длинные свойства шрифта реестра (кегль,
 //!   семейство, начертание, `line-height`, `font-size-adjust` — метрики
 //!   `ex`/`ch`/`lh`), `math-depth`/`math-style` (кегль `math`); цвет:
-//!   `color-scheme` (`light-dark()`, системные цвета, css-color-adjust-1
-//!   §2) и `color` (`currentcolor`, css-color-4 §6.4). Отсюда — кегль корня
+//!   `color` (`currentcolor`, css-color-4 §6.4). Отсюда — кегль корня
 //!   для `rem`/`rlh` (css-values-4 §6.1.4).
 //! * [`Phase::Rest`] — все остальные свойства; друг от друга они не
 //!   зависят на применении.
@@ -48,8 +49,10 @@ impl Phase {
     /// стоит в фазе своих длинных свойств).
     pub fn of(name: &str) -> Phase {
         match name {
-            "writing-mode" | "direction" | "text-orientation" | "zoom" => Phase::CascadeAffecting,
-            "math-depth" | "math-style" | "color-scheme" | "color" => Phase::Font,
+            "writing-mode" | "direction" | "text-orientation" | "zoom" | "color-scheme" => {
+                Phase::CascadeAffecting
+            }
+            "math-depth" | "math-style" | "color" => Phase::Font,
             _ if LonghandId::from_name(name).is_some_and(|id| id.grammar() == Grammar::Font) => {
                 Phase::Font
             }

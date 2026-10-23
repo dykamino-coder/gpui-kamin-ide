@@ -147,6 +147,10 @@ pub(super) fn inherit_ui(parent: &Computed, own: &Computed, c: &mut Computed) {
     c.keep_spaces = own.keep_spaces.or(parent.keep_spaces);
     c.hidden = own.hidden.or(parent.hidden);
     c.cursor = own.cursor.clone().or(parent.cursor.clone());
+    c.color_scheme = own
+        .color_scheme
+        .clone()
+        .or_else(|| parent.color_scheme.clone());
     c.border_collapse = own.border_collapse.or(parent.border_collapse);
     c.empty_cells_hide = own.empty_cells_hide.or(parent.empty_cells_hide);
     c.border_spacing = own.border_spacing.or(parent.border_spacing);

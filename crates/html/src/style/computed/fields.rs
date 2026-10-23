@@ -951,6 +951,10 @@ pub struct Computed {
     pub width_from_inline: bool,
     /// `hyphens`: разрешён ли перенос по мягкому переносу.
     pub hyphenate: Option<bool>,
+    /// Вычисленное `color-scheme` (css-color-adjust-1 §2.1): `normal` или
+    /// список схем через пробел (`light dark`, `only light`); `None` у
+    /// каскадного стиля — не задано (наследуется).
+    pub color_scheme: Option<String>,
     /// Вычисленное `user-select` (`None` — начальное `auto`); не наследуется.
     pub user_select: Option<crate::style::computed::UserSelect>,
     /// Используемое `user-select` — текст не выделяется (`Some(true)`);
