@@ -125,9 +125,12 @@ mod tests {
                 ..Computed::default()
             },
         };
-        let first = Computed {
-            font_weight: Some(700),
-            ..Computed::default()
+        let first = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_weight = Some(700);
+            with_inherited
         };
         for (generated, at, expected) in [(true, 2, "ab"), (false, 5, "ab")] {
             let pieces = style_first_line(

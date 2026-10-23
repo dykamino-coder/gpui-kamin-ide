@@ -38,10 +38,13 @@ fn masks_and_backgrounds_share_computed_font_lengths() {
         "linear-gradient(red 10px, blue 20px)",
         "url(mask.svg)",
     ] {
-        let mut style = Computed {
-            font_size: Some(Len::Px(20.0)),
-            line_height: Some(Len::Pct(1.5)),
-            ..Computed::default()
+        let mut style = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.font_size = Some(Len::Px(20.0));
+            with_inherited.line_height = Some(Len::Pct(1.5));
+            with_inherited
         };
         style.apply_one("mask-image", raw, vcx);
         style.bg_image = ImageSource::parse(raw, vcx);

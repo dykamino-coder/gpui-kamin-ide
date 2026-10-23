@@ -73,12 +73,16 @@ mod tests {
             (true, false, true, false, [3, 0, 1, 2]),
             (true, true, false, true, [1, 0, 3, 2]),
         ] {
-            let axes = Axes::new(&Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    vertical, rl, sideways,
-                )),
-                rtl: Some(rtl),
-                ..Computed::default()
+            let axes = Axes::new(&{
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode =
+                    Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                        vertical, rl, sideways,
+                    ));
+                with_inherited.rtl = Some(rtl);
+                with_inherited
             });
             assert_eq!(axes.logical([0, 1, 2, 3]), expected);
             assert_eq!(

@@ -77,16 +77,22 @@ fn orthogonal_text_float_uses_the_shared_measured_host() {
     use crate::dom::Node;
     use crate::style::computed::writing_mode::WritingModeKw;
     for rl in [false, true] {
-        let parent = Computed {
-            writing_mode: Some(WritingModeKw::new(true, rl, false)),
-            ..Default::default()
+        let parent = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.writing_mode = Some(WritingModeKw::new(true, rl, false));
+            with_inherited
         };
         let child = Element::synthetic(
             "div",
-            Computed {
-                float: Some(-1),
-                writing_mode: Some(WritingModeKw::new(false, false, false)),
-                ..Default::default()
+            {
+                let mut with_inherited = Computed {
+                    float: Some(-1),
+                    ..Default::default()
+                };
+                with_inherited.writing_mode = Some(WritingModeKw::new(false, false, false));
+                with_inherited
             },
             Default::default(),
             vec![Node::Text("a horizontal floated line".into())],

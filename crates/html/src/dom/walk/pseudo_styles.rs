@@ -70,12 +70,15 @@ pub(super) fn pseudo_styles(
             .collect();
         (!found.is_empty() || tag == "li" || style.display == Some(Display::ListItem)).then(|| {
             // CSS Lists 3 marker UA style preserves spaces and tab characters.
-            let mut m = Computed {
-                keep_spaces: Some(true),
-                preserve_newlines: Some(true),
-                nowrap: Some(true),
-                text_transform: Some(crate::style::computed::TextTransform::None),
-                ..Default::default()
+            let mut m = {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.keep_spaces = Some(true);
+                with_inherited.preserve_newlines = Some(true);
+                with_inherited.nowrap = Some(true);
+                with_inherited.text_transform = Some(crate::style::computed::TextTransform::None);
+                with_inherited
             };
             if !found.is_empty() {
                 m.bidi_isolate = Some(true);

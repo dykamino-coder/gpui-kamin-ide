@@ -132,3 +132,27 @@ fn cascaded_inherit_takes_the_parent_element_value() {
         parent.padding.left
     );
 }
+
+#[test]
+fn inherited_values_are_one_shared_group() {
+    let parsed = crate::dom::parse(
+        r#"<style>body { font: 20px serif } p { margin: 3px }</style><body><p>a <span>b</span></p></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let p = element(&parsed.nodes, "p");
+    let span = element(&parsed.nodes, "span");
+    let p_style = p.style.slot().any().unwrap();
+    let span_style = span.style.slot().any().unwrap();
+    // No inherited declaration of its own: the child shares its parent's group.
+    assert!(Rc::ptr_eq(&p_style.inh.0, &span_style.inh.0));
+    // A copy of the style (a box style) shares it too, until an inherited value changes.
+    let mut copy = (*span_style).clone();
+    assert!(Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
+    copy.margin.top = Some(Len::Px(1.0));
+    assert!(Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
+    copy.font_size = Some(Len::Px(9.0));
+    assert!(!Rc::ptr_eq(&copy.inh.0, &span_style.inh.0));
+    assert_eq!(span_style.font_size, Some(Len::Px(20.0)));
+}

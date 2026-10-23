@@ -42,11 +42,14 @@ mod tests {
     #[test]
     fn grid_and_vertical_flow_keep_the_preparation_path() {
         let mut parent = crate::layout::table::anon::anon_element("div", vec![]);
-        let mut merged = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let mut merged = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         assert!(borrowed(&parent, &merged).is_none());
         merged.writing_mode = None;

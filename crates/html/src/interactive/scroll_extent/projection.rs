@@ -102,11 +102,14 @@ mod tests {
         frame.set_handle(ScrollHandle::default());
         {
             frame.begin(Some(&root));
-            let parent = Computed {
-                self_node: 7,
-                rtl: Some(true),
-                position: Some(Position::Relative),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    self_node: 7,
+                    position: Some(Position::Relative),
+                    ..Computed::default()
+                };
+                with_inherited.rtl = Some(true);
+                with_inherited
             };
             classic::model(Some(&frame), 7, &parent);
             let absolute = crate::style::cascade::inherit::inherit(
@@ -140,12 +143,15 @@ mod tests {
         root.node_id = 7;
         let frame = Frame::default();
         let handle = ScrollHandle::default();
-        let c = Computed {
-            self_node: 7,
-            rtl: Some(true),
-            overflow_x: Some(Overflow::Scroll),
-            overflow_y: Some(Overflow::Scroll),
-            ..Computed::default()
+        let c = {
+            let mut with_inherited = Computed {
+                self_node: 7,
+                overflow_x: Some(Overflow::Scroll),
+                overflow_y: Some(Overflow::Scroll),
+                ..Computed::default()
+            };
+            with_inherited.rtl = Some(true);
+            with_inherited
         };
         {
             frame.begin(Some(&root));

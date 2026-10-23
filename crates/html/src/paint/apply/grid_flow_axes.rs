@@ -32,12 +32,16 @@ mod tests {
             (true, false, true, true, [false, false]),
             (true, true, true, false, [true, false]),
         ] {
-            let c = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    vertical, rl, sideways,
-                )),
-                rtl: Some(rtl),
-                ..Computed::default()
+            let c = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode =
+                    Some(crate::style::computed::writing_mode::WritingModeKw::new(
+                        vertical, rl, sideways,
+                    ));
+                with_inherited.rtl = Some(rtl);
+                with_inherited
             };
             assert_eq!(reversed(&c), expected);
             assert_eq!(
@@ -53,13 +57,17 @@ mod tests {
 
     #[test]
     fn upright_uses_ltr_only_in_vertical_writing() {
-        let mut c = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            rtl: Some(true),
-            text_orientation: Some(crate::style::computed::writing_mode::TextOrientation::Upright),
-            ..Computed::default()
+        let mut c = {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited.rtl = Some(true);
+            with_inherited.text_orientation =
+                Some(crate::style::computed::writing_mode::TextOrientation::Upright);
+            with_inherited
         };
         assert_eq!(reversed(&c), [false, false]);
         c.writing_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(

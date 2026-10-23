@@ -151,16 +151,46 @@ impl Computed {
             &mut self.max_width,
             &mut self.max_height,
             &mut self.flex_basis,
-            &mut self.letter_spacing,
-            &mut self.word_spacing,
-            &mut self.text_indent,
-            &mut self.line_height,
             &mut self.column_width,
             &mut self.column_height,
             &mut self.column_gap,
             &mut self.svg_path_length,
         ] {
             fix(l);
+        }
+        // Наследуемые длины — в общей группе: она копируется, только если
+        // есть что переводить.
+        let unresolved = |l: &Option<Len>| {
+            matches!(
+                l,
+                Some(
+                    Len::Em(_)
+                        | Len::EmPx(..)
+                        | Len::Ch(_)
+                        | Len::Ex(_)
+                        | Len::Ic(_)
+                        | Len::Calc(_)
+                )
+            )
+        };
+        if [
+            &self.letter_spacing,
+            &self.word_spacing,
+            &self.text_indent,
+            &self.line_height,
+        ]
+        .into_iter()
+        .any(unresolved)
+        {
+            let inh = &mut **self;
+            for l in [
+                &mut inh.letter_spacing,
+                &mut inh.word_spacing,
+                &mut inh.text_indent,
+                &mut inh.line_height,
+            ] {
+                fix(l);
+            }
         }
         sides(&mut self.padding);
         sides(&mut self.snap.padding);

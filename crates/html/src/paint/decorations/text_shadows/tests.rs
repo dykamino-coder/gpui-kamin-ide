@@ -20,7 +20,7 @@ fn inherited_currentcolor_uses_the_descendant_color() {
     assert_eq!(shadows[0].color, Color::parse("green", vcx).unwrap().into());
     assert_eq!((shadows[0].x, shadows[0].y), (2.0, 3.0));
     assert_eq!(shadows[1].color, Color::parse("blue", vcx).unwrap().into());
-    assert!(child.text_shadow.unwrap().color.is_current());
+    assert!(child.text_shadow.clone().unwrap().color.is_current());
 }
 
 #[test]
@@ -81,7 +81,7 @@ fn nested_currentcolor_and_none_keep_independent_shadow_groups() {
         groups[1][0].color,
         Color::parse("green", vcx).unwrap().into()
     );
-    assert!(parent.text_shadow.unwrap().color.is_current());
+    assert!(parent.text_shadow.clone().unwrap().color.is_current());
 }
 
 #[test]

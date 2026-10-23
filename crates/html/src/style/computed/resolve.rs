@@ -84,10 +84,17 @@ impl Computed {
             &mut self.max_width,
             &mut self.max_height,
             &mut self.flex_basis,
-            &mut self.font_size,
             &mut self.svg_path_length,
         ] {
             fix(l);
+        }
+        // Кегль — в общей группе наследуемых: правится, только если он в
+        // единицах окна.
+        if let Some(size) = self.font_size {
+            let folded = size.fold_viewport(vp, vcx);
+            if folded != size {
+                self.font_size = Some(folded);
+            }
         }
         sides(&mut self.padding);
         sides(&mut self.snap.padding);

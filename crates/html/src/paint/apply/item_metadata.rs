@@ -98,12 +98,15 @@ mod tests {
             (false, true, 4),
             (true, true, 5),
         ] {
-            let parent = Computed {
-                display: Some(Display::Flex),
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, sideways,
-                )),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    display: Some(Display::Flex),
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
+                );
+                with_inherited
             };
             let effective =
                 crate::style::cascade::inherit::inherit(&parent, &Computed::default(), vcx);
@@ -124,21 +127,26 @@ mod tests {
             (false, true, 0),
             (true, true, 1),
         ] {
-            let parent = Computed {
-                display: Some(Display::Flex),
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, sideways,
-                )),
-                ..Computed::default()
+            let parent = {
+                let mut with_inherited = Computed {
+                    display: Some(Display::Flex),
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, sideways),
+                );
+                with_inherited
             };
-            let own = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    false, false, false,
-                )),
-                text_orientation: Some(
-                    crate::style::computed::writing_mode::TextOrientation::Mixed,
-                ),
-                ..Computed::default()
+            let own = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(false, false, false),
+                );
+                with_inherited.text_orientation =
+                    Some(crate::style::computed::writing_mode::TextOrientation::Mixed);
+                with_inherited
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
@@ -157,11 +165,14 @@ mod tests {
             ..Computed::default()
         };
         for (rl, flags) in [(false, 4), (true, 5)] {
-            let own = Computed {
-                writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                    true, rl, false,
-                )),
-                ..Computed::default()
+            let own = {
+                let mut with_inherited = Computed {
+                    ..Computed::default()
+                };
+                with_inherited.writing_mode = Some(
+                    crate::style::computed::writing_mode::WritingModeKw::new(true, rl, false),
+                );
+                with_inherited
             };
             let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
             assert_eq!(baseline_x_flags(&effective), Some(flags));
@@ -191,13 +202,16 @@ mod tests {
             display: Some(Display::GridLanes),
             ..Computed::default()
         };
-        let own = Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, true, false,
-            )),
-            justify_self: Some(Align::Baseline),
-            justify_self_last: true,
-            ..Computed::default()
+        let own = {
+            let mut with_inherited = Computed {
+                justify_self: Some(Align::Baseline),
+                justify_self_last: true,
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, true, false),
+            );
+            with_inherited
         };
         let effective = crate::style::cascade::inherit::inherit(&parent, &own, vcx);
         let mut wrapper = gpui::StyleRefinement::default();

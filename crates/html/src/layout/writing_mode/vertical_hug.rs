@@ -68,12 +68,15 @@ mod tests {
     use super::*;
     #[test]
     fn auto_grid_tracks_claim_intrinsics_but_definite_tracks_keep_stretch() {
-        let mut parent = Computed {
-            display: Some(Display::Grid),
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        let mut parent = {
+            let mut with_inherited = Computed {
+                display: Some(Display::Grid),
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         };
         let child = crate::layout::table::anon::anon_element("div", vec![]);
         let claimed = |child, parent: &Computed| {

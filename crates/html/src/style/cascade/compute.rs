@@ -114,6 +114,12 @@ pub(crate) fn compute(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Co
     }
     // Вычисленный стиль несёт значения, а не каскадные слова.
     c.inherit_longhands = Default::default();
+    // Те же наследуемые значения, что у родителя, — его же группа: дети без
+    // своих наследуемых значений делят её, и сравнение по указателю решает
+    // повторное использование (Blink: общие группы `ComputedStyle`).
+    if c.inh == parent.inh {
+        c.inh = parent.inh.clone();
+    }
     c
 }
 

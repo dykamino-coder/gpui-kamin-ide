@@ -35,9 +35,12 @@ fn chosen(faces: Vec<Face>, request: Computed) -> String {
 #[test]
 fn non_finite_request_has_a_total_order_and_equal_faces_keep_last() {
     for stretch in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        let request = Computed {
-            font_stretch: Some(stretch),
-            ..Default::default()
+        let request = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.font_stretch = Some(stretch);
+            with_inherited
         };
         assert_eq!(
             chosen(
@@ -54,11 +57,14 @@ fn non_finite_request_has_a_total_order_and_equal_faces_keep_last() {
 
 #[test]
 fn width_precedes_style_and_weight() {
-    let request = Computed {
-        font_stretch: Some(90.0),
-        italic: Some(true),
-        font_weight: Some(700),
-        ..Default::default()
+    let request = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.font_stretch = Some(90.0);
+        with_inherited.italic = Some(true);
+        with_inherited.font_weight = Some(700);
+        with_inherited
     };
     assert_eq!(
         chosen(
@@ -74,9 +80,12 @@ fn width_precedes_style_and_weight() {
 
 #[test]
 fn middle_weights_search_up_to_500_before_searching_down() {
-    let request = Computed {
-        font_weight: Some(450),
-        ..Default::default()
+    let request = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.font_weight = Some(450);
+        with_inherited
     };
     assert_eq!(
         chosen(
@@ -93,10 +102,13 @@ fn middle_weights_search_up_to_500_before_searching_down() {
 
 #[test]
 fn italic_oblique_only_uses_upright_fallback() {
-    let request = Computed {
-        italic: Some(true),
-        font_oblique_only: Some(true),
-        ..Default::default()
+    let request = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.italic = Some(true);
+        with_inherited.font_oblique_only = Some(true);
+        with_inherited
     };
     assert_eq!(
         chosen(
@@ -113,11 +125,14 @@ fn italic_oblique_only_uses_upright_fallback() {
 #[test]
 fn oblique_search_direction_changes_at_eleven_degrees() {
     for (angle, expected) in [(10.0, "lower"), (12.0, "upper")] {
-        let request = Computed {
-            italic: Some(true),
-            oblique: Some(true),
-            font_oblique_angle: Some(angle),
-            ..Default::default()
+        let request = {
+            let mut with_inherited = Computed {
+                ..Default::default()
+            };
+            with_inherited.italic = Some(true);
+            with_inherited.oblique = Some(true);
+            with_inherited.font_oblique_angle = Some(angle);
+            with_inherited
         };
         assert_eq!(
             chosen(
@@ -134,11 +149,14 @@ fn oblique_search_direction_changes_at_eleven_degrees() {
 
 #[test]
 fn oblique_prefers_upright_to_italic_even_without_synthesis() {
-    let request = Computed {
-        italic: Some(true),
-        oblique: Some(true),
-        font_synth: (Some(false), Some(false), Some(false)),
-        ..Default::default()
+    let request = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.italic = Some(true);
+        with_inherited.oblique = Some(true);
+        with_inherited.font_synth = (Some(false), Some(false), Some(false));
+        with_inherited
     };
     assert_eq!(
         chosen(
@@ -161,9 +179,12 @@ fn regular_face_keeps_features_equal_across_synthesized_weight_runs() {
         vec![face("regular", 100.0, 400.0, 0, 0.0)],
     );
     let regular = Computed::default();
-    let bold = Computed {
-        font_weight: Some(700),
-        ..Default::default()
+    let bold = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.font_weight = Some(700);
+        with_inherited
     };
     assert_eq!(
         features("selection-test", &regular, vcx),

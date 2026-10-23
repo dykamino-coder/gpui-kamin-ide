@@ -147,11 +147,14 @@ mod tests {
     use super::*;
 
     fn vertical() -> Computed {
-        Computed {
-            writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-                true, false, false,
-            )),
-            ..Computed::default()
+        {
+            let mut with_inherited = Computed {
+                ..Computed::default()
+            };
+            with_inherited.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
         }
     }
 

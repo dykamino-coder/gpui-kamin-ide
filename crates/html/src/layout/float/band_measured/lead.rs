@@ -100,9 +100,12 @@ mod tests {
         let br = Element::synthetic("br", Computed::default(), Default::default(), vec![]);
         let mut span = Element::synthetic(
             "span",
-            Computed {
-                line_height: Some(Len::Px(200.)),
-                ..Default::default()
+            {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.line_height = Some(Len::Px(200.));
+                with_inherited
             },
             Default::default(),
             vec![Node::Element(br), Node::Text("tail".into())],

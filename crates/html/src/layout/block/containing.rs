@@ -75,10 +75,13 @@ mod tests {
             width: Some(200.0),
             height_def: true,
         });
-        let style = Computed {
-            width: Some(Len::Pct(0.5)),
-            font_size: Some(Len::Em(2.0)),
-            ..Default::default()
+        let style = {
+            let mut with_inherited = Computed {
+                width: Some(Len::Pct(0.5)),
+                ..Default::default()
+            };
+            with_inherited.font_size = Some(Len::Em(2.0));
+            with_inherited
         };
         let snapshot = with_inner_cb(&style, parent, |child| {
             assert_eq!(
@@ -89,9 +92,12 @@ mod tests {
                     height_def: true
                 }
             );
-            let grandchild = Computed {
-                font_size: Some(Len::Em(0.5)),
-                ..Default::default()
+            let grandchild = {
+                let mut with_inherited = Computed {
+                    ..Default::default()
+                };
+                with_inherited.font_size = Some(Len::Em(0.5));
+                with_inherited
             };
             with_inner_cb(&grandchild, child, |grandchild| {
                 assert_eq!(grandchild.collapse.font, 20.0);

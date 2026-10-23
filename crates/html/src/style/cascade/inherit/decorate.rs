@@ -54,16 +54,18 @@ pub(super) fn decorate(
         Some(_) => true,
     };
     if block {
+        let font = DecorFont {
+            family: c.font_family.clone(),
+            monospace: c.monospace,
+            weight: c.font_weight,
+            italic: c.italic,
+            stretch: c.font_stretch,
+            size: own_px,
+        };
+        let position = c.underline_pos.unwrap_or(0);
         for d in c.decors.iter_mut() {
-            d.font = DecorFont {
-                family: c.font_family.clone(),
-                monospace: c.monospace,
-                weight: c.font_weight,
-                italic: c.italic,
-                stretch: c.font_stretch,
-                size: own_px,
-            };
-            d.position = c.underline_pos.unwrap_or(0);
+            d.font = font.clone();
+            d.position = position;
             d.over_lang = over_lang;
         }
     }

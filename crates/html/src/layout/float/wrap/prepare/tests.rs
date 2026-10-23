@@ -5,15 +5,21 @@ use super::*;
 #[test]
 fn font_relative_float_margins_are_computed_without_changing_percentage_bases() {
     let doc = crate::document::state::DocState::new(Default::default());
-    let parent = Computed {
-        font_size: Some(Len::Px(20.)),
-        monospace: Some(true),
-        ..Default::default()
+    let parent = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.font_size = Some(Len::Px(20.));
+        with_inherited.monospace = Some(true);
+        with_inherited
     };
-    let mut style = Computed {
-        float: Some(-1),
-        font_size: Some(Len::Pct(2.)),
-        ..Default::default()
+    let mut style = {
+        let mut with_inherited = Computed {
+            float: Some(-1),
+            ..Default::default()
+        };
+        with_inherited.font_size = Some(Len::Pct(2.));
+        with_inherited
     };
     style.margin.left = Some(Len::Ch(2.));
     style.margin.right = Some(Len::Pct(0.1));
@@ -42,10 +48,13 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
 #[test]
 fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
     let doc = crate::document::state::DocState::new(Default::default());
-    let parent = Computed {
-        font_size: Some(Len::Px(20.)),
-        monospace: Some(true),
-        ..Default::default()
+    let parent = {
+        let mut with_inherited = Computed {
+            ..Default::default()
+        };
+        with_inherited.font_size = Some(Len::Px(20.));
+        with_inherited.monospace = Some(true);
+        with_inherited
     };
     let mut style = Computed {
         float: Some(-1),

@@ -32,12 +32,15 @@ fn block_start_follows_block_flow_direction() {
 
 #[test]
 fn turned_line_clone_keeps_its_vertical_mode() {
-    let clone = Computed {
-        flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+    let clone = {
+        let mut with_inherited = Computed {
+            turned_line: true,
+            ..Computed::default()
+        };
+        with_inherited.flat_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
             true, false, true,
-        )),
-        turned_line: true,
-        ..Computed::default()
+        ));
+        with_inherited
     };
     assert!(clone.wm().turned() && clone.wm().sideways());
     assert_eq!(clone.wm().line().line_turn(), Turn::CounterClockwise);
@@ -62,19 +65,25 @@ fn turn_and_line_order_follow_the_abstract_physical_mapping() {
 
 #[test]
 fn laid_flat_clone_keeps_block_flow_but_is_not_vertical() {
-    let flat = Computed {
-        flat_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
+    let flat = {
+        let mut with_inherited = Computed {
+            ..Computed::default()
+        };
+        with_inherited.flat_mode = Some(crate::style::computed::writing_mode::WritingModeKw::new(
             true, true, true,
-        )),
-        ..Computed::default()
+        ));
+        with_inherited
     };
     let wm = flat.wm();
     assert!(!wm.vertical() && wm.block_rl() && wm.sideways());
-    let child = Computed {
-        writing_mode: Some(crate::style::computed::writing_mode::WritingModeKw::new(
-            true, false, false,
-        )),
-        ..Computed::default()
+    let child = {
+        let mut with_inherited = Computed {
+            ..Computed::default()
+        };
+        with_inherited.writing_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+        );
+        with_inherited
     };
     assert!(child.wm().is_orthogonal_to(child.cb_wm));
 }
