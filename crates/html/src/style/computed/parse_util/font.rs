@@ -1,8 +1,5 @@
-//! Разбор шрифта: единицы шрифта в длинах, части сокращения font, родовые семейства,
-//! font-feature-settings, имена семейств, font-stretch.
-
-use super::*;
-use crate::document::state::ValueCx;
+//! Разбор шрифта: единицы шрифта в длинах, родовые семейства, font-feature-settings, имена
+//! семейств, слово `stretch`.
 
 /// Есть ли в записи длины в единицах шрифта (`em`, `rem`, `ex`, `ch`).
 pub(in crate::style::computed) fn has_font_units(v: &str) -> bool {
@@ -52,71 +49,6 @@ pub(crate) fn font_lengths_to_px(v: &str, em: f32, rem: f32, ex: f32, ch: f32) -
     }
     flush(&mut token, &mut out);
     out
-}
-
-pub(in crate::style::computed) fn split_font<'a>(
-    v: &'a str,
-    vcx: ValueCx<'_>,
-) -> (&'a str, &'a str) {
-    let mut end = 0;
-    for token in split_outside_parens(v) {
-        let at = v[end..]
-            .find(token.as_str())
-            .map(|i| end + i)
-            .unwrap_or(end);
-        end = at + token.len();
-        if font_size_token(&token, vcx) {
-            return (&v[..end], v[end..].trim());
-        }
-    }
-    (v, "")
-}
-
-/// Кусок головы сокращения `font`, который задаёт КЕГЛЬ (быть может, с
-/// `/высотой строки`). Голое число — ВЕС, а не кегль (§15.6: 100…900):
-/// `Len::parse("900")` даёт точки, и `font: 900 2em Ahem` отдавал кегль
-/// весу, а `2em Ahem` — семейству, после чего гибло всё
-/// (`font-family-011`). Ключевые кегли и математические функции — тоже
-/// кегль (§15.8; `font: calc(10 * 10px) sans-serif`, `font-148`).
-pub(in crate::style::computed) fn font_size_token(token: &str, vcx: ValueCx<'_>) -> bool {
-    let size = font_slash(token).map_or(token, |(s, _)| s);
-    let lower = size.to_ascii_lowercase();
-    if matches!(
-        lower.as_str(),
-        "xx-small"
-            | "x-small"
-            | "small"
-            | "medium"
-            | "large"
-            | "x-large"
-            | "xx-large"
-            | "xxx-large"
-            | "larger"
-            | "smaller"
-    ) || ["calc(", "min(", "max(", "clamp("]
-        .iter()
-        .any(|f| lower.starts_with(f))
-    {
-        return true;
-    }
-    size.starts_with(|c: char| c.is_ascii_digit() || c == '.')
-        && (token.contains('/')
-            || size == "0"
-            || (Len::parse(size, vcx).is_some() && !size.chars().all(|c| c.is_ascii_digit())))
-}
-
-/// Косая черта ВНЕ скобок: `20px/1.5` делится, `calc(100px/2)` — нет.
-pub(in crate::style::computed) fn font_slash(t: &str) -> Option<(&str, &str)> {
-    let mut depth = 0i32;
-    for (i, ch) in t.char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => depth -= 1,
-            '/' if depth == 0 => return Some((&t[..i], &t[i + 1..])),
-            _ => {}
-        }
-    }
-    None
 }
 
 /// Семейство, которое подставляется за родовое имя.

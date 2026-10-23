@@ -45,7 +45,7 @@ pub(crate) fn mask_layer(
         // умолчанию); явный `mask-mode` главнее.
         let alpha = !group.mask_luminance && (group.mask_alpha_mode || def.alpha);
         (
-            rasterize_mask_def(&def.markup, bw, bh, false)?,
+            rasterize_mask_def(&def.markup, bw, bh, false, vcx)?,
             [0.0, 0.0, bw * sf, bh * sf],
             !alpha,
         )
@@ -54,14 +54,14 @@ pub(crate) fn mask_layer(
         .and_then(|id| group.mask_defs.get(id))
     {
         (
-            rasterize_mask_def(&def.markup, bw, bh, true)?,
+            rasterize_mask_def(&def.markup, bw, bh, true, vcx)?,
             [0.0, 0.0, bw * sf, bh * sf],
             true,
         )
     } else if let Some((markup, alpha)) = l
         .rsplit_once('#')
         .filter(|(f, _)| f.ends_with(".svg"))
-        .and_then(|(file, frag)| svg_fragment(file, frag))
+        .and_then(|(file, frag)| svg_fragment(file, frag, vcx))
     {
         // Явный `mask-mode` главнее типа определения (§7.2), как у ссылки на маску документа.
         let alpha = !group.mask_luminance && (group.mask_alpha_mode || alpha);
@@ -72,7 +72,7 @@ pub(crate) fn mask_layer(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}">{markup}</svg>"#
         );
         (
-            crate::svg::raster::rasterize(&markup, bw, bh)?,
+            crate::svg::raster::rasterize(&markup, bw, bh, vcx)?,
             [0.0, 0.0, bw * sf, bh * sf],
             !alpha,
         )
@@ -114,7 +114,7 @@ pub(crate) fn mask_layer(
         )
     } else {
         let source = match input {
-            MaskInput::Image(image) => group.mask_image_source(image),
+            MaskInput::Image(image) => group.mask_image_source(image, vcx),
             _ => group.mask_source(l, vcx),
         }?;
         let (tw, th) = mask_size::tile(

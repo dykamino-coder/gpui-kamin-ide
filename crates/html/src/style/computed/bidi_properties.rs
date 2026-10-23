@@ -1,25 +1,10 @@
-//! Вычисленный стиль: разбор `direction` и `unicode-bidi` в поля `Computed`.
-//! `direction` наследуется (`inherit` сбрасывает в `None`, родителя подставит
-//! наследование), режимы `unicode-bidi` — нет; `inherit` заменяет каждую часть
-//! значения (CSS Cascade 4 §7.3.2), поэтому оба свойства разбираются независимо.
+//! Вычисленный стиль: разбор `unicode-bidi` в поля `Computed` (`direction` —
+//! длинное свойство реестра, `props::inherited`). Режимы не наследуются;
+//! `inherit` заменяет каждую часть значения (CSS Cascade 4 §7.3.2).
 
 use super::Computed;
 
-pub(super) fn apply(style: &mut Computed, key: &str, value: &str) {
-    if key == "direction" {
-        if matches!(value.to_ascii_lowercase().as_str(), "ltr" | "rtl") {
-            style.accept_declaration();
-        }
-        // CSS Cascade 4 section 7.3.2: inherit replaces the earlier value.
-        // The parent direction is resolved by style::cascade::inherit from None.
-        style.rtl = match value.to_ascii_lowercase().as_str() {
-            "inherit" => None,
-            "rtl" => Some(true),
-            "ltr" => Some(false),
-            _ => style.rtl,
-        };
-        return;
-    }
+pub(super) fn apply(style: &mut Computed, value: &str) {
     let lower = value.to_ascii_lowercase();
     let value = lower.as_str();
     if !matches!(

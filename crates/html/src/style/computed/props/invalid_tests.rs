@@ -203,7 +203,7 @@ fn valid_reset_is_distinct_from_invalid_value() {
     );
     assert_eq!(c.margin.top, Some(Len::Auto));
     assert!(c.max_width.is_none());
-    assert!(c.combine_upright.is_none());
+    assert_eq!(c.combine_upright, Some(None));
 }
 
 #[test]

@@ -24,8 +24,6 @@ mod bidi_properties;
 pub(crate) mod box_predicates;
 pub(crate) mod font_family;
 mod font_kerning;
-pub(super) mod font_members;
-mod font_shorthand;
 pub(super) mod font_weight;
 mod gradient_paint;
 pub(crate) mod image_function;
@@ -35,18 +33,12 @@ pub(crate) use image_source::ConicGradient;
 pub use image_source::{ImageFilter, ImageSource};
 mod content_functions;
 mod counters;
-mod list_style;
-mod list_style_string;
 mod mask_shorthand;
 mod mask_size;
 pub(crate) mod orthogonal;
-mod quotes;
 mod radius_mask;
 mod radius_parse;
 mod size_range;
-mod tab_size;
-mod text_indent;
-mod white_space;
 pub mod writing_mode;
 pub(crate) use content_functions::parse_content;
 mod outline_style;
@@ -55,6 +47,9 @@ pub(crate) use outline_style::DOUBLE as OUTLINE_DOUBLE;
 pub(crate) use props::border::values::line_style_ok;
 pub(crate) use props::mask_clip::mask_border::initial_mask_border;
 pub(super) mod props;
+pub(crate) use props::display_flex::values::alignment as alignment_value;
+pub(crate) use props::font::values::GROUP_TAGS as FONT_VARIANT_GROUPS;
+pub(crate) use props::grid::values::area_name as grid_area_name;
 mod queries;
 mod resolve;
 pub use resolve::{FontCx, LenCx, ViewportCx};
@@ -140,7 +135,7 @@ pub struct Corners {
 
 /// Разряды `inherit_bits`: ненаследуемые свойства, у которых слово `inherit`
 /// обязано скопировать вычисленное значение родителя (§6.2.1).
-pub(super) mod ainh {
+pub(crate) mod ainh {
     pub(crate) const ALIGN_ITEMS: u8 = 1 << 0;
     pub(crate) const JUSTIFY_ITEMS: u8 = 1 << 1;
     pub(crate) const ALIGN_CONTENT: u8 = 1 << 2;

@@ -11,6 +11,7 @@
 //! (`run-in-contains-inline-block-001`).
 
 use crate::document::state::ValueCx;
+use crate::dom::Element;
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 
@@ -26,8 +27,9 @@ pub struct AtomCx {
 
 /// Open an inline ancestor on the collection's stack: its style inherits from
 /// the top of the stack (or from `base`, the paragraph's style, when empty).
-pub(crate) fn open(stack: &mut Vec<Computed>, own: &Computed, base: &Computed, vcx: ValueCx<'_>) {
+pub(crate) fn open(stack: &mut Vec<Computed>, own: &Element, base: &Computed, vcx: ValueCx<'_>) {
     let parent = stack.last().unwrap_or(base);
-    let style = inherit(parent, own, vcx);
+    let mut style = inherit(parent, &own.style, vcx);
+    style.self_node = own.node_id;
     stack.push(style);
 }

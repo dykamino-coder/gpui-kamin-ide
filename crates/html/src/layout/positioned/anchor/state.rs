@@ -7,37 +7,18 @@ use std::collections::HashMap;
 
 #[derive(Default)]
 pub(crate) struct AnchorState {
-    /// Именованные якоря кадра: имя → запись. Повтор имени
-    /// перезаписывает — «the last element in tree order» (§target anchor
-    /// element, п.3); «ближайший предок» пока не отличается.
-    pub(super) named: RefCell<HashMap<String, AnchorRec>>,
     /// Неявные якоря: `node_id` порождающего элемента → его запись (для
     /// псевдоэлементов с `position-anchor: auto`, §implicit).
     pub(super) implicit: RefCell<HashMap<u64, AnchorRec>>,
-    /// Те же именованные пробы кадра С ПОРЯДКОМ СБОРКИ (`Computed::anchor_seq`):
-    /// на следующем кадре станут `LAST_NAMED`, и размер по `anchor-size()`
-    /// возьмёт «последний якорь с этим именем раньше меня по дереву».
+    /// Именованные пробы с порядком дерева для приемлемости OOF-якорей.
     pub(super) named_seq: RefCell<Vec<(String, u32, AnchorRec)>>,
-    /// Реестры ПРОШЛОГО кадра — для величин, которые нужны ДО раскладки
-    /// (`anchor-size()`, растяжка в клетке `position-area`): размер решает
-    /// taffy, а рамки известны только на подготовке; стенд ждёт устоявшихся
-    /// кадров, и значение из кадра N−1 доезжает к N+1.
-    /// Полная запись (не только рамка): прошлый кадр подменяет текущий и там,
-    /// где якорь ещё не подготовлен (`AnchorPlan::rec`), — нужны `id`/`cb`
-    /// для приемлемости.
-    pub(super) last_named: RefCell<Vec<(String, u32, AnchorRec)>>,
-    pub(super) last_implicit: RefCell<HashMap<u64, AnchorRec>>,
     /// Рамки СОДЕРЖАЩИХ БЛОКОВ кадра (padding box): `node_id` элемента с
     /// `establishes_cb` → рамка. Нужны сетке `position-area`.
     pub(super) cb: RefCell<HashMap<u64, Bounds<Pixels>>>,
-    /// Размер inset-modified containing block (клетки за вычетом вставок) по
-    /// ключу коробки: текущий кадр и прошлый — для `place-self: stretch`.
-    pub(super) area_now: RefCell<HashMap<u64, (f32, f32)>>,
-    pub(super) area_last: RefCell<HashMap<u64, (f32, f32)>>,
-    /// Размер САМОЙ клетки (без вставок) — база долей размеров, полей и
-    /// отбивок: текущий кадр и прошлый (`resolve_sizes`).
-    pub(super) cell_now: RefCell<HashMap<u64, (f32, f32)>>,
-    pub(super) cell_last: RefCell<HashMap<u64, (f32, f32)>>,
+    /// Коробки с выбранным вариантом, присутствовавшие в текущем кадре.
+    pub(super) present: RefCell<std::collections::HashSet<u64>>,
+    /// Внепоточные якоря обязаны предшествовать потребителю по дереву.
+    pub(super) out_of_flow: RefCell<HashMap<u64, u32>>,
     /// Счётчик порядка сборки элементов в кадре (`next_seq`).
     pub(super) seq: Cell<u32>,
     /// Стек плоских трансформов предков на подготовке кадра: номер и
@@ -53,29 +34,6 @@ pub(crate) struct AnchorState {
     /// Последний удачный вариант `position-try-fallbacks` по ключу коробки
     /// (§fallback: «the element keeps those styles until it overflows again»):
     /// 0 — базовые стили, k — k-й элемент списка. Живёт между кадрами,
-    /// чистится на сборке документа (`settle_static`).
-    pub(super) chosen: RefCell<HashMap<u64, usize>>,
-    /// This frame's build sized a box from the PREVIOUS frame's anchor
-    /// registry (`anchor-size()`, `position-area` cell percentages).
-    pub(super) used_last: Cell<bool>,
-    /// Extra frames requested in the current chain of frames whose
-    /// previous-frame values kept changing (bounded, so an oscillating page
-    /// cannot loop forever). The chain ends at a checked frame with no stale
-    /// value (`frame::reset`).
-    pub(super) reframes: Cell<u32>,
-    /// This frame compared a previous-frame value against its current one
-    /// (`frame::note_checked`): only such a frame may end a reframe chain.
-    pub(super) frame_checked: Cell<bool>,
-    /// This frame found a stale previous-frame value (`reframe_if_stale`).
-    pub(super) frame_stale: Cell<bool>,
-    /// This frame already requested its one extra frame: stale records of
-    /// the same frame coalesce into a single request and a single budget step.
-    pub(super) frame_requested: Cell<bool>,
-}
-
-impl AnchorState {
-    /// The previous frame's inset-modified containing block for one anchor box.
-    pub(super) fn last_area(&self, key: u64) -> Option<(f32, f32)> {
-        self.area_last.borrow().get(&key).copied()
-    }
+    /// удаляется после кадра без коробки и при сборке нового документа.
+    pub(super) chosen: RefCell<HashMap<u64, super::trials::Chosen>>,
 }

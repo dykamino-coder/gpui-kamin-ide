@@ -1,137 +1,69 @@
 //! Выбранная запасная позиция и `anchor-size()` в стиле коробки.
 
-use super::AnchorRec;
-use super::settle::{DefaultAnchor, default_anchor_of};
+use super::settle::default_anchor_of;
 use crate::document::state::ValueCx;
 use crate::style::computed::{Align, Computed, Position};
 use crate::style::values::value::{AnchorSize, Len, anchor_get, px_lossy_zero};
-use std::rc::Rc;
 
+mod current;
 mod insets;
+pub(crate) use current::{SizeInputs, current_inputs, needs_host, prepare};
 mod try_rule;
 use insets::fill_anchor_pairs;
 pub(crate) use try_rule::apply_try_rule;
 
-/// Выбранный на прошлом кадре вариант `position-try-fallbacks` (`CHOSEN`) —
-/// в стиль ДО раскладки (зовёт `render::element` сразу после ключей):
-/// объявления его `@position-try`-правила (размеры, вставки) и
-/// `<position-area>` накладываются на `Computed`, база уезжает в `try_base`
-/// для сборки остальных кандидатов (`place`). Тактики раскладке не нужны:
-/// сдвиг считается абсолютно на подготовке.
-pub fn apply_chosen(c: &mut Computed, vcx: ValueCx<'_>) {
-    if c.position_try_fallbacks.is_empty()
-        || !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed))
-    {
-        return;
-    }
-    let base = Rc::new(c.clone());
-    let chosen = vcx
-        .doc
-        .anchor_frame
-        .chosen
-        .borrow()
-        .get(&c.anchor_key)
-        .copied()
-        .unwrap_or(0);
-    if chosen > 0
-        && let Some(fb) = base.position_try_fallbacks.get(chosen - 1)
-    {
-        if let Some(n) = &fb.name
-            && let Some(decls) = vcx.doc.try_rule(n)
-        {
-            apply_try_rule(c, &decls, vcx);
-        }
-        if let Some(area) = fb.area {
-            c.position_area = Some(area);
-        }
-    }
-    c.try_base = Some(base);
-}
-
-/// Якорь из реестра ПРОШЛОГО кадра: по имени — последняя запись с этим
-/// именем, собранная РАНЬШЕ коробки (`seq`), — «the last element in tree
-/// order» среди «laid out strictly before» (§target anchor element);
-/// неявный — по `node_id` хозяина.
-fn last_lookup(
-    name: Option<&str>,
-    default: &Option<DefaultAnchor>,
-    seq: u32,
-    vcx: ValueCx<'_>,
-) -> Option<AnchorRec> {
-    match name {
-        Some(n) => last_named(n, seq, vcx),
-        None => match default {
-            Some(DefaultAnchor::Named(n)) => last_named(n, seq, vcx),
-            Some(DefaultAnchor::Implicit(id)) => {
-                vcx.doc.anchor_frame.last_implicit.borrow().get(id).copied()
-            }
-            None => None,
-        },
-    }
-}
-
-/// Последняя запись прошлого кадра с этим именем, собранная раньше `seq`.
-pub(super) fn last_named(n: &str, seq: u32, vcx: ValueCx<'_>) -> Option<AnchorRec> {
-    {
-        let v = &vcx.doc.anchor_frame.last_named;
-        v.borrow()
-            .iter()
-            .filter(|(k, s, _)| k == n && *s < seq)
-            .max_by_key(|(_, s, _)| *s)
-            .map(|(_, _, r)| *r)
-    }
-}
-
-/// Размеры абсолюта, зависящие от якоря, — В ТОЧКИ до раскладки (зовёт
-/// `render::element` сразу после слияния стилей):
-/// * `anchor-size()` в `width/height/min-*/max-*` (§anchor-size-fn) — из
-///   реестра прошлого кадра; неразрешимая — запасное значение, без него
-///   `auto` («invalid at computed-value time»);
-/// * `place-self: stretch` в клетке `position-area` — размер IMCB прошлого
-///   кадра за вычетом полей, рамки и отбивок (`width` у нас — содержимое).
-///
-/// Первый кадр отдаёт запасные значения, второй — верные; стенд ждёт
-/// устоявшихся кадров.
+/// Размеры разрешаются только из реестра текущего кадра.
 pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
+    resolve_with(c, inherited, None, vcx);
+}
+
+fn resolve_with(
+    c: &mut Computed,
+    inherited: &Computed,
+    current: Option<SizeInputs>,
+    vcx: ValueCx<'_>,
+) {
     if !matches!(c.position, Some(Position::Absolute) | Some(Position::Fixed)) {
         return;
     }
-    let seq = c.anchor_seq;
     let default_anchor = default_anchor_of(c);
     let cb_vertical = inherited.wm().vertical();
     let own_vertical = c.wm().vertical();
+    let plan = super::AnchorPlan::of(c, inherited, vcx);
     let one = |l: Option<Len>, y_axis: bool| -> Option<Len> {
         let Some(Len::Anchor(i)) = l else { return l };
-        vcx.doc.anchor_frame.used_last.set(true);
         let mut f = anchor_get(i, vcx);
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             // `anchor()` в размере негодна (§anchor-fn: только вставки).
             let kind = cur.size?;
-            let hit = last_lookup(cur.name.as_deref(), &default_anchor, seq, vcx).map(|r| {
-                // Размер решается ДО раскладки, стека трансформов коробки ещё
-                // нет: под трансформированным предком считаем цепочку общей
-                // (до-трансформная рамка), без него — отображённую
-                // (`transform-002/009`: `anchor-size(width)` = 100, а не 50).
-                let b = if r.tf_top != 0
-                    && !(inherited.transform_ancestor || inherited.transform.is_some())
-                {
-                    r.rect_tf
-                } else {
-                    r.rect
-                };
-                let width = match kind {
-                    AnchorSize::Width => true,
-                    AnchorSize::Height => false,
-                    AnchorSize::Implicit => !y_axis,
-                    AnchorSize::Block => cb_vertical,
-                    AnchorSize::Inline => !cb_vertical,
-                    AnchorSize::SelfBlock => own_vertical,
-                    AnchorSize::SelfInline => !own_vertical,
-                };
-                let v = if width { b.size.width } else { b.size.height };
-                f32::from(v) + cur.add
-            });
+            let hit = plan
+                .as_ref()
+                .and_then(|p| p.rec_current(cur.name.as_deref()))
+                .map(|r| {
+                    // Размер решается ДО раскладки, стека трансформов коробки ещё
+                    // нет: под трансформированным предком считаем цепочку общей
+                    // (до-трансформная рамка), без него — отображённую
+                    // (`transform-002/009`: `anchor-size(width)` = 100, а не 50).
+                    let b = if r.tf_top != 0
+                        && !(inherited.transform_ancestor || inherited.transform.is_some())
+                    {
+                        r.rect_tf
+                    } else {
+                        r.rect
+                    };
+                    let width = match kind {
+                        AnchorSize::Width => true,
+                        AnchorSize::Height => false,
+                        AnchorSize::Implicit => !y_axis,
+                        AnchorSize::Block => cb_vertical,
+                        AnchorSize::Inline => !cb_vertical,
+                        AnchorSize::SelfBlock => own_vertical,
+                        AnchorSize::SelfInline => !own_vertical,
+                    };
+                    let v = if width { b.size.width } else { b.size.height };
+                    f32::from(v) + cur.add
+                });
             match (hit, cur.fallback) {
                 (Some(v), _) => return Some(Len::Px(v)),
                 (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),
@@ -143,23 +75,16 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     // §position-area: клетка «makes that the box's containing block», и
     // доли размеров, полей и отбивок решаются от неё, а не от исходного
     // содержащего блока (заметка спеки: «like max-height: 100%»). Раскладка
-    // клетки не знает — доли переводятся в точки здесь, по клетке прошлого
-    // кадра, ДО растяжки ниже (она вычитает уже решённые поля и отбивки).
+    // клетки не знает — доли переводятся в точки здесь, по клетке текущей
+    // пробы, ДО растяжки ниже (она вычитает уже решённые поля и отбивки).
     // Поля и отбивки — от строчного размера клетки по письму содержащего
     // блока (`position-area-percents-001`: 5% от 80 в горизонтальном, от 40
     // в `vertical-rl`); размеры — по своей оси (`transform-001`:
     // `width: 100%` = ширина якоря, а не 800 окна).
     if c.position_area.is_some()
         && default_anchor.is_some()
-        && let Some((cw, ch)) = vcx
-            .doc
-            .anchor_frame
-            .cell_last
-            .borrow()
-            .get(&c.anchor_key)
-            .copied()
+        && let Some((cw, ch)) = current.and_then(|v| v.cell)
     {
-        vcx.doc.anchor_frame.used_last.set(true);
         let of = |l: Option<Len>, base: f32| match l {
             Some(Len::Pct(p)) => Some(Len::Px(p * base)),
             other => other,
@@ -186,16 +111,16 @@ pub fn resolve_sizes(c: &mut Computed, inherited: &Computed, vcx: ValueCx<'_>) {
     c.height = one(c.height, true);
     c.min_height = one(c.min_height, true);
     c.max_height = one(c.max_height, true);
-    if c.position_area.is_none() {
-        fill_anchor_pairs(c, Some(is_grid(inherited)), vcx);
-    }
-    if c.position_area.is_none() || default_anchor.is_none() {
+    // §position-area: без default anchor box область не действует;
+    // явные anchor()-вставки продолжают задавать обычный IMCB.
+    let area_active = c.position_area.is_some()
+        && default_anchor.is_some()
+        && current.is_none_or(|v| v.cell.is_some());
+    if !area_active {
+        fill_anchor_pairs(c, Some(is_grid(inherited)), current.and_then(|v| v.area));
         return;
     }
-    if c.align_self == Some(Align::Stretch) || c.justify_self == Some(Align::Stretch) {
-        vcx.doc.anchor_frame.used_last.set(true);
-    }
-    let Some((w, h)) = vcx.doc.anchor_frame.last_area(c.anchor_key) else {
+    let Some((w, h)) = current.and_then(|v| v.area) else {
         return;
     };
     let pxv = px_lossy_zero;

@@ -44,10 +44,12 @@ pub fn layer(c: &Computed, vcx: ValueCx<'_>) -> Option<AnyElement> {
         px_of(border.left),
     ];
     let outset = std::array::from_fn::<_, 4, _>(|i| image.outset[i].px(base[i], 0.0));
-    let src = crate::paint::background::computed_source(
+    let src = crate::resources::css_images::computed_source(
         image.src.as_ref()?,
         c.image_orient_none != Some(true),
-    )?;
+        vcx,
+    )
+    .map(crate::paint::background::Source::from_cpu)?;
     let pixelated = c.image_pixelated == Some(true);
     Some(
         gpui::canvas_with_unrounded_bounds(

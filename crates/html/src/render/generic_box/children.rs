@@ -101,7 +101,7 @@ pub(crate) fn generic_children(
     // `auto`, §5.2; `styled_div_with` срез не ставит): без этого гейта
     // бюджет абзаца счётного режима поставил бы «…» (`line-clamp-039`).
     let is_clamp = (e.style.clamp_lines().is_some()
-        || (e.style.clamp_auto == Some(true)
+        || (e.style.clamp_by_height()
             && e.style.clamp_block_container()
             && auto_clamp_limit(&merged).is_some()))
         && !multicol_container(&e.style);
@@ -197,5 +197,5 @@ pub(crate) fn generic_children(
         Some(plan) => plan.wrap(child, vcx),
         None => child,
     };
-    crate::layout::positioned::anchor::place::place(child, &merged, inherited, vcx)
+    crate::layout::positioned::anchor::place::place_in_context(child, &merged, inherited, &opts.cx)
 }

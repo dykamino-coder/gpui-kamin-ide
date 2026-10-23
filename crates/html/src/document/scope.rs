@@ -11,6 +11,7 @@ impl Document {
     /// вызывает `render::*` по `nodes()` (стопка страниц) сам.
     pub fn frame_opts(&self, opts: &crate::RenderOpts) -> crate::RenderOpts {
         self.state.begin_frame();
+        super::image_values::refresh(self.state.frame_values());
         let mut opts = opts.clone();
         opts.cx.clamp_input = None;
         opts.cx.doc = crate::layout::cx::BuildDoc(self.state.clone());

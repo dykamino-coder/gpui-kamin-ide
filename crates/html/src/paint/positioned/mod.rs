@@ -3,3 +3,5 @@
 
 mod source_paint;
 pub(crate) use source_paint::split as split_source_paint;
+
+pub(crate) use source_paint::DeferredPaint;

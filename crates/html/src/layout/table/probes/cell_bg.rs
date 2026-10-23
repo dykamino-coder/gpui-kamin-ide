@@ -1,9 +1,8 @@
 //! Пробы фона ячеек, рамки сетки и кромок: что красят слой фонов и художник кромок (`paint::table`).
 
 use super::{CellEdges, EdgeCell};
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::layout::probe::Sink;
+use gpui::{AnyElement, Bounds, Pixels};
 
 /// Фоны ячеек сросшейся модели: прямоугольник и цвет, снятые пробой ячейки
 /// на ПОДГОТОВКЕ кадра; красит их `CellBgPainter` — слой, лежащий в сетке
@@ -13,22 +12,12 @@ use std::rc::Rc;
 /// «Collapsed borders paint *after* children have painted their
 /// backgrounds»), а строчное, плавающее и позиционированное содержимое
 /// ячеек — в более поздних фазах, то есть поверх кромок.
-pub type CellBgs = Rc<RefCell<Vec<(Bounds<Pixels>, gpui::Hsla)>>>;
+pub type CellBgs = Sink<(Bounds<Pixels>, gpui::Hsla)>;
 
 /// Проба фона ячейки: холст во всю коробку ячейки записывает её рамку и
 /// цвет на подготовке кадра (та же механика, что `edge_probe`).
 pub fn cell_bg_probe(bgs: CellBgs, colour: gpui::Hsla) -> AnyElement {
-    gpui::canvas(
-        move |bounds: Bounds<Pixels>, _, _| {
-            bgs.borrow_mut().push((bounds, colour));
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    bgs.record(move |bounds| (bounds, colour))
 }
 
 /// Проба кромок: как проба фона, пишет в PREPAINT границы и рамки ячейки.
@@ -66,34 +55,27 @@ pub fn edge_probe(
     // once, from the grid line it is centred on (CSS 2.1 §17.6.2). Bands
     // built from independently rounded cell edges left a device-pixel gap
     // between two bands whose exact edges coincide.
-    gpui::canvas_with_unrounded_bounds(
-        move |bounds: Bounds<Pixels>, _, _| {
-            // Вжим границ внутрь: линии рамки самой таблицы лежат на
-            // ВНУТРЕННИХ краях её рамочного места.
-            let bounds = Bounds {
-                origin: gpui::point(
-                    bounds.origin.x + gpui::px(inset[3]),
-                    bounds.origin.y + gpui::px(inset[0]),
-                ),
-                size: gpui::size(
-                    bounds.size.width - gpui::px(inset[1] + inset[3]),
-                    bounds.size.height - gpui::px(inset[0] + inset[2]),
-                ),
-            };
-            edges.borrow_mut().push(EdgeCell {
-                bounds,
-                widths,
-                colors,
-                styles,
-                source,
-                doc_ix,
-            });
-        },
-        |_, _, _, _| {},
-    )
-    .absolute()
-    .top_0()
-    .left_0()
-    .size_full()
-    .into_any_element()
+    edges.record_with(move |g, window| {
+        let bounds = g.origin_aligned(gpui::px(0.5 / window.scale_factor() + 1e-4));
+        // Вжим границ внутрь: линии рамки самой таблицы лежат на
+        // ВНУТРЕННИХ краях её рамочного места.
+        let bounds = Bounds {
+            origin: gpui::point(
+                bounds.origin.x + gpui::px(inset[3]),
+                bounds.origin.y + gpui::px(inset[0]),
+            ),
+            size: gpui::size(
+                bounds.size.width - gpui::px(inset[1] + inset[3]),
+                bounds.size.height - gpui::px(inset[0] + inset[2]),
+            ),
+        };
+        EdgeCell {
+            bounds,
+            widths,
+            colors,
+            styles,
+            source,
+            doc_ix,
+        }
+    })
 }

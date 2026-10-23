@@ -18,9 +18,11 @@ use std::cell::RefCell;
 
 mod scope;
 pub(crate) use scope::LayerScope;
-mod deferred;
 
-use super::oof::OofHost;
+use super::oof::{OofQueue, Pending};
+mod probe_scope;
+mod retained;
+pub(crate) use retained::Escaped;
 
 /// Which boxes a nearest-containing-block layer takes.
 const ABS: u8 = 1;
@@ -33,38 +35,40 @@ struct CbLayer {
     /// boxes whose NEAREST containing block is its owner — the CB-ancestor
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
-    taken: OofHost,
+    taken: OofQueue,
 }
 
 #[derive(Default)]
 pub struct Positioning {
     /// Layers of the nearest containing blocks (positioned boxes).
     cb: RefCell<Vec<CbLayer>>,
+    pending: RefCell<Vec<Pending>>,
     /// Layers of the INITIAL containing block: the document, a scroll strip
     /// block, a nested document. By §10.1 an out-of-flow box without a
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
-    icb: RefCell<Vec<OofHost>>,
+    icb: RefCell<Vec<OofQueue>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
-    late: RefCell<Vec<OofHost>>,
+    late: RefCell<Vec<OofQueue>>,
     /// Content boxes of flex containers measured in this pass's prepaint
     /// (`absolute_overflow`): an abspos child with safe self-alignment is
     /// placed against its flex parent's content box and its containing block
     /// once both exist. Keyed by the container's node id.
-    flex_content: std::rc::Rc<RefCell<std::collections::HashMap<u64, gpui::Bounds<gpui::Pixels>>>>,
+    pub(in crate::layout::positioned) flex_content:
+        crate::layout::probe::Sink<(u64, gpui::Bounds<gpui::Pixels>)>,
 }
 
 impl Positioning {
-    /// Record the content box of flex container `id` (prepaint).
-    pub(crate) fn note_flex_content(&self, id: u64, content: gpui::Bounds<gpui::Pixels>) {
-        self.flex_content.borrow_mut().insert(id, content);
-    }
-
     /// The content box of flex container `id`, once its prepaint ran.
     pub(crate) fn flex_content(&self, id: u64) -> Option<gpui::Bounds<gpui::Pixels>> {
-        self.flex_content.borrow().get(&id).copied()
+        self.flex_content
+            .borrow()
+            .iter()
+            .rev()
+            .find(|(key, _)| *key == id)
+            .map(|(_, rect)| *rect)
     }
 
     /// Open a containing-block layer around the children of a positioned
@@ -97,7 +101,9 @@ impl Positioning {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
-            taken: OofHost::default(),
+            taken: OofQueue::with_pending(
+                self.pending.borrow().last().cloned().unwrap_or_default(),
+            ),
         });
     }
 
@@ -148,11 +154,14 @@ impl Positioning {
     /// Open an initial-containing-block layer: the document, a strip block or
     /// a nested document.
     pub fn icb_open(&self) {
-        self.icb.borrow_mut().push(OofHost::default());
+        let queue = OofQueue::initial();
+        self.pending.borrow_mut().push(queue.pending());
+        self.icb.borrow_mut().push(queue);
     }
 
     /// Take what the top ICB layer collected and close it.
     pub fn icb_close(&self) -> Vec<AnyElement> {
+        self.pending.borrow_mut().pop();
         let layer = self.icb.borrow_mut().pop();
         layer.unwrap_or_default().place(icb_place)
     }
@@ -179,7 +188,9 @@ impl Positioning {
 
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
-        self.late.borrow_mut().push(OofHost::default());
+        self.late.borrow_mut().push(OofQueue::with_pending(
+            self.pending.borrow().last().cloned().unwrap_or_default(),
+        ));
     }
 
     /// Take what the top paint layer collected and close it.

@@ -5,7 +5,8 @@ use crate::style::computed::ImageSource;
 mod dilation;
 pub(super) use dilation::dilate;
 
-use crate::paint::background::computed_source;
+use crate::resources::css_images::computed_source;
+use crate::resources::images::svg_raster::RasterRequest;
 use crate::style::values::basic_shape::{ShapeBox, rrect_of, shape_params, svg_path_of};
 
 /// Альфа-маска формы в холсте margin-box.
@@ -61,10 +62,11 @@ pub(super) fn shape_mask(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="{cols}" height="{rows}" viewBox="0 0 {cols} {rows}"><path d="{}" fill="#000000" fill-rule="{}"/></svg>"##,
             d.0, d.1
         );
-        let img = crate::svg::raster::rasterize(&markup, cols as f32, rows as f32)?;
-        let bytes = img.as_bytes(0)?;
-        let sz = img.size(0);
-        let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+        let img = vcx.doc.images.borrow().rasterize_svg(
+            &markup,
+            RasterRequest::new(cols as f32, rows as f32, 2.0, 0.0),
+        )?;
+        let (iw, ih) = (img.width as usize, img.height as usize);
         // A CSS pixel cell covers a block of raster samples (`DENSITY`). Its
         // first sample alone saw a diagonal edge on one side of the cell but
         // not its mirror image, so a symmetric polygon got asymmetric
@@ -85,7 +87,7 @@ pub(super) fn shape_mask(
                 );
                 out[y * cols + x] = (y0..y1.max(y0 + 1))
                     .flat_map(|sy| (x0..x1.max(x0 + 1)).map(move |sx| (sy, sx)))
-                    .map(|(sy, sx)| bytes[(sy * iw + sx) * 4 + 3])
+                    .map(|(sy, sx)| img.alpha_at(sx as u32, sy as u32).unwrap_or(0))
                     .max()
                     .unwrap_or(0);
             }
@@ -94,10 +96,8 @@ pub(super) fn shape_mask(
     }
     // Картинка или градиент: альфа в content-box.
     if let Some(image) = image {
-        let src = computed_source(image, true)?.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx)?;
-        let bytes = src.as_bytes(0)?;
-        let sz = src.size(0);
-        let (iw, ih) = (sz.width.0.max(1) as usize, sz.height.0.max(1) as usize);
+        let src = computed_source(image, true, vcx)?.raster((b.cw.max(1.0), b.ch.max(1.0)), vcx)?;
+        let (iw, ih) = (src.width as usize, src.height as usize);
         let mut out = vec![0u8; cols * rows];
         for y in 0..rows {
             let fy = y as f32 - b.cy;
@@ -112,7 +112,7 @@ pub(super) fn shape_mask(
                     continue;
                 }
                 let sx = ((fx / b.cw.max(1.0)) * iw as f32) as usize;
-                out[y * cols + x] = bytes[(sy * iw + sx.min(iw - 1)) * 4 + 3];
+                out[y * cols + x] = src.alpha_at(sx.min(iw - 1) as u32, sy as u32)?;
             }
         }
         return Some(out);

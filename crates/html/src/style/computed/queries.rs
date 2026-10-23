@@ -24,6 +24,25 @@ impl Computed {
         self.webkit_box != Some(true) || self.webkit_box_vertical == Some(true)
     }
 
+    /// Обрезка по высоте коробки: `max-lines` с `auto` (начальное значение)
+    /// у контейнера обрезки — `continue: collapse` или `-webkit-legacy` у
+    /// `-webkit-box` по вертикали (css-overflow-4 §5.3-5.4). `line-clamp: 4`
+    /// режет только по строкам, `line-clamp: 4 auto` — и по высоте.
+    pub fn clamp_by_height(&self) -> bool {
+        let legacy_ok = self.webkit_box == Some(true) && self.webkit_box_vertical == Some(true);
+        self.clamp_auto != Some(false)
+            && (self.clamp_continue == Some(true) || (self.clamp_legacy == Some(true) && legacy_ok))
+    }
+
+    /// Знак обрыва `block-ellipsis` для абзаца: `None` — `ellipsis` (U+2026),
+    /// пустая строка — `no-ellipsis` (начальное значение у корня).
+    pub fn used_block_ellipsis(&self) -> Option<String> {
+        match &self.clamp_mark {
+            Some(mark) => mark.clone(),
+            None => Some(String::new()),
+        }
+    }
+
     /// Тени `box-shadow` с используемым цветом: `currentcolor` — цвет текста
     /// (css-backgrounds-3 §box-shadow). `inset` — внутренние.
     pub fn resolved_shadows(&self, inset: bool) -> Vec<(Shadow, Color)> {

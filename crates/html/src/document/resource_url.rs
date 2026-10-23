@@ -13,14 +13,9 @@ pub(crate) fn resolve(authored: &str, base: Option<&Url>) -> String {
 }
 
 pub(crate) fn read(resource: &str) -> Option<Vec<u8>> {
-    if resource.starts_with("data:") {
-        return crate::paint::background::read_bytes(resource);
-    }
-    if resource.starts_with("file:") {
-        let path = Url::parse(resource).ok()?.to_file_path().ok()?;
-        return std::fs::read(path).ok();
-    }
-    std::fs::read(resource).ok()
+    use crate::resources::loader::{ResourceLoader, ResourceUrl, SyncLoader};
+    let (url, _) = ResourceUrl::resolve(resource, None);
+    Some(SyncLoader.load(&url).ok()?.bytes.to_vec())
 }
 
 #[cfg(test)]

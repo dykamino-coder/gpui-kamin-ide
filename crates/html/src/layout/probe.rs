@@ -1,8 +1,17 @@
-//! Пробы раскладки, собираемые внутри хоста до освобождения layout-движка.
+//! Пробы одного кадра: Sink читает геометрию в prepaint, Measure — внутри layout-хоста.
+//! LayoutId не переносится через границу временного движка; paint читает только значения.
 
-use gpui::{AnyElement, Bounds, Pixels};
-use std::{cell::RefCell, rc::Rc};
+mod measure;
+mod record;
+use gpui::{AnyElement, Bounds, Pixels, Window};
+pub(crate) use measure::{Measure, MeasureScope};
+pub(crate) use record::{Geometry, full_box};
+use std::{
+    cell::{Ref, RefCell},
+    rc::Rc,
+};
 
+#[derive(Debug)]
 pub struct Sink<T>(Rc<RefCell<Vec<T>>>);
 
 impl<T> Clone for Sink<T> {
@@ -15,71 +24,56 @@ impl<T> Default for Sink<T> {
         Self(Rc::new(RefCell::new(Vec::new())))
     }
 }
-impl<T: 'static> Sink<T> {
+impl<T> Sink<T> {
     pub(crate) fn push(&self, value: T) {
         self.0.borrow_mut().push(value);
     }
-
     pub(crate) fn take(&self) -> Vec<T> {
         std::mem::take(&mut *self.0.borrow_mut())
     }
-}
-
-/// Проба раскладки: запись снимается до уничтожения временного layout-движка.
-pub(crate) fn layout_record<T: 'static>(sink: Sink<(gpui::LayoutId, T)>, value: T) -> AnyElement {
-    use crate::hooks::IntoHooked;
-    LayoutRecord {
-        sink,
-        value: Some(value),
+    pub(crate) fn fork(&self) -> Self
+    where
+        T: Clone,
+    {
+        Self(Rc::new(RefCell::new(self.borrow().clone())))
     }
-    .hooked()
-}
-
-struct LayoutRecord<T> {
-    sink: Sink<(gpui::LayoutId, T)>,
-    value: Option<T>,
-}
-
-impl<T: 'static> crate::hooks::Hooks for LayoutRecord<T> {
-    type Layout = ();
-    type Prepaint = ();
-
-    fn request_layout(
-        &mut self,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> (gpui::LayoutId, ()) {
-        let mut style = gpui::Style {
-            position: gpui::Position::Absolute,
-            ..Default::default()
-        };
-        style.inset.top = gpui::px(0.).into();
-        style.inset.left = gpui::px(0.).into();
-        style.size = gpui::size(gpui::relative(1.).into(), gpui::relative(1.).into());
-        let id = window.request_layout(style, [], cx);
-        if let Some(value) = self.value.take() {
-            self.sink.push((id, value));
-        }
-        (id, ())
+    pub(crate) fn borrow(&self) -> Ref<'_, Vec<T>> {
+        self.0.borrow()
     }
-
-    fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), _: &mut gpui::Window, _: &mut gpui::App) {
+}
+impl<T: 'static> Sink<T> {
+    /// Все записи завершаются до paint, включая записи вложенных OOF-хостов.
+    pub(crate) fn record(&self, f: impl FnOnce(Bounds<Pixels>) -> T + 'static) -> AnyElement {
+        self.record_with(move |g, _| f(g.bounds))
     }
-
-    fn paint(
-        &mut self,
-        _: Bounds<Pixels>,
-        _: &mut (),
-        _: &mut (),
-        _: &mut gpui::Window,
-        _: &mut gpui::App,
-    ) {
+    pub(crate) fn record_with(
+        &self,
+        f: impl FnOnce(Geometry, &mut Window) -> T + 'static,
+    ) -> AnyElement {
+        self.record_styled(full_box(), f)
+    }
+    pub(crate) fn record_styled(
+        &self,
+        style: gpui::Style,
+        f: impl FnOnce(Geometry, &mut Window) -> T + 'static,
+    ) -> AnyElement {
+        record::prepaint(self.clone(), style, f)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Sink;
+    #[test]
+    fn candidate_forks_keep_prior_geometry_but_never_publish_rejected_records() {
+        let live = Sink::default();
+        live.push((1, "parent"));
+        let candidate = live.fork();
+        candidate.push((2, "rejected"));
+        live.push((3, "selected"));
+        assert_eq!(candidate.take(), [(1, "parent"), (2, "rejected")]);
+        assert_eq!(live.take(), [(1, "parent"), (3, "selected")]);
+    }
 
     #[test]
     fn taking_a_probe_batch_keeps_clones_connected() {

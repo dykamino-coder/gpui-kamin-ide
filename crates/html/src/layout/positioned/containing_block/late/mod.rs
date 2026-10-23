@@ -35,25 +35,9 @@ impl Hooks for LatePlace {
             origin: window.layout_origin_unrounded(*layout_id),
             size: window.layout_size_unrounded(*layout_id),
         };
-        let now = self.spot.get();
-        let shift = late_shift(bounds, now);
-        // Ось, которую задал содержащий блок, раскладка уже разрешила — щуп
-        // её не трогает; по свободной оси к дырке добавляется поле (§10.3.7:
-        // от статической позиции коробку отодвигает `margin`).
-        let shift = gpui::point(
-            if now.fixed_axes.0 {
-                px(0.0)
-            } else {
-                shift.x + px(now.free_margin.0)
-            },
-            if now.fixed_axes.1 {
-                px(0.0)
-            } else {
-                shift.y + px(now.free_margin.1)
-            },
-        );
+        let placed = placed_bounds(bounds, self.spot.get());
         let child = &mut self.child;
-        window.set_layout_placed_origin(*layout_id, bounds.origin + shift);
+        window.set_layout_placed_origin(*layout_id, placed.origin);
         child.prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
     }
 
@@ -65,10 +49,28 @@ impl Hooks for LatePlace {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Заместитель своего контекста краски не заводит (сдвиг — в
-        // подготовке): собиратель шага 8 (`gpui::PaintLast`) проходит его
-        // насквозь, как обычную коробку.
-        let child = &mut self.child;
-        gpui::paint_reopen(|| child.paint(window, cx));
+        gpui::paint_reopen(|| self.child.paint(window, cx));
     }
+}
+
+/// Та же статическая позиция нужна layout-пробе до запуска prepaint.
+pub(crate) fn placed_bounds(mut bounds: Bounds<Pixels>, now: super::Spot) -> Bounds<Pixels> {
+    let shift = late_shift(bounds, now);
+    // Ось, которую задал содержащий блок, раскладка уже разрешила — щуп
+    // её не трогает; по свободной оси к дырке добавляется поле (§10.3.7:
+    // от статической позиции коробку отодвигает `margin`).
+    let shift = gpui::point(
+        if now.fixed_axes.0 {
+            px(0.0)
+        } else {
+            shift.x + px(now.free_margin.0)
+        },
+        if now.fixed_axes.1 {
+            px(0.0)
+        } else {
+            shift.y + px(now.free_margin.1)
+        },
+    );
+    bounds.origin += shift;
+    bounds
 }

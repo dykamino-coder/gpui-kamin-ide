@@ -1,6 +1,6 @@
 //! Проба якорного элемента: ключ, неявный якорь, регистрация (probe_for).
 
-use super::{AnchorRec, frame::note_checked, reframe_if_stale, tf_map};
+use super::{AnchorRec, tf_map};
 use crate::document::state::ValueCx;
 use crate::dom::Node;
 use crate::style::computed::{Computed, PositionAnchor};
@@ -51,6 +51,16 @@ pub fn probe_for(
         return None;
     }
     let id = e.node_id;
+    if matches!(
+        c.position,
+        Some(crate::style::computed::Position::Absolute | crate::style::computed::Position::Fixed)
+    ) {
+        vcx.doc
+            .anchor_frame
+            .out_of_flow
+            .borrow_mut()
+            .insert(id, c.anchor_seq);
+    }
     let seq = c.anchor_seq;
     let own_cb = c.cb_node;
     // CSS Anchor Positioning 1 resolves logical border-box edges before snapping.
@@ -135,7 +145,7 @@ pub(crate) fn record(
         hidden,
     } = who;
     // Маска обрезки в точке пробы — пересечение `overflow`-обрезок
-    // всех предков: по ней `AnchorPlace` решает, обрезан ли якорь
+    // всех предков: по ней `place_one` решает, обрезан ли якорь
     // промежуточными коробками (§position-visibility).
     // Рамка раскладки — до трансформов: `Transformed` матрицу
     // применяет только на отрисовке. Отображённую снимаем здесь же
@@ -153,13 +163,6 @@ pub(crate) fn record(
         tf_top,
     };
     {
-        let m = &vcx.doc.anchor_frame.named;
-        let mut m = m.borrow_mut();
-        for n in names {
-            m.insert(n.clone(), rec);
-        }
-    };
-    {
         let v = &vcx.doc.anchor_frame.named_seq;
         let mut v = v.borrow_mut();
         for n in names {
@@ -168,26 +171,5 @@ pub(crate) fn record(
     };
     if implicit {
         vcx.doc.anchor_frame.implicit.borrow_mut().insert(id, rec);
-    }
-    if vcx.doc.anchor_frame.used_last.get() {
-        let same = |r: &AnchorRec| r.rect == rec.rect && r.rect_tf == rec.rect_tf;
-        let stale = names.iter().any(|n| !{
-            let v = &vcx.doc.anchor_frame.last_named;
-            v.borrow()
-                .iter()
-                .any(|(k, s, r)| k == n && *s == seq && same(r))
-        }) || (implicit
-            && !vcx
-                .doc
-                .anchor_frame
-                .last_implicit
-                .borrow()
-                .get(&id)
-                .is_some_and(same));
-        if stale {
-            reframe_if_stale(window, vcx);
-        } else {
-            note_checked(vcx);
-        }
     }
 }

@@ -9,7 +9,7 @@ use crate::layout::positioned::absolute_overflow_math::{Span, place};
 use crate::layout::positioned::containing_block::Positioning;
 use crate::style::computed::{Align, Computed, Display, FlexDir, Position};
 use crate::style::values::value::Len;
-use gpui::{AnyElement, App, Bounds, IntoElement, Pixels, Styled, Window, point, px};
+use gpui::{AnyElement, App, Bounds, Pixels, Window, point, px};
 use std::rc::Rc;
 
 /// Probe of a flex container's content box; it records into the build
@@ -24,35 +24,26 @@ pub(crate) fn probe(
     }
     let id = style.self_node;
     let padding = style.padding;
-    let positioning = positioning.clone();
+    let sink = positioning.flex_content.clone();
     let values = vcx.keep();
-    Some(
-        gpui::canvas(
-            move |bounds: Bounds<Pixels>, window, _: &mut App| {
-                let vcx = values.vcx();
-                let side = |length: Option<Len>| {
-                    crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
-                        .to_pixels(bounds.size.width.into(), window.rem_size())
-                };
-                let left = side(padding.left);
-                let top = side(padding.top);
-                let content = Bounds::new(
-                    bounds.origin + point(left, top),
-                    gpui::size(
-                        (bounds.size.width - left - side(padding.right)).max(px(0.0)),
-                        (bounds.size.height - top - side(padding.bottom)).max(px(0.0)),
-                    ),
-                );
-                positioning.note_flex_content(id, content);
-            },
-            |_, _, _, _| {},
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element(),
-    )
+    Some(sink.record_with(move |g, window| {
+        let bounds = g.bounds;
+        let vcx = values.vcx();
+        let side = |length: Option<Len>| {
+            crate::paint::apply::len_to_gpui(length.unwrap_or(Len::Px(0.0)), vcx)
+                .to_pixels(bounds.size.width.into(), window.rem_size())
+        };
+        let left = side(padding.left);
+        let top = side(padding.top);
+        let content = Bounds::new(
+            bounds.origin + point(left, top),
+            gpui::size(
+                (bounds.size.width - left - side(padding.right)).max(px(0.0)),
+                (bounds.size.height - top - side(padding.bottom)).max(px(0.0)),
+            ),
+        );
+        (id, content)
+    }))
 }
 
 pub(crate) struct Plan {

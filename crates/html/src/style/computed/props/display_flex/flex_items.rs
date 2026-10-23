@@ -1,6 +1,7 @@
-//! Computed::apply_display_flex, продолжение цепочки: flex-wrap, flex-*, flex-basis,
+//! Computed::apply_display_flex, продолжение цепочки: flex-wrap, flex-grow/-shrink, flex-basis,
 //! align-self/align-items. Ветви в исходном порядке; не совпавший ключ уходит в apply_gap_place.
 
+use super::values;
 use super::*;
 use crate::document::state::ValueCx;
 
@@ -14,36 +15,12 @@ impl Computed {
     ) {
         match key {
             "flex-wrap" => {
-                // css-flexbox-2 §5.2: `nowrap | [ wrap | wrap-reverse ] || balance`;
-                // `balance` без `wrap*` ведёт себя как `wrap`. Невалидное
-                // сочетание (`nowrap balance`, два режима) отбрасывается.
-                let (mut wrap, mut reverse, mut balance, mut nowrap, mut modes, mut valid) =
-                    (false, false, 0u8, false, 0u8, true);
-                for word in v.split_ascii_whitespace() {
-                    match word {
-                        "wrap" => modes += 1,
-                        "wrap-reverse" => {
-                            modes += 1;
-                            reverse = true;
-                        }
-                        "balance" => balance += 1,
-                        "nowrap" => nowrap = true,
-                        _ => valid = false,
-                    }
-                }
-                wrap |= modes > 0 || balance > 0;
-                if !v.is_empty()
-                    && v.split_whitespace().filter(|w| *w == "nowrap").count() <= 1
-                    && valid
-                    && modes <= 1
-                    && balance <= 1
-                    && (!nowrap || (modes == 0 && balance == 0))
-                {
-                    self.flex_wrap = accept_parsed!(self, Some(wrap));
+                if let Some(w) = values::flex_wrap(v) {
+                    self.flex_wrap = accept_parsed!(self, Some(w.wrap));
                     // Обратный перенос кладёт строки с другого края: одна строка
                     // в контейнере уезжает вниз, а не остаётся вверху.
-                    self.flex_wrap_reverse = Some(reverse);
-                    self.flex_balance = Some(balance > 0);
+                    self.flex_wrap_reverse = Some(w.reverse);
+                    self.flex_balance = Some(w.balance);
                 }
             }
             "flex-line-count" => {
@@ -69,27 +46,10 @@ impl Computed {
                     self.flex_shrink = accept_parsed!(self, Some(g));
                 }
             }
-            // `flex: 1` — сокращение для grow/shrink/basis; берём первое число.
-            // `flex: <рост> <сжатие> <основа>` со всеми сокращёнными формами.
-            // Раньше бралось только первое число, и `flex: 0 0 200px` терял
-            // фиксированную основу — блок начинал растягиваться.
-            "flex" => {
-                let flex = apply_parsed!(self, flex_value(v, vcx));
-                self.flex_grow = flex.map(|f| f.0);
-                self.flex_shrink = flex.map(|f| f.1);
-                self.flex_basis = flex.map(|f| f.2);
-                self.basis_content = flex.map(|f| f.3);
-            }
-            "flex-basis" if v == "content" => {
-                self.flex_basis = accept_parsed!(self, Some(Len::Auto));
-                self.basis_content = Some(true);
-            }
             "flex-basis" => {
-                if let Some(l) = Len::parse(v, vcx)
-                    && !matches!(l, Len::Px(x) | Len::Pct(x) if x < 0.0)
-                {
-                    self.flex_basis = accept_parsed!(self, Some(l));
-                    self.basis_content = Some(false);
+                if let Some((basis, content)) = values::flex_basis(v, vcx) {
+                    self.flex_basis = accept_parsed!(self, Some(basis));
+                    self.basis_content = Some(content);
                 }
             }
             "align-self" if v.trim() == "inherit" => {
@@ -156,37 +116,4 @@ impl Computed {
             _ => self.apply_gap_place(key, v, hit, vcx),
         }
     }
-}
-
-fn flex_value(v: &str, vcx: ValueCx<'_>) -> Option<(f32, f32, Len, bool)> {
-    let basis = |v: &str| {
-        if v == "content" {
-            Some((Len::Auto, true))
-        } else {
-            if crate::style::values::value::number(v, vcx).is_some_and(|n| n != 0.0) {
-                return None;
-            }
-            size_range::parse_nonnegative_size(v, vcx).map(|len| (len, false))
-        }
-    };
-    let tokens = split_outside_parens(v);
-    let (g, s, (b, content)) = match tokens.as_slice() {
-        [one] if one == "auto" => (1.0, 1.0, (Len::Auto, false)),
-        [one] if one == "initial" => (0.0, 1.0, (Len::Auto, false)),
-        [one] if one == "none" => (0.0, 0.0, (Len::Auto, false)),
-        [one] => match flex_factor(one, vcx) {
-            Some(g) => (g, 1.0, (Len::Pct(0.0), false)),
-            None => (1.0, 1.0, basis(one)?),
-        },
-        [a, b] => {
-            let g = flex_factor(a, vcx)?;
-            match flex_factor(b, vcx) {
-                Some(s) => (g, s, (Len::Pct(0.0), false)),
-                None => (g, 1.0, basis(b)?),
-            }
-        }
-        [a, b, c] => (flex_factor(a, vcx)?, flex_factor(b, vcx)?, basis(c)?),
-        _ => return None,
-    };
-    Some((g, s, b, content))
 }

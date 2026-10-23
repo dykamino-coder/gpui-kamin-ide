@@ -36,6 +36,7 @@ pub fn render(nodes: &[Node], opts: &RenderOpts) -> Vec<AnyElement> {
     let viewport_opts = opts.inner(|cx| cx.paint_viewport = opts.viewport);
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
+    crate::document::image_values::prepare(nodes, vcx);
     let stripped = without_inert_clear(nodes);
     let nodes: &[Node] = stripped.as_deref().unwrap_or(nodes);
     crate::text::metrics::set_doc_family(&opts.text.font_family, vcx);
@@ -87,6 +88,7 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     let opts = &*viewport_opts;
     let vcx = opts.cx.vcx();
     let node = nodes.get(index)?;
+    crate::document::image_values::prepare(std::slice::from_ref(node), vcx);
     crate::interactive::frame::frame_sanitize(vcx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();

@@ -23,13 +23,15 @@ impl Grouped {
     pub(crate) fn mask_image_source(
         &self,
         image: &ImageSource,
+        vcx: ValueCx<'_>,
     ) -> Option<crate::paint::background::Source> {
         if matches!(image, ImageSource::Invalid) {
             // CSS Masking 1 section 7.1: none is a transparent black layer.
-            return gpui::bgra_bytes_to_image(1, 1, vec![0; 4])
+            return crate::resources::images::pixels::bgra(1, 1, vec![0; 4])
                 .map(crate::paint::background::Source::Raster);
         }
-        crate::paint::background::computed_source(image, !self.mask_orient_none)
+        crate::resources::css_images::computed_source(image, !self.mask_orient_none, vcx)
+            .map(crate::paint::background::Source::from_cpu)
     }
     pub(crate) fn mask_source(
         &self,
@@ -38,11 +40,14 @@ impl Grouped {
     ) -> Option<crate::paint::background::Source> {
         // CSS Images 3 §5.1 applies image-orientation to decorative images too.
         // Keep oriented and encoded rasters (and their intrinsic sizes) distinct.
-        if self.mask_orient_none {
-            crate::paint::background::source(&format!("exif-none|{source}"), vcx)
-        } else {
-            crate::paint::background::source(source, vcx)
+        if !self.mask_orient_none
+            && let Some(raw) = source.strip_prefix("shape:")
+        {
+            return Some(crate::paint::background::Source::Shape { raw: raw.into() });
         }
+        let oriented = self.mask_orient_none.then(|| format!("exif-none|{source}"));
+        crate::resources::css_images::source(oriented.as_deref().unwrap_or(source), vcx)
+            .map(crate::paint::background::Source::from_cpu)
     }
 }
 
@@ -52,8 +57,18 @@ impl Grouped {
 /// определение АЛЬФОЙ: `<clipPath>` режет покрытием, `<mask>` — по своему
 /// `mask-type` (css-masking-1 §7.2 `match-source`, светимость по умолчанию;
 /// `mask-image-1c`: `mask-type="alpha"` у чёрных прямоугольников).
-pub(super) fn svg_fragment(path: &str, id: &str) -> Option<(String, bool)> {
-    let markup = std::fs::read_to_string(path).ok()?;
+pub(super) fn svg_fragment(path: &str, id: &str, vcx: ValueCx<'_>) -> Option<(String, bool)> {
+    let (crate::resources::images::types::DecodedImage::Vector(vector), _) =
+        vcx.doc.images.borrow_mut().resolve_image(
+            path,
+            crate::resources::images::types::DecodeOptions::default(),
+        )?
+    else {
+        return None;
+    };
+    let (url, _) = vcx.doc.images.borrow().resolve(path);
+    let markup =
+        crate::resources::images::svg_links::with_base(&vector.markup, url.base_url().as_ref());
     for tag in ["mask", "clipPath"] {
         let mut rest = markup.as_str();
         while let Some(at) = rest.find(&format!("<{tag}")) {
@@ -85,6 +100,7 @@ pub(super) fn rasterize_mask_def(
     w: f32,
     h: f32,
     force_white: bool,
+    vcx: ValueCx<'_>,
 ) -> Option<std::sync::Arc<gpui::RenderImage>> {
     // Внутри <clipPath> правило намотки несёт `clip-rule`; растеризатор
     // рисует контур как обычный и читает только `fill-rule`
@@ -101,5 +117,6 @@ pub(super) fn rasterize_mask_def(
         ),
         w,
         h,
+        vcx,
     )
 }

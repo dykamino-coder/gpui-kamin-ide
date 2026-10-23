@@ -3,8 +3,7 @@
 //! 25px выдумывает переполнение. Здесь же сдвиги липких коробок и обращённой проекции
 //! прокрутки, которые щупы вычитают.
 
-use crate::hooks::Hooks;
-use gpui::{AnyElement, App, Bounds, IntoElement, LayoutId, Pixels, Styled, Window, px};
+use gpui::{Pixels, px};
 
 /// A paint-time offset that a sticky box (css-position-3 §sticky-pos) or a
 /// reversed scroll projection applies around its subtree in prepaint. Probes
@@ -52,76 +51,4 @@ pub(crate) fn sticky_shift(link: Option<&StickyShift>) -> gpui::Point<Pixels> {
         at = l.outer.as_ref();
     }
     sum
-}
-
-pub(super) struct ExactProbe {
-    child: AnyElement,
-    sticky: Option<StickyShift>,
-    measure: Box<dyn FnMut(Bounds<Pixels>, Bounds<Pixels>)>,
-}
-impl ExactProbe {
-    pub(super) fn new(
-        sticky: Option<StickyShift>,
-        measure: impl FnMut(Bounds<Pixels>, Bounds<Pixels>) + 'static,
-    ) -> Self {
-        Self {
-            sticky,
-            child: gpui::div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .into_any_element(),
-            measure: Box::new(measure),
-        }
-    }
-}
-impl Hooks for ExactProbe {
-    type Layout = LayoutId;
-    type Prepaint = ();
-
-    fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> (LayoutId, Self::Layout) {
-        let id = self.child.request_layout(window, cx);
-        (id, id)
-    }
-
-    fn prepaint(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        id: &mut Self::Layout,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self::Prepaint {
-        let exact = Bounds {
-            origin: window.layout_origin_unrounded(*id),
-            size: window.layout_size_unrounded(*id),
-        };
-        let half = px(0.5 / window.scale_factor().max(0.01) + 1e-4);
-        let near = |a: Pixels, b: Pixels| (a - b).abs() <= half;
-        // A relocated element has a different containing block; retain its
-        // prepaint position, while still using its unrounded extent.
-        let exact = if near(exact.left(), bounds.left())
-            && near(exact.top(), bounds.top())
-            && near(exact.right(), bounds.right())
-            && near(exact.bottom(), bounds.bottom())
-        {
-            exact
-        } else {
-            bounds
-        };
-        let mut normal = exact;
-        normal.origin -= sticky_shift(self.sticky.as_ref());
-        (self.measure)(normal, bounds);
-        self.child.prepaint(window, cx);
-    }
-
-    fn paint(
-        &mut self,
-        _: Bounds<Pixels>,
-        _: &mut Self::Layout,
-        _: &mut Self::Prepaint,
-        _: &mut Window,
-        _: &mut App,
-    ) {
-    }
 }

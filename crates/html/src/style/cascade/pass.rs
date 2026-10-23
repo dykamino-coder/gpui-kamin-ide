@@ -75,20 +75,13 @@ impl Computed {
             .collect();
         // Порядок применения: по фазе вычисления (свойства, от которых
         // зависят другие, — раньше; `phase`), затем по ключу победителя, а
-        // внутри одного блока —
-        // семьями. Порядок ЗАПИСИ решает только между СОКРАЩЕНИЕМ вне
-        // реестра и его длинным свойством (`border-image` и
+        // внутри одного блока — семьями. Порядок ЗАПИСИ решает только между
+        // СОКРАЩЕНИЕМ вне реестра и его длинным свойством (`border-image` и
         // `border-image-source`). Сокращения реестра (`margin`, `border`,
-        // `outline`, `background`, `mask`) раскрыты разбором, и их длинные
-        // свойства пишут каждое своё поле целиком — порядок между ними не
-        // важен.
-        //
-        // Между СОСЕДЯМИ вне реестра (`white-space` и `overflow-wrap`)
-        // порядок записи НЕ применяется: эти свойства кое-где читают
-        // состояние друг друга на применении, и полный порядок вскрывает эту
-        // зависимость (`textarea-pre-wrap-*`). Семьи идут «сперва общее»:
-        // общность меряется числом дефисов. Порядок уходит вместе с
-        // раскрытием остальных сокращений при разборе.
+        // `outline`, `background`, `mask`, `font`, `white-space`,
+        // `text-decoration`…) раскрыты разбором, и их длинные свойства пишут
+        // каждое своё поле целиком — порядок между ними не важен. Семьи идут
+        // «сперва общее»: общность меряется числом дефисов.
         winners.sort_by_cached_key(|(phase, k, pick, _)| {
             let (block, pos) = match pick {
                 Pick::Value(c, _) => (Some(c.block), c.key.decl_index()),
@@ -192,15 +185,7 @@ impl Computed {
         // Типизированный `attr()` подставляется тем же шагом, что и `var()`
         // (css-values-5 §7.7): после него значение разбирается как обычное.
         let resolved = resolve_sibling(resolve_attrs(k, &resolve_vars(value, vars), cx, vcx), cx);
-        // CSS Variables §3: invalid after substitution means unset;
-        // a preceding specified color cannot survive the computed value.
-        if k == "color"
-            && crate::style::css::variable_values::has_var(value)
-            && Color::parse(&resolved, vcx).is_none()
-            && !is_wide(&resolved)
-        {
-            self.apply_one(k, "unset", vcx);
-        } else if is_side_radius(k) && !is_wide(&resolved) {
+        if is_side_radius(k) && !is_wide(&resolved) {
             // Логическая сторона сопоставляется по письму — итогу фазы
             // письма (css-logical-1 §4), а не по полям стиля на этот миг.
             self.apply_side_radius(k, &resolved, compute.wm.rtl(), vcx);
@@ -232,9 +217,6 @@ fn family(k: &str, block: Option<&DeclBlock>) -> String {
     let Some(d) = block else {
         return k.into();
     };
-    if font_members::contains(k) && d.contains("font") {
-        return "font".into();
-    }
     const SHORTHANDS: &[&str] = &["border-image"];
     for root in SHORTHANDS {
         if k.len() > root.len()

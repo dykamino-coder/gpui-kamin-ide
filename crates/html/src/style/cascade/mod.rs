@@ -2,13 +2,11 @@
 
 use crate::document::state::ValueCx;
 
-use crate::style::cascade::defaults::{inherited_property, initial_value};
+use crate::style::cascade::defaults::initial_value;
 use crate::style::cascade::vars::{CascadeCx, resolve_attrs, resolve_sibling, resolve_vars};
-use crate::style::computed::{Computed, ParseResult, css_wide_keyword, font_members};
+use crate::style::computed::{Computed, ParseResult, css_wide_keyword};
 use crate::style::css::{CssWide, DeclBlock, LonghandId, Rule, ShorthandId, VarMap};
-use crate::style::values::value::Color;
 
-mod color_initial;
 mod compute_cx;
 pub mod defaults;
 pub mod inherit;
@@ -75,6 +73,9 @@ impl Computed {
     // разборщиком — отдельного конвейера под offset-трансформ нет.
     pub(crate) fn apply_one(&mut self, key: &str, val: &str, vcx: ValueCx<'_>) {
         let v = val.trim();
+        // Устаревшее имя — то же свойство (css-cascade-5 §2.1), как при
+        // разборе блока.
+        let key = crate::style::css::legacy_name_alias(key).unwrap_or(key);
         // Сокращение реестра вне разбора блока (прямой вызов, слово `all`
         // не в счёт: оно длинные свойства называет сами) раскрывается тем же
         // разбором, что и в блоке.
@@ -86,26 +87,19 @@ impl Computed {
         }
         // Общее слово у длинного свойства реестра решается ОДНИМ путём
         // (`apply_wide`); наблюдатель разбора ниже — для свойств вне реестра.
-        if let Some(id) = LonghandId::from_name(key)
-            && let Some(wide) = CssWide::parse(v)
-        {
-            return self.apply_wide(id, wide, vcx);
+        if let Some(id) = LonghandId::from_name(key) {
+            if let Some(wide) = CssWide::parse(v) {
+                return self.apply_wide(id, wide, vcx);
+            }
+            // Наследуемые свойства вне шрифта и текста: один разбор на
+            // свойство (`props::inherited`), обработчики по имени их не видят.
+            if crate::style::computed::props::inherited::owns(id) {
+                return self.apply_inherited_longhand(id, v, vcx);
+            }
         }
-        if color_initial::apply(self, key, v, vcx) {
-            return;
-        }
-        // Общие для всех свойств слова `initial`/`unset`/`revert`. Для
-        // НАСЛЕДУЕМОГО свойства это не «оставить как есть»: незаданное поле у
-        // нас берётся от родителя, поэтому такое объявление молча наследовало
-        // вместо сброса — на `static-position` отступ первой строки уходил в
-        // абсолютный блок, и красное проступало из-под него.
-        // `unset` у НАСЛЕДУЕМОГО свойства — это `inherit`, у ненаследуемого —
-        // `initial` (css-cascade-4 §7.3.3). Прежде любое `unset` шло в
-        // начальное значение, и `color: unset` давал чёрный вместо цвета
-        // родителя (`unset-val-001`).
-        if v == "unset" && inherited_property(key) {
-            return self.apply_one(key, "inherit", vcx);
-        }
+        // Общие слова `initial`/`unset`/`revert` у свойства ВНЕ реестра: все
+        // такие свойства не наследуются, и `unset` у них — `initial`
+        // (css-cascade-5 §7.3.3).
         if matches!(v, "initial" | "unset" | "revert" | "revert-layer")
             && let Some(start) = initial_value(key)
         {
@@ -166,14 +160,25 @@ impl Computed {
             CssWide::Initial => false,
             CssWide::Unset | CssWide::Revert | CssWide::RevertLayer => id.inherited(),
         };
-        // Наследование — по реестру полей `inherited_value`, если свойство
-        // в нём есть, иначе признаком обработчика.
+        // Наследование ненаследуемого — копия полей родителя по реестру
+        // полей `inherited_value`; у наследуемого свои поля пусты (значение
+        // придёт слиянием с родителем) — очистку знает модуль свойства или
+        // его обработчик.
         if inherit {
-            if !inherited_value::note(self, id.name(), "inherit", vcx) {
+            if inherited_value::note(self, id.name(), "inherit", vcx) {
+                // Записано в `explicit_inherit`.
+            } else if crate::style::computed::props::inherited::owns(id) {
+                self.inherit_longhand(id);
+            } else {
                 self.apply_property(id.name(), "inherit", vcx);
             }
         } else {
             self.apply_one(id.name(), id.initial(), vcx);
+            // Quirks Mode §3.12: таблица с НАЧАЛЬНЫМ цветом из листа агента
+            // берёт цвет `<body>` (`dom::quirks_color`).
+            if id == LonghandId::Color {
+                self.color_initial = true;
+            }
         }
         // Откаченное объявление — уже не авторское: признак авторского фона
         // за ним не остаётся, и неявный фон агента у поля ввода живёт
@@ -187,6 +192,7 @@ impl Computed {
 
     /// Query the actual property dispatcher, including delegated property groups.
     pub(crate) fn recognizes_property(key: &str, vcx: ValueCx<'_>) -> bool {
+        let key = crate::style::css::legacy_name_alias(key).unwrap_or(key);
         ShorthandId::from_name(key).is_some()
             || LonghandId::from_name(key).is_some()
             || Self::default().apply_property(key, "", vcx)

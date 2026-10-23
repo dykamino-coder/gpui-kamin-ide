@@ -3,6 +3,28 @@
 use crate::document::state::ValueCx;
 use gpui::{Bounds, Pixels, px};
 
+/// Окружение исходного слоя для работы, завершённой у ICB в том же кадре.
+#[derive(Clone)]
+pub(crate) struct TransformContext {
+    values: crate::document::state::ValueDoc,
+    stack: Vec<(u32, [[f32; 3]; 2])>,
+}
+
+impl TransformContext {
+    pub(crate) fn capture(values: crate::document::state::ValueDoc) -> Self {
+        let stack = values.vcx().doc.anchor_frame.tf.borrow().clone();
+        Self { values, stack }
+    }
+
+    pub(crate) fn enter<R>(&self, f: impl FnOnce() -> R) -> R {
+        let tf = &self.values.vcx().doc.anchor_frame.tf;
+        let previous = tf.replace(self.stack.clone());
+        let result = f();
+        tf.replace(previous);
+        result
+    }
+}
+
 /// Read the actual padding box of an absolute containing block in this frame.
 pub(crate) fn containing_bounds(node: u64, vcx: ValueCx<'_>) -> Option<Bounds<Pixels>> {
     vcx.doc.anchor_frame.cb.borrow().get(&node).copied()

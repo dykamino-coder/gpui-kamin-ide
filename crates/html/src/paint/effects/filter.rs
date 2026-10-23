@@ -15,6 +15,7 @@ pub struct FilterLayer {
     pub def: String,
     pub id: String,
     pub fill: String,
+    pub values: crate::document::state::ValueDoc,
 }
 
 impl Painter for FilterLayer {
@@ -92,7 +93,7 @@ impl Painter for FilterLayer {
             def, -x0, -y0
         );
         let (pw, ph) = ((cw * sf).round(), (ch * sf).round());
-        let image = crate::svg::raster::rasterize(&markup, pw, ph);
+        let image = crate::svg::raster::rasterize(&markup, pw, ph, self.values.vcx());
         let Some(image) = image else { return };
         let area = Bounds {
             origin: gpui::point(bounds.origin.x + px(x0), bounds.origin.y + px(y0)),

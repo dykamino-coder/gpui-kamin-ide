@@ -87,7 +87,8 @@ pub(super) fn masked_layers(
         let keep = run.clone();
         run.clear();
         let part = filtered(e, &|u| keep.contains(&u));
-        let Some(img) = rasterize(&serialize_sized(&part, rw, rh, 0.0, 0.0, vcx), rw, rh) else {
+        let Some(img) = rasterize(&serialize_sized(&part, rw, rh, 0.0, 0.0, vcx), rw, rh, vcx)
+        else {
             return root;
         };
         root.child(
@@ -149,7 +150,7 @@ pub(super) fn masked_layers(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}" viewBox="{bx} {by} {bw} {bh}">{}</svg>"#,
             serialize_sized(&part, rw, rh, 0.0, 0.0, vcx)
         );
-        let Some(img) = rasterize(&markup, *bw, *bh) else {
+        let Some(img) = rasterize(&markup, *bw, *bh, vcx) else {
             continue;
         };
         let layer = gpui::img(ImageSource::Render(img))

@@ -2,7 +2,7 @@
 //! `position`, якорные `anchor-name`/`position-anchor`/`position-area`/
 //! `position-try*`/`position-visibility` (css-anchor-position-1), `z-index`,
 //! `overflow*` и `overflow-clip-margin`, `float`,
-//! `clear`, `opacity`, `visibility`. Разбор якорных значений — в `style::values::position_area`.
+//! `clear`, `opacity`. Разбор якорных значений — в `style::values::position_area`.
 
 use crate::document::state::ValueCx;
 mod clip_margin;
@@ -158,17 +158,6 @@ impl Computed {
                 self.apply_clip_margin(v, vcx);
             }
 
-            "visibility" => {
-                self.hidden = apply_parsed!(
-                    self,
-                    match v {
-                        "hidden" | "collapse" => Some(true),
-                        "visible" => Some(false),
-                        _ => None,
-                    }
-                );
-                self.collapsed = Some(v == "collapse");
-            }
             "z-index" => {
                 if v == "inherit" {
                     self.inherit_bits |= inh::Z_INDEX;

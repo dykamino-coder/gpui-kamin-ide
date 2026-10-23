@@ -1,5 +1,5 @@
 //! Группа свойств `Computed::apply_one`: `background-*`, `box-shadow`,
-//! `object-fit`, `image-orientation`. Сокращения `background` и
+//! `object-fit`. Сокращения `background` и
 //! `background-position` раскрыты разбором (`style::css::property`), сюда
 //! приходят длинные свойства. Значение свойства слоёв — список (§2.1):
 //! верхний слой пишется в поля стиля, весь список — в `bg_lists` этого
@@ -67,12 +67,6 @@ impl Computed {
             // необязательным и устаревшим («optional to implement and
             // deprecated»), и в корпусе его не просит ни один рефтест —
             // разбираем два ключевых слова.
-            "image-orientation" => {
-                self.image_orient_none = apply_parsed!(
-                    self,
-                    matches!(v, "none" | "from-image").then_some(v == "none")
-                )
-            }
             // `light-dark(<image>, <image>)` (css-color-5 §light-dark,
             // `image-light-dark`): вариант по схеме узла.
             "background-image"

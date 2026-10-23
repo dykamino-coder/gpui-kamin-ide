@@ -164,6 +164,14 @@ impl Computed {
         let (tag, on) = crate::text::fonts::CSS_WEIGHT_TAG;
         all.insert(0, (tag.to_string(), on));
         all.extend(self.font_features.iter().cloned());
+        // Запрет подмены начертания (`font-synthesis-weight/-style: none`,
+        // css-fonts-4 §font-synthesis): свои теги `nsyw`/`nsys`, их читает
+        // подбор грани в gpui.
+        for (tag, allowed) in [("nsyw", self.font_synth.0), ("nsys", self.font_synth.1)] {
+            if allowed == Some(false) {
+                all.push((tag.to_string(), 1));
+            }
+        }
         all.extend(crate::text::fonts::alternates::resolve(
             self.font_family.as_deref().unwrap_or(""),
             self.font_alternates.as_ref(),
@@ -177,7 +185,7 @@ impl Computed {
         if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
             || (self.justify_chars == Some(2)
                 && (self.text_align == Some(TextAlign::Justify)
-                    || self.text_align_last == Some(TextAlign::Justify)))
+                    || self.text_align_last == Some(Some(TextAlign::Justify))))
         {
             for tag in ["liga", "clig", "dlig", "hlig"] {
                 all.push((tag.to_string(), 0));

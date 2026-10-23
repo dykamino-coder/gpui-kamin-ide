@@ -46,12 +46,11 @@ fn view_boxed(
     vb: (u8, [Len; 4]),
     cx: &crate::layout::cx::LayoutCx,
 ) -> Option<AnyElement> {
+    let vcx = cx.vcx();
     let src = e.attr("src")?;
-    let local = src
-        .strip_prefix("file:///")
-        .or_else(|| src.strip_prefix("file://"))
-        .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let source = crate::paint::background::element_source(local.unwrap_or(src), &e.style)?;
+    let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
+    let source = crate::resources::css_images::element_source(local.unwrap_or(src), &e.style, vcx)
+        .map(crate::paint::background::Source::from_cpu)?;
     let nat = source.intrinsic();
     let (w0, h0) = (nat.w?, nat.h?);
     let crate::paint::background::Source::Raster(ready) = source else {
@@ -68,6 +67,7 @@ fn view_boxed(
     boxed.style.contain_size = Some(false);
     boxed.style.contain_inline_size = Some(false);
     let (sx, sy) = (bw / vw, bh / vh);
+    let ready = crate::paint::background::image_adapter::upload(&ready)?;
     let picture = gpui::img(ready)
         .preserve_natural_pixels(true)
         .pixelated(e.style.image_pixelated == Some(true))

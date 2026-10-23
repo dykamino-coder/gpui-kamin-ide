@@ -5,21 +5,33 @@
 //! семействам: свойство вне него разбирается и применяется по имени, как
 //! прежде.
 
+mod font_shorthands;
+mod grammar;
+mod grid_shorthands;
+mod inline_shorthands;
 mod layer_shorthands;
 #[cfg(test)]
 mod layer_tests;
 mod layer_words;
+mod layout_shorthands;
+#[cfg(test)]
+mod layout_tests;
 mod line_shorthands;
 mod longhands;
 mod mask_shorthands;
+mod rule_shorthands;
+mod shorthand_ids;
 mod shorthands;
 #[cfg(test)]
 mod tests;
+mod text_shorthands;
+mod variant_shorthands;
 
 use crate::document::state::ValueCx;
+pub use grammar::Grammar;
 pub(crate) use layer_shorthands::split_position;
 pub(crate) use layer_words::{Words as LayerWords, layer_list, layer_tokens};
-pub use longhands::{BoxGroup, Grammar, LonghandId, Slot};
+pub use longhands::{BoxGroup, LonghandId, Slot};
 pub use shorthands::ShorthandId;
 
 /// Общее ключевое слово (css-cascade-5 §7.3, css-values-4 §3.1.1): годится
@@ -108,6 +120,38 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
         "-webkit-mask-position" => "mask-position",
         "-webkit-mask-repeat" => "mask-repeat",
         "-webkit-mask-size" => "mask-size",
+        // css-fonts-4 §font-width-prop: «font-stretch is a legacy name alias».
+        "font-stretch" => "font-width",
+        // css-text-3 §5.5: «word-wrap … legacy name alias of overflow-wrap».
+        "word-wrap" => "overflow-wrap",
+        "-webkit-text-decoration-line" => "text-decoration-line",
+        "-webkit-text-decoration-style" => "text-decoration-style",
+        "-webkit-text-decoration-color" => "text-decoration-color",
+        // css-align-3 §8.4 / css-gaps-1: «legacy name aliases».
+        "grid-gap" => "gap",
+        "grid-row-gap" => "row-gap",
+        "grid-column-gap" => "column-gap",
+        "-webkit-flex" => "flex",
+        "-webkit-flex-basis" => "flex-basis",
+        "-webkit-flex-direction" => "flex-direction",
+        "-webkit-flex-flow" => "flex-flow",
+        "-webkit-flex-grow" => "flex-grow",
+        "-webkit-flex-shrink" => "flex-shrink",
+        "-webkit-flex-wrap" => "flex-wrap",
+        "-webkit-align-content" => "align-content",
+        "-webkit-align-items" => "align-items",
+        "-webkit-align-self" => "align-self",
+        "-webkit-justify-content" => "justify-content",
+        "-webkit-order" => "order",
+        "-webkit-column-count" => "column-count",
+        "-webkit-column-gap" => "column-gap",
+        "-webkit-column-rule" => "column-rule",
+        "-webkit-column-rule-color" => "column-rule-color",
+        "-webkit-column-rule-style" => "column-rule-style",
+        "-webkit-column-rule-width" => "column-rule-width",
+        "-webkit-column-span" => "column-span",
+        "-webkit-column-width" => "column-width",
+        "-webkit-columns" => "columns",
         _ => return None,
     })
 }

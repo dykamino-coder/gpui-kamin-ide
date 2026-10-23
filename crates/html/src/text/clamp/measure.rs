@@ -1,7 +1,7 @@
 //! Записи временного layout-движка и геометрия, переживающая его освобождение.
 
 use super::ClampEntry;
-use crate::layout::probe::{Sink, layout_record};
+use crate::layout::probe::{Measure, MeasureScope as LayoutScope};
 use gpui::{AnyElement, Bounds, LayoutId, Pixels, Point, Window};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
@@ -12,8 +12,8 @@ type Lifted = Rc<RefCell<MeasuredClamp>>;
 
 #[derive(Clone, Default)]
 pub(crate) struct ClampMeasure {
-    entries: Sink<(LayoutId, Entry)>,
-    lifted: Sink<(LayoutId, Lifted)>,
+    entries: Measure<Entry>,
+    lifted: Measure<Lifted>,
     rows: Rc<RefCell<Rows>>,
 }
 
@@ -63,11 +63,11 @@ impl ClampMeasure {
     }
 
     pub(crate) fn record(&self, f: impl Fn(Bounds<Pixels>) -> ClampEntry + 'static) -> AnyElement {
-        layout_record(self.entries.clone(), Rc::new(f) as Entry)
+        self.entries.probe(Rc::new(f) as Entry)
     }
 
     pub(crate) fn lift(&self, id: LayoutId, batch: Lifted) {
-        self.lifted.push((id, batch));
+        self.lifted.record(id, batch);
     }
 
     pub(crate) fn collect(
@@ -78,11 +78,11 @@ impl ClampMeasure {
     ) -> MeasuredClamp {
         let mut rows = self.take_rows(key);
         let mut batch = MeasuredClamp::default();
-        for (id, entry) in self.entries.take() {
-            let at = window.layout_origin_unrounded(id) - origin;
+        for (bounds, entry) in self.entries.take(window) {
+            let at = bounds.origin - origin;
             let e = entry(Bounds {
                 origin: at,
-                size: window.layout_size_unrounded(id),
+                size: bounds.size,
             });
             if let Some(seq) = e.seq
                 && let Some(r) = rows.remove(&seq)
@@ -94,11 +94,8 @@ impl ClampMeasure {
             }
             batch.entries.push(e);
         }
-        for (id, lifted) in self.lifted.take() {
-            batch.append(
-                &lifted.borrow(),
-                window.layout_origin_unrounded(id) - origin,
-            );
+        for (bounds, lifted) in self.lifted.take(window) {
+            batch.append(&lifted.borrow(), bounds.origin - origin);
         }
         batch
     }
@@ -107,8 +104,8 @@ impl ClampMeasure {
         MeasureScope {
             measure: self.clone(),
             key,
-            entries: self.entries.take(),
-            lifted: self.lifted.take(),
+            _entries: self.entries.enter(),
+            _lifted: self.lifted.enter(),
             rows: self.take_rows(key),
         }
     }
@@ -118,8 +115,8 @@ impl ClampMeasure {
 pub(crate) struct MeasureScope {
     measure: ClampMeasure,
     key: u64,
-    entries: Vec<(LayoutId, Entry)>,
-    lifted: Vec<(LayoutId, Lifted)>,
+    _entries: LayoutScope<Entry>,
+    _lifted: LayoutScope<Lifted>,
     rows: HashMap<u32, Vec<(f32, f32)>>,
 }
 
@@ -132,15 +129,7 @@ impl MeasureScope {
 
 impl Drop for MeasureScope {
     fn drop(&mut self) {
-        self.measure.entries.take();
-        self.measure.lifted.take();
         self.measure.take_rows(self.key);
-        for e in self.entries.drain(..) {
-            self.measure.entries.push(e);
-        }
-        for e in self.lifted.drain(..) {
-            self.measure.lifted.push(e);
-        }
         for (seq, rows) in self.rows.drain() {
             self.measure.publish_rows((self.key, seq), rows);
         }

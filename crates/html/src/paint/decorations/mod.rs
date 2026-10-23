@@ -71,6 +71,7 @@ pub(crate) fn decorations(
                 def,
                 id: id.to_string(),
                 fill,
+                values: vcx.keep(),
             })
             .hooked(),
         );

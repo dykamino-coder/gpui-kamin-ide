@@ -21,9 +21,12 @@ pub(crate) fn static_overlay(
     opts: &RenderOpts,
     rot_block: bool,
 ) -> Option<inline::Piece> {
+    if let Some(child) = anchor::trials::inline::defer(e, inherited, opts) {
+        return Some(inline::Piece::Overlay(child, inline::OverlayAt::default()));
+    }
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Стиль с позицией — для якорного заместителя (`anchor::place`).
     let positioned = merged.clone();
     let mut group_style = (*e.style).clone();
@@ -81,7 +84,7 @@ pub(crate) fn static_overlay(
     // `GetStaticPositionInsetBias` переводит его в `InsetBias::kEnd`.
     // Сторону задаёт направление СОДЕРЖАЩЕГО блока, а не собственное
     // письмо коробки (css-writing-modes-4 §7.1, строки 1926-1931).
-    let inner = anchor::place::place(inner, &positioned, inherited, vcx);
+    let inner = anchor::place::place_in_context(inner, &positioned, inherited, &opts.cx);
     let rotated_rtl = inherited.wm().rtl() && inherited.wm().turned();
     let inner = if inherited.wm().rtl() && !rot_block && !rotated_rtl {
         crate::layout::positioned::containing_block::InlineStartHang::new(inner).hooked()

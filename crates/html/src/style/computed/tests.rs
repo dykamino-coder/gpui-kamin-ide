@@ -10,7 +10,10 @@ mod background_cascade;
 mod cascade;
 mod cascade_winners;
 mod decor_inset;
+mod inherited_cascade;
+mod layout_cascade;
 mod logical_cascade;
+mod text_cascade;
 
 fn computed(css: &str, vcx: ValueCx<'_>) -> Computed {
     let mut c = Computed::default();

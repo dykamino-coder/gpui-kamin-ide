@@ -40,7 +40,8 @@ pub(super) fn fit_local_image(
     }
     let image = position(image, &e.style, vcx);
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
-        crate::paint::background::element_source(local.unwrap_or(src), &e.style)
+        crate::resources::css_images::element_source(local.unwrap_or(src), &e.style, vcx)
+            .map(crate::paint::background::Source::from_cpu)
     {
         let mut style = (*e.style).clone();
         if fills_holder {
@@ -84,14 +85,14 @@ fn draw(
             .h(px(h))
             .object_fit(gpui::ObjectFit::Fill),
         Picture::FullWidth { ratio } => {
-            let mut image = image.w(gpui::relative(1.0));
+            let mut image = image.w(gpui::relative(1.0)).h_auto();
             if let Some(r) = ratio {
                 image.style().aspect_ratio = Some(r);
             }
             image
         }
         Picture::FullHeight { ratio } => {
-            let mut image = image.h(gpui::relative(1.0));
+            let mut image = image.h(gpui::relative(1.0)).w_auto();
             if let Some(r) = ratio {
                 image.style().aspect_ratio = Some(r);
             }
@@ -109,22 +110,23 @@ pub(super) fn local_image_source<'a>(
     d: gpui::Div,
     vcx: ValueCx<'_>,
 ) -> Result<(Option<&'a str>, gpui::Div, gpui::Img), AnyElement> {
-    let local = src
-        .strip_prefix("file:///")
-        .or_else(|| src.strip_prefix("file://"))
-        .or_else(|| (src.starts_with('/') && !src.starts_with("//")).then_some(src));
-    let own =
-        crate::paint::background::element_source(local.unwrap_or(src), &e.style).and_then(|s| {
-            match s {
-                crate::paint::background::Source::Raster(image) => Some(image),
-                filtered @ crate::paint::background::Source::Filtered { .. } => filtered.raster(
-                    crate::paint::background::default_size(filtered.intrinsic(), (300.0, 150.0)),
-                    vcx,
-                ),
-                crate::paint::background::Source::Vector { .. }
-                | crate::paint::background::Source::Gradient { .. }
-                | crate::paint::background::Source::Shape { .. } => None,
-            }
+    let local = (src.starts_with("file:") || src.starts_with('/')).then_some(src);
+    let own = crate::resources::css_images::element_source(src, &e.style, vcx)
+        .map(crate::paint::background::Source::from_cpu)
+        .and_then(|s| {
+            let size = crate::paint::background::default_size(s.intrinsic(), (300.0, 150.0));
+            let raster = match &s {
+                crate::paint::background::Source::Vector { markup, .. } => {
+                    crate::svg::raster::rasterize_image(
+                        &crate::resources::images::viewport::with_viewport(markup, size),
+                        size.0,
+                        size.1,
+                        vcx,
+                    )
+                }
+                _ => s.raster(size, vcx),
+            }?;
+            Some((raster, size))
         });
     let wants_pipe = e.style.object_position.is_some()
         || e.style
@@ -145,11 +147,17 @@ pub(super) fn local_image_source<'a>(
         Ok(value) => return Err(value),
         Err(d) => d,
     };
-    let mut image = match (own, local) {
-        (Some(ready), _) => gpui::img(ready).preserve_natural_pixels(true),
-        (None, Some(path)) => gpui::img(std::path::PathBuf::from(path)),
-        (None, None) => gpui::img(SharedString::from(src.to_string())),
+    let Some((ready, size)) = own else {
+        return Err(d
+            .child(SharedString::from(
+                e.attr("alt").unwrap_or("[изображение]").to_string(),
+            ))
+            .into_any_element());
     };
+    let mut image = gpui::img(ready)
+        .w(px(size.0))
+        .h(px(size.1))
+        .preserve_natural_pixels(true);
     // css-images-3 §image-rendering: `pixelated` scales by nearest neighbour.
     image = image.pixelated(e.style.image_pixelated == Some(true));
     if e.style.filter.is_some_and(|f| f.grayscale > 0.5) {

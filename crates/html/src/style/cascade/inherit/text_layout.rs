@@ -121,6 +121,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
         .clone()
         .or_else(|| parent.list_style_type.clone());
     c.list_style_inside = own.list_style_inside.or(parent.list_style_inside);
+    c.list_style_image = own
+        .list_style_image
+        .clone()
+        .or_else(|| parent.list_style_image.clone());
+    // `text-fit` наследуется (css-text-5 §text-fit).
+    c.text_fit = own.text_fit.or(parent.text_fit);
     c.vertical_align = own.vertical_align.or(parent.vertical_align);
     c.font_stretch = own.font_stretch.or(parent.font_stretch);
     // `font-size-adjust` наследуется значением; подгонку каждый элемент
@@ -148,9 +154,25 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
     c.inline_border = own.inline_border.or(parent.inline_border);
     c.inline_pad = own.inline_pad.or(parent.inline_pad);
     c.inline_radius = own.inline_radius.or(parent.inline_radius);
-    if c.font_features.is_empty() {
-        c.font_features = parent.font_features.clone();
+    // Каждое `font-variant-*` наследуется само по себе (css-fonts-4 §6):
+    // незаданная своя группа тегов берётся у родителя, заданная (в том числе
+    // `normal` и сброс сокращением `font`) — своя.
+    for (group, tags) in crate::style::computed::FONT_VARIANT_GROUPS
+        .iter()
+        .enumerate()
+    {
+        if own.font_variant_set & (1 << group) == 0 {
+            c.font_features.extend(
+                parent
+                    .font_features
+                    .iter()
+                    .filter(|(t, _)| tags.contains(&t.as_str()))
+                    .cloned(),
+            );
+        }
     }
+    c.font_variant_emoji = own.font_variant_emoji.or(parent.font_variant_emoji);
+    c.font_synth_position = own.font_synth_position.or(parent.font_synth_position);
     c.font_kerning = own.font_kerning.or(parent.font_kerning);
     c.font_alternates = own
         .font_alternates

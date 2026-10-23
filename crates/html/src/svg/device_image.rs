@@ -6,13 +6,18 @@
 
 use gpui::{Div, ParentElement, Styled, px};
 
-pub(super) fn element(markup: String, w: f32, h: f32) -> Option<Div> {
+pub(super) fn element(
+    markup: String,
+    w: f32,
+    h: f32,
+    vcx: crate::document::state::ValueCx<'_>,
+) -> Option<Div> {
     // One logical pixel of canvas past the viewport keeps the content that
     // reaches beyond its edge, so the clip below can end on the snapped box
     // edge.
     const PAD: f32 = 1.0;
-    let image = super::raster::rasterize(&markup, w, h)?;
-    let padded = super::raster::rasterize_padded(&markup, w, h, PAD);
+    let image = super::raster::rasterize(&markup, w, h, vcx)?;
+    let padded = super::raster::rasterize_padded(&markup, w, h, PAD, vcx);
     let base = |v: f32| super::raster::device_extent(v) as f32;
     let pad_px = (PAD * super::DENSITY).round();
     let (dw, dh) = (

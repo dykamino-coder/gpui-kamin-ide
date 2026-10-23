@@ -4,8 +4,6 @@ use crate::dom::Element;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use gpui::ParentElement;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[allow(clippy::too_many_arguments)]
 pub(in crate::layout::table) fn collapsed_col_edges(
@@ -14,7 +12,7 @@ pub(in crate::layout::table) fn collapsed_col_edges(
     row_ix: i16,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
+    table_edges: &crate::layout::table::probes::CellEdges,
     px_of: &impl Fn(Option<Len>) -> f32,
     d: gpui::Div,
 ) -> gpui::Div {
@@ -38,7 +36,7 @@ pub(in crate::layout::table) fn collapsed_colgroup_edges(
     row_ix: i16,
     row_elements: &[&Element],
     inherited: &Computed,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
+    table_edges: &crate::layout::table::probes::CellEdges,
     px_of: &impl Fn(Option<Len>) -> f32,
     d: gpui::Div,
 ) -> gpui::Div {
@@ -62,7 +60,7 @@ fn collapsed_column_edges(
     row_ix: i16,
     row_elements: &[&crate::dom::Element],
     inherited: &Computed,
-    table_edges: &Rc<RefCell<Vec<crate::layout::table::probes::EdgeCell>>>,
+    table_edges: &crate::layout::table::probes::CellEdges,
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
     origin: u8,

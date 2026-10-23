@@ -2,7 +2,6 @@
 
 use crate::document::state::ValueCx;
 mod geometry;
-pub(super) use geometry::len_px;
 use geometry::origin;
 pub(super) use geometry::rounded;
 pub(crate) use geometry::tile_size;
@@ -116,7 +115,10 @@ pub(super) fn paint_tiles_in(
     // картинки с разным природным размером, и ключ обязан их различать
     // (`image-orientation-none-content-images`: четыре `<img>` с
     // `background-image` под `image-orientation: none`).
-    let Some(found) = computed_source(&src, c.image_orient_none != Some(true)) else {
+    let Some(found) =
+        crate::resources::css_images::computed_source(&src, c.image_orient_none != Some(true), vcx)
+            .map(Source::from_cpu)
+    else {
         return;
     };
     // Область ПОКРАСКИ (`background-clip`, css-backgrounds-3 §3.7): плитки

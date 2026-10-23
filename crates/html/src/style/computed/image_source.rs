@@ -1,4 +1,4 @@
-//! Вычисленные операнды изображений; декодирование ресурсов принадлежит paint.
+//! Вычисленные операнды изображений; декодирование ресурсов принадлежит resources.
 
 use super::{Computed, Filter, Gradient, Len, Shadow};
 use crate::document::state::ValueCx;

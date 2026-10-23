@@ -5,6 +5,8 @@
 //! объявления. Здесь же `skip_string` — длина строкового токена с учётом
 //! экранов и bad-string по переводу строки.
 
+pub(crate) use crate::css_syntax::skip_string;
+
 use std::borrow::Cow;
 
 /// CSS Syntax §4.3.5, §5.4.8 and §5.4.9 return strings, blocks and functions
@@ -79,29 +81,6 @@ pub(super) fn complete(raw: &str) -> Cow<'_, str> {
 
 fn backslashes(raw: &str) -> usize {
     raw.bytes().rev().take_while(|ch| *ch == b'\\').count()
-}
-
-/// Byte length of a string body, including its closing quote if present.
-/// Escapes hide delimiters; a bad string ends before its unescaped newline.
-pub(crate) fn skip_string(text: &str, quote: char) -> usize {
-    let mut at = 0;
-    while at < text.len() {
-        let ch = text[at..].chars().next().unwrap();
-        if ch == '\\' {
-            // A hexadecimal escape consumes its terminating CSS whitespace,
-            // including a newline; that newline cannot end a bad-string token.
-            at = super::variable_tokens::escape_end(text, at);
-            continue;
-        }
-        if ch == quote {
-            return at + ch.len_utf8();
-        }
-        if matches!(ch, '\n' | '\r' | '\u{c}') {
-            return at;
-        }
-        at += ch.len_utf8();
-    }
-    text.len()
 }
 
 #[cfg(test)]

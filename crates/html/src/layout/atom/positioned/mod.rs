@@ -4,130 +4,32 @@ use crate::dom::Element;
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::anchor;
 use crate::layout::positioned::predicates::edge_set;
-use crate::layout::replaced::replaced_content::svg_replaced;
+
 use crate::style::cascade::inherit::inherit;
 use crate::style::computed::Computed;
 use crate::style::values::value::Len;
 use crate::text::text_box::line_height_px;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
+mod children;
 mod paint_last;
 mod replaced;
-use paint_last::inline_abs_paint_last;
+pub(crate) use paint_last::inline_abs_paint_last;
 use replaced::replaced_abs_atom;
 
-pub(super) fn static_position_atom(
-    inherited: &Computed,
-    e: &Element,
-    opts: &RenderOpts,
-) -> Option<AnyElement> {
-    let vcx = opts.cx.vcx();
-    let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
-    let positioned = merged.clone();
-    // Позиционирование с внутренней коробки СНИМАЕТСЯ. Содержащим блоком
-    // ей стала бы нулевая пустышка, а ширина у неё «по содержимому» —
-    // в нулевом блоке это ноль, и элемент пропадал вовсе. Без
-    // позиционирования она меряется своим содержимым и висит от угла
-    // пустышки, то есть ровно от статической позиции.
-    merged.position = None;
-    merged.abs_static = true;
-    // Замещаемый элемент строит своя ветка: голая коробка со стилем
-    // теряла содержимое (сломанная картинка с alt-подписью пропадала,
-    // `abs-pos-vlr-border-001`). Позиция снимается копией — та же
-    // причина, что и у merged ниже.
-    let replaced: Option<AnyElement> = match e.tag.as_str() {
-        "img" | "svg" => {
-            let mut copy = e.clone();
-            copy.style.position = None;
-            // `image-orientation` НАСЛЕДУЕТСЯ (css-images-3 §5.4), а
-            // копия несёт только собственный стиль элемента: без этой
-            // строки `image-orientation: none`, заданный на `body`, до
-            // картинки не доезжает и EXIF-разворот применяется всё равно.
-            copy.style.image_orient_none = merged.image_orient_none;
-            Some(match copy.tag.as_str() {
-                // CSS-коробка `<svg>` (рамка, отбивка) — `svg_replaced`;
-                // позиция снята и со слитого стиля, как с копии выше.
-                "svg" => {
-                    let mut unpositioned = merged.clone();
-                    unpositioned.position = None;
-                    svg_replaced(&copy, &copy, &unpositioned, opts)
-                        .unwrap_or_else(|| opts.cx.build.replaced(&copy, None, &opts.cx))
-                }
-                _ => opts.cx.build.replaced(&copy, None, &opts.cx),
-            })
-        }
-        _ => None,
-    };
-    let inner = opts.cx.build.styled_box(e, &merged, &opts.cx);
-    let inner = inner.children(opts.cx.build.blocks(&e.children, &merged, opts));
-    // Пустышка прижимается к ВЕРХУ строки: иначе она садится на базовую
-    // линию, и содержимое уезжает под неё — абсолютный блок оказывался
-    // ниже своей строки, а не на её месте (видно на `static-position`:
-    // зелёный блок висел под коробкой, красное проступало).
-    // Рисуется элемент ПОВЕРХ соседей по строке, поэтому содержимое
-    // уходит в верхний слой блока-контейнера, а в строке остаётся щуп: он
-    // и держит место, и сообщает, куда потом вернуть содержимое.
-    let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
-    let below = e.style.z_index.is_some_and(|z| z < 0);
-    // Блочный элемент встал бы на НОВУЮ строку — там его статическая
-    // позиция и находится: левый край содержимого родителя, верх — низ
-    // текущей строки. Строчный остаётся точкой в самой строке.
-    let inline_level = crate::layout::positioned::static_position::hypothetical_inline_level(e);
-    // Флаги направления нужны и СТРОЧНОМУ атому: в rtl-строке статическая
-    // позиция — правый край, заместитель вешается правым краем на точку
-    // распорки. Начало новой строки — только у блочного.
-    spot.set(crate::layout::positioned::containing_block::Spot {
-        hole: None,
-        next_line: (!inline_level).then(|| line_height_px(inherited, opts)),
-        rtl: inherited.wm().rtl(),
-        vertical: inherited.wm().vertical(),
-        vertical_rl: inherited.wm().block_rl(),
-        self_align: if inline_level {
-            None
-        } else {
-            crate::layout::positioned::static_position::inline_static_self_align(e, inherited)
-        },
-        line_rect: true,
-        ..Default::default()
-    });
-    let probe = crate::layout::positioned::containing_block::spot_probe(
-        spot.clone(),
-        false,
-        opts.cx.line_box.clone(),
-        &opts.cx,
-    );
-    let inner = match replaced {
-        Some(el) if merged.corner_shaped() => opts.cx.build.effects(
-            el,
-            crate::layout::build_contracts::Effect::group(&merged, vcx),
-        ),
-        Some(el) => el,
-        None => inner.into_any_element(),
-    };
-    let inner = anchor::place::place(inner, &positioned, inherited, vcx);
-    let taken = if below {
-        Some(inner)
-    } else {
-        opts.cx.positioning.late_push(spot, inner)
-    };
-    return match taken {
-        None => Some(probe),
-        Some(kept) => {
-            let mut hole = div().relative().w_0().h_0().flex_shrink_0();
-            hole.style().align_self = Some(gpui::AlignItems::FlexStart);
-            Some(hole.child(kept).into_any_element())
-        }
-    };
-}
+mod static_box;
+pub(super) use static_box::static_position_atom;
 
 pub(super) fn absolute_atom(
     inherited: &Computed,
     e: &Element,
     opts: &RenderOpts,
 ) -> Option<AnyElement> {
+    if let Some(child) = anchor::trials::inline::defer(e, inherited, opts) {
+        return Some(child);
+    }
     let vcx = opts.cx.vcx();
     let mut merged = inherit(inherited, &e.style, vcx);
-    anchor::prepare_inline_abs(&mut merged, e, inherited, vcx);
+    anchor::prepare_inline_abs(&mut merged, e, inherited, &opts.cx);
     // Содержащий блок — позиционированный СТРОЧНЫЙ предок в этом абзаце
     // (CSS 2.1 §10.1 п.4): края по обеим осям считает `lines.rs` от
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
@@ -170,16 +72,19 @@ pub(super) fn absolute_atom(
     }
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`
     // ребёнка): вставки с `anchor()` раскладка видит нулями, сдвиг — его.
-    let inner = anchor::place::place(
+    let inner = anchor::place::place_in_context(
         opts.cx
             .build
             .styled_box(e, &merged, &opts.cx)
-            .children(opts.cx.build.blocks(&e.children, &merged, opts))
+            .children(children::children(e, &merged, opts))
             .into_any_element(),
         &merged,
         inherited,
-        vcx,
+        &opts.cx,
     );
+    if anchor::trials::inline::is_root(e, opts) {
+        return Some(inner);
+    }
     // Незамещаемая коробка с РОВНО ОДНОЙ заданной осью — тем же щупом, что
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
     // держатель, и край считался от него (`abs-pos-non-replaced-vlr-017`:
@@ -243,4 +148,13 @@ pub(super) fn absolute_atom(
             .child(inner)
             .into_any_element(),
     );
+}
+
+/// Проба строит сам CSS-бокс, не помещая его повторно в очередь слоя.
+pub(crate) fn trial(inherited: &Computed, e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+    if crate::layout::positioned::static_position::at_static_position(&e.style) {
+        static_position_atom(inherited, e, opts)
+    } else {
+        absolute_atom(inherited, e, opts)
+    }
 }

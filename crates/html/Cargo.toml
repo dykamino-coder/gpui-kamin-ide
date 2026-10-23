@@ -56,8 +56,20 @@ unicode-properties = { version = "0.1.4", default-features = false, features = [
 # Слогораздел по образцам Лианга — `hyphens: auto`. Образцы вшиты в крейт по
 # языкам: своих словарей не заводим и в сеть не ходим.
 hypher = "0.1.7"
+# Кодеки картинок ресурсов (`resources::images`): тот же крейт и набор форматов, что у
+# GPUI, без второго комплекта кодеков и без растеризатора.
+image = { version = "0.25", default-features = false, features = [
+  "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm", "qoi", "tga", "tiff", "webp",
+] }
+
+# Тот же CPU-растеризатор, что у GPUI; шрифты передаёт документ.
+resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
 
 [dev-dependencies]
+# Настоящие фазы GPUI на тестовой платформе для проверки порядка краски.
+gpui = { workspace = true, features = ["test-support"] }
+# Идентичности узлов для проверки областей измерения без окна.
+taffy = "0.14.0"
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [
@@ -75,10 +87,6 @@ gpui-platform.workspace = true
 # Выгрузка снимков разошедшихся пар (`WPT_DUMP=1`): без картинки причину
 # расхождения приходится угадывать по одному числу.
 png = "0.18.1"
-
-[dev-dependencies.image]
-version = "0.25"
-default-features = false
 
 [dev-dependencies.smallvec]
 version = "1"

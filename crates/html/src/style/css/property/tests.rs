@@ -27,11 +27,31 @@ fn every_longhand_round_trips_and_accepts_its_initial_value() {
             id.name(),
             id.initial()
         );
-        assert!(!id.inherited(), "{}", id.name());
+        let non_inherited_inline = matches!(
+            id,
+            LonghandId::TextBoxTrim | LonghandId::MaxLines | LonghandId::Continue
+        );
+        assert_eq!(
+            id.inherited(),
+            match id.grammar() {
+                Grammar::Font
+                | Grammar::Text
+                | Grammar::List
+                | Grammar::Writing
+                | Grammar::Color
+                | Grammar::Ui
+                | Grammar::Svg
+                | Grammar::Table => true,
+                Grammar::Inline => !non_inherited_inline,
+                _ => false,
+            },
+            "{}",
+            id.name()
+        );
         assert!(ShorthandId::from_name(id.name()).is_none());
     }
     assert_eq!(LonghandId::from_name("margin"), None);
-    assert_eq!(LonghandId::from_name("color"), None);
+    assert_eq!(LonghandId::from_name("content"), None);
 }
 
 #[test]

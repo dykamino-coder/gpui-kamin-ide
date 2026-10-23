@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 pub(super) fn active(e: &Element, c: &Computed) -> bool {
     (e.style.clamp_lines().is_some()
-        || (e.style.clamp_auto == Some(true)
+        || (e.style.clamp_by_height()
             && e.style.clamp_block_container()
             && auto_clamp_limit(c).is_some()))
         && !crate::layout::multicol::spanner::multicol_container(&e.style)
@@ -32,7 +32,7 @@ pub(super) fn build(
     // и прибавляет его к измеренному размеру содержимого ровно один раз.
     let geometry = crate::text::clamp::geometry::ClampGeometry {
         limit: e.style.clamp_lines(),
-        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_auto == Some(true)),
+        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_by_height()),
         trim_end: if c.text_box_trim_end {
             crate::text::text_box::text_box_trim_px(&c, false, opts)
         } else {
@@ -44,13 +44,17 @@ pub(super) fn build(
     let paint = opts.cx.paint.clone();
     let e = e.clone();
     let inherited = inherited.clone();
-    let positioning = opts.cx.positioning.defer();
+    let positioning = opts.cx.positioning.retain();
     let opts = opts.clone();
     let build = Rc::new(move |input: ClampInput, width, used_box, publish| {
         let opts = opts.inner(|cx| {
             cx.clamp_build = cx.clamp_build.container(key);
             cx.clamp_input = Some(input);
-            cx.positioning = positioning.fork(publish);
+            cx.positioning = if publish {
+                positioning.resume()
+            } else {
+                positioning.isolate().0
+            };
             cx.clamp_frame = Some((key, width));
         });
         super::generic_box(

@@ -1,53 +1,13 @@
 //! Таблица длинных свойств реестра: имя, начальное значение (css-box-4,
 //! css-position-3, css-sizing-3, css-logical-1, css-backgrounds-3/4,
-//! css-masking-1, css-ui-4),
-//! наследование, грамматика и место в логической группе (css-logical-1 §4:
+//! css-masking-1, css-ui-4, css-fonts-4, css-inline-3, css-text-4,
+//! css-text-decor-4, css-flexbox-1, css-align-3, css-grid-2, css-multicol-2,
+//! css-gaps-1), наследование, грамматика и место в логической группе (css-logical-1 §4:
 //! логическое и физическое свойство одной стороны делят вычисленное
-//! значение).
+//! значение). Прочие наследуемые свойства — продолжение таблицы в
+//! `inherited_rows`.
 
-use crate::document::state::ValueCx;
-
-/// Грамматика значения длинного свойства; проверка — тем же разбором, что
-/// у применения (`Computed::accepts_longhand`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Grammar {
-    /// `<length-percentage> | auto | <anchor-size()>` (css-box-4 §3.1).
-    Margin,
-    /// `<length-percentage [0,∞]>` (css-box-4 §4.1).
-    Padding,
-    /// `auto | <length-percentage> | <anchor()> | <anchor-size()>`
-    /// (css-position-3 §3.1, css-anchor-position-1 §4).
-    Inset,
-    /// Размеры коробки (css-sizing-3 §3.1-3.2, css-sizing-4, css-values-5
-    /// `calc-size()`).
-    Size,
-    /// `<line-width>` (css-backgrounds-3 §4.3): `thin | medium | thick |
-    /// <length [0,∞]>`; у `outline-width` та же (css-ui-4 §outline-width).
-    LineWidth,
-    /// `<line-style>` (css-backgrounds-3 §4.2).
-    LineStyle,
-    /// `<color>`, в том числе `currentcolor` (css-backgrounds-3 §4.1).
-    LineColor,
-    /// `auto | <outline-line-style>`: `<line-style>` без `hidden` (css-ui-4
-    /// §outline-style).
-    OutlineStyle,
-    /// `auto | <color>` (css-ui-4 §outline-color).
-    OutlineColor,
-    /// `<length>` (css-ui-4 §outline-offset) и `inset` (WPT
-    /// `outline-offset-inset-*`).
-    OutlineOffset,
-    /// Части `border-image` (css-backgrounds-3 §5): `-source`, `-slice`,
-    /// `-width`, `-outset`, `-repeat`.
-    BorderImage,
-    /// Свойства фона (css-backgrounds-3 §3, css-backgrounds-4 §3.6): у
-    /// каждого своя грамматика слоя, значение — список слоёв, у
-    /// `background-color` — один цвет.
-    Background,
-    /// Слои маски (css-masking-1 §7): список слоёв по свойству.
-    Mask,
-    /// Части `mask-border` (css-masking-1 §8).
-    MaskBorder,
-}
+use super::Grammar;
 
 /// Логическая группа (Stylo `logical_group`): физические и логические
 /// свойства одной группы делят поля стиля.
@@ -107,7 +67,10 @@ use BoxGroup::{
 };
 use Slot::{Logical as L, Physical as F, Single as N};
 
-longhands! {
+#[macro_use]
+mod inherited_rows;
+
+with_inherited_rows! {
     MarginTop = "margin-top", "0", false, Margin, F(M, 0);
     MarginRight = "margin-right", "0", false, Margin, F(M, 1);
     MarginBottom = "margin-bottom", "0", false, Margin, F(M, 2);
@@ -200,36 +163,80 @@ longhands! {
     MaskBorderOutset = "mask-border-outset", "0", false, MaskBorder, N;
     MaskBorderRepeat = "mask-border-repeat", "stretch", false, MaskBorder, N;
     MaskBorderMode = "mask-border-mode", "alpha", false, MaskBorder, N;
+    FontStyle = "font-style", "normal", true, Font, N;
+    FontVariantLigatures = "font-variant-ligatures", "normal", true, Font, N;
+    FontVariantCaps = "font-variant-caps", "normal", true, Font, N;
+    FontVariantAlternates = "font-variant-alternates", "normal", true, Font, N;
+    FontVariantNumeric = "font-variant-numeric", "normal", true, Font, N;
+    FontVariantEastAsian = "font-variant-east-asian", "normal", true, Font, N;
+    FontVariantPosition = "font-variant-position", "normal", true, Font, N;
+    FontVariantEmoji = "font-variant-emoji", "normal", true, Font, N;
+    FontWeight = "font-weight", "normal", true, Font, N;
+    FontWidth = "font-width", "normal", true, Font, N;
+    FontSize = "font-size", "medium", true, Font, N;
+    LineHeight = "line-height", "normal", true, Font, N;
+    FontFamily = "font-family", "serif", true, Font, N;
+    FontKerning = "font-kerning", "auto", true, Font, N;
+    FontSizeAdjust = "font-size-adjust", "none", true, Font, N;
+    FontFeatureSettings = "font-feature-settings", "normal", true, Font, N;
+    FontSynthesisWeight = "font-synthesis-weight", "auto", true, Font, N;
+    FontSynthesisStyle = "font-synthesis-style", "auto", true, Font, N;
+    FontSynthesisSmallCaps = "font-synthesis-small-caps", "auto", true, Font, N;
+    FontSynthesisPosition = "font-synthesis-position", "auto", true, Font, N;
+    WhiteSpaceCollapse = "white-space-collapse", "collapse", true, Text, N;
+    TextWrapMode = "text-wrap-mode", "wrap", true, Text, N;
+    TextWrapStyle = "text-wrap-style", "auto", true, Text, N;
+    TextEmphasisStyle = "text-emphasis-style", "none", true, Text, N;
+    TextEmphasisColor = "text-emphasis-color", "currentcolor", true, Text, N;
+    TextDecorationLine = "text-decoration-line", "none", false, TextDecor, N;
+    TextDecorationStyle = "text-decoration-style", "solid", false, TextDecor, N;
+    TextDecorationColor = "text-decoration-color", "currentcolor", false, TextDecor, N;
+    TextDecorationThickness = "text-decoration-thickness", "auto", false, TextDecor, N;
+    FlexGrow = "flex-grow", "0", false, Flex, N;
+    FlexShrink = "flex-shrink", "1", false, Flex, N;
+    FlexBasis = "flex-basis", "auto", false, Flex, N;
+    FlexDirection = "flex-direction", "row", false, Flex, N;
+    FlexWrap = "flex-wrap", "nowrap", false, Flex, N;
+    AlignContent = "align-content", "normal", false, Align, N;
+    JustifyContent = "justify-content", "normal", false, Align, N;
+    AlignItems = "align-items", "normal", false, Align, N;
+    JustifyItems = "justify-items", "legacy", false, Align, N;
+    AlignSelf = "align-self", "auto", false, Align, N;
+    JustifySelf = "justify-self", "auto", false, Align, N;
+    RowGap = "row-gap", "normal", false, Gap, N;
+    ColumnGap = "column-gap", "normal", false, Gap, N;
+    GridTemplateRows = "grid-template-rows", "none", false, Grid, N;
+    GridTemplateColumns = "grid-template-columns", "none", false, Grid, N;
+    GridTemplateAreas = "grid-template-areas", "none", false, Grid, N;
+    GridAutoRows = "grid-auto-rows", "auto", false, Grid, N;
+    GridAutoColumns = "grid-auto-columns", "auto", false, Grid, N;
+    GridAutoFlow = "grid-auto-flow", "row", false, Grid, N;
+    GridRowStart = "grid-row-start", "auto", false, Grid, N;
+    GridColumnStart = "grid-column-start", "auto", false, Grid, N;
+    GridRowEnd = "grid-row-end", "auto", false, Grid, N;
+    GridColumnEnd = "grid-column-end", "auto", false, Grid, N;
+    ColumnWidth = "column-width", "auto", false, Multicol, N;
+    ColumnCount = "column-count", "auto", false, Multicol, N;
+    ColumnHeight = "column-height", "auto", false, Multicol, N;
+    ColumnWrap = "column-wrap", "auto", false, Multicol, N;
+    ColumnRuleWidth = "column-rule-width", "medium", false, GapRule, N;
+    ColumnRuleStyle = "column-rule-style", "none", false, GapRule, N;
+    ColumnRuleColor = "column-rule-color", "currentcolor", false, GapRule, N;
+    RowRuleWidth = "row-rule-width", "medium", false, GapRule, N;
+    RowRuleStyle = "row-rule-style", "none", false, GapRule, N;
+    RowRuleColor = "row-rule-color", "currentcolor", false, GapRule, N;
+    ColumnRuleBreak = "column-rule-break", "normal", false, GapRule, N;
+    RowRuleBreak = "row-rule-break", "normal", false, GapRule, N;
+    ColumnRuleVisibilityItems = "column-rule-visibility-items", "normal", false, GapRule, N;
+    RowRuleVisibilityItems = "row-rule-visibility-items", "normal", false, GapRule, N;
+    ColumnRuleInsetCapStart = "column-rule-inset-cap-start", "0", false, GapRule, N;
+    ColumnRuleInsetCapEnd = "column-rule-inset-cap-end", "0", false, GapRule, N;
+    ColumnRuleInsetJunctionStart = "column-rule-inset-junction-start", "0", false, GapRule, N;
+    ColumnRuleInsetJunctionEnd = "column-rule-inset-junction-end", "0", false, GapRule, N;
+    RowRuleInsetCapStart = "row-rule-inset-cap-start", "0", false, GapRule, N;
+    RowRuleInsetCapEnd = "row-rule-inset-cap-end", "0", false, GapRule, N;
+    RowRuleInsetJunctionStart = "row-rule-inset-junction-start", "0", false, GapRule, N;
+    RowRuleInsetJunctionEnd = "row-rule-inset-junction-end", "0", false, GapRule, N;
 }
 
-impl LonghandId {
-    pub fn name(self) -> &'static str {
-        Self::NAMES[self as usize]
-    }
-
-    /// Начальное значение (css-cascade-5 §7.3.1) — текстом той же
-    /// грамматики, что и объявление.
-    pub fn initial(self) -> &'static str {
-        Self::INITIAL[self as usize]
-    }
-
-    /// Наследуется ли по умолчанию: решает `unset` (§7.3.3).
-    pub fn inherited(self) -> bool {
-        Self::INHERITED[self as usize]
-    }
-
-    pub fn grammar(self) -> Grammar {
-        Self::GRAMMAR[self as usize]
-    }
-
-    pub fn slot(self) -> Slot {
-        Self::SLOT[self as usize]
-    }
-
-    /// Годится ли значение (не общее слово и без подстановки) этому
-    /// свойству: негодное объявление отбрасывается разбором (CSS Syntax
-    /// §4.1.7 / css-cascade-5 §4) и в каскад не попадает.
-    pub fn accepts(self, value: &str, vcx: ValueCx<'_>) -> bool {
-        crate::style::computed::Computed::accepts_longhand(self, value, vcx)
-    }
-}
+mod info;
