@@ -35,6 +35,7 @@ impl Computed {
             text_align: self.text_align,
             text_align_last: self.text_align_last,
             break_word: self.break_word,
+            word_break_word: self.word_break_word,
             balance_lines: self.balance_lines,
             bidi_override: self.bidi_override,
             bidi_isolate: self.bidi_isolate,

@@ -24,8 +24,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     let side = px_lossy_zero;
     let bw = c.borders();
     let mbp_y = side(bw.top) + side(bw.bottom) + side(c.padding.top) + side(c.padding.bottom);
-    if !multicol && !measuring && e.style.clamp_auto == Some(true) && auto_clamp_limit(c).is_some()
-    {
+    if !multicol && !measuring && e.style.clamp_by_height() && auto_clamp_limit(c).is_some() {
         if let Some(cut) = cx
             .clamp_plan(e.node_id)
             .map(|p| p.cut)

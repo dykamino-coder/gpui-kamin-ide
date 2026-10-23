@@ -301,8 +301,9 @@ pub struct Computed {
     pub text_align: Option<TextAlign>,
     /// `text-align-last` — выключка ПОСЛЕДНЕЙ строки абзаца. Отдельное
     /// свойство, потому что по умолчанию последняя строка не растягивается:
-    /// иначе абзац из одного слова разъехался бы во всю ширину.
-    pub text_align_last: Option<TextAlign>,
+    /// иначе абзац из одного слова разъехался бы во всю ширину. `Some(None)`
+    /// — `auto`, `None` — от родителя.
+    pub text_align_last: Option<Option<TextAlign>>,
     /// `match-parent` (css-text-3 §text-align): бит 1 — у `text-align-all`,
     /// бит 2 — у `text-align-last`; решается при наследовании по письму
     /// РОДИТЕЛЯ (`inherit_fonts`).
@@ -382,11 +383,12 @@ pub struct Computed {
     /// наследуемое, значение родителя переносит `doc::settle_explicit_inherit`
     /// (`text-overflow-004`).
     pub text_overflow_inherit: bool,
-    /// `block-ellipsis` (css-overflow-4 §block-ellipsis): None — `auto`
+    /// `block-ellipsis` (css-overflow-4 §block-ellipsis): `None` — от
+    /// родителя (у корня — начальное `no-ellipsis`), `Some(None)` — `ellipsis`
     /// (U+2026), пустая строка — `no-ellipsis`, иначе строка-знак. Отдельно
     /// от `overflow_marker`: `text-overflow` относится к строчной оси и
     /// знака на строке обрыва `line-clamp` не задаёт.
-    pub clamp_mark: Option<String>,
+    pub clamp_mark: Option<Option<String>>,
     /// `list-style: none` — навигация, свёрстанная на списках, иначе идёт с
     /// точками.
     pub no_marker: Option<bool>,
@@ -672,8 +674,8 @@ pub struct Computed {
     /// `display: -webkit-box` с вертикальной ориентацией (css-overflow-4
     /// §5.1); оба сокращения — одни лонгхенды, побеждает последнее.
     pub clamp_legacy: Option<bool>,
-    /// `line-clamp: auto` — обрезка по max-height контейнера
-    /// (css-overflow-4 §line-clamp), без счёта строк.
+    /// `auto` в `max-lines` (css-overflow-4 §max-lines): контейнер обрезки
+    /// режет и по своей высоте; `None` — начальное `auto`.
     pub clamp_auto: Option<bool>,
     /// `fill` для SVG-фигур (CSS-презентация, SVG 2).
     pub svg_fill: Option<String>,
@@ -688,8 +690,8 @@ pub struct Computed {
     pub svg_y: Option<Len>,
     pub webkit_box: Option<bool>,
     pub webkit_box_vertical: Option<bool>,
-    /// `text-fit` — подбор кегля под ширину коробки.
-    pub text_fit: Option<TextFit>,
+    /// `text-fit` — подбор кегля под ширину коробки; `Some(None)` — `none`.
+    pub text_fit: Option<Option<TextFit>>,
     /// `hyphenate-character` — чем показывать перенос слова. Пусто — ничем.
     pub hyphen_char: Option<String>,
     /// `hyphens: auto` — слогораздел ставит сам движок, а не разметка.
@@ -845,8 +847,8 @@ pub struct Computed {
     /// `clear: left` мимо правого флоата проходит насквозь (CSS 2.1 §9.5.2).
     pub clear: Option<i8>,
     /// `text-combine-upright`: сколько знаков сжимается в один кегль
-    /// (0 — `all`, 2..=4 — `digits N`). Наследуется.
-    pub combine_upright: Option<u8>,
+    /// (0 — `all`, 2..=4 — `digits N`; `Some(None)` — `none`). Наследуется.
+    pub combine_upright: Option<Option<u8>>,
     /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
     /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
     /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
@@ -1616,4 +1618,14 @@ pub struct Computed {
     /// `font-synthesis-position` (css-fonts-4 §font-synthesis-position):
     /// разрешён ли синтез надстрочных/подстрочных; `None` — от родителя.
     pub(crate) font_synth_position: Option<bool>,
+    /// `list-style-image` (css-lists-3 §3.3): `Some(None)` — `none`; `None` —
+    /// от родителя. Маркер-картинку раскладка пока не рисует.
+    pub(crate) list_style_image: Option<Option<ImageSource>>,
+    /// `word-break: break-word` (css-text-4 §5.2, устаревшее): своё поле
+    /// `word-break`; используемое значение складывается с `overflow-wrap:
+    /// anywhere` у читателя (`text::paragraph::breaking`).
+    pub(crate) word_break_word: Option<bool>,
+    /// `continue: collapse` (css-overflow-4 §5.4): коробка — контейнер
+    /// обрезки строк. Не наследуется; `-webkit-legacy` — `clamp_legacy`.
+    pub(crate) clamp_continue: Option<bool>,
 }

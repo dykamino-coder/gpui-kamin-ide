@@ -32,7 +32,7 @@ pub(super) fn apply_layout(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     let legacy_block;
     let c = if c.webkit_box == Some(true)
         && c.webkit_box_vertical == Some(true)
-        && (c.line_clamp.is_some() || c.clamp_auto == Some(true))
+        && (c.line_clamp.is_some() || c.clamp_by_height())
         && (c.align_items.is_some() || c.justify_content.is_some())
     {
         let mut b = c.clone();

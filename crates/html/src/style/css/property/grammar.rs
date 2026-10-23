@@ -62,4 +62,21 @@ pub enum Grammar {
     Multicol,
     /// Линейки промежутков (css-gaps-1 §3-§6).
     GapRule,
+    /// Маркер списка и кавычки (css-lists-3 §3, css-content-3 §4).
+    List,
+    /// Письмо, направление, сочетание знаков и математика (css-writing-modes-4
+    /// §2-§9, MathML Core §3.1-3.2).
+    Writing,
+    /// Цвет текста (css-color-4 §4.1).
+    Color,
+    /// Взаимодействие и изображение (css-ui-4, css-scrollbars-1, css-images-3,
+    /// css-display-4 §visibility, SVG 2 §pointer-events).
+    Ui,
+    /// Заливка и обводка SVG (SVG 2 §13, css-fill-stroke-3).
+    Svg,
+    /// Таблицы и фрагментация (CSS 2.1 §17, css-tables-3, css-break-3 §3.3).
+    Table,
+    /// Строчные свойства текста (css-text-4, css-text-decor-4, css-ruby-1,
+    /// css-inline-3 §4, css-overflow-4 §line-clamp).
+    Inline,
 }

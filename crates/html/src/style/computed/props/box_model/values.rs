@@ -37,6 +37,16 @@ impl Computed {
             (Grammar::Multicol | Grammar::GapRule, _) => {
                 crate::style::computed::props::multicol::values::accepts(id, value, vcx)
             }
+            (
+                Grammar::List
+                | Grammar::Writing
+                | Grammar::Color
+                | Grammar::Ui
+                | Grammar::Svg
+                | Grammar::Table
+                | Grammar::Inline,
+                _,
+            ) => crate::style::computed::props::inherited::accepts(id, value, vcx),
             _ => crate::style::computed::props::border::values::accepts(id, value, vcx),
         }
     }

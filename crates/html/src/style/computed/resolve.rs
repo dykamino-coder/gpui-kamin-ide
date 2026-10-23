@@ -185,7 +185,7 @@ impl Computed {
         if matches!(self.letter_spacing, Some(Len::Px(v) | Len::Em(v)) if v != 0.0)
             || (self.justify_chars == Some(2)
                 && (self.text_align == Some(TextAlign::Justify)
-                    || self.text_align_last == Some(TextAlign::Justify)))
+                    || self.text_align_last == Some(Some(TextAlign::Justify))))
         {
             for tag in ["liga", "clig", "dlig", "hlig"] {
                 all.push((tag.to_string(), 0));

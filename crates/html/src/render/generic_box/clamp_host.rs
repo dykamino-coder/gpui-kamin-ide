@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 pub(super) fn active(e: &Element, c: &Computed) -> bool {
     (e.style.clamp_lines().is_some()
-        || (e.style.clamp_auto == Some(true)
+        || (e.style.clamp_by_height()
             && e.style.clamp_block_container()
             && auto_clamp_limit(c).is_some()))
         && !crate::layout::multicol::spanner::multicol_container(&e.style)
@@ -32,7 +32,7 @@ pub(super) fn build(
     // и прибавляет его к измеренному размеру содержимого ровно один раз.
     let geometry = crate::text::clamp::geometry::ClampGeometry {
         limit: e.style.clamp_lines(),
-        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_auto == Some(true)),
+        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_by_height()),
         trim_end: if c.text_box_trim_end {
             crate::text::text_box::text_box_trim_px(&c, false, opts)
         } else {

@@ -99,6 +99,7 @@ pub(crate) fn native_paragraph(
         .align_last(
             inherited
                 .text_align_last
+                .flatten()
                 .map(|a| a.physical(inherited.wm().rtl()))
                 .map(crate::text::paragraph::align_of_value)
                 // `text-justify: none` forbids justification of the last
@@ -161,7 +162,7 @@ pub(crate) fn native_paragraph(
             Some(measure_font(inherited, opts)),
             Some(gpui::px(own_size(inherited, opts))),
         )
-        .clamp_mark(inherited.clamp_mark.clone())
+        .clamp_mark(inherited.used_block_ellipsis())
         .clamp_tag(clamp_tag)
         // Знак обрыва — анонимный строчный ребёнок блока: и
         // `visibility` у него блочная (css-overflow-3 §text-overflow,

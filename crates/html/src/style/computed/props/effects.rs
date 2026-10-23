@@ -1,8 +1,7 @@
 //! Группа свойств `Computed::apply_one`: эффекты и всё остальное — `filter`,
 //! `backdrop-filter`, смешение, `isolation`, `animation`, `transition`,
-//! `will-change`, `contain*`, `zoom`, `content`, счётчики, `quotes`, списки,
-//! свойства презентации SVG (`fill`, `stroke`, `x`/`y`), `cursor`,
-//! `appearance`, `view-transition-name`. Замыкает цепочку групп; таймлайны
+//! `will-change`, `contain*`, `zoom`, `content`, счётчики, геометрия SVG
+//! (`x`/`y`, `cx`…), `appearance`, `view-transition-name`. Замыкает цепочку групп; таймлайны
 //! и ограничение — в подмодулях `timing`, `containment`.
 
 use crate::document::state::ValueCx;
@@ -15,9 +14,6 @@ pub(super) mod values;
 
 impl Computed {
     pub(crate) fn apply_effects(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
-        if self.apply_paint_value(key, v, vcx) {
-            return;
-        }
         match key {
             // `x`/`y` — геометрические СВОЙСТВА фигуры (SVG 2 §Geometry).
             // У HTML-коробки таких свойств нет, поэтому имена свободны, а в
@@ -31,17 +27,6 @@ impl Computed {
             "cx" | "cy" | "r" | "rx" | "ry" | "d" | "path-length" => {
                 crate::svg::geometry_property(self, key, v, vcx);
             }
-            "caption-side" => {
-                self.caption_bottom =
-                    apply_parsed!(self, matches!(v, "top" | "bottom").then_some(v == "bottom"))
-            }
-            "list-style-position" => {
-                self.list_style_inside = apply_parsed!(
-                    self,
-                    matches!(v, "inside" | "outside").then_some(v == "inside")
-                );
-            }
-            "list-style" | "list-style-type" => list_style::apply(self, key, v),
             "backdrop-filter" => {
                 // Тот же `<filter-value-list>`, что у `filter`
                 // (filter-effects-2 §BackdropFilterProperty): разбор общий,
@@ -165,26 +150,6 @@ impl Computed {
             }
 
             // --- Прочее ------------------------------------------------------
-            "pointer-events" => {
-                self.pointer_events_none = apply_parsed!(
-                    self,
-                    matches!(
-                        v,
-                        "auto"
-                            | "none"
-                            | "visiblePainted"
-                            | "visibleFill"
-                            | "visibleStroke"
-                            | "visible"
-                            | "painted"
-                            | "fill"
-                            | "stroke"
-                            | "all"
-                            | "bounding-box"
-                    )
-                    .then_some(v == "none")
-                )
-            }
             "table-layout" => {
                 self.table_fixed =
                     apply_parsed!(self, matches!(v, "auto" | "fixed").then_some(v == "fixed"))
@@ -200,7 +165,6 @@ impl Computed {
                 }
                 counters::apply(self, key, v, vcx)
             }
-            "quotes" => quotes::apply(self, v),
             "content" => {
                 match v {
                     "inherit" => self.content_inherit = true,
@@ -226,12 +190,6 @@ impl Computed {
                             self.content = Some(list);
                         }
                     }
-                }
-            }
-            "accent-color" => {
-                if let Some(value) = values::inherited_color_or_auto(self, v, vcx) {
-                    self.accept_declaration();
-                    self.accent_color = value;
                 }
             }
             "appearance" | "-webkit-appearance" => {

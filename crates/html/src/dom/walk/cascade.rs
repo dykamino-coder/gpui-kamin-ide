@@ -155,6 +155,12 @@ pub(super) fn cascade_element(
     }
     style.dark_color_scheme = crate::style::values::value::dark_scheme(vcx);
     style.embedding_dark_scheme = crate::style::values::value::embedding_dark_scheme(vcx);
+    // css-color-4 §4.1: the initial `color` is `CanvasText` of the used color
+    // scheme. Below the root an empty slot inherits; at the root it is the
+    // initial value, resolved against the root's own scheme.
+    if element.root && style.color.is_none() && style.color_function.is_none() {
+        style.apply_one("color", "canvastext", vcx);
+    }
     style.custom_scrollbar = rules.iter().any(|rule| {
         if rule.sel.pseudo.as_deref() != Some("-webkit-scrollbar") {
             return false;

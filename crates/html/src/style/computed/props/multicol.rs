@@ -1,6 +1,6 @@
 //! Группа свойств `Computed::apply_one`: многоколоночность и фрагментация —
 //! `column-*` (css-multicol-1/2), `break-*`/`page-break-*` и
-//! `box-decoration-break` (css-break-3/4), `orphans`/`widows`, `page`,
+//! `box-decoration-break` (css-break-3/4), `page`,
 //! `scroll-marker-group`/`scroll-target-group`; линейки `*-rule*`, щели и
 //! `margin-trim` — в подмодулях `gap_rules`, `rule_props`.
 
@@ -18,19 +18,6 @@ impl Computed {
         match key {
             // css-break-3 §4.4: `<integer [1,∞]>`; ноль и отрицательное
             // невалидны — объявление отбрасывается.
-            "orphans" | "widows" => {
-                if let Ok(n) = v.parse::<u16>()
-                    && n >= 1
-                {
-                    self.accept_declaration();
-                    if key == "orphans" {
-                        self.orphans = Some(n);
-                    } else {
-                        self.widows = Some(n);
-                    }
-                }
-            }
-
             // --- Многоколоночный поток ----------------------------------------
             // Невалидное значение НЕ затирает прежнее (каскад CSS
             // отбрасывает объявление целиком): `column-count: -1` после

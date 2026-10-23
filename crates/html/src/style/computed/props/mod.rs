@@ -56,6 +56,7 @@ pub(super) mod display_flex;
 pub(super) mod effects;
 pub(super) mod font;
 pub(super) mod grid;
+pub(crate) mod inherited;
 pub(super) mod mask_clip;
 pub(super) mod multicol;
 mod position;

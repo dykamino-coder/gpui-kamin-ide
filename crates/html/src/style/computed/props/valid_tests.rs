@@ -106,22 +106,28 @@ fn line_clamp_accepts_strings_auto_and_ellipsis_keywords() {
     check(
         "line-clamp",
         &[
+            "none",
             "2 \" CUSTOM\"",
             "2 \"\u{2026} (continued)\"",
+            "auto",
+            "8 auto",
+            "7 no-ellipsis",
+            "auto 11",
             "auto no-ellipsis",
             "3 ellipsis auto",
-            "8 auto",
             "ellipsis",
-            "auto 11",
             "1 -webkit-legacy",
+            "auto -webkit-legacy",
         ],
         &[
             "0",
             "none 2",
             "3 none",
+            "none no-ellipsis",
             "-webkit-legacy",
             "auto auto",
             "2 3",
+            "ellipsis no-ellipsis",
         ],
     );
 }

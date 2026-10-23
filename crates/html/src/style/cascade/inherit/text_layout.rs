@@ -121,6 +121,12 @@ pub(super) fn inherit_text_layout(parent: &Computed, own: &Computed, c: &mut Com
         .clone()
         .or_else(|| parent.list_style_type.clone());
     c.list_style_inside = own.list_style_inside.or(parent.list_style_inside);
+    c.list_style_image = own
+        .list_style_image
+        .clone()
+        .or_else(|| parent.list_style_image.clone());
+    // `text-fit` наследуется (css-text-5 §text-fit).
+    c.text_fit = own.text_fit.or(parent.text_fit);
     c.vertical_align = own.vertical_align.or(parent.vertical_align);
     c.font_stretch = own.font_stretch.or(parent.font_stretch);
     // `font-size-adjust` наследуется значением; подгонку каждый элемент

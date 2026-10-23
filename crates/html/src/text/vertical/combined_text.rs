@@ -24,7 +24,7 @@ pub(crate) fn piece(
         return None;
     }
     let mut merged = inherit(inherited, &element.style, vcx);
-    let count = merged.combine_upright?;
+    let count = merged.combine_upright.flatten()?;
     let mut plain = String::new();
     gather_text(&element.children, &mut plain);
     let text = plain.trim();
@@ -35,7 +35,7 @@ pub(crate) fn piece(
     {
         return None;
     }
-    merged.combine_upright = None;
+    merged.combine_upright = Some(None);
     // An explicit zero overrides inherited spacing in nested inline descendants.
     merged.letter_spacing = Some(Len::Px(0.0));
     let em = match merged.font_size {

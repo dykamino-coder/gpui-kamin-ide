@@ -27,7 +27,7 @@ pub(crate) fn own_context(e: &Element) -> bool {
         // §line-clamp-containers): поле первого ребёнка через его верх не
         // схлопывается (`line-clamp-auto-027`). Только собственный стиль:
         // слитый несёт `line_clamp` потомкам для текста.
-        || ((e.style.clamp_lines().is_some() || e.style.clamp_auto == Some(true))
+        || ((e.style.clamp_lines().is_some() || e.style.clamp_by_height())
             && !multicol_container(&e.style))
 }
 

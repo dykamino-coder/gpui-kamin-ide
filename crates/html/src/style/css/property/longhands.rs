@@ -4,7 +4,8 @@
 //! css-text-decor-4, css-flexbox-1, css-align-3, css-grid-2, css-multicol-2,
 //! css-gaps-1), наследование, грамматика и место в логической группе (css-logical-1 §4:
 //! логическое и физическое свойство одной стороны делят вычисленное
-//! значение).
+//! значение). Прочие наследуемые свойства — продолжение таблицы в
+//! `inherited_rows`.
 
 use super::Grammar;
 
@@ -66,7 +67,10 @@ use BoxGroup::{
 };
 use Slot::{Logical as L, Physical as F, Single as N};
 
-longhands! {
+#[macro_use]
+mod inherited_rows;
+
+with_inherited_rows! {
     MarginTop = "margin-top", "0", false, Margin, F(M, 0);
     MarginRight = "margin-right", "0", false, Margin, F(M, 1);
     MarginBottom = "margin-bottom", "0", false, Margin, F(M, 2);

@@ -1,5 +1,5 @@
-//! Разбор `text-box-trim`, `text-box-edge` и сокращения `text-box`
-//! (css-inline-3 §text-box-trim, §text-box-edge, §text-box) — чистые функции.
+//! Разбор `text-box-trim` и `text-box-edge` (css-inline-3 §text-box-trim,
+//! §text-box-edge) — чистые функции; сокращение `text-box` раскрыто разбором.
 //!
 //! Грамматика края: `auto | <text-edge>`, где `<text-edge>` —
 //! `[text | ideographic | ideographic-ink] |
@@ -60,45 +60,6 @@ fn shared_or_text(o: TextEdge) -> TextEdge {
     }
 }
 
-/// Сокращение `text-box`: `normal | <'text-box-trim'> || <'text-box-edge'>`.
-/// Без обрезки подразумевается `trim-both` (не начальное значение), без
-/// края — `auto`. Результат: ((начало, конец), (верхний, нижний)).
-pub(crate) type TextBox = ((bool, bool), (TextEdge, TextEdge));
-
-pub(crate) fn parse_shorthand(v: &str) -> Option<TextBox> {
-    if v == "normal" {
-        return Some(((false, false), (TextEdge::Text, TextEdge::Text)));
-    }
-    let words: Vec<&str> = v.split_ascii_whitespace().collect();
-    let trims: Vec<usize> = (0..words.len())
-        .filter(|&i| parse_trim(words[i]).is_some())
-        .collect();
-    let (trim, edge_words): ((bool, bool), Vec<&str>) = match trims.as_slice() {
-        [] => ((true, true), words.clone()),
-        // Обрезка — целиком до или после края (`||` не разрывает край).
-        [i] if *i == 0 || *i == words.len() - 1 => {
-            let rest = words
-                .iter()
-                .enumerate()
-                .filter(|(k, _)| k != i)
-                .map(|(_, w)| *w)
-                .collect();
-            (parse_trim(words[*i])?, rest)
-        }
-        _ => return None,
-    };
-    // `none` в сокращении не допускается (там `normal`).
-    if words.contains(&"none") || words.is_empty() {
-        return None;
-    }
-    let edge = if edge_words.is_empty() {
-        (TextEdge::Text, TextEdge::Text)
-    } else {
-        parse_edge(&edge_words.join(" "))?
-    };
-    Some((trim, edge))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,31 +83,8 @@ mod tests {
     }
 
     #[test]
-    fn trim_and_shorthand() {
+    fn trim_grammar() {
         assert_eq!(parse_trim("trim-end"), Some((false, true)));
         assert_eq!(parse_trim("both"), None);
-        assert_eq!(
-            parse_shorthand("normal"),
-            Some(((false, false), (Text, Text)))
-        );
-        assert_eq!(
-            parse_shorthand("cap alphabetic"),
-            Some(((true, true), (Cap, Alphabetic)))
-        );
-        assert_eq!(
-            parse_shorthand("trim-start text"),
-            Some(((true, false), (Text, Text)))
-        );
-        assert_eq!(
-            parse_shorthand("ex trim-end"),
-            Some(((false, true), (Ex, Text)))
-        );
-        assert_eq!(
-            parse_shorthand("auto trim-both"),
-            Some(((true, true), (Text, Text)))
-        );
-        assert_eq!(parse_shorthand("none"), None);
-        assert_eq!(parse_shorthand("cap trim-start alphabetic"), None);
-        assert_eq!(parse_shorthand("trim-start trim-end"), None);
     }
 }

@@ -109,6 +109,15 @@ pub enum ShorthandId {
     ColumnRuleInsetEnd,
     RowRuleInsetEnd,
     RuleInsetEnd,
+    /// css-lists-3 §3.6.
+    ListStyle,
+    /// css-text-4 §7.1: `text-align-all` и `text-align-last`.
+    TextAlign,
+    /// css-inline-3 §4.1.
+    TextBox,
+    /// css-overflow-4 §5.2-5.3: `max-lines`, `block-ellipsis`, `continue`.
+    LineClamp,
+    WebkitLineClamp,
 }
 
 const SHORTHANDS: &[(&str, ShorthandId)] = &[
@@ -191,6 +200,11 @@ const SHORTHANDS: &[(&str, ShorthandId)] = &[
     ("column-rule-inset-end", ShorthandId::ColumnRuleInsetEnd),
     ("row-rule-inset-end", ShorthandId::RowRuleInsetEnd),
     ("rule-inset-end", ShorthandId::RuleInsetEnd),
+    ("list-style", ShorthandId::ListStyle),
+    ("text-align", ShorthandId::TextAlign),
+    ("text-box", ShorthandId::TextBox),
+    ("line-clamp", ShorthandId::LineClamp),
+    ("-webkit-line-clamp", ShorthandId::WebkitLineClamp),
 ];
 
 impl ShorthandId {

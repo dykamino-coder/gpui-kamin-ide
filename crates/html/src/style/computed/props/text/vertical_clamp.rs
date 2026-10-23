@@ -1,12 +1,11 @@
-//! Computed::apply_text, хвост цепочки: vertical-align/baseline-shift, line-clamp, block-ellipsis,
-//! writing-mode, text-orientation, hyphens, tab-size. Ветви в исходном порядке после
-//! apply_text_breaking.
+//! Computed::apply_text, хвост цепочки: vertical-align/baseline-shift, `-webkit-box-orient`,
+//! `unicode-bidi`, `initial-letter`, `block-step-size`.
 
 use super::*;
 use crate::document::state::ValueCx;
 
 mod clamp_values;
-use clamp_values::{clamp_value, ellipsis_value, initial_letter};
+use clamp_values::initial_letter;
 
 impl Computed {
     pub(super) fn apply_text_vertical_clamp(
@@ -77,51 +76,6 @@ impl Computed {
                     _ => None,
                 }
             }
-            // css-overflow-4 §5.1: `none | [<integer> || <'block-ellipsis'>]
-            // -webkit-legacy?`; `auto` — срез по высоте контейнера. Строка
-            // многоточия идёт маркером абзаца (`lines::marker_str`).
-            "line-clamp" => {
-                let (lines, auto, mark) = parsed_value!(self, clamp_value(v));
-                self.line_clamp = lines;
-                self.clamp_auto = auto;
-                self.clamp_legacy = Some(v.ends_with("-webkit-legacy"));
-                self.clamp_mark = mark;
-            }
-
-            // Лонгхенд `block-ellipsis`: `no-ellipsis | auto | <string>`.
-            "block-ellipsis" => {
-                self.clamp_mark = parsed_value!(self, ellipsis_value(v));
-            }
-
-            // CSS Overflow 4 §5.2: collapse enables height clamping without
-            // max-lines; auto undoes it. The initial block ellipsis is empty.
-            "continue" => match v.trim().to_ascii_lowercase().as_str() {
-                "collapse" => {
-                    self.accept_declaration();
-                    self.clamp_auto = Some(true);
-                    self.clamp_legacy = Some(false);
-                    if self.clamp_mark.is_none() {
-                        self.clamp_mark = Some(String::new());
-                    }
-                }
-                "auto" => {
-                    self.accept_declaration();
-                    self.clamp_auto = None;
-                }
-                _ => {}
-            },
-            "-webkit-line-clamp" => {
-                self.line_clamp = parsed_value!(
-                    self,
-                    if v == "none" {
-                        Some(None)
-                    } else {
-                        v.parse::<u32>().ok().filter(|n| *n > 0).map(Some)
-                    }
-                );
-                self.clamp_auto = None;
-                self.clamp_legacy = Some(true);
-            }
             "-webkit-box-orient" => {
                 if !matches!(v, "horizontal" | "vertical" | "inline-axis" | "block-axis") {
                     return;
@@ -131,7 +85,7 @@ impl Computed {
             }
 
             // --- Письмо и цветовые фильтры -------------------------------------
-            "direction" | "unicode-bidi" => bidi_properties::apply(self, key, v),
+            "unicode-bidi" => bidi_properties::apply(self, v),
 
             // --- Обтекание и направление письма --------------------------------
             // `initial-letter: normal | <size> [<sink> | drop | raise]`
@@ -157,72 +111,6 @@ impl Computed {
                     self.flow_root = Some(true);
                 }
             }
-            "text-orientation" => {
-                if !matches!(
-                    v,
-                    "mixed" | "upright" | "sideways" | "sideways-right" | "use-glyph-orientation"
-                ) {
-                    return;
-                }
-                self.accept_declaration();
-                self.text_orientation =
-                    Some(crate::style::computed::writing_mode::TextOrientation::parse(v));
-            }
-            "writing-mode" => {
-                css_wide_reset!(self, writing_mode);
-                if !matches!(
-                    v,
-                    "horizontal-tb"
-                        | "vertical-rl"
-                        | "vertical-lr"
-                        | "sideways-rl"
-                        | "sideways-lr"
-                        | "lr"
-                        | "lr-tb"
-                        | "rl"
-                        | "rl-tb"
-                        | "tb"
-                        | "tb-rl"
-                ) {
-                    return;
-                }
-                self.accept_declaration();
-                self.writing_mode = Some(
-                    crate::style::computed::writing_mode::WritingModeKw::parse(v),
-                );
-            }
-            "text-combine-upright" => {
-                let words: Vec<_> = v.split_whitespace().collect();
-                self.combine_upright = parsed_value!(
-                    self,
-                    match words.as_slice() {
-                        ["none"] => Some(None),
-                        ["all"] => Some(Some(0)),
-                        ["digits"] => Some(Some(2)),
-                        ["digits", n] => n
-                            .parse::<u8>()
-                            .ok()
-                            .filter(|n| (2..=4).contains(n))
-                            .map(Some),
-                        _ => None,
-                    }
-                );
-            }
-
-            // --- Переносы и обрезка -------------------------------------------
-            "hyphens" => {
-                css_wide_reset!(self, hyphenate, hyphens_auto);
-                if !matches!(v, "none" | "manual" | "auto") {
-                    return;
-                }
-                self.accept_declaration();
-                self.hyphenate = Some(v != "none");
-                // `manual` только УВАЖАЕТ расставленные знаки мягкого
-                // переноса, сам их не ставит. Разделять обязательно: под одним
-                // флагом `auto` и `manual` вели себя одинаково.
-                self.hyphens_auto = Some(v == "auto");
-            }
-            "tab-size" => tab_size::apply(self, v, vcx),
             _ => *hit = false,
         }
     }

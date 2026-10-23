@@ -8,6 +8,7 @@
 mod font_shorthands;
 mod grammar;
 mod grid_shorthands;
+mod inline_shorthands;
 mod layer_shorthands;
 #[cfg(test)]
 mod layer_tests;
