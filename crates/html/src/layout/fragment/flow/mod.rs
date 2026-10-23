@@ -11,6 +11,7 @@ mod continuation;
 mod coordinates;
 mod line_growth;
 mod measurements;
+mod normalize;
 pub(crate) use continuation::ContentLine;
 pub(crate) use line_growth::LinePush;
 mod stack;
@@ -82,22 +83,6 @@ impl FlowGeometry {
             .extend(other.cuts.iter().map(|&(a, b)| (a + offset, b + offset)));
         self.solid
             .extend(other.solid.iter().map(|&(a, b)| (a + offset, b + offset)));
-    }
-
-    pub(crate) fn normalize(&mut self) {
-        use crate::tolerance::COORD_EPS;
-        self.cuts.retain(|&(a, _)| {
-            a.is_finite()
-                && a > COORD_EPS
-                && !self
-                    .solid
-                    .iter()
-                    .any(|&(s, e)| s + COORD_EPS < a && a < e - COORD_EPS)
-        });
-        self.cuts
-            .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
-        self.cuts
-            .dedup_by(|a, b| (a.0 - b.0).abs() < COORD_EPS && (a.1 - b.1).abs() < COORD_EPS);
     }
 
     /// Keep the first `orphans` and the last `widows` line boxes of one inline
