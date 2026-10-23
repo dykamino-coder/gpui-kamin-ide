@@ -14,7 +14,6 @@ mod legacy_clip;
 pub mod mask;
 mod mask_geometry;
 mod mask_size;
-pub(crate) mod paint_scope;
 mod polygon_clip;
 mod rectangular_clip;
 pub mod transform;

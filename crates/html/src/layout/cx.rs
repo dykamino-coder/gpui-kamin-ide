@@ -18,6 +18,7 @@ mod inline;
 mod position;
 mod ruby;
 mod scroll;
+pub(crate) mod scope;
 mod values;
 
 pub(crate) use clamp::ClampContext;
