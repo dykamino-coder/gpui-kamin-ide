@@ -35,7 +35,7 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         };
         assert_eq!(block.style.height, height);
         assert!(block.marks.auto_zero_height);
-        let painted = used_style(block, &block.style).unwrap_or_else(|| *block.style.clone());
+        let painted = used_style(block, &block.style).unwrap_or_else(|| (*block.style).clone());
         assert_eq!(painted.height, Some(Len::Px(0.0)));
         let mut child = Computed {
             writing_mode: Some(WritingModeKw::new(true, false, false)),

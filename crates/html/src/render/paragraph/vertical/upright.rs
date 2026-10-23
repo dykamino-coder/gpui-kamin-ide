@@ -90,10 +90,11 @@ fn drop_block_axis_sides(n: &Node) -> Node {
     match n {
         Node::Element(e) if e.inline && e.style.display.is_none() => {
             let mut e = e.clone();
+            let style = &mut *e.style;
             for sides in [
-                &mut e.style.margin,
-                &mut e.style.padding,
-                &mut e.style.border_width,
+                &mut style.margin,
+                &mut style.padding,
+                &mut style.border_width,
             ] {
                 sides.left = None;
                 sides.right = None;

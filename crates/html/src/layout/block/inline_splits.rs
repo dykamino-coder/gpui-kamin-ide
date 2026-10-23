@@ -107,6 +107,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 block.style.list_style_type = block
                     .style
                     .list_style_type
+                    .clone()
                     .or_else(|| e.style.list_style_type.clone());
                 block.style.list_style_inside =
                     block.style.list_style_inside.or(e.style.list_style_inside);
@@ -114,6 +115,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Vec
                 block.style.marker_text = block
                     .style
                     .marker_text
+                    .clone()
                     .or_else(|| e.style.marker_text.clone());
                 // Сам блок ПОЗИЦИОНИРОВАН: его собственные края нельзя ни
                 // заменить, ни сложить с чужими (у хозяина они бывают в долях,

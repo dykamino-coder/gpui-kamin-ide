@@ -79,11 +79,12 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         copy.style.height = v;
         changed = true;
     }
+    let padding = &mut copy.style.padding;
     for (dst, src) in [
-        (&mut copy.style.padding.top, e.style.padding.top),
-        (&mut copy.style.padding.bottom, e.style.padding.bottom),
-        (&mut copy.style.padding.left, e.style.padding.left),
-        (&mut copy.style.padding.right, e.style.padding.right),
+        (&mut padding.top, e.style.padding.top),
+        (&mut padding.bottom, e.style.padding.bottom),
+        (&mut padding.left, e.style.padding.left),
+        (&mut padding.right, e.style.padding.right),
     ] {
         if let Some(v) = of(src, base_w) {
             *dst = v;

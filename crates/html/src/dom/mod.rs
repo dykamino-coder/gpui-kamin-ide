@@ -110,7 +110,7 @@ pub struct Element {
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
     pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,
     pub tag: String,
-    pub style: Box<Computed>,
+    pub style: SharedStyle,
     /// Стиль наведения, собранный из правил с `:hover`. Пустой, если таких
     /// правил не было.
     pub hover: Option<SharedStyle>,

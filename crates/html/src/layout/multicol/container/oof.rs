@@ -203,10 +203,11 @@ pub(super) fn finish_column_stack(
         if let Some(ch) = cb_h
             && oof.style.position == Some(crate::style::computed::Position::Absolute)
         {
+            let style = &mut *oof.style;
             for l in [
-                &mut oof.style.height,
-                &mut oof.style.min_height,
-                &mut oof.style.max_height,
+                &mut style.height,
+                &mut style.min_height,
+                &mut style.max_height,
             ] {
                 if let Some(Len::Pct(k)) = *l {
                     *l = Some(Len::Px(k * ch));
