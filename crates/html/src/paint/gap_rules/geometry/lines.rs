@@ -6,23 +6,6 @@ use crate::paint::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::grid::merge;
 use crate::paint::gap_rules::geometry::tracks::tracks_a;
 
-/// Строки гибкого контейнера по оси `a`: пересекающиеся протяжённости
-/// элементов сливаются в одну строку.
-pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
-    let mut v: Vec<(f32, f32)> = items.iter().map(|i| (i.a0, i.a1)).collect();
-    v.sort_by(|x, y| x.0.total_cmp(&y.0));
-    let mut out: Vec<(f32, f32)> = vec![];
-    for (lo, hi) in v {
-        match out.last_mut() {
-            Some(last) if lo < last.1 - GAP_RULE_EPS || (lo - last.0).abs() <= GAP_RULE_EPS => {
-                last.1 = last.1.max(hi)
-            }
-            _ => out.push((lo, hi)),
-        }
-    }
-    out
-}
-
 /// Строки/ленты: `a` — ось укладки строк, `b` — ось элементов строки. Главные
 /// промежутки — между строками, их пересекающие зазоры — ОБЪЕДИНЕНИЕ зазоров
 /// соседних строк (окна перекрытия Blink); поперечные — между соседними
@@ -34,7 +17,7 @@ pub(super) fn line_groups(items: &[GapItem]) -> Vec<(f32, f32)> {
 /// `row-gap-decorations-003/010`); ряды многоколонника обходятся без этого.
 // Gap intersections require both axis geometries and their decoration styles.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn line_runs(
+pub(in crate::paint::gap_rules) fn line_runs(
     items: &[GapItem],
     gap_a: Option<f32>,
     main: Option<&GapAxisRule>,
@@ -43,39 +26,48 @@ pub(crate) fn line_runs(
     extent: Option<(u8, f32, f32)>,
     content_aligned: bool,
     lanes: Option<(Vec<(f32, f32)>, f32)>,
-    flex_extent: Option<(f32, f32)>,
+    flex_lines: Option<&super::flex_lines::FlexLines>,
 ) -> (Vec<GapRun>, Vec<GapRun>) {
-    // Гибкие строки: строка — объединение поперечных протяжённостей её
-    // элементов (Blink: `line_cross_start/end` строки, а не начало каждого
-    // элемента), иначе при `align-items: flex-end` элементы разной высоты
-    // разбегались по разным «строкам» (`flex-gap-decorations-007`).
     let flex = matches!(extent, Some((1, _, _)));
+    if flex && flex_lines.is_none() {
+        return (vec![], vec![]);
+    }
+    let native_items: Vec<_> = flex_lines
+        .into_iter()
+        .flat_map(|f| &f.members)
+        .flatten()
+        .copied()
+        .collect();
+    let items = if flex { native_items.as_slice() } else { items };
     // Ленты: полосы — дорожки оси решётки из раскладки; элемент входит в
     // каждую ленту, которую покрывает (элемент во несколько лент — запись в
     // каждой, Blink `GridLanesGapAccumulator::BuildCrossGaps`), а поперечный
     // промежуток стоит сразу перед началом следующей записи ленты: центр —
     // `ForwardStackingStart() - stacking_gap / 2` (`FinalGutterCenter`).
     let lane_gap = lanes.as_ref().map(|(_, g)| *g);
-    let mut lines = match &lanes {
+    let lines = match &lanes {
         Some((t, _)) => t.clone(),
-        None if flex => line_groups(items),
+        None if flex => flex_lines.expect("completed flex lines").lines.clone(),
         None => tracks_a(items, gap_a),
     };
-    if flex && let Some((start, end)) = flex_extent {
-        super::flex_lines::stretch(&mut lines, gap_a.unwrap_or(0.0), start, end);
-    }
     let mut r0 = items.iter().map(|i| i.b0).fold(f32::INFINITY, f32::min);
     let mut r1 = items.iter().map(|i| i.b1).fold(f32::NEG_INFINITY, f32::max);
     let inner: Vec<Vec<(f32, f32)>> = lines
         .iter()
-        .map(|&(s, e)| {
-            let mut row: Vec<&GapItem> = items
+        .enumerate()
+        .map(|(index, &(s, e))| {
+            let members = if flex {
+                flex_lines.expect("completed flex lines").members[index].as_slice()
+            } else {
+                items
+            };
+            let mut row: Vec<&GapItem> = members
                 .iter()
                 .filter(|i| {
                     if lane_gap.is_some() {
                         i.a0 < e - GAP_RULE_EPS && i.a1 > s + GAP_RULE_EPS
                     } else if flex {
-                        (i.a0 - s).abs() <= GAP_RULE_EPS || (i.a0 > s && i.a0 < e - GAP_RULE_EPS)
+                        true
                     } else {
                         (i.a0 - s).abs() <= GAP_RULE_EPS
                     }

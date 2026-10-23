@@ -2,7 +2,8 @@
 //! border-box элементов с их хвостовыми полями и коробки колонок/рядов/spanner'ов
 //! многоколонника. Каждый отрисованный экземпляр контейнера, включая копии одного DOM-узла в
 //! разных фрагментах (CSS Gaps 1 §fragmentation), получает свой буфер под уникальным ключом.
-use gpui::{Bounds, Pixels};
+use gpui::{Bounds, LayoutId, Pixels};
+use std::collections::HashMap;
 
 mod probe;
 pub use probe::gap_item_probe;
@@ -14,6 +15,7 @@ pub use probe::gap_item_probe;
 pub struct GapBuffer {
     pub items: Vec<Bounds<Pixels>>,
     pub margins: Vec<[f32; 2]>,
+    pub carried_row_gaps: HashMap<LayoutId, f32>,
     pub multicol: Option<MulticolGaps>,
 }
 impl std::ops::Deref for GapBuffer {

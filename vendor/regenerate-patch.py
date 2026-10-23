@@ -31,7 +31,7 @@ PACKAGE_REVISIONS = {
 
 FIXES = {
     "gpui": [
-        "Expose final Taffy flex line/item geometry and semantic item order, typed fragmentation growth constraints and caller-owned monolithic classification.",
+        "Expose final Taffy flex line/item geometry, semantic item order and parent identity, typed fragmentation growth constraints and caller-owned monolithic classification.",
         "Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.",
         "CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.",
         "CSS painting: stacking collectors retain DOM order independently of layout; transforms, clipping, gradients and compositing preserve CSS paint contexts.",

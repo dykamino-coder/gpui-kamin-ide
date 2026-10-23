@@ -17,11 +17,17 @@ use gpui::{AnyElement, App, Bounds, LayoutId, Window, px};
 /// рамки элемента [top, right, bottom, left]: на них проба расширяется
 /// (`grid-gap-decorations-008`: элементы с `border: 1px`, линейки вставали
 /// на 1px внутрь от первой и последней линии сетки).
-pub fn gap_item_probe(items: GapItems, border: [f32; 4], margins: [f32; 2]) -> AnyElement {
+pub fn gap_item_probe(
+    items: GapItems,
+    border: [f32; 4],
+    margins: [f32; 2],
+    carried_row_gap: f32,
+) -> AnyElement {
     PaintOnly(GapItemProbe {
         items,
         border,
         margins,
+        carried_row_gap,
     })
     .hooked()
 }
@@ -36,6 +42,7 @@ struct GapItemProbe {
     pub(crate) items: GapItems,
     pub(crate) border: [f32; 4],
     pub(crate) margins: [f32; 2],
+    pub(crate) carried_row_gap: f32,
 }
 
 impl Painter for GapItemProbe {
@@ -58,6 +65,11 @@ impl Painter for GapItemProbe {
         let size = window.layout_size_unrounded(state);
         let [t, r, b, l] = self.border;
         let mut buffer = self.items.borrow_mut();
+        if self.carried_row_gap > 0.0
+            && let Some(item) = window.parent_layout_id(state)
+        {
+            buffer.carried_row_gaps.insert(item, self.carried_row_gap);
+        }
         buffer.margins.push(self.margins);
         buffer.push(Bounds {
             origin: gpui::point(origin.x - px(l), origin.y - px(t)),
