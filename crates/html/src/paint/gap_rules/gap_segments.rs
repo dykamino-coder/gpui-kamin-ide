@@ -3,7 +3,7 @@
 //! применения `*-rule-inset`, `overlap-join` доходит до дальнего края пересекающей линейки,
 //! а в RTL физическое начало — логический конец (§3.3.1).
 
-use crate::paint::gap_rules::GapAxisRule;
+use crate::layout::multicol::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::{GapRun, subtract};
 
 // CSS Gaps 1 §3.3: overlap-join reaches the far edge of the crossing

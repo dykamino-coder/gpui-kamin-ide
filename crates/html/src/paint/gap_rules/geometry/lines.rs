@@ -2,7 +2,7 @@
 
 use super::assignment::{RuleSlot, assign};
 use super::{Crossing, GAP_RULE_EPS, GapItem, GapRun};
-use crate::paint::gap_rules::GapAxisRule;
+use crate::layout::multicol::gap_rules::GapAxisRule;
 use crate::paint::gap_rules::geometry::grid::merge;
 use crate::paint::gap_rules::geometry::tracks::tracks_a;
 

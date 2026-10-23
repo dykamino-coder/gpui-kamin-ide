@@ -1,6 +1,6 @@
 //! Проба border box элемента и его хвостовых полей для линеек промежутков.
 
-use crate::paint::gap_rules::GapItems;
+use crate::layout::multicol::gap_rules::GapItems;
 use gpui::{AnyElement, Bounds, px};
 
 /// CSS Gaps 1 §gap-grid/§gap-flex: промежуток идёт между рамочными краями.

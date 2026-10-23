@@ -37,7 +37,7 @@ pub(crate) fn child_probes(
             _ => 0.0,
         };
         let b = e.style.computed().borders();
-        kids.push(crate::paint::gap_rules::gap_item_probe(
+        kids.push(crate::layout::multicol::gap_rules::gap_item_probe(
             items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
             [bw(merged.margin.right), bw(merged.margin.bottom)],

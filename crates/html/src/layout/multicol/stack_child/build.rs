@@ -80,7 +80,7 @@ pub(super) fn build_copy(
     let frag_gap_rules = gap_rule_spec(copy, inner, opts);
     let frag_gap_items = frag_gap_rules
         .as_ref()
-        .map(|_| crate::paint::gap_rules::GapItems::default());
+        .map(|_| crate::layout::multicol::gap_rules::GapItems::default());
     let child_opts = opts.inner(|cx| {
         if let Some(items) = &frag_gap_items {
             cx.deferred.gap_items = Some(items.clone());

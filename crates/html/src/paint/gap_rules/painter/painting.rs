@@ -11,7 +11,7 @@ use crate::paint::gap_rules::geometry::{
     GAP_RULE_EPS, GapItem, GapRun, GridTracks, line_runs, uniq_sorted,
 };
 use crate::paint::gap_rules::painter::GapRulePainter;
-use crate::paint::gap_rules::{GapAxisRule, GapLayout};
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapLayout};
 use gpui::{App, Bounds, LayoutId, Pixels, Window};
 
 #[allow(clippy::too_many_arguments)]

@@ -3,7 +3,7 @@
 //! краски линейки, и для ширины пересекающей линейки в junction'ах.
 
 use crate::paint::gap_rules::geometry::{GapItem, GapRun, GridTracks, grid_runs};
-use crate::paint::gap_rules::{GapAxisRule, GapRuleSpec};
+use crate::layout::multicol::gap_rules::{GapAxisRule, GapRuleSpec};
 use gpui::{Bounds, Pixels};
 
 pub(super) fn layers<'a>(

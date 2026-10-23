@@ -19,7 +19,7 @@ pub struct DeferredPaintContext {
     /// positioned node that keeps no paint key (`unkeyed_positions`).
     pub(crate) unkeyed: Rc<crate::layout::order::Unkeyed>,
     /// Nearest gap-decorated container collecting child bounds.
-    pub(crate) gap_items: Option<crate::paint::gap_rules::GapItems>,
+    pub(crate) gap_items: Option<crate::layout::multicol::gap_rules::GapItems>,
     /// Keep scrollbar hover and drag at rest for a static host capture.
     pub freeze_scrollbars: bool,
 }

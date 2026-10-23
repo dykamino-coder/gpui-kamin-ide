@@ -105,7 +105,7 @@ pub(super) fn column_stack_div(
     nest_rows: Option<f32>,
     nest_phase: f32,
     fixed: Option<f32>,
-    gap_items: &Option<crate::paint::gap_rules::GapItems>,
+    gap_items: &Option<crate::layout::multicol::gap_rules::GapItems>,
     rule: Option<(f32, gpui::Hsla)>,
     children: Vec<crate::layout::fragment::types::StackChild>,
     opts: &RenderOpts,
