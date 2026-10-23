@@ -44,7 +44,7 @@ def tokens(source):
         offset = end
 
 
-def use_tree(words, index, prefix=()):
+def use_tree(words, index, prefix=(), aliases=False):
     """Expand `crate::{paint::x, layout::{self, y as z}}`."""
     path = prefix
     while index < len(words):
@@ -61,7 +61,7 @@ def use_tree(words, index, prefix=()):
             result = []
             index += 1
             while index < len(words) and words[index][0] != '}':
-                leaves, index = use_tree(words, index, path)
+                leaves, index = use_tree(words, index, path, aliases)
                 result.extend(leaves)
                 if index < len(words) and words[index][0] == ',':
                     index += 1
@@ -70,9 +70,18 @@ def use_tree(words, index, prefix=()):
             return [], index + 1
     if path and path[-1] == 'self':
         path = path[:-1]
+    alias = path[-1] if path else None
     if index < len(words) and words[index][0] == 'as':
+        alias = words[index + 1][0]
         index += 2
-    return [(path, line)], index
+    return [(path, line, alias) if aliases else (path, line)], index
+
+
+def file_module(filename):
+    parts = filename.removesuffix('.rs').split('/')
+    if parts[-1] in ('mod', 'lib'):
+        parts.pop()
+    return tuple(parts)
 
 
 def absolute(path, module, layers):
@@ -95,10 +104,7 @@ def absolute(path, module, layers):
 def dependencies(source, filename, layers):
     """Yield (absolute module path, line) for use trees and qualified paths."""
     words = list(tokens(source))
-    parts = filename.removesuffix('.rs').split('/')
-    if parts[-1] == 'mod':
-        parts.pop()
-    module, scopes = tuple(parts), []
+    module, scopes = file_module(filename), []
     index = 0
     while index < len(words):
         word, line = words[index]
