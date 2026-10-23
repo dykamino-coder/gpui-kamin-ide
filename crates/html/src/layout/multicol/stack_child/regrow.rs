@@ -65,7 +65,7 @@ impl Measured {
                 opts.frag.watch = Some(if part == 0 {
                     watched.clone()
                 } else {
-                    watched.constraints_only()
+                    watched.for_part(part)
                 });
                 let el = build_copy(
                     &opts,

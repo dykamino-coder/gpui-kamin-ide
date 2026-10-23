@@ -22,6 +22,32 @@ use gpui::AnyElement;
 /// дальше — запасные.
 pub(crate) type BuildCopy = dyn Fn(&Element, usize) -> AnyElement;
 
+/// Получатель роста сохраняет идентичность даже у совпадающих границ строк.
+#[derive(Clone, Debug)]
+pub(crate) struct Growth {
+    pub(crate) target: Pushed,
+    pub(crate) at: f32,
+    pub(crate) amount: f32,
+    pub(crate) forced: bool,
+}
+
+impl Growth {
+    pub(crate) fn at(
+        scope: &BlockBox,
+        laid: &Laid,
+        at: f32,
+        amount: f32,
+        forced: bool,
+    ) -> Option<Self> {
+        Some(Self {
+            target: scope.pushed_at(at, laid)?,
+            at,
+            amount,
+            forced,
+        })
+    }
+}
+
 /// Ребёнок стопки, чьи распорки роста ставит раскладка его копии.
 #[derive(Clone)]
 pub(crate) struct Regrow {
@@ -42,55 +68,44 @@ pub(crate) struct Regrow {
 impl Regrow {
     /// Несколько потоков могут запросить один и тот же рост общей строки.
     /// Ограничение применяется один раз с наибольшим занятым местом.
-    pub(crate) fn push_many(&mut self, mut grows: Vec<(BlockBox, f32, f32, bool)>) -> bool {
-        grows.sort_by(|a, b| b.1.total_cmp(&a.1));
-        let mut unique: Vec<(BlockBox, f32, f32, bool)> = Vec::new();
-        for (scope, at, growth, forced) in grows {
-            let Some(target) = scope.pushed_at(at, &self.laid) else {
-                continue;
-            };
-            if let Some(previous) = unique
-                .iter_mut()
-                .find(|p| p.0.pushed_at(p.1, &self.laid).as_ref() == Some(&target))
-            {
-                previous.2 = previous.2.max(growth);
-                previous.3 |= forced;
+    pub(crate) fn push_many(&mut self, mut grows: Vec<Growth>) -> bool {
+        if !grows.is_empty() {
+            self.watched.pin_flex_lines(&self.laid);
+        }
+        grows.sort_by(|a, b| b.at.total_cmp(&a.at));
+        let mut unique: Vec<Growth> = Vec::new();
+        for growth in grows {
+            if let Some(previous) = unique.iter_mut().find(|p| p.target == growth.target) {
+                previous.amount = previous.amount.max(growth.amount);
+                previous.forced |= growth.forced;
             } else {
-                unique.push((scope, at, growth, forced));
+                unique.push(growth);
             }
         }
         let mut changed = false;
-        for (scope, at, growth, forced) in unique {
-            changed |= self.push(&scope, at, growth, forced);
+        for growth in unique {
+            changed |= self.push(growth.target, growth.amount, growth.forced);
         }
         changed
     }
 
-    /// Распорка `grow` перед самой внешней коробкой стопки `blocks`,
-    /// начинающейся в `at`: принудительному разрыву — коробка-распорка
-    /// (`spacer_before`), монолиту — поле (`grow_before`), как у оценки.
-    pub(crate) fn push(&mut self, blocks: &BlockBox, at: f32, grow: f32, forced: bool) -> bool {
-        let pushed = blocks.pushed_at(at, &self.laid);
-        if let Some(Pushed::Box(id)) = pushed
+    /// Идентичность цели берётся до правок дерева: координаты могут совпадать.
+    fn push(&mut self, pushed: Pushed, grow: f32, forced: bool) -> bool {
+        if let Pushed::Box(id) = &pushed
             && self
                 .laid
                 .flexes
                 .values()
-                .any(|f| f.column && f.lines.iter().any(|l| l.items.contains(&id)))
+                .any(|f| f.column && f.lines.iter().any(|l| l.items.contains(id)))
         {
-            return self.watched.grow_flex_item(id, grow);
+            return self.watched.grow_flex_item(*id, grow);
         }
         match pushed {
-            Some(Pushed::Box(id)) if forced => {
-                spacer_before(&mut self.dom, id, grow, self.opts.cx.vcx())
-            }
-            Some(Pushed::Box(id)) => grow_before(&mut self.dom, id, grow),
-            Some(Pushed::Row(row)) => super::grid_row::push_row(&mut self.dom, &row, grow),
-            Some(Pushed::Flex(line)) => {
-                self.watched.grow_flex_line(line.container, line.line, grow)
-            }
-            Some(Pushed::Line(line)) => line.grow(grow),
-            None => false,
+            Pushed::Box(id) if forced => spacer_before(&mut self.dom, id, grow, self.opts.cx.vcx()),
+            Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
+            Pushed::Row(row) => super::grid_row::push_row(&mut self.dom, &row, grow),
+            Pushed::Flex(line) => self.watched.grow_flex_line(line.container, line.line, grow),
+            Pushed::Line(line) => line.grow(grow),
         }
     }
 

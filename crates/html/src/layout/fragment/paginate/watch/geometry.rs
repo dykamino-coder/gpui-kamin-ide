@@ -23,6 +23,7 @@ impl Watched {
             flexes,
             shifts,
             table_shifts,
+            margins,
         } = self.flex_frames(origin, window, &mut boxes);
         let mut tables = self.table_frames(origin, window);
         let mut grids = self.rows(origin, window);
@@ -73,11 +74,14 @@ impl Watched {
                 }
             }
         }
+        // Распорка роста стоит перед margin box элемента: поле после
+        // принудительного разрыва остаётся при нём (css-break-3 §5.2).
         for (&id, &offset) in self.flex_offsets.borrow().iter() {
             if let Some(&(top, _)) = boxes.get(&id) {
+                let start = top - margins.get(&id).map_or(0.0, |m| m.0);
                 boxes.insert(
                     id ^ crate::layout::fragment::flow::blocks::STRUT_ID,
-                    (top - offset, top),
+                    (start - offset, start),
                 );
             }
         }
@@ -94,6 +98,7 @@ impl Watched {
             lines,
             content,
             descendants,
+            margins,
         }
     }
 }

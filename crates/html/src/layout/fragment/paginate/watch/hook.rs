@@ -46,6 +46,9 @@ impl Hooks for Watch {
                 if let Some(growth) = self.rec.flex_growth.borrow().get(&id) {
                     window.set_flex_line_fragmentation_growth(lid, growth);
                 }
+                if let Some(&line) = self.rec.flex_lines.borrow().get(&id) {
+                    window.set_flex_item_fragmentation_line(lid, Some(line));
+                }
                 if let Some(offset) = self.rec.flex_offsets.borrow().get(&id) {
                     window.set_flex_item_fragmentation_offset(lid, *offset);
                 }
@@ -98,6 +101,18 @@ impl Hooks for Watch {
         window: &mut Window,
         cx: &mut App,
     ) {
-        window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx));
+        let access = match self.slot {
+            Slot::Box(id) => self.rec.access(id, window.content_mask()),
+            Slot::Table(..) => super::owner::Access::Normal,
+        };
+        match access {
+            super::owner::Access::Hidden => {}
+            super::owner::Access::Escape(mask) => window.with_content_mask_replaced(mask, |window| {
+                window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
+            }),
+            super::owner::Access::Normal => {
+                window.with_content_mask(*prepaint, |window| self.inner.paint(window, cx))
+            }
+        }
     }
 }

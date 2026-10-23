@@ -137,7 +137,27 @@ pub(super) fn walk(b: &BlockBox, top: f32, bottom: f32, laid: &Laid, out: &mut B
     }
     if let Some(flow) = laid.flows.get(&b.id) {
         out.cuts.extend_from_slice(&flow.cuts);
-        out.solid.extend_from_slice(&flow.solid);
+        let lines = laid.content.get(&b.id).map_or(&[][..], |l| l.as_slice());
+        for &(top, bottom) in &flow.solid {
+            let inside: Vec<_> = lines
+                .iter()
+                .filter(|l| l.top >= top - COORD_EPS && l.bottom <= bottom + COORD_EPS)
+                .collect();
+            if inside.len() < 2 {
+                out.solid.push((top, bottom));
+                continue;
+            }
+            // Строки, сведённые `orphans`/`widows` (`FlowGeometry::keep_lines`),
+            // — пожелание, а не монолит: правило 3 css-break-3 §4.4 снимается,
+            // если иначе содержимое не помещается во фрагментаинер (Blink
+            // `kBreakAppealViolatingOrphansAndWidows`).
+            out.keep.push((top, bottom));
+            for pair in inside.windows(2) {
+                out.cuts.push((pair[0].bottom, pair[1].top));
+            }
+            out.solid
+                .extend(inside.iter().map(|l| (l.top.max(top), l.bottom.min(bottom))));
+        }
     }
     if let Some(t) = &b.table {
         t.walk(top, laid, out);

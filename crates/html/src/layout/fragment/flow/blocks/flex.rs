@@ -83,7 +83,10 @@ impl FlexBox {
             let Some((top, bottom)) = laid.at(item.id) else {
                 continue;
             };
-            if frame.column && (top - a).abs() < COORD_EPS {
+            // Элемент колонки сдвигается вместе со своим полем: граница
+            // разрыва перед ним — начало его margin box.
+            let start = laid.margin_box(item.id).map_or(top, |m| m.0);
+            if frame.column && ((top - a).abs() < COORD_EPS || (start - a).abs() < COORD_EPS) {
                 return Some(Pushed::Box(item.id));
             }
             if top <= a
@@ -98,6 +101,13 @@ impl FlexBox {
 }
 
 impl BlockBox {
+    /// Есть ли в стопке flex-контейнер.
+    pub(crate) fn has_flex(&self) -> bool {
+        let mut out = Vec::new();
+        self.flexes(&mut out);
+        !out.is_empty()
+    }
+
     /// Все flex-контейнеры, в том числе вложенные в элементы grid/flex.
     pub(crate) fn flexes(&self, out: &mut Vec<(u64, Vec<u64>)>) {
         if let Some(f) = &self.flex {
@@ -116,6 +126,53 @@ impl BlockBox {
             )
         {
             inner.flexes(out);
+        }
+    }
+}
+
+impl BlockBox {
+    /// Принудительные границы нулевых строк нельзя объединять по координате:
+    /// каждая такая граница начинает отдельный фрагментаинер (css-break-3 §4.3).
+    pub(crate) fn zero_forced_flex_lines(&self, laid: &Laid, out: &mut Vec<(FlexPush, f32)>) {
+        if let Some(flex) = &self.flex
+            && let Some(frame) = laid.flexes.get(&self.id)
+            && !frame.column
+        {
+            for pair in frame.lines.windows(2) {
+                let (previous, next) = (&pair[0], &pair[1]);
+                if (previous.end - previous.start).abs() > COORD_EPS
+                    || (next.start - previous.start).abs() > COORD_EPS
+                {
+                    continue;
+                }
+                let forced = flex.items.iter().any(|item| {
+                    (previous.items.contains(&item.id) && item.edge(true, laid).0)
+                        || (next.items.contains(&item.id) && item.edge(false, laid).0)
+                });
+                if forced {
+                    out.push((
+                        FlexPush {
+                            container: self.id,
+                            line: previous.index,
+                        },
+                        next.start,
+                    ));
+                }
+            }
+        }
+        for inner in self
+            .kids
+            .iter()
+            .chain(self.flex.iter().flat_map(|f| &f.items))
+            .filter_map(|item| item.inner.as_ref())
+            .chain(
+                self.grid
+                    .iter()
+                    .flat_map(|g| &g.items)
+                    .filter_map(|item| item.inner.as_ref()),
+            )
+        {
+            inner.zero_forced_flex_lines(laid, out);
         }
     }
 }

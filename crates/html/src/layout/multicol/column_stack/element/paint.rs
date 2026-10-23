@@ -155,6 +155,9 @@ impl ColumnStack {
                     .iter()
                     .any(|g| g.kid == f.kid && g.copy == f.copy + 1);
                 let parent = window.content_mask();
+                if let Some(w) = &kid.watched {
+                    w.set_paint_outer(Some(parent));
+                }
                 // Разрез режет только ВНУТРЕННИЕ края фрагментов: чернильное
                 // переполнение над первым фрагментом и под последним (тень,
                 // контур) видно (css-break-3 §5.4 «slice»: края без разрыва

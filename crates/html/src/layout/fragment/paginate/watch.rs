@@ -22,6 +22,7 @@ use hook::{Slot, Watch};
 mod flex;
 mod flex_flows;
 mod geometry;
+mod owner;
 mod grid;
 mod table;
 use table::TableNodes;
@@ -47,6 +48,14 @@ pub(crate) struct Watched {
     flex_offsets: Rc<RefCell<HashMap<u64, f32>>>,
     flex_consumed: Rc<RefCell<HashMap<u64, (f32, bool)>>>,
     item_flows: Rc<HashMap<u64, Rc<crate::layout::fragment::flow::FlowMeasurements>>>,
+    /// Линии элементов колонки flex, закреплённые до фрагментации (`flex`).
+    flex_lines: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Номер копии-фрагмента, которую строит этот рекордер (`owner`).
+    part: usize,
+    /// Первый фрагмент каждого flex-элемента по плану стопки (`owner`).
+    paint_owners: Rc<RefCell<HashMap<u64, usize>>>,
+    /// Маска предка окна фрагмента на время краски копии (`owner`).
+    paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
 }
 
 impl Watched {
@@ -155,6 +164,10 @@ impl Watched {
             item_flows: self.item_flows.clone(),
             copies: RefCell::default(),
             independent: self.independent,
+            part: self.part,
+            flex_lines: self.flex_lines.clone(),
+            paint_owners: self.paint_owners.clone(),
+            paint_outer: self.paint_outer.clone(),
         })
     }
 

@@ -71,6 +71,9 @@ impl ColumnStack {
                 } else {
                     h
                 };
+                // Видимое переполнение измеренной блочной копии продолжает
+                // свой параллельный поток независимо от её border box.
+                c.over = c.over.max(f32::from(content.height));
                 c.h = h;
             }
             let sections = c.replace_breaks(sz, axis, window);
@@ -95,6 +98,11 @@ impl ColumnStack {
     /// Распорки роста детей с `regrow` по плану этой стопки.
     pub(crate) fn regrow_children(&mut self, window: &mut Window, cx: &mut App) {
         if self.axis.is_vertical() || !self.children.iter().any(|c| c.regrow.is_some()) {
+            if f13_trace() {
+                for (i, c) in self.children.iter().enumerate() {
+                    eprintln!("F13 NOREGROW {i} h={} over={} measure={:?} breaks_w={} mono={} forced={:?} solid={:?} cuts={:?}", c.h, c.over, c.measure, c.breaks_w.is_some(), c.monolith, c.forced, c.solid, c.cuts);
+                }
+            }
             return;
         }
         for _ in 0..PASSES {
@@ -106,6 +114,13 @@ impl ColumnStack {
             let mut dirty = vec![false; self.children.len()];
             let mut local_grows = vec![Vec::new(); self.children.len()];
             let (_, lines, plan, _) = self.balance(&kids);
+            // Рост у фрагмента сдвигает всё содержимое потока ниже: точки
+            // следующих фрагментов, найденные по прежней раскладке, устарели.
+            // Копия с flex растёт по одному фрагменту за проход — первому,
+            // которому нужен рост (как последовательная раскладка Blink,
+            // фрагмент за фрагментом); остальные — после переукладки.
+            let mut tagged: Vec<Vec<(usize, crate::layout::fragment::push::Growth)>> =
+                vec![Vec::new(); self.children.len()];
             for f in &plan {
                 let c = &mut self.children[f.kid];
                 let (Some(r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) else {
@@ -123,15 +138,47 @@ impl ColumnStack {
                     f.from + f.h,
                     edge,
                 );
-                local_grows[f.kid].extend(local);
+                tagged[f.kid].extend(local.into_iter().map(|g| (f.copy, g)));
             }
-            for (kid, at, grow, forced) in grows {
+            for &(kid, at, grow, forced) in &grows {
                 let c = &mut self.children[kid];
                 let (Some(_r), Some(w)) = (c.regrow.as_mut(), c.watched.as_ref()) else {
                     continue;
                 };
+                let copy = plan
+                    .iter()
+                    .filter(|f| {
+                        f.kid == kid && f.from - COORD_EPS <= at && at <= f.from + f.h + COORD_EPS
+                    })
+                    .map(|f| f.copy)
+                    .min()
+                    .unwrap_or(usize::MAX);
                 if let Some(blocks) = w.blocks() {
-                    local_grows[kid].push((blocks.clone(), at, grow, forced));
+                    tagged[kid].extend(
+                        crate::layout::fragment::push::Growth::at(
+                            blocks, &_r.laid, at, grow, forced,
+                        )
+                        .map(|g| (copy, g)),
+                    );
+                }
+            }
+            for (kid, list) in tagged.into_iter().enumerate() {
+                let flex = self.children[kid]
+                    .regrow
+                    .as_ref()
+                    .is_some_and(|r| !r.laid.flexes.is_empty());
+                let first = list.iter().map(|g| g.0).min();
+                local_grows[kid].extend(
+                    list.into_iter()
+                        .filter(|g| !flex || Some(g.0) == first)
+                        .map(|g| g.1),
+                );
+            }
+            if f13_trace() {
+                let pl: Vec<_> = plan.iter().map(|f| (f.kid, f.col, f.y, f.from, f.h)).collect();
+                eprintln!("F13 PASS lines={lines:?} plan={pl:?} outer={grows:?} local={local_grows:?}");
+                for (i, c) in self.children.iter().enumerate() {
+                    eprintln!("F13 KID {i} h={} over={} measure={:?} mono={} forced={:?} solid={:?} keep={:?} cuts={:?} laid={:?}", c.h, c.over, c.measure, c.monolith, c.forced, c.solid, c.keep, c.cuts, c.regrow.as_ref().map(|r| &r.laid));
                 }
             }
             for (index, grows) in local_grows.into_iter().enumerate() {
@@ -146,6 +193,46 @@ impl ColumnStack {
                 rebuild(&mut self.children[i]);
                 self.lay_out_main(i, window, cx);
             }
+        }
+    }
+}
+
+/// F13 диагностика (временная).
+pub(crate) fn f13_trace() -> bool {
+    std::env::var_os("KAMIN_F13_TRACE").is_some()
+}
+
+impl ColumnStack {
+    /// Первый фрагмент каждого flex-элемента: окно, в котором начинается его
+    /// margin box (`paginate::watch::owner`). Элемент между окнами (после
+    /// разрыва) — следующего.
+    pub(crate) fn assign_flex_owners(&self, plan: &[crate::layout::fragment::types::Frag]) {
+        for (i, c) in self.children.iter().enumerate() {
+            let (Some(r), Some(w)) = (c.regrow.as_ref(), c.watched.as_ref()) else {
+                continue;
+            };
+            if r.laid.flexes.is_empty() {
+                continue;
+            }
+            let mut frags: Vec<_> = plan.iter().filter(|f| f.kid == i).collect();
+            frags.sort_by_key(|f| f.copy);
+            let owners = match frags.last() {
+                Some(last) if frags.len() > 1 => r
+                    .laid
+                    .margins
+                    .keys()
+                    .filter_map(|&id| {
+                        let start = r.laid.margin_box(id)?.0;
+                        let owner = frags
+                            .iter()
+                            .find(|f| start < f.from + f.h - COORD_EPS)
+                            .map_or(last.copy, |f| f.copy);
+                        Some((id, owner))
+                    })
+                    .collect(),
+                _ => Default::default(),
+            };
+            w.set_flex_owners(owners);
         }
     }
 }

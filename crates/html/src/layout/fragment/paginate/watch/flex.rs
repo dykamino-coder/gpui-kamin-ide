@@ -9,6 +9,7 @@ pub(super) struct FlexFrames {
     pub(super) flexes: HashMap<u64, FlexFrame>,
     pub(super) shifts: HashMap<u64, f32>,
     pub(super) table_shifts: HashMap<u64, f32>,
+    pub(super) margins: HashMap<u64, (f32, f32)>,
 }
 
 impl Watched {
@@ -18,6 +19,23 @@ impl Watched {
         }
         *self.flex_offsets.borrow_mut().entry(id).or_default() += growth;
         true
+    }
+
+    /// Разбиение на линии предшествует фрагментации (css-flexbox-1 §10): рост
+    /// содержимого элемента колонки разрывом не переносит его в другую линию.
+    /// Линии берутся из раскладки до первого роста.
+    pub(crate) fn pin_flex_lines(&self, laid: &crate::layout::fragment::flow::blocks::Laid) {
+        let mut pins = self.flex_lines.borrow_mut();
+        for frame in laid.flexes.values().filter(|f| f.column && f.lines.len() > 1) {
+            if frame.lines.iter().flat_map(|l| &l.items).any(|id| pins.contains_key(id)) {
+                continue;
+            }
+            for line in &frame.lines {
+                for &id in &line.items {
+                    pins.insert(id, line.index);
+                }
+            }
+        }
     }
 
     pub(crate) fn grow_flex_line(&self, id: u64, line: usize, growth: f32) -> bool {
@@ -82,6 +100,9 @@ impl Watched {
                     .map(|(&id, flow)| (id, Rc::new(flow.constraints_only())))
                     .collect(),
             ),
+            flex_lines: self.flex_lines.clone(),
+            paint_owners: self.paint_owners.clone(),
+            paint_outer: self.paint_outer.clone(),
             ..Self::default()
         })
     }
@@ -100,6 +121,7 @@ impl Watched {
         let mut out = HashMap::new();
         let mut shifts = HashMap::<u64, f32>::new();
         let mut tables = HashMap::<u64, f32>::new();
+        let mut margins = HashMap::new();
         for (id, items) in containers {
             let Some(lid) = items.iter().find_map(|id| seen.get(id)).copied() else {
                 continue;
@@ -128,6 +150,7 @@ impl Watched {
                         blocks.shift_flex_item(id, delta, boxes, &mut shifts, &mut tables);
                     }
                     boxes.insert(id, (normal, normal + size));
+                    margins.insert(id, (item.margin_top, item.margin_bottom));
                     top = top.min(off + start);
                     bottom = bottom.max(off + start + size);
                     members.push(id);
@@ -161,6 +184,7 @@ impl Watched {
             flexes: out,
             shifts,
             table_shifts: tables,
+            margins,
         }
     }
 }

@@ -39,6 +39,10 @@ pub(crate) fn flex_tree(e: &Element, depth: u8) -> bool {
             Node::Element(k) if k.style.display == Some(Display::None) => true,
             // OOF не участвует в членстве линии и не создаёт разрыв потока.
             Node::Element(k) if out_of_flow(&k.style) => true,
+            // Атомарная строчная коробка блочного контейнера стоит в его
+            // строке: разрыв — между строками, сама она неделима
+            // (css-break-3 §4.1, §4.3 класс B).
+            Node::Element(k) if !flex && k.style.display == Some(Display::InlineBlock) => true,
             Node::Element(k) if !k.inline || flex => {
                 monolith_blockified(k) || eligible(k, depth - 1, flex)
             }

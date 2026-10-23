@@ -91,7 +91,14 @@ impl ColumnStack {
             // Прежде принудительные разрывы отвергались, и фон коробки
             // обрывался на точке разрыва (`single-line-column-flex-
             // fragmentation-022`: колонка 1 красная 50..100).
-            let at_solid = k.solid.iter().any(|&(a, _)| (a - end).abs() < COORD_EPS);
+            // Разрыв, перенесённый к началу `break-inside: avoid`, — такой же
+            // перенос содержимого, как у монолита: коробка занимает остаток
+            // фрагментаинера (css-break-3 §box-splitting).
+            let at_solid = k
+                .solid
+                .iter()
+                .chain(&k.keep)
+                .any(|&(a, _)| (a - end).abs() < COORD_EPS);
             let at_forced = k.forced.iter().any(|&x| (x - end).abs() < COORD_EPS);
             if !at_solid && !at_forced {
                 continue;
