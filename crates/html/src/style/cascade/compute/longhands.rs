@@ -160,10 +160,47 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
             c.justify_self_normal = p.justify_self_normal;
             c.justify_self_own_axis = p.justify_self_own_axis;
         }
-        // `align-self: inherit` решает проход дерева по объявленному значению
-        // родителя (`dom::fixup_tree::alignment`): там же гашение `align-self`
-        // у коробки вне flex/grid.
-        L::AlignSelf => {}
+        // `align-self: inherit` (css-cascade-5 §7.3.1) — вычисленное значение
+        // родителя: его авторское слово, даже когда у самого родителя оно
+        // погашено как неприменимое (`dom::fixup_tree::alignment`: гашение —
+        // про используемое значение). Ребёнку блочного контейнера свойство
+        // неприменимо (css-align-3 §6.1) — то же гашение и здесь.
+        L::AlignSelf => {
+            let value = p.align_self_decl.unwrap_or(p.align_self);
+            c.align_self = value;
+            c.align_self_decl = Some(value);
+            c.align_self_safe = p.align_self_safe;
+            c.align_self_normal = p.align_self_normal;
+            c.align_self_own_axis = p.align_self_own_axis;
+            c.align_self_flex_kw = p.align_self_flex_kw;
+            c.align_self_last = p.align_self_last;
+            use crate::style::computed::{Display as D, Position as P};
+            let block_parent = matches!(
+                p.display,
+                None | Some(D::Block)
+                    | Some(D::ListItem)
+                    | Some(D::InlineBlock)
+                    | Some(D::TableCell)
+            ) && p.webkit_box != Some(true);
+            if block_parent
+                && c.align_self.is_some()
+                && !matches!(c.position, Some(P::Absolute) | Some(P::Fixed))
+            {
+                c.align_self = None;
+                c.align_self_normal = false;
+            }
+        }
+        // Цвет линейки родителя целиком, не `currentcolor` своего текста
+        // (`multicol-rule-color-inherit-001/002`).
+        L::ColumnRuleColor => {
+            c.column_rule_color = p.column_rule_color.clone();
+            c.column_rule_colors = p.column_rule_colors.clone();
+        }
+        L::RowRuleColor => {
+            c.row_rule_color = p.row_rule_color.clone();
+            c.row_rule_colors = p.row_rule_colors.clone();
+        }
+        L::GridTemplateAreas => c.grid_areas = p.grid_areas.clone(),
         _ => {
             for property in crate::style::cascade::inherited_value::of_longhand(id) {
                 property.copy(p, c, vcx);

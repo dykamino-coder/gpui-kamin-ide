@@ -2,10 +2,9 @@
 //! обязано идти следом. Письмо наследуется, поэтому перевод `margin-block`,
 //! `inline-size` и вставок возможен только здесь, когда письмо узла окончательно
 //! (после распространения с `<body>`); тем же проходом — слои `:hover`,
-//! `::first-letter` и `::first-line`. Далее в строгом порядке:
-//! `inherited_value::settle`, `zoom::resolve`, явное `inherit` у `z-index`/`clip`,
-//! статические позиции якорей (`anchor::settle_static`) и offset-трансформ
-//! (`motion::settle`) — всем нужны уже физические стороны.
+//! `::first-letter` и `::first-line`. Далее в строгом порядке: ориентация
+//! картинок масок, статические позиции якорей (`anchor::settle_static`) и
+//! offset-трансформ (`motion::settle`) — всем нужны уже физические стороны.
 
 use crate::document::state::ValueCx;
 use crate::dom::Node;
@@ -64,20 +63,9 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
         }
     }
     walk(&mut nodes, WritingProps::default(), vcx);
-    // `zoom` (css-viewport-1): длины под зумом домножаются ЗДЕСЬ, отдельным
-    // проходом по собственным стилям — до слияния и до раскладки, а не в
-    // `style::cascade::inherit` (см. заметку перед ней). Идёт после `walk`: логические
-    // стороны уже физические. Страницу без `zoom` проход не меняет: у неё ни
-    // одного элемента с `zoom`, и ни одна ветка записи не исполняется.
-    // `z-index: inherit` и `clip: inherit` разбор выражает только разрядом
-    // `inherit_bits`, а значение родителя кладёт слияние (`style::cascade::inherit`) —
-    // в СЛИТЫЙ стиль. Сборщик же дерева решает слой и обрезку по
-    // СОБСТВЕННОМУ (`defers(&e.style, …)`, `below`, `grouped(…, &e.style)`),
-    // и там оставалось прежнее объявление: `z-index: -1; z-index: inherit`
-    // клал зелёный под поток (`z-index-014`), `clip: inherit` не резал
-    // ничего (`clip-102`). CSS 2.1 §6.2.1: «the property takes the same
-    // computed value as the property for the element's parent».
-    settle_explicit_inherit(&mut nodes, None);
+    // Зум, каскадное `inherit` ненаследуемых свойств (`z-index`, `clip`,
+    // `text-overflow`, свойства реестра) — стадия вычисленных значений
+    // (`style::cascade::compute`): раскладка читает вычисленный стиль.
     settle_mask_orientation(&mut nodes, None);
     // Якорные вставки, которым не разрешиться никогда (нет имени и якоря
     // по умолчанию; имя, которого в документе нет), сводятся к запасному
@@ -90,38 +78,6 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
     // домножены) и после `resolve_logical` (стороны уже физические).
     crate::animation::motion::settle(&mut nodes, vcx);
     nodes
-}
-
-/// Явное `inherit` у `z-index` и `clip` — в собственный стиль элемента.
-///
-/// Оба свойства ненаследуемые, поэтому собственный стиль родителя и есть его
-/// вычисленное значение (как у `zoom::explicit`). Проход сверху вниз: у
-/// родителя цепочка `inherit` к этому шагу уже разрешена.
-pub(super) fn settle_explicit_inherit(
-    nodes: &mut [Node],
-    parent: Option<&crate::style::computed::Computed>,
-) {
-    use crate::style::computed::inh;
-    for n in nodes.iter_mut() {
-        let Node::Element(e) = n else { continue };
-        if let Some(p) = parent {
-            if e.style.cascaded().inherit_bits & inh::Z_INDEX != 0 {
-                e.style.cascaded_mut().z_index = p.z_index;
-            }
-            if e.style.cascaded().inherit_bits & inh::CLIP != 0 {
-                e.style.cascaded_mut().clip_rect = p.clip_rect;
-                e.style.cascaded_mut().clip_len = p.clip_len;
-            }
-            if e.style.cascaded().grid_areas_inherit {
-                e.style.cascaded_mut().grid_areas = p.grid_areas.clone();
-            }
-            if e.style.cascaded().text_overflow_inherit {
-                e.style.cascaded_mut().ellipsis = p.ellipsis;
-                e.style.cascaded_mut().overflow_marker = p.overflow_marker.clone();
-            }
-        }
-        settle_explicit_inherit(&mut e.children, Some(e.style.cascaded()));
-    }
 }
 
 /// CSS Images 3 §5.1: image-orientation inherits for decorative images too.

@@ -73,10 +73,6 @@ pub struct Computed {
     /// разворачиваются в номера линий при сборке дерева — там, где известны и
     /// контейнер, и его дети.
     pub grid_areas: Option<Vec<Vec<String>>>,
-    /// `grid-template-areas: inherit` (css-cascade-4 §7.3 «explicit
-    /// inheritance»): свойство не наследуемое, запись родителя переносит
-    /// `doc::settle_explicit_inherit`.
-    pub grid_areas_inherit: bool,
     /// Имя области у ребёнка: `grid-area: header`.
     pub grid_area_name: Option<String>,
     /// Имена линий `grid-template-columns` (логические колонки): у
@@ -491,9 +487,6 @@ pub struct Computed {
     /// §6.1 «Applies to: flex items, grid items, and absolutely-positioned
     /// boxes»; css-cascade-4 §7.3).
     pub(crate) align_self_decl: Option<Option<Align>>,
-    /// `align-self: inherit` — значение берёт `style::cascade::inherit` у родителя
-    /// (свойство ненаследуемое, слово копирует вычисленное значение).
-    pub(crate) align_self_inherit: bool,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.

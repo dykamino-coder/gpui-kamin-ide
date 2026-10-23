@@ -45,12 +45,8 @@ impl Computed {
                 // Ненаследуемое свойство со словом `inherit` (css-cascade-4 §7.2):
                 // цвет линейки родителя целиком, а не `currentcolor` своего текста
                 // (`multicol-rule-color-inherit-001/002`).
+                // Каскадное `inherit` держит каскад (`Computed::inherit_longhands`).
                 if v == "inherit" {
-                    self.inherit_bits |= if key == "column-rule-color" {
-                        inh::COLUMN_RULE_C
-                    } else {
-                        inh::ROW_RULE_C
-                    };
                     return;
                 }
                 if let Some(l) = gap_list(v, |s| gap_color(s, vcx)) {

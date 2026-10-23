@@ -4,6 +4,10 @@
 use super::*;
 
 pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Computed) {
+    if own.text_overflow_inherit {
+        c.ellipsis = parent.ellipsis;
+        c.overflow_marker = parent.overflow_marker.clone();
+    }
     // Ненаследуемые свойства со словом `inherit`: значение родителя берётся
     // целиком (§6.2.1). Разбор их слотов слово не выражает — там оно давало
     // умолчание или роняло объявление.
@@ -27,6 +31,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         }
         if on(inh::CLIP) {
             c.clip_rect = parent.clip_rect;
+            c.clip_len = parent.clip_len;
         }
         if on(inh::TRANSFORM) {
             c.transform = parent.transform;

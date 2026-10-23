@@ -81,44 +81,6 @@ pub(super) fn quirks_percent_heights(nodes: &mut [Node], base: Option<f32>) {
     }
 }
 
-pub(super) type RuleColors = (
-    crate::style::values::value::StyleColor,
-    Option<crate::style::computed::GapList<crate::style::values::value::StyleColor>>,
-    crate::style::values::value::StyleColor,
-    Option<crate::style::computed::GapList<crate::style::values::value::StyleColor>>,
-);
-
-/// `column-rule-color: inherit` / `row-rule-color: inherit` — ненаследуемое
-/// свойство берёт ВЫЧИСЛЕННОЕ значение ДОМ-родителя (css-cascade-4 §7.2).
-/// Отрисовка линеек читает собственный стиль коробки, поэтому слово решается
-/// здесь, в дереве, как `display: inherit` выше (`multicol-rule-color-inherit-001`:
-/// родитель `column-rule-color: green` при `column-rule-style: none`, ребёнок
-/// `inherit` — зелёные линейки, а не `currentcolor` красного текста).
-pub(super) fn resolve_rule_color_inherit(nodes: &mut [Node], parent: &RuleColors) {
-    use crate::style::computed::inh;
-    for node in nodes.iter_mut() {
-        let Node::Element(el) = node else { continue };
-        let s = el.style.cascaded_mut();
-        if s.inherit_bits & inh::COLUMN_RULE_C != 0 {
-            s.column_rule_color = parent.0.clone();
-            s.column_rule_colors = parent.1.clone();
-            s.inherit_bits &= !inh::COLUMN_RULE_C;
-        }
-        if s.inherit_bits & inh::ROW_RULE_C != 0 {
-            s.row_rule_color = parent.2.clone();
-            s.row_rule_colors = parent.3.clone();
-            s.inherit_bits &= !inh::ROW_RULE_C;
-        }
-        let own: RuleColors = (
-            s.column_rule_color.clone(),
-            s.column_rule_colors.clone(),
-            s.row_rule_color.clone(),
-            s.row_rule_colors.clone(),
-        );
-        resolve_rule_color_inherit(&mut el.children, &own);
-    }
-}
-
 /// `filter: url(#id)` дешёвым слоем рисуется только у коробки БЕЗ содержимого
 /// (`paint::effects::filter::FilterLayer`): у коробки с детьми слой лёг бы поверх них.
 /// Решается здесь, пока дерево целое — при сборке абсолютные дети уже

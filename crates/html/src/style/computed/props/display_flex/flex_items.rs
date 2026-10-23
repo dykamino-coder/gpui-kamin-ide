@@ -52,12 +52,9 @@ impl Computed {
                     self.basis_content = Some(content);
                 }
             }
-            "align-self" if v.trim() == "inherit" => {
-                self.align_self_inherit = true;
-            }
             // Каскадное `inherit` держит каскад (`Computed::inherit_longhands`).
-            "align-items" | "justify-items" | "align-content" | "justify-content"
-            | "justify-self"
+            "align-self" | "align-items" | "justify-items" | "align-content"
+            | "justify-content" | "justify-self"
                 if v.trim() == "inherit" => {}
             "align-self" => {
                 // `left`/`right` у `align-self` недействительны: это
@@ -71,7 +68,6 @@ impl Computed {
                 {
                     self.align_self = accept_parsed!(self, a);
                     self.align_self_decl = Some(a);
-                    self.align_self_inherit = false;
                     self.align_self_safe = is_safe(v);
                     self.align_self_normal = v.trim() == "normal";
                     self.align_self_own_axis =
