@@ -56,6 +56,10 @@ impl TaffyLayoutEngine {
     pub fn set_flex_item_fragmentation_line(&mut self, id: LayoutId, line: Option<usize>) -> bool {
         self.taffy.set_flex_item_fragmentation_line(id.into(), line).is_ok()
     }
+    /// KaminIDE patch: the flex container is laid out in a fragmentation context.
+    pub fn set_flex_fragmentation(&mut self, id: LayoutId, on: bool) -> bool {
+        self.taffy.set_flex_fragmentation(id.into(), on).is_ok()
+    }
     /// KaminIDE patch: consumed fragmentation space after physical row lines.
     pub fn set_flex_line_fragmentation_growth(&mut self, id: LayoutId, growth: &[f32], scale: f32) -> bool {
         self.taffy.set_flex_line_fragmentation_growth(id.into(), growth.iter().map(|v| v * scale).collect()).is_ok()
