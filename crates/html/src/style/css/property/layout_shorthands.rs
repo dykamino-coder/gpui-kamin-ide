@@ -154,8 +154,8 @@ fn place(id: ShorthandId, value: &str) -> Option<Vec<String>> {
 }
 
 /// `columns: [ <'column-width'> || <'column-count'> ] [ / <'column-height'> ]?`
-/// (css-multicol-2 §columns) и сброс `column-wrap`. Целое — число колонок,
-/// иное — ширина; `auto` — опущенная сторона (Blink
+/// (css-multicol-2 §columns) и сброс `column-wrap`. Положительное целое —
+/// число колонок, ноль и длина — ширина; `auto` — опущенная сторона (Blink
 /// `ConsumeColumnWidthOrCount`).
 fn columns(value: &str) -> Option<Vec<String>> {
     let (head, tail) = split_slash(value);
@@ -168,7 +168,11 @@ fn columns(value: &str) -> Option<Vec<String>> {
         if w.eq_ignore_ascii_case("auto") {
             continue;
         }
-        let slot = if w.chars().all(|c| c.is_ascii_digit() || c == '+') {
+        let integer = w.strip_prefix('+').unwrap_or(w);
+        let slot = if !integer.is_empty()
+            && integer.bytes().all(|c| c.is_ascii_digit())
+            && integer.bytes().any(|c| c != b'0')
+        {
             &mut count
         } else {
             &mut width
