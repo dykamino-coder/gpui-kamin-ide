@@ -47,7 +47,14 @@ impl PageStack {
             // The copy is laid out WHOLE and shifted onto its slice; physical
             // box by the root's block axis (`page_stack/axis.rs`).
             let (x, y, w, h) = if self.axis.is_vertical() {
-                self.area_slice(&pg, f.y - f.from, full_h)
+                // CSS Writing Modes §6.2: вынесенное в Kid поле надо снять
+                // и по вертикальной блочной оси. Обёртке остаётся полный
+                // margin box, иначе flex-ряд сожмёт заданную ширину ребёнка.
+                self.area_slice(
+                    &pg,
+                    f.y - f.from - inner_top,
+                    full_h + inner_top + self.kids[f.kid].mb,
+                )
             } else {
                 (ax, ay + f.y - f.from - inner_top, aw, full_h)
             };
