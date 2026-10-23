@@ -2,6 +2,7 @@
 //! border-box элементов с их хвостовыми полями и коробки колонок/рядов/spanner'ов
 //! многоколонника. Каждый отрисованный экземпляр контейнера, включая копии одного DOM-узла в
 //! разных фрагментах (CSS Gaps 1 §fragmentation), получает свой буфер под уникальным ключом.
+use crate::layout::probe::Sink;
 use gpui::{Bounds, Pixels};
 
 mod probe;
@@ -12,20 +13,8 @@ pub use probe::gap_item_probe;
 /// §fragmentation) creates its own buffer, so geometry never mixes.
 #[derive(Default)]
 pub struct GapBuffer {
-    pub items: Vec<Bounds<Pixels>>,
-    pub margins: Vec<[f32; 2]>,
+    pub items: Sink<(Bounds<Pixels>, [f32; 2])>,
     pub multicol: Option<MulticolGaps>,
-}
-impl std::ops::Deref for GapBuffer {
-    type Target = Vec<Bounds<Pixels>>;
-    fn deref(&self) -> &Self::Target {
-        &self.items
-    }
-}
-impl std::ops::DerefMut for GapBuffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.items
-    }
 }
 #[derive(Default)]
 pub struct MulticolGaps {

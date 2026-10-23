@@ -4,9 +4,8 @@
 //! колонок — фон только внутри ячеек, слой кромок — конфликт «шире побеждает»
 //! (CSS 2.1 §17.6.2.1) по рангу источника и порядку в документе.
 
+use crate::layout::probe::Sink;
 use gpui::{Bounds, Pixels};
-use std::cell::RefCell;
-use std::rc::Rc;
 mod probe;
 pub use probe::cell_rect_probe;
 mod cell_bg;
@@ -36,7 +35,7 @@ pub use cell_bg::grid_probe;
 /// тот же прямоугольник без округления к точке устройства: от него
 /// считается область позиционирования (CSS 2.1 §17.5.1, Blink — по
 /// неокруглённой геометрии ячеек), маски остаются округлёнными.
-pub type RowRects = Rc<RefCell<Vec<(Bounds<Pixels>, bool, Bounds<Pixels>)>>>;
+pub type RowRects = Sink<(Bounds<Pixels>, bool, Bounds<Pixels>)>;
 
 /// Сросшиеся кромки таблицы: ячейка без собственных рамок отдаёт их
 /// отдельному слою — кромки рисуются НА ЛИНИЯХ сетки поверх фонов
@@ -58,4 +57,4 @@ pub struct EdgeCell {
 
 /// Буфер кромок сросшейся таблицы: пробы ячеек пишут в prepaint, `EdgePainter`
 /// забирает в paint того же кадра (см. `RowRects`).
-pub type CellEdges = Rc<RefCell<Vec<EdgeCell>>>;
+pub type CellEdges = Sink<EdgeCell>;

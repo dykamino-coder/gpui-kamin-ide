@@ -4,9 +4,8 @@
 //! В переполнение входят line box'ы, но не чернила `text-decoration`.
 
 use super::{Clip, Frame, snap};
-use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
-use gpui::{AnyElement, Bounds, IntoElement, Pixels, Styled};
+use gpui::{AnyElement, Bounds, Pixels};
 use std::{cell::Cell, rc::Rc};
 
 // The viewport probe pairs its four insets with the shared decoration clip.
@@ -35,15 +34,9 @@ pub(crate) fn marker(frame: Option<&Frame>, id: u64) -> Option<AnyElement> {
         return None;
     }
     let extent = frame.extent.get();
-    Some(
-        gpui::canvas(move |_, _, _| frame.marker.set(true), |_, _, _, _| {})
-            .absolute()
-            .top_0()
-            .left_0()
-            .w(extent.width)
-            .h(extent.height)
-            .into_any_element(),
-    )
+    let mut style = crate::layout::probe::full_box();
+    style.size = gpui::size(extent.width.into(), extent.height.into());
+    Some(frame.marker.record_styled(style, |_, _| ()))
 }
 
 pub(crate) fn probe(
@@ -61,43 +54,32 @@ pub(crate) fn probe(
     let vertical = c.wm().vertical();
     let reverse = super::super::scrollbar_gutter::reversed(c);
     let link = sticky.cloned();
-    let snap_link = link.clone();
-    Some(
-        super::exact_probe::ExactProbe::new(
-            link,
-            move |b: Bounds<Pixels>, _snapped: Bounds<Pixels>| {
-                let border = clip.border();
-                let rect = [
-                    f32::from(b.left()) - border[0],
-                    f32::from(b.top()) - border[1],
-                    f32::from(b.right()) + border[2],
-                    f32::from(b.bottom()) + border[3],
-                ];
-                frame.boxes.borrow_mut().insert(id, (rect, clip));
-                if snap.align != [0; 2] {
-                    // Inflate CSS geometry before device snapping. Independently
-                    // snapped padding edges fabricate 0.8px on a 50px border at 1.25x.
-                    let mut snap_bounds = b;
-                    snap_bounds.origin += super::exact_probe::sticky_shift(snap_link.as_ref());
-                    frame.snap_areas.borrow_mut().insert(
-                        id,
-                        snap::Area {
-                            rect: [
-                                f32::from(snap_bounds.left()) - border[0],
-                                f32::from(snap_bounds.top()) - border[1],
-                                f32::from(snap_bounds.right()) + border[2],
-                                f32::from(snap_bounds.bottom()) + border[3],
-                            ],
-                            snap,
-                            vertical,
-                            reverse,
-                        },
-                    );
-                }
-            },
-        )
-        .hooked(),
-    )
+    Some(frame.boxes.record_with(move |g, window| {
+        let half = gpui::px(0.5 / window.scale_factor().max(0.01) + 1e-4);
+        let unshifted = g.aligned(half);
+        let mut normal = unshifted;
+        normal.origin -= super::exact_probe::sticky_shift(link.as_ref());
+        let border = clip.border();
+        let rect = |b: Bounds<Pixels>| {
+            [
+                f32::from(b.left()) - border[0],
+                f32::from(b.top()) - border[1],
+                f32::from(b.right()) + border[2],
+                f32::from(b.bottom()) + border[3],
+            ]
+        };
+        super::BoxRecord {
+            id,
+            rect: rect(normal),
+            clip,
+            snap: (snap.align != [0; 2]).then(|| snap::Area {
+                rect: rect(unshifted),
+                snap,
+                vertical,
+                reverse,
+            }),
+        }
+    }))
 }
 
 /// Line boxes contribute to scrollable overflow, never text-decoration ink.

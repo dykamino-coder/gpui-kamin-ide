@@ -1,7 +1,7 @@
 //! Границы фрагментов класса B по фактическим строковым боксам абзаца.
 
 use super::Paragraph;
-use crate::layout::fragment::flow::{FlowGeometry, FlowMeasurements, FlowNode};
+use crate::layout::fragment::flow::{FlowGeometry, FlowMeasure, FlowNode};
 use crate::layout::fragment::types::StackAxis;
 use std::rc::Rc;
 
@@ -16,7 +16,7 @@ pub(crate) struct LineFlow {
 impl Paragraph {
     pub(crate) fn fragment_flow(
         mut self,
-        flow: Option<Rc<FlowMeasurements>>,
+        flow: Option<Rc<FlowMeasure>>,
         axis: StackAxis,
         keep: (usize, usize),
     ) -> Self {
@@ -76,10 +76,7 @@ mod tests {
                 indent: px(0.),
             })
             .collect();
-        let node = FlowNode::new(
-            Rc::new(FlowMeasurements::for_lines()),
-            StackAxis::Horizontal,
-        );
+        let node = FlowNode::new(Rc::new(FlowMeasure::for_lines()), StackAxis::Horizontal);
         paragraph.fragment = Some(LineFlow {
             node: node.clone(),
             keep: (1, 1),

@@ -20,7 +20,7 @@ impl LayerPaint for CellBgPainter {
     fn paint(&mut self, window: &mut Window) {
         // Пробы пишут на подготовке, вся подготовка кадра идёт до отрисовки —
         // здесь прямоугольники ЭТОГО ЖЕ кадра.
-        let bgs = std::mem::take(&mut *self.bgs.borrow_mut());
+        let bgs = self.bgs.take();
         for (bounds, colour) in bgs {
             window.paint_quad(gpui::fill(bounds, colour));
         }

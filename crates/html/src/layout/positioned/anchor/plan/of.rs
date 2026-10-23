@@ -66,27 +66,32 @@ impl AnchorPlan {
         // `position-area`. `area` выше уже отфильтрована якорем по умолчанию,
         // и коробка без якоря (`position-visibility-anchor-valid`, #target2:
         // `position-area: block-end`, имени нет) не пряталась никогда.
-        let refs_default = own.position_area.is_some()
-            || anchor_center
-            || [
-                own.width,
-                own.height,
-                own.min_width,
-                own.min_height,
-                own.max_width,
-                own.max_height,
-                own.inset.top,
-                own.inset.right,
-                own.inset.bottom,
-                own.inset.left,
-            ]
+        let anchor_lengths = [
+            own.width,
+            own.height,
+            own.min_width,
+            own.min_height,
+            own.max_width,
+            own.max_height,
+            own.inset.top,
+            own.inset.right,
+            own.inset.bottom,
+            own.inset.left,
+        ];
+        // anchor-size() тоже требует плана: иначе зависимости размера
+        // исчезают, а текущая геометрия заменяется запасным значением.
+        let has_anchor = anchor_lengths
             .into_iter()
             .flatten()
-            .any(|l| match l {
+            .any(|l| matches!(l, Len::Anchor(_)));
+        let refs_default = own.position_area.is_some()
+            || anchor_center
+            || anchor_lengths.into_iter().flatten().any(|l| match l {
                 Len::Anchor(i) => anchor_get(i, vcx).is_some_and(|f| f.name.is_none()),
                 _ => false,
             });
-        if sides.iter().all(Option::is_none)
+        if !has_anchor
+            && sides.iter().all(Option::is_none)
             && area.is_none()
             && !(anchor_center && default_anchor.is_some())
             && own.position_try_fallbacks.is_empty()

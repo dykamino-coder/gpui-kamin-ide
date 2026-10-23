@@ -8,7 +8,7 @@
 pub(crate) mod blocks;
 mod measurements;
 mod stack;
-pub(crate) use measurements::{FlowMeasurements, FlowNode};
+pub(crate) use measurements::{FlowMeasure, FlowNode};
 
 /// Whether the line boxes inside `e` are line boxes of the block flow that
 /// contains `e` (css-break-3 §4.3 class B): a block container in normal flow

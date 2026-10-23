@@ -58,6 +58,8 @@ unicode-properties = { version = "0.1.4", default-features = false, features = [
 hypher = "0.1.7"
 
 [dev-dependencies]
+# Идентичности узлов для проверки областей измерения без окна.
+taffy = { path = "../../vendor/taffy" }
 # Снимок окна для прогона reftest-ов WPT (см. examples/wptrun.rs).
 raw-window-handle = "0.6"
 windows = { version = "0.62", features = [

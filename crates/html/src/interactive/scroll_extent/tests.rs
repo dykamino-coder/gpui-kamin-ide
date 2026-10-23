@@ -23,6 +23,6 @@ fn interleaved_scroll_frames_reset_only_their_own_phase_buffers() {
     assert!(Frame::parent_for(Some(&outer), 7).is_none());
     let captured = Frame::parent_for(Some(&outer), 9).expect("nested scrollport parent");
     captured.record_border_box(9, &Computed::default(), b, None);
-    assert!(outer.boxes.borrow().contains_key(&9));
+    assert!(outer.boxes.borrow().iter().any(|r| r.id == 9));
     assert!(nested.boxes.borrow().is_empty());
 }

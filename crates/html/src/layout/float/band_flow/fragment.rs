@@ -1,15 +1,15 @@
 //! Геометрия разрывов измеренного плана band до того, как временные деревья истекут.
 
 use super::{Kid, Plan, Slot};
-use crate::layout::fragment::flow::{FloatGeometry, FlowGeometry, FlowMeasurements, FlowNode};
+use crate::layout::fragment::flow::{FloatGeometry, FlowGeometry, FlowMeasure, FlowNode};
 use crate::layout::fragment::types::StackAxis;
 use std::rc::Rc;
 
 impl super::BandFlow {
     pub(crate) fn fragment_flow(
         mut self,
-        parent: Rc<FlowMeasurements>,
-        probes: Rc<FlowMeasurements>,
+        parent: Rc<FlowMeasure>,
+        probes: Rc<FlowMeasure>,
         axis: StackAxis,
     ) -> Self {
         self.fragment = Some(FragmentFlow::new(parent, probes, axis));
@@ -63,15 +63,11 @@ impl<'a> super::Probe<'a> {
 #[derive(Clone)]
 pub(super) struct FragmentFlow {
     pub(super) node: FlowNode,
-    pub(super) probes: Rc<FlowMeasurements>,
+    pub(super) probes: Rc<FlowMeasure>,
 }
 
 impl FragmentFlow {
-    pub(super) fn new(
-        parent: Rc<FlowMeasurements>,
-        probes: Rc<FlowMeasurements>,
-        axis: StackAxis,
-    ) -> Self {
+    pub(super) fn new(parent: Rc<FlowMeasure>, probes: Rc<FlowMeasure>, axis: StackAxis) -> Self {
         Self {
             node: FlowNode::new(parent, axis),
             probes,

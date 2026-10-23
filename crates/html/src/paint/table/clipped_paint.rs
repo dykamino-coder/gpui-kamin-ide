@@ -11,7 +11,7 @@ impl LayerPaint for CellsClipped {
         // Пробы ячеек пишут в PREPAINT, а вся подготовка кадра идёт до
         // отрисовки — здесь забираются прямоугольники ЭТОГО ЖЕ кадра. Пусто —
         // у полосы нет ячеек (`<col>` без рядов, `<col>` за краем сетки).
-        let rects = std::mem::take(&mut *self.rects.borrow_mut());
+        let rects = self.rects.take();
         if rects.is_empty() {
             return;
         }

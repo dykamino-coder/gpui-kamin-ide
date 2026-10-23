@@ -42,6 +42,7 @@ RULES = [
     ("1 explicit state: new static Mutex/RwLock", r"\bstatic\s+\w+\s*:\s*[^=]*\b(Mutex|RwLock|OnceLock<\s*Mutex)", r"^crates/html/src/"),
     ("3 side channel: kamin-* attribute/tag", r'"kamin-[a-z-]+"', r"^crates/html/src/(?!.*tests?\.rs)(?!svg/clip/ids\.rs)"),
     ("4 multi-frame layout: window.refresh()", r"\bwindow\.refresh\(\)", r"^crates/html/src/(layout|render)/"),
+    ("4 multi-frame layout: request_animation_frame", r"\brequest_animation_frame\s*\(", r"^crates/html/src/(layout|text|paint)/"),
     ("5 journal in comment", r"//.*(ЗАМЕРЕН|ОТКАЧЕН|ОТКАТИЛ|ПРОБОВАЛИ|\bv\d{2,3}\b|scout-|\(\d\d\.\d\d)", r"\.rs$"),
     ("5 placeholder header", r"//!.*split out to keep", r"\.rs$"),
     ("5 out-of-repo reference", r"//.*(target/scout|agents[\\/]|kaminide-private)", r"\.rs$"),
