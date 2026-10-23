@@ -150,6 +150,9 @@ struct NodeData {
     /// KaminIDE patch: the flex container is laid out in a fragmentation context.
     #[cfg(feature = "flexbox")]
     pub(crate) flex_fragmentation: bool,
+    /// KaminIDE patch: fragmentation cannot expand a monolithic item.
+    #[cfg(feature = "flexbox")]
+    pub(crate) fragmentation_monolithic: bool,
 }
 
 impl NodeData {
@@ -178,6 +181,8 @@ impl NodeData {
             flex_item_line: None,
             #[cfg(feature = "flexbox")]
             flex_fragmentation: false,
+            #[cfg(feature = "flexbox")]
+            fragmentation_monolithic: false,
         }
     }
 
@@ -261,6 +266,16 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
         if data.flex_item_line != line {
             data.flex_item_line = line;
+            self.mark_dirty(node)?;
+        }
+        Ok(())
+    }
+
+    /// KaminIDE patch: caller-owned monolithic classification, independent of style.
+    pub fn set_fragmentation_monolithic(&mut self, node: NodeId, on: bool) -> TaffyResult<()> {
+        let data = self.nodes.get_mut(node.into()).ok_or(TaffyError::InvalidInputNode(node))?;
+        if data.fragmentation_monolithic != on {
+            data.fragmentation_monolithic = on;
             self.mark_dirty(node)?;
         }
         Ok(())
@@ -696,6 +711,10 @@ where
 
     fn flex_item_fragmentation_line(&self, node: NodeId) -> Option<usize> {
         self.taffy.nodes[node.into()].flex_item_line
+    }
+
+    fn fragmentation_monolithic(&self, node: NodeId) -> bool {
+        self.taffy.nodes[node.into()].fragmentation_monolithic
     }
 
     fn flex_fragmentation(&self, node: NodeId) -> bool {

@@ -6281,6 +6281,13 @@ impl Window {
         }
     }
 
+    /// KaminIDE patch: монолит не растёт из-за внутренних разрывов.
+    pub fn set_fragmentation_monolithic(&mut self, id: LayoutId, on: bool) {
+        if let Some(engine) = self.layout_engine.as_mut() {
+            engine.set_fragmentation_monolithic(id, on);
+        }
+    }
+
     /// KaminIDE patch: flex-контейнер раскладывается в контексте фрагментации.
     pub fn set_flex_fragmentation(&mut self, id: LayoutId, on: bool) {
         if let Some(engine) = self.layout_engine.as_mut() {

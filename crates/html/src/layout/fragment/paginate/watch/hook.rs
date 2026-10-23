@@ -43,6 +43,7 @@ impl Hooks for Watch {
         let lid = self.inner.request_layout(window, cx);
         match self.slot {
             Slot::Box(id) => {
+                window.set_fragmentation_monolithic(lid, self.rec.monolithic(id));
                 if self.rec.flex_container(id) {
                     window.set_flex_fragmentation(lid, true);
                 }

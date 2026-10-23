@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 mod hook;
+mod monolithic;
 pub(crate) use hook::wrap;
 use hook::{Slot, Watch};
 mod flex;
@@ -58,6 +59,7 @@ pub(crate) struct Watched {
     paint_outer: Rc<RefCell<Option<gpui::ContentMask<Pixels>>>>,
     /// Flex-контейнеры `blocks`: раскладываются в контексте фрагментации.
     flex_ids: std::cell::OnceCell<HashSet<u64>>,
+    monolithic_ids: std::cell::OnceCell<HashSet<u64>>,
 }
 
 impl Watched {
@@ -172,6 +174,7 @@ impl Watched {
             paint_outer: self.paint_outer.clone(),
             // Вложенные flex-контейнеры — тоже из стопки родителя.
             flex_ids: self.flex_ids_of().clone().into(),
+            monolithic_ids: self.monolithic_ids_of().clone().into(),
         })
     }
 

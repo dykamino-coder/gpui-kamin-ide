@@ -93,6 +93,7 @@ impl Watched {
         let rec = Rc::new(Self {
             ids: self.ids.clone(),
             blocks: self.blocks.clone(),
+            monolithic_ids: self.monolithic_ids_of().clone().into(),
             tables: self.tables.clone(),
             flow: Rc::new(crate::layout::fragment::flow::FlowMeasurements::for_lines()),
             item_flows: Rc::new(
@@ -117,6 +118,7 @@ impl Watched {
         Rc::new(Self {
             ids: self.ids.clone(),
             blocks: self.blocks.clone(),
+            monolithic_ids: self.monolithic_ids_of().clone().into(),
             tables: self.tables.clone(),
             flow: Rc::new(self.flow.constraints_only()),
             flex_growth: self.flex_growth.clone(),
