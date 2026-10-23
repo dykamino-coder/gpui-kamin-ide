@@ -34,6 +34,10 @@ pub(super) fn resolve(
     // (`cascade-009a/b`).
     (!found.is_empty()).then(|| {
         let mut merged = base.cloned().unwrap_or_default();
+        // `zoom` is not inherited: the pseudo-element's own factor is its own
+        // declaration, not the originating element's (that one reaches it
+        // through the effective zoom of its parent box).
+        merged.zoom = None;
         merged.cascade_onto(&found, &DeclBlock::new(), vars, CascadeCx::NONE, vcx);
         merged
     })

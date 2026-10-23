@@ -66,7 +66,7 @@ pub(super) fn band_piece_m(n: &Node, em: f32, wm: WritingMode) -> Option<bool> {
         // independent formatting context. Its measured border box uses the
         // same opportunity search as other non-overlapping pieces.
         || !(own_context(c)
-            || band_orthogonal(&c.style.computed(), wm)
+            || band_orthogonal(c.style.cascaded(), wm)
             || c.tag == "table"
             || (block_level_in_flow(c) && replaced_tag(c)))
     {

@@ -53,12 +53,13 @@ pub(crate) fn transparent(e: &Element) -> bool {
         && s.bidi_isolate.is_none()
         && s.bidi_embed.is_none()
         && s.bidi_plaintext.is_none()
-        && s.vertical_align.is_none()
+        && e.style.own_vertical_align().is_none()
         && s.vertical_shift.is_none()
         && s.vertical_shift_len.is_none()
-        && s.writing_mode.is_none()
+        // Своё письмо и направление — объявленные: вычисленные наследуются.
+        && e.style.cascaded().writing_mode.is_none()
         && !s.turned_line
-        && s.rtl.is_none()
+        && e.style.cascaded().rtl.is_none()
 }
 
 fn split(node: Node, parent: &Computed, vcx: ValueCx<'_>) -> Vec<Node> {

@@ -65,7 +65,7 @@ pub(crate) fn decorate_atom(
     // прижимом к краю строки ничего не меняет — этим парам нужен сдвиг
     // относительно ТЕКСТОВОЙ области родителя, а не край строки.
     use crate::style::computed::Align;
-    let self_align = match e.style.cascaded().vertical_align {
+    let self_align = match e.style.own_vertical_align() {
         Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
         Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
         Some(Align::Center) => Some(gpui::AlignItems::Center),

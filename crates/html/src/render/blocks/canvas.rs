@@ -41,7 +41,7 @@ pub(crate) fn canvas_layer(
     .flatten()
     .map(|image| Computed {
         bg_image: Some(image),
-        ..e.style.cascaded().clone()
+        ..(*e.style.computed()).clone()
     });
     if let Some(g) = e
         .style

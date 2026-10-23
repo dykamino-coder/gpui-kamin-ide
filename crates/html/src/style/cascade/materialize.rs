@@ -129,7 +129,16 @@ pub(crate) fn box_style_unpainted(
 fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> Computed {
     let generation = vcx.doc.metrics.generation();
     let cascaded = own.cascaded();
-    let computed = match (own.slot().get(parent, generation), own.used()) {
+    // Выбранный вариант `@position-try` — источник каскада родителя (Position
+    // Fallback Origin, css-anchor-position-1 §5.1): его объявления входят в
+    // вычисленные значения родителя-элемента, а их знает только коробка
+    // родителя. `inherit` берёт их оттуда (`inherit-height-from-fallback`).
+    let fallback_parent = parent.try_base.is_some();
+    let fitting = own
+        .slot()
+        .get(parent, generation)
+        .filter(|_| !fallback_parent);
+    let computed = match (fitting, own.used()) {
         // Годный материализованный стиль: слой раскладки уже лежит поверх него.
         (Some(_), Some(used)) => used.clone(),
         (Some(computed), None) => (*computed).clone(),
@@ -138,7 +147,11 @@ fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
             // копия абзаца): наследуемое — от коробки-родителя, каскадное
             // `inherit` — от родителя-элемента; поверх — поля раскладки.
             Some((materialized, element_parent)) => {
-                let mut from = (*element_parent).clone();
+                let mut from = if fallback_parent {
+                    parent.clone()
+                } else {
+                    (*element_parent).clone()
+                };
                 inherited::take_inherited(&mut from, parent);
                 let mut c = super::compute::compute(&from, cascaded, vcx);
                 if let Some(used) = used {

@@ -48,7 +48,7 @@ pub(super) fn fit_local_image(
     if let Some(source @ crate::paint::background::Source::Filtered { .. }) =
         crate::paint::background::element_source(local.unwrap_or(src), &e.style.computed())
     {
-        let mut style = e.style.cascaded().clone();
+        let mut style = (*e.style.computed()).clone();
         if fills_holder {
             style.object_fit = Some("fill".into());
         }

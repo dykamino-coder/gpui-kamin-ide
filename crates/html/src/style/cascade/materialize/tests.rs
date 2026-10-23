@@ -111,12 +111,22 @@ fn cascaded_inherit_takes_the_parent_element_value() {
     // inline, a hoisted block's new parent) reuses the element's value.
     let mut sibling_box = (*parent).clone();
     sibling_box.padding.left = Some(Len::Px(99.0));
-    assert!(span.style.slot().get(&sibling_box, generation(vcx)).is_some());
+    assert!(
+        span.style
+            .slot()
+            .get(&sibling_box, generation(vcx))
+            .is_some()
+    );
     let own = span.style.slot().any().unwrap();
     assert_eq!(own.padding.left, parent.padding.left);
     // Other inherited data: inherited from the box, `inherit` from the element.
     sibling_box.font_size = Some(Len::Px(30.0));
-    assert!(span.style.slot().get(&sibling_box, generation(vcx)).is_none());
+    assert!(
+        span.style
+            .slot()
+            .get(&sibling_box, generation(vcx))
+            .is_none()
+    );
     assert_eq!(
         box_style(&sibling_box, &span.style, vcx).padding.left,
         parent.padding.left

@@ -190,7 +190,7 @@ pub(super) fn cell_cascaded_style(
     // `display: table-cell` box keeps its own value or the initial
     // `baseline` (`vertical-align-applies-to-*`: a row group's
     // `bottom` must not move the cell's content).
-    if cell.style.cascaded().vertical_align.is_none() && !html_cell(cell) {
+    if cell.style.own_vertical_align().is_none() && !html_cell(cell) {
         cm.vertical_align = None;
     }
     // Потолок вертикальной ячейки режет доступное место её
@@ -198,8 +198,10 @@ pub(super) fn cell_cascaded_style(
     // element): стопка глифов переносится на следующую колонку по
     // нему (table-cell-002: td vertical-rl с max-height 100 —
     // зелёный квадрат из двух колонок).
+    // Высота в `ch` разрешается позже, с письмом ряда (`cell_heights`).
     if cell.style.cascaded().wm().vertical()
         && cm.ortho_limit.is_none()
+        && !matches!(cell.style.cascaded().height, Some(Len::Ch(_)))
         && let Some(Len::Px(h)) = cell
             .style
             .computed()

@@ -53,7 +53,7 @@ pub(super) fn container_atom(
         // `vertical-align` коробки в строке: низ/верх/середина СТРОКИ, а не
         // базовая линия. Строка — гибкий ряд, и место коробки задаёт её
         // собственный `align-self`.
-        let self_align = match e.style.cascaded().vertical_align {
+        let self_align = match e.style.own_vertical_align() {
             Some(Align::End) => Some(gpui::AlignItems::FlexEnd),
             Some(Align::Start) => Some(gpui::AlignItems::FlexStart),
             Some(Align::Center) => Some(gpui::AlignItems::Center),
@@ -127,7 +127,7 @@ pub(super) fn svg_atom(inherited: &Computed, opts: &RenderOpts, e: &Element) -> 
     // коробки — свой, с решёнными шрифтовыми единицами.
     let fitted = crate::svg::size::stretch_fit(&sized, cb_w);
     let shell = sized.style.clone();
-    svg_replaced(&sized, &fitted, shell.cascaded(), opts).or_else(|| {
+    svg_replaced(&sized, &fitted, &shell.computed(), opts).or_else(|| {
         Some(opts.cx.build.replaced(
             &with_inherited_font(e, inherited),
             Some(atom_base_font(inherited, opts)),

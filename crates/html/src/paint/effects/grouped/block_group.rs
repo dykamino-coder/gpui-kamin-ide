@@ -5,23 +5,24 @@ use crate::document::state::ValueCx;
 use crate::dom::Element;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
-use std::borrow::Cow;
+use std::rc::Rc;
 
 /// The box's own style, with mask image lengths and colors taken from its
 /// inherited computed value; the wrapper keeps the box's own positioning
 /// and clipping.
-pub(crate) fn group_style<'a>(
-    own: &'a crate::dom::SharedStyle,
+pub(crate) fn group_style(
+    own: &crate::dom::SharedStyle,
     inherited: &Computed,
     vcx: ValueCx<'_>,
-) -> Cow<'a, Computed> {
-    if own.cascaded().mask_image.is_none() {
-        return Cow::Borrowed(own.cascaded());
+) -> Rc<Computed> {
+    let style = own.computed();
+    if style.mask_image.is_none() {
+        return style;
     }
     let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
-    let mut style = own.cascaded().clone();
+    let mut style = (*style).clone();
     style.mask_image = computed.mask_image;
-    Cow::Owned(style)
+    Rc::new(style)
 }
 
 /// `grouped` around the built box `el` of block `e`.
@@ -43,7 +44,7 @@ pub(crate) fn block_group(
         && e.style.computed().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
-        let mut iso = style.into_owned();
+        let mut iso = (*style).clone();
         iso.isolate = Some(true);
         return super::grouped(el, &iso, vcx);
     }

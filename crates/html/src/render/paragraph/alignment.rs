@@ -89,7 +89,8 @@ pub(crate) fn atom_line_align(
         && st.wm().vertical()
         && !inherited.wm().vertical()
         && !inherited.wm().turned();
-    if (st.writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
+    // Своё письмо атома — объявленное (вычисленное наследуется).
+    if (e.style.cascaded().writing_mode.is_some() && !box_layout(st) && !orthogonal_block)
         || has_vertical(&e.children, box_layout(st))
     {
         return None;

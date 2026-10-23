@@ -17,7 +17,7 @@ pub(super) fn resolve_cell_heights(
     // vertical + upright продвижение нуля — кегль (css-values-3,
     // ch-units-vrl-*). Только ch: полный resolve_em здесь двигал
     // em-высоты и ломал больше, чем чинил.
-    if let Some(Len::Ch(k)) = cell.style.computed().height {
+    if let Some(Len::Ch(k)) = cell.style.cascaded().height {
         // Флаги РЯДА, не свои: свой upright ячейки давал кегль там,
         // где эталон меряет лежачим нулём (ch-units-vrl-007/008 —
         // расхождение путей резолва div-эмуляции, вернуться при

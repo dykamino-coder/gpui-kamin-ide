@@ -94,6 +94,12 @@ pub fn render_block(nodes: &[Node], index: usize, opts: &RenderOpts) -> Option<A
     crate::interactive::frame::frame_sanitize(vcx);
     crate::paint::effects::mask::collect_mask_defs(nodes, vcx);
     let root = opts.root_style();
+    // Вычисленные стили блока — до сборки его коробок (как у `render`).
+    crate::style::cascade::materialize::materialize(
+        std::slice::from_ref(node),
+        &std::rc::Rc::new(root.clone()),
+        vcx,
+    );
     // Слой ICB закрывается на блок ленты: дальше своего блока внепоточный
     // элемент всё равно не уедет, а без слоя он остался бы на месте.
     let opts = &*opts.inner(|cx| {

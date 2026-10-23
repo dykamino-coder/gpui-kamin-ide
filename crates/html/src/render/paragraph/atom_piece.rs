@@ -192,7 +192,7 @@ fn atom_piece_in(
     // (эталоны `fixed-table-layout-021..023`: `img{vertical-align:top}`
     // плюс `margin-left`).
     let wrapped = matches!(
-        e.style.cascaded().vertical_align,
+        e.style.own_vertical_align(),
         Some(crate::style::computed::Align::Start)
             | Some(crate::style::computed::Align::End)
             | Some(crate::style::computed::Align::Center)

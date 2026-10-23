@@ -37,6 +37,25 @@ impl SharedStyle {
         &self.cascaded
     }
 
+    /// `vertical-align` of the element's own box (CSS 2.1 §10.8.1; not
+    /// inherited): its computed value when the cascade declares one (`inherit`
+    /// included, as in the UA rule `td, th { vertical-align: inherit }`), else
+    /// the initial `baseline` (`None`). The computed style also hands an inline
+    /// ancestor's value down to the text runs inside it, which a box must not
+    /// take as its own.
+    pub(crate) fn own_vertical_align(&self) -> Option<crate::style::computed::Align> {
+        let declared = self.cascaded.vertical_align.is_some()
+            || self
+                .cascaded
+                .explicit_inherit
+                .contains(&crate::style::cascade::inherited_value::Property::VerticalAlign);
+        if declared {
+            self.computed().vertical_align
+        } else {
+            None
+        }
+    }
+
     /// Edit the cascaded style (cascade and document preparation, before
     /// materialization): drops the computed style and layout's values.
     pub(crate) fn cascaded_mut(&mut self) -> &mut Computed {

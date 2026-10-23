@@ -224,6 +224,12 @@ pub(crate) fn build_embedded(
     // `abs-pos-non-replaced-icb-*`: коробка с `right: 80%` улетала в левый
     // верхний угол внешнего документа).
     let icb_layer = crate::layout::positioned::layer_scope::LayerScope::icb(&sub.cx.positioning);
+    // Вычисленные стили вложенного документа — от его корня.
+    crate::style::cascade::materialize::materialize(
+        &nodes,
+        &std::rc::Rc::new(sub.root_style()),
+        sub.cx.vcx(),
+    );
     let mut kids = sub.cx.build.blocks(&nodes, &sub.root_style(), &sub);
     kids.extend(icb_layer.finish());
     kids.into_iter()
