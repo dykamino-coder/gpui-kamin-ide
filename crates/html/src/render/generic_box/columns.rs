@@ -138,6 +138,7 @@ pub(crate) struct ColumnPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::BoxStyle;
 
     #[test]
     fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
@@ -165,7 +166,7 @@ mod tests {
             assert_eq!(style.column_width, Some(expected), "{css}");
             let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
             let merged =
-                crate::style::cascade::inherit::inherit(&Computed::default(), &style, doc.values());
+                crate::style::cascade::inherit::inherit(&BoxStyle::default(), &style, doc.values());
             let plan = column_plan(&e, &merged, &opts);
             assert_eq!(plan.column_width, Some(Len::Px(1.0)), "{css}");
             assert_eq!(plan.used_count, Some(50), "{css}");
