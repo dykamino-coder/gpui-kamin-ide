@@ -157,3 +157,25 @@ fn fragmented_column_item_encompasses_intrinsic_block_size() {
     assert_eq!(tree.layout(item).unwrap().size.height, 150.0);
     assert_eq!(tree.layout(root).unwrap().size.height, 150.0);
 }
+
+#[test]
+fn pushed_row_item_moves_in_the_block_axis() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    tree.disable_rounding();
+    let leaf = |w: f32| Style { size: Size::from_lengths(w, 40.0), flex_shrink: 0.0, ..Style::DEFAULT };
+    let a = tree.new_leaf(leaf(20.0)).unwrap();
+    let b = tree.new_leaf(Style { align_self: Some(crate::AlignItems::END), ..leaf(20.0) }).unwrap();
+    let root = tree
+        .new_with_children(
+            Style { size: Size { width: Dimension::length(40.0), height: Dimension::length(200.0) }, ..Style::DEFAULT },
+            &[a, b],
+        )
+        .unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location.y, 160.0);
+    tree.set_flex_item_fragmentation_offset(b, 5.0).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(tree.layout(b).unwrap().location.y, 165.0);
+    assert_eq!(tree.layout(a).unwrap().location.y, 0.0);
+    assert_eq!(tree.layout(root).unwrap().size.height, 200.0);
+}

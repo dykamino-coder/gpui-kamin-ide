@@ -842,6 +842,17 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     debug_log!("align_flex_lines_per_align_content");
     align_flex_lines_per_align_content(&mut flex_lines, &constants, total_line_cross_size);
 
+    // KaminIDE patch: a row item pushed past a fragmentainer break moves in the
+    // block axis after line alignment; completed lines and the container keep
+    // their used sizes (the item's own overflow is a parallel flow).
+    if constants.dir.is_row() {
+        for line in flex_lines.iter_mut() {
+            for item in line.items.iter_mut() {
+                item.offset_cross += tree.flex_item_fragmentation_offset(item.node);
+            }
+        }
+    }
+
     // Do a final layout pass and gather the resulting layouts
     debug_log!("final_layout_pass");
     let (inflow_overflow_rect, flex_info) = final_layout_pass(tree, &mut flex_lines, &constants);
