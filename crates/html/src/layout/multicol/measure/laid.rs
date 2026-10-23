@@ -20,7 +20,7 @@ pub(crate) fn children(
     width: f32,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
         || merged.text_box_trim_start
         || merged.text_box_trim_end
@@ -29,7 +29,7 @@ pub(crate) fn children(
     }
     let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
     if !flow.iter().all(|n| match n {
-        // ADR P-19 F2-2: static position зависит от разложенных соседей;
+        // ADR P-19 TRANSITIONAL(F2-2): static position зависит от разложенных соседей;
         // удаление OOF до замера теряет его исходное место в потоке.
         Node::Element(c) => !out_of_flow(&c.style) && (independent_copy(c) || empty_floats(c)),
         _ => false,
@@ -70,7 +70,7 @@ pub(crate) fn pending(
     merged: &Computed,
     vcx: ValueCx<'_>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
         || merged.text_box_trim_start
         || merged.text_box_trim_end
@@ -101,7 +101,7 @@ pub(crate) fn vertical_children(
     reverse: bool,
     measured: &RefCell<Vec<(u64, f32)>>,
 ) -> Option<Vec<(Element, Shape)>> {
-    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
         || merged.text_box_trim_start
         || merged.text_box_trim_end
@@ -153,7 +153,7 @@ pub(crate) fn pending_vertical(
     vcx: ValueCx<'_>,
     reverse: bool,
 ) -> Option<Vec<(Element, Shape)>> {
-    // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
+    // ADR P-19 TRANSITIONAL(F2-1): clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
         || merged.text_box_trim_start
         || merged.text_box_trim_end

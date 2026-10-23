@@ -1,4 +1,4 @@
-//! ADR P-19 F2-1/F2-2/F2-3/F2-4: рекурсивный preplan до consumed/OOF состояния детей.
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рекурсивный preplan до consumed/OOF состояния детей.
 //! Формы детей (KidShape): рекурсивный замер вырезов каждого ребёнка.
 
 use crate::document::state::ValueCx;

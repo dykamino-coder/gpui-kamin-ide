@@ -1,4 +1,4 @@
-//! ADR P-19 F2-1/F2-2/F2-3/F2-4/F2-6: preplan смешанных групп требует состояний продолжения.
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4/F2-6): preplan смешанных групп требует состояний продолжения.
 //! Независимые plain/grid/table/flex, включая vertical, проходят native-dispatch до этой ветки.
 //! Пустую grid с известной/отложенной шириной измеряет native путь до этой ветки.
 //! Разрываемые floats — F2-1: отдельные consumed/resume для float и main flow.

@@ -1,4 +1,4 @@
-//! ADR P-19 F2-1: consumed и края украшений ещё не представлены токеном продолжения.
+//! ADR P-19 TRANSITIONAL(F2-1): consumed и края украшений ещё не представлены токеном продолжения.
 //! План клонов (box-decoration-break: clone) по колонкам и правило колонок (column-rule).
 
 use crate::document::state::ValueCx;

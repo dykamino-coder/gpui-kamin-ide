@@ -61,7 +61,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                 "<table><tr><td><div><div style='display:flex'><div>first</div><div>second</div></div></div></td></tr></table>",
                 "<div>text</div><div style='display:grid;grid-template-rows:20px 30px'></div>",
             ] {
-                // ADR P-19 F2-4: горизонтальный flex требует продолжений item;
+                // ADR P-19 TRANSITIONAL(F2-4): горизонтальный flex требует продолжений item;
                 // ниже проверяются только независимые native группы.
                 if !vertical && body.contains("display:flex") {
                     continue;
@@ -146,7 +146,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 #[cfg(feature = "wpt-harness")]
 #[test]
 fn continuation_groups_keep_their_explicit_f2_routes() {
-    // ADR P-19 F2-1/F2-4: clone требует оценки краёв, flex остаётся
+    // ADR P-19 TRANSITIONAL(F2-1/F2-4): clone требует оценки краёв, flex остаётся
     // в прежнем планировании item; независимой копией ни один не подменяется.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",

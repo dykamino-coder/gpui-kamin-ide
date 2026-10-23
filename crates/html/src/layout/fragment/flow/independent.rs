@@ -82,6 +82,7 @@ mod tests {
             "<div><div style='display:flex;flex-direction:column'></div></div>",
             "<div style='height:50px'><div style='height:150px'></div></div>",
             "<div style='max-height:0'><div style='height:150px'></div></div>",
+            "<div style='min-height:200px'><div style='height:160px'></div></div>",
         ] {
             let tree = crate::dom::parse(body, "");
             assert!(!independent_copy(authored(&tree)), "{body}");
@@ -90,6 +91,7 @@ mod tests {
             "<div><div style='height:20px'></div><div style='height:30px'></div></div>",
             "<div style='height:50px'></div>",
             "<div style='height:50px;overflow:hidden'><div style='height:150px'></div></div>",
+            "<div style='min-height:50px;overflow:hidden'><div style='height:20px'></div></div>",
         ] {
             let tree = crate::dom::parse(body, "");
             assert!(independent_copy(authored(&tree)), "{body}");

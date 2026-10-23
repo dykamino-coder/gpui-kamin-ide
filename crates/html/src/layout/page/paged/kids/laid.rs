@@ -65,7 +65,7 @@ pub(super) fn group(
     let floated = e.style.float.is_some_and(|f| f != 0);
     let float_extent = empty_floats(e);
     let eligible = if floated {
-        // ADR P-19 F2-1: только монолит не несёт собственного продолжения
+        // ADR P-19 TRANSITIONAL(F2-1): только монолит не несёт собственного продолжения
         // строк. Поля float остаются внутри BandFlow и не схлопываются.
         let mut flow = e.clone();
         flow.style.float = None;
@@ -73,7 +73,7 @@ pub(super) fn group(
     } else {
         independent_copy(e) || float_extent
     };
-    // ADR P-19 F2-1: декорированный блок со строками требует состояния
+    // ADR P-19 TRANSITIONAL(F2-1): декорированный блок со строками требует состояния
     // краёв каждого печатного фрагмента. Рост сплошной копии меняет его
     // полную рамку и координаты следующих групп вместо продолжения листа.
     if !eligible || decorated_lines(e) {

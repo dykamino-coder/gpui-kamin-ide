@@ -1,4 +1,4 @@
-//! ADR P-19 F2-1/F2-2/F2-3/F2-4: рост preplan требует consumed и статической позиции OOF.
+//! ADR P-19 TRANSITIONAL(F2-1/F2-2/F2-3/F2-4): рост preplan требует consumed и статической позиции OOF.
 //! Рост перенесённой коробки, монолиты под avoid и поля абзаца.
 
 use super::super::cell::grow_before;
