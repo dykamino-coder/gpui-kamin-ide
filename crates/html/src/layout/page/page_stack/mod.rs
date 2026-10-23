@@ -169,6 +169,7 @@ impl PageStack {
     /// Последняя предраскладка получила согласованный план; incomplete не рисуется.
     pub fn has_complete_plan(&self) -> bool {
         self.complete.get()
+            && self.plan.borrow().completion == crate::layout::fragment::plan::Completion::Complete
     }
 
     pub fn with_select(mut self, select: Option<Vec<usize>>) -> Self {
