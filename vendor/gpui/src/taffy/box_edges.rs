@@ -27,6 +27,7 @@ impl TaffyLayoutEngine {
 mod tests {
     use super::*;
     use crate::px;
+    use taffy::prelude::TaffyMaxContent;
 
     #[test]
     fn overlay_reads_used_parent_edges_with_percentage_padding_and_scale() {

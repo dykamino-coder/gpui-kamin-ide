@@ -10711,10 +10711,10 @@ index 0000000000000000000000000000000000000000..ac66b037da54050936bd459b0de5e625
 +}
 diff --git a/vendor/gpui/src/taffy/box_edges.rs b/vendor/gpui/src/taffy/box_edges.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..000498658326366bac438ba0b58352d1563ff40d
+index 0000000000000000000000000000000000000000..c6f0330ea1d8b0d2e77496ff44155e0272552f23
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/box_edges.rs
-@@ -0,0 +1,93 @@
+@@ -0,0 +1,94 @@
 +//! KaminIDE patch: использованные кромки родителя для фоновых слоёв.
 +//! Процентный padding уже разрешён раскладкой относительно containing block.
 +
@@ -10744,6 +10744,7 @@ index 0000000000000000000000000000000000000000..000498658326366bac438ba0b58352d1
 +mod tests {
 +    use super::*;
 +    use crate::px;
++    use taffy::prelude::TaffyMaxContent;
 +
 +    #[test]
 +    fn overlay_reads_used_parent_edges_with_percentage_padding_and_scale() {
