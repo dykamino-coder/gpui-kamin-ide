@@ -145,8 +145,9 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
 
 #[cfg(feature = "wpt-harness")]
 #[test]
-fn continuation_groups_keep_an_explicit_f2_estimate() {
-    // ADR P-19 F2-1: clone зависит от края и consumed, native группы выше — нет.
+fn continuation_groups_keep_their_explicit_f2_routes() {
+    // ADR P-19 F2-1/F2-4: clone требует оценки краёв, flex остаётся
+    // в прежнем планировании item; независимой копией ни один не подменяется.
     for body in [
         "<div><div style='box-decoration-break:clone;padding:1px;height:40px'></div></div>",
         "<div><div style='display:flex'><div>first</div><div>second</div></div></div>",
@@ -154,7 +155,7 @@ fn continuation_groups_keep_an_explicit_f2_estimate() {
         let tree = crate::dom::parse(body, "");
         let root = host(&tree);
         let opts = opts();
-        let _ = stack_plan(
+        let plan = stack_plan(
             root,
             &root.style,
             &Computed::default(),
@@ -169,12 +170,25 @@ fn continuation_groups_keep_an_explicit_f2_estimate() {
             None,
             None,
         );
-        assert!(
-            opts.frag
-                .probe
-                .take()
-                .values()
-                .any(|p| p.estimate_calls > 0)
-        );
+        if body.contains("display:flex") {
+            let Node::Element(flex) = &root.children[0] else {
+                panic!("flex")
+            };
+            assert!(!crate::layout::fragment::flow::independent_copy(flex));
+            assert!(
+                super::laid::children(root, &root.style, tree.values(), 120.0, &Default::default())
+                    .is_none()
+            );
+            assert!(plan.stackable.is_some());
+        } else {
+            assert!(
+                opts.frag
+                    .probe
+                    .take()
+                    .values()
+                    .any(|p| p.estimate_calls > 0),
+                "{body}"
+            );
+        }
     }
 }
