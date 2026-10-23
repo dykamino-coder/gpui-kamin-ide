@@ -15,6 +15,8 @@ mod flow;
 pub(crate) use flow::FlowBuild;
 mod boxes;
 pub(crate) use boxes::{BoxBuild, GridPlacement, Styling};
+mod layers;
+pub(crate) use layers::Layer;
 mod effects;
 pub(crate) use effects::{Effect, EffectBuild, RefBox};
 
@@ -22,7 +24,6 @@ use crate::document::state::ValueCx;
 use crate::dom::{Element, Node};
 use crate::layout::cx::LayoutCx;
 use crate::layout::options::RenderOpts;
-use crate::layout::table::probes::{CellBgs, CellEdges, RowRects};
 use crate::style::computed::Computed;
 use crate::text::clamp::ClampSpan;
 use gpui::AnyElement;
@@ -30,35 +31,6 @@ use gpui::AnyElement;
 type BuildElement = fn(&Element, &Computed, &RenderOpts) -> AnyElement;
 type BuildReplaced = fn(&Element, Option<f32>, &LayoutCx) -> AnyElement;
 type BuildLayer = fn(Layer<'_>) -> AnyElement;
-
-/// A paint layer over geometry that layout's probes record in prepaint of
-/// the same frame (`layout::table::probes`). The layer is laid out of flow
-/// and only paints.
-pub(crate) enum Layer<'a> {
-    /// A row, row-group or column band: its background, shadows and outline
-    /// painted inside the cells of the band (css-tables-3
-    /// §drawing-backgrounds), under the given style.
-    CellBand {
-        rects: RowRects,
-        style: Box<Computed>,
-        vcx: ValueCx<'a>,
-    },
-    /// The cell backgrounds of a collapsed-border table, below its edges.
-    CellBackgrounds(CellBgs),
-    /// The collapsed edges of a table (CSS 2.1 §17.6.2.1).
-    CollapsedEdges(CellEdges),
-}
-
-impl<'a> Layer<'a> {
-    /// The band over `rects` under `style`, its values from the build `cx`.
-    pub(crate) fn cell_band(rects: RowRects, style: Computed, cx: &'a LayoutCx) -> Self {
-        Layer::CellBand {
-            rects,
-            style: Box::new(style),
-            vcx: cx.vcx(),
-        }
-    }
-}
 
 /// The build requests the algorithms need: the normal-flow requests
 /// ([`FlowBuild`]: a block-level node list, one inline formatting context,

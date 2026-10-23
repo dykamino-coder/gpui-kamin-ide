@@ -17,8 +17,8 @@ mod fragmentation;
 mod inline;
 mod position;
 mod ruby;
-mod scroll;
 pub(crate) mod scope;
+mod scroll;
 mod values;
 
 pub(crate) use clamp::ClampContext;

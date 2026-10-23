@@ -9,6 +9,7 @@ use crate::paint::apply;
 use crate::paint::box_tree::{content_wrapper, styled::styled_div_with};
 use crate::paint::decorations::outline_phase;
 use crate::paint::effects::{grouped, transform, underlay::Underlay};
+use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::paint::stacking;
 use crate::paint::table::{self, CellBgPainter, CellsClipped, EdgePainter};
 use crate::render::{blocks::blocks, element::element, paragraph::paragraph};
@@ -80,5 +81,8 @@ fn layer(layer: Layer<'_>) -> AnyElement {
         }
         Layer::CellBackgrounds(bgs) => table::layer(CellBgPainter::new(bgs)),
         Layer::CollapsedEdges(edges) => table::layer(EdgePainter::new(edges)),
+        Layer::GapRules { items, spec, owner } => {
+            crate::hooks::PaintOnly(GapRulePainter::new(items, *spec, owner)).hooked()
+        }
     }
 }

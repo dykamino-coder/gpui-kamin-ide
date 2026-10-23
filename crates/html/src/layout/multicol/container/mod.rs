@@ -5,11 +5,10 @@
 //! стопки, слой содержащего блока `position: fixed` и флоаты соседями стопки.
 
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
 use crate::layout::fragment::Shape;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
 use crate::layout::options::RenderOpts;
-use crate::paint::gap_rules::painter::GapRulePainter;
 use crate::style::computed::Computed;
 use crate::style::computed::stacking::fixed_cb_layer_box;
 use crate::style::values::value::Len;
@@ -190,7 +189,10 @@ pub(crate) fn multicol_column_stack(
     // Gap decorations paint under the content (css-gaps-1 §paint, Blink).
     let painter = gap_items.clone().zip(gap_spec);
     let d = d.children(painter.map(|(b, s)| {
-        crate::hooks::PaintOnly(GapRulePainter::new(b, s, opts.cx.deferred.paint.clone())).hooked()
+        opts.cx
+            .contracts
+            .build
+            .layer(Layer::gap_rules(b, s, &opts.cx))
     }));
     let mut d = column_stack_div(
         d,

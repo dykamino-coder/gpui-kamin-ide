@@ -1,7 +1,7 @@
 //! Div фрагмента копии: стиль, ширина колонки, линейки промежутков.
 
 use crate::dom::{Element, Node};
-use crate::hooks::IntoHooked;
+use crate::layout::build_contracts::Layer;
 use crate::layout::fragment::grid_bands::grid_rows_px;
 use crate::style::computed::{Computed, Display};
 use crate::style::values::value::Len;
@@ -124,12 +124,7 @@ pub(super) fn frag_box_div(
         // (css-gaps-1: «just above the border»).
         body.insert(
             0,
-            crate::hooks::PaintOnly(crate::paint::gap_rules::painter::GapRulePainter::new(
-                items,
-                spec,
-                cx.deferred.paint.clone(),
-            ))
-            .hooked(),
+            cx.contracts.build.layer(Layer::gap_rules(items, spec, cx)),
         );
     }
     d

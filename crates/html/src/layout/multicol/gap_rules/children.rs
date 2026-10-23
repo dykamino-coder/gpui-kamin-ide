@@ -4,10 +4,9 @@
 //! атомарные коробки, попадали в него. Художник идёт первым слоем, под детьми.
 
 use crate::dom::Element;
-use crate::hooks::IntoHooked;
-use crate::layout::options::RenderOpts;
-use crate::paint::gap_rules::painter::GapRulePainter;
+use crate::layout::build_contracts::Layer;
 use crate::layout::multicol::gap_rules::GapItems;
+use crate::layout::options::RenderOpts;
 use crate::style::computed::Computed;
 use gpui::AnyElement;
 
@@ -27,12 +26,10 @@ pub(crate) fn decorated_children(
     let mut layers = Vec::new();
     if let (Some(buffer), Some(spec)) = (context, spec) {
         layers.push(
-            crate::hooks::PaintOnly(GapRulePainter::new(
-                buffer,
-                spec,
-                opts.cx.deferred.paint.clone(),
-            ))
-            .hooked(),
+            opts.cx
+                .contracts
+                .build
+                .layer(Layer::gap_rules(buffer, spec, &opts.cx)),
         );
     }
     layers.extend(children(&child_opts));
