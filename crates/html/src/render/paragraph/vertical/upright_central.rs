@@ -87,7 +87,7 @@ fn collect(
                 }
             }
             Node::Element(e) => {
-                if !crate::layout::box_kind::real_inline(e) || !plain_span(&e.style) {
+                if !crate::layout::box_kind::real_inline(e) || !plain_span(e.style.cascaded()) {
                     return None;
                 }
                 let child = crate::style::cascade::materialize::box_style(style, &e.style, vcx);
@@ -95,7 +95,7 @@ fn collect(
                 // `middle`: the box midpoint — its central baseline here —
                 // sits on the parent's central baseline raised by half the
                 // parent's x-height (CSS 2.1 §10.8.1; Blink kMiddle).
-                let shift = if e.style.vertical_align == Some(Align::Center) {
+                let shift = if e.style.cascaded().vertical_align == Some(Align::Center) {
                     let family = style.font_family.clone().unwrap_or_default();
                     let parent = own_size(style, opts);
                     shift + crate::text::metrics::ch_ex_px(&family, parent, vcx).1 / 2.0

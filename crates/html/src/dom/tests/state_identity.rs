@@ -12,7 +12,7 @@ fn generated_scroll_boxes_have_distinct_stable_state_ids() {
         for node in nodes {
             if let Node::Element(element) = node {
                 if element.tag.starts_with("::") {
-                    assert!(element.style.overflow_y.is_some());
+                    assert!(element.style.cascaded().overflow_y.is_some());
                     assert_eq!(element.node_id, 0);
                     assert!(element.marks.state_id.get().is_some());
                     out.push((

@@ -12,7 +12,7 @@ pub(super) fn tag_defaults_apply() {
     let nodes = parse("<h1>Заголовок</h1>", "");
     let h1 = first_element(&nodes);
     assert_eq!(h1.tag, "h1");
-    assert_eq!(h1.style.font_weight, Some(700));
+    assert_eq!(h1.style.cascaded().font_weight, Some(700));
 }
 
 #[test]
@@ -22,7 +22,7 @@ pub(super) fn inline_style_beats_stylesheet() {
         "",
     );
     let div = first_element(&nodes);
-    assert_eq!(div.style.color.map(|c| c.g), Some(1.0));
+    assert_eq!(div.style.cascaded().color.map(|c| c.g), Some(1.0));
 }
 
 #[test]
@@ -34,12 +34,13 @@ pub(super) fn descendant_selector_needs_the_ancestor() {
     collect_spans(&nodes, &mut found);
     assert_eq!(found.len(), 2);
     assert_eq!(
-        found[0].style.color.map(|c| c.b),
+        found[0].style.cascaded().color.map(|c| c.b),
         Some(1.0),
         "внутри карточки — покрашен"
     );
     assert_eq!(
-        found[1].style.color, None,
+        found[1].style.cascaded().color,
+        None,
         "снаружи — правило не применяется"
     );
 }
@@ -65,7 +66,10 @@ pub(super) fn css_variables_are_substituted() {
         "<style>:root { --brand: #00ff00 } .b { color: var(--brand) }</style>             <div class=\"b\">текст</div>",
         "",
     );
-    assert_eq!(first_element(&nodes).style.color.map(|c| c.g), Some(1.0));
+    assert_eq!(
+        first_element(&nodes).style.cascaded().color.map(|c| c.g),
+        Some(1.0)
+    );
 }
 
 #[test]
@@ -74,7 +78,10 @@ pub(super) fn variable_fallback_is_used_when_undefined() {
         "<style>.b { color: var(--missing, #0000ff) }</style><div class=\"b\">t</div>",
         "",
     );
-    assert_eq!(first_element(&nodes).style.color.map(|c| c.b), Some(1.0));
+    assert_eq!(
+        first_element(&nodes).style.cascaded().color.map(|c| c.b),
+        Some(1.0)
+    );
 }
 
 #[test]
@@ -84,14 +91,22 @@ pub(super) fn hover_rules_form_a_separate_layer() {
         "",
     );
     let d = first_element(&nodes);
-    assert_eq!(d.style.color.map(|c| c.r), Some(1.0), "базовый цвет белый");
     assert_eq!(
-        d.style.color.map(|c| c.g),
+        d.style.cascaded().color.map(|c| c.r),
+        Some(1.0),
+        "базовый цвет белый"
+    );
+    assert_eq!(
+        d.style.cascaded().color.map(|c| c.g),
         Some(1.0),
         "и не покрашен наведением"
     );
     let hover = d.hover.as_ref().expect("слой наведения собран");
-    assert_eq!(hover.color.map(|c| c.g), Some(0.0), "в наведении — красный");
+    assert_eq!(
+        hover.cascaded().color.map(|c| c.g),
+        Some(0.0),
+        "в наведении — красный"
+    );
 }
 
 #[test]

@@ -22,7 +22,7 @@ pub(crate) fn group_shape(
 ) {
     let positioned = |e: &Element| {
         matches!(
-            e.style.position,
+            e.style.cascaded().position,
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         )
@@ -49,11 +49,12 @@ pub(crate) fn group_shape(
                      mut forced,
                      mut solid,
                  }| {
-                    let floated = e.style.float.unwrap_or(0) != 0;
+                    let floated = e.style.cascaded().float.unwrap_or(0) != 0;
                     // Письмо — своё или унаследованное от корня (`html, body {
                     // writing-mode }` снимаются выше, свой стиль ребёнка его не
                     // несёт).
-                    let vertical = e.style.vertical_decl().or(root.vertical_decl()) == Some(true);
+                    let vertical =
+                        e.style.cascaded().vertical_decl().or(root.vertical_decl()) == Some(true);
                     let fold = pad_top > 0.0 || floated;
                     let lead = if vertical {
                         pad_top

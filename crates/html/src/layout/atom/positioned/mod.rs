@@ -34,10 +34,10 @@ pub(super) fn absolute_atom(
     // прямоугольника его фрагментов, коробка идёт без пустышки и слоёв.
     let offer = opts.cx.inline_cb.as_ref();
     let inline_cb = offer.is_some_and(|o| o.take())
-        && e.style.position == Some(crate::style::computed::Position::Absolute)
-        && (edge_set(e.style.inset.left) || edge_set(e.style.inset.right))
-        && (edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom))
-        && e.style.z_index.unwrap_or(0) >= 0;
+        && e.style.cascaded().position == Some(crate::style::computed::Position::Absolute)
+        && (edge_set(e.style.cascaded().inset.left) || edge_set(e.style.cascaded().inset.right))
+        && (edge_set(e.style.cascaded().inset.top) || edge_set(e.style.cascaded().inset.bottom))
+        && e.style.cascaded().z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(o) = offer {
         o.note_taken();
     }
@@ -54,9 +54,9 @@ pub(super) fn absolute_atom(
     // не бралась от нулевой пустышки, ничего не меняет (*replaced*,
     // positioning/*, normal-flow/*, *float*).
     let stretched = inline_cb
-        || (edge_set(e.style.inset.left) && edge_set(e.style.inset.right))
-        || (edge_set(e.style.inset.top) && edge_set(e.style.inset.bottom))
-        || matches!(e.style.width, Some(Len::Pct(_)));
+        || (edge_set(e.style.cascaded().inset.left) && edge_set(e.style.cascaded().inset.right))
+        || (edge_set(e.style.cascaded().inset.top) && edge_set(e.style.cascaded().inset.bottom))
+        || matches!(e.style.cascaded().width, Some(Len::Pct(_)));
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
     // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
     // absolute с left/top не рисовался вовсе).
@@ -88,9 +88,9 @@ pub(super) fn absolute_atom(
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
     // держатель, и край считался от него (`abs-pos-non-replaced-vlr-017`:
     // `right: 2em` уводил коробку на свои же 160 влево).
-    let x_set = edge_set(e.style.inset.left) || edge_set(e.style.inset.right);
-    let y_set = edge_set(e.style.inset.top) || edge_set(e.style.inset.bottom);
-    if x_set != y_set && e.style.z_index.unwrap_or(0) >= 0 {
+    let x_set = edge_set(e.style.cascaded().inset.left) || edge_set(e.style.cascaded().inset.right);
+    let y_set = edge_set(e.style.cascaded().inset.top) || edge_set(e.style.cascaded().inset.bottom);
+    if x_set != y_set && e.style.cascaded().z_index.unwrap_or(0) >= 0 {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         // A block-level box keeps the block-level static position on its free
         // axis (line start, next line after in-flow content) and aligns in
@@ -114,7 +114,7 @@ pub(super) fn absolute_atom(
             rtl: inherited.wm().rtl(),
             vertical: inherited.wm().vertical(),
             vertical_rl: inherited.wm().block_rl(),
-            own_vertical: e.style.wm().vertical(),
+            own_vertical: e.style.cascaded().wm().vertical(),
             ..Default::default()
         });
         let probe = crate::layout::positioned::containing_block::spot_probe(

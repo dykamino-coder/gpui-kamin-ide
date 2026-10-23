@@ -60,8 +60,9 @@ pub(super) fn cell_spans(
     let spans_collapsed = span_cols > 1
         && (col_ix..col_ix + span_cols as usize)
             .any(|i| cols_collapsed.get(i).copied().unwrap_or(false));
-    let clipped = cell.style.overflow_x == Some(crate::style::computed::Overflow::Hidden)
-        || cell.style.overflow_y == Some(crate::style::computed::Overflow::Hidden)
+    let clipped = cell.style.cascaded().overflow_x
+        == Some(crate::style::computed::Overflow::Hidden)
+        || cell.style.cascaded().overflow_y == Some(crate::style::computed::Overflow::Hidden)
         || spans_collapsed;
     CellSpans {
         span_cols,
@@ -90,14 +91,14 @@ pub(super) fn row_band_probes(
     // ячеек, снятыми пробами этого кадра (`RowRects`).
     let row_rects: Option<crate::layout::table::probes::RowRects> =
         (!crate::layout::table::anon::row_collapsed(row, carry.group)
-            && (row.style.bg_image.is_some()
-                || row.style.gradient_raw.is_some()
-                || !row.style.shadows.is_empty()))
+            && (row.style.cascaded().bg_image.is_some()
+                || row.style.cascaded().gradient_raw.is_some()
+                || !row.style.cascaded().shadows.is_empty()))
         .then(crate::layout::table::probes::RowRects::default);
     if let Some(rects) = &row_rects {
         // Градиент ряда идёт слоем-картинкой: источник понимает записи
         // `linear-gradient(...)` и растрирует их сам.
-        let mut band_style = (*row.style).clone();
+        let mut band_style = row.style.cascaded().clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
@@ -114,24 +115,24 @@ pub(super) fn row_band_probes(
     // полоса уже считает (`visibility-collapse-border-spacing-001`:
     // `tbody { outline: 10px }` не рисовался вовсе).
     let grp_band: Option<crate::layout::table::probes::RowRects> = carry.group.and_then(|g| {
-        (g.style.collapsed != Some(true)
-            && (g.style.bg_image.is_some()
-                || g.style.gradient_raw.is_some()
-                || !g.style.shadows.is_empty()
-                || g.style.outline.is_some()))
+        (g.style.cascaded().collapsed != Some(true)
+            && (g.style.cascaded().bg_image.is_some()
+                || g.style.cascaded().gradient_raw.is_some()
+                || !g.style.cascaded().shadows.is_empty()
+                || g.style.cascaded().outline.is_some()))
         .then(|| group_bands.entry(g.node_id).or_default().clone())
     });
     if let (Some(rects), Some(g)) = (&grp_band, carry.group)
         && group_of.get(&row.node_id).is_some_and(|edge| edge.first)
     {
-        let mut band_style = (*g.style).clone();
+        let mut band_style = g.style.cascaded().clone();
         if band_style.bg_image.is_none() {
             band_style.bg_image = band_style.gradient_raw.clone();
         }
         // Полоса ради одной обводки цвет не красит: сплошной цвет группы
         // без картинки несут ячейки (`collect_rows`), второй слой удвоил
         // бы полупрозрачный.
-        if band_style.bg_image.is_none() && g.style.shadows.is_empty() {
+        if band_style.bg_image.is_none() && g.style.cascaded().shadows.is_empty() {
             band_style.background = None;
         }
         let band = Layer::cell_band(rects.clone(), band_style, cx);
@@ -158,17 +159,17 @@ pub(super) fn push_empty_row_track(
     // (20+2 против 10+12). Заглушка на всю ширину ставится только когда
     // ряд не накрыт охватом сверху — иначе авторазмещение унесло бы её
     // в следующий ряд.
-    if !e.style.wm().vertical()
+    if !e.style.cascaded().wm().vertical()
         && !row
             .children
             .iter()
             .any(|n| matches!(n, Node::Element(c) if is_cell(c)))
         && occupied.iter().all(|o| *o == 0)
-        && let Some(Len::Px(h)) = row.style.height
+        && let Some(Len::Px(h)) = row.style.cascaded().height
         && h > 0.0
     {
         let mut ph = div().h(px(h)).col_span(cols);
-        if !e.style.wm().vertical() {
+        if !e.style.cascaded().wm().vertical() {
             ph = ph.col_start(1).row_start(row_ix);
         }
         cells.push(ph.into_any_element());
@@ -189,7 +190,7 @@ pub(super) fn cell_cascaded_style(
     // `display: table-cell` box keeps its own value or the initial
     // `baseline` (`vertical-align-applies-to-*`: a row group's
     // `bottom` must not move the cell's content).
-    if cell.style.vertical_align.is_none() && !html_cell(cell) {
+    if cell.style.cascaded().vertical_align.is_none() && !html_cell(cell) {
         cm.vertical_align = None;
     }
     // Потолок вертикальной ячейки режет доступное место её
@@ -197,9 +198,13 @@ pub(super) fn cell_cascaded_style(
     // element): стопка глифов переносится на следующую колонку по
     // нему (table-cell-002: td vertical-rl с max-height 100 —
     // зелёный квадрат из двух колонок).
-    if cell.style.wm().vertical()
+    if cell.style.cascaded().wm().vertical()
         && cm.ortho_limit.is_none()
-        && let Some(Len::Px(h)) = cell.style.height.or(cell.style.max_height)
+        && let Some(Len::Px(h)) = cell
+            .style
+            .cascaded()
+            .height
+            .or(cell.style.cascaded().max_height)
     {
         cm.ortho_limit = Some(h);
     }
@@ -223,7 +228,7 @@ pub(super) fn cell_cascaded_style(
     // (`anon_element("table", …)`, стиль `Computed::default()`)
     // `e.style.vertical` пуст, поэтому семья `line-box-direction-*`
     // гейтом не задевается.
-    if e.style.wm().vertical() && cm.ortho_limit.is_some() {
+    if e.style.cascaded().wm().vertical() && cm.ortho_limit.is_some() {
         cm.ortho_col = true;
     }
     cm
@@ -236,7 +241,7 @@ pub(super) fn hides_empty_cell(
     vcx: ValueCx<'_>,
 ) -> bool {
     box_style(row_style, &cell.style, vcx).empty_cells_hide == Some(true)
-        && e.style.border_collapse != Some(true)
+        && e.style.cascaded().border_collapse != Some(true)
         && {
             let mut текст = String::new();
             gather_text(&cell.children, &mut текст);

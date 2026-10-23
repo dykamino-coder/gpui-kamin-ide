@@ -41,14 +41,14 @@ pub(crate) fn measure_children(
     ge.children
         .iter()
         .filter(|n| !is_blank(n))
-        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(c.style.cascaded())))
         .map(|n| match n {
             // Вложенный многоколоночник `height: auto` с верха
             // внешней колонки — рядами (`nested_rows_shape`).
             Node::Element(c)
                 if first_flow == Some(n as *const Node)
-                    && matches!(c.style.height, None | Some(Len::Auto))
-                    && zero_len(c.style.margin.top)
+                    && matches!(c.style.cascaded().height, None | Some(Len::Auto))
+                    && zero_len(c.style.cascaded().margin.top)
                     && outer_frag.is_some()
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
@@ -77,8 +77,8 @@ pub(crate) fn measure_children(
             Node::Element(c)
                 if measure_ok
                     && first_flow != Some(n as *const Node)
-                    && c.style.column_fill_auto != Some(true)
-                    && matches!(c.style.height, None | Some(Len::Auto))
+                    && c.style.cascaded().column_fill_auto != Some(true)
+                    && matches!(c.style.cascaded().height, None | Some(Len::Auto))
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -87,7 +87,7 @@ pub(crate) fn measure_children(
             }
             Node::Element(c)
                 if whole_ok
-                    && matches!(c.style.height, None | Some(Len::Auto))
+                    && matches!(c.style.cascaded().height, None | Some(Len::Auto))
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>
             {
@@ -130,10 +130,11 @@ pub(crate) fn measure_children(
             // накладывается на месте (корень A1).
             Node::Element(c)
                 if !c.inline
-                    && (c.style.position.is_none()
-                        || c.style.position
+                    && (c.style.cascaded().position.is_none()
+                        || c.style.cascaded().position
                             == Some(crate::style::computed::Position::Relative))
-                    && (c.style.float.unwrap_or(0) == 0 || block_like_float(&c.style)) =>
+                    && (c.style.cascaded().float.unwrap_or(0) == 0
+                        || block_like_float(c.style.cascaded())) =>
             {
                 // В вертикальном письме мера — по БЛОЧНОЙ оси
                 // (css-multicol-1 §2: «The column height is the
@@ -237,7 +238,10 @@ pub(super) fn measured_margins(c: &Element) -> Option<(f32, f32)> {
         None | Some(Len::Auto) => Some(0.0),
         _ => None,
     };
-    Some((m(&c.style.margin.top)?, m(&c.style.margin.bottom)?))
+    Some((
+        m(&c.style.cascaded().margin.top)?,
+        m(&c.style.cascaded().margin.bottom)?,
+    ))
 }
 
 #[cfg(test)]

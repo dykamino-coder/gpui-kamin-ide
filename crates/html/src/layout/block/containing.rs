@@ -111,7 +111,7 @@ mod tests {
     fn percent_padding_uses_only_the_supplied_level_width() {
         let doc = DocState::new(Default::default());
         let mut e = crate::layout::table::anon::anon_element("div", vec![]);
-        e.style.padding.top = Some(Len::Pct(0.5));
+        e.style.cascaded_mut().padding.top = Some(Len::Pct(0.5));
         use crate::layout::block::struts::{top_edge_open, top_edge_open_at};
         assert!(top_edge_open_at(&e, Some(0.0)));
         assert!(!top_edge_open_at(&e, Some(100.0)));

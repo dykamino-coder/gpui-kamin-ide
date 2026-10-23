@@ -18,7 +18,7 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn names(nodes: &[Node], out: &mut HashSet<String>) {
         for n in nodes {
             let Node::Element(e) = n else { continue };
-            if let Some(list) = &e.style.anchor_name {
+            if let Some(list) = &e.style.cascaded().anchor_name {
                 out.extend(list.iter().cloned());
             }
             names(&e.children, out);
@@ -27,37 +27,38 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
     fn settle(nodes: &mut [Node], known: &HashSet<String>, parent: &Parent, vcx: ValueCx<'_>) {
         for n in nodes.iter_mut() {
             let Node::Element(e) = n else { continue };
-            if e.style.position_anchor == Some(PositionAnchor::MatchParent) {
+            if e.style.cascaded().position_anchor == Some(PositionAnchor::MatchParent) {
                 let (pa, implicit) = match_parent(parent);
-                e.style.position_anchor = Some(pa);
+                e.style.cascaded_mut().position_anchor = Some(pa);
                 if implicit.is_some() {
-                    e.style.implicit_anchor = implicit;
+                    e.style.cascaded_mut().implicit_anchor = implicit;
                 }
             }
-            let has_default = match &e.style.position_anchor {
+            let has_default = match &e.style.cascaded().position_anchor {
                 Some(PositionAnchor::Named(n)) => known.contains(n),
-                Some(PositionAnchor::Auto) => e.style.implicit_anchor.is_some(),
+                Some(PositionAnchor::Auto) => e.style.cascaded().implicit_anchor.is_some(),
                 // `normal` при непустой `position-area` ведёт себя как `auto`
                 // (§position-anchor); без области — как `none`.
                 Some(PositionAnchor::Normal) | None => {
-                    e.style.position_area.is_some() && e.style.implicit_anchor.is_some()
+                    e.style.cascaded().position_area.is_some()
+                        && e.style.cascaded().implicit_anchor.is_some()
                 }
                 _ => false,
             };
-            let s = &mut e.style.inset;
+            let s = &mut e.style.cascaded_mut().inset;
             for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
                 *slot = settle_len(*slot, has_default, known, vcx);
             }
             let abs = matches!(
-                e.style.position,
+                e.style.cascaded().position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             );
             let me: Parent = abs.then(|| {
                 (
-                    e.style.position_anchor.clone(),
-                    e.style.position_area.is_some(),
-                    e.style.implicit_anchor,
+                    e.style.cascaded().position_anchor.clone(),
+                    e.style.cascaded().position_area.is_some(),
+                    e.style.cascaded().implicit_anchor,
                 )
             });
             settle(&mut e.children, known, &me, vcx);

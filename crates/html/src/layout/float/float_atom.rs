@@ -19,10 +19,10 @@ pub(super) fn band_atom(
     opts: &RenderOpts,
 ) -> Option<crate::layout::fragment::types::FlowChild> {
     let vcx = opts.cx.vcx();
-    let (w, h) = px_margin_box(&c.style)?;
+    let (w, h) = px_margin_box(c.style.cascaded())?;
     let (ml, mt) = (
-        px_margin(&c.style.margin.left).unwrap_or(0.0),
-        px_margin(&c.style.margin.top).unwrap_or(0.0),
+        px_margin(&c.style.cascaded().margin.left).unwrap_or(0.0),
+        px_margin(&c.style.cascaded().margin.top).unwrap_or(0.0),
     );
     let mut merged = box_style(inherited, &c.style, vcx);
     // This path bypasses element(); positioned descendants still need the DOM CB key.
@@ -31,7 +31,7 @@ pub(super) fn band_atom(
     // represents the margin box; its contents paint the border box once.
     merged.margin = crate::style::computed::Sides::default();
     let mut inner = c.clone();
-    inner.style.margin = crate::style::computed::Sides::default();
+    inner.style.cascaded_mut().margin = crate::style::computed::Sides::default();
     let built = if inner.tag == "img" {
         opts.cx.build.replaced(
             &with_inherited_font(&inner, inherited),
@@ -45,7 +45,7 @@ pub(super) fn band_atom(
             .children(opts.cx.build.blocks(&inner.children, &merged, opts))
             .into_any_element()
     };
-    let el = if px_margin_box(&inner.style) == Some((w, h)) {
+    let el = if px_margin_box(inner.style.cascaded()) == Some((w, h)) {
         built
     } else {
         div()

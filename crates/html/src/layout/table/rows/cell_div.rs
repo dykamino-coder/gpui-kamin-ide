@@ -33,35 +33,36 @@ pub(super) fn cell_box_div(
             Some(Len::Px(_)) | None => own,
             _ => merged,
         };
-        c.padding = crate::style::computed::Sides {
-            top: fixup(c.padding.top, cm.padding.top),
-            right: fixup(c.padding.right, cm.padding.right),
-            bottom: fixup(c.padding.bottom, cm.padding.bottom),
-            left: fixup(c.padding.left, cm.padding.left),
+        c.cascaded_mut().padding = crate::style::computed::Sides {
+            top: fixup(c.cascaded().padding.top, cm.padding.top),
+            right: fixup(c.cascaded().padding.right, cm.padding.right),
+            bottom: fixup(c.cascaded().padding.bottom, cm.padding.bottom),
+            left: fixup(c.cascaded().padding.left, cm.padding.left),
         };
-        c.height = fixup(c.height, cm.height);
+        c.cascaded_mut().height = fixup(c.cascaded().height, cm.height);
         // Толщина рамки — тем же правилом: `border: 1em solid` у
         // ячейки доезжало сюда неразрешённым `Em`, а раскладка кладёт
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        c.border_width = crate::style::computed::Sides {
-            top: fixup(c.border_width.top, cm.border_width.top),
-            right: fixup(c.border_width.right, cm.border_width.right),
-            bottom: fixup(c.border_width.bottom, cm.border_width.bottom),
-            left: fixup(c.border_width.left, cm.border_width.left),
+        c.cascaded_mut().border_width = crate::style::computed::Sides {
+            top: fixup(c.cascaded().border_width.top, cm.border_width.top),
+            right: fixup(c.cascaded().border_width.right, cm.border_width.right),
+            bottom: fixup(c.cascaded().border_width.bottom, cm.border_width.bottom),
+            left: fixup(c.cascaded().border_width.left, cm.border_width.left),
         };
         // Background size and position in font units — the same rule: the
         // painter sees no font size on the raw style and used 16px
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
-        c.bg_pos.x = fixup(c.bg_pos.x, cm.bg_pos.x);
-        c.bg_pos.y = fixup(c.bg_pos.y, cm.bg_pos.y);
+        c.cascaded_mut().bg_pos.x = fixup(c.cascaded().bg_pos.x, cm.bg_pos.x);
+        c.cascaded_mut().bg_pos.y = fixup(c.cascaded().bg_pos.y, cm.bg_pos.y);
         if let (
             crate::style::computed::BgSize::Fixed(w, h),
             crate::style::computed::BgSize::Fixed(mw, mh),
-        ) = (c.bg_size, cm.bg_size)
+        ) = (c.cascaded().bg_size, cm.bg_size)
         {
-            c.bg_size = crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
+            c.cascaded_mut().bg_size =
+                crate::style::computed::BgSize::Fixed(fixup(w, mw), fixup(h, mh));
         }
         c
     };
@@ -73,20 +74,20 @@ pub(super) fn cell_box_div(
     let collapsed = crate::layout::table::anon::row_collapsed(row, carry.group);
     let bg_layered = paint_layers
         && !collapsed
-        && box_style.bg_clip.is_none()
-        && box_style.gradient.is_none()
-        && box_style.bg_image.is_none()
-        && box_style.hidden != Some(true)
-        && box_style.opacity.is_none_or(|o| o >= 1.0)
-        && box_style.transform.is_none()
-        && box_style.translate.is_none()
-        && box_style.filter.is_none();
+        && box_style.cascaded().bg_clip.is_none()
+        && box_style.cascaded().gradient.is_none()
+        && box_style.cascaded().bg_image.is_none()
+        && box_style.cascaded().hidden != Some(true)
+        && box_style.cascaded().opacity.is_none_or(|o| o >= 1.0)
+        && box_style.cascaded().transform.is_none()
+        && box_style.cascaded().translate.is_none()
+        && box_style.cascaded().filter.is_none();
     let mut box_style = box_style;
-    let own_bg = box_style.background;
+    let own_bg = box_style.cascaded().background;
     if bg_layered {
-        box_style.background = None;
+        box_style.cascaded_mut().background = None;
     }
-    let mut d = cx.build.styled_box(cell, &box_style, cx);
+    let mut d = cx.build.styled_box(cell, box_style.cascaded(), cx);
     if collapsed {
         d.style().opacity = Some(0.0);
     }
@@ -99,7 +100,8 @@ pub(super) fn cell_box_div(
         // Ряд с КАРТИНКОЙ красит и цвет САМ (см. CellsClipped) —
         // ячейка его не дублирует, иначе цвет ложится поверх
         // картинки. Ряду только с тенью цвет оставляют ячейки.
-        let picture = row.style.bg_image.is_some() || row.style.gradient_raw.is_some();
+        let picture =
+            row.style.cascaded().bg_image.is_some() || row.style.cascaded().gradient_raw.is_some();
         if !picture {
             if bg_layered {
                 layer_bg = Some(bg);
@@ -123,12 +125,13 @@ pub(super) fn cell_box_div(
     // A relatively positioned cell's own percentage insets resolve
     // against the row's specified height (`position-relative-013`),
     // not the table grid the cell is laid out in; the row offset adds.
-    let own_pct = cell.style.position == Some(crate::style::computed::Position::Relative)
+    let own_pct = cell.style.cascaded().position
+        == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.inset.left,
-            cell.style.inset.right,
-            cell.style.inset.top,
-            cell.style.inset.bottom,
+            cell.style.cascaded().inset.left,
+            cell.style.cascaded().inset.right,
+            cell.style.cascaded().inset.top,
+            cell.style.cascaded().inset.bottom,
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));
@@ -168,7 +171,7 @@ pub(super) fn ortho_cell_box(
     // `table_layout_utils.cc:218`:
     // `ConstraintSpaceBuilder(table_writing_direction.GetWritingMode(),
     //                         cell_writing_direction, /* is_new_fc */ true)`.
-    let ortho_cell = cm.wm().vertical() && !e.style.wm().vertical();
+    let ortho_cell = cm.wm().vertical() && !e.style.cascaded().wm().vertical();
     let mut d = if ortho_cell {
         let d = d.flex();
         if cm.wm().block_rl() {
@@ -221,12 +224,12 @@ pub(super) fn ortho_cell_box(
         // наследуется, а слитый `cm` тянет его от любого предка.
         // Только `td`/`th` берут значение ряда (UA-правило
         // `td, th { vertical-align: inherit }`).
-        let own_va = cell.style.vertical_align.or(if html_cell(cell) {
-            row.style.vertical_align
+        let own_va = cell.style.cascaded().vertical_align.or(if html_cell(cell) {
+            row.style.cascaded().vertical_align
         } else {
             None
         });
-        if own_va == Some(Align::Baseline) && !e.style.wm().vertical() {
+        if own_va == Some(Align::Baseline) && !e.style.cascaded().wm().vertical() {
             d.style().table_cell_baseline = Some(true);
         }
     }

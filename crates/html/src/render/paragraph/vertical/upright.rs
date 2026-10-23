@@ -20,7 +20,8 @@ pub(super) fn only_mixed_text(nodes: &[Node], inherited: &Computed, vcx: ValueCx
             }
             Node::Element(element)
                 if crate::layout::box_kind::real_inline(element)
-                    || element.style.display == Some(crate::style::computed::Display::Contents) =>
+                    || element.style.cascaded().display
+                        == Some(crate::style::computed::Display::Contents) =>
             {
                 let child = crate::style::cascade::materialize::box_style_unpainted(
                     style,
@@ -91,9 +92,9 @@ pub(crate) fn upright_paragraph(
 /// Строчные элементы без физических левых и правых полей, отбивок и рамок.
 fn drop_block_axis_sides(n: &Node) -> Node {
     match n {
-        Node::Element(e) if e.inline && e.style.display.is_none() => {
+        Node::Element(e) if e.inline && e.style.cascaded().display.is_none() => {
             let mut e = e.clone();
-            let style = &mut *e.style;
+            let style = &mut *e.style.cascaded_mut();
             for sides in [
                 &mut style.margin,
                 &mut style.padding,

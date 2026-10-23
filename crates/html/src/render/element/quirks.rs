@@ -138,7 +138,7 @@ mod tests {
             })
             .expect("body");
         let mut body = body.clone();
-        body.style.float = None;
+        body.style.cascaded_mut().float = None;
         let mut st = Computed::default();
         fill(&body, &mut st, &Computed::default(), &opts());
         assert_eq!(st.min_height, None);

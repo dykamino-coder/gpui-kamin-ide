@@ -18,7 +18,7 @@ fn row_group_limit_and_collapsed_columns_keep_distinct_flags() {
     let spans = cell_spans(2, &[5, 3], &[false, true, false], 1, &cell);
     assert!(spans.spans_collapsed);
     assert!(spans.clipped);
-    cell.style.overflow_y = Some(Overflow::Hidden);
+    cell.style.cascaded_mut().overflow_y = Some(Overflow::Hidden);
     let spans = cell_spans(2, &[5, 3], &[false; 3], 1, &cell);
     assert!(!spans.spans_collapsed);
     assert!(spans.clipped);

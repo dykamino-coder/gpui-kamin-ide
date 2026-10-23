@@ -97,25 +97,25 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     // Внепоточный сосед получил бы хост своим содержащим блоком; `clear`
     // требует зазора, которого шаг B1 не считает.
     if matches!(
-        c.style.position,
+        c.style.cascaded().position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) || c.style.float.is_some_and(|f| f != 0)
-        || c.style.clear.is_some()
+    ) || c.style.cascaded().float.is_some_and(|f| f != 0)
+        || c.style.cascaded().clear.is_some()
     {
         return None;
     }
-    let (mw, mh) = px_margin_box(&c.style)?;
+    let (mw, mh) = px_margin_box(c.style.cascaded())?;
     // ОБЕ стороны обязаны стоять в стиле точками. Одного `px_margin_box` мало:
     // `width: auto` там `None` и складывается как НОЛЬ, а по §10.3.5 это
     // shrink-to-fit, которого полосы не считают. Без этой проверки коробка с
     // одними полями прошла бы гейт с нулевой шириной.
-    let sized = matches!(c.style.height, Some(Len::Px(_)))
-        && matches!(c.style.width, Some(Len::Px(_)))
+    let sized = matches!(c.style.cascaded().height, Some(Len::Px(_)))
+        && matches!(c.style.cascaded().width, Some(Len::Px(_)))
         && mw > 0.0
         && mh > 0.0;
     if matches!(
-        c.style.display,
+        c.style.cascaded().display,
         Some(Display::InlineBlock) | Some(Display::InlineFlex)
     ) || (c.tag == "img" && inline_level(c))
     {
@@ -128,10 +128,10 @@ pub(super) fn band_piece(n: &Node) -> Option<BandPiece> {
     }
     // Распорка: своей ширины нет, внутри пусто, краски нет — видно её нечем,
     // и место она занимает только по высоте.
-    let invisible = c.style.background.is_none()
+    let invisible = c.style.cascaded().background.is_none()
         && c.children.iter().all(is_blank)
-        && matches!(c.style.width, None | Some(Len::Auto))
-        && matches!(c.style.height, Some(Len::Px(_)))
+        && matches!(c.style.cascaded().width, None | Some(Len::Auto))
+        && matches!(c.style.cascaded().height, Some(Len::Px(_)))
         && mw == 0.0;
     (invisible && mh > 0.0).then_some(BandPiece::Strut)
 }

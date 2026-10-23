@@ -81,7 +81,7 @@ pub(super) fn table_rows(
         // `font-size: 2em` на теге давал ячейке 64 точки вместо 32, строки
         // не влезали в колонку и таблица разъезжалась на лишние полосы
         // (вся семья `table-anonymous-objects-059…098`).
-        let row_style = inherit(inherited, &own, vcx);
+        let row_style = inherit(inherited, own.cascaded(), vcx);
         push_empty_row_track(
             cursor.row_ix,
             &cursor.occupied,

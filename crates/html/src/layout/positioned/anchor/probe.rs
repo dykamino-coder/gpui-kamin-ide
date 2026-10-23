@@ -13,7 +13,9 @@ pub fn key_of(e: &crate::dom::Element) -> u64 {
     if e.node_id != 0 {
         return e.node_id;
     }
-    (1u64 << 63) | (e.style.implicit_anchor.unwrap_or(0) << 1) | u64::from(e.tag == "::after")
+    (1u64 << 63)
+        | (e.style.cascaded().implicit_anchor.unwrap_or(0) << 1)
+        | u64::from(e.tag == "::after")
 }
 
 /// Ссылается ли коробка на НЕЯВНЫЙ якорь: `position-anchor: auto`, либо
@@ -38,15 +40,15 @@ pub fn probe_for(
     hidden: bool,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
-    let names: Vec<String> = e.style.anchor_name.clone().unwrap_or_default();
+    let names: Vec<String> = e.style.cascaded().anchor_name.clone().unwrap_or_default();
     let implicit = e.node_id != 0
         && e.children.iter().any(|n| {
-            matches!(n, Node::Element(k) if k.tag.starts_with("::") && wants_implicit(&k.style))
+            matches!(n, Node::Element(k) if k.tag.starts_with("::") && wants_implicit(k.style.cascaded()))
         });
     // Содержащий блок абсолюта — каждая коробка с `establishes_cb`: её
     // padding box читает сетка `position-area` (§position-area-grid-resolution),
     // связь с её собственным содержащим блоком — приемлемость якоря (§target).
-    let cb = e.node_id != 0 && crate::text::inline::establishes_cb(&e.style);
+    let cb = e.node_id != 0 && crate::text::inline::establishes_cb(e.style.cascaded());
     if names.is_empty() && !implicit && !cb {
         return None;
     }
@@ -67,7 +69,7 @@ pub fn probe_for(
     // The absolute probe covers the padding box; expand it by the CSS borders.
     // The containing-block record remains the padding box (CSS 2.1 section 10.1).
     let bw = px_lossy_zero;
-    let b = e.style.borders();
+    let b = e.style.cascaded().borders();
     let border = [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)];
     let values = vcx.keep();
     Some(

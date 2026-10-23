@@ -56,7 +56,11 @@ pub(crate) fn render_with_style(
     {
         mark_style.font_family = Some(opts.text.font_family.to_string());
     }
-    tabular_marker(&mut mark_style, merged, li.style.marker_layer.as_deref());
+    tabular_marker(
+        &mut mark_style,
+        merged,
+        li.style.cascaded().marker_layer.as_deref(),
+    );
     let marker = inline::transform_case(&marker, &mark_style);
     // Without line boxes the outside marker is top-aligned to the item, and
     // the item's content height is at least the marker's (csswg-drafts#2417,
@@ -112,7 +116,7 @@ pub(crate) fn render_with_style(
             // resolve against the padding box, so the start border
             // becomes the marker's end margin (`padding-left-applies-to-
             // 010`: the bullet stays left of a 10px start border).
-            let side = li.style.borders();
+            let side = li.style.cascaded().borders();
             let px_of = |l: Option<crate::style::values::value::Len>| match l {
                 Some(crate::style::values::value::Len::Px(v)) if v > 0.0 => v,
                 _ => 0.0,
@@ -175,9 +179,9 @@ pub(crate) fn render_with_style(
 /// String list-style-type values inherit through ordinary block wrappers;
 /// generated marker content belongs only to the originating item.
 pub(crate) fn inherited_style(e: &Element, parent: &Computed, merged: &mut Computed) {
-    if e.style.marker_text.is_none()
-        && e.style.list_style_type.is_none()
-        && e.style.no_marker.is_none()
+    if e.style.cascaded().marker_text.is_none()
+        && e.style.cascaded().list_style_type.is_none()
+        && e.style.cascaded().no_marker.is_none()
         && parent
             .marker_layer
             .as_deref()

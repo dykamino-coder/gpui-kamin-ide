@@ -32,16 +32,16 @@ pub(crate) fn resolved_lengths(c: &Element, parent: &Computed, vcx: ValueCx<'_>)
         fix(&mut own.bottom, res.bottom);
         fix(&mut own.left, res.left);
     }
-    fix(&mut t.style.width, m.width);
-    fix(&mut t.style.height, m.height);
-    fix(&mut t.style.min_width, m.min_width);
-    fix(&mut t.style.min_height, m.min_height);
-    fix(&mut t.style.max_width, m.max_width);
-    fix(&mut t.style.max_height, m.max_height);
-    fix_sides(&mut t.style.margin, &m.margin);
-    fix_sides(&mut t.style.padding, &m.padding);
-    fix_sides(&mut t.style.border_width, &m.border_width);
-    fix_sides(&mut t.style.inset, &m.inset);
+    fix(&mut t.style.cascaded_mut().width, m.width);
+    fix(&mut t.style.cascaded_mut().height, m.height);
+    fix(&mut t.style.cascaded_mut().min_width, m.min_width);
+    fix(&mut t.style.cascaded_mut().min_height, m.min_height);
+    fix(&mut t.style.cascaded_mut().max_width, m.max_width);
+    fix(&mut t.style.cascaded_mut().max_height, m.max_height);
+    fix_sides(&mut t.style.cascaded_mut().margin, &m.margin);
+    fix_sides(&mut t.style.cascaded_mut().padding, &m.padding);
+    fix_sides(&mut t.style.cascaded_mut().border_width, &m.border_width);
+    fix_sides(&mut t.style.cascaded_mut().inset, &m.inset);
     t.children = c
         .children
         .iter()

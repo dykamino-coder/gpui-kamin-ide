@@ -19,7 +19,7 @@ use crate::style::values::value::Len;
 /// под `position: absolute` (§9.7, `dom::finish_inline_display`) её НЕ снимает.
 /// `None` при выключке по началу строки — прежний ход без изменений.
 pub(crate) fn static_line_align(e: &Element, inherited: &Computed) -> Option<f32> {
-    if e.style.inline_display != Some(true) {
+    if e.style.cascaded().inline_display != Some(true) {
         return None;
     }
     let rtl = inherited.wm().rtl();
@@ -117,19 +117,19 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
 pub(crate) fn hypothetical_inline_level(e: &Element) -> bool {
     // A blockified `inline-block`/`inline-flex`/… keeps its inline-level
     // hypothetical box (`dom` marks it `abs_inline_level`).
-    if e.style.abs_inline_level {
+    if e.style.cascaded().abs_inline_level {
         return true;
     }
-    match e.style.display {
+    match e.style.cascaded().display {
         Some(crate::style::computed::Display::InlineBlock)
         | Some(crate::style::computed::Display::InlineFlex)
         | Some(crate::style::computed::Display::InlineGrid)
         | Some(crate::style::computed::Display::InlineTable) => true,
-        Some(crate::style::computed::Display::GridLanes) => e.style.lanes_inline,
+        Some(crate::style::computed::Display::GridLanes) => e.style.cascaded().lanes_inline,
         // Блокифицированный `display: inline` (§9.7) для СТАТИЧЕСКОЙ
         // позиции остаётся строчным: гипотеза §10.3.7 считается без
         // блокификации (htb-rtl-*).
-        Some(_) => e.style.inline_display == Some(true),
+        Some(_) => e.style.cascaded().inline_display == Some(true),
         None => e.inline,
     }
 }

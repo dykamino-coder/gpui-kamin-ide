@@ -144,17 +144,17 @@ fn logical_border_sides_compete_with_physical_ones_by_cascade() {
     )
     .build();
     let a = find(doc.nodes(), "a").expect("a");
-    assert_eq!(a.style.border_width.top, Some(Len::Px(1.0)));
+    assert_eq!(a.style.cascaded().border_width.top, Some(Len::Px(1.0)));
     let b = find(doc.nodes(), "b").expect("b");
-    assert_eq!(b.style.border_width.top, Some(Len::Px(5.0)));
+    assert_eq!(b.style.cascaded().border_width.top, Some(Len::Px(5.0)));
     // `vertical-rl`: inline-start is the top.
     let v = find(doc.nodes(), "v").expect("v");
-    assert_eq!(v.style.borders().top, Some(Len::Px(7.0)));
-    assert_eq!(v.style.borders().left, None);
+    assert_eq!(v.style.cascaded().borders().top, Some(Len::Px(7.0)));
+    assert_eq!(v.style.cascaded().borders().left, None);
     let i = find(doc.nodes(), "i").expect("i");
     use crate::style::css::LonghandId as L;
-    let marked = i.style.inherit_longhands;
+    let marked = i.style.cascaded().inherit_longhands;
     assert!(marked.contains(L::BorderTopWidth) && marked.contains(L::BorderBottomWidth));
     // Invalid after substitution: every longhand of the shorthand is unset.
-    assert_eq!(i.style.border_side_styles[3], Some(0));
+    assert_eq!(i.style.cascaded().border_side_styles[3], Some(0));
 }

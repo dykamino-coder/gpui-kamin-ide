@@ -88,7 +88,7 @@ impl Frame {
             if let Node::Element(e) = node
                 && let Some(rect) = area(e, &boxes, &text_boxes)
             {
-                let margin = sides(e.style.margin, view[0]);
+                let margin = sides(e.style.cascaded().margin, view[0]);
                 for axis in 0..2 {
                     start[axis] = start[axis].min(
                         rect[axis]

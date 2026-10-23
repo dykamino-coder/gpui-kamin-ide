@@ -217,7 +217,7 @@ fn build_dom_node(
                 if let Node::Element(c) = kid
                     && c.tag.starts_with("::")
                 {
-                    c.style.implicit_anchor = Some(*counter);
+                    c.style.cascaded_mut().implicit_anchor = Some(*counter);
                 }
             }
             if tag == "details" {

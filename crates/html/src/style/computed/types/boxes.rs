@@ -142,7 +142,7 @@ pub struct DeclOrder {
 /// Порядок каскада физических сторон (top, right, bottom, left) полей,
 /// отступов и вставок и физических размеров (`width, height, min-width,
 /// min-height, max-width, max-height`) — см. `LogicalSides::order`.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SideOrder {
     pub(crate) padding: [DeclOrder; 4],
     pub(crate) margin: [DeclOrder; 4],

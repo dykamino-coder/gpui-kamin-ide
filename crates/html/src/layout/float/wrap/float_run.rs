@@ -60,14 +60,15 @@ fn floats_alone(
     let run: Vec<Node> = nodes[i..]
         .iter()
         .take_while(|n| {
-            is_blank(n) || matches!(n, Node::Element(e) if e.style.float.is_some_and(|f| f != 0))
+            is_blank(n)
+                || matches!(n, Node::Element(e) if e.style.cascaded().float.is_some_and(|f| f != 0))
         })
         .map(|n| match n {
             Node::Element(f) if !is_blank(n) && band_float_m(f, em).is_none() => {
                 let mut f = f.clone();
-                let font = f.style.font_cx(vcx).family.to_owned();
+                let font = f.style.cascaded().font_cx(vcx).family.to_owned();
                 let font = crate::style::computed::FontCx::new(&font, em);
-                let m = &mut f.style.margin;
+                let m = &mut f.style.cascaded_mut().margin;
                 for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {
                     if let Some(l) =
                         side.filter(|l| !matches!(l, Len::Px(_) | Len::Pct(_) | Len::Auto))

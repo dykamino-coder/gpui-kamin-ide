@@ -91,7 +91,11 @@ pub(crate) fn stack_plan(
         .children
         .iter()
         .filter_map(|n| match n {
-            Node::Element(c) if out_of_flow(&c.style) && !positioned(&c.style) => Some(c.clone()),
+            Node::Element(c)
+                if out_of_flow(c.style.cascaded()) && !positioned(c.style.cascaded()) =>
+            {
+                Some(c.clone())
+            }
             _ => None,
         })
         .collect();
@@ -109,9 +113,9 @@ pub(crate) fn stack_plan(
                 at += 1;
                 continue;
             };
-            if positioned(&c.style) {
+            if positioned(c.style.cascaded()) {
                 out.push((at, c.clone()));
-            } else if !out_of_flow(&c.style) {
+            } else if !out_of_flow(c.style.cascaded()) {
                 at += 1;
             }
         }
@@ -120,9 +124,10 @@ pub(crate) fn stack_plan(
     // Высота внешнего фрагментаинера для вложенного рядами
     // (`nested_rows_shape`): `column-fill: auto` и блочный размер
     // в точках, без своих рядов.
-    let outer_frag = (e.style.column_fill_auto == Some(true) && rows.is_none() && !col_vert)
-        .then(|| col_h.or(box_h))
-        .flatten();
+    let outer_frag =
+        (e.style.cascaded().column_fill_auto == Some(true) && rows.is_none() && !col_vert)
+            .then(|| col_h.or(box_h))
+            .flatten();
     let layout_col_w = column_layout_width(
         e,
         inherited,
@@ -135,7 +140,7 @@ pub(crate) fn stack_plan(
     let first_flow = ge
         .children
         .iter()
-        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(c.style.cascaded())))
         .map(|n| n as *const Node);
     // Чью меру дала `nested_rows_shape` — только их копии рядами.
     let nested_auto: std::cell::RefCell<Vec<u64>> = Default::default();
@@ -147,17 +152,17 @@ pub(crate) fn stack_plan(
     // Копия стопки шла узкой веткой `styled_div_with` и рисовала его
     // плоско — без колонок и линеек (`multicol-rule-color-inherit-001`).
     let nested_whole: std::cell::RefCell<Vec<u64>> = Default::default();
-    let whole_ok = e.style.column_fill_auto != Some(true)
+    let whole_ok = e.style.cascaded().column_fill_auto != Some(true)
         && rows.is_none_or(|r| r.cap)
         && nest_rows.is_none()
         && !col_vert;
     // Дети, чью высоту меряет раскладка копии (`StackChild::measure`).
     let measured_kids: std::cell::RefCell<Vec<(u64, f32)>> = Default::default();
-    let measure_ok = e.style.column_fill_auto == Some(true)
+    let measure_ok = e.style.cascaded().column_fill_auto == Some(true)
         && rows.is_none()
         && nest_rows.is_none()
         && !col_vert
-        && (col_h.is_some() || matches!(e.style.height, Some(Len::Px(_))));
+        && (col_h.is_some() || matches!(e.style.cascaded().height, Some(Len::Px(_))));
     // Layout-driven pagination (`fragment::paginate`): one line of columns,
     // no spanners, horizontal writing.
     let pag_ok = !opts.frag.in_stack_copy
@@ -167,12 +172,12 @@ pub(crate) fn stack_plan(
         && !ge
             .children
             .iter()
-            .any(|n| matches!(n, Node::Element(c) if c.style.column_span == Some(true)));
+            .any(|n| matches!(n, Node::Element(c) if c.style.cascaded().column_span == Some(true)));
     let last_flow = ge
         .children
         .iter()
         .rev()
-        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(&c.style)))
+        .find(|n| !is_blank(n) && !matches!(n, Node::Element(c) if out_of_flow(c.style.cascaded())))
         .map(|n| n as *const Node);
     let stackable: Option<Vec<(Element, Shape)>> = with_lines(merged, line_col_w, opts, |opts| {
         measure_children(

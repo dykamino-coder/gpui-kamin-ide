@@ -24,9 +24,9 @@ pub(crate) fn resolve(
     let idx = li.list_item.unwrap_or(0);
     // Вид маркера задаёт документ; без указания — умолчание тега.
     // Строковый маркер берётся дословно и без суффикса-точки.
-    let text_marker = li.style.marker_text.clone().or_else(|| {
-        (li.style.list_style_type.is_none()
-            && li.style.no_marker.is_none()
+    let text_marker = li.style.cascaded().marker_text.clone().or_else(|| {
+        (li.style.cascaded().list_style_type.is_none()
+            && li.style.cascaded().no_marker.is_none()
             && inherited
                 .marker_layer
                 .as_deref()
@@ -36,6 +36,7 @@ pub(crate) fn resolve(
     });
     let kind = li
         .style
+        .cascaded()
         .list_style_type
         .clone()
         .or_else(|| inherited.list_style_type.clone());
@@ -43,6 +44,7 @@ pub(crate) fn resolve(
         text_marker.is_none()
             && li
                 .style
+                .cascaded()
                 .marker_layer
                 .as_deref()
                 .is_none_or(|m| m.content.is_none()),
@@ -73,10 +75,11 @@ pub(crate) fn resolve(
     // верно тем более). Без этого эталон `marker-content-019-ref`
     // (`li { display: block }`) рисовал у нас полный набор `1. 2. 3. 4.`,
     // и свёртка `content: none` в тесте разводила стороны ЕЩЁ дальше.
-    let no_marker = li.style.no_marker.or(inherited.no_marker) == Some(true)
-        || !matches!(li.style.display, None | Some(Display::ListItem));
+    let no_marker = li.style.cascaded().no_marker.or(inherited.no_marker) == Some(true)
+        || !matches!(li.style.cascaded().display, None | Some(Display::ListItem));
     let mut style = li
         .style
+        .cascaded()
         .marker_layer
         .as_deref()
         .map(|m| inherit(merged, m, vcx));
@@ -106,21 +109,25 @@ pub(crate) fn node(li: &Element, merged: &Computed, marker: Marker) -> Node {
     let mut span = anon_element("::marker", vec![Node::Text(marker.text)]);
     span.inline = true;
     span.style = marker.style.unwrap_or_default().into();
-    tabular_marker(&mut span.style, merged, li.style.marker_layer.as_deref());
-    span.style.content = None;
-    span.style.marker_layer = None;
+    tabular_marker(
+        span.style.cascaded_mut(),
+        merged,
+        li.style.cascaded().marker_layer.as_deref(),
+    );
+    span.style.cascaded_mut().content = None;
+    span.style.cascaded_mut().marker_layer = None;
     // css-lists-3 §marker-properties UA rule `::marker { unicode-bidi:
     // isolate }`: Arabic-Indic digits and the suffix stay one run
     // (`css3-counter-styles-101`, reference `<bdi>١. </bdi>`).
-    if span.style.bidi_isolate.is_none()
-        && span.style.bidi_embed.is_none()
-        && span.style.bidi_override.is_none()
-        && span.style.bidi_plaintext.is_none()
+    if span.style.cascaded().bidi_isolate.is_none()
+        && span.style.cascaded().bidi_embed.is_none()
+        && span.style.cascaded().bidi_override.is_none()
+        && span.style.cascaded().bidi_plaintext.is_none()
     {
-        span.style.bidi_isolate = Some(true);
+        span.style.cascaded_mut().bidi_isolate = Some(true);
     }
     // CSS Pseudo 4 #first-letter-application excludes marker content.
-    span.style.first_letter_excluded = true;
+    span.style.cascaded_mut().first_letter_excluded = true;
     Node::Element(span)
 }
 

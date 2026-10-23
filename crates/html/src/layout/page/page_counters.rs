@@ -71,7 +71,7 @@ impl PageCounters {
             }
             state.document.enter();
             crate::dom::apply_counter_decls(
-                &element.style,
+                element.style.cascaded(),
                 &mut state.document,
                 &element.tag,
                 &element.attrs,

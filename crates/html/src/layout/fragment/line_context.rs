@@ -49,8 +49,12 @@ impl LineCx {
         let top = parent.frames.last()?;
         let inh = crate::style::cascade::materialize::box_style(&top.inh, &c.style, vcx);
         let w = top.w.and_then(|pw| match top.items {
-            2 if !matches!(c.style.width, Some(Len::Px(_))) => None,
-            1 if c.style.align_self.is_some() || c.style.justify_self.is_some() => None,
+            2 if !matches!(c.style.cascaded().width, Some(Len::Px(_))) => None,
+            1 if c.style.cascaded().align_self.is_some()
+                || c.style.cascaded().justify_self.is_some() =>
+            {
+                None
+            }
             _ => line_content_w(c, pw),
         });
         let mut child = (**parent).clone();

@@ -10,7 +10,7 @@ use crate::style::computed::Computed;
 
 pub(super) fn sample(e: &Element, frame: &Computed, transforms: bool) -> Element {
     let mut inner = e.clone();
-    let style = &mut inner.style;
+    let style = inner.style.cascaded_mut();
     style.margin.top = frame.margin.top.or(style.margin.top);
     style.margin.right = frame.margin.right.or(style.margin.right);
     style.margin.bottom = frame.margin.bottom.or(style.margin.bottom);
@@ -71,10 +71,10 @@ mod tests {
     fn sampled_height_keeps_identity_placement_edges_and_unanimated_width() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
         element.node_id = 17;
-        element.style.width = Some(Len::Px(200.0));
-        element.style.height = Some(Len::Px(100.0));
-        element.style.margin.top = Some(Len::Px(12.0));
-        element.style.padding.left = Some(Len::Px(4.0));
+        element.style.cascaded_mut().width = Some(Len::Px(200.0));
+        element.style.cascaded_mut().height = Some(Len::Px(100.0));
+        element.style.cascaded_mut().margin.top = Some(Len::Px(12.0));
+        element.style.cascaded_mut().padding.left = Some(Len::Px(4.0));
         for height in [50.0, 75.0, 100.0] {
             let frame = Computed {
                 height: Some(Len::Px(height)),
@@ -82,26 +82,35 @@ mod tests {
             };
             let sampled = sample(&element, &frame, false);
             assert_eq!(sampled.node_id, 17);
-            assert_eq!(sampled.style.height, Some(Len::Px(height)));
-            assert_eq!(sampled.style.width, element.style.width);
-            assert_eq!(sampled.style.margin.top, element.style.margin.top);
-            assert_eq!(sampled.style.padding.left, element.style.padding.left);
+            assert_eq!(sampled.style.cascaded().height, Some(Len::Px(height)));
+            assert_eq!(
+                sampled.style.cascaded().width,
+                element.style.cascaded().width
+            );
+            assert_eq!(
+                sampled.style.cascaded().margin.top,
+                element.style.cascaded().margin.top
+            );
+            assert_eq!(
+                sampled.style.cascaded().padding.left,
+                element.style.cascaded().padding.left
+            );
         }
-        assert_eq!(element.style.height, Some(Len::Px(100.0)));
+        assert_eq!(element.style.cascaded().height, Some(Len::Px(100.0)));
     }
 
     #[test]
     fn sampled_percent_and_color_replace_actual_node_declarations() {
         let mut element = crate::layout::table::anon::anon_element("div", vec![]);
-        element.style.width = Some(Len::Px(200.0));
-        element.style.height = Some(Len::Px(100.0));
-        element.style.color = Some(Color {
+        element.style.cascaded_mut().width = Some(Len::Px(200.0));
+        element.style.cascaded_mut().height = Some(Len::Px(100.0));
+        element.style.cascaded_mut().color = Some(Color {
             r: 0.0,
             g: 0.0,
             b: 1.0,
             a: 1.0,
         });
-        element.style.rotate_prop = Some(10.0);
+        element.style.cascaded_mut().rotate_prop = Some(10.0);
         let frame = Computed {
             width: Some(Len::Pct(0.5)),
             color: Some(Color {
@@ -114,12 +123,18 @@ mod tests {
             ..Computed::default()
         };
         let sampled = sample(&element, &frame, false);
-        assert_eq!(sampled.style.width, frame.width);
-        assert_eq!(sampled.style.height, element.style.height);
-        assert_eq!(sampled.style.color, frame.color);
-        assert_eq!(sampled.style.rotate_prop, element.style.rotate_prop);
+        assert_eq!(sampled.style.cascaded().width, frame.width);
         assert_eq!(
-            sample(&element, &frame, true).style.rotate_prop,
+            sampled.style.cascaded().height,
+            element.style.cascaded().height
+        );
+        assert_eq!(sampled.style.cascaded().color, frame.color);
+        assert_eq!(
+            sampled.style.cascaded().rotate_prop,
+            element.style.cascaded().rotate_prop
+        );
+        assert_eq!(
+            sample(&element, &frame, true).style.cascaded().rotate_prop,
             frame.rotate_prop
         );
     }

@@ -43,8 +43,8 @@ pub(crate) fn dispatch_element(
     match e.tag.as_str() {
         // CSS Lists 3 §2: a block list item generates its own marker even
         // when its parent is an ordinary block rather than a list container.
-        _ if (e.style.display == Some(Display::ListItem)
-            || (e.tag == "li" && e.style.display.is_none()))
+        _ if (e.style.cascaded().display == Some(Display::ListItem)
+            || (e.tag == "li" && e.style.cascaded().display.is_none()))
             && !matches!(
                 e.tag.as_str(),
                 "img" | "svg" | "embed" | "object" | "video" | "canvas" | "iframe"
@@ -69,11 +69,14 @@ pub(crate) fn dispatch_element(
             // САМОГО элемента, его и даёт `resolve_em` от кегля родителя.
             let mut copy = with_inherited_font(&pct_height_to_px(e, inherited), inherited);
             if inline_level(e) {
-                replaced_used_style::inline_percentage_width(&mut copy.style, opts.cx.avail_w);
+                replaced_used_style::inline_percentage_width(
+                    copy.style.cascaded_mut(),
+                    opts.cx.avail_w,
+                );
             }
-            copy.style.image_orient_none = merged.image_orient_none;
+            copy.style.cascaded_mut().image_orient_none = merged.image_orient_none;
             crate::layout::replaced::image::inherit_item_metadata(
-                &mut copy.style,
+                copy.style.cascaded_mut(),
                 &merged,
                 inherited,
             );
@@ -85,10 +88,12 @@ pub(crate) fn dispatch_element(
                 inherited.display,
                 Some(Display::TableCell) | Some(Display::GridLanes)
             ) {
-                copy.style.cb_height_def = merged.cb_height_def;
+                copy.style.cascaded_mut().cb_height_def = merged.cb_height_def;
             }
             // Единицы окна — в точки, как у строчной картинки.
-            copy.style.resolve_viewport(opts.viewport, vcx);
+            copy.style
+                .cascaded_mut()
+                .resolve_viewport(opts.viewport, vcx);
             crate::layout::replaced::svg_document_image::render(&copy, opts).unwrap_or_else(|| {
                 image_with(&copy, Some(atom_base_font(inherited, opts)), &opts.cx)
             })
@@ -101,7 +106,7 @@ pub(crate) fn dispatch_element(
         // контекст просмотра держит размер по умолчанию (CSS 2.1 §§10.3.2,
         // 10.6.2).
         "iframe"
-            if e.style.floated_box
+            if e.style.cascaded().floated_box
                 && crate::layout::replaced::replaced_content::default_iframe(e) =>
         {
             crate::layout::replaced::replaced_content::empty_iframe(e, inherited, opts)
@@ -114,23 +119,27 @@ pub(crate) fn dispatch_element(
         // (рукав `"iframe"` в `atom_element`), у обёрток флоатов свой путь
         // размеров с процентной базой (`float-replaced-height-005/007`).
         "iframe"
-            if e.style.float.is_none_or(|f| f == 0)
+            if e.style.cascaded().float.is_none_or(|f| f == 0)
                 && matches!(inherited.display, None | Some(Display::Block))
-                && e.style.flow_root != Some(true)
+                && e.style.cascaded().flow_root != Some(true)
                 && !matches!(
-                    e.style.width,
+                    e.style.cascaded().width,
                     Some(Len::MinContent) | Some(Len::MaxContent) | Some(Len::FitContent)
                 ) =>
         {
             let mut copy = pct_height_to_px(e, inherited);
-            if !matches!(copy.style.width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
-                copy.style.width = Some(Len::Px(300.0));
+            if !matches!(
+                copy.style.cascaded().width,
+                Some(Len::Px(_)) | Some(Len::Pct(_))
+            ) {
+                copy.style.cascaded_mut().width = Some(Len::Px(300.0));
             }
-            let pct_ok = matches!(copy.style.height, Some(Len::Pct(_))) && merged.cb_height_def;
-            if !matches!(copy.style.height, Some(Len::Px(_))) && !pct_ok {
-                copy.style.height = Some(Len::Px(150.0));
+            let pct_ok =
+                matches!(copy.style.cascaded().height, Some(Len::Pct(_))) && merged.cb_height_def;
+            if !matches!(copy.style.cascaded().height, Some(Len::Px(_))) && !pct_ok {
+                copy.style.cascaded_mut().height = Some(Len::Px(150.0));
             }
-            copy.style.cb_height_def = merged.cb_height_def;
+            copy.style.cascaded_mut().cb_height_def = merged.cb_height_def;
             styled_div(&copy, &opts.cx)
                 .flex_shrink_0()
                 .into_any_element()
@@ -192,7 +201,7 @@ pub(crate) fn dispatch_element(
         // письмо, `rtl`) ведёт `taffy::compute::grid::lanes`.
         _ if merged.display == Some(Display::GridLanes) => {
             let mut copy = e.clone();
-            crate::dom::lanes_to_grid(&mut copy.style);
+            crate::dom::lanes_to_grid(copy.style.cascaded_mut());
             element(&copy, inherited, opts)
         }
         // Таблица — независимый контекст форматирования: её строки в бюджет
@@ -200,7 +209,7 @@ pub(crate) fn dispatch_element(
         // Табличный путь минует общий, где стоит этот сторож (`makes_bfc`),
         // поэтому он ставится здесь.
         _ if matches!(
-            e.style.display,
+            e.style.cascaded().display,
             Some(Display::Table) | Some(Display::InlineTable)
         ) =>
         {
@@ -211,7 +220,7 @@ pub(crate) fn dispatch_element(
         // таблицу-обёртку (css-tables-3 §3.1): иначе ячейки складывались
         // столбиком обычных блоков.
         _ if matches!(
-            e.style.display,
+            e.style.cascaded().display,
             Some(Display::TableRowGroup) | Some(Display::TableRow) | Some(Display::TableCell)
         ) =>
         {
@@ -225,7 +234,7 @@ pub(crate) fn dispatch_element(
         }
         // Список с заданной раскладкой — это уже не список, а контейнер:
         // на `ul` верстают навигацию и наборы чипов.
-        "ul" | "ol" if e.style.display.is_none() => list::render(e, &merged, opts),
+        "ul" | "ol" if e.style.cascaded().display.is_none() => list::render(e, &merged, opts),
         // `white-space: pre*` значим не меньше тега: переводы строк сохраняет
         // именно он, и на `<div style="white-space: pre">` разметка обязана
         // вести себя так же, как на `<pre>`.

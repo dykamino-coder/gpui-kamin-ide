@@ -31,7 +31,7 @@ pub(super) fn collapsed_cell_edge(
     // рамка рисовалась коробкой — чёрным блоком без разбора
     // конфликтов (`border-conflict-element-001d/001e`).
     let b = {
-        let own = cell.style.borders();
+        let own = cell.style.cascaded().borders();
         let merged = cm.borders();
         let pick = |o: Option<Len>, m: Option<Len>| match o {
             Some(Len::Px(_)) | None => o,
@@ -54,22 +54,24 @@ pub(super) fn collapsed_cell_edge(
     // Цвет без объявления — `currentColor` (css-backgrounds-3
     // §border-color, initial: currentcolor), а не чёрный: `td.blue
     // {color: blue; border: solid 1em}` красил кромку чёрным.
-    let side_colour = |i: usize| cell.style.border_colors[i].resolve(cm.color.unwrap_or(black));
+    let side_colour =
+        |i: usize| cell.style.cascaded().border_colors[i].resolve(cm.color.unwrap_or(black));
     let colors = [
         side_colour(0),
         side_colour(1),
         side_colour(2),
         side_colour(3),
     ];
-    let side_style =
-        |i: usize| cell.style.border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 });
+    let side_style = |i: usize| {
+        cell.style.cascaded().border_side_styles[i].unwrap_or(if widths[i] > 0.0 { 9 } else { 0 })
+    };
     let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
     // Половина кромки лежит ВНУТРИ ячейки и место занимает
     // (§17.6.2). Кладётся паддингом поверх авторского: проба
     // кромок стоит по паддинг-боксу, и рамкой линия уехала бы
     // внутрь.
     let win = win_edges.get(&cell.node_id).copied().unwrap_or(widths);
-    cell.style.bg_border_insets = Some(win.map(|width| width / 2.0));
+    cell.style.cascaded_mut().bg_border_insets = Some(win.map(|width| width / 2.0));
     // Авторский отступ в кегельных единицах — из СЛИТОГО стиля
     // (`em` там разрешён кеглем ячейки, как у `box_style`): сырой
     // `Em` падал в ноль, и ячейка сросшейся модели с `padding:
@@ -85,15 +87,15 @@ pub(super) fn collapsed_cell_edge(
         };
         Some(Len::Px(base + win[i] / 2.0))
     };
-    cell.style.padding = crate::style::computed::Sides {
-        top: half(0, cell.style.padding.top, merged_pad.top),
-        right: half(1, cell.style.padding.right, merged_pad.right),
-        bottom: half(2, cell.style.padding.bottom, merged_pad.bottom),
-        left: half(3, cell.style.padding.left, merged_pad.left),
+    cell.style.cascaded_mut().padding = crate::style::computed::Sides {
+        top: half(0, cell.style.cascaded().padding.top, merged_pad.top),
+        right: half(1, cell.style.cascaded().padding.right, merged_pad.right),
+        bottom: half(2, cell.style.cascaded().padding.bottom, merged_pad.bottom),
+        left: half(3, cell.style.cascaded().padding.left, merged_pad.left),
     };
 
-    cell.style.border_width = Default::default();
-    cell.style.border_visible = [None; 4];
+    cell.style.cascaded_mut().border_width = Default::default();
+    cell.style.cascaded_mut().border_visible = [None; 4];
     (widths.iter().any(|w| *w > 0.0) || styles.contains(&1)).then_some((
         widths,
         colors,
@@ -116,11 +118,11 @@ pub(super) fn collapsed_group_edges(
     px_of: &impl Fn(Option<Len>) -> f32,
     mut d: gpui::Div,
 ) -> gpui::Div {
-    let b = g.style.borders();
+    let b = g.style.cascaded().borders();
     let default_w = if rules_groups { 1.0 } else { 0.0 };
     let axes = super::axes::Axes::new(inherited);
     let own = axes.logical([b.top, b.right, b.bottom, b.left]);
-    let visible = axes.logical(g.style.border_visible);
+    let visible = axes.logical(g.style.cascaded().border_visible);
     let widths = std::array::from_fn(|i| {
         if matches!(i, 0 | 2) && own[i].is_none() && visible[i].is_none() {
             default_w
@@ -137,7 +139,7 @@ pub(super) fn collapsed_group_edges(
     // Нулевая толщина у `hidden` не значит «кромки нет»: скрытая
     // кромка ГАСИТ соседей (§17.6.2.1), поэтому в разбор она
     // обязана попасть наравне с видимыми.
-    let hidden_grp = g.style.border_side_styles.contains(&Some(1));
+    let hidden_grp = g.style.cascaded().border_side_styles.contains(&Some(1));
     if widths.iter().any(|w| *w > 0.0) || hidden_grp {
         let black = crate::style::values::value::Color {
             r: 0.0,
@@ -146,7 +148,13 @@ pub(super) fn collapsed_group_edges(
             a: 1.0,
         };
         let side_colour = |k: usize| {
-            g.style.border_colors[k].resolve(g.style.color.or(inherited.color).unwrap_or(black))
+            g.style.cascaded().border_colors[k].resolve(
+                g.style
+                    .cascaded()
+                    .color
+                    .or(inherited.color)
+                    .unwrap_or(black),
+            )
         };
         let colors = [
             side_colour(0),
@@ -154,8 +162,9 @@ pub(super) fn collapsed_group_edges(
             side_colour(2),
             side_colour(3),
         ];
-        let side_style =
-            |k: usize| g.style.border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 });
+        let side_style = |k: usize| {
+            g.style.cascaded().border_side_styles[k].unwrap_or(if widths[k] > 0.0 { 9 } else { 0 })
+        };
         let styles = [side_style(0), side_style(1), side_style(2), side_style(3)];
         d = d.child(crate::layout::table::probes::edge_probe(
             table_edges.clone(),

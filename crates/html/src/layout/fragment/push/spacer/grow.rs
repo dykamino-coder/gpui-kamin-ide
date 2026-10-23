@@ -68,7 +68,7 @@ pub(crate) fn grow_pushed(
                 forced: s.forced.clone(),
                 solid: s.solid.clone(),
                 avoid: Vec::new(),
-                span: c.style.column_span == Some(true) && !c.inline,
+                span: c.style.cascaded().column_span == Some(true) && !c.inline,
                 // Щуп роста параллельного потока не знает: распорка
                 // (`spacer_before`) — про в-поточную высоту, а поток высоты
                 // не даёт (css-break-3 §3). Раздвинуть коробку им значило бы
@@ -145,16 +145,16 @@ pub(crate) fn avoid_only_monolith(c: &Element) -> bool {
     let scrolls = |o: Option<crate::style::computed::Overflow>| {
         matches!(o, Some(crate::style::computed::Overflow::Scroll))
     };
-    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.display == Some(Display::Block));
+    let block_kid = |n: &Node| matches!(n, Node::Element(k) if !k.inline || k.style.cascaded().display == Some(Display::Block));
     !(size_monolith(c)
-        || scrolls(c.style.overflow_x)
-        || scrolls(c.style.overflow_y)
+        || scrolls(c.style.cascaded().overflow_x)
+        || scrolls(c.style.cascaded().overflow_y)
         || matches!(
             c.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
         )
         || matches!(
-            c.style.display,
+            c.style.cascaded().display,
             Some(Display::InlineBlock) | Some(Display::InlineFlex) | Some(Display::InlineGrid)
         )
         || (c.children.iter().any(|n| !is_blank(n)) && !c.children.iter().any(block_kid)))

@@ -66,19 +66,19 @@ fn in_flow(node: &Node, spaces: bool, newlines: bool) -> bool {
             !blank_text(t) || (spaces && !t.is_empty()) || (newlines && t.contains('\n'))
         }
         Node::Element(e)
-            if out_of_flow(&e.style)
-                || e.style.display == Some(Display::None)
-                || e.style.first_letter_excluded
+            if out_of_flow(e.style.cascaded())
+                || e.style.cascaded().display == Some(Display::None)
+                || e.style.cascaded().first_letter_excluded
                 || e.tag == "::marker" =>
         {
             false
         }
-        Node::Element(e) if e.style.display == Some(Display::Contents) => {
+        Node::Element(e) if e.style.cascaded().display == Some(Display::Contents) => {
             e.children.iter().any(|n| {
                 in_flow(
                     n,
-                    e.style.keep_spaces.unwrap_or(spaces),
-                    e.style.preserve_newlines.unwrap_or(newlines),
+                    e.style.cascaded().keep_spaces.unwrap_or(spaces),
+                    e.style.cascaded().preserve_newlines.unwrap_or(newlines),
                 )
             })
         }

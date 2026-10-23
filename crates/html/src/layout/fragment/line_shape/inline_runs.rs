@@ -15,7 +15,9 @@ use gpui::{AnyElement, IntoElement, ParentElement, Styled, div};
 /// ненулевых полях в точках — иначе копия прежняя.
 pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -> AnyElement {
     let nz = |l: &Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    if vertical || !(nz(&copy.style.margin.left) || nz(&copy.style.margin.right)) {
+    if vertical
+        || !(nz(&copy.style.cascaded().margin.left) || nz(&copy.style.cascaded().margin.right))
+    {
         return el;
     }
     div()
@@ -34,7 +36,9 @@ pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -
 pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     let inline_level = |n: &Node| match n {
         Node::Text(_) => true,
-        Node::Element(k) => k.inline && !out_of_flow(&k.style) && k.style.display.is_none(),
+        Node::Element(k) => {
+            k.inline && !out_of_flow(k.style.cascaded()) && k.style.cascaded().display.is_none()
+        }
     };
     if !e.children.iter().any(|n| inline_level(n) && !is_blank(n)) {
         return None;
@@ -64,7 +68,7 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
     // строку (css-inline-3 §4.2). Строки ушли в анонимные блоки — флаг едет
     // туда, где строка: первому анонимному, если он первый ребёнок, и
     // последнему, если последний (`text-box-trim-multicol-001`).
-    if e.style.text_box_trim_start || e.style.text_box_trim_end {
+    if e.style.cascaded().text_box_trim_start || e.style.cascaded().text_box_trim_end {
         let flow: Vec<usize> = out
             .iter()
             .enumerate()
@@ -72,19 +76,19 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
             .map(|(i, _)| i)
             .collect();
         let anon = |n: &Node| matches!(n, Node::Element(k) if k.tag == "anon-block");
-        if e.style.text_box_trim_start
+        if e.style.cascaded().text_box_trim_start
             && let Some(&i) = flow.first()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]
         {
-            k.style.text_box_trim_start = true;
+            k.style.cascaded_mut().text_box_trim_start = true;
         }
-        if e.style.text_box_trim_end
+        if e.style.cascaded().text_box_trim_end
             && let Some(&i) = flow.last()
             && anon(&out[i])
             && let Node::Element(k) = &mut out[i]
         {
-            k.style.text_box_trim_end = true;
+            k.style.cascaded_mut().text_box_trim_end = true;
         }
     }
     let mut g = e.clone();
@@ -113,9 +117,9 @@ pub(crate) fn group_inline_runs(e: &Element) -> Option<Element> {
 /// поворотом его мера не выражается, и многоколоночник остаётся на прежнем
 /// пути.
 pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
-    if c.style.vertical_decl() == Some(false)
-        || c.style.rl_decl().is_some_and(|v| v != rl)
-        || c.style.wm().rtl()
+    if c.style.cascaded().vertical_decl() == Some(false)
+        || c.style.cascaded().rl_decl().is_some_and(|v| v != rl)
+        || c.style.cascaded().wm().rtl()
     {
         return None;
     }
@@ -126,28 +130,28 @@ pub(crate) fn transpose_tree(c: &Element, rl: bool) -> Option<Element> {
         right: s.bottom,
     };
     let mut t = c.clone();
-    let style = &mut *t.style;
+    let style = &mut *t.style.cascaded_mut();
     std::mem::swap(&mut style.width, &mut style.height);
     std::mem::swap(&mut style.min_width, &mut style.min_height);
     std::mem::swap(&mut style.max_width, &mut style.max_height);
-    t.style.padding = turn(&c.style.padding);
-    t.style.margin = turn(&c.style.margin);
-    t.style.border_width = turn(&c.style.border_width);
-    t.style.inset = turn(&c.style.inset);
+    t.style.cascaded_mut().padding = turn(&c.style.cascaded().padding);
+    t.style.cascaded_mut().margin = turn(&c.style.cascaded().margin);
+    t.style.cascaded_mut().border_width = turn(&c.style.cascaded().border_width);
+    t.style.cascaded_mut().inset = turn(&c.style.cascaded().inset);
     // Видимость рамки — `[верх, право, низ, лево]` (`Computed::borders`).
-    let v = c.style.border_visible;
-    t.style.border_visible = if rl {
+    let v = c.style.cascaded().border_visible;
+    t.style.cascaded_mut().border_visible = if rl {
         [v[1], v[2], v[3], v[0]]
     } else {
         [v[3], v[2], v[1], v[0]]
     };
     // Обрезка ПО ОСИ ПОТОКА: в вертикальном письме это `overflow-x`.
-    t.style.overflow_y = c.style.overflow_x;
-    t.style.overflow_x = c.style.overflow_y;
+    t.style.cascaded_mut().overflow_y = c.style.cascaded().overflow_x;
+    t.style.cascaded_mut().overflow_x = c.style.cascaded().overflow_y;
     // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
     // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = c.style.border_spacing {
-        t.style.border_spacing = Some((y, x));
+    if let Some((x, y)) = c.style.cascaded().border_spacing {
+        t.style.cascaded_mut().border_spacing = Some((y, x));
     }
     t.children = c
         .children

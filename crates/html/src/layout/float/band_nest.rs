@@ -27,7 +27,7 @@ pub(super) fn cont_indent(e: &mut Element, inherited: &Computed) {
         && inherited.text_indent_each_line != Some(true)
         && inherited.text_indent_hanging != Some(true)
     {
-        e.style.text_indent = Some(Len::Px(0.0));
+        e.style.cascaded_mut().text_indent = Some(Len::Px(0.0));
     }
 }
 
@@ -41,34 +41,34 @@ pub(super) fn band_nest_block(c: &Element, em: f32, wm: WritingMode) -> bool {
         // A box whose writing mode differs from its parent's establishes an
         // independent formatting context (css-writing-modes-4 §3.2): the
         // host's floats do not reach into it.
-        && !band_orthogonal(&c.style, wm)
+        && !band_orthogonal(c.style.cascaded(), wm)
         && block_level_in_flow(c)
         && !own_context(c)
         && !replaced_tag(c)
-        && c.style.is_caption != Some(true)
+        && c.style.cascaded().is_caption != Some(true)
         && c.tag != "caption"
-        && matches!(c.style.display, None | Some(Display::Block))
-        && (c.style.clear.is_none() || band_clear_supported(c))
-        && c.style.position.is_none()
+        && matches!(c.style.cascaded().display, None | Some(Display::Block))
+        && (c.style.cascaded().clear.is_none() || band_clear_supported(c))
+        && c.style.cascaded().position.is_none()
         // A paint group is painted with all its descendants; an absolute
         // descendant may need it as its containing block (transform,
         // filter) and would otherwise leave the group with its lift.
-        && !(paint_group(&c.style) && positioned_inside(&c.children))
-        && (matches!(c.style.width, None | Some(Len::Auto))
-            || (band_em(&c.style, em).and_then(|em| band_edge(&c.style.width, em)).is_some()
-                && c.style.border_box != Some(true)))
-        && matches!(c.style.height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
-        && c.style.min_height.is_none()
-        && c.style.max_height.is_none()
-        && band_margins(&c.style, em).is_some()
+        && !(paint_group(c.style.cascaded()) && positioned_inside(&c.children))
+        && (matches!(c.style.cascaded().width, None | Some(Len::Auto))
+            || (band_em(c.style.cascaded(), em).and_then(|em| band_edge(&c.style.cascaded().width, em)).is_some()
+                && c.style.cascaded().border_box != Some(true)))
+        && matches!(c.style.cascaded().height, None | Some(Len::Auto) | Some(Len::Px(_) | Len::Pct(_)))
+        && c.style.cascaded().min_height.is_none()
+        && c.style.cascaded().max_height.is_none()
+        && band_margins(c.style.cascaded(), em).is_some()
         && band_inset(c, em).is_some()
 }
 
 /// Рамка плюс отступ коробки (верх, право, низ, лево) для `Kind::Nest`.
 fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::Edge; 4]> {
     use crate::layout::float::band_flow::Edge;
-    let em = band_em(&c.style, em)?;
-    let b = c.style.borders();
+    let em = band_em(c.style.cascaded(), em)?;
+    let b = c.style.cascaded().borders();
     let side = |p: &Option<Len>, b: &Option<Len>| -> Option<Edge> {
         let pe = band_edge(p, em)?;
         let be = match band_edge(b, em)? {
@@ -83,10 +83,10 @@ fn band_inset(c: &Element, em: f32) -> Option<[crate::layout::float::band_flow::
         })
     };
     Some([
-        side(&c.style.padding.top, &b.top)?,
-        side(&c.style.padding.right, &b.right)?,
-        side(&c.style.padding.bottom, &b.bottom)?,
-        side(&c.style.padding.left, &b.left)?,
+        side(&c.style.cascaded().padding.top, &b.top)?,
+        side(&c.style.cascaded().padding.right, &b.right)?,
+        side(&c.style.cascaded().padding.bottom, &b.bottom)?,
+        side(&c.style.cascaded().padding.left, &b.left)?,
     ])
 }
 
@@ -104,9 +104,9 @@ pub(super) fn band_nest(
     }
     let vcx = opts.cx.vcx();
     // The step-8 key of a paint group comes before its descendants' keys.
-    let group_key = paint_group(&c.style).then(|| opts.cx.next_paint_key());
+    let group_key = paint_group(c.style.cascaded()).then(|| opts.cx.next_paint_key());
     let cb = opts.cx.cb_width;
-    let inner_em = band_em(&c.style, em)?;
+    let inner_em = band_em(c.style.cascaded(), em)?;
     let mut merged = box_style(inherited, &c.style, vcx);
     let height = crate::layout::block::available_height::inner(
         &merged,
@@ -141,10 +141,10 @@ pub(super) fn band_nest(
         kids,
         inset: band_inset(c, em)?,
         height,
-        width: if matches!(c.style.width, None | Some(Len::Auto)) {
+        width: if matches!(c.style.cascaded().width, None | Some(Len::Auto)) {
             None
         } else {
-            Some(band_edge(&c.style.width, inner_em)?)
+            Some(band_edge(&c.style.cascaded().width, inner_em)?)
         },
     })
 }
@@ -165,7 +165,8 @@ pub(super) fn band_seq(
     let mut chunk: Vec<Node> = vec![];
     let mut probes = vec![];
     for n in nodes {
-        let float = matches!(&n, Node::Element(c) if c.style.float.is_some_and(|f| f != 0));
+        let float =
+            matches!(&n, Node::Element(c) if c.style.cascaded().float.is_some_and(|f| f != 0));
         if !float {
             chunk.push(n);
             continue;
@@ -176,8 +177,8 @@ pub(super) fn band_seq(
         // CSS 2.1 section 9.5: floats in nested flow blocks participate in
         // the same BFC. Match the measured host's orthogonal-float gate;
         // a text-free vertical float does not need inline text measurement.
-        if (f.style.wm().vertical() && band_float_m(f, em).is_none())
-            || band_margins(&f.style, em).is_none()
+        if (f.style.cascaded().wm().vertical() && band_float_m(f, em).is_none())
+            || band_margins(f.style.cascaded(), em).is_none()
         {
             return None;
         }

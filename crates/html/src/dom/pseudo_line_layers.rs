@@ -19,7 +19,12 @@ pub(crate) fn install(element: &Element, merged: &mut Computed, vcx: ValueCx<'_>
         // CSS Pseudo 4 §2.1.3: inherit the block's computed values,
         // then cascade the pseudo's own declarations. Its old snapshot
         // still contains the block's specified em font size.
-        let own = element.style.first_line_own.as_deref().unwrap_or(layer);
+        let own = element
+            .style
+            .cascaded()
+            .first_line_own
+            .as_deref()
+            .unwrap_or(layer.cascaded());
         Box::new(crate::style::cascade::inherit::inherit(merged, own, vcx))
     });
 }
@@ -28,7 +33,7 @@ pub(crate) fn install_first_letter(element: &Element, merged: &mut Computed) {
     merged.first_letter = element
         .first_letter
         .as_ref()
-        .map(|l| resolve_first_letter_font_size(l, merged.font_size));
+        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.font_size));
 }
 
 fn resolve_first_letter_font_size(layer: &Computed, base: Option<Len>) -> Box<Computed> {

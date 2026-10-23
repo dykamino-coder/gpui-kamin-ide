@@ -25,18 +25,18 @@ pub(crate) fn ordered_children(
             // (flexbox-collapsed-item-baseline-001). Распорка — тот же
             // элемент с нулевой ГЛАВНОЙ осью и невидимой краской.
             .map(|n| match n {
-                Node::Element(mut e) if e.style.collapsed == Some(true) => {
+                Node::Element(mut e) if e.style.cascaded().collapsed == Some(true) => {
                     match inherited.flex_dir {
                         Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
-                            e.style.height = Some(Len::Px(0.0));
-                            e.style.max_height = Some(Len::Px(0.0));
-                            e.style.min_height = Some(Len::Px(0.0));
-                            e.style.margin.top = Some(Len::Px(0.0));
-                            e.style.margin.bottom = Some(Len::Px(0.0));
-                            e.style.padding.top = Some(Len::Px(0.0));
-                            e.style.padding.bottom = Some(Len::Px(0.0));
-                            e.style.border_width.top = Some(Len::Px(0.0));
-                            e.style.border_width.bottom = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().height = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().max_height = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().min_height = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().margin.top = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().margin.bottom = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().padding.top = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().padding.bottom = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().border_width.top = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().border_width.bottom = Some(Len::Px(0.0));
                         }
                         // Распорка в главной оси — ноль ЦЕЛИКОМ: элемент «as
                         // if display:none» (css-flexbox-1 §4.4), значит и его
@@ -44,18 +44,18 @@ pub(crate) fn ordered_children(
                         // раздвигают (`flexbox_visibility-collapse`: между
                         // соседями только их собственные поля).
                         _ => {
-                            e.style.width = Some(Len::Px(0.0));
-                            e.style.max_width = Some(Len::Px(0.0));
-                            e.style.min_width = Some(Len::Px(0.0));
-                            e.style.margin.left = Some(Len::Px(0.0));
-                            e.style.margin.right = Some(Len::Px(0.0));
-                            e.style.padding.left = Some(Len::Px(0.0));
-                            e.style.padding.right = Some(Len::Px(0.0));
-                            e.style.border_width.left = Some(Len::Px(0.0));
-                            e.style.border_width.right = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().width = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().max_width = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().min_width = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().margin.left = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().margin.right = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().padding.left = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().padding.right = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().border_width.left = Some(Len::Px(0.0));
+                            e.style.cascaded_mut().border_width.right = Some(Len::Px(0.0));
                         }
                     }
-                    e.style.hidden = Some(true);
+                    e.style.cascaded_mut().hidden = Some(true);
                     Node::Element(e)
                 }
                 other => other,

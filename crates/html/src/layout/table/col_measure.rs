@@ -50,16 +50,17 @@ pub(super) fn measure_col_widths(
                 // (вертикальное письмо в htb-таблице) `block-size` лёг в
                 // height (размеры при вертикали не переставляются, см.
                 // resolve_logical) — он и задаёт колонку.
-                let table_vertical = e.style.wm().vertical() || inherited.wm().vertical();
-                let orthogonal = cell.style.wm().vertical() && !table_vertical;
+                let table_vertical =
+                    e.style.cascaded().wm().vertical() || inherited.wm().vertical();
+                let orthogonal = cell.style.cascaded().wm().vertical() && !table_vertical;
                 let source = if table_vertical || orthogonal {
                     // У ортогональной ячейки width несёт ЛОГИЧЕСКИЙ
                     // inline-size — физически это ВЫСОТА, не колонка
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
-                    cell.style.height
+                    cell.style.cascaded().height
                 } else {
-                    cell.style.width
+                    cell.style.cascaded().width
                 };
                 // Известная потеря — `css-writing-modes/table-progression-*`:
                 // эталон горизонтальный, тест вертикальный, и слагаемые ложатся
@@ -76,29 +77,31 @@ pub(super) fn measure_col_widths(
                     Some(Len::Px(p)) => p,
                     _ => 0.0,
                 };
-                let extra = if cell.style.border_box == Some(true) {
+                let extra = if cell.style.cascaded().border_box == Some(true) {
                     0.0
                 } else {
-                    let b = cell.style.borders();
+                    let b = cell.style.cascaded().borders();
                     let border = if table_vertical || orthogonal {
                         side(b.top) + side(b.bottom)
                     } else {
                         side(b.left) + side(b.right)
                     };
                     let pad = if table_vertical || orthogonal {
-                        side(cell.style.padding.top) + side(cell.style.padding.bottom)
+                        side(cell.style.cascaded().padding.top)
+                            + side(cell.style.cascaded().padding.bottom)
                     } else {
-                        side(cell.style.padding.left) + side(cell.style.padding.right)
+                        side(cell.style.cascaded().padding.left)
+                            + side(cell.style.cascaded().padding.right)
                     };
                     // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
                     // линии — ту же, что легла в паддинг ячейки; своя кромка
                     // могла быть у́же соседней.
-                    pad + if e.style.border_collapse == Some(true) {
+                    pad + if e.style.cascaded().border_collapse == Some(true) {
                         let w = win_edges.get(&cell.node_id).copied().unwrap_or([
-                            side(cell.style.borders().top),
-                            side(cell.style.borders().right),
-                            side(cell.style.borders().bottom),
-                            side(cell.style.borders().left),
+                            side(cell.style.cascaded().borders().top),
+                            side(cell.style.cascaded().borders().right),
+                            side(cell.style.cascaded().borders().bottom),
+                            side(cell.style.cascaded().borders().left),
                         ]);
                         if table_vertical || orthogonal {
                             (w[0] + w[2]) / 2.0
@@ -124,12 +127,13 @@ pub(super) fn measure_col_widths(
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
-                            cell.style.font_size,
-                            row.style.font_size.or(inherited.font_size),
+                            cell.style.cascaded().font_size,
+                            row.style.cascaded().font_size.or(inherited.font_size),
                             table_font,
                         );
                         let family = cell
                             .style
+                            .cascaded()
                             .font_family
                             .clone()
                             .unwrap_or_else(|| table_family.clone());

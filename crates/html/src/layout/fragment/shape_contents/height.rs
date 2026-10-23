@@ -34,9 +34,10 @@ pub(super) fn shaped_height(
 ) -> Result<(f32, f32, f32), Option<crate::layout::fragment::Shape>> {
     let (h, mt, mb) = match c
         .style
+        .cascaded()
         .height
         .as_ref()
-        .map(|_| px_or(&c.style.height, true))
+        .map(|_| px_or(&c.style.cascaded().height, true))
     {
         // Мера потока (`unclamp`) заданной высотой не обрезается:
         // css-break-3 §3 «parallel flows» — переполнение продолжается в
@@ -54,10 +55,10 @@ pub(super) fn shaped_height(
                 // коробка `height: 0` с ребёнком 40px и `margin-top: -40px`
                 // — содержимое кончается на её верху, а мера давала поток
                 // 40, и коробка с края колонки уезжала в следующую).
-                fragment_size::border_size(v, &c.style, top + bot)
+                fragment_size::border_size(v, c.style.cascaded(), top + bot)
                     .max(stacked.map_or(0.0, |s| s.0 + s.1.min(0.0)) + bot)
             } else {
-                fragment_size::border_size(v, &c.style, top + bot)
+                fragment_size::border_size(v, c.style.cascaded(), top + bot)
             },
             mt,
             mb,
@@ -107,7 +108,7 @@ pub(super) fn shaped_height(
             // 200px`, детей нет) мерился нулём: квадрат 100×100 красен
             // ЦЕЛИКОМ (снимок: `x 10..134, y 67..191`). Проба с той же
             // сеткой блоком 200px = 0.00.
-            None => match grid_rows_px(&c.style) {
+            None => match grid_rows_px(c.style.cascaded()) {
                 Some(v) => (v + top + bot, mt, mb),
                 // Сетка, у которой дорожки рядов НЕ все в точках (несколько
                 // колонок, ряд `auto`, неявный ряд), до сих пор отдавала
@@ -187,6 +188,6 @@ pub(super) fn shaped_height(
 /// (`parallel-flow-trailing-margin-001`: `max-height: 0`, поле 80 сдвигало
 /// соседа).
 fn max_lowers(c: &Element, end: f32, edges: f32) -> bool {
-    matches!(c.style.max_height, Some(Len::Px(m))
-        if fragment_size::border_size(m, &c.style, edges) < end - 0.01)
+    matches!(c.style.cascaded().max_height, Some(Len::Px(m))
+        if fragment_size::border_size(m, c.style.cascaded(), edges) < end - 0.01)
 }

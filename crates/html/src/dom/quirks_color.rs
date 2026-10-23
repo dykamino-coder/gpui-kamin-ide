@@ -42,8 +42,8 @@ pub(super) fn resolve(nodes: &mut [Node], vcx: ValueCx<'_>) {
 fn apply(nodes: &mut [Node], color: Color) {
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        if e.tag == "table" && e.style.color_initial {
-            e.style.color = Some(color);
+        if e.tag == "table" && e.style.cascaded().color_initial {
+            e.style.cascaded_mut().color = Some(color);
         }
         apply(&mut e.children, color);
     }
@@ -61,7 +61,8 @@ mod tests {
     ) -> Option<Color> {
         nodes.iter().find_map(|node| {
             let Node::Element(e) = node else { return None };
-            let computed = crate::style::cascade::inherit::inherit_unpainted(parent, &e.style, vcx);
+            let computed =
+                crate::style::cascade::inherit::inherit_unpainted(parent, e.style.cascaded(), vcx);
             if e.tag == tag {
                 computed.color
             } else {

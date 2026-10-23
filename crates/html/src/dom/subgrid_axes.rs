@@ -23,7 +23,7 @@ mod tests {
         for node in nodes {
             if let Node::Element(element) = node {
                 if element.attr("id") == Some("target") {
-                    return Some(&element.style);
+                    return Some(element.style.cascaded());
                 }
                 if let Some(found) = target(&element.children) {
                     return Some(found);

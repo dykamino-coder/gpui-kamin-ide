@@ -32,18 +32,20 @@ pub(super) fn collapse_top(
     let mut eat: Vec<(Vec<usize>, bool)> = vec![];
     // Дети `e` лежат в `e`: его ширина точками — содержащий блок для
     // `bfc_no_fit` внутри цепи.
-    let cb = match e.style.width {
+    let cb = match e.style.cascaded().width {
         Some(Len::Px(w)) if w > 0.0 => Some(w),
         _ => cb,
     };
-    let chain = with_inner_cb(&e.style, vcx, |vcx| {
+    let chain = with_inner_cb(e.style.cascaded(), vcx, |vcx| {
         leading_chain(&e.children, &mut path, &mut eat, cb, vcx)
     });
-    if let (Some(s), Some(own)) = (chain, margin_or_bail(e.style.margin.top, &e.style, vcx))
-        && !eat.is_empty()
+    if let (Some(s), Some(own)) = (
+        chain,
+        margin_or_bail(e.style.cascaded().margin.top, e.style.cascaded(), vcx),
+    ) && !eat.is_empty()
     {
         pin_inherited_margins(e, true, false, vcx);
-        e.style.margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
+        e.style.cascaded_mut().margin.top = Some(Len::Px(solve(adjoin(strut_of(own), s))));
         for (p, deep) in &eat {
             zero_at(&mut e.children, p, true, *deep, vcx);
         }
@@ -53,15 +55,16 @@ pub(super) fn collapse_top(
 pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::document::state::ValueCx<'_>) {
     let mut path = Vec::new();
     let mut eat = Vec::new();
-    let chain = with_inner_cb(&e.style, vcx, |vcx| {
+    let chain = with_inner_cb(e.style.cascaded(), vcx, |vcx| {
         bottom_chain(&e.children, &mut path, &mut eat, vcx)
     });
     let Some(chain) = chain else { return };
-    let Some(own) = margin_or_bail(e.style.margin.bottom, &e.style, vcx) else {
+    let Some(own) = margin_or_bail(e.style.cascaded().margin.bottom, e.style.cascaded(), vcx)
+    else {
         return;
     };
     pin_inherited_margins(e, false, true, vcx);
-    e.style.margin.bottom = Some(Len::Px(solve(adjoin(strut_of(own), chain))));
+    e.style.cascaded_mut().margin.bottom = Some(Len::Px(solve(adjoin(strut_of(own), chain))));
     for (path, deep) in eat {
         zero_at(&mut e.children, &path, false, deep, vcx);
     }
@@ -83,7 +86,7 @@ fn bottom_chain(
             Node::Element(child) => child,
         };
         // Preserve the existing static-position anchor boundary.
-        if !in_flow(&child.style) {
+        if !in_flow(child.style.cascaded()) {
             return Some(strut);
         }
         if inline_level_box(child) {
@@ -94,7 +97,7 @@ fn bottom_chain(
         }
         // Clearance adjoining a self-collapsing child's end margin keeps
         // the entire strut inside its parent (CSS 2.1 section 8.3.1).
-        if child.style.clear.is_some() && through_strut_no_clear(child, vcx).is_some() {
+        if child.style.cascaded().clear.is_some() && through_strut_no_clear(child, vcx).is_some() {
             return None;
         }
         // A self-collapsing wrapper holding only floats places them at its
@@ -109,8 +112,8 @@ fn bottom_chain(
         strut = adjoin(
             strut,
             strut_of(margin_or_bail(
-                child.style.margin.bottom,
-                &child.style,
+                child.style.cascaded().margin.bottom,
+                child.style.cascaded(),
                 vcx,
             )?),
         );
@@ -130,16 +133,16 @@ fn bottom_chain(
         }
         eat.push((path.clone(), false));
         if !own_context(child)
-            && zero_len(child.style.padding.bottom)
-            && zero_len(child.style.borders().bottom)
-            && zero_len(child.style.min_height)
-            && matches!(child.style.height, None | Some(Len::Auto))
+            && zero_len(child.style.cascaded().padding.bottom)
+            && zero_len(child.style.cascaded().borders().bottom)
+            && zero_len(child.style.cascaded().min_height)
+            && matches!(child.style.cascaded().height, None | Some(Len::Auto))
             && !margin_height::lowers(child, vcx)
-            && child.style.margin_trim & 2 == 0
+            && child.style.cascaded().margin_trim & 2 == 0
         {
             strut = adjoin(
                 strut,
-                with_inner_cb(&child.style, vcx, |vcx| {
+                with_inner_cb(child.style.cascaded(), vcx, |vcx| {
                     bottom_chain(&child.children, path, eat, vcx)
                 })?,
             );
@@ -154,8 +157,10 @@ fn bottom_chain(
 fn anchors_floats(children: &[Node]) -> bool {
     children.iter().any(|node| match node {
         Node::Element(ch) => {
-            ch.style.float.is_some_and(|f| f != 0)
-                || (in_flow(&ch.style) && !own_context(ch) && anchors_floats(&ch.children))
+            ch.style.cascaded().float.is_some_and(|f| f != 0)
+                || (in_flow(ch.style.cascaded())
+                    && !own_context(ch)
+                    && anchors_floats(&ch.children))
         }
         Node::Text(_) => false,
     })

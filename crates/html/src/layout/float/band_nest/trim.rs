@@ -18,18 +18,18 @@ pub(super) fn route_end(seq: &mut [Node], inherited: &Computed) {
             continue;
         }
         let Node::Element(c) = n else { return };
-        if out_of_flow(&c.style) || c.marks.lead.is_some() || clearing(c) {
+        if out_of_flow(c.style.cascaded()) || c.marks.lead.is_some() || clearing(c) {
             continue;
         }
         if c.marks.anon && holds_line_box(&c.children) {
-            c.style.text_box_trim_end = true;
+            c.style.cascaded_mut().text_box_trim_end = true;
         }
         return;
     }
 }
 
 fn clearing(c: &Element) -> bool {
-    c.marks.anon && c.style.clear.is_some() && c.children.is_empty()
+    c.marks.anon && c.style.cascaded().clear.is_some() && c.children.is_empty()
 }
 
 #[cfg(test)]
@@ -63,8 +63,8 @@ mod tests {
         };
         let mut seq = vec![line.clone(), clear];
         route_end(&mut seq, &inherited);
-        assert!(matches!(&seq[0], Node::Element(c) if c.style.text_box_trim_end));
-        assert!(matches!(&seq[1], Node::Element(c) if !c.style.text_box_trim_end));
+        assert!(matches!(&seq[0], Node::Element(c) if c.style.cascaded().text_box_trim_end));
+        assert!(matches!(&seq[1], Node::Element(c) if !c.style.cascaded().text_box_trim_end));
         // Authored empty boxes, unlike generated clearance, stop ownership.
         let mut blocked = vec![
             line,
@@ -76,6 +76,6 @@ mod tests {
             )),
         ];
         route_end(&mut blocked, &inherited);
-        assert!(matches!(&blocked[0], Node::Element(c) if !c.style.text_box_trim_end));
+        assert!(matches!(&blocked[0], Node::Element(c) if !c.style.cascaded().text_box_trim_end));
     }
 }

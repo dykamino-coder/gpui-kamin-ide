@@ -163,7 +163,8 @@ pub(super) fn collect_children(
             Some(Display::Table) | Some(Display::InlineTable)
         );
     if !holds_columns {
-        children.retain(|n| !matches!(n, Node::Element(c) if c.style.col_role.is_some()));
+        children
+            .retain(|n| !matches!(n, Node::Element(c) if c.style.cascaded().col_role.is_some()));
     }
     (children, scroll_pseudos)
 }

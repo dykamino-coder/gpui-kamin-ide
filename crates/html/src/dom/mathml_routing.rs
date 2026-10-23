@@ -92,8 +92,11 @@ mod tests {
             );
             for id in ["root", "space"] {
                 let e = find(&nodes, id).expect("MathML element");
-                assert!(e.style.math_layout.is_none(), "{unsupported}: {id}");
-                assert!(!e.style.math_font_size, "{unsupported}: {id}");
+                assert!(
+                    e.style.cascaded().math_layout.is_none(),
+                    "{unsupported}: {id}"
+                );
+                assert!(!e.style.cascaded().math_font_size, "{unsupported}: {id}");
             }
         }
     }
@@ -106,8 +109,8 @@ mod tests {
         );
         for id in ["root", "space"] {
             let e = find(&nodes, id).expect("MathML element");
-            assert!(e.style.math_layout.is_some());
-            assert!(e.style.math_font_size);
+            assert!(e.style.cascaded().math_layout.is_some());
+            assert!(e.style.cascaded().math_font_size);
         }
     }
 
@@ -115,15 +118,22 @@ mod tests {
     fn html_display_math_stays_on_the_original_path() {
         let nodes = parse("<span id=html style='display: inline math'>x</span>", "");
         let e = find(&nodes, "html").expect("HTML element");
-        assert!(e.style.math_layout.is_none());
-        assert_eq!(e.style.display, None);
+        assert!(e.style.cascaded().math_layout.is_none());
+        assert_eq!(e.style.cascaded().display, None);
     }
 
     #[test]
     fn empty_and_padded_rows_share_the_space_context() {
         for content in ["", "<mrow></mrow>", "<mpadded width='5%'></mpadded>"] {
             let nodes = parse(&format!("<math id=root>{content}</math>"), "");
-            assert!(find(&nodes, "root").unwrap().style.math_layout.is_some());
+            assert!(
+                find(&nodes, "root")
+                    .unwrap()
+                    .style
+                    .cascaded()
+                    .math_layout
+                    .is_some()
+            );
         }
     }
 }

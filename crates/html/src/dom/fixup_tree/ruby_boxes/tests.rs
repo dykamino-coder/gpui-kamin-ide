@@ -60,7 +60,7 @@ fn block_ruby_keeps_authored_properties_on_outer_box() {
     let outer = authored_ruby(&tree).expect("authored ruby");
     assert!(outer.node_id > 0);
     assert_eq!(
-        outer.style.display,
+        outer.style.cascaded().display,
         Some(crate::style::computed::Display::Block)
     );
     assert_eq!(outer.children.len(), 1);
@@ -70,8 +70,8 @@ fn block_ruby_keeps_authored_properties_on_outer_box() {
     assert_eq!(inner.tag, "ruby");
     assert!(inner.inline);
     assert_eq!(inner.node_id, 0);
-    assert_eq!(inner.style.color, None);
-    assert!(outer.style.color.is_some());
+    assert_eq!(inner.style.cascaded().color, None);
+    assert!(outer.style.cascaded().color.is_some());
     assert!(inner.attrs.is_empty());
     // Идентичность коробки не меняет её layout-флаги.
     let mut marks = inner.marks.clone();

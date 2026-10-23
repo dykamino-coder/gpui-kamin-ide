@@ -18,6 +18,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 mod inherited;
+mod used;
 
 /// Место материализованного стиля при каскадном стиле элемента (`dom::SharedStyle`): копия
 /// элемента делит его с оригиналом, правка каскадного стиля через ручку его сбрасывает.
@@ -68,6 +69,11 @@ impl ComputedSlot {
             .filter(|m| m.fits(own, parent, generation))
             .map(|m| m.computed.clone())
     }
+
+    /// Материализованный стиль под родителем-элементом, годен ли он под другим родителем или нет.
+    pub(crate) fn any(&self) -> Option<Rc<Computed>> {
+        self.0.borrow().as_ref().map(|m| m.computed.clone())
+    }
 }
 
 /// Материализовать вычисленные стили элементов `nodes` под вычисленным стилем родителя `parent`
@@ -79,11 +85,11 @@ pub(crate) fn materialize(nodes: &[Node], parent: &Rc<Computed>, vcx: ValueCx<'_
     let generation = vcx.doc.metrics.generation();
     for node in nodes {
         let Node::Element(e) = node else { continue };
-        let slot = e.style.computed();
-        let computed = match slot.get(&e.style, parent, generation) {
+        let slot = e.style.slot();
+        let computed = match slot.get(e.style.cascaded(), parent, generation) {
             Some(computed) => computed,
             None => {
-                let computed = Rc::new(super::compute::compute(parent, &e.style, vcx));
+                let computed = Rc::new(super::compute::compute(parent, e.style.cascaded(), vcx));
                 *slot.0.borrow_mut() = Some(Rc::new(Materialized {
                     parent: parent.clone(),
                     generation,
@@ -113,11 +119,30 @@ pub(crate) fn box_style_unpainted(
 
 fn styled(parent: &Computed, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> Computed {
     let generation = vcx.doc.metrics.generation();
-    let computed = match own.computed().get(own, parent, generation) {
-        Some(computed) => (*computed).clone(),
-        None => super::compute::compute(parent, own, vcx),
+    let cascaded = own.cascaded();
+    let computed = match (own.slot().get(cascaded, parent, generation), own.used()) {
+        // Годный материализованный стиль: слой раскладки уже лежит поверх него.
+        (Some(_), Some(used)) => used.clone(),
+        (Some(computed), None) => (*computed).clone(),
+        (None, used) => match (own.slot().any(), used) {
+            // Другой родитель: стиль под ним и поля, которые поставила раскладка.
+            (Some(materialized), Some(used)) => {
+                let mut c = super::compute::compute(parent, cascaded, vcx);
+                used::lay_used(&mut c, used, &materialized);
+                c
+            }
+            // Стиль коробки, которую сделала раскладка: его значения — её.
+            (None, Some(used)) => super::compute::compute(parent, used, vcx),
+            (_, None) => super::compute::compute(parent, cascaded, vcx),
+        },
     };
-    super::inherit::box_stage(parent, own, computed, paint, vcx)
+    let view = own.used().unwrap_or(cascaded);
+    // Заданы ли цвета — по каскаду; у коробки раскладки каскада нет.
+    let declared = match own.slot().any() {
+        Some(_) => cascaded,
+        None => view,
+    };
+    super::inherit::box_stage(parent, declared, view, computed, paint, vcx)
 }
 
 #[cfg(test)]

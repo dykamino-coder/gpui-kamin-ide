@@ -23,11 +23,14 @@ fn transformed_float_keeps_untransformed_margins() {
     let turned = Element::synthetic("div", style, Default::default(), vec![]);
     assert_eq!(band_float_m(&plain, 16.0), Some(()));
     assert_eq!(band_float_m(&turned, 16.0), Some(()));
-    let margins = band_margins(&turned.style, 16.0).expect("resolvable margins");
+    let margins = band_margins(turned.style.cascaded(), 16.0).expect("resolvable margins");
     assert!(matches!(margins[3], Edge::Px(v) if v == 32.0));
     assert!(matches!(margins[1], Edge::Pct(v) if v == 0.1));
-    assert_eq!(turned.style.width, plain.style.width);
-    assert_eq!(turned.style.height, plain.style.height);
+    assert_eq!(turned.style.cascaded().width, plain.style.cascaded().width);
+    assert_eq!(
+        turned.style.cascaded().height,
+        plain.style.cascaded().height
+    );
 }
 
 #[test]

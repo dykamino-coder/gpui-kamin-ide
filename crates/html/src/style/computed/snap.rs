@@ -7,7 +7,7 @@ use super::{Computed, Sides, split_outside_parens};
 use crate::document::state::ValueCx;
 use crate::style::values::value::Len;
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SnapStyle {
     /// 0 none, 1 x, 2 y, 3 block, 4 inline, 5 both.
     pub axis: u8,

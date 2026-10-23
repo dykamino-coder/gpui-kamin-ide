@@ -11,11 +11,11 @@ mod frame;
 use std::rc::Rc;
 
 pub(super) fn active(e: &Element, c: &Computed) -> bool {
-    (e.style.clamp_lines().is_some()
-        || (e.style.clamp_by_height()
-            && e.style.clamp_block_container()
+    (e.style.cascaded().clamp_lines().is_some()
+        || (e.style.cascaded().clamp_by_height()
+            && e.style.cascaded().clamp_block_container()
             && auto_clamp_limit(c).is_some()))
-        && !crate::layout::multicol::spanner::multicol_container(&e.style)
+        && !crate::layout::multicol::spanner::multicol_container(e.style.cascaded())
 }
 
 pub(super) fn build(
@@ -31,8 +31,8 @@ pub(super) fn build(
     // Native leaf layout разрешает padding от исходного содержащего блока
     // и прибавляет его к измеренному размеру содержимого ровно один раз.
     let geometry = crate::text::clamp::geometry::ClampGeometry {
-        limit: e.style.clamp_lines(),
-        max_h: auto_clamp_limit(&c).filter(|_| e.style.clamp_by_height()),
+        limit: e.style.cascaded().clamp_lines(),
+        max_h: auto_clamp_limit(&c).filter(|_| e.style.cascaded().clamp_by_height()),
         trim_end: if c.text_box_trim_end {
             crate::text::text_box::text_box_trim_px(&c, false, opts)
         } else {

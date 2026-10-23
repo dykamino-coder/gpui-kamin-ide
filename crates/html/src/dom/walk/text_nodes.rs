@@ -36,7 +36,7 @@ pub(super) fn walk_text(
     let between_inline = !preserve
         && text.chars().all(collapsible)
         && matches!(out.last(), Some(Node::Element(prev))
-            if prev.inline && prev.style.display.is_none() && prev.tag != "br")
+            if prev.inline && prev.style.cascaded().display.is_none() && prev.tag != "br")
         && level[level_pos + 1..]
             .iter()
             .find(|h| !matches!(h.data, NodeData::Comment { .. }))

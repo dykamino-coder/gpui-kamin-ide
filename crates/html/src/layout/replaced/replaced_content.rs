@@ -21,55 +21,57 @@ pub(crate) fn empty_iframe_size(
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
     let merged = crate::style::cascade::materialize::box_style(inherited, &copy.style, vcx);
-    copy.style.height = merged.height;
-    copy.style.cb_height_def = merged.cb_height_def;
-    copy.style.resolve_viewport(viewport, vcx);
+    copy.style.cascaded_mut().height = merged.height;
+    copy.style.cascaded_mut().cb_height_def = merged.cb_height_def;
+    copy.style.cascaded_mut().resolve_viewport(viewport, vcx);
     if vcx.doc.quirks()
         && !matches!(
-            copy.style.position,
+            copy.style.cascaded().position,
             Some(
                 crate::style::computed::Position::Absolute
                     | crate::style::computed::Position::Fixed
             )
         )
-        && let Some(Len::Pct(k)) = copy.style.height
+        && let Some(Len::Pct(k)) = copy.style.cascaded().height
     {
-        copy.style.height = Some(Len::Px(k * inherited.quirk_pct_base.unwrap_or(viewport.1)));
+        copy.style.cascaded_mut().height =
+            Some(Len::Px(k * inherited.quirk_pct_base.unwrap_or(viewport.1)));
     }
     // Containment suppresses natural dimensions (CSS Containment 2 §3.1),
     // while retaining authored dimensions, ratios and intrinsic overrides.
-    if copy.style.contain_size == Some(true) {
+    if copy.style.cascaded().contain_size == Some(true) {
         return copy;
     }
     let ratio = copy
         .style
+        .cascaded()
         .aspect_ratio
         .is_some_and(|r| r.is_finite() && r > 0.0);
-    let auto_width = matches!(copy.style.width, None | Some(Len::Auto));
-    let auto_height = matches!(copy.style.height, None | Some(Len::Auto))
-        || (matches!(copy.style.height, Some(Len::Pct(_)))
+    let auto_width = matches!(copy.style.cascaded().width, None | Some(Len::Auto));
+    let auto_height = matches!(copy.style.cascaded().height, None | Some(Len::Auto))
+        || (matches!(copy.style.cascaded().height, Some(Len::Pct(_)))
             && !inherited.cb_height_def
             && !matches!(
-                copy.style.position,
+                copy.style.cascaded().position,
                 Some(
                     crate::style::computed::Position::Absolute
                         | crate::style::computed::Position::Fixed
                 )
             ));
     if auto_width && (!ratio || auto_height) {
-        let width = if copy.style.contains_width() {
-            copy.style.contain_intrinsic.0.unwrap_or(0.0)
+        let width = if copy.style.cascaded().contains_width() {
+            copy.style.cascaded().contain_intrinsic.0.unwrap_or(0.0)
         } else {
             300.0
         };
-        copy.style.width = Some(Len::Px(width));
+        copy.style.cascaded_mut().width = Some(Len::Px(width));
     }
     if auto_height {
-        copy.style.height = if ratio {
+        copy.style.cascaded_mut().height = if ratio {
             None
         } else {
-            let height = if copy.style.contains_height() {
-                copy.style.contain_intrinsic.1.unwrap_or(0.0)
+            let height = if copy.style.cascaded().contains_height() {
+                copy.style.cascaded().contain_intrinsic.1.unwrap_or(0.0)
             } else {
                 150.0
             };
@@ -78,9 +80,12 @@ pub(crate) fn empty_iframe_size(
     }
     if ratio
         && auto_height
-        && let (Some(Len::Px(w)), Some(r)) = (copy.style.width, copy.style.aspect_ratio)
+        && let (Some(Len::Px(w)), Some(r)) = (
+            copy.style.cascaded().width,
+            copy.style.cascaded().aspect_ratio,
+        )
     {
-        copy.style.height = Some(Len::Px(w / r));
+        copy.style.cascaded_mut().height = Some(Len::Px(w / r));
     }
     copy
 }
@@ -92,13 +97,13 @@ pub(crate) fn empty_iframe(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut copy = empty_iframe_size(e, inherited, opts.viewport, vcx);
-    if copy.style.contain_size == Some(true) {
+    if copy.style.cascaded().contain_size == Some(true) {
         copy.attrs.retain(|(name, _)| name != "src");
         return opts.cx.build.replaced(&copy, None, &opts.cx);
     }
     opts.cx
         .build
-        .styled_box(&copy, &copy.style, &opts.cx)
+        .styled_box(&copy, copy.style.cascaded(), &opts.cx)
         .flex_shrink_0()
         .into_any_element()
 }
@@ -106,7 +111,7 @@ pub(crate) fn empty_iframe(
 pub(crate) fn default_iframe(e: &Element) -> bool {
     e.tag == "iframe"
         && e.attr("src").is_none_or(|src| src.trim().is_empty())
-        && e.style.contain_size != Some(true)
+        && e.style.cascaded().contain_size != Some(true)
 }
 
 /// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
@@ -126,7 +131,7 @@ pub(crate) fn svg_replaced(
     let inner;
     let sized = if boxed {
         let mut copy = sized.clone();
-        copy.style.background = None;
+        copy.style.cascaded_mut().background = None;
         inner = copy;
         &inner
     } else {
@@ -188,18 +193,18 @@ mod tests {
         let doc = crate::document::state::DocState::new(Default::default());
         let mut frame =
             Element::synthetic("iframe", Computed::default(), Default::default(), vec![]);
-        frame.style.floated_box = true;
-        frame.style.flow_root = Some(true);
+        frame.style.cascaded_mut().floated_box = true;
+        frame.style.cascaded_mut().flow_root = Some(true);
         for (height, expected) in [(None, 150.0), (Some(Len::Pct(0.5)), 96.0)] {
-            frame.style.height = height;
+            frame.style.cascaded_mut().height = height;
             let parent = Computed {
                 height: Some(Len::Px(192.0)),
                 cb_height_def: true,
                 ..Default::default()
             };
             let sized = empty_iframe_size(&frame, &parent, (800.0, 600.0), doc.values());
-            assert_eq!(sized.style.width, Some(Len::Px(300.0)));
-            assert_eq!(sized.style.height, Some(Len::Px(expected)));
+            assert_eq!(sized.style.cascaded().width, Some(Len::Px(300.0)));
+            assert_eq!(sized.style.cascaded().height, Some(Len::Px(expected)));
         }
     }
 }

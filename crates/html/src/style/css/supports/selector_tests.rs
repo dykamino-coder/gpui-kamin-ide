@@ -86,7 +86,7 @@ fn pseudo_rules_do_not_style_the_originating_element() {
         for node in nodes {
             if let Node::Element(e) = node {
                 if e.tag == "div" {
-                    assert_eq!(e.style.width, Some(Len::Px(17.0)));
+                    assert_eq!(e.style.cascaded().width, Some(Len::Px(17.0)));
                     found += 1;
                 }
                 assert_ne!(

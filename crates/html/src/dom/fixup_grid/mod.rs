@@ -19,7 +19,7 @@ pub(super) fn hoist_grid_abspos(nodes: &mut [Node]) {
     for node in nodes.iter_mut() {
         let Node::Element(el) = node else { continue };
         hoist_grid_abspos(&mut el.children);
-        if !is_grid(&el.style) || !own_containing_block(&el.style) {
+        if !is_grid(el.style.cascaded()) || !own_containing_block(el.style.cascaded()) {
             continue;
         }
         let mut taken = vec![];
@@ -27,7 +27,7 @@ pub(super) fn hoist_grid_abspos(nodes: &mut [Node]) {
             let Node::Element(child) = child else {
                 continue;
             };
-            if own_containing_block(&child.style) || is_grid(&child.style) {
+            if own_containing_block(child.style.cascaded()) || is_grid(child.style.cascaded()) {
                 continue;
             }
             steal_placed(&mut child.children, &mut taken);
@@ -41,8 +41,9 @@ fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
     let mut kept = Vec::with_capacity(children.len());
     for mut node in children.drain(..) {
         if let Node::Element(el) = &mut node {
-            let placed = el.style.grid_col.is_some() || el.style.grid_row.is_some();
-            if el.style.position == Some(Position::Absolute) && placed {
+            let placed =
+                el.style.cascaded().grid_col.is_some() || el.style.cascaded().grid_row.is_some();
+            if el.style.cascaded().position == Some(Position::Absolute) && placed {
                 out.push(node);
                 continue;
             }
@@ -52,7 +53,7 @@ fn steal_placed(children: &mut Vec<Node>, out: &mut Vec<Node>) {
             // собственному числу дорожек (`subgrid/abs-pos-001`). А вот обычная
             // вложенная сетка без своего отсчёта помехой не служит: её потомок
             // по-прежнему принадлежит внешней сетке (css-grid-2 §9).
-            if !own_containing_block(&el.style) && !el.style.subgrid {
+            if !own_containing_block(el.style.cascaded()) && !el.style.cascaded().subgrid {
                 steal_placed(&mut el.children, out);
             }
         }

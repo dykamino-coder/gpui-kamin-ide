@@ -10,7 +10,7 @@ fn styles(nodes: &[Node], tag: &str, out: &mut Vec<Computed>) {
     for n in nodes {
         if let Node::Element(e) = n {
             if e.tag == tag {
-                out.push((*e.style).clone());
+                out.push(e.style.cascaded().clone());
             }
             styles(&e.children, tag, out);
         }

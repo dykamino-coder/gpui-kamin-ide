@@ -32,7 +32,7 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
             if let Node::Element(b) = n
                 && b.tag == "body"
             {
-                b.style.wm_contained = true;
+                b.style.cascaded_mut().wm_contained = true;
             }
         }
         return nodes;
@@ -49,10 +49,10 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
         for n in html.children.iter_mut() {
             if let Node::Element(b) = n
                 && b.tag == "body"
-                && b.style.height.is_none()
-                && b.style.min_height.is_none()
+                && b.style.cascaded().height.is_none()
+                && b.style.cascaded().min_height.is_none()
             {
-                b.style.min_height = Some(crate::style::values::value::Len::Px(0.0));
+                b.style.cascaded_mut().min_height = Some(crate::style::values::value::Len::Px(0.0));
             }
         }
     }
@@ -66,11 +66,17 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
     // собственное письмо корня (contain-body-{w-m,t-o}-001..004).
     let body_contained = any_containment(body);
     let taken = if body_contained {
-        (html.style.writing_mode, html.style.rtl)
+        (
+            html.style.cascaded().writing_mode,
+            html.style.cascaded().rtl,
+        )
     } else {
         (
-            body.style.writing_mode.or(html.style.writing_mode),
-            body.style.rtl.or(html.style.rtl),
+            body.style
+                .cascaded()
+                .writing_mode
+                .or(html.style.cascaded().writing_mode),
+            body.style.cascaded().rtl.or(html.style.cascaded().rtl),
         )
     };
     // Та же пометка, что и при обособлении корня: письмо тела осталось при
@@ -83,11 +89,14 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
             if let Node::Element(b) = n
                 && b.tag == "body"
             {
-                b.style.wm_contained = true;
+                b.style.cascaded_mut().wm_contained = true;
             }
         }
     }
-    let own = (html.style.writing_mode, html.style.rtl);
+    let own = (
+        html.style.cascaded().writing_mode,
+        html.style.cascaded().rtl,
+    );
     let taken_vertical = taken.0.is_some_and(|m| m.is_vertical());
     // Главное вертикальное письмо: строчная ось корня занимает всё окно
     // (§8.2) — И при письме, заданном на самом `<html>` (taken == own):
@@ -100,24 +109,27 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
     if taken.0.is_some_and(|m| m.is_rl())
-        && html.style.align_self.is_none()
-        && html.style.bg_image.is_none()
+        && html.style.cascaded().align_self.is_none()
+        && html.style.cascaded().bg_image.is_none()
     {
-        html.style.align_self = Some(crate::style::computed::Align::End);
+        html.style.cascaded_mut().align_self = Some(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
     // (background-size-document-root-vrl-*). Обычным вертикальным корням
     // минимум не ставится — терялась скроллер-структура (av-size-022/023).
     if taken_vertical
-        && html.style.bg_image.is_some()
-        && html.style.height.is_none()
-        && html.style.min_height.is_none()
+        && html.style.cascaded().bg_image.is_some()
+        && html.style.cascaded().height.is_none()
+        && html.style.cascaded().min_height.is_none()
     {
-        html.style.min_height = Some(fill_inline(&html.style, vcx));
+        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
     }
-    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(fill_inline(&html.style, vcx));
+    if taken_vertical
+        && html.style.cascaded().height.is_none()
+        && html.style.cascaded().min_height.is_none()
+    {
+        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
     }
     if taken == own {
         return nodes;
@@ -135,14 +147,24 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
         // Their text participates in the root's used line orientation; block
         // pseudo boxes retain the root's original computed writing mode.
         if !crate::layout::box_kind::inline_level(e) {
-            e.style.writing_mode = e.style.writing_mode.or(Some(own.0.unwrap_or_default()));
+            e.style.cascaded_mut().writing_mode = e
+                .style
+                .cascaded()
+                .writing_mode
+                .or(Some(own.0.unwrap_or_default()));
         }
-        e.style.rtl = e.style.rtl.or(Some(own.1.unwrap_or(false)));
+        e.style.cascaded_mut().rtl = e.style.cascaded().rtl.or(Some(own.1.unwrap_or(false)));
     }
-    if taken_vertical && html.style.height.is_none() && html.style.min_height.is_none() {
-        html.style.min_height = Some(fill_inline(&html.style, vcx));
+    if taken_vertical
+        && html.style.cascaded().height.is_none()
+        && html.style.cascaded().min_height.is_none()
+    {
+        html.style.cascaded_mut().min_height = Some(fill_inline(html.style.cascaded(), vcx));
     }
-    (html.style.writing_mode, html.style.rtl) = taken;
+    (
+        html.style.cascaded_mut().writing_mode,
+        html.style.cascaded_mut().rtl,
+    ) = taken;
     nodes
 }
 

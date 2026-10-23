@@ -109,7 +109,7 @@ fn push_cell_wrapped(
     let build = &opts.cx.build;
     built = build.effects(
         built,
-        Effect::transform(&cell.style, &row_state.row_style, vcx),
+        Effect::transform(cell.style.cascaded(), &row_state.row_style, vcx),
     );
     let pure_shift = |t: &crate::style::computed::Transform| {
         !t.has_3d
@@ -131,6 +131,7 @@ fn push_cell_wrapped(
     let rb = row_state
         .row
         .style
+        .cascaded()
         .transform
         .as_ref()
         .is_some_and(|t| !pure_shift(t))
@@ -138,7 +139,7 @@ fn push_cell_wrapped(
     built = build.effects(
         built,
         Effect::Transform {
-            style: &row_state.row.style,
+            style: row_state.row.style.cascaded(),
             parent: row_state.inherited,
             ref_box: rb,
             vcx,
@@ -147,6 +148,7 @@ fn push_cell_wrapped(
     if let Some(g) = row_state.carry.group {
         let rb = g
             .style
+            .cascaded()
             .transform
             .as_ref()
             .is_some_and(|t| !pure_shift(t))
@@ -154,7 +156,7 @@ fn push_cell_wrapped(
         built = build.effects(
             built,
             Effect::Transform {
-                style: &g.style,
+                style: g.style.cascaded(),
                 parent: geom.inherited,
                 ref_box: rb,
                 vcx,

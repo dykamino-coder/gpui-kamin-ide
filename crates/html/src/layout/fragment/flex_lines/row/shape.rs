@@ -31,16 +31,16 @@ pub(crate) fn shape_flex_lines(
         let m = line.len();
         for (ii, (_, e, sh)) in line.iter_mut().enumerate() {
             // `height: auto` тянется на строку — полом.
-            if matches!(e.style.height, None | Some(Len::Auto))
+            if matches!(e.style.cascaded().height, None | Some(Len::Auto))
                 && sh.height + sh.margin_top + sh.margin_bottom < cross - 0.01
             {
-                let eb = e.style.borders();
-                let edges = side(&e.style.padding.top).unwrap_or(0.0)
-                    + side(&e.style.padding.bottom).unwrap_or(0.0)
+                let eb = e.style.cascaded().borders();
+                let edges = side(&e.style.cascaded().padding.top).unwrap_or(0.0)
+                    + side(&e.style.cascaded().padding.bottom).unwrap_or(0.0)
                     + side(&eb.top).unwrap_or(0.0)
                     + side(&eb.bottom).unwrap_or(0.0);
                 let content = (cross - sh.margin_top - sh.margin_bottom - edges).max(0.0);
-                e.style.min_height = Some(Len::Px(content));
+                e.style.cascaded_mut().min_height = Some(Len::Px(content));
                 *sh = shape_full(e, 4, ShapeCx::COLUMNS, vcx)?;
             }
             // Зазор между строками — к полю элементов следующей строки.
@@ -48,12 +48,12 @@ pub(crate) fn shape_flex_lines(
                 sh.margin_top += row_gap;
             }
             if ii == 0 {
-                e.style.break_before_force |= bf;
-                e.style.break_before_avoid |= ba && !bf;
+                e.style.cascaded_mut().break_before_force |= bf;
+                e.style.cascaded_mut().break_before_avoid |= ba && !bf;
             }
             if ii + 1 == m {
-                e.style.break_after_force |= af;
-                e.style.break_after_avoid |= aa && !af;
+                e.style.cascaded_mut().break_after_force |= af;
+                e.style.cascaded_mut().break_after_avoid |= aa && !af;
             }
         }
     }

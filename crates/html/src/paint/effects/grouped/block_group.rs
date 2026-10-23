@@ -15,11 +15,11 @@ pub(crate) fn group_style<'a>(
     inherited: &Computed,
     vcx: ValueCx<'_>,
 ) -> Cow<'a, Computed> {
-    if own.mask_image.is_none() {
-        return Cow::Borrowed(own);
+    if own.cascaded().mask_image.is_none() {
+        return Cow::Borrowed(own.cascaded());
     }
     let computed = crate::style::cascade::materialize::box_style(inherited, own, vcx);
-    let mut style = (**own).clone();
+    let mut style = own.cascaded().clone();
     style.mask_image = computed.mask_image;
     Cow::Owned(style)
 }
@@ -39,8 +39,8 @@ pub(crate) fn block_group(
     vcx: ValueCx<'_>,
 ) -> AnyElement {
     let style = group_style(&e.style, inherited, vcx);
-    if crate::paint::stacking::stacking_context(&e.style)
-        && e.style.isolate != Some(true)
+    if crate::paint::stacking::stacking_context(e.style.cascaded())
+        && e.style.cascaded().isolate != Some(true)
         && crate::paint::stacking::blends_inside(&e.children, 0)
     {
         let mut iso = style.into_owned();
@@ -60,11 +60,11 @@ pub(crate) fn paint_group(
     inherited: &Computed,
     vcx: ValueCx<'_>,
 ) -> AnyElement {
-    let el = crate::paint::apply::static_shift(container, &e.style);
-    let el = crate::paint::apply::apply_opacity(el, &e.style, vcx);
+    let el = crate::paint::apply::static_shift(container, e.style.cascaded());
+    let el = crate::paint::apply::apply_opacity(el, e.style.cascaded(), vcx);
     let el = crate::paint::effects::transform::transformed(
         gpui::IntoElement::into_any_element(el),
-        &e.style,
+        e.style.cascaded(),
         inherited,
         vcx,
     );

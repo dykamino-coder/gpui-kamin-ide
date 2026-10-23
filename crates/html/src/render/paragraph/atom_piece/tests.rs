@@ -9,8 +9,8 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     let crate::dom::Node::Element(mut element) = nodes.remove(0) else {
         panic!("element")
     };
-    element.style.position = Some(Position::Absolute);
-    element.style.inline_display = Some(true);
+    element.style.cascaded_mut().position = Some(Position::Absolute);
+    element.style.cascaded_mut().inline_display = Some(true);
     let opts = RenderOpts {
         text: gpui::TextStyle::default(),
         viewport: (800.0, 600.0),

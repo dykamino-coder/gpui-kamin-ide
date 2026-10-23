@@ -93,6 +93,7 @@ pub(super) fn css_value<'a>(e: &'a Element, name: &str) -> Option<&'a str> {
         return Some("");
     }
     e.style
+        .cascaded()
         .svg_geometry
         .iter()
         .find(|(n, _)| *n == name)
@@ -102,14 +103,14 @@ pub(super) fn css_value<'a>(e: &'a Element, name: &str) -> Option<&'a str> {
 /// Write the cascaded geometry of `e` as attributes.
 pub(super) fn write_geometry(e: &Element, out: &mut String) {
     if applies(&e.tag, "pathLength") {
-        match e.style.svg_path_length {
+        match e.style.cascaded().svg_path_length {
             Some(Len::Px(value)) => out.push_str(&format!(" pathLength=\"{value}\"")),
             // CSS none removes the presentation hint and disables calibration.
             Some(Len::Auto) => {}
             _ => {}
         }
     }
-    for (name, value) in &e.style.svg_geometry {
+    for (name, value) in &e.style.cascaded().svg_geometry {
         if applies(&e.tag, name) {
             out.push(' ');
             out.push_str(name);

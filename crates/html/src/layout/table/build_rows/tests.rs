@@ -36,7 +36,7 @@ fn repeated_group_after_ungrouped_row_starts_a_new_segment() {
 fn column_records_retain_elements_beyond_grid_without_paint_probes() {
     let mut col = anon_element("col", vec![]);
     col.attrs = vec![("span".into(), "3".into())];
-    col.style.background = Some(Color {
+    col.style.cascaded_mut().background = Some(Color {
         r: 0.0,
         g: 0.5,
         b: 0.0,

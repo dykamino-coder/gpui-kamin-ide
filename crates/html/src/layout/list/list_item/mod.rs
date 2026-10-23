@@ -21,7 +21,7 @@ fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
             | Some(Display::Grid)
             | Some(Display::InlineGrid)
     );
-    if li.style.flex_shrink.is_none() && !flex_parent {
+    if li.style.cascaded().flex_shrink.is_none() && !flex_parent {
         d.flex_shrink_0()
     } else {
         d
@@ -53,10 +53,10 @@ pub(super) fn render(li: &Element, inherited: &Computed, opts: &RenderOpts) -> A
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     if matches!(
-        li.style.display,
+        li.style.cascaded().display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)
-    ) || (li.style.display == Some(Display::InlineBlock)
-        && li.style.inline_display != Some(true))
+    ) || (li.style.cascaded().display == Some(Display::InlineBlock)
+        && li.style.cascaded().inline_display != Some(true))
     {
         crate::dom::pseudo_line_layers::install(li, &mut merged, vcx);
     }

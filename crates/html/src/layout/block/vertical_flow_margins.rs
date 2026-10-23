@@ -51,8 +51,8 @@ mod tests {
             .map(|_| {
                 let mut element =
                     crate::layout::table::anon::anon_element("div", vec![Node::Text("É".into())]);
-                element.style.margin.left = Some(Len::Px(12.0));
-                element.style.margin.right = Some(Len::Px(6.0));
+                element.style.cascaded_mut().margin.left = Some(Len::Px(12.0));
+                element.style.cascaded_mut().margin.right = Some(Len::Px(6.0));
                 Node::Element(element)
             })
             .collect()
@@ -81,8 +81,8 @@ mod tests {
                     let Node::Element(item) = node else {
                         panic!("element expected")
                     };
-                    assert_eq!(item.style.margin.left, Some(Len::Px(12.0)));
-                    assert_eq!(item.style.margin.right, Some(Len::Px(6.0)));
+                    assert_eq!(item.style.cascaded().margin.left, Some(Len::Px(12.0)));
+                    assert_eq!(item.style.cascaded().margin.right, Some(Len::Px(6.0)));
                 }
             }
         }
@@ -102,8 +102,8 @@ mod tests {
         let Node::Element(second) = &result[1] else {
             panic!("element expected")
         };
-        assert_eq!(second.style.margin.left, Some(Len::Px(6.0)));
-        assert_eq!(second.style.margin.right, Some(Len::Px(6.0)));
+        assert_eq!(second.style.cascaded().margin.left, Some(Len::Px(6.0)));
+        assert_eq!(second.style.cascaded().margin.right, Some(Len::Px(6.0)));
     }
 
     #[test]
@@ -115,14 +115,14 @@ mod tests {
             let Node::Element(middle) = &mut input[1] else {
                 unreachable!()
             };
-            middle.style.display = Some(Display::InlineBlock);
+            middle.style.cascaded_mut().display = Some(Display::InlineBlock);
             let output = children(input, &Computed::default(), reverse, None, vcx);
             for index in [1, 2] {
                 let Node::Element(item) = &output[index] else {
                     unreachable!()
                 };
-                assert_eq!(item.style.margin.left, Some(Len::Px(12.0)));
-                assert_eq!(item.style.margin.right, Some(Len::Px(6.0)));
+                assert_eq!(item.style.cascaded().margin.left, Some(Len::Px(12.0)));
+                assert_eq!(item.style.cascaded().margin.right, Some(Len::Px(6.0)));
             }
         }
     }
@@ -138,7 +138,10 @@ mod tests {
             let Node::Element(second) = &output[2] else {
                 unreachable!()
             };
-            assert_eq!(second.style.margin.left, Some(Len::Px(expected_left)));
+            assert_eq!(
+                second.style.cascaded().margin.left,
+                Some(Len::Px(expected_left))
+            );
         }
     }
 }

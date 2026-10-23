@@ -28,13 +28,13 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         // Сначала вглубь: вложенные run-in решаются в своём контейнере.
         if let Node::Element(e) = &mut nodes[i] {
             let own = e.style.clone();
-            fold_run_ins(&mut e.children, Some(&own));
+            fold_run_ins(&mut e.children, Some(own.cascaded()));
         }
         // Вне потока элемент вбеганию не мешает и сам не вбегает.
         fn out_of_flow(e: &Element) -> bool {
-            e.style.float.is_some()
+            e.style.cascaded().float.is_some()
                 || matches!(
-                    e.style.position,
+                    e.style.cascaded().position,
                     Some(crate::style::computed::Position::Absolute)
                         | Some(crate::style::computed::Position::Fixed)
                 )
@@ -44,12 +44,12 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         fn holds_block(nodes: &[Node]) -> bool {
             nodes.iter().any(|c| match c {
                 Node::Element(ch) => {
-                    if out_of_flow(ch) || ch.style.display == Some(Display::None) {
+                    if out_of_flow(ch) || ch.style.cascaded().display == Some(Display::None) {
                         return false;
                     }
                     if ch.inline
                         || matches!(
-                            ch.style.display,
+                            ch.style.cascaded().display,
                             Some(Display::InlineBlock)
                                 | Some(Display::InlineFlex)
                                 | Some(Display::InlineGrid)
@@ -65,7 +65,9 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         }
         let runs_in = match &nodes[i] {
             Node::Element(e) => {
-                e.style.run_in == Some(true) && !out_of_flow(e) && !holds_block(&e.children)
+                e.style.cascaded().run_in == Some(true)
+                    && !out_of_flow(e)
+                    && !holds_block(&e.children)
             }
             _ => false,
         };
@@ -84,9 +86,9 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
         };
         let target_ok = matches!(&nodes[j], Node::Element(t)
         if !t.inline
-            && t.style.run_in != Some(true)
+            && t.style.cascaded().run_in != Some(true)
             && !matches!(
-                t.style.display,
+                t.style.cascaded().display,
                 Some(Display::None)
                     | Some(Display::InlineBlock)
                     | Some(Display::InlineFlex)
@@ -106,8 +108,8 @@ pub(crate) fn fold_run_ins(nodes: &mut Vec<Node>, parent: Option<&Computed>) {
             unreachable!()
         };
         run.inline = true;
-        run.style.display = None;
-        run.style.run_in = None;
+        run.style.cascaded_mut().display = None;
+        run.style.cascaded_mut().run_in = None;
         // Наследование от ИСХОДНОГО родителя (§9.2.3) НЕ запекается:
         // `style::cascade::inherit` сливает и рендерные поля, и `run-in-inherit-001`
         // от этого ломается. Цвет нового блока вбёгнутый перенимает
@@ -127,7 +129,7 @@ pub(crate) fn flex_items_lose_float(nodes: &mut [Node]) {
         let Node::Element(el) = node else { continue };
         flex_items_lose_float(&mut el.children);
         if !matches!(
-            el.style.display,
+            el.style.cascaded().display,
             Some(Display::Grid)
                 | Some(Display::InlineGrid)
                 | Some(Display::Flex)
@@ -140,13 +142,13 @@ pub(crate) fn flex_items_lose_float(nodes: &mut [Node]) {
                 continue;
             };
             if matches!(
-                child.style.position,
+                child.style.cascaded().position,
                 Some(Position::Absolute) | Some(Position::Fixed)
             ) {
                 continue;
             }
-            child.style.float = None;
-            child.style.clear = None;
+            child.style.cascaded_mut().float = None;
+            child.style.cascaded_mut().clear = None;
         }
     }
 }

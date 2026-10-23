@@ -20,7 +20,10 @@ pub(crate) fn piece(
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
     let vcx = opts.cx.vcx();
-    if !inherited.wm().turned() || inherited.wm().sideways() || element.style.display.is_some() {
+    if !inherited.wm().turned()
+        || inherited.wm().sideways()
+        || element.style.cascaded().display.is_some()
+    {
         return None;
     }
     let mut merged = box_style(inherited, &element.style, vcx);

@@ -33,7 +33,7 @@ fn animation(spec: &AnimSpec) -> gpui::Animation {
 fn painted(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     transformed(
         opts.cx.build.element(e, inherited, opts),
-        &e.style,
+        e.style.cascaded(),
         inherited,
         opts.cx.vcx(),
     )
@@ -53,7 +53,7 @@ fn sample_live(
 
 pub(crate) fn animated(e: &Element, inherited: &Computed, opts: &RenderOpts) -> AnyElement {
     let vcx = opts.cx.vcx();
-    let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.animation.clone()) else {
+    let (Some(frames), Some(spec)) = (e.anim.clone(), e.style.cascaded().animation.clone()) else {
         return painted(e, inherited, opts);
     };
     if let Some(frozen) = bake_frozen(e, false, vcx) {
@@ -122,12 +122,15 @@ mod tests {
         use crate::style::values::value::Len;
 
         let mut source = crate::layout::table::anon::anon_element("div", vec![]);
-        source.style.apply_one("animation", "move 1s linear", vcx);
-        let spec = source.style.animation.as_ref().unwrap();
-        let mut start = (*source.style).clone();
+        source
+            .style
+            .cascaded_mut()
+            .apply_one("animation", "move 1s linear", vcx);
+        let spec = source.style.cascaded().animation.as_ref().unwrap();
+        let mut start = source.style.cascaded().clone();
         start.apply_one("margin", "0px", vcx);
         start.apply_one("transform", "translateX(0px)", vcx);
-        let mut end = (*source.style).clone();
+        let mut end = source.style.cascaded().clone();
         end.apply_one("margin", "200px", vcx);
         end.apply_one("transform", "translateX(200px)", vcx);
         let frames = [(0.0, start), (1.0, end)];
@@ -135,15 +138,21 @@ mod tests {
         for (ms, x) in [(0, 0.0), (250, 50.0), (500, 100.0), (750, 150.0)] {
             let delta = (f64::from(ms) / 1000.0 / period) as f32;
             let sampled = sample_live(&source, &frames, spec, f64::from(delta) * period, vcx);
-            assert_eq!(sampled.style.margin.left, Some(Len::Px(x)));
-            assert_eq!(sampled.style.margin.top, Some(Len::Px(x)));
-            assert_eq!(sampled.style.margin.right, Some(Len::Px(x)));
-            assert_eq!(sampled.style.margin.bottom, Some(Len::Px(x)));
-            assert_eq!(sampled.style.transform.unwrap().translate.0, x);
+            assert_eq!(sampled.style.cascaded().margin.left, Some(Len::Px(x)));
+            assert_eq!(sampled.style.cascaded().margin.top, Some(Len::Px(x)));
+            assert_eq!(sampled.style.cascaded().margin.right, Some(Len::Px(x)));
+            assert_eq!(sampled.style.cascaded().margin.bottom, Some(Len::Px(x)));
+            assert_eq!(sampled.style.cascaded().transform.unwrap().translate.0, x);
         }
         // GPUI clamps a completed one-shot to delta=1, including at 1500 ms.
         let expired = sample_live(&source, &frames, spec, period, vcx);
-        assert_eq!(expired.style.margin, source.style.margin);
-        assert_eq!(expired.style.transform, source.style.transform);
+        assert_eq!(
+            expired.style.cascaded().margin,
+            source.style.cascaded().margin
+        );
+        assert_eq!(
+            expired.style.cascaded().transform,
+            source.style.cascaded().transform
+        );
     }
 }

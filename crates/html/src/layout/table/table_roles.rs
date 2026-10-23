@@ -29,9 +29,9 @@ mod tests {
     fn authored_display_controls_cell_role_before_anonymous_fixup() {
         let mut cell = crate::layout::table::anon::anon_element("td", vec![]);
         assert!(crate::layout::table::is_cell(&cell));
-        cell.style.display = Some(Display::Block);
+        cell.style.cascaded_mut().display = Some(Display::Block);
         assert!(!crate::layout::table::is_cell(&cell));
-        cell.style.display = Some(Display::TableCell);
+        cell.style.cascaded_mut().display = Some(Display::TableCell);
         assert!(crate::layout::table::is_cell(&cell));
         cell.tag = "div".into();
         assert!(crate::layout::table::is_cell(&cell));
@@ -85,7 +85,7 @@ mod tests {
         let vcx = doc.values();
         let mut block =
             crate::layout::table::anon::anon_element("td", vec![Node::Text("data".into())]);
-        block.style.display = Some(Display::Block);
+        block.style.cascaded_mut().display = Some(Display::Block);
         block.node_id = 123;
         let row = crate::layout::table::anon::anon_element("tr", vec![Node::Element(block)]);
         let fixed = crate::layout::table::anon::fixup_row_children(&row, vcx);
@@ -96,12 +96,12 @@ mod tests {
             panic!("anonymous cell")
         };
         assert!(crate::layout::table::is_cell(cell));
-        assert_eq!(cell.style.display, None);
+        assert_eq!(cell.style.cascaded().display, None);
         let Node::Element(block) = &cell.children[0] else {
             panic!("authored block")
         };
         assert_eq!(block.node_id, 123);
-        assert_eq!(block.style.display, Some(Display::Block));
+        assert_eq!(block.style.cascaded().display, Some(Display::Block));
         assert_eq!(block.children.len(), 1);
     }
 }

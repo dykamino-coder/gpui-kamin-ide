@@ -53,7 +53,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     // коробки не дотягивается до низа колонки.
     let grid_rows_stack = grid_stack(c);
     let row_gap = if grid_rows_stack {
-        match c.style.gap {
+        match c.style.cascaded().gap {
             Some((Some(Len::Px(v)), _)) => v,
             _ => 0.0,
         }
@@ -61,7 +61,7 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         0.0
     };
     if (matches!(
-        c.style.display,
+        c.style.cascaded().display,
         Some(Display::Grid)
             | Some(Display::InlineGrid)
             | Some(Display::GridLanes)
@@ -76,8 +76,8 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         return None;
     }
     let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
-    let b = c.style.borders();
-    let top = px(&c.style.padding.top) + px(&b.top);
+    let b = c.style.cascaded().borders();
+    let top = px(&c.style.cascaded().padding.top) + px(&b.top);
     // Сетка `grid_auto_row_bands`: коробка ищется в элементах ряда,
     // накрывающего `a`, — теми же смещениями, что в мере (`shape_full`).
     // Точка ровно на верху элемента уходит в его первого ребёнка.
@@ -100,17 +100,17 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         return None;
     }
     let is_flex = matches!(
-        c.style.display,
+        c.style.cascaded().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) || c.style.webkit_box == Some(true);
+    ) || c.style.cascaded().webkit_box == Some(true);
     let row_nowrap = is_flex
         && matches!(
-            c.style.flex_dir,
+            c.style.cascaded().flex_dir,
             None | Some(crate::style::computed::FlexDir::Row)
                 | Some(crate::style::computed::FlexDir::RowReverse)
         )
-        && c.style.flex_wrap != Some(true)
-        && c.style.webkit_box_vertical != Some(true);
+        && c.style.cascaded().flex_wrap != Some(true)
+        && c.style.cascaded().webkit_box_vertical != Some(true);
     // МНОГОСТРОЧНЫЙ flex: элемент — не коробка стопки, а член СТРОКИ. Распорка
     // перед самим элементом сдвигала его внутри строки и уводила за собой все
     // следующие строки (`flex-gap-decorations-fragmentation-009/010`: из шести
@@ -126,25 +126,27 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
     // элементом — это и есть начало новой строки во фрагменте
     // (`multi-line-row-flex-fragmentation-029`).
     let wrap_flex = is_flex
-        && c.style.flex_wrap == Some(true)
-        && matches!(c.style.height, Some(Len::Px(_)))
+        && c.style.cascaded().flex_wrap == Some(true)
+        && matches!(c.style.cascaded().height, Some(Len::Px(_)))
         && !forced;
     // Та же гибкая стопка, что в `shape_full` (`flex_items`): поля не
     // схлопываются, между элементами `row-gap`, порядок визуальный,
     // внепоточные — не элементы.
     let flex_items = matches!(
-        c.style.display,
+        c.style.cascaded().display,
         Some(Display::Flex) | Some(Display::InlineFlex)
-    ) && c.style.webkit_box != Some(true)
+    ) && c.style.cascaded().webkit_box != Some(true)
         && !row_nowrap;
-    let flex_gap = match c.style.gap {
-        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.wm().vertical() => v.max(0.0),
+    let flex_gap = match c.style.cascaded().gap {
+        Some((Some(Len::Px(v)), _)) if flex_items && !c.style.cascaded().wm().vertical() => {
+            v.max(0.0)
+        }
         _ => 0.0,
     };
     let mut items: Vec<&Node> = c.children.iter().filter(|n| !is_blank(n)).collect();
     if flex_items {
         items.sort_by_key(|n| match n {
-            Node::Element(e) => e.style.order.unwrap_or(0),
+            Node::Element(e) => e.style.cascaded().order.unwrap_or(0),
             Node::Text(_) => 0,
         });
     }
@@ -155,16 +157,16 @@ fn pushed_box_at(c: &Element, a: f32, depth: u8, forced: bool, vcx: ValueCx<'_>)
         let Node::Element(k) = n else {
             return None;
         };
-        let oof = out_of_flow(&k.style);
+        let oof = out_of_flow(k.style.cascaded());
         if flex_items && oof {
             continue;
         }
         let (h, kmt, kmb) = if oof {
             (0.0, 0.0, 0.0)
         } else if !k.inline
-            && (k.style.position.is_none()
-                || k.style.position == Some(crate::style::computed::Position::Relative))
-            && k.style.float.unwrap_or(0) == 0
+            && (k.style.cascaded().position.is_none()
+                || k.style.cascaded().position == Some(crate::style::computed::Position::Relative))
+            && k.style.cascaded().float.unwrap_or(0) == 0
         {
             // Та же база элемента колонки flex, что у `shape_full`.
             let based = basis_sized(c, k);
