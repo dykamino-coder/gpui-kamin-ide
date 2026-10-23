@@ -22,7 +22,9 @@ pub(crate) fn children(
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start || merged.text_box_trim_end {
+        || merged.text_box_trim_start
+        || merged.text_box_trim_end
+    {
         return None;
     }
     let flow: Vec<_> = host.children.iter().filter(|n| !is_blank(n)).collect();
@@ -70,7 +72,9 @@ pub(crate) fn pending(
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start || merged.text_box_trim_end {
+        || merged.text_box_trim_start
+        || merged.text_box_trim_end
+    {
         return None;
     }
     host.children
@@ -99,7 +103,9 @@ pub(crate) fn vertical_children(
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start || merged.text_box_trim_end {
+        || merged.text_box_trim_start
+        || merged.text_box_trim_end
+    {
         return None;
     }
     let kids: Option<Vec<_>> = host
@@ -149,7 +155,9 @@ pub(crate) fn pending_vertical(
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start || merged.text_box_trim_end {
+        || merged.text_box_trim_start
+        || merged.text_box_trim_end
+    {
         return None;
     }
     host.children

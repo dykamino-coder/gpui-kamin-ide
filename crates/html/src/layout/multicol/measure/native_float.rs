@@ -73,7 +73,9 @@ fn prepare(
 ) -> Option<Vec<(Element, Shape)>> {
     // ADR P-19 F2-1: clearance следующей копии зависит от float bands предыдущей.
     if crate::layout::fragment::flow::copy_clearance(&host.children)
-        || merged.text_box_trim_start || merged.text_box_trim_end {
+        || merged.text_box_trim_start
+        || merged.text_box_trim_end
+    {
         return None;
     }
     let kids: Option<Vec<_>> = host

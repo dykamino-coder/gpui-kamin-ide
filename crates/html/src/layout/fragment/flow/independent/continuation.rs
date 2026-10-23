@@ -39,6 +39,7 @@ pub(super) fn inline_continuation(e: &Element) -> bool {
 pub(crate) fn parallel_overflow(e: &Element) -> bool {
     crate::layout::page::paged::visible_overflow(&e.style)
         && [e.style.height, e.style.max_height]
-            .iter().any(|l| !matches!(l, None | Some(Len::Auto)))
+            .iter()
+            .any(|l| !matches!(l, None | Some(Len::Auto)))
         && e.children.iter().any(|n| matches!(n, Node::Element(_)))
 }
