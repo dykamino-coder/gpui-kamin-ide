@@ -57,7 +57,9 @@ impl LayerPaint for CellsClipped {
                 // бы картинку, рисуясь позже полосы).
                 crate::paint::background::paint_color(
                     &self.style,
-                    crate::paint::background::ColorBox::TableBand(positioning),
+                    // Цвет покрывает всю ячейку, включая span за пределы
+                    // полосы; positioning задаёт только геометрию картинки.
+                    crate::paint::background::ColorBox::TableBand(rect),
                     window,
                     self.values.vcx(),
                 );
