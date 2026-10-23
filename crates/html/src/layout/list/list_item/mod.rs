@@ -10,7 +10,6 @@ use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::{AnyElement, Styled};
 pub(crate) mod marker;
 mod styled;
-pub(crate) use styled::inherited_style;
 pub(crate) use styled::render_with_style;
 
 fn shrink0(d: gpui::Div, li: &Element, parent: &Computed) -> gpui::Div {
