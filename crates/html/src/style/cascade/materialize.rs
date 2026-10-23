@@ -4,12 +4,9 @@
 //! каскадном стиле элемента (`dom::SharedStyle`). Раскладка, краска и интерактив берут стиль коробки через
 //! `box_style`: материализованный стиль плюс контекст коробки-родителя (`inherit::box_stage`).
 //!
-//! Материализованный стиль годится, пока совпадают его входы (Blink: `InheritedEqual` решает,
-//! пересчитывать ли детей; Stylo: кэш правил по родителю): тот же каскадный стиль (правка
-//! раскладкой через ручку сбрасывает материализованный), те же унаследованные данные родителя
-//! и те же шрифтовые входы документа. Иначе — родитель коробки отличается от родителя-элемента
-//! (слой `::first-line`, кадр анимации, положенная плашмя копия вертикального абзаца, окраска
-//! поддерева фильтром) или это анонимная коробка — стиль считается от того родителя, что дан.
+//! Входы материализации сверяются только по дереву элементов. Копии коробок с другими
+//! used-значениями не меняют наследование (CSS 2 §6.2, css-display-3 §2.5). Новый источник
+//! каскада передаёт потомкам отдельные computed values, не правки коробки.
 
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
@@ -33,9 +30,6 @@ struct Materialized {
     /// Поколение шрифтовых входов документа (`text::metrics`).
     generation: u64,
     computed: Rc<Computed>,
-    /// Коробку элемента подготовка документа перенесла под чужую коробку
-    /// (`Marks::style_parent`): коробка-родитель не источник его наследования.
-    moved: bool,
 }
 
 impl Clone for ComputedSlot {
@@ -79,16 +73,6 @@ impl ComputedSlot {
             .borrow()
             .as_ref()
             .filter(|m| m.fits(parent, generation, explicit))
-            .map(|m| m.computed.clone())
-    }
-
-    /// Материализованный стиль перенесённой коробки (`Materialized::moved`): он годен под
-    /// любой коробкой-родителем, пока те же шрифтовые входы.
-    fn moved(&self, generation: u64) -> Option<Rc<Computed>> {
-        self.0
-            .borrow()
-            .as_ref()
-            .filter(|m| m.moved && m.generation == generation)
             .map(|m| m.computed.clone())
     }
 
@@ -136,19 +120,21 @@ fn walk(
             .map(|(_, c)| c.clone())
             .unwrap_or_else(|| parent.clone());
         let slot = e.style.slot();
-        let computed = match slot.get(e.style.cascaded(), &parent, generation) {
-            Some(computed) => computed,
-            None => {
-                let computed = Rc::new(super::compute::compute(&parent, e.style.cascaded(), vcx));
-                *slot.0.borrow_mut() = Some(Rc::new(Materialized {
-                    parent: parent.clone(),
-                    generation,
-                    computed: computed.clone(),
-                    moved: moved.is_some(),
-                }));
-                computed
-            }
-        };
+        let computed = slot
+            .get(e.style.cascaded(), &parent, generation)
+            .unwrap_or_else(|| Rc::new(super::compute::compute(&parent, e.style.cascaded(), vcx)));
+        // Равные входы позволяют разделить значение, но ссылка наследования
+        // должна указывать на текущего родителя, включая новый кадр каскада.
+        if !slot
+            .with_parent()
+            .is_some_and(|(old, p)| Rc::ptr_eq(&old, &computed) && Rc::ptr_eq(&p, &parent))
+        {
+            *slot.0.borrow_mut() = Some(Rc::new(Materialized {
+                parent: parent.clone(),
+                generation,
+                computed: computed.clone(),
+            }));
+        }
         if e.marks.lends_style {
             lent.push((e.node_id, computed.clone()));
         }
@@ -177,51 +163,33 @@ pub(crate) fn box_style_unpainted(
 }
 
 fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> BoxStyle {
-    let generation = vcx.doc.metrics.generation();
     let cascaded = own.cascaded();
-    // Выбранный вариант `@position-try` — источник каскада родителя (Position
-    // Fallback Origin, css-anchor-position-1 §5.1): его объявления входят в
-    // вычисленные значения родителя-элемента, а их знает только коробка
-    // родителя. `inherit` берёт их оттуда (`inherit-height-from-fallback`).
-    let fallback_parent = parent.try_base.is_some();
-    // Перенесённая коробка наследует от родителя-элемента, а не от коробки, под
-    // которую её перенесли.
-    let fitting = own
-        .slot()
-        .get(cascaded, parent, generation)
-        .or_else(|| own.slot().moved(generation))
-        .filter(|_| !fallback_parent);
-    // Годный материализованный стиль (со слоем раскладки) — общий, без копии (P-18).
-    let computed = match (fitting, own.used_rc()) {
-        (Some(_), Some(used)) => used,
-        (Some(computed), None) => computed,
-        (None, used) => match own.slot().with_parent() {
-            // Другие унаследованные данные (`::first-line`, положенная плашмя
-            // копия абзаца): наследуемое — от коробки-родителя, каскадное
-            // `inherit` — от родителя-элемента; поверх — поля раскладки.
-            Some((materialized, element_parent)) => {
-                let mut from = if fallback_parent {
-                    Computed::clone(parent)
-                } else {
-                    (*element_parent).clone()
-                };
-                inherited::take_inherited(&mut from, parent);
-                let mut c = super::compute::compute(&from, cascaded, vcx);
-                // The perspective cell (`PerspectiveFrame`) is the element's
-                // identity, not a value: paint finds the element's perspective
-                // through it. `perspective: inherit` makes a new cell on each
-                // computation; the box keeps the element's own.
-                if c.perspective_frame.is_some() && materialized.perspective_frame.is_some() {
-                    c.perspective_frame = materialized.perspective_frame.clone();
-                }
-                if let Some(used) = used {
-                    used::lay_used(&mut c, &used, &materialized);
-                }
+    let element = own.slot().with_parent().map(|(original, element_parent)| {
+        // Только новая computed-стадия родителя-элемента (например, источник
+        // position-try) требует вычислить ребёнка заново. Used-копия её не меняет.
+        let context = parent.element_style.as_ref();
+        let computed = context
+            .and_then(|p| p.variant_for(&element_parent))
+            .map(|p| Rc::new(super::compute::compute(p, cascaded, vcx)))
+            .unwrap_or_else(|| original.clone());
+        crate::style::computed::ElementStyle {
+            original,
+            computed,
+            parent: context.and_then(|p| p.active()),
+        }
+    });
+    let computed = match &element {
+        Some(e) => match own.used_rc() {
+            Some(used) if Rc::ptr_eq(&e.original, &e.computed) => used,
+            Some(used) => {
+                let mut c = (*e.computed).clone();
+                used::lay_used(&mut c, &used, &e.original);
                 Rc::new(c)
             }
-            // Стиль одной стадии: подготовка документа, коробка раскладки.
-            None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
+            None => e.computed.clone(),
         },
+        // Анонимная коробка наследует от своей коробки-родителя.
+        None => Rc::new(super::compute::compute(parent, cascaded, vcx)),
     };
     let view = own.used();
     // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
@@ -229,9 +197,11 @@ fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -
         Some(_) => cascaded,
         None => &*view,
     };
-    super::inherit::box_stage(parent, declared, &view, computed, paint, vcx)
+    super::inherit::box_stage(parent, declared, &view, computed, element, paint, vcx)
 }
 
+#[cfg(test)]
+mod paint_tests;
 #[cfg(test)]
 mod recompute_tests;
 #[cfg(test)]

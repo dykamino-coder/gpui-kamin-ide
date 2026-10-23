@@ -23,13 +23,17 @@ pub(super) fn inherit_paint(
         set!(c.scrollbar_filter_ops, parent.scrollbar_filter_ops.clone());
     }
     // ЕДИНСТВЕННАЯ точка окраски фильтром (каскад цвета не трогает).
-    // Красится только ВОЗНИКШЕЕ на этом узле: унаследованный цвет уже
-    // покрашен предком — повторная окраска давала f^N по поколениям.
+    // Computed-цвет элемента ещё не окрашен, в том числе унаследованный.
+    // Анонимная коробка получает уже окрашенный цвет от коробки-родителя:
+    // у неё фильтруются только собственные объявления.
     if paint_filter && let Some(f) = c.filter {
         if own.background.is_some() {
             set!(c.background, c.background.map(|col| f.apply(col)));
         }
-        if declared.declares_color() || own.filter.is_some() && parent.color.is_none() {
+        if c.element_style.is_some()
+            || declared.declares_color()
+            || own.filter.is_some() && parent.color.is_none()
+        {
             set!(c.color, c.color.map(|col| f.apply(col)));
         }
         // `currentcolor` сторон решится уже окрашенным цветом текста.
@@ -88,10 +92,16 @@ pub(super) fn inherit_paint(
     // цветом. Для одноцветного непрозрачного фона это ровно «цвет текста
     // поверх заливки» — маска глифов не нужна, а подчёркивания, многоточие и
     // знаки выделения цветом `currentColor` получают тот же цвет сами.
+<<<<<<< HEAD
     // Смешивается только ВОЗНИКШЕЕ на узле (как у фильтра выше): унаследованный
     // цвет уже смешан предком. Внепоточные потомки в геометрию текста не входят
     // (`clip-text-out-of-flow-child`) и получают несмешанный цвет обратно.
     let images = vcx.background_images();
+=======
+    // Computed-цвет элемента смешивается на его коробке; анонимная коробка
+    // получает уже смешанный цвет. Внепоточные потомки в геометрию текста
+    // не входят (`clip-text-out-of-flow-child`) и сохраняют исходный цвет.
+>>>>>>> f8b2b4b1 (fix(html): preserve computed element inheritance across layout copies)
     if paint_filter {
         crate::style::computed::flat_background::collapse_flat_stack(c, vcx, &images);
     }
@@ -120,12 +130,12 @@ pub(super) fn inherit_paint(
     } else if parent.text_clip_fill.is_some() && out_of_flow {
         set!(c.text_clip_fill, None);
         set!(c.text_clip_raw, None);
-        if !declared.declares_color() {
+        if c.element_style.is_none() && !declared.declares_color() {
             set!(c.color, parent.text_clip_raw);
         }
     } else if let Some(fill) = parent.text_clip_fill {
         set!(c.text_clip_fill, Some(fill));
-        if declared.declares_color() {
+        if c.element_style.is_some() || declared.declares_color() {
             set!(c.text_clip_raw, c.color);
             set!(
                 c.color,

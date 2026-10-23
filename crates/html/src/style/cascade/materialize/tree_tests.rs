@@ -63,7 +63,7 @@ fn a_box_under_another_parent_keeps_the_elements_perspective_cell() {
     materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
     let div = element(&parsed.nodes, "div");
     let section = element(&parsed.nodes, "section");
-    // A box parent with other values (a layout copy) recomputes the box.
+    // Копия родительской коробки не пересчитывает стиль элемента.
     let mut parent = box_style(
         &BoxStyle::shared(Rc::new(Computed::default())),
         &div.style,
@@ -79,4 +79,83 @@ fn a_box_under_another_parent_keeps_the_elements_perspective_cell() {
         panic!("perspective cells")
     };
     assert!(Rc::ptr_eq(cell, &own));
+}
+
+#[test]
+fn used_inherited_values_of_layout_copies_do_not_reach_descendants() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="font-size:20px;line-height:2;text-wrap:balance;ruby-align:center;list-style-type:square;list-style-position:inside"><span><i>x</i></span></div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div");
+    let span = element(&parsed.nodes, "span");
+    let i = element(&parsed.nodes, "i");
+    let mut copy = div.clone();
+    // Руби, отдельная область float и строчный split меняют только свою коробку.
+    copy.style.used_mut().inh = Computed::default().inh;
+    let parent = box_style(&BoxStyle::default(), &copy.style, vcx);
+    let child = box_style(&parent, &span.style, vcx);
+    let grandchild = box_style(&child, &i.style, vcx);
+    assert_eq!(child.inh, span.style.computed().inh);
+    assert_eq!(grandchild.inh, i.style.computed().inh);
+    assert!(Rc::ptr_eq(
+        &child.element_style.as_ref().unwrap().computed,
+        &span.style.computed()
+    ));
+}
+
+#[test]
+fn vertical_font_units_use_the_elements_axes_under_an_upright_stack_copy() {
+    for mode in ["vertical-rl", "vertical-lr"] {
+        let parsed = crate::dom::parse(
+            &format!(
+                r#"<body><div style="font-size:20px;writing-mode:{mode};text-orientation:upright"><span style="position:absolute;height:2ch;width:3ic">x</span></div></body>"#,
+            ),
+            "",
+        );
+        let vcx = parsed.values();
+        materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+        let div = element(&parsed.nodes, "div");
+        let span = element(&parsed.nodes, "span");
+        let computed = span.style.computed();
+        let mut stack = box_style(&BoxStyle::default(), &div.style, vcx);
+        stack.writing_mode = None;
+        stack.line_height = Some(Len::Px(20.0));
+        let positioned = box_style(&stack, &span.style, vcx);
+        assert_eq!(computed.height, Some(Len::Px(40.0)));
+        assert_eq!(computed.width, Some(Len::Px(60.0)));
+        assert_eq!(positioned.height, computed.height);
+        assert_eq!(positioned.width, computed.width);
+        assert_eq!(positioned.wm(), computed.wm());
+        assert_eq!(div.style.computed().wm(), computed.wm());
+    }
+}
+
+#[test]
+fn a_computed_cascade_variant_reaches_descendants_without_used_values() {
+    let parsed = crate::dom::parse(
+        r#"<body><div style="width:10px;font-size:20px"><span style="width:inherit"><i style="width:inherit">x</i></span></div></body>"#,
+        "",
+    );
+    let vcx = parsed.values();
+    materialize(&parsed.nodes, &Rc::new(Computed::default()), vcx);
+    let div = element(&parsed.nodes, "div");
+    let mut parent = box_style(&BoxStyle::default(), &div.style, vcx);
+    assert!(recompute_onto(
+        &mut parent,
+        &div.style,
+        |c| c.width = Some(Len::Px(30.0)),
+        vcx
+    ));
+    parent.width = Some(Len::Px(99.0));
+    parent.font_size = Some(Len::Px(7.0));
+    let child = box_style(&parent, &element(&parsed.nodes, "span").style, vcx);
+    let grandchild = box_style(&child, &element(&parsed.nodes, "i").style, vcx);
+    assert_eq!(child.width, Some(Len::Px(30.0)));
+    assert_eq!(grandchild.width, Some(Len::Px(30.0)));
+    assert_eq!(child.font_size, Some(Len::Px(20.0)));
+    assert_eq!(grandchild.font_size, Some(Len::Px(20.0)));
+    assert_eq!(div.style.computed().width, Some(Len::Px(10.0)));
 }

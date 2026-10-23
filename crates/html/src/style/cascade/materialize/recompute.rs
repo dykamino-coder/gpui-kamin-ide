@@ -3,7 +3,8 @@
 
 use crate::document::state::ValueCx;
 use crate::dom::{Node, SharedStyle};
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed, ElementStyle};
+use std::rc::Rc;
 
 /// Материализовать заново элемент `e`, чей каскадный стиль правлен после материализации
 /// (кадр анимации — источник каскада), и его поддерево под тем же родителем-элементом, что и
@@ -30,7 +31,7 @@ pub(crate) fn rematerialize(
 /// вычисления (zoom, шрифтовые единицы, `inherit`), что и остальные. `false` — у стиля
 /// нет материализации (стиль одной стадии), объявления не применены.
 pub(crate) fn recompute_onto(
-    c: &mut Computed,
+    c: &mut BoxStyle,
     own: &SharedStyle,
     edit: impl FnOnce(&mut Computed),
     vcx: ValueCx<'_>,
@@ -40,7 +41,19 @@ pub(crate) fn recompute_onto(
     };
     let mut declared = own.cascaded().clone();
     edit(&mut declared);
-    let computed = crate::style::cascade::compute::compute(&parent, &declared, vcx);
+    let context = c.element_style.as_ref().and_then(|p| p.parent.clone());
+    let parent = context
+        .as_ref()
+        .and_then(|p| p.variant_for(&parent))
+        .unwrap_or(&parent);
+    let computed = Rc::new(crate::style::cascade::compute::compute(
+        parent, &declared, vcx,
+    ));
     super::used::lay_used(c, &computed, &materialized);
+    c.element_style = Some(ElementStyle {
+        original: materialized,
+        computed,
+        parent: context,
+    });
     true
 }

@@ -61,6 +61,7 @@ pub(crate) mod scroll;
 pub(crate) mod snap;
 mod used_color;
 pub use crate::style::computed::box_style::BoxStyle;
+pub(crate) use crate::style::computed::box_style::ElementStyle;
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;
 pub use crate::style::computed::transform::*;

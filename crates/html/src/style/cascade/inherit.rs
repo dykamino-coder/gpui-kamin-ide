@@ -46,14 +46,30 @@ use paint::inherit_paint;
 // (`style::zoom::resolve`), а не через самую горячую функцию крейта.
 pub fn inherit(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, own, std::rc::Rc::new(computed), true, vcx)
+    box_stage(
+        parent,
+        own,
+        own,
+        std::rc::Rc::new(computed),
+        None,
+        true,
+        vcx,
+    )
 }
 
 /// Document preparation propagates style; Filter Effects 1 §5 applies colors
 /// only when the renderer builds the element, never while removing wrappers.
 pub(crate) fn inherit_unpainted(parent: &BoxStyle, own: &Computed, vcx: ValueCx<'_>) -> BoxStyle {
     let computed = super::compute::compute(parent, own, vcx);
-    box_stage(parent, own, own, std::rc::Rc::new(computed), false, vcx)
+    box_stage(
+        parent,
+        own,
+        own,
+        std::rc::Rc::new(computed),
+        None,
+        false,
+        vcx,
+    )
 }
 
 /// Стиль коробки из вычисленного стиля `c` элемента под коробкой-родителем
@@ -64,10 +80,12 @@ pub(crate) fn box_stage(
     declared: &Computed,
     own: &Computed,
     computed: std::rc::Rc<Computed>,
+    element: Option<crate::style::computed::ElementStyle>,
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
     let mut c = BoxStyle::shared(computed);
+    c.element_style = element;
     context::inherit_context(parent, own, &mut c);
     inherit_containing(parent, own, &mut c, vcx);
     quirks::percentage_height(parent, own, &mut c, vcx);
