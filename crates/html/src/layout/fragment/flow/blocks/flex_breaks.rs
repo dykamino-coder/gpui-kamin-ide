@@ -33,7 +33,11 @@ impl FlexBox {
                 out.solid
                     .extend(flow.solid.into_iter().filter(|s| s.0 <= first + COORD_EPS));
                 if single {
+                    // Однострочная колонка — один поток: break-before/after
+                    // её элементов — разрывы класса A между соседями
+                    // (css-flexbox-1 §10), их видит и балансировка.
                     out.cuts.extend(flow.cuts);
+                    out.forced.extend(flow.forced);
                 }
                 // Avoid внутри независимой колонки обслуживает её Regrow:
                 // перенос не должен сдвигать содержимое соседних колонок.
@@ -48,14 +52,23 @@ impl FlexBox {
         for (index, line) in frame.lines.iter().enumerate() {
             if index > 0 {
                 let prev = &frame.lines[index - 1];
-                out.cuts.push((prev.end, line.start));
-                if line.start > prev.end + COORD_EPS {
-                    out.solid.push((prev.end, line.start + COORD_EPS));
-                }
                 let prev_items = self.items.iter().filter(|i| prev.items.contains(&i.id));
                 let items = self.items.iter().filter(|i| line.items.contains(&i.id));
                 let force = prev_items.clone().any(|i| i.edge(true, laid).0)
                     || items.clone().any(|i| i.edge(false, laid).0);
+                // Поля, примыкающие к непринудительному разрыву, усекаются, после
+                // принудительного — сохраняются (css-break-3 §5.2): продолжение
+                // начинается с border box первого элемента линии, как и после
+                // промежутка (row-gap) у разрыва.
+                let next = if force {
+                    line.start
+                } else {
+                    line_top(line, laid)
+                };
+                out.cuts.push((prev.end, next));
+                if next > prev.end + COORD_EPS {
+                    out.solid.push((prev.end, next + COORD_EPS));
+                }
                 if force {
                     out.forced.push(line.start);
                 } else if prev_items.clone().any(|i| i.edge(true, laid).1)
@@ -98,6 +111,15 @@ impl FlexBox {
     }
 }
 
+/// Начало содержимого линии ряда: border box её первого элемента.
+pub(super) fn line_top(line: &super::FlexLine, laid: &Laid) -> f32 {
+    line.items
+        .iter()
+        .filter_map(|id| laid.at(*id).map(|p| p.0))
+        .min_by(f32::total_cmp)
+        .map_or(line.start, |top| top.max(line.start))
+}
+
 impl FlexBox {
     fn column_flows(&self, frame: &super::FlexFrame, laid: &Laid, floor: f32) -> Vec<BlockBox> {
         frame
@@ -121,6 +143,7 @@ impl FlexBox {
                 }
                 BlockBox {
                     kids,
+                    flex_gap: Some(self.main_gap),
                     ..Default::default()
                 }
             })

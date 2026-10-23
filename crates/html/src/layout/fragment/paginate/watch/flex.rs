@@ -13,8 +13,10 @@ pub(super) struct FlexFrames {
 }
 
 impl Watched {
+    /// Сдвиг элемента колонки: положительный — перенос за разрыв,
+    /// отрицательный — погашенный у разрыва промежуток.
     pub(crate) fn grow_flex_item(&self, id: u64, growth: f32) -> bool {
-        if !growth.is_finite() || growth <= 0.0 {
+        if !growth.is_finite() || growth.abs() <= 0.0 {
             return false;
         }
         *self.flex_offsets.borrow_mut().entry(id).or_default() += growth;

@@ -103,7 +103,8 @@ impl ColumnStack {
             if !at_solid && !at_forced {
                 continue;
             }
-            let Some(&(_, line_h)) = lines.get(f.col / count) else {
+            // Колонки сверх последней линии переполняют её вбок (css-multicol-1 §8.2).
+            let Some(&(_, line_h)) = lines.get(f.col / count).or(lines.last()) else {
                 continue;
             };
             let grow = line_h - f.y - f.h - k.repeat.foot;
@@ -172,12 +173,19 @@ impl ColumnStack {
     pub(crate) fn runs_guess(kids: &[Kid], count: usize) -> f32 {
         let mut runs: Vec<f32> = Vec::new();
         let mut cur = 0.0f32;
+        // Протяжённость прогона вместе с параллельным потоком переполнения
+        // (css-break-3 §3): содержимое, переполняющее коробку заданной высоты,
+        // занимает колонки так же, как поток (Blink меряет прогоны по
+        // раскладке содержимого, `ContentRuns`). Поток — как у укладки
+        // (`plan::measured`): не у монолита и не у `clone`.
+        let mut peak = 0.0f32;
         let mut started = false;
         let mut force_next = false;
         for k in kids {
             if (k.force_before || force_next) && started {
-                runs.push(cur);
+                runs.push(cur.max(peak));
                 cur = 0.0;
+                peak = 0.0;
             }
             force_next = k.force_after;
             started = true;
@@ -188,17 +196,24 @@ impl ColumnStack {
                 .filter(|&&f| f > COORD_EPS && f < k.h - COORD_EPS)
             {
                 cur += (f - from).max(0.0);
-                runs.push(cur);
+                runs.push(cur.max(peak));
                 cur = 0.0;
+                peak = 0.0;
                 from = k
                     .cuts
                     .iter()
                     .find(|&&(need, _)| (need - f).abs() < COORD_EPS)
                     .map_or(f, |&(_, nf)| nf);
             }
+            let flow = if k.over > k.h + 0.01 && !k.monolith && k.clone_dec.is_none() {
+                k.over
+            } else {
+                k.h
+            };
+            peak = peak.max(cur + (flow - from).max(0.0));
             cur += (k.h - from).max(0.0);
         }
-        runs.push(cur);
+        runs.push(cur.max(peak));
         // `DistributeImplicitBreaks`: очередной неявный разрыв — в прогон с самой
         // высокой колонкой на данный момент.
         let mut split = vec![1usize; runs.len()];

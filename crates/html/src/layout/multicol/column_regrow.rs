@@ -122,7 +122,9 @@ impl ColumnStack {
                     continue;
                 };
                 let Some(blocks) = w.blocks() else { continue };
-                let Some(&(_, height)) = lines.get(f.col / self.count) else {
+                // Колонки сверх последней линии переполняют её вбок (css-multicol-1 §8.2):
+                // их высота — высота этой линии.
+                let Some(&(_, height)) = lines.get(f.col / self.count).or(lines.last()) else {
                     continue;
                 };
                 let edge = f.from + height - f.y;

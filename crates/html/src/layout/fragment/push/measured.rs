@@ -8,7 +8,7 @@
 //! Оценка формы (`pushed_box_at`, `shape_full`) здесь не участвует.
 
 use super::cell::grow_before;
-use super::spacer::spacer_before;
+use super::spacer::spacer_before_laid;
 use crate::dom::Element;
 use crate::layout::fragment::clone::clone_dec;
 use crate::layout::fragment::flow::blocks::{
@@ -101,7 +101,9 @@ impl Regrow {
             return self.watched.grow_flex_item(*id, grow);
         }
         match pushed {
-            Pushed::Box(id) if forced => spacer_before(&mut self.dom, id, grow, self.opts.cx.vcx()),
+            Pushed::Box(id) if forced => {
+                spacer_before_laid(&mut self.dom, id, grow, self.opts.cx.vcx())
+            }
             Pushed::Box(id) => grow_before(&mut self.dom, id, grow),
             Pushed::Row(row) => super::grid_row::push_row(&mut self.dom, &row, grow),
             Pushed::Flex(line) => self.watched.grow_flex_line(line.container, line.line, grow),

@@ -76,6 +76,9 @@ pub(crate) struct BlockBox {
     /// Элементы, если контейнер — сетка: детей стопкой она не кладёт.
     pub(crate) grid: Option<GridBox>,
     pub(crate) flex: Option<FlexBox>,
+    /// Поток элементов flex-колонки: промежуток главной оси (`row-gap`) между
+    /// соседями.
+    pub(crate) flex_gap: Option<f32>,
 }
 
 /// Поточный блочный ребёнок контейнера.

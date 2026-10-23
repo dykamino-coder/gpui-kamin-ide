@@ -76,7 +76,8 @@ impl Watched {
         }
         // Распорка роста стоит перед margin box элемента: поле после
         // принудительного разрыва остаётся при нём (css-break-3 §5.2).
-        for (&id, &offset) in self.flex_offsets.borrow().iter() {
+        // Отрицательный сдвиг (погашенный промежуток) распорки не даёт.
+        for (&id, &offset) in self.flex_offsets.borrow().iter().filter(|o| *o.1 > 0.0) {
             if let Some(&(top, _)) = boxes.get(&id) {
                 let start = top - margins.get(&id).map_or(0.0, |m| m.0);
                 boxes.insert(
