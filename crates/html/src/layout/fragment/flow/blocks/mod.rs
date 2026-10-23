@@ -37,6 +37,8 @@ pub(crate) use flex_tree::flex_tree;
 #[cfg(test)]
 mod depth_tests;
 #[cfg(test)]
+mod flex_column_tests;
+#[cfg(test)]
 mod flex_tests;
 #[cfg(test)]
 mod grid_tests;

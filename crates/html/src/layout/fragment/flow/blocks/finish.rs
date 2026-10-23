@@ -20,6 +20,7 @@ impl BlockBreaks {
         };
         g.cuts.extend(lines.cuts);
         g.solid.extend(lines.solid);
+        let mut keep = self.keep;
         for p in self.pending {
             match p {
                 Pending::Avoid {
@@ -60,6 +61,16 @@ impl BlockBreaks {
                     bottom,
                     gapless,
                 } => {
+                    if gapless {
+                        // Без зазора у края содержимого нет точки класса C.
+                        // Декорация продолжает мягкий запрет, но не превращает
+                        // его в монолит: css-break-3 §4.4 допускает ослабление.
+                        for (_, end) in &mut keep {
+                            if (*end - edge).abs() < COORD_EPS {
+                                *end = bottom;
+                            }
+                        }
+                    }
                     let glue = if gapless {
                         g.solid
                             .iter()
@@ -93,7 +104,7 @@ impl BlockBreaks {
             forced,
             solid: g.solid,
             avoid,
-            keep: self.keep,
+            keep,
             sections: self.sections,
         }
     }

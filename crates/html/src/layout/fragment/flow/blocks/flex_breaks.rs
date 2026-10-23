@@ -14,33 +14,30 @@ impl FlexBox {
         let frame = laid.flexes.get(&id)?;
         if frame.column {
             let flows = self.column_flows(frame, laid, floor);
-            // Колонки flex независимы: наружу выходит только первая неделимая
-            // часть. Внутренние forced/avoid обслуживает Regrow каждого потока.
-            // Строки многострочной колонки — параллельные потоки: граница
-            // между элементами одной строки не разрывает соседние, общих точек
-            // класса A у контейнера нет (css-break-3 §4.3; Blink копит ранние
-            // разрывы отдельно на каждую колонку, `FlexColumnBreakInfo`), и
-            // контейнер режется краем фрагментаинера.
+            // Единственная колонка — последовательный поток: его точки класса A
+            // и все ограничения видны контейнеру (css-flexbox-1 §10).
+            // При нескольких колонках потоки независимы: внутренний перенос
+            // обслуживает Regrow каждого потока (Blink `FlexColumnBreakInfo`).
             let single = flows.len() <= 1;
             for b in flows {
                 let mut flow = BlockBreaks::default();
                 walk(&b, floor, f32::MAX, laid, &mut flow);
-                let first = b
-                    .kids
-                    .first()
-                    .and_then(|k| laid.at(k.id))
-                    .map_or(floor, |p| p.0);
-                out.solid
-                    .extend(flow.solid.into_iter().filter(|s| s.0 <= first + COORD_EPS));
                 if single {
-                    // Однострочная колонка — один поток: break-before/after
-                    // её элементов — разрывы класса A между соседями
-                    // (css-flexbox-1 §10), их видит и балансировка.
                     out.cuts.extend(flow.cuts);
                     out.forced.extend(flow.forced);
+                    out.solid.extend(flow.solid);
+                    out.keep.extend(flow.keep);
+                    out.avoid.extend(flow.avoid);
+                    out.pending.extend(flow.pending);
+                } else {
+                    let first = b
+                        .kids
+                        .first()
+                        .and_then(|k| laid.at(k.id))
+                        .map_or(floor, |p| p.0);
+                    out.solid
+                        .extend(flow.solid.into_iter().filter(|s| s.0 <= first + COORD_EPS));
                 }
-                // Avoid внутри независимой колонки обслуживает её Regrow:
-                // перенос не должен сдвигать содержимое соседних колонок.
             }
             return self
                 .items
